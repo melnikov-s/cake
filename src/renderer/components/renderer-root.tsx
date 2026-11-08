@@ -1,7 +1,7 @@
 import { DesktopConnectionStatus } from "./desktop-connection-status";
 import { BrowserConnectionStatus } from "./browser-connection-status";
 import type { BrowserConnectionStore } from "../stores/BrowserConnectionStore";
-import { StrictMode } from "react";
+import { StrictMode, useMemo, type ComponentProps } from "react";
 import { observer, StoreProvider } from "r-state-tree/react";
 import type { RootStore } from "../stores/RootStore";
 import { App } from "./app";
@@ -34,58 +34,64 @@ export const RendererRoot = observer(function RendererRoot({
   openSession,
   openSubagent,
 }: RendererRootProps) {
-  const activeSessionId = rootStore.appShellStore.activeConversation?.sessionId;
-  const sessionIds = [
-    ...rootStore.sessionCatalogStore.authoritativeSessionIds,
-    ...rootStore.props.projection.automations.unresolvedSessions.map((item) => item.sessionId),
-    ...rootStore.automationSessionsStore.identities.map((item) => item.sessionId),
-  ];
+  // Window capabilities stay stable; navigation/catalog state is read when used,
+  // not observed here and broadcast through every conversation's Markdown context.
+  const actions = useMemo<ComponentProps<typeof MarkdownLinkProvider>["actions"]>(() => {
+    const openArtifact = (lineageId: string, revision?: number) =>
+      rootStore.navigationStore.openArtifact(
+        rootStore.appShellStore.activeConversation?.sessionId,
+        lineageId,
+        revision,
+      );
+    return {
+      openExternalUrl,
+      openArtifact: (reference) => {
+        const { lineageId, revision } = parseArtifactRef(reference);
+        openArtifact(lineageId, revision);
+      },
+      openSession,
+      openSubagent,
+      sessionIds: () => [
+        ...rootStore.sessionCatalogStore.authoritativeSessionIds,
+        ...rootStore.props.projection.automations.unresolvedSessions.map((item) => item.sessionId),
+        ...rootStore.automationSessionsStore.identities.map((item) => item.sessionId),
+      ],
+      sessionTitle: (sessionId) =>
+        rootStore.props.projection.automations.unresolvedSessions.find(
+          (item) => item.sessionId === sessionId,
+        )?.title ??
+        rootStore.automationSessionsStore.sessions.find(
+          (session) => session.sessionId === sessionId,
+        )?.displayTitle ??
+        rootStore.sessionCatalogStore.find(sessionId)?.title ??
+        rootStore.cakeChatCollectionStore.summaries.find(
+          (session) => session.sessionId === sessionId,
+        )?.title,
+      renderArtifactReference: (reference, label) => (
+        <ArtifactReferencePreview
+          reference={formatArtifactRef(parseArtifactRef(reference))}
+          store={rootStore.artifactReferencePreviewStore}
+          children={label}
+          onOpen={openArtifact}
+        />
+      ),
+    };
+  }, [rootStore, openExternalUrl, openSession, openSubagent]);
+  const filesystem = rootStore.client.filesystem;
+  const inlineArtifacts = rootStore.inlineArtifactPreviewStore;
+  const inlineWidgets = rootStore.inlineWidgetStore;
+  const resources = useMemo(
+    () => ({ filesystem, inlineArtifacts, inlineWidgets }),
+    [filesystem, inlineArtifacts, inlineWidgets],
+  );
   return (
     <RendererErrorBoundary>
       <StrictMode>
         <StoreProvider store={rootStore}>
           <StoreProvider store={rootStore.dictationStore}>
             <StoreProvider store={rootStore.fullscreenSurfaceStore}>
-              <MarkdownLinkProvider
-                actions={{
-                  openExternalUrl,
-                  openArtifact: (reference) => {
-                    const { lineageId, revision } = parseArtifactRef(reference);
-                    rootStore.navigationStore.openArtifact(activeSessionId, lineageId, revision);
-                  },
-                  openSession,
-                  openSubagent,
-                  sessionIds: () => sessionIds,
-                  sessionTitle: (sessionId) =>
-                    rootStore.props.projection.automations.unresolvedSessions.find(
-                      (item) => item.sessionId === sessionId,
-                    )?.title ??
-                    rootStore.automationSessionsStore.sessions.find(
-                      (session) => session.sessionId === sessionId,
-                    )?.displayTitle ??
-                    rootStore.sessionCatalogStore.find(sessionId)?.title ??
-                    rootStore.cakeChatCollectionStore.summaries.find(
-                      (session) => session.sessionId === sessionId,
-                    )?.title,
-                  renderArtifactReference: (reference, label) => (
-                    <ArtifactReferencePreview
-                      reference={formatArtifactRef(parseArtifactRef(reference))}
-                      store={rootStore.artifactReferencePreviewStore}
-                      children={label}
-                      onOpen={(lineageId, revision) =>
-                        rootStore.navigationStore.openArtifact(activeSessionId, lineageId, revision)
-                      }
-                    />
-                  ),
-                }}
-              >
-                <ConversationMarkdownResourceContext
-                  value={{
-                    filesystem: rootStore.client.filesystem,
-                    inlineArtifacts: rootStore.inlineArtifactPreviewStore,
-                    inlineWidgets: rootStore.inlineWidgetStore,
-                  }}
-                >
+              <MarkdownLinkProvider actions={actions}>
+                <ConversationMarkdownResourceContext value={resources}>
                   <ConversationMarkdownProvider>
                     <IconButtonHotkeyProvider
                       bindingFor={(id) => rootStore.settingsStore.hotkeys.bindingFor(id)}
