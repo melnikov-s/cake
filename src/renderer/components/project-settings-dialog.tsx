@@ -13,8 +13,8 @@ import {
 import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
 import { LabelSettings } from "./label-settings";
-import { Avatar } from "./ui/avatar";
-import { SegmentedControlButton, SegmentedControlGroup } from "./ui/segmented-control";
+import { ProjectIdentityFields } from "./project-identity-fields";
+import { ProjectMergeWorkflowField } from "./project-merge-workflow-field";
 
 const variables = [
   ["{projectPath}", "registered project directory"],
@@ -50,8 +50,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
           <DialogHeader className="shrink-0 border-b border-border/65 bg-sidebar/30 px-5 py-3.5">
             <DialogTitle id="project-settings-title">{store.projectName} settings</DialogTitle>
             <DialogDescription id="project-settings-description">
-              Configure personal instructions, the browser, project icon, labels, and managed
-              worktrees.
+              Project identity, merge workflow, and personal settings.
             </DialogDescription>
           </DialogHeader>
 
@@ -63,52 +62,31 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               >
                 General
               </h3>
-              <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border/80 bg-card/50">
-                <div
-                  aria-labelledby="project-icon-title"
-                  className="flex items-center gap-3 px-3.5 py-3 phone:flex-wrap"
-                >
-                  <Avatar
-                    kind="project"
-                    seed={store.projectName}
-                    customIcon={store.icon}
-                    className="size-10 shrink-0"
-                    aria-hidden="true"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p id="project-icon-title" className="text-xs font-medium text-foreground">
-                      {store.icon ? "Custom icon" : "Generated from the project name"}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      PNG, JPEG, GIF, or WebP under 750 KB.
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    {store.icon && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => store.removeIcon()}
-                        disabled={store.choosingIcon || store.saving}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void store.chooseIcon()}
-                      disabled={store.choosingIcon || store.saving}
-                    >
-                      {store.choosingIcon ? "Choosing…" : "Choose icon…"}
-                    </Button>
-                  </div>
-                </div>
+              <ProjectIdentityFields
+                store={store.identity}
+                path={store.projectPath}
+                registered
+                disabled={store.saving}
+              />
+            </section>
 
+            <ProjectMergeWorkflowField
+              value={store.worktreeLanding}
+              onChange={(value) => store.setWorktreeLanding(value)}
+              disabled={store.saving}
+            />
+
+            <section aria-labelledby="project-browser-title" className="grid gap-1.5">
+              <h3
+                id="project-browser-title"
+                className="px-0.5 text-xs font-semibold text-foreground"
+              >
+                Browser
+              </h3>
+              <div className="overflow-hidden rounded-lg border border-border/80 bg-card/50">
                 <label className="grid gap-1.5 px-3.5 py-3">
                   <span className="text-xs font-medium text-foreground">Browser default URL</span>
                   <Input
-                    autoFocus
                     aria-label="Browser default URL"
                     maxLength={16_384}
                     spellCheck={false}
@@ -192,42 +170,6 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                 Managed worktrees
               </h3>
               <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border/80 bg-card/50">
-                <div className="grid gap-1.5 px-3.5 py-3">
-                  <div className="flex items-center justify-between gap-3 phone:flex-wrap">
-                    <span
-                      id="worktree-landing-label"
-                      className="text-xs font-medium text-foreground"
-                    >
-                      Landing
-                    </span>
-                    <SegmentedControlGroup
-                      className="w-fit"
-                      aria-labelledby="worktree-landing-label"
-                      aria-describedby="worktree-landing-help"
-                    >
-                      <SegmentedControlButton
-                        active={store.worktreeLanding === "merge"}
-                        onClick={() => store.setWorktreeLanding("merge")}
-                      >
-                        Cake merges
-                      </SegmentedControlButton>
-                      <SegmentedControlButton
-                        active={store.worktreeLanding === "pull-request"}
-                        onClick={() => store.setWorktreeLanding("pull-request")}
-                      >
-                        Pull requests
-                      </SegmentedControlButton>
-                    </SegmentedControlGroup>
-                  </div>
-                  <span
-                    id="worktree-landing-help"
-                    className="text-xs leading-relaxed text-muted-foreground"
-                  >
-                    With pull requests, Cake never merges worktrees. Resolving a session removes its
-                    clean worktree and keeps any branch with commits.
-                  </span>
-                </div>
-
                 <label className="grid gap-1.5 px-3.5 py-3">
                   <span className="text-xs font-medium text-foreground">
                     Worktree creation command

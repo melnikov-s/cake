@@ -1,4 +1,5 @@
-import { Store, snapshot } from "r-state-tree";
+import { Store, snapshot, child, createStore } from "r-state-tree";
+import { ProjectSetupStore } from "./ProjectSetupStore";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
@@ -30,6 +31,7 @@ interface PendingProjectInspection {
   stagedSession: boolean;
   sessionId?: string;
   restoring?: boolean;
+  setup?: boolean;
 }
 
 /** Owns Project selection, inspection, and latest-open policy. */
@@ -40,6 +42,16 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
   private pendingInspection: PendingProjectInspection | undefined;
   private openRevision = 0;
   private pickerRevision = 0;
+  private setupRevision = 0;
+
+  @child get setupStore(): ProjectSetupStore {
+    return createStore(ProjectSetupStore, {
+      onAdded: async (path) => {
+        if (this.setupRevision !== this.openRevision) return;
+        await this.props.onAccepted({ path, kind: "project" });
+      },
+    });
+  }
 
   get client() {
     return ClientContext.consume(this)!;
@@ -81,6 +93,7 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
   cancelPending() {
     this.openRevision += 1;
     this.pickerRevision += 1;
+    this.setupStore.close(true);
     this.error = undefined;
     this.errorDetails = undefined;
     const operationId = this.pendingInspection?.operationId;
@@ -114,7 +127,7 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
     try {
       const path = await this.client.electron.chooseProject({ signal: this.signal });
       if (path && !this.signal.aborted && revision === this.pickerRevision)
-        await this.inspectPath(path);
+        await this.inspectPath(path, { setup: true });
     } catch (error) {
       if (!this.signal.aborted && revision === this.pickerRevision)
         this.setError(error, "Choosing a project folder");
@@ -145,9 +158,11 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
       sessionId?: string;
       stagedSession?: boolean;
       restoring?: boolean;
+      setup?: boolean;
     } = {},
   ) {
     this.pickerRevision += 1;
+    this.setupStore.close(true);
     const revision = ++this.openRevision;
     this.props.onOpening();
     const previousOperationId = this.pendingInspection?.operationId;
@@ -163,6 +178,7 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
       stagedSession: options.stagedSession ?? false,
       sessionId: options.sessionId,
       restoring: options.restoring,
+      setup: options.setup,
     };
     try {
       const inspection = await this.client.workspaces.inspect(
@@ -204,6 +220,11 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
   private async accept(pending: PendingProjectInspection, inspectedPath = pending.path) {
     if (this.pendingInspection !== pending || pending.revision !== this.openRevision) return;
     this.pendingInspection = undefined;
+    if (pending.setup && !this.props.projects.find(inspectedPath)) {
+      this.setupRevision = pending.revision;
+      this.setupStore.open(inspectedPath, this.props.projects.nameFromPath(inspectedPath));
+      return;
+    }
     if (pending.newSession) {
       void this.registerProject(inspectedPath, pending.revision);
       await this.props.onAccepted({
@@ -226,7 +247,7 @@ export class ProjectOpenStore extends Store<ProjectOpenStoreProps> {
 
   private async registerProject(path: string, revision?: number) {
     try {
-      await this.client.workspaces.registerProject(path, this.props.projects.nameFromPath(path), {
+      await this.client.workspaces.registerProject(path, this.props.projects.nameForPath(path), {
         signal: this.signal,
       });
       return !this.signal.aborted && (revision === undefined || revision === this.openRevision);

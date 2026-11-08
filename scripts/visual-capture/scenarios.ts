@@ -1,6 +1,7 @@
 import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
+import { projectSetupScenario } from "./project-setup.ts";
 import { serializeModelReference } from "../../src/contracts/model-presets/model-reference.ts";
 import { toolCallRowsScenario } from "./tool-call-rows";
 import { cakeColorPalettes } from "../../src/utils/cake-color-palettes.ts";
@@ -7253,6 +7254,7 @@ const assistantStandaloneDiagram: VisualCaptureScenario = {
 };
 
 export const visualCaptureScenarios: VisualCaptureScenario[] = [
+  projectSetupScenario,
   createChatFirstNavigationScenario(assistantMarkdownCode.seed, seedDurableChat),
   sessionChangesScenario,
   sideChatActions,

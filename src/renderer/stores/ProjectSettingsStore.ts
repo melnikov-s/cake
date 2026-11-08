@@ -1,12 +1,11 @@
-import { Store, observable } from "r-state-tree";
+import { Store, observable, child, createStore } from "r-state-tree";
 import {
   defaultProjectSettings,
-  PROJECT_ICON_DATA_MAX_LENGTH,
-  type ProjectIcon,
   type ProjectSettings,
   type SessionLabelColor,
   type SessionLabelMutation,
 } from "../../contracts/application/application-data";
+import { ProjectIdentityStore } from "./ProjectIdentityStore";
 import { validateSessionLabelName } from "../../utils/session-label-name";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
@@ -25,9 +24,10 @@ export class ProjectSettingsStore extends Store {
   customInstructions = "";
   projectChatInstructions = "";
   browserDefaultUrl = "";
-  icon: ProjectIcon | undefined;
+  @child get identity(): ProjectIdentityStore {
+    return createStore(ProjectIdentityStore);
+  }
   saving = false;
-  choosingIcon = false;
   addingLabel = false;
   private readonly pendingLabelIds = observable(new Set<string>());
   error: string | undefined;
@@ -56,7 +56,8 @@ export class ProjectSettingsStore extends Store {
       this.projectPath &&
       this.worktreeCommandTimeoutSeconds !== undefined &&
       !this.saving &&
-      !this.choosingIcon,
+      this.identity.valid &&
+      !this.identity.busy,
     );
   }
 
@@ -79,12 +80,15 @@ export class ProjectSettingsStore extends Store {
     this.customInstructions = settings.customInstructions;
     this.projectChatInstructions = settings.projectChatInstructions;
     this.browserDefaultUrl = settings.browserDefaultUrl ?? "";
-    this.icon = settings.icon;
+    this.identity.reset(this.projectName, settings.icon);
     this.error = undefined;
   }
 
   close() {
-    if (!this.saving) this.projectPath = undefined;
+    if (!this.saving) {
+      this.identity.cancel();
+      this.projectPath = undefined;
+    }
   }
 
   setWorktreeCreateCommand(command: string) {
@@ -131,50 +135,14 @@ export class ProjectSettingsStore extends Store {
     this.browserDefaultUrl = url;
   }
 
-  async chooseIcon() {
-    if (this.choosingIcon) return;
-    this.choosingIcon = true;
-    this.error = undefined;
-    try {
-      const selected = await this.client.filesystem.chooseAttachments({ signal: this.signal });
-      if (this.signal.aborted || selected.length === 0) return;
-      const image = selected.find(
-        (item): item is Extract<(typeof selected)[number], { kind: "image" }> =>
-          item.kind === "image",
-      );
-      if (
-        !image ||
-        (image.mimeType !== "image/png" &&
-          image.mimeType !== "image/jpeg" &&
-          image.mimeType !== "image/gif" &&
-          image.mimeType !== "image/webp")
-      ) {
-        this.error = "Choose a PNG, JPEG, GIF, or WebP image";
-        return;
-      }
-      if (image.data.length > PROJECT_ICON_DATA_MAX_LENGTH) {
-        this.error = "Project icons must be smaller than 750 KB";
-        return;
-      }
-      this.icon = { mimeType: image.mimeType, data: image.data };
-    } catch (error) {
-      if (!this.signal.aborted) this.error = describeError(error).message;
-    } finally {
-      if (!this.signal.aborted) this.choosingIcon = false;
-    }
-  }
-
-  removeIcon() {
-    this.icon = undefined;
-    this.error = undefined;
-  }
-
   resetDefaults() {
     const settings = defaultProjectSettings();
     this.worktreeCreateCommand = settings.worktreeCreateCommand;
     this.worktreeSetupCommands = settings.worktreeSetupCommands;
     this.worktreeSetupInstructions = settings.worktreeSetupInstructions;
+    const landing = this.worktreeLanding;
     this.applyWorktreeLifecycle(settings);
+    this.worktreeLanding = landing;
     this.error = undefined;
   }
 
@@ -256,12 +224,21 @@ export class ProjectSettingsStore extends Store {
       customInstructions: this.customInstructions,
       projectChatInstructions: this.projectChatInstructions,
       browserDefaultUrl: this.browserDefaultUrl.trim(),
-      ...(this.icon ? { icon: this.icon } : undefined),
+      ...(this.identity.icon ? { icon: this.identity.icon } : undefined),
     };
     this.saving = true;
     this.error = undefined;
     try {
-      await this.client.workspaces.setProjectSettings(path, settings, { signal: this.signal });
+      const name = this.identity.name.trim();
+      if (name === this.projectName)
+        await this.client.workspaces.setProjectSettings(path, settings, { signal: this.signal });
+      else
+        await this.client.workspaces.setProjectSettings(
+          path,
+          settings,
+          { signal: this.signal },
+          name,
+        );
       if (this.signal.aborted) return false;
       this.projectPath = undefined;
       return true;

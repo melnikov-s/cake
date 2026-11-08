@@ -29,7 +29,9 @@ See `AGENTS.md` for renderer implementation rules.
 
 `Input` with `type="checkbox"` preserves native selection semantics and sizing instead of text-field styling; provide an accessible label and controlled checked state.
 
-[`RadioGroup`](../../src/renderer/components/ui/radio-group.tsx) presents a compact, labeled set of native radio inputs with every option visible. Use it for mutually exclusive form settings instead of a dropdown when there are only a few choices.
+[`SplitButton`](../../src/renderer/components/ui/split-button.tsx) pairs a repeatable action with a separately named configuration menu.
+
+[`RadioGroup`](../../src/renderer/components/ui/radio-group.tsx) presents a compact, labeled set of native radio inputs with every option visible. Its `cards` variant stacks choices with descriptions for setup decisions. Use it for mutually exclusive form settings instead of a dropdown when there are only a few choices.
 
 [ThemePreviewCard](../../src/renderer/components/ui/theme-preview-card.tsx) composes a selectable button with [ThemePreviewScene](../../src/renderer/components/ui/theme-preview-scene.tsx), a decorative miniature Cake window. Scoped light/dark variables, the shared color-data mapper, and the syntax worker keep neighboring previews independent of the active app theme. Appearance composes these cards into separate light/dark galleries: clicking a card immediately saves that slot, independent of the Light/Dark/System appearance mode. Gallery headings identify each saved theme and which slot is active; card checks indicate saved selections. The mode selector is a `SegmentedControl`, not a theme card.
 

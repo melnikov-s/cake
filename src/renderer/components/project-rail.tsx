@@ -15,6 +15,7 @@ import {
   SearchIcon,
   SettingsIcon,
 } from "./ui/icons";
+import { AddProjectDialog } from "./add-project-dialog";
 import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
 import { SortableItem } from "./ui/sortable-item";
@@ -241,6 +242,7 @@ export const ProjectRail = observer(function ProjectRail({
         </div>
       </NavigationRail>
       <ProjectSettingsDialog store={root.projectSettingsStore} />
+      <AddProjectDialog store={root.projectWorkbenchStore.projectOpenStore.setupStore} />
       <SessionSearchDialog
         sidebar={root.sidebarStore}
         sessionMetadata={root.sessionMetadataStore}

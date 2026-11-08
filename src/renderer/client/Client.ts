@@ -1,3 +1,5 @@
+import type { ProjectIconArtwork } from "../../contracts/projects/project-icon-generation";
+import type { CakeModelChoice } from "../../contracts/model-presets/cake-model-selection";
 import type { ArtifactExecutionStatus } from "../../contracts/artifacts/global-artifact-control";
 import type { ArtifactViewingReport } from "../../contracts/artifacts/artifact-viewing";
 import type { DictationError } from "../../contracts/dictation/dictation-data";
@@ -298,10 +300,15 @@ interface WorkspaceCommands {
     path: string,
     options?: ClientCommandOptions,
   ): Promise<ConversationSnapshot["commands"]>;
+  generateProjectIcon(
+    input: { name: string; model: CakeModelChoice },
+    options?: ClientCommandOptions,
+  ): Promise<ProjectIconArtwork>;
   registerProject(
     path: string,
     name: string,
     options?: ClientCommandOptions,
+    settings?: ProjectSettings,
   ): Promise<ApplicationState>;
   renameProject(
     path: string,
@@ -312,6 +319,7 @@ interface WorkspaceCommands {
     path: string,
     settings: ProjectSettings,
     options?: ClientCommandOptions,
+    name?: string,
   ): Promise<ApplicationState>;
   removeProject(
     path: string,

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -28,6 +28,8 @@ function renderProjectSettings(client: TestClientOverrides, settings = defaultPr
   const view = render(<ProjectSettingsDialog store={store} />);
   return {
     user: userEvent.setup(),
+    store,
+    root: rootFixture.root,
     [Symbol.dispose]() {
       view.unmount();
       rootFixture[Symbol.dispose]();
@@ -162,16 +164,17 @@ describe("Project settings workflow", () => {
       const create = screen.getByRole("textbox", { name: "Worktree creation command" });
       const remove = screen.getByRole("textbox", { name: "Worktree removal command" });
       const timeout = screen.getByRole("textbox", { name: "Worktree command timeout in seconds" });
-      const pullRequests = screen.getByRole("button", { name: "Pull requests" });
+      const pullRequests = screen.getByRole("radio", { name: "Merge outside Cake" });
       // Blank commands are valid: they select the built-in Git operations shown as placeholders.
       expect(create).toHaveProperty("value", "");
       expect(create).toHaveProperty("placeholder", "git worktree add {checkoutPath} {branchName}");
       expect(remove).toHaveProperty("placeholder", "git worktree remove {checkoutPath}");
-      expect(screen.getByRole("button", { name: "Cake merges" }).getAttribute("aria-pressed")).toBe(
-        "true",
+      expect(screen.getByRole("radio", { name: "Merge with Cake" })).toHaveProperty(
+        "checked",
+        true,
       );
       await fixture.user.click(pullRequests);
-      expect(pullRequests.getAttribute("aria-pressed")).toBe("true");
+      expect(pullRequests).toHaveProperty("checked", true);
       await fixture.user.click(create);
       await fixture.user.paste("tree add {worktreeName} -b {branchName}");
       await fixture.user.click(remove);
@@ -195,9 +198,10 @@ describe("Project settings workflow", () => {
         { workspaces: { setProjectSettings: save } },
         persisted,
       );
-      expect(
-        screen.getByRole("button", { name: "Pull requests" }).getAttribute("aria-pressed"),
-      ).toBe("true");
+      expect(screen.getByRole("radio", { name: "Merge outside Cake" })).toHaveProperty(
+        "checked",
+        true,
+      );
       expect(
         screen.getByRole("textbox", { name: "Worktree command timeout in seconds" }),
       ).toHaveProperty("value", "120");
@@ -209,7 +213,7 @@ describe("Project settings workflow", () => {
       worktreeCreateCommand: "",
       worktreeRemoveCommand: "",
       worktreeCommandTimeoutSeconds: 0,
-      worktreeLanding: "merge",
+      worktreeLanding: "pull-request",
     });
   });
 
@@ -321,5 +325,54 @@ describe("Project settings workflow", () => {
       expect.objectContaining({ icon: { mimeType: "image/png", data: "aWNvbg==" } }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+  });
+  it("renames only the display name while keeping the folder fixed and preserving unrelated settings and external choice", async () => {
+    const save = setProjectSettings();
+    const initial = {
+      ...defaultProjectSettings(),
+      worktreeLanding: "pull-request" as const,
+      customInstructions: "Keep exact guidance.",
+      projectChatInstructions: "Chat guidance.",
+      worktreeSetupCommands: "pnpm build",
+      browserDefaultUrl: "http://localhost:3000",
+    };
+    using fixture = renderProjectSettings({ workspaces: { setProjectSettings: save } }, initial);
+    expect(screen.getByText(projectPath)).toBeDefined();
+    expect(screen.getByText("Registered folder can’t be changed here.")).toBeDefined();
+    expect(screen.queryByRole("textbox", { name: "Project folder" })).toBeNull();
+    expect(screen.getByRole("radio", { name: "Merge outside Cake" })).toHaveProperty(
+      "checked",
+      true,
+    );
+    const name = screen.getByRole("textbox", { name: "Project name" });
+    await fixture.user.clear(name);
+    await fixture.user.type(name, "Cake desktop");
+    await fixture.user.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(save).toHaveBeenCalledWith(
+      projectPath,
+      expect.objectContaining(initial),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      "Cake desktop",
+    );
+  });
+
+  it("cancels a name and icon draft without changing the persisted identity", async () => {
+    const save = setProjectSettings();
+    using fixture = renderProjectSettings({
+      workspaces: { setProjectSettings: save },
+      filesystem: {
+        chooseAttachments: async () => [
+          { kind: "image", name: "draft.png", mimeType: "image/png", data: "ZHJhZnQ=" },
+        ],
+      },
+    });
+    await fixture.user.type(screen.getByRole("textbox", { name: "Project name" }), " draft");
+    await fixture.user.click(screen.getByRole("button", { name: "Choose icon…" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+    await act(() => fixture.store.open(projectPath));
+    expect(fixture.store.identity.name).toBe("Cake");
+    expect(fixture.store.identity.icon).toBeUndefined();
+    expect(save).not.toHaveBeenCalled();
   });
 });

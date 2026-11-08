@@ -30,6 +30,7 @@ import {
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { ToastContext } from "./context/ToastContext";
+import { ProjectIdentityContext } from "./context/ProjectIdentityContext";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import { ProjectRailStore } from "./ProjectRailStore";
 import { ProjectRailInsetContext } from "./context/ProjectRailInsetContext";
@@ -249,6 +250,14 @@ export class RootStore extends Store<{
         setExpansion: (expansion) => this.settingsStore.appearance.setWorkLogsExpansion(expansion),
       },
     };
+  }
+
+  [ProjectIdentityContext.provide]() {
+    return () => ({
+      presets: this.settingsStore.modelPresets.presets,
+      defaultPresetId: this.settingsStore.modelPresets.defaultPresetId,
+      utilityModel: this.settingsStore.utilityModel.model,
+    });
   }
 
   [ModelCatalogContext.provide]() {

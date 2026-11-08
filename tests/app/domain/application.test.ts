@@ -30,6 +30,7 @@ import {
 } from "../../../src/domain/application/application";
 import {
   defaultApplicationState,
+  defaultProjectSettings,
   SESSION_LABEL_COLORS,
 } from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -286,6 +287,44 @@ describe("Application domain", () => {
         }),
       ),
   );
+
+  it.effect(
+    "registers initial name, icon and merge workflow atomically without reconfiguring an existing project",
+    () =>
+      run(
+        Effect.gen(function* () {
+          const settings = {
+            ...defaultProjectSettings(),
+            worktreeLanding: "pull-request" as const,
+            icon: { mimeType: "image/png" as const, data: "aWNvbg==" },
+          };
+          const created = yield* upsertProject("/work/atlas", "Atlas display", settings);
+          assert.equal(created.projects[0]?.name, "Atlas display");
+          assert.deepEqual(created.projects[0]?.settings, settings);
+          const reopened = yield* upsertProject(
+            "/work/atlas",
+            "Folder name",
+            defaultProjectSettings(),
+          );
+          assert.equal(reopened.projects.length, 1);
+          assert.equal(reopened.projects[0]?.name, "Atlas display");
+          assert.deepEqual(reopened.projects[0]?.settings, settings);
+          const renamed = yield* setProjectSettings("/work/atlas", settings, "Atlas desktop");
+          assert.equal(renamed.projects[0]?.path, "/work/atlas");
+          assert.equal(renamed.projects[0]?.name, "Atlas desktop");
+          assert.deepEqual(renamed.projects[0]?.settings, settings);
+        }),
+      ),
+  );
+
+  it.effect("does not register a project when its initial settings cannot be persisted", () => {
+    const test = makeLayer({ failSave: true });
+    return Effect.gen(function* () {
+      yield* upsertProject("/work/atlas", "Atlas", defaultProjectSettings()).pipe(Effect.flip);
+      assert.deepEqual((yield* (yield* ApplicationState).current()).projects, []);
+      assert.deepEqual(test.persisted().projects, []);
+    }).pipe(Effect.provide(test.layer));
+  });
 
   it.effect("creates, touches, renames, and removes Projects", () =>
     run(

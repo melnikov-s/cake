@@ -253,10 +253,21 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.workspaces["load-staged-slash-commands"]({ path }),
           options,
         ).then((response) => response.commands),
-      registerProject: (path, name, options) =>
+      generateProjectIcon: (input, options) =>
+        execute(
+          "workspaces.generate-project-icon",
+          (client) => client.workspaces["generate-project-icon"](input),
+          options,
+        ),
+      registerProject: (path, name, options, settings) =>
         execute(
           "workspaces.register-project",
-          (client) => client.workspaces["register-project"]({ path, name }),
+          (client) =>
+            client.workspaces["register-project"]({
+              path,
+              name,
+              ...(settings ? { settings } : undefined),
+            }),
           options,
         ).then((response) => response.state),
       renameProject: (path, name, options) =>
@@ -265,10 +276,15 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.workspaces["rename-project"]({ path, name }),
           options,
         ).then((response) => response.state),
-      setProjectSettings: (path, settings, options) =>
+      setProjectSettings: (path, settings, options, name) =>
         execute(
           "workspaces.set-project-settings",
-          (client) => client.workspaces["set-project-settings"]({ path, settings }),
+          (client) =>
+            client.workspaces["set-project-settings"]({
+              path,
+              settings,
+              ...(name ? { name } : undefined),
+            }),
           options,
         ).then((response) => response.state),
       removeProject: (path, deleteSessions, options) =>

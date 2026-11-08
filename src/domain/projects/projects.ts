@@ -35,6 +35,7 @@ import { resolveRewordingWorkspace } from "../../services/projects/rewording-wor
 import type { ProjectCatalogUpdate } from "../../contracts/application/catalog-data";
 import type {
   ProjectRecord,
+  ProjectSettings,
   SessionLabelMutation,
   ProjectWorkflowSessionDetails,
 } from "../../contracts/application/application-data";
@@ -233,20 +234,21 @@ export const register = Effect.fn("Projects.register")(function* (
   request: Payload<"register-project">,
 ) {
   yield* requireAllowed(request.path);
-  return { state: yield* registerAllowed(request.path, request.name) };
+  return { state: yield* registerAllowed(request.path, request.name, request.settings) };
 });
 
 /** The one registration transaction behind the UI picker and agent registration. */
 const registerAllowed = Effect.fn("Projects.registerAllowed")(function* (
   path: string,
   name: string,
+  settings?: ProjectSettings,
 ) {
   const application = yield* ApplicationState;
   const access = yield* ProjectAccess;
   const worktrees = yield* ManagedWorktrees;
   const records = yield* mapProjectError("registerProject", worktrees.records());
   if (records.some((entry) => entry.worktreePath === path)) return application.snapshot();
-  const state = yield* mapProjectError("registerProject", upsertProject(path, name));
+  const state = yield* mapProjectError("registerProject", upsertProject(path, name, settings));
   yield* Effect.forEach(
     records.filter((record) => record.projectPath === path),
     (record) => access.allow(record.worktreePath),
@@ -389,7 +391,7 @@ export const setProjectSettings = Effect.fn("Projects.setProjectSettings")(funct
   return {
     state: yield* mapProjectError(
       "setProjectSettings",
-      setApplicationProjectSettings(request.path, request.settings),
+      setApplicationProjectSettings(request.path, request.settings, request.name),
     ),
   };
 });

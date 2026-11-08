@@ -4,6 +4,7 @@ import { ProjectError } from "../../contracts/projects/project-error";
 import * as application from "../../domain/application/application";
 import { postProcessDictation } from "../../domain/dictation/post-process";
 import * as projects from "../../domain/projects/projects";
+import { generateProjectIcon } from "../../domain/projects/projectIconGeneration";
 import { WorkspaceRpc } from "../protocol/WorkspaceRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
@@ -45,6 +46,7 @@ export const workspaceHandlers = WorkspaceRpc.of({
     ),
   "workspaces.load-staged-slash-commands": (request) =>
     withConnection((connectionId) => projects.loadStagedSlashCommands(connectionId, request)),
+  "workspaces.generate-project-icon": (request) => generateProjectIcon(request),
   "workspaces.register-project": (request) =>
     withConnection((connectionId) => projects.register(connectionId, request)),
   "workspaces.rename-project": (request) =>

@@ -1,3 +1,5 @@
+import { ProjectIconArtwork } from "../projects/project-icon-generation";
+import { CakeModelChoice } from "../model-presets/cake-model-selection";
 import { EditorDiffSelection } from "../editor/editor-selection";
 import { WindowControlRequest } from "./window-control";
 import { Schema } from "effect";
@@ -716,6 +718,11 @@ export const cakeRpcPayloadSchemas = {
   "register-project": Schema.Struct({
     path: stringMax(4_096),
     name: bounded(1, 512),
+    settings: Schema.optionalKey(ProjectSettings),
+  }),
+  "generate-project-icon": Schema.Struct({
+    name: bounded(1, 512),
+    model: CakeModelChoice,
   }),
   "rename-project": Schema.Struct({
     path: stringMax(4_096),
@@ -724,6 +731,7 @@ export const cakeRpcPayloadSchemas = {
   "set-project-settings": Schema.Struct({
     path: bounded(1, 4_096),
     settings: ProjectSettings,
+    name: Schema.optionalKey(bounded(1, 512)),
   }),
   "remove-project": Schema.Struct({
     path: stringMax(4_096),
@@ -959,6 +967,7 @@ export const cakeRpcSuccessSchemas = {
   "set-cake-prompts": cakeRpcResultSchemas["application-state-updated"],
   "set-global-custom-instructions": cakeRpcResultSchemas["application-state-updated"],
   "load-staged-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],
+  "generate-project-icon": ProjectIconArtwork,
   "register-project": cakeRpcResultSchemas["application-state-updated"],
   "rename-project": cakeRpcResultSchemas["application-state-updated"],
   "set-project-settings": cakeRpcResultSchemas["application-state-updated"],

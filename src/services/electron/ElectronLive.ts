@@ -1,4 +1,5 @@
 import { Effect, Layer, Queue, Stream } from "effect";
+import { realpath, stat } from "node:fs/promises";
 import {
   BrowserWindow,
   clipboard,
@@ -739,7 +740,11 @@ const makeElectronService = (
       const path = yield* Effect.tryPromise({
         try: async () => {
           const result = await dialog.showOpenDialog(owner, { properties: ["openDirectory"] });
-          return result.canceled ? undefined : result.filePaths[0];
+          const selected = result.canceled ? undefined : result.filePaths[0];
+          if (!selected) return undefined;
+          const canonical = await realpath(selected);
+          if (!(await stat(canonical)).isDirectory()) throw new Error("Choose a project folder");
+          return canonical;
         },
         catch: electronError,
       });

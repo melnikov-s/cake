@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +54,11 @@ function renderProjectOpen(
   };
 }
 
+async function confirmAdd(user: ReturnType<typeof userEvent.setup>) {
+  const dialog = await screen.findByRole("dialog", { name: "Add project" });
+  await user.click(within(dialog).getByRole("button", { name: "Add project" }));
+}
+
 beforeEach(() => {
   // jsdom has no SVG layout or media-query engine; keep decorative avatars stationary.
   Object.defineProperty(SVGElement.prototype, "getBBox", {
@@ -98,6 +103,7 @@ describe("Project opening workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     await act(async () => second.resolve("/second"));
+    await confirmAdd(fixture.user);
     expect(await screen.findByPlaceholderText("Ask Cake to work in second…")).toBeDefined();
     await act(async () => first.resolve("/first"));
     expect(inspect).toHaveBeenCalledTimes(1);
@@ -129,12 +135,19 @@ describe("Project opening workflow", () => {
     });
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
+    await confirmAdd(fixture.user);
     await waitFor(() =>
-      expect(registerProject).toHaveBeenCalledWith("/second", "second", expect.anything()),
+      expect(registerProject).toHaveBeenCalledWith(
+        "/second",
+        "second",
+        expect.anything(),
+        expect.objectContaining({ worktreeLanding: "merge" }),
+      ),
     );
     await act(async () => firstInspection.resolve({ ...inspect.mock.calls[0]![0] }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
+    await act(() => fixture.root.navigationStore.chooseProject());
+    await confirmAdd(fixture.user);
     expect(await screen.findByPlaceholderText("Ask Cake to work in third…")).toBeDefined();
     await act(async () => secondRegistration.resolve(defaultApplicationState()));
     expect(screen.getByPlaceholderText("Ask Cake to work in third…")).toBeDefined();
@@ -199,18 +212,111 @@ describe("Project opening workflow", () => {
     );
     expect(start).not.toHaveBeenCalled();
   });
-  it("opens a picked folder as a Project without an approval prompt", async () => {
+  it("opens the picker first, then a prefilled dialog and adds with one click without a model call", async () => {
     const registerProject = vi.fn<Client["workspaces"]["registerProject"]>(async () =>
       defaultApplicationState(),
     );
-    using fixture = renderProjectOpen({ workspaces: { registerProject } });
+    const generateProjectIcon = vi.fn<Client["workspaces"]["generateProjectIcon"]>();
+    using fixture = renderProjectOpen({ workspaces: { registerProject, generateProjectIcon } });
     await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add project" });
+    expect(within(dialog).getByRole("textbox", { name: "Project name" })).toHaveProperty(
+      "value",
+      "cake",
+    );
+    expect(within(dialog).getByText("/work/cake")).toBeDefined();
+    expect(within(dialog).getByRole("radio", { name: "Merge with Cake" })).toHaveProperty(
+      "checked",
+      true,
+    );
+    expect(registerProject).not.toHaveBeenCalled();
+    expect(generateProjectIcon).not.toHaveBeenCalled();
+    await confirmAdd(fixture.user);
     expect(await screen.findByPlaceholderText("Ask Cake to work in cake…")).toBeDefined();
     expect(registerProject).toHaveBeenCalledWith(
       "/work/cake",
       "cake",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ worktreeLanding: "merge" }),
     );
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+  it("cancels a customized draft without registering a project or persisting settings", async () => {
+    const registerProject = vi.fn<Client["workspaces"]["registerProject"]>();
+    const setProjectSettings = vi.fn<Client["workspaces"]["setProjectSettings"]>();
+    const generateProjectIcon = vi.fn<Client["workspaces"]["generateProjectIcon"]>();
+    using fixture = renderProjectOpen({
+      workspaces: { registerProject, setProjectSettings, generateProjectIcon },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Add project" }));
+    await fixture.user.clear(dialog.getByRole("textbox", { name: "Project name" }));
+    await fixture.user.type(dialog.getByRole("textbox", { name: "Project name" }), "Personal name");
+    await fixture.user.click(dialog.getByRole("radio", { name: "Merge outside Cake" }));
+    await fixture.user.click(dialog.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Add project" })).toBeNull();
+    expect(registerProject).not.toHaveBeenCalled();
+    expect(setProjectSettings).not.toHaveBeenCalled();
+    expect(generateProjectIcon).not.toHaveBeenCalled();
+    expect(fixture.root.projectCatalogStore.projects).toHaveLength(0);
+  });
+
+  it("adds the inspected canonical folder with the chosen display name, local icon and external workflow atomically", async () => {
+    const registerProject = vi.fn<Client["workspaces"]["registerProject"]>(async () =>
+      defaultApplicationState(),
+    );
+    using fixture = renderProjectOpen({
+      filesystem: {
+        chooseAttachments: async () => [
+          { kind: "image", name: "icon.png", mimeType: "image/png", data: "aWNvbg==" },
+        ],
+      },
+      workspaces: {
+        inspect: async (request) => ({
+          operationId: request.operationId,
+          path: "/canonical/folder",
+        }),
+        registerProject,
+      },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Add project" }));
+    expect(dialog.getByText("/canonical/folder")).toBeDefined();
+    expect(dialog.getByRole("textbox", { name: "Project name" })).toHaveProperty("value", "folder");
+    await fixture.user.clear(dialog.getByRole("textbox", { name: "Project name" }));
+    await fixture.user.type(dialog.getByRole("textbox", { name: "Project name" }), "Atlas");
+    await fixture.user.click(dialog.getByRole("button", { name: "Choose icon…" }));
+    await fixture.user.click(dialog.getByRole("radio", { name: "Merge outside Cake" }));
+    expect(registerProject).not.toHaveBeenCalled();
+    await confirmAdd(fixture.user);
+    await waitFor(() => expect(registerProject).toHaveBeenCalledOnce());
+    expect(registerProject).toHaveBeenCalledWith(
+      "/canonical/folder",
+      "Atlas",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.objectContaining({
+        worktreeLanding: "pull-request",
+        icon: { mimeType: "image/png", data: "aWNvbg==" },
+      }),
+    );
+  });
+
+  it("opens an already registered picker result without duplicating or reconfiguring it", async () => {
+    const registerProject = vi.fn<Client["workspaces"]["registerProject"]>(async () =>
+      defaultApplicationState(),
+    );
+    using fixture = renderProjectOpen({ workspaces: { registerProject } }, [
+      projectRecord({ path: "/work/cake", name: "Existing display name" }),
+    ]);
+    await fixture.user.click(screen.getByRole("button", { name: "Add project" }));
+    expect(
+      await screen.findByPlaceholderText("Ask Cake to work in Existing display name…"),
+    ).toBeDefined();
+    expect(screen.queryByRole("dialog", { name: "Add project" })).toBeNull();
+    expect(registerProject).toHaveBeenCalledWith(
+      "/work/cake",
+      "Existing display name",
+      expect.anything(),
+    );
   });
 });

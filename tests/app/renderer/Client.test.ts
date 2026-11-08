@@ -7,7 +7,10 @@ import { ClientError } from "../../../src/renderer/client/Client";
 import type { EditorLease } from "../../../src/contracts/vscode/editor-endpoint";
 import { commandClientFinishTransport } from "./command-client-finish-transport";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  defaultProjectSettings,
+} from "../../../src/contracts/application/application-data";
 import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 
 function browserDevices() {
@@ -31,6 +34,46 @@ afterEach(() => vi.unstubAllGlobals());
 // encoded transport replies. Generated-client retains wire encoding, cancellation,
 // attachment ordering and non-retrying Stream tests rather than duplicating them.
 describe("Client transport and device integration", () => {
+  it("encodes initial project settings and display-name settings saves through the validated Workspace RPC", async () => {
+    const state = defaultApplicationState();
+    const settings = { ...defaultProjectSettings(), worktreeLanding: "pull-request" as const };
+    await using transport = commandClientFinishTransport(() => ({
+      _tag: "Success",
+      value: { state },
+    }));
+    const client = makeClient(transport.runtime);
+    await client.workspaces.registerProject("/atlas", "Atlas", undefined, settings);
+    await client.workspaces.setProjectSettings("/atlas", settings, undefined, "Atlas desktop");
+    expect(transport.requests()).toMatchObject([
+      { tag: "workspaces.register-project", payload: { path: "/atlas", name: "Atlas", settings } },
+      {
+        tag: "workspaces.set-project-settings",
+        payload: { path: "/atlas", name: "Atlas desktop", settings },
+      },
+    ]);
+  });
+
+  it("routes a dialog-local icon model choice and validated static SVG artwork through Workspace RPC", async () => {
+    const artwork = {
+      background: "#112233",
+      paths: [{ d: "M0 0 L100 0 L50 100 Z", fill: "#aabbcc" }],
+    };
+    await using transport = commandClientFinishTransport(() => ({
+      _tag: "Success",
+      value: artwork,
+    }));
+    const client = makeClient(transport.runtime);
+    await expect(
+      client.workspaces.generateProjectIcon({ name: "Atlas", model: { source: "utility" } }),
+    ).resolves.toEqual(artwork);
+    expect(transport.requests()).toMatchObject([
+      {
+        tag: "workspaces.generate-project-icon",
+        payload: { name: "Atlas", model: { source: "utility" } },
+      },
+    ]);
+  });
+
   it.each([
     { name: "Cake Chat", companion: undefined },
     { name: "Companion", companion: true },

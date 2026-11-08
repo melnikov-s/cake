@@ -61,6 +61,7 @@ export const observeState = Effect.fn("Application.observeState")(function* () {
 export const upsertProject = Effect.fn("Application.upsertProject")(function* (
   path: string,
   defaultName: string,
+  settings?: ProjectSettings,
 ) {
   const now = DateTime.formatIso(yield* DateTime.now);
   const owner = yield* ApplicationStateOwner;
@@ -77,7 +78,16 @@ export const upsertProject = Effect.fn("Application.upsertProject")(function* (
       return Effect.fail(new ApplicationPolicyError({ message: "Project registry is full" }));
     return validate({
       ...current,
-      projects: [{ path, name: defaultName, addedAt: now, lastOpenedAt: now }, ...current.projects],
+      projects: [
+        {
+          path,
+          name: defaultName,
+          addedAt: now,
+          lastOpenedAt: now,
+          ...(settings ? { settings } : undefined),
+        },
+        ...current.projects,
+      ],
     });
   });
 });
@@ -177,11 +187,14 @@ export const setGlobalCustomInstructions = Effect.fn("Application.setGlobalCusto
 export const setProjectSettings = Effect.fn("Application.setProjectSettings")(function* (
   path: string,
   settings: ProjectSettings,
+  name?: string,
 ) {
   return yield* update((current) => ({
     ...current,
     projects: current.projects.map((project) =>
-      project.path === path ? { ...project, settings } : project,
+      project.path === path
+        ? { ...project, settings, ...(name?.trim() ? { name: name.trim() } : undefined) }
+        : project,
     ),
   }));
 });
