@@ -1,4 +1,4 @@
-import { effect } from "r-state-tree";
+import { applySnapshot, effect } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { applySessionCatalogGroupUpdate } from "../../../../src/renderer/reducers/CatalogReducer";
 import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
@@ -13,6 +13,59 @@ import { createRendererStoreFixture } from "../renderer-store-fixture";
 // Pending submission corrected into another Project, authority takeover during start
 // and eventual removal now run through App in remaining-store-finish-workflow.test.tsx.
 describe("Session catalog derivation integration", () => {
+  it("derives landed worktrees without loading an archive lane and respects restore/resolve", () => {
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+    });
+    applySnapshot(fixture.models.worktrees, {
+      worktrees: [
+        {
+          projectPath: "/project",
+          worktreePath: "/tree",
+          branch: "agent/work",
+          baseBranch: "main",
+          state: "landed",
+          createdAt: "2026-01-01",
+        },
+      ],
+    });
+    const catalog = fixture.root.sessionCatalogStore;
+    expect(fixture.root.sidebarStore.sessionListStore.projectSessionCatalogQueries).toEqual([
+      { projectPath: "/project", resolved: false },
+    ]);
+    expect(catalog.resolvedWorktrees("/project").map((record) => record.worktreePath)).toEqual([
+      "/tree",
+    ]);
+    const session = sessionSummary({
+      sessionId: "restored",
+      projectPath: "/project",
+      workingDirectory: "/tree",
+    });
+    applySessionCatalogGroupUpdate(
+      fixture.models.sessionCatalog,
+      { projectPath: "/project", resolved: false },
+      { _tag: "Event", revision: 1, event: { _tag: "Upserted", session } },
+    );
+    expect(catalog.resolvedWorktrees("/project")).toEqual([]);
+    applySessionCatalogGroupUpdate(
+      fixture.models.sessionCatalog,
+      { projectPath: "/project", resolved: false },
+      {
+        _tag: "Event",
+        revision: 2,
+        event: {
+          _tag: "StatusChanged",
+          sessionId: session.sessionId,
+          resolved: true,
+          unread: false,
+        },
+      },
+    );
+    expect(catalog.resolvedWorktrees("/project").map((record) => record.worktreePath)).toEqual([
+      "/tree",
+    ]);
+  });
+
   it("reuses a Project group until its authority changes", () => {
     const projectPath = "/project";
     const older = sessionSummary({ sessionId: "older", projectPath });

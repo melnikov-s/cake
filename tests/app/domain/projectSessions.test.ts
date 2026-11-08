@@ -653,6 +653,18 @@ const makeLayer = (
     Layer.succeed(
       SessionArchiveStorage,
       SessionArchiveStorage.of({
+        projectTitles: (entries) =>
+          Effect.succeed(
+            new Map(
+              entries.map((entry) => [
+                entry.sessionId,
+                hooks.resolvedProjectEntries?.find((item) => item.sessionId === entry.sessionId)
+                  ?.title ??
+                  entry.title ??
+                  entry.sessionId,
+              ]),
+            ),
+          ),
         relocate: () => Effect.void,
         resolve: () => Effect.succeed(false),
         restore: () => Effect.succeed(false),
@@ -3030,6 +3042,18 @@ describe("Project Sessions domain", () => {
           removed = false,
         ) {
           const update = yield* Queue.take(queue);
+          if (queue === archived) {
+            assert.ok(update._tag === "Snapshot");
+            assert.equal(update.hasMore, false);
+            assert.deepEqual(
+              update.sessions.map((row) => row.sessionId),
+              removed ? [] : ids,
+            );
+            assert.ok(
+              update.sessions.every((row) => row.title === title && row.resolved === resolved),
+            );
+            return;
+          }
           assert.equal(update._tag, "Event");
           if (update._tag !== "Event") return;
           if (removed) assert.deepEqual(update.event, { _tag: "RemovedBatch", sessionIds: ids });
@@ -3058,10 +3082,16 @@ describe("Project Sessions domain", () => {
         yield* catalogs.publish({ _tag: "ProjectSessionRemoved", sessionId: "child" });
         for (const queue of [active, archived]) {
           const removed = yield* Queue.take(queue);
-          assert.deepEqual(removed._tag === "Event" && removed.event, {
-            _tag: "Removed",
-            sessionId: "child",
-          });
+          if (queue === archived) {
+            assert.ok(removed._tag === "Snapshot");
+            assert.deepEqual(removed.sessions, []);
+            assert.equal(removed.hasMore, false);
+          } else {
+            assert.deepEqual(removed._tag === "Event" && removed.event, {
+              _tag: "Removed",
+              sessionId: "child",
+            });
+          }
         }
         yield* catalogs.publish({ _tag: "ProjectSessionChanged", ...change, sessionId: "parent" });
         yield* expectBatch(active, ["parent", "added"]);
@@ -3119,6 +3149,10 @@ describe("Project Sessions domain", () => {
         Effect.provideService(SessionFamilyStorage, {
           ...storage,
           state: () => Effect.sync(() => ({ families: [family], turns: [], spawnedSessions: [] })),
+        }),
+        Effect.provideService(SessionArchiveStorage, {
+          ...(yield* SessionArchiveStorage),
+          resolvedIds: () => Effect.sync(() => new Set(resolved ? ["parent", "added"] : [])),
         }),
       );
     }).pipe(
@@ -3268,27 +3302,170 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("loads every resolved metadata record in one stable snapshot", () => {
+  it.effect("pages resolved roots before title loading and reports hasMore", () => {
     const entries = Array.from({ length: 12 }, (_, index) => ({
       sessionId: `session-${index}`,
       modifiedAt: `2026-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
     }));
     return Effect.gen(function* () {
-      const updates = yield* projectSessionMetadata.observeCatalog({
-        projectPath: "/project",
-        resolved: true,
-      });
-      const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
-      assert.equal(first.length, 1);
-      assert.equal(first[0]?._tag, "Snapshot");
-      if (first[0]?._tag !== "Snapshot") return;
-      assert.equal(first[0].sessions.length, 12);
-      assert.equal(first[0].sessions[0]?.sessionId, "session-11");
-      assert.equal(first[0].sessions[11]?.sessionId, "session-0");
-      assert.equal(first[0].hasMore, undefined);
+      const archive = yield* SessionArchiveStorage;
+      const titlePages: string[][] = [];
+      const page = (limit: number) =>
+        projectSessionMetadata
+          .observeCatalog({
+            projectPath: "/project",
+            resolved: true,
+            limit,
+          })
+          .pipe(
+            Effect.flatMap((updates) => updates.pipe(Stream.take(1), Stream.runCollect)),
+            Effect.provideService(SessionArchiveStorage, {
+              ...archive,
+              projectTitles: (entries) => {
+                titlePages.push(entries.map((entry) => entry.sessionId));
+                return archive.projectTitles(entries);
+              },
+            }),
+          );
+      const [first] = yield* page(10);
+      assert.ok(first?._tag === "Snapshot");
+      assert.equal(first.sessions.length, 10);
+      assert.equal(first.sessions[0]?.sessionId, "session-11");
+      assert.equal(first.sessions[9]?.sessionId, "session-2");
+      assert.equal(first.hasMore, true);
+      const [second] = yield* page(20);
+      assert.ok(second?._tag === "Snapshot");
+      assert.equal(second.sessions.length, 12);
+      assert.equal(second.sessions[11]?.sessionId, "session-0");
+      assert.equal(second.hasMore, false);
+      assert.deepEqual(
+        titlePages.map((page) => page.length),
+        [10, 12],
+      );
     }).pipe(
       Effect.provide(
         makeLayer(undefined, { resolvedOnDisk: true, resolvedProjectEntries: entries }),
+      ),
+    );
+  });
+
+  it.effect("pages resolved roots without splitting their family members", () =>
+    Effect.gen(function* () {
+      const updates = yield* projectSessionMetadata.observeCatalog({
+        projectPath: "/project",
+        resolved: true,
+        limit: 1,
+      });
+      const [page] = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+      assert.ok(page?._tag === "Snapshot");
+      assert.deepEqual(
+        page.sessions.map((row) => row.sessionId),
+        nestedFamilyIds,
+      );
+      assert.equal(page.hasMore, true);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          family: nestedFamily,
+          initialResolvedSessionIds: [...nestedFamilyIds, "other"],
+          resolvedProjectEntries: [
+            ...nestedFamilyIds.map((sessionId) => ({ sessionId, modifiedAt: "2026-01-03" })),
+            { sessionId: "other", modifiedAt: "2026-01-01" },
+          ],
+        }),
+      ),
+    ),
+  );
+
+  it.effect("restores into the active catalog without any hydrated archive row", () =>
+    Effect.gen(function* () {
+      const query = { projectPath: "/project", resolved: false };
+      const catalog = SessionCatalog.create();
+      const received = yield* Queue.unbounded<SessionCatalogUpdate>();
+      const updates = yield* projectSessionMetadata.observeCatalog(query);
+      const fiber = yield* updates.pipe(
+        Stream.take(2),
+        Stream.runForEach((update) => {
+          applySessionCatalogGroupUpdate(catalog, query, update);
+          return Queue.offer(received, update);
+        }),
+        Effect.forkChild,
+      );
+      yield* Queue.take(received);
+      assert.equal(catalog.find("session-1"), undefined);
+      yield* projectSessionLifecycle.restore({ sessionId: "session-1" });
+      const restored = yield* Queue.take(received);
+      assert.ok(restored._tag === "Event" && restored.event._tag === "Upserted");
+      assert.equal(catalog.find("session-1")?.resolved, false);
+      assert.equal(catalog.find("session-1")?.title, "Active branch");
+      yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(makeLayer(undefined, { resolvedOnDisk: true }))),
+  );
+
+  it.effect("refills bounded archive pages and hasMore after restore and resolve", () => {
+    const entries = [1, 2, 3].map((index) => ({
+      sessionId: `session-${index}`,
+      modifiedAt: `2026-01-0${index}`,
+    }));
+    return Effect.gen(function* () {
+      const changes = yield* SessionCatalogChanges;
+      const received = yield* Queue.unbounded<SessionCatalogUpdate>();
+      const updates = yield* projectSessionMetadata.observeCatalog({
+        projectPath: "/project",
+        resolved: true,
+        limit: 2,
+      });
+      const fiber = yield* updates.pipe(
+        Stream.take(3),
+        Stream.runForEach((update) => Queue.offer(received, update)),
+        Effect.forkChild,
+      );
+      const first = yield* Queue.take(received);
+      assert.ok(first._tag === "Snapshot");
+      assert.deepEqual(
+        first.sessions.map((row) => row.sessionId),
+        ["session-3", "session-2"],
+      );
+      assert.equal(first.hasMore, true);
+      entries.pop();
+      yield* changes.publish({
+        _tag: "ProjectSessionStatusChanged",
+        sessionId: "session-3",
+        projectPath: "/project",
+        workingDirectory: "/project",
+        resolved: false,
+        unread: false,
+      });
+      const restored = yield* Queue.take(received);
+      assert.ok(restored._tag === "Snapshot");
+      assert.deepEqual(
+        restored.sessions.map((row) => row.sessionId),
+        ["session-2", "session-1"],
+      );
+      assert.equal(restored.hasMore, false);
+      entries.push({ sessionId: "session-4", modifiedAt: "2026-01-04" });
+      yield* changes.publish({
+        _tag: "ProjectSessionStatusChanged",
+        sessionId: "session-4",
+        projectPath: "/project",
+        workingDirectory: "/project",
+        resolved: true,
+        unread: false,
+      });
+      const resolved = yield* Queue.take(received);
+      assert.ok(resolved._tag === "Snapshot");
+      assert.deepEqual(
+        resolved.sessions.map((row) => row.sessionId),
+        ["session-4", "session-2"],
+      );
+      assert.equal(resolved.hasMore, true);
+      yield* Fiber.join(fiber);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          resolvedOnDisk: true,
+          resolvedProjectEntries: entries,
+        }),
       ),
     );
   });
@@ -5933,6 +6110,29 @@ describe("Project Sessions domain", () => {
       assert.equal(observed[1]?._tag === "Event" ? observed[1].event._tag : undefined, "Upserted");
     }).pipe(Effect.provide(makeLayer())),
   );
+
+  it.effect("refreshes archived title metadata on rename without restoring the session", () => {
+    const titles: string[] = [];
+    const refreshed: string[] = [];
+    let restored = false;
+    return Effect.gen(function* () {
+      yield* projectSessionOperations.rename({ sessionId: "session-1" }, "Renamed archive");
+      assert.deepEqual(titles, ["Renamed archive"]);
+      assert.deepEqual(refreshed, ["session-1"]);
+      assert.equal(restored, false);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          resolvedOnDisk: true,
+          onRename: (title) => titles.push(title),
+          onArchive: (id) => refreshed.push(id),
+          onRestore: () => {
+            restored = true;
+          },
+        }),
+      ),
+    );
+  });
 
   it.effect("publishes a renamed title before the active turn settles", () => {
     let title = "Active branch";

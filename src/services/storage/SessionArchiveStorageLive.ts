@@ -15,6 +15,7 @@ import {
   Stream,
 } from "effect";
 import {
+  findSessionFilesByIds,
   findSessionFileById,
   findSessionFileMetadataById,
   sessionDirectoryPath,
@@ -609,6 +610,12 @@ export const makeSessionArchiveStorageLive = (
                         sessionId,
                         new Error(`Cake could not find session ${sessionId}`),
                       );
+                    const title = yield* restore(
+                      Effect.try({
+                        try: () => sessionTitleFromFile(item.path, location.cwd),
+                        catch: (cause) => archiveError("resolveProject", sessionId, cause),
+                      }),
+                    );
                     const changed = yield* setResolution(sessionId, location, true);
                     const entryBase = {
                       version: 2 as const,
@@ -620,6 +627,7 @@ export const makeSessionArchiveStorageLive = (
                       resolvedRoot: location.resolvedRoot,
                       createdAt: item.createdAt,
                       modifiedAt: item.modifiedAt,
+                      title,
                     };
                     const entry = ProjectSessionArchiveMetadata.make(
                       context.worktreeName
@@ -749,12 +757,12 @@ export const makeSessionArchiveStorageLive = (
                     StoredProjectSessionArchiveMetadata,
                   ).pipe(
                     Effect.flatMap((entry) =>
-                      entry
+                      entry?.version === 1
                         ? withUpdateLock(
                             locatorPath(entry.sessionId),
                             readProjectEntry("resolvedProjects", entry.sessionId),
                           )
-                        : Effect.succeed(undefined),
+                        : Effect.succeed(entry),
                     ),
                   ),
                 ),
@@ -802,6 +810,51 @@ export const makeSessionArchiveStorageLive = (
           ),
         );
 
+      const projectTitles = Effect.fn("SessionArchiveStorage.projectTitles")(function* (
+        entries: ReadonlyArray<ProjectSessionArchiveMetadata>,
+      ) {
+        const titles = new Map<string, string>();
+        const legacyLocations = new Map<string, ProjectSessionArchiveMetadata[]>();
+        for (const entry of entries) {
+          if (entry.title !== undefined) {
+            titles.set(entry.sessionId, entry.title);
+            continue;
+          }
+          const key = sessionDirectoryPath({
+            workingDirectory: entry.workingDirectory,
+            root: entry.activeRoot,
+          });
+          // Shared custom directories still require cwd-specific SDK membership filtering.
+          const locationKey = JSON.stringify([key, entry.workingDirectory]);
+          const group = legacyLocations.get(locationKey) ?? [];
+          group.push(entry);
+          legacyLocations.set(locationKey, group);
+        }
+        for (const group of legacyLocations.values()) {
+          const location = group[0];
+          if (!location) continue;
+          const files = yield* Effect.tryPromise({
+            try: (signal) =>
+              findSessionFilesByIds(
+                new Set(group.map((entry) => entry.sessionId)),
+                { workingDirectory: location.workingDirectory, root: location.activeRoot },
+                signal,
+              ),
+            catch: (cause) => archiveError("projectTitles", "", cause),
+          });
+          for (const entry of group) {
+            const file = files.get(entry.sessionId);
+            if (!file) continue; // Missing legacy transcripts retain the honest ID fallback.
+            const title = yield* Effect.try({
+              try: () => sessionTitleFromFile(file, entry.workingDirectory),
+              catch: (cause) => archiveError("projectTitles", entry.sessionId, cause),
+            });
+            titles.set(entry.sessionId, title);
+          }
+        }
+        return titles;
+      });
+
       const projectMigrationComplete = Effect.fn("SessionArchiveStorage.projectMigrationComplete")(
         function* (projectPath: string) {
           return yield* fileSystem
@@ -839,7 +892,16 @@ export const makeSessionArchiveStorageLive = (
           }),
           Stream.flatMap(
             (source) =>
-              resolved(source.location).pipe(
+              Stream.unwrap(
+                resolvedIds(source.location).pipe(
+                  Effect.map((ids) =>
+                    streamSessionFiles(directoryInput(source.location, false)).pipe(
+                      Stream.filter((item) => ids.has(item.id)),
+                      Stream.mapError((cause) => archiveError("migrateProject", "", cause)),
+                    ),
+                  ),
+                ),
+              ).pipe(
                 Stream.mapEffect((item) =>
                   Effect.gen(function* () {
                     if (seenSessionIds.has(item.id))
@@ -857,8 +919,8 @@ export const makeSessionArchiveStorageLive = (
                       workingDirectory: source.location.cwd,
                       activeRoot: source.location.activeRoot,
                       resolvedRoot: source.location.resolvedRoot,
-                      createdAt: item.created,
-                      modifiedAt: item.modified,
+                      createdAt: item.createdAt,
+                      modifiedAt: item.modifiedAt,
                     };
                     const entry = ProjectSessionArchiveMetadata.make(
                       source.worktreeName
@@ -963,6 +1025,7 @@ export const makeSessionArchiveStorageLive = (
       );
 
       return SessionArchiveStorage.of({
+        projectTitles,
         relocate,
         resolve: Effect.fn("SessionArchiveStorage.resolve")((sessionId, location) =>
           migrateLocation(location).pipe(

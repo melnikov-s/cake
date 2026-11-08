@@ -1,10 +1,11 @@
 import type * as fsPromises from "node:fs/promises";
-import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Effect, Stream } from "effect";
 import {
+  findSessionFilesByIds,
   findSessionFileById,
   findSessionFileMetadataById,
   streamSessionFiles,
@@ -13,7 +14,7 @@ import { streamWorkspaceSessions } from "../../../../src/services/pi/runtime/ses
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const fs = await importOriginal<typeof fsPromises>();
-  return { ...fs, stat: vi.fn(fs.stat) };
+  return { ...fs, stat: vi.fn(fs.stat), readdir: vi.fn(fs.readdir) };
 });
 
 const roots: string[] = [];
@@ -127,6 +128,32 @@ describe("session metadata filename exclusions", () => {
 });
 
 describe("exact session file lookups remain fresh", () => {
+  it("batches selected IDs in one directory read without statting unrelated history", async () => {
+    const input = await fixture();
+    await Promise.all(
+      Array.from({ length: 30 }, (_, i) =>
+        writeFile(join(input.root, filename(`session-${i}`)), ""),
+      ),
+    );
+    vi.mocked(readdir).mockClear();
+    vi.mocked(stat).mockClear();
+    const files = await findSessionFilesByIds(
+      new Set(["session-1", "session-20", "missing"]),
+      input,
+      new AbortController().signal,
+    );
+    expect([...files.keys()].sort()).toEqual(["session-1", "session-20"]);
+    expect(readdir).toHaveBeenCalledTimes(1);
+    expect(stat).not.toHaveBeenCalled();
+    await rm(join(input.root, filename("session-1")));
+    const fresh = await findSessionFilesByIds(
+      new Set(["session-1"]),
+      input,
+      new AbortController().signal,
+    );
+    expect(fresh.size).toBe(0);
+  });
+
   it("observes a missing directory, new files, duplicates and deletions on successive calls", async () => {
     const input = await fixture();
     const directory = join(input.root, "sessions");

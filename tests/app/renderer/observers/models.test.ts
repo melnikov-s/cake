@@ -11,6 +11,7 @@ import {
   type ConversationUpdate,
 } from "../../../../src/contracts/conversations/conversation-data";
 import type { CakeChatControlUpdate } from "../../../../src/contracts/cake-chats/cake-chat-data";
+import type { ProjectSessionCatalogQuery } from "../../../../src/contracts/project-sessions/project-session-data";
 import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { createModelObserver, observeModels } from "../../../../src/renderer/observers";
@@ -119,6 +120,62 @@ function baseClient(overrides: ObserverClientOverrides = {}) {
 }
 
 describe("Project Session composition observer", () => {
+  it("activates, replaces paged demand and releases collapsed archive subscriptions", async () => {
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+    });
+    const ended: ProjectSessionCatalogQuery[] = [];
+    const catalogs = vi.fn((query: ProjectSessionCatalogQuery) =>
+      Stream.succeed({
+        _tag: "Snapshot" as const,
+        revision: 1,
+        hasMore: query.resolved && (query.limit ?? 10) < 12,
+        sessions: query.resolved
+          ? Array.from({ length: Math.min(query.limit ?? 10, 12) }, (_, index) =>
+              sessionSummary({
+                sessionId: `resolved-${index}`,
+                projectPath: "/project",
+                resolved: true,
+              }),
+            )
+          : [],
+      }).pipe(
+        Stream.concat(Stream.never),
+        Stream.ensuring(
+          Effect.sync(() => {
+            ended.push(query);
+          }),
+        ),
+      ),
+    );
+    const client = baseClient({
+      managedWorktrees: {
+        observeCatalog: () => Stream.never,
+        observeOperations: () => Stream.never,
+      },
+      projectSessions: { observeCatalog: catalogs },
+    });
+    const stop = observeModels(runtimeFor(client), fixture.models, fixture.root);
+    const list = fixture.root.sidebarStore.sessionListStore;
+    try {
+      await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(1));
+      expect(catalogs.mock.calls[0]?.[0].resolved).toBe(false);
+      list.toggleResolvedGroupExpanded("/project");
+      await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(10));
+      expect(list.hasMoreResolvedProjectSessions("/project")).toBe(true);
+      list.showMoreSessions("/project", true);
+      await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(12));
+      expect(list.hasMoreResolvedProjectSessions("/project")).toBe(false);
+      expect(ended).toContainEqual({ projectPath: "/project", resolved: true, limit: 10 });
+      list.toggleResolvedGroupExpanded("/project");
+      await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(0));
+      expect(ended).toContainEqual({ projectPath: "/project", resolved: true, limit: 20 });
+      expect(catalogs.mock.calls.filter(([query]) => !query.resolved)).toHaveLength(1);
+    } finally {
+      stop();
+    }
+  });
+
   it("keeps startup independent of dormant-session metadata while project activity still arrives", async () => {
     using fixture = createRendererStoreFixture({
       projects: [projectRecord({ path: "/project" }), projectRecord({ path: "/other" })],

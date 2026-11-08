@@ -63,6 +63,8 @@ export interface ProjectSessionSummary extends Schema.Schema.Type<typeof Project
 export const ProjectSessionCatalogQuery = Schema.Struct({
   projectPath: boundedPath,
   resolved: Schema.Boolean,
+  /** Resolved root rows; family members travel with their root. Defaults to ten. */
+  limit: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
 });
 export type ProjectSessionCatalogQuery = Schema.Schema.Type<typeof ProjectSessionCatalogQuery>;
 

@@ -146,6 +146,88 @@ describe("SessionArchiveStorage", () => {
     ),
   );
 
+  it.effect("uses stored titles and batches honest legacy fallback once per location", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const transcript = yield* fs.readFileString(location.sessionFile);
+        yield* fs.writeFileString(
+          path.join(path.dirname(location.sessionFile), "2026-01-01T00-00-00-000Z_session-2.jsonl"),
+          transcript.replaceAll("session-1", "session-2").replace("Archived work", "Second title"),
+        );
+        yield* runArchive(
+          metadataRoot,
+          (storage) =>
+            Effect.gen(function* () {
+              for (const id of ["session-1", "session-2"])
+                yield* storage.resolveProject(id, location, {
+                  projectPath: "/projects/cake",
+                  projectName: "Cake",
+                });
+              const entries = yield* storage
+                .resolvedProjects("/projects/cake")
+                .pipe(Stream.runCollect);
+              const discovery = vi.spyOn(sessionFiles, "findSessionFilesByIds");
+              expect([...(yield* storage.projectTitles(entries))].sort()).toEqual([
+                ["session-1", "Archived work"],
+                ["session-2", "Second title"],
+              ]);
+              expect(discovery).not.toHaveBeenCalled();
+              // Renaming an archived session refreshes the same idempotent projection.
+              yield* fs.writeFileString(
+                location.sessionFile,
+                transcript +
+                  JSON.stringify({
+                    type: "session_info",
+                    id: "name",
+                    parentId: "user-1",
+                    timestamp: "2026-01-02T00:00:00.000Z",
+                    name: "Renamed archive",
+                  }) +
+                  "\n",
+              );
+              expect(
+                yield* storage.resolveProject("session-1", location, {
+                  projectPath: "/projects/cake",
+                  projectName: "Cake",
+                }),
+              ).toBe(false);
+              const renamed = yield* storage
+                .resolvedProjects("/projects/cake")
+                .pipe(Stream.runCollect);
+              expect((yield* storage.projectTitles(renamed)).get("session-1")).toBe(
+                "Renamed archive",
+              );
+              const legacy = entries.map(({ title: _title, ...entry }) => entry);
+              expect([...(yield* storage.projectTitles(legacy))].sort()).toEqual([
+                ["session-1", "Renamed archive"],
+                ["session-2", "Second title"],
+              ]);
+              expect(discovery).toHaveBeenCalledTimes(1);
+              yield* fs.remove(location.sessionFile);
+              const titles = yield* storage.projectTitles(legacy);
+              expect(titles.has("session-1")).toBe(false);
+              expect(titles.get("session-2")).toBe("Second title");
+              yield* fs.writeFileString(
+                path.join(
+                  path.dirname(location.sessionFile),
+                  "2026-01-01T00-00-00-000Z_session-2.jsonl",
+                ),
+                "",
+              );
+              const failure = yield* storage.projectTitles(legacy).pipe(Effect.flip);
+              expect(failure.operation).toBe("projectTitles");
+              expect(failure.sessionId).toBe("session-2");
+            }),
+          location,
+        );
+      }),
+    ),
+  );
+
   it.effect("keys migration by effective directory routing as well as configured roots", () =>
     withPlatform(
       Effect.gen(function* () {
@@ -1128,9 +1210,13 @@ describe("SessionArchiveStorage", () => {
           );
         const indexPath = path.join(metadataRoot, "resolution.json");
         let indexReads = 0;
+        let archiveReads = 0;
+        let locatorReads = 0;
         const counting = FileSystem.makeNoop({
           ...fs,
           readFileString: (file, encoding) => {
+            if (file.includes("/projects/") && file.endsWith(".json")) archiveReads++;
+            if (file.includes("/sessions/") && file.endsWith(".json")) locatorReads++;
             if (file === indexPath) indexReads++;
             return fs.readFileString(file, encoding);
           },
@@ -1146,6 +1232,12 @@ describe("SessionArchiveStorage", () => {
             ),
           ),
         );
+        console.log("resolved fixture IO (3 sessions, off/on)", {
+          off: { archiveReads: 0, locatorReads: 0, indexReads: 0 },
+          on: { archiveReads, locatorReads, indexReads },
+        });
+        expect(archiveReads).toBe(3);
+        expect(locatorReads).toBe(0);
         expect(listed.map((entry) => entry.sessionId).sort()).toEqual([
           "session-1",
           "session-2",

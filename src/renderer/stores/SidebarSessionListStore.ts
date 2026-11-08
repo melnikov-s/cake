@@ -327,7 +327,9 @@ export class SidebarSessionListStore extends Store<{
   get projectSessionCatalogQueries(): ReadonlyArray<ProjectSessionCatalogQuery> {
     return this.projects.orderedProjectPaths.flatMap((projectPath) => [
       { projectPath, resolved: false },
-      { projectPath, resolved: true },
+      ...(this.isResolvedGroupExpanded(projectPath)
+        ? [{ projectPath, resolved: true, limit: this.sessionLimit(projectPath, true) }]
+        : []),
     ]);
   }
 

@@ -193,6 +193,34 @@ async function findSessionFileAt(
   return matches[0] ? join(directory, matches[0].name) : undefined;
 }
 
+/** Request-local filename discovery: one directory listing, no per-entry scans or stats. */
+export async function findSessionFilesByIds(
+  sessionIds: ReadonlySet<string>,
+  input: { readonly workingDirectory: string; readonly root: string },
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, string>> {
+  const { directory, shared } = sessionRouting(input);
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return new Map();
+    throw error;
+  }
+  const allowed = shared
+    ? await piSessionIdsForWorkingDirectory(input.workingDirectory, directory, signal)
+    : sessionIds;
+  const files = new Map<string, string>();
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const identity = identityFromFilename(entry.name);
+    if (!identity || !sessionIds.has(identity.id) || !allowed.has(identity.id)) continue;
+    if (files.has(identity.id)) throw new Error(`Session ID collision detected: ${identity.id}`);
+    files.set(identity.id, join(directory, entry.name));
+  }
+  return files;
+}
+
 /** Reads metadata for one exact session file without opening its transcript body. */
 export async function findSessionFileMetadataById(
   sessionId: string,

@@ -16,6 +16,7 @@ import {
   use as useConversation,
 } from "../conversations/conversations";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
+import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { prepareTaskInputs } from "../conversations/taskInputs";
 import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
@@ -411,6 +412,16 @@ export const rename = Effect.fn("ProjectSessions.rename")(function* (
   );
   const handle = yield* acquireTarget(location, target.sessionId, false);
   yield* handle.rename(normalized, onlyIfUnnamed).pipe(asError("rename"));
+  if (namespace === "resolved") {
+    // Re-capture the derived archive title before publishing a refreshed page.
+    // Resolution is idempotent; this never restores the session or its checkout.
+    const archive = yield* SessionArchiveStorage;
+    const context = { projectPath: location.projectPath, projectName: location.projectName };
+    if (location.worktreeName) Object.assign(context, { worktreeName: location.worktreeName });
+    yield* archive
+      .resolveProject(target.sessionId, archiveLocation(location), context)
+      .pipe(asError("rename"));
+  }
   yield* publishCatalogChange(target.sessionId, location, namespace === "resolved").pipe(
     asError("rename"),
   );

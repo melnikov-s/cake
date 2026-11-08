@@ -153,20 +153,14 @@ export class SessionCatalogStore extends Store<{
   }
 
   resolvedWorktrees(projectPath: string) {
-    const sessionsByWorktree = new Map<string, Array<SessionSummary | PendingSessionSummary>>();
-    for (const session of this.projectSessions(projectPath)) {
-      const record = this.managedWorktree(session.workingDirectory);
-      if (!record || record.state !== "landed") continue;
-      const sessions = sessionsByWorktree.get(record.worktreePath) ?? [];
-      sessions.push(session);
-      sessionsByWorktree.set(record.worktreePath, sessions);
-    }
-    return [...sessionsByWorktree.values()]
-      .filter((sessions) => sessions.length > 0 && sessions.every((session) => session.resolved))
-      .flatMap((sessions) => {
-        const record = this.managedWorktree(sessions[0]?.workingDirectory ?? "");
-        return record ? [record] : [];
-      });
+    // Landing authority is the Worktree catalog, not whichever archive page happens
+    // to be loaded. The active lane is always observed and vetoes unfinished checkouts.
+    const activeDirectories = new Set(
+      this.projectSessions(projectPath, false).map((session) => session.workingDirectory),
+    );
+    return this.managedWorktreesForProject(projectPath).filter(
+      (record) => record.state === "landed" && !activeDirectories.has(record.worktreePath),
+    );
   }
 
   get authoritativeSessionIds() {

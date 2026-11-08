@@ -26,6 +26,8 @@ export const ProjectSessionArchiveMetadata = Schema.Struct({
   resolvedRoot: Schema.String,
   createdAt: Schema.String,
   modifiedAt: Schema.String,
+  /** Derived Pi title captured at resolution; older entries fall back to the transcript. */
+  title: Schema.optionalKey(Schema.String),
   worktreeName: Schema.optionalKey(Schema.String),
 });
 export interface ProjectSessionArchiveMetadata extends Schema.Schema.Type<
@@ -119,6 +121,10 @@ export class SessionArchiveStorage extends Context.Service<
     readonly resolvedProjects: (
       projectPath: string,
     ) => Stream.Stream<ProjectSessionArchiveMetadata, SessionArchiveStorageError>;
+    /** Titles for a selected page; legacy transcript discovery is batched per location. */
+    readonly projectTitles: (
+      entries: ReadonlyArray<ProjectSessionArchiveMetadata>,
+    ) => Effect.Effect<ReadonlyMap<string, string>, SessionArchiveStorageError>;
     readonly projectMigrationComplete: (
       projectPath: string,
     ) => Effect.Effect<boolean, SessionArchiveStorageError>;

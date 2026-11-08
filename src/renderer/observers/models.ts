@@ -302,7 +302,8 @@ export const createModelObserver = (
       (update: ProjectCatalogUpdate) => applyProjectCatalogUpdate(input.projects, update),
     );
     for (const query of input.projectSessionCatalogQueries ?? []) {
-      const key = `project-session-catalog:${query.resolved ? "resolved" : "active"}:${query.projectPath}`;
+      const group = `project-session-catalog:${query.resolved ? "resolved" : "active"}:${query.projectPath}`;
+      const key = query.resolved ? `${group}:${query.limit ?? 10}` : group;
       observe(
         key,
         input.sessionCatalog,
@@ -313,7 +314,7 @@ export const createModelObserver = (
             input.onProjectSessionTitleChanged?.(update.event.sessionId, update.event.title);
         },
         {
-          replacementGroup: key,
+          replacementGroup: group,
           clear: () =>
             applySessionCatalogGroupUpdate(input.sessionCatalog, query, {
               _tag: "Snapshot",
