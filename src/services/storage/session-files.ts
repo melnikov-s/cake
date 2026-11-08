@@ -81,6 +81,7 @@ async function* readDirectorySessionIds(directory: string): AsyncGenerator<strin
 
 async function* readDirectoryMetadata(
   directory: string,
+  excludedSessionIds: ReadonlySet<string>,
 ): AsyncGenerator<SessionFileMetadata, void, void> {
   let entries;
   try {
@@ -98,6 +99,11 @@ async function* readDirectoryMetadata(
     );
   for await (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    // Only skip unambiguous IDs; malformed names retain their stat/error behavior.
+    if (excludedSessionIds.size > 0) {
+      const identity = identityFromFilename(entry.name);
+      if (identity && excludedSessionIds.has(identity.id)) continue;
+    }
     batch.push(entry.name);
     if (batch.length < METADATA_STAT_CONCURRENCY) continue;
     for (const metadata of await metadataBatch(batch)) if (metadata) yield metadata;
@@ -142,10 +148,14 @@ export function streamSessionFiles(input: {
   readonly workingDirectory: string;
   readonly root: string;
   readonly direct?: boolean;
+  readonly excludedSessionIds?: ReadonlyArray<string>;
 }): Stream.Stream<SessionFileMetadata, unknown> {
   const { directory, shared } = sessionRouting(input);
   return filterWorkingDirectory(
-    Stream.fromAsyncIterable(readDirectoryMetadata(directory), (cause) => cause),
+    Stream.fromAsyncIterable(
+      readDirectoryMetadata(directory, new Set(input.excludedSessionIds)),
+      (cause) => cause,
+    ),
     directory,
     shared ? input.workingDirectory : undefined,
     (item) => item.id,

@@ -203,14 +203,13 @@ export function streamWorkspaceSessions(
   sessionDir: string,
   options: StreamWorkspaceSessionsOptions = {},
 ): Stream.Stream<PiSessionSummary, unknown> {
-  const excluded = new Set(options.excludedSessionIds);
   return streamSessionFiles({
     workingDirectory: cwd,
     root: sessionDir,
     direct: options.direct,
+    // Filter Cake lifecycle metadata before stat calls and transcript title reads.
+    excludedSessionIds: options.excludedSessionIds,
   }).pipe(
-    // Filter Cake lifecycle metadata before opening Pi files to derive titles.
-    Stream.filter((item) => !excluded.has(item.id)),
     Stream.mapEffect(
       (item) =>
         Effect.try({
