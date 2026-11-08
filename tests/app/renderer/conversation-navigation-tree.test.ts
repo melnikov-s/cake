@@ -73,7 +73,7 @@ describe("conversation navigation projection", () => {
     },
   );
 
-  it("counts descendant unread without marking its parent or Project Chat unread", () => {
+  it("excludes descendant unread without marking its parent or Project Chat unread", () => {
     using fixture = treeFixture(navigatorProjectPath);
     fixture.models.sessionCatalog.find("deep-child")!.unread = true;
     fixture.models.sessionCatalog.find("keyboard")!.running = true;
@@ -83,10 +83,80 @@ describe("conversation navigation projection", () => {
       cakeChats: fixture.models.cakeChatCatalog.sessions,
       conversations: [],
     });
-    expect(tree.unread).toBe(1);
+    expect(tree.unread).toBe(0);
     expect(tree.running).toBe(1);
     expect(tree.byKey.get(conversationNavigationKey("layout"))!.activity).toBeUndefined();
     expect(tree.byKey.get(conversationNavigationKey(navigatorHomeId))!.activity).toBeUndefined();
+  });
+
+  it("counts family roots once and excludes children even when their parent is outside the list", () => {
+    const parent = sessionSummary({
+      sessionId: "parent",
+      projectPath: navigatorProjectPath,
+      familyParentSessionId: "parent",
+      unread: true,
+      running: true,
+    });
+    const child = sessionSummary({
+      sessionId: "child",
+      projectPath: navigatorProjectPath,
+      familyParentSessionId: "parent",
+      unread: true,
+      running: true,
+    });
+    const sessions = [
+      parent,
+      parent,
+      child,
+      child,
+      sessionSummary({
+        sessionId: "orphan",
+        projectPath: navigatorProjectPath,
+        familyParentSessionId: "missing",
+        unread: true,
+        running: true,
+      }),
+      sessionSummary({
+        sessionId: "resolved",
+        projectPath: navigatorProjectPath,
+        resolved: true,
+        unread: true,
+        running: true,
+      }),
+      sessionSummary({ sessionId: "other", projectPath: "/other", unread: true, running: true }),
+    ];
+    const input = { projectPath: navigatorProjectPath, sessions, cakeChats: [], conversations: [] };
+    const tree = buildConversationNavigationTree(input);
+    expect(tree.total).toBe(3);
+    expect(tree.unread).toBe(1);
+    expect(tree.running).toBe(3);
+    const withoutParent = buildConversationNavigationTree({ ...input, sessions: [child] });
+    expect(withoutParent.total).toBe(1);
+    expect(withoutParent.unread).toBe(0);
+    expect(withoutParent.running).toBe(1);
+  });
+
+  it("does not count resolved home chats or homes from other scopes", () => {
+    using fixture = treeFixture(navigatorProjectPath);
+    fixture.models.cakeChatCatalog.find(navigatorHomeId)!.resolved = true;
+    fixture.models.cakeChatCatalog.find(navigatorHomeId)!.running = true;
+    fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread = true;
+    fixture.models.cakeChatCatalog.find(CAKE_CHAT_SESSION_ID)!.unread = true;
+    const input = {
+      sessions: fixture.models.sessionCatalog.sessions,
+      cakeChats: fixture.models.cakeChatCatalog.sessions,
+      conversations: [],
+    };
+    const project = buildConversationNavigationTree({
+      ...input,
+      projectPath: navigatorProjectPath,
+    });
+    expect(project.unread).toBe(0);
+    expect(project.running).toBe(1); // Unread filtering must not change existing running behavior.
+    expect(project.byKey.has(conversationNavigationKey(navigatorHomeId))).toBe(true);
+    const global = buildConversationNavigationTree({ ...input, projectPath: undefined });
+    expect(global.unread).toBe(1);
+    expect(global.total).toBe(1);
   });
 
   it("keeps actual Project Sessions and family/context-fork children in Sessions, with private conversations in their owner's menu", () => {

@@ -37,7 +37,7 @@ for (const theme of ["light", "dark"] as const) {
     });
     try {
       const page = await app.firstWindow();
-      await scenario.prepare(page, "sessions", app);
+      await scenario.prepare(page, "sessions-unread", app);
       const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
       const parent = workspace.locator(
         '[data-slot="conversation-navigator-row"][data-session-id="visual-navigation-layout"]',
@@ -47,10 +47,31 @@ for (const theme of ["light", "dark"] as const) {
       );
       const resize = page.getByRole("separator", { name: "Resize Workspace", exact: true });
       const measurements = [];
-      for (const direction of ["ArrowLeft", "ArrowRight"]) {
+      for (const key of ["Home", "End"]) {
         await resize.focus();
-        for (let step = 0; step < 5; step++) await page.keyboard.press(direction);
+        await page.keyboard.press(key);
         const width = (await bounds(workspace)).width;
+        const tabs = workspace.getByRole("group", { name: "Workspace content" });
+        const todos = tabs.getByRole("button", { name: /^To-dos / });
+        const sessions = tabs.getByRole("button", { name: /^Sessions ·/ });
+        const todoBox = await bounds(todos);
+        const sessionBox = await bounds(sessions);
+        expect(Math.abs(todoBox.width - sessionBox.width)).toBeLessThan(1);
+        expect(todoBox.height).toBe(sessionBox.height);
+        expect(todoBox.height).toBeLessThanOrEqual(32);
+        await expect(sessions.getByRole("img", { name: "1 unread", exact: true })).toBeVisible();
+        for (const tab of [todos, sessions]) {
+          const box = await bounds(tab);
+          const spans = await tab.locator("span").all();
+          for (const span of spans) {
+            const content = await bounds(span);
+            expect(content.x).toBeGreaterThanOrEqual(box.x);
+            expect(content.x + content.width).toBeLessThanOrEqual(box.x + box.width);
+            expect(content.y).toBeGreaterThanOrEqual(box.y);
+            expect(content.y + content.height).toBeLessThanOrEqual(box.y + box.height);
+          }
+        }
+        measurements.push({ width, todoBox, sessionBox });
         for (const row of [parent, child]) {
           const title = row.locator(".session-title");
           const action = row.locator(".session-row > button");

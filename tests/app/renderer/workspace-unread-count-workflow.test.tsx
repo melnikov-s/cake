@@ -83,7 +83,7 @@ describe("Workspace Sessions unread count", () => {
   ])("presents running=%s and unread=%s while To-dos is selected", (running, unread) => {
     using fixture = renderWorkspace();
     act(() => {
-      const session = fixture.models.sessionCatalog.find("deep-child")!;
+      const session = fixture.models.sessionCatalog.find("layout")!;
       session.running = running;
       session.unread = unread;
     });
@@ -95,7 +95,7 @@ describe("Workspace Sessions unread count", () => {
   it("reacts to catalog read/new-message events without transcript reads or new session materialization", () => {
     using fixture = renderWorkspace();
     const load = vi.spyOn(fixture.root.sessionRegistry, "load");
-    const session = fixture.models.sessionCatalog.find("deep-child")!;
+    const session = fixture.models.sessionCatalog.find("layout")!;
     const update = (unread: boolean, revision: number) =>
       act(() => {
         applySessionCatalogGroupUpdate(
@@ -135,21 +135,55 @@ describe("Workspace Sessions unread count", () => {
       navigator.collapseAll(navigatorProjectPath);
     });
     expect(navigator.rows(navigatorProjectPath)).toHaveLength(0);
-    expectCounts(100, 101);
+    expectCounts(100, 100);
     expect(fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread).toBe(false);
     expect(fixture.models.sessionCatalog.find("layout")!.unread).toBe(false);
     act(() => {
       fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread = true;
     });
-    expectCounts(100, 102);
+    expectCounts(100, 101);
     act(() => {
       fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread = false;
       fixture.root.sidebarStore.sessionListStore.showMoreSessions(navigatorProjectPath);
     });
-    expectCounts(100, 101);
+    expectCounts(100, 100);
     act(() => fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID));
     expectCounts(0, 1);
     expect(tab().getAttribute("title")).toContain("1 total in Cake Chat");
+  });
+
+  it("ignores child-only unread, including collapsed descendants, without losing inherited running status", () => {
+    using fixture = renderWorkspace();
+    const navigator = fixture.root.conversationNavigatorStore;
+    act(() => {
+      for (const id of ["keyboard", "deep-child"])
+        fixture.models.sessionCatalog.find(id)!.unread = true;
+      fixture.models.sessionCatalog.find("deep-child")!.running = true;
+      fixture.root.workspaceNavigatorStore.show("sessions");
+      navigator.toggleExpanded(navigatorProjectPath, "session:layout");
+    });
+    expectCounts(1, 0);
+    const row = document.querySelector<HTMLElement>(
+      '[data-slot="conversation-navigator-row"][data-session-id="layout"]',
+    )!;
+    expect(within(row).getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(fixture.models.sessionCatalog.find("layout")!.unread).toBe(false);
+    expect(fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread).toBe(false);
+  });
+
+  it("counts exactly the parents' own unread and excludes resolved and other-project rows", () => {
+    using fixture = renderWorkspace();
+    act(() => {
+      for (const id of ["layout", "icons", "keyboard", "deep-child", "resolved", "elsewhere"])
+        fixture.models.sessionCatalog.find(id)!.unread = true;
+    });
+    expectCounts(0, 2);
+    act(() => {
+      fixture.models.sessionCatalog.find("layout")!.unread = false;
+      fixture.models.sessionCatalog.find("icons")!.resolved = true;
+      fixture.root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(navigatorProjectPath);
+    });
+    expectCounts(0, 0);
   });
 
   it("caps both large indicators but keeps exact accessible values", () => {

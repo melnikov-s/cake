@@ -50,6 +50,7 @@ export interface ConversationNavigationTree {
   readonly byKey: ReadonlyMap<string, ConversationNavigationNode>;
   readonly total: number;
   readonly running: number;
+  /** Own-unread home chat and family roots only, regardless of disclosure or search. */
   readonly unread: number;
 }
 export interface ConversationNavigationInput {
@@ -130,7 +131,7 @@ export function buildConversationNavigationTree(
       target: { kind: "cake-chat", sessionId: homeId },
       parentKey: undefined,
       modifiedAt: home?.modifiedAt ?? "",
-      unread: home?.unread ?? false,
+      unread: !home?.resolved && (home?.unread ?? false),
       activity: running ? "running" : home?.unread ? "unread" : undefined,
       running,
       children: [],
@@ -188,7 +189,9 @@ export function buildConversationNavigationTree(
   }
   let unread = 0;
   const count = (node: MutableNode): number => {
-    unread += Number(node.unread);
+    // Project Chat grouping is not a family edge. Orphaned family children
+    // remain children for unread policy even when presented at the list root.
+    if (node.relationship !== "family-child") unread += Number(node.unread);
     node.children.sort((a, b) =>
       a.order !== undefined && b.order !== undefined
         ? a.order - b.order

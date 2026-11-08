@@ -134,9 +134,13 @@ The Workspace Sessions tab uses the existing reactive active navigation tree's `
 and `unread` counts: Project Chat and unresolved Project Sessions in the selected project,
 or only Cake Chat without a project. Private side chats and subagents remain in their
 owner's menu, outside these counts. Search, collapsed branches and pagination do not
-narrow the counts; resolved history is excluded. Each session ID counts once per status;
-canonical own unread is independent of running/outcome display precedence and never
-inherited by a parent. Inherited working does not make an idle parent count again.
+narrow the counts; resolved history is excluded. Each session ID counts once per status.
+Unread counts only the home chat and top-level family parents' own unread flags, never
+family children (even if their parent is outside the list). Canonical own unread is
+independent of running/outcome display precedence and never inherited by a parent.
+Running still counts descendants' own work; inherited working does not count an idle parent again.
+The two Workspace tabs share equal widths, height and padding; at narrow pane widths,
+counts move below both labels rather than widening Sessions or truncating either label.
 The tab tooltip gives exact running, unread and total counts. No new observations,
 polling or transcript/history reads are introduced.
 
