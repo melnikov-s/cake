@@ -1,8 +1,10 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { sessionLink } from "../../../src/contracts/conversations/message-reference";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import type { ComposerInputElement } from "../../../src/renderer/lib/composer-input-element";
 import { renderChatConfiguration } from "./chat-configuration-workflow-fixture";
 
 afterEach(cleanup);
@@ -34,9 +36,70 @@ describe("composer session references", () => {
     const row = picker.querySelector<HTMLElement>('[data-session-id="second"]')!;
     await fixture.user.click(within(row).getByRole("button"));
     expect(screen.queryByRole("dialog", { name: "Session reference" })).toBeNull();
-    expect(composer.value).toBe(`Before [Session](${sessionLink("second")}) after`);
+    expect(first.getByRole<ComposerInputElement>("combobox").value).toBe(
+      `Before [Session](${sessionLink("second")}) after`,
+    );
+    expect(first.getByRole("button", { name: "Edit session reference: second" }).textContent).toBe(
+      "second",
+    );
     expect(second.getByRole<HTMLTextAreaElement>("combobox").value).toBe("Other draft");
     expect(first.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
+  });
+
+  it("renders named linked controls, reopens on click, replaces only that reference and sends canonical payloads", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("00000000-0000-4000-8000-000000000012"),
+    );
+    using fixture = renderChatConfiguration({
+      secondaryModels: [],
+      sessionTitles: { first: "Review implementation", second: "Check tests" },
+      client: {
+        electron: { showComposerContextMenu: async () => "insert-session" },
+        sessionChats: { prompt },
+      },
+    });
+    const first = within(screen.getByRole("region", { name: "First conversation" }));
+    const input = () => first.getByRole<ComposerInputElement>("combobox");
+    await fixture.user.type(input(), "Review here");
+    input().setSelectionRange(7, 11);
+    fireEvent.contextMenu(input());
+    const picker = await screen.findByRole("dialog", { name: "Session reference" });
+    await fixture.user.click(
+      within(picker.querySelector<HTMLElement>('[data-session-id="second"]')!).getByRole("button"),
+    );
+    const chip = first.getByRole("button", { name: "Edit session reference: Check tests" });
+    expect(chip.textContent).toBe("Check tests");
+    expect(chip.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(chip.querySelectorAll("svg")).toHaveLength(2);
+    expect(chip.className).toContain("rounded-full");
+    expect(input().value).toBe(`Review [Session](${sessionLink("second")})`);
+    // Insert another reference and edit the first, preserving the second token verbatim.
+    input().setSelectionRange(input().value.length, input().value.length);
+    fireEvent.contextMenu(input());
+    const secondPicker = await screen.findByRole("dialog", { name: "Session reference" });
+    await fixture.user.click(
+      within(secondPicker.querySelector<HTMLElement>('[data-session-id="second"]')!).getByRole(
+        "button",
+      ),
+    );
+    await fixture.user.click(
+      first.getAllByRole("button", { name: "Edit session reference: Check tests" })[0]!,
+    );
+    const reopened = await screen.findByRole("dialog", { name: "Session reference" });
+    await fixture.user.click(
+      within(reopened.querySelector<HTMLElement>('[data-session-id="first"]')!).getByRole("button"),
+    );
+    expect(
+      first.getByRole("button", { name: "Edit session reference: Review implementation" }),
+    ).toBeTruthy();
+    expect(first.getByRole("button", { name: "Edit session reference: Check tests" })).toBeTruthy();
+    const text = `Review [Session](${sessionLink("first")})[Session](${sessionLink("second")})`;
+    expect(input().value).toBe(text);
+    expect(fixture.chatStore.draft).toBe(text);
+    await fixture.user.click(first.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt.mock.calls[0]![0]).toMatchObject({ sessionId: "first", text });
+    await waitFor(() => expect(fixture.chatStore.draft).toBe(""));
   });
 
   it("dismisses without changing the draft and does not overwrite edits made while the picker is open", async () => {

@@ -23,11 +23,8 @@ import type {
 import { ComposerInput } from "./ai-elements/composer";
 import { NavItem } from "./ui/nav-item";
 
-import { ModelReferenceInput } from "./ui/model-reference-input";
-import {
-  splitModelReferences,
-  type ModelReferenceSegment,
-} from "../../contracts/model-presets/model-reference";
+import { ComposerReferenceInput } from "./ui/composer-reference-input";
+import { splitComposerReferences, type ComposerReferenceSegment } from "../lib/composer-references";
 import type { ComposerInputElement } from "../lib/composer-input-element";
 
 type SlashCommand = ConversationSnapshot["commands"][number];
@@ -59,7 +56,8 @@ interface SlashCommandComboboxProps extends Omit<
   inputRef?(input: ComposerInputElement | null): void;
   onContextMenu?(event: MouseEvent<HTMLElement>): void;
   onPaste?(event: ClipboardEvent<HTMLElement>): void;
-  onEditModelReference?(segment: ModelReferenceSegment, anchor: HTMLElement): void;
+  onEditReference?(segment: ComposerReferenceSegment, anchor: HTMLElement): void;
+  sessionReferenceNames?: ReadonlyMap<string, string>;
 }
 
 interface CommandQuery {
@@ -165,12 +163,16 @@ export function SlashCommandCombobox({
   inputRef: forwardedInputRef,
   onContextMenu,
   onPaste,
-  onEditModelReference,
+  onEditReference,
+  sessionReferenceNames,
   ...inputProps
 }: SlashCommandComboboxProps) {
   const inputRef = useRef<ComposerInputElement>(null);
   const referenceInputActive = useRef(false);
-  if (onEditModelReference && splitModelReferences(value).some((part) => part.model))
+  if (
+    onEditReference &&
+    splitComposerReferences(value).some((part) => part.model || part.sessionId)
+  )
     referenceInputActive.current = true;
   const focusAnchorRef = useRef<HTMLDivElement>(null);
   const dictation = useOptionalStore(DictationStore);
@@ -480,7 +482,7 @@ export function SlashCommandCombobox({
               ))}
         </div>
       )}
-      {onEditModelReference && referenceInputActive.current ? (
+      {onEditReference && referenceInputActive.current ? (
         <div
           ref={focusAnchorRef}
           tabIndex={-1}
@@ -488,7 +490,7 @@ export function SlashCommandCombobox({
           aria-label="Press Tab to write"
           className="relative grid w-full min-w-0 outline-none"
         >
-          <ModelReferenceInput
+          <ComposerReferenceInput
             aria-label={inputProps["aria-label"]}
             aria-busy={inputProps["aria-busy"]}
             aria-autocomplete="list"
@@ -518,7 +520,8 @@ export function SlashCommandCombobox({
             onKeyDown={onKeyDown}
             onContextMenu={onContextMenu}
             onPaste={onPaste}
-            onEditReference={onEditModelReference}
+            onEditReference={onEditReference}
+            sessionReferenceNames={sessionReferenceNames}
           />
         </div>
       ) : (

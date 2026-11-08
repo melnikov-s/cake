@@ -215,7 +215,17 @@ export class RootStore extends Store<{
   }
 
   [SessionReferenceContext.provide]() {
-    return this.screenCaptureStore;
+    const destinations = () => this.screenCaptureStore.destinations;
+    // Names are passive catalog reads; typing must not observe capture routing or appearance.
+    const sessionTitle = (sessionId: string) =>
+      this.sessionCatalogModel.find(sessionId)?.title ??
+      this.cakeChatCatalogModel.find(sessionId)?.title;
+    return {
+      get destinations() {
+        return destinations();
+      },
+      sessionTitle,
+    };
   }
 
   [DictationContext.provide]() {

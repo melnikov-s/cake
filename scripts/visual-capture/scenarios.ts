@@ -727,7 +727,13 @@ const conversationEntryScenario: VisualCaptureScenario = {
 const modelPickerScenario: VisualCaptureScenario = {
   name: "model-picker",
   description: "Project Session model picker with saved presets followed by the utility model",
-  states: ["default", "utility-selected", "references"],
+  states: [
+    "default",
+    "utility-selected",
+    "references",
+    "session-references",
+    "session-reference-picker",
+  ],
   async seed(paths, theme) {
     const sessionId = "visual-model-picker";
     const timestamp = new Date(0).toISOString();
@@ -809,6 +815,13 @@ const modelPickerScenario: VisualCaptureScenario = {
       [
         { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
         {
+          type: "session_info",
+          id: "session-name",
+          parentId: null,
+          timestamp,
+          name: "Composer reference review",
+        },
+        {
           type: "model_change",
           id: "model",
           parentId: null,
@@ -842,6 +855,24 @@ const modelPickerScenario: VisualCaptureScenario = {
       if (await change.isVisible()) await change.click();
       await expect(dialog.getByRole("region", { name: "Model presets" })).toBeVisible();
     };
+    if (state === "session-references" || state === "session-reference-picker") {
+      await page
+        .getByRole("combobox", { name: "Message", exact: true })
+        .fill(
+          "Ask [Session](cake://session/visual-model-picker) to review the implementation, then follow up with [Session](cake://session/visual-model-picker).",
+        );
+      const chips = page.getByRole("button", {
+        name: "Edit session reference: Composer reference review",
+        exact: true,
+      });
+      await expect(chips).toHaveCount(2);
+      if (state === "session-reference-picker") {
+        await chips.first().click();
+        await expect(page.getByRole("dialog", { name: "Session reference" })).toBeVisible();
+      }
+      await page.mouse.move(1, 1);
+      return;
+    }
     if (state === "references") {
       const model = {
         provider: "visual-models",
@@ -874,10 +905,11 @@ const modelPickerScenario: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
     await page.waitForFunction(() => document.fonts.status === "loaded");
   },
-  region(page) {
+  region(page, state) {
+    if (state === "session-reference-picker") return page.locator("body");
     return page
       .locator(".workbench-composer")
-      .filter({ has: page.getByRole("button", { name: /Edit model reference/ }) })
+      .filter({ has: page.getByRole("button", { name: /Edit (model|session) reference/ }) })
       .or(page.getByRole("dialog", { name: "Model configuration" }));
   },
 };

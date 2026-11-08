@@ -4,4 +4,5 @@ import type { CapturePreferences } from "../../../contracts/desktop/screen-captu
 /** Shared session-destination catalog, without capture or navigation side effects. */
 export const SessionReferenceContext = createContext<{
   readonly destinations: Omit<CapturePreferences, "defaultDestination">;
+  sessionTitle(sessionId: string): string | undefined;
 }>();

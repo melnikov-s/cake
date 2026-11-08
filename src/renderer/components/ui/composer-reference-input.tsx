@@ -6,11 +6,14 @@ import {
   type Ref,
   type HTMLAttributes,
 } from "react";
+import { modelReferenceLabel } from "../../../contracts/model-presets/model-reference";
 import {
-  modelReferenceLabel,
-  splitModelReferences,
-} from "../../../contracts/model-presets/model-reference";
-import type { ModelReferenceSegment } from "../../../contracts/model-presets/model-reference";
+  splitComposerReferences,
+  type ComposerReferenceSegment,
+} from "../../lib/composer-references";
+import { modelChipClassName } from "../model-picker";
+import { buttonVariants } from "./button";
+import { ChevronDownIcon, LinkIcon } from "./icons";
 import type { ComposerInputElement } from "../../lib/composer-input-element";
 import { modelReferenceChipClassName } from "./model-reference-chip";
 import { cn } from "../../lib/utils";
@@ -20,8 +23,8 @@ import { DictationIndicator } from "./dictation-indicator";
 import { createPortal } from "react-dom";
 
 function nodeText(node: Node): string {
-  if (node instanceof HTMLElement && node.dataset.modelReference)
-    return node.dataset.modelReference;
+  if (node instanceof HTMLElement && node.dataset.composerReference)
+    return node.dataset.composerReference;
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
   if (node.nodeName === "BR") return "\n";
   return Array.from(node.childNodes, nodeText).join("");
@@ -80,10 +83,11 @@ function setSelection(root: HTMLElement, start: number, end: number) {
 }
 
 /** Small atomic-token editor. The authoritative value remains ordinary message text. */
-export function ModelReferenceInput({
+export function ComposerReferenceInput({
   value,
   onValueChange,
   onEditReference,
+  sessionReferenceNames,
   onCursorChange,
   inputRef,
   placeholder,
@@ -100,12 +104,22 @@ export function ModelReferenceInput({
   dictation?: boolean;
   dictationSubmit?: () => void | Promise<void>;
   onValueChange(value: string, cursor: number): void;
-  onEditReference(segment: ModelReferenceSegment, anchor: HTMLElement): void;
+  onEditReference(segment: ComposerReferenceSegment, anchor: HTMLElement): void;
+  sessionReferenceNames?: ReadonlyMap<string, string>;
   onCursorChange?(cursor: number): void;
   inputRef: Ref<ComposerInputElement>;
   placeholder?: string;
 }) {
   const element = useRef<HTMLDivElement & ComposerInputElement>(null);
+  const sessionIcons = useRef<HTMLSpanElement>(null);
+  const sessionName = (id: string) => sessionReferenceNames?.get(id) || id;
+  const updateSessionChip = (chip: HTMLElement) => {
+    const id = chip.dataset.sessionId!;
+    const name = sessionName(id);
+    chip.querySelector("[data-session-name]")!.textContent = name;
+    chip.title = `${name}\n${id}`;
+    chip.setAttribute("aria-label", `Edit session reference: ${name}`);
+  };
   const textInput = useRef<ComposerInputElement | null>(null);
   const voice = useDictationInput(dictation, textInput, dictationSubmit);
   const indicatorDestination = useContext(DictationIndicatorContext);
@@ -114,17 +128,35 @@ export function ModelReferenceInput({
   change.current = onValueChange;
   const render = (root: HTMLElement, text: string) => {
     root.replaceChildren(
-      ...splitModelReferences(text).map((segment) => {
-        if (!segment.model) return document.createTextNode(segment.text);
+      ...splitComposerReferences(text).map((segment) => {
+        if (!segment.model && !segment.sessionId) return document.createTextNode(segment.text);
         const chip = document.createElement("button");
         chip.type = "button";
-        chip.dataset.slot = "model-reference";
         chip.contentEditable = "false";
-        chip.dataset.modelReference = segment.text;
-        chip.className = modelReferenceChipClassName;
-        chip.textContent = modelReferenceLabel(segment.model);
-        chip.title = `${segment.model.provider}/${segment.model.modelId}`;
-        chip.setAttribute("aria-label", `Edit model reference: ${chip.textContent}`);
+        chip.dataset.composerReference = segment.text;
+        if (segment.sessionId) {
+          chip.dataset.slot = "session-reference";
+          chip.dataset.sessionId = segment.sessionId;
+          chip.className = cn(
+            buttonVariants({ variant: "ghost", size: "sm" }),
+            modelChipClassName,
+            "align-baseline hover:bg-muted/70 hover:text-foreground transition-colors",
+          );
+          // Clone the shared icon catalog, rather than defining editor-local SVGs.
+          const icons = sessionIcons.current!;
+          const name = document.createElement("span");
+          name.dataset.sessionName = "";
+          name.className = "truncate font-semibold";
+          chip.append(icons.children[0]!.cloneNode(true), name, icons.children[1]!.cloneNode(true));
+          chip.setAttribute("aria-haspopup", "dialog");
+          updateSessionChip(chip);
+        } else if (segment.model) {
+          chip.dataset.slot = "model-reference";
+          chip.className = modelReferenceChipClassName;
+          chip.textContent = modelReferenceLabel(segment.model);
+          chip.title = `${segment.model.provider}/${segment.model.modelId}`;
+          chip.setAttribute("aria-label", `Edit model reference: ${chip.textContent}`);
+        }
         return chip;
       }),
     );
@@ -157,6 +189,11 @@ export function ModelReferenceInput({
     render(root, value);
     if (focused) setSelection(root, Math.min(start, value.length), Math.min(end, value.length));
   }, [value]);
+  useLayoutEffect(() => {
+    element.current
+      ?.querySelectorAll<HTMLElement>('[data-slot="session-reference"]')
+      .forEach(updateSessionChip);
+  }, [sessionReferenceNames]);
   const publish = () => {
     const root = element.current!;
     const text = nodeText(root);
@@ -182,6 +219,12 @@ export function ModelReferenceInput({
   );
   return (
     <>
+      <span ref={sessionIcons} hidden aria-hidden="true">
+        <LinkIcon className="size-3 shrink-0 text-muted-foreground" />
+        <span className="shrink-0 text-muted-foreground">
+          <ChevronDownIcon size={12} />
+        </span>
+      </span>
       <div
         {...props}
         ref={element}
@@ -211,7 +254,7 @@ export function ModelReferenceInput({
         onClick={(event) => {
           const target =
             event.target instanceof HTMLElement
-              ? event.target.closest<HTMLElement>("[data-model-reference]")
+              ? event.target.closest<HTMLElement>("[data-composer-reference]")
               : null;
           if (!target) return;
           const start = offsetAt(
@@ -219,8 +262,8 @@ export function ModelReferenceInput({
             target.parentNode!,
             Array.from(target.parentNode!.childNodes).indexOf(target),
           );
-          const segment = splitModelReferences(nodeText(element.current!)).find(
-            (part) => part.start === start && part.model,
+          const segment = splitComposerReferences(nodeText(element.current!)).find(
+            (part) => part.start === start && (part.model || part.sessionId),
           );
           if (segment) onEditReference(segment, target);
         }}

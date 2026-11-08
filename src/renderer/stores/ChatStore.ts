@@ -3,6 +3,7 @@ import type { ComposerDraftStore } from "./ComposerDraftStore";
 import type { CaptureDestination } from "../../contracts/desktop/screen-capture-data";
 import { CaptureDestinationPickerStore } from "./CaptureDestinationPickerStore";
 import { SessionReferenceContext } from "./context/SessionReferenceContext";
+import { splitComposerReferences } from "../lib/composer-references";
 import { ClientContext } from "./context/ClientContext";
 import { child, computed, createStore, snapshot, Store } from "r-state-tree";
 import { ChatPresentationContext } from "./context/ChatPresentationContext";
@@ -533,6 +534,17 @@ export class ChatStore extends Store<ChatStoreProps> {
     if (this.props.setDraft) this.props.setDraft(value);
     else this.localDraft = value;
     this.rewordError = undefined;
+  }
+
+  get sessionReferenceNames(): ReadonlyMap<string, string> {
+    const catalog = SessionReferenceContext.consume(this);
+    const names = new Map<string, string>();
+    for (const segment of splitComposerReferences(this.draft)) {
+      if (!segment.sessionId) continue;
+      const title = catalog?.sessionTitle(segment.sessionId);
+      if (title) names.set(segment.sessionId, title);
+    }
+    return names;
   }
 
   @child get sessionReferencePicker(): CaptureDestinationPickerStore | undefined {

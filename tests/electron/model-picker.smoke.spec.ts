@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import type { ComposerInputElement } from "../../src/renderer/lib/composer-input-element";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -81,6 +82,7 @@ test("shared model and session reference pickers preserve composer input and foc
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      { type: "session_info", id: "source-name", parentId: null, timestamp, name: "Picker source" },
       {
         type: "model_change",
         id: "fixture-model",
@@ -110,6 +112,13 @@ test("shared model and session reference pickers preserve composer input and foc
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${moveDestination}.jsonl`),
     [
       { type: "session", version: 3, id: moveDestination, timestamp, cwd: project },
+      {
+        type: "session_info",
+        id: "destination-name",
+        parentId: null,
+        timestamp,
+        name: "Draft destination",
+      },
       {
         type: "message",
         id: "destination-prompt",
@@ -144,6 +153,7 @@ test("shared model and session reference pickers preserve composer input and foc
       page.locator(".transcript").getByText("Model picker fixture ready", { exact: true }),
     ).toBeVisible();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    const composerValue = () => composer.evaluate((element: ComposerInputElement) => element.value);
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await expect(composer).toBeFocused();
     // Verify a real draft survives every keyboard/mouse model-picker interaction.
@@ -248,35 +258,65 @@ test("shared model and session reference pickers preserve composer input and foc
     await sessions.getByRole("button", { name: "Expand project", exact: true }).click();
     await expect(sessions.locator(`[data-session-id="${sessionId}"]`)).toBeVisible();
     // Choose a different chat through the shared menu; this must insert, never navigate.
-    await sessions.locator('[data-slot="destination-cake-chat"]').first().click();
+    await sessions.locator(`[data-session-id="${moveDestination}"]`).getByRole("button").click();
     await expect(sessions).toBeHidden();
     await expect(composer).toBeFocused();
-    const linked = await composer.inputValue();
+    const linked = await composerValue();
+    const sessionChip = composer.getByRole("button", {
+      name: "Edit session reference: Draft destination",
+      exact: true,
+    });
+    await expect(sessionChip).toHaveText("Draft destination");
+    await expect(sessionChip).toHaveAttribute("aria-haspopup", "dialog");
+    await expect(sessionChip.locator("svg")).toHaveCount(2);
+    await sessionChip.click();
+    await expect(sessions).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sessions).toBeHidden();
+    await expect.poll(composerValue).toBe(linked);
+    await sessionChip.focus();
+    await sessionChip.press("Enter");
+    await expect(sessions).toBeVisible();
+    await sessions.locator(`[data-session-id="${sessionId}"]`).getByRole("button").click();
+    await expect(
+      composer.getByRole("button", { name: "Edit session reference: Picker source", exact: true }),
+    ).toBeVisible();
+    await expect.poll(composerValue).toBe(linked.replace(moveDestination, sessionId));
+    // Space follows the same native button activation convention as Enter.
+    const changedChip = composer.getByRole("button", {
+      name: "Edit session reference: Picker source",
+      exact: true,
+    });
+    await changedChip.focus();
+    await changedChip.press("Space");
+    await expect(sessions).toBeVisible();
+    await sessions.locator(`[data-session-id="${moveDestination}"]`).getByRole("button").click();
+    await expect(composer).toBeFocused();
     const prefix = "Pending first prompt retained".slice(0, selection.start);
     const suffix = "Pending first prompt retained".slice(selection.end);
     const link = linked.slice(prefix.length, linked.length - suffix.length);
     expect(link).toMatch(/^\[Session\]\(cake:\/\/session\/[^\s)]+\)$/);
     expect(linked).toBe(prefix + link + suffix);
     await composer.pressSequentially(" session retained");
-    await expect(composer).toHaveValue(prefix + link + " session retained" + suffix);
+    await expect.poll(composerValue).toBe(prefix + link + " session retained" + suffix);
     await expect(
       page.locator(".transcript").getByText("Model picker fixture ready", { exact: true }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    const draftWithLink = await composer.inputValue();
+    const draftWithLink = await composerValue();
     await composer.click({ button: "right" });
     await expect(sessions).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(sessions).toBeHidden();
     await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue(draftWithLink);
+    await expect.poll(composerValue).toBe(draftWithLink);
     await composer.click({ button: "right" });
     await expect(sessions).toBeVisible();
     await configuration.click();
     await expect(sessions).toBeHidden();
     await expect(composer).not.toBeFocused();
     await page.keyboard.press("Escape");
-    await expect(composer).toHaveValue(draftWithLink);
+    await expect.poll(composerValue).toBe(draftWithLink);
     await composer.fill("Pending first prompt retained");
     await application.evaluate(({ Menu }) => Reflect.deleteProperty(Menu, "referenceAction"));
 

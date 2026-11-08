@@ -59,6 +59,8 @@ export const ChatComposerInput = observer(function ChatComposerInput({
     inputRef.current?.blur();
   };
   const configuration = store.configuration;
+  const sessionPicker = store.sessionReferencePicker;
+  const sessionReferenceNames = store.sessionReferenceNames;
   const openReference = (
     selection: ComposerSelection,
     anchor: HTMLElement,
@@ -208,20 +210,23 @@ export const ChatComposerInput = observer(function ChatComposerInput({
         placeholder={store.placeholder}
         value={store.draft}
         onValueChange={(value) => store.setDraft(value)}
-        onEditModelReference={
-          configuration
+        sessionReferenceNames={sessionReferenceNames}
+        onEditReference={
+          configuration || sessionPicker
             ? (segment, anchor) => {
                 suspendReferenceDictation();
-                openReference(
-                  {
-                    draft: store.draft,
-                    start: segment.start,
-                    end: segment.end,
-                    text: segment.text,
-                  },
-                  anchor,
-                  segment.model,
-                );
+                const selection = {
+                  draft: store.draft,
+                  start: segment.start,
+                  end: segment.end,
+                  text: segment.text,
+                };
+                if (segment.sessionId && sessionPicker) {
+                  referenceAnchor.current = anchor;
+                  setReference({ ...selection, kind: "session" });
+                } else if (segment.model && configuration)
+                  openReference(selection, anchor, segment.model);
+                else setReferenceInteraction(false);
               }
             : undefined
         }

@@ -61,6 +61,7 @@ export function renderChatConfiguration(options: {
   deferred?: boolean;
   models?: readonly ModelOption[];
   secondaryModels?: readonly ModelOption[];
+  sessionTitles?: Readonly<Record<string, string>>;
   presets?: readonly ModelPreset[];
   utilityModel?: UtilityModel;
   snapshot?: StoreSnapshot;
@@ -71,7 +72,11 @@ export function renderChatConfiguration(options: {
     sessions: options.deferred
       ? []
       : ["first", ...(options.secondaryModels ? ["second"] : [])].map((sessionId) =>
-          sessionSummary({ sessionId, projectPath: "/project" }),
+          sessionSummary({
+            sessionId,
+            projectPath: "/project",
+            title: options.sessionTitles?.[sessionId],
+          }),
         ),
     client: {
       ...options.client,
