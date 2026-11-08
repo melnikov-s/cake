@@ -558,9 +558,8 @@ export class ChatStore extends Store<ChatStoreProps> {
     const catalog = SessionReferenceContext.consume(this);
     return catalog
       ? createStore(CaptureDestinationPickerStore, {
-          get routing() {
-            return catalog.destinations;
-          },
+          // Child reconciliation reads prop values on every access; keep catalog work lazy.
+          routing: () => catalog.destinations,
         })
       : undefined;
   }
@@ -580,9 +579,7 @@ export class ChatStore extends Store<ChatStoreProps> {
     const sourceId = this.id;
     return moves && this.props.composerDraft
       ? createStore(CaptureDestinationPickerStore, {
-          get routing() {
-            return moves.destinations(sourceId);
-          },
+          routing: () => moves.destinations(sourceId),
         })
       : undefined;
   }

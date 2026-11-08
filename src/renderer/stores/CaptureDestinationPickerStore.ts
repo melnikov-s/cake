@@ -7,12 +7,12 @@ import type {
 
 /** One native capture's destination and disclosures. No catalog observations or sidebar UI state. */
 export class CaptureDestinationPickerStore extends Store<{
-  routing: CapturePreferences;
+  routing(): CapturePreferences;
   currentDestination?(): CaptureDestination | undefined;
   onSelect?(destination: CaptureDestination): void;
 }> {
   private selectedDestination: CaptureDestination | undefined =
-    this.props.routing.defaultDestination;
+    this.props.routing().defaultDestination;
 
   get destination() {
     return this.props.currentDestination
@@ -23,7 +23,7 @@ export class CaptureDestinationPickerStore extends Store<{
   private readonly collapsedFamilies = observable(new Set<string>());
 
   get routing() {
-    return this.props.routing;
+    return this.props.routing();
   }
 
   get label() {

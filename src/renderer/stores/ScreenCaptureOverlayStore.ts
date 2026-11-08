@@ -50,8 +50,9 @@ export class ScreenCaptureOverlayStore extends Store<{
 
   @child
   get destinationPicker(): CaptureDestinationPickerStore | undefined {
-    return this.snapshot
-      ? createStore(CaptureDestinationPickerStore, { routing: this.snapshot.routing })
+    const snapshot = this.snapshot;
+    return snapshot
+      ? createStore(CaptureDestinationPickerStore, { routing: () => snapshot.routing })
       : undefined;
   }
 

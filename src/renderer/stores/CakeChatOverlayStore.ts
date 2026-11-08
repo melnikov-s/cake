@@ -59,11 +59,8 @@ export class CakeChatOverlayStore extends Store<{
   }
 
   @child get destinationPicker(): CaptureDestinationPickerStore {
-    const routing = () => this.props.routing();
     return createStore(CaptureDestinationPickerStore, {
-      get routing() {
-        return routing();
-      },
+      routing: () => this.props.routing(),
       currentDestination: () => {
         const selection = this.props.shell.selection;
         return selection.kind === "cake-chat" && selection.sessionId

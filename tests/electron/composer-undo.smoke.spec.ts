@@ -67,6 +67,52 @@ test("ordinary composer supports typing, deletion, cut/paste and replacement und
   }
 });
 
+for (const references of [false, true]) {
+  test(`composer retains IME composition and caret (${references ? "reference chips" : "plain text"})`, async () => {
+    const { root, launch } = await dictationFixture({ modelReferences: references });
+    const application = await launch();
+    try {
+      const page = await application.firstWindow();
+      const composer = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+      await expect(composer).toBeVisible({ timeout: 20_000 });
+      const prefix = references ? modelToken + " Before " : "Before ";
+      await composer.fill(prefix);
+      await composer.focus();
+      // Meta+End scrolls rather than moving the caret in macOS contenteditables.
+      // Use the composer's shared selection API for both editable implementations.
+      await composer.evaluate((element, end) => {
+        (element as HTMLTextAreaElement).setSelectionRange(end, end);
+      }, prefix.length);
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Input.imeSetComposition", { text: "に", selectionStart: 1, selectionEnd: 1 });
+      await composer.dispatchEvent("keydown", { key: "Enter", code: "Enter", isComposing: true });
+      const value = () => composer.evaluate((element) => Reflect.get(element, "value") as string);
+      await expect.poll(value).toBe(prefix + "に");
+      await cdp.send("Input.imeSetComposition", {
+        text: "日本",
+        selectionStart: 2,
+        selectionEnd: 2,
+      });
+      await cdp.send("Input.insertText", { text: "日本" });
+      await expect.poll(value).toBe(prefix + "日本");
+      await expect(composer).toBeFocused();
+      await composer.pressSequentially(" after");
+      await expect.poll(value).toBe(prefix + "日本 after");
+      expect(
+        await composer.evaluate((element) => [
+          Reflect.get(element, "selectionStart"),
+          Reflect.get(element, "selectionEnd"),
+        ]),
+      ).toEqual([prefix.length + 8, prefix.length + 8]);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await cdp.detach();
+    } finally {
+      await application.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
 test("model-reference input undo covers cut, paste, replacement and redo", async () => {
   const { root, launch } = await dictationFixture({ modelReferences: true });
   const application = await launch();
