@@ -5,11 +5,12 @@ import { cn } from "@/lib/utils";
 /** Hover/focus delay before the tooltip appears; far snappier than native titles. */
 const TOOLTIP_DELAY_MS = 120;
 
-export function useTooltip() {
+export function useTooltip(enabled = true) {
   const timer = useRef<number | undefined>(undefined);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   const show = (target: HTMLElement) => {
+    if (!enabled) return;
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setAnchor(target), TOOLTIP_DELAY_MS);
   };
@@ -18,6 +19,12 @@ export function useTooltip() {
     setAnchor(null);
   };
 
+  useLayoutEffect(() => {
+    if (!enabled) {
+      window.clearTimeout(timer.current);
+      setAnchor(null);
+    }
+  }, [enabled]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   return { anchor, hide, show };

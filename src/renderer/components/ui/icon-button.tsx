@@ -2,6 +2,7 @@ import {
   createContext,
   forwardRef,
   useContext,
+  useId,
   type ButtonHTMLAttributes,
   type ReactNode,
   type Ref,
@@ -11,6 +12,7 @@ import type { CakeHotkeyActionId } from "../../../contracts/application/cake-set
 import { formatHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { TooltipBubble, useTooltip } from "./tooltip";
+import { NavigationRailLabelsContext } from "./navigation-rail-labels";
 import { viewFocusHighlightClassName } from "./view-focus";
 import { IconSizeProvider, useIconRole, type IconSize } from "./icon-size";
 
@@ -64,10 +66,14 @@ const ObservedIconButton = observer(function ObservedIconButton({
   onFocus,
   onBlur,
   buttonRef,
+  "aria-describedby": describedBy,
   ...props
 }: IconButtonProps & { buttonRef?: Ref<HTMLButtonElement> }) {
   const inheritedIconSize = useIconRole();
-  const { anchor, hide, show } = useTooltip();
+  const railLabelsVisible = useContext(NavigationRailLabelsContext);
+  const redundantTooltip = railLabelsVisible === true && visibleLabel !== undefined;
+  const { anchor, hide, show } = useTooltip(!redundantTooltip);
+  const hotkeyDescriptionId = useId();
   const bindingFor = useContext(HotkeyBindingsContext);
   const binding = hotkey && bindingFor?.(hotkey);
   const label = tooltip && binding ? `${tooltip} (${formatHotkey(binding)})` : tooltip;
@@ -88,6 +94,11 @@ const ObservedIconButton = observer(function ObservedIconButton({
       )}
       data-view-focused={viewFocused || undefined}
       aria-label={ariaLabel ?? tooltip}
+      aria-describedby={
+        [describedBy, redundantTooltip && binding ? hotkeyDescriptionId : undefined]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
       {...props}
       onMouseEnter={(event) => {
         if (tooltip) show(event.currentTarget);
@@ -119,14 +130,22 @@ const ObservedIconButton = observer(function ObservedIconButton({
             <span className="grid h-9 w-11 place-items-center">{children}</span>
             <span
               data-slot="icon-button-label"
-              className="w-full min-w-0 truncate text-left text-xs"
+              className={cn(
+                "w-full min-w-0 truncate text-left text-xs",
+                railLabelsVisible !== undefined && "font-semibold text-foreground",
+              )}
             >
               {visibleLabel}
             </span>
           </>
         )}
       </IconSizeProvider>
-      {label && anchor && (
+      {redundantTooltip && binding && (
+        <span id={hotkeyDescriptionId} className="sr-only">
+          {formatHotkey(binding)}
+        </span>
+      )}
+      {!redundantTooltip && label && anchor && (
         <TooltipBubble label={label} anchor={anchor} wrap={wrapTooltip || Boolean(binding)} />
       )}
     </button>

@@ -34,7 +34,13 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverIconTrigger
-        label={rail ? `Browser sharing: ${status}` : undefined}
+        label={
+          rail ? (
+            <>
+              Browser sharing<span className="font-normal text-muted-foreground">: {status}</span>
+            </>
+          ) : undefined
+        }
         tooltip={`Browser sharing: ${status}${status === "Offline" ? " — go online" : ""}`}
         className={cn(
           sharing.enabled && "text-success",

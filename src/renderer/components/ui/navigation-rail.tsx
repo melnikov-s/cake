@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { NavigationRailLabelsContext } from "./navigation-rail-labels";
 import { IconButton } from "./icon-button";
 import { SidebarIcon } from "./icons";
 
@@ -23,6 +24,16 @@ export function NavigationRail({
   onOverlayRightChange(right: number): void;
 }) {
   const ref = useRef<HTMLElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [focusWithin, setFocusWithin] = useState(false);
+  const [canHover, setCanHover] = useState(() => window.matchMedia("(hover: hover)").matches);
+  const labelsVisible = (autoHide ? revealed || hovered : canHover && hovered) || focusWithin;
+  useLayoutEffect(() => {
+    const media = window.matchMedia("(hover: hover)");
+    const update = () => setCanHover(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
@@ -39,7 +50,7 @@ export function NavigationRail({
     };
   }, [onOverlayRightChange]);
   return (
-    <>
+    <NavigationRailLabelsContext.Provider value={labelsVisible}>
       {autoHide && (
         <div
           aria-hidden="true"
@@ -56,8 +67,15 @@ export function NavigationRail({
         data-slot="project-rail"
         data-auto-hide={autoHide}
         data-revealed={autoHide && revealed}
+        data-labels-visible={labelsVisible}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocusCapture={(event) => setFocusWithin(event.currentTarget.contains(event.target))}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setFocusWithin(false);
+        }}
         onPointerLeave={() => onRevealChange?.(false)}
-        className="absolute bottom-0 left-0 top-title-bar z-50 flex w-[54px] max-w-[calc(100vw-1rem)] flex-col gap-1 overflow-hidden border-r border-border/70 bg-sidebar pt-2 text-sidebar-foreground transition-[width,box-shadow] duration-150 select-none motion-reduce:transition-none focus-within:w-60 focus-within:shadow-xl max-[700px]:w-11 max-[700px]:focus-within:w-60 max-[700px]:[@media(hover:hover)]:hover:w-60 [@media(hover:hover)]:hover:w-60 [@media(hover:hover)]:hover:shadow-xl [&_[data-slot=icon-button-label]]:invisible focus-within:[&_[data-slot=icon-button-label]]:visible [@media(hover:hover)]:hover:[&_[data-slot=icon-button-label]]:visible"
+        className="absolute bottom-0 left-0 top-title-bar z-50 flex w-[54px] max-w-[calc(100vw-1rem)] flex-col gap-1 overflow-hidden border-r border-border/70 bg-sidebar pt-2 text-sidebar-foreground transition-[width,box-shadow] duration-150 select-none motion-reduce:transition-none data-[labels-visible=true]:w-60 data-[labels-visible=true]:shadow-xl max-[700px]:w-11 max-[700px]:data-[labels-visible=true]:w-60 [&_[data-slot=icon-button-label]]:invisible data-[labels-visible=true]:[&_[data-slot=icon-button-label]]:visible"
       >
         <div className="max-h-[30%] shrink-0 overflow-y-auto overflow-x-hidden px-1">
           <IconButton
@@ -82,6 +100,6 @@ export function NavigationRail({
           {footer}
         </div>
       </nav>
-    </>
+    </NavigationRailLabelsContext.Provider>
   );
 }

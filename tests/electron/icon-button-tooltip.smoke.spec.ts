@@ -65,9 +65,10 @@ test("icon buttons reveal their tooltip bubble on hover and hide on leave", asyn
       exact: true,
     });
     await newSession.hover();
-    await expect(page.getByRole("tooltip")).toHaveText(`New session (${modifier}N)`, {
-      timeout: 2_000,
-    });
+    await expect(newSession.locator('[data-slot="icon-button-label"]')).toBeVisible();
+    await page.waitForTimeout(180);
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await expect(newSession).toHaveAccessibleDescription(`${modifier}N`);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
