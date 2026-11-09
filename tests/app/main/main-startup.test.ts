@@ -20,6 +20,9 @@ const fixture = vi.hoisted(() => ({
 
 const application = vi.hoisted(() => ({
   setName: vi.fn(),
+  on: vi.fn<
+    (_event: "before-quit", listener: (event: { preventDefault(): void }) => void) => void
+  >(),
   setPath: vi.fn((_name: string, path: string) => {
     fixture.userData = path;
     fixture.events.push("userData");
@@ -172,6 +175,25 @@ describe("production Electron startup", () => {
       }
     },
   );
+
+  it("keeps native quit prevented while process-owned runtime resources finalize", async () => {
+    const preventDefault = vi.fn();
+    fixture.layer = Layer.effectDiscard(
+      Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          const listener = application.on.mock.calls.find(
+            ([event]) => event === "before-quit",
+          )?.[1];
+          expect(listener).toBeDefined();
+          listener?.({ preventDefault });
+          expect(preventDefault).toHaveBeenCalledOnce();
+          expect(application.exit).not.toHaveBeenCalled();
+        }),
+      ),
+    );
+    expect(await launch()).toBe(0);
+    expect(application.exit).toHaveBeenCalledWith(0);
+  });
 
   it("configured userData is selected before the lock", async () => {
     vi.stubEnv("CAKE_ELECTRON_USER_DATA", "/isolated/configured-profile");

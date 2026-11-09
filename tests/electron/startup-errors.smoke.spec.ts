@@ -75,6 +75,16 @@ test("safe shell commits before slow required recovery; shutdown during recovery
     expect(await readFile(join(output, "window-state.json"), "utf8")).not.toContain(
       "Preserve this draft",
     );
+    const shutdown = (await readFile(join(output, "desktop-shutdown.log"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(shutdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ operation: "main.runtime.dispose", event: "completed" }),
+        expect.objectContaining({ operation: "shutdown", event: "completed" }),
+      ]),
+    );
     const records = log.split("\n").flatMap((line) => {
       try {
         const parsed = JSON.parse(line);
