@@ -10,6 +10,31 @@ function tool(id: string, origin?: "compacted"): UiPart {
 }
 
 describe("groupTranscriptParts", () => {
+  it("suppresses only blank ordinary assistant text, not unknown markup or source cards", () => {
+    const text = (id: string, value: string): Extract<UiPart, { kind: "text" }> => ({
+      id,
+      kind: "text",
+      role: "assistant",
+      text: value,
+      status: "complete",
+    });
+    const blank = text("blank", " \n ");
+    const parts: UiPart[] = [
+      blank,
+      { ...blank, id: "inherited", originalHistory: true },
+      text("unknown-html", "<unknown>content</unknown>"),
+      text("unknown-metadata", "<cake-other>{}</cake-other>"),
+      {
+        ...blank,
+        id: "source-card",
+        agentSource: { href: "cake://session/source", title: "Source" },
+      },
+      { ...blank, id: "user-anchor", role: "user" },
+    ];
+    expect(groupTranscriptParts(parts)).toEqual(parts.slice(2));
+    expect(parts).toHaveLength(6);
+  });
+
   it("presents attached content before the user body in attachment order without mutating history", () => {
     const user: UiPart = {
       id: "user",

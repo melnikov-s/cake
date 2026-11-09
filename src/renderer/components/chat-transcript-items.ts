@@ -62,6 +62,17 @@ function attachmentsBeforeBody(parts: UiPart[]): UiPart[] {
 }
 
 export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
+  // Empty live/older projected text must not leave a bubble, actions or a spacer.
+  // Filter parts, not turns: tools, reasoning, attachments and notices remain.
+  parts = parts.filter(
+    (part) =>
+      part.kind !== "text" ||
+      part.role !== "assistant" ||
+      part.crossSession ||
+      part.subagentReport ||
+      part.agentSource ||
+      Boolean(part.text.trim()),
+  );
   const inherited = parts.filter((part) => part.originalHistory);
   if (inherited.length)
     return [

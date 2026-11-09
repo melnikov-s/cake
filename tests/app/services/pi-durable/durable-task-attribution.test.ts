@@ -32,6 +32,7 @@ import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-
 import { durableInputText } from "../../../../src/services/pi-durable/durable-input-presentation";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import type { ProjectTodo } from "../../../../src/contracts/projects/project-todos";
+import { partsFromMessage } from "../../../../src/services/pi/runtime/message-projection";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
 const A = "00000000-0000-4000-8000-000000000001";
@@ -492,6 +493,86 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
   },
 );
 
+it.each(["", " \n\t\n "])(
+  "keeps a standalone metadata-only original without a response part (%j)",
+  async (whitespace) => {
+    const f = await fixture();
+    f.setResponse((request) => durableAnswer(metadata(turnIds(request).at(-1)!, A) + whitespace));
+    const sent = await f.send("Startup");
+    expect(
+      (await f.page()).parts.filter((part) => part.kind === "text" && part.role === "assistant"),
+    ).toEqual([]);
+    expect((await f.doc())?.inputs[String(sent.entry)]).toMatchObject({
+      pending: false,
+      todoId: A,
+    });
+    const originals = await f.engine.root.entries({}, 200, undefined, context);
+    expect(originals.items.filter((entry) => entry.kind === "pi.assistant")).toHaveLength(1);
+  },
+);
+
+it("keeps metadata-only provider errors and reasoning visible as their own parts", async () => {
+  const f = await fixture();
+  const project = await prepareTaskAttribution({
+    conversation: f.engine.root,
+    harness: f.engine.harness,
+    storage: f.engine.storage,
+    signal: new AbortController().signal,
+    todos: () => [todo(A)],
+  });
+  const message = {
+    ...durableAnswer(metadata(A, A) + " \n", [
+      { type: "text" as const, text: metadata(A, A) + " \n" },
+      { type: "thinking" as const, thinking: "Checking the request" },
+    ]),
+    stopReason: "error" as const,
+    errorMessage: "Provider disconnected",
+  };
+  const event = await project({ type: "error", reason: "error", error: message });
+  if (event.type !== "error") throw new Error("Expected provider error");
+  expect(partsFromMessage(event.error, "failure")).toEqual([
+    expect.objectContaining({ kind: "reasoning", text: "Checking the request" }),
+    expect.objectContaining({ kind: "notice", tone: "error", detail: "Provider disconnected" }),
+  ]);
+});
+
+it.each(["", " \n\t\n "])(
+  "omits attribution-only response surfaces without deleting originals or tool activity (whitespace=%j)",
+  async (whitespace) => {
+    const f = await fixture();
+    f.setResponse((request, index) =>
+      index === 1
+        ? durableAnswer("", [
+            { type: "text", text: metadata(turnIds(request).at(-1)!, A) + whitespace },
+            { type: "toolCall", id: "create", name: "create_task", arguments: {} },
+          ])
+        : durableAnswer("Complete answer"),
+    );
+    const result = await f.send("Startup");
+    const page = await f.page();
+    expect((await f.doc())?.inputs[String(result.entry)]).toMatchObject({
+      pending: false,
+      todoId: A,
+    });
+    expect(
+      page.parts.filter((part) => part.kind === "text" && part.role === "assistant"),
+    ).toMatchObject([{ text: "Complete answer" }]);
+    expect(page.parts).toContainEqual(expect.objectContaining({ kind: "tool", state: "success" }));
+    const originals = await f.engine.root.entries({}, 200, undefined, context);
+    const assistants = originals.items.filter((entry) => entry.kind === "pi.assistant");
+    expect(assistants).toHaveLength(2);
+    expect(
+      assistants.some((entry) =>
+        entry.model?.some(
+          (message) =>
+            message.role === "assistant" &&
+            message.content.some((block) => block.type === "text" && block.text === whitespace),
+        ),
+      ),
+    ).toBe(true);
+  },
+);
+
 it("settles split prefix metadata before returning the first visible character and retains it on abort", async () => {
   const f = await fixture();
   const held = f.hold();
@@ -505,7 +586,7 @@ it("settles split prefix metadata before returning the first visible character a
     todos: () => [todo(A)],
   });
   const prefix = metadata(turnIds(req).at(-1)!, A);
-  const wire = prefix + "Answer";
+  const wire = " \n" + prefix + " \nAnswer";
   let raw = "";
   let visible = "";
   for (const char of wire) {
@@ -514,14 +595,27 @@ it("settles split prefix metadata before returning the first visible character a
     const event = await project({ type: "text_delta", contentIndex: 0, delta: char, partial });
     if (event.type === "text_delta") visible += event.delta;
     expect(JSON.stringify(event)).not.toContain("cake-todo");
-    if (raw.length <= prefix.length) expect(visible).toBe("");
-    if (raw.length >= prefix.length)
+    const parts = partsFromMessage(
+      event.type === "text_delta" ? event.partial : partial,
+      "live",
+      true,
+    );
+    if (raw.length <= wire.indexOf("Answer"))
+      expect(parts.filter((part) => part.kind === "text")).toEqual([]);
+    else
+      expect(parts).toContainEqual(
+        expect.objectContaining({
+          kind: "text",
+          text: " \n \n" + wire.slice(wire.indexOf("Answer"), raw.length),
+        }),
+      );
+    if (raw.length >= wire.indexOf("Answer"))
       expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({
         pending: false,
         todoId: A,
       });
   }
-  expect(visible).toBe("Answer");
+  expect(visible).toBe(" \n \nAnswer");
   const interrupted = await project({
     type: "error",
     reason: "aborted",

@@ -38,6 +38,68 @@ afterEach(() => {
 // fullscreen readers belong to message-selection/side-chat-streaming Electron
 // suites. This suite does not fabricate those layout or native-event contracts.
 describe("Projected transcript rendering workflows", () => {
+  it.each(["", " \n\t\n "])(
+    "renders no empty assistant chrome for %j and reveals arriving prose",
+    (text) => {
+      const blank = { ...answer, text, status: "streaming" as const };
+      using fixture = renderTranscriptRendering([blank], { streaming: true });
+      expect(fixture.container.querySelector('[data-slot="message"]')).toBeNull();
+      expect(fixture.container.querySelector('[data-slot="message-content"]')).toBeNull();
+      expect(screen.queryByRole("button", { name: "Copy response" })).toBeNull();
+      expect(fixture.container.querySelector('[data-slot="loading-state"]')).not.toBeNull();
+      fixture.publish([{ ...blank, text: "The answer is arriving." }], true);
+      expect(screen.getByText("The answer is arriving.")).toBeDefined();
+      fixture.publish([{ ...answer, text: "The complete answer." }]);
+      expect(screen.getByText("The complete answer.")).toBeDefined();
+      // jsdom has no viewport geometry; the real action toolbar may be offscreen.
+      expect(screen.getByLabelText("Copy response")).toBeDefined();
+    },
+  );
+
+  it("keeps work logs, reasoning, errors and attachments around suppressed assistant text", async () => {
+    using fixture = renderTranscriptRendering([
+      { ...answer, id: "hidden", text: " \n " },
+      { id: "reason", kind: "reasoning", text: "Inspecting help", status: "complete" },
+      { ...answer, id: "hidden-between", text: "\t" },
+      {
+        id: "tool-help",
+        kind: "tool",
+        name: "cake",
+        command: "sessions.create.help",
+        input: "{}",
+        output: "Session help",
+        state: "success",
+      },
+      {
+        id: "file",
+        kind: "attachment",
+        name: "result.txt",
+        mediaType: "text/plain",
+        attachmentKind: "file",
+      },
+      {
+        id: "error",
+        kind: "notice",
+        tone: "error",
+        title: "Model request failed",
+        detail: "Provider disconnected",
+      },
+      answer,
+    ]);
+    expect(fixture.container.querySelector('[data-part-id="hidden"]')).toBeNull();
+    expect(fixture.container.querySelector('[data-part-id="hidden-between"]')).toBeNull();
+    expect(fixture.container.querySelectorAll('[data-slot="activity-group"]')).toHaveLength(1);
+    const summary = screen.getByText("Work log", { exact: true }).closest("summary");
+    if (!summary) throw new Error("Missing work log summary");
+    await fixture.user.click(summary);
+    expect(fixture.container.querySelector('[data-part-id="reason"]')).not.toBeNull();
+    expect(fixture.container.querySelector('[data-part-id="tool-help"]')).not.toBeNull();
+    expect(screen.getByText("result.txt")).toBeDefined();
+    expect(screen.getByText("Provider disconnected")).toBeDefined();
+    expect(screen.getByText(answer.text)).toBeDefined();
+    expect(fixture.chat.parts).toHaveLength(7);
+  });
+
   it.each([4_999, 5_000, 5_001])(
     "offers ordinary text fullscreen only above 5,000 characters (%s)",
     (length) => {

@@ -314,7 +314,8 @@ export function partsFromMessage(
       const type = Reflect.get(item, "type");
       if (type === "text") {
         const text = String(Reflect.get(item, "text") ?? "");
-        if (!text) return [];
+        // Attribution filtering can leave only whitespace; it is not a response surface.
+        if (!text.trim()) return [];
         const sources = [...new Set(text.match(/https?:\/\/[^\s)\]}>,]+/g) ?? [])]
           .filter((url) => url.length <= 8_192)
           .slice(0, 20);

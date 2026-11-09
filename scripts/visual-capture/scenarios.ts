@@ -6901,6 +6901,111 @@ const vscodeTerminalScenario: VisualCaptureScenario = {
   },
 };
 
+const emptyAssistantScenario: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "metadata-only-assistant",
+  description: "Whitespace left after hidden attribution, followed by a work log and final answer",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const sessionId = "visual-assistant-markdown-code";
+    const timestamp = new Date(0).toISOString();
+    const sessionDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    // Use the current document shape rather than migrating a current fixture as v7.
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        version: 11,
+        data: {
+          ...defaultApplicationState(),
+          projects: [
+            {
+              path: paths.project,
+              name: "visual-capture-project",
+              addedAt: timestamp,
+              lastOpenedAt: timestamp,
+            },
+          ],
+        },
+      }),
+    );
+    const message = (id: string, parentId: string | null, body: object) => ({
+      type: "message",
+      id,
+      parentId,
+      timestamp,
+      message: body,
+    });
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      [
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
+        message("user-1", null, {
+          role: "user",
+          content: "Please check how to create a session.",
+          timestamp: 0,
+        }),
+        // This is the attribution filter's output for metadata followed by newlines.
+        message("hidden", "user-1", {
+          ...nestedAssistant,
+          content: [{ type: "text", text: " \n\n " }],
+          timestamp: 1,
+        }),
+        message("call", "hidden", {
+          ...nestedAssistant,
+          content: [
+            {
+              type: "toolCall",
+              id: "help",
+              name: "cake",
+              arguments: { command: "sessions.create.help" },
+            },
+          ],
+          stopReason: "toolUse",
+          timestamp: 2,
+        }),
+        message("result", "call", {
+          role: "toolResult",
+          toolCallId: "help",
+          toolName: "cake",
+          content: [{ type: "text", text: "Create a Project Session with an assigned task." }],
+          isError: false,
+          timestamp: 3,
+        }),
+        message("final", "result", {
+          ...nestedAssistant,
+          content: [
+            { type: "text", text: "Session creation help is available. No session was created." },
+          ],
+          timestamp: 4,
+        }),
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+  },
+  async prepare(page) {
+    await page
+      .getByRole("complementary", { name: "Workspace", exact: true })
+      .getByRole("button", { name: /^Sessions / })
+      .click();
+    await page.locator('[data-session-id="visual-assistant-markdown-code"] .session-row').click();
+    await expect(
+      page.getByText("Session creation help is available. No session was created.", {
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-slot="activity-group"]')).toBeVisible();
+    await expect(page.locator('[data-slot="message-content"]')).toHaveCount(2);
+  },
+  region(page) {
+    return page.locator('[aria-label="Conversation"]');
+  },
+};
+
 const nestedToolActivityScenario: VisualCaptureScenario = {
   name: "nested-tool-activity",
   description: "Script source, returned error, and metadata-only restored child tool activity",
@@ -7284,6 +7389,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   assistantStandaloneDiagram,
   rendererCrash,
   toastNotificationsScenario,
+  emptyAssistantScenario,
   nestedToolActivityScenario,
   toolCallRowsScenario,
   readImageToolScenario,
