@@ -4447,9 +4447,8 @@ function numberedIconButtonsScenario(count: number): VisualCaptureScenario {
           page.getByRole("tooltip", { name: `${count} artifacts`, exact: true }),
         ).toBeVisible();
       } else if (state === "focus") {
-        await artifact.focus();
+        // Plain Tab intentionally returns to the composer; reverse-tab reaches chrome.
         await page.keyboard.press("Shift+Tab");
-        await page.keyboard.press("Tab");
         await expect(artifact).toBeFocused();
         expect(await artifact.evaluate((button) => button.matches(":focus-visible"))).toBe(true);
       } else {
