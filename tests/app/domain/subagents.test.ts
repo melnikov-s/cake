@@ -1,3 +1,4 @@
+import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { fork as forkAgentContext } from "../../../src/domain/subagents/agentContextFork";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { PiModels } from "../../../src/services/pi/PiModels";
@@ -997,10 +998,60 @@ describe("subagent attachment references", () => {
 });
 
 describe("agent-owned context forks", () => {
+  it.effect(
+    "investigation start atomically attaches supporting findings and rejects inaccessible IDs before publishing handles",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const caller = {
+            ...cakeChatParent(fixture),
+            parentSessionId: projectChatSessionId("/project"),
+          };
+          const task = yield* projectTodos.create("/project", {
+            title: "Outcome",
+            description: "Investigation feeds implementation.",
+          });
+          const results = yield* Effect.all(
+            ["Investigate", "Review"].map((phase) =>
+              subagents.start({ task: phase, projectPath: "/project", todoId: task.id }, caller),
+            ),
+            { concurrency: "unbounded" },
+          );
+          const items = (yield* projectTodos.list("/project")).items;
+          assert.equal(items.length, 1);
+          assert.equal(items[0]?.associations.length, 2);
+          assert.deepEqual(
+            new Set(
+              items[0]?.associations.map((link) =>
+                link.kind === "subagent" ? link.handleId : "wrong-kind",
+              ),
+            ),
+            new Set(results.map((result) => result.handleId)),
+          );
+          const other = yield* projectTodos.create("/another", {
+            title: "Other project",
+            description: "Inaccessible.",
+          });
+          const coordinator = yield* SubagentCoordinator;
+          const before = (yield* SubscriptionRef.get(coordinator.state)).handles.size;
+          const error = yield* subagents
+            .start({ task: "Must not launch", projectPath: "/project", todoId: other.id }, caller)
+            .pipe(Effect.flip);
+          assert.match(error.message, /inaccessible/);
+          assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, before);
+          assert.equal((yield* projectTodos.read("/another", other.id)).associations.length, 0);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
   for (const projectPath of [undefined, "/project", "/another"]) {
-    for (const resultDelivery of ["notification", "reply", "ignore"] as const) {
+    for (const { resultDelivery, attachTodo } of (
+      ["notification", "reply", "ignore"] as const
+    ).flatMap((resultDelivery) =>
+      [false, true].map((attachTodo) => ({ resultDelivery, attachTodo })),
+    )) {
       it.effect(
-        `inherits context and delivers ${resultDelivery} without a human thread or open pane (${projectPath ?? "global"})`,
+        `inherits context and delivers ${resultDelivery} without a human thread or open pane (${projectPath ?? "global"}, linked=${attachTodo})`,
         () =>
           Effect.gen(function* () {
             const fixture = yield* makeFixture(
@@ -1066,9 +1117,16 @@ describe("agent-owned context forks", () => {
             yield* Effect.gen(function* () {
               const environment = yield* SubagentEnvironment;
               yield* Effect.gen(function* () {
+                const outcome = attachTodo
+                  ? yield* projectTodos.create(root, {
+                      title: "One outcome",
+                      description: "Keep investigation and implementation together.",
+                    })
+                  : undefined;
                 const started = yield* forkAgentContext(
                   {
                     workspacePath: root,
+                    ...(outcome ? { todoId: outcome.id } : null),
                     name: "Investigate",
                     worktreeName: "research",
                     initialPrompt: "Explicit details from the unfinished exchange",
@@ -1119,6 +1177,20 @@ describe("agent-owned context forks", () => {
                 const saved = yield* coordinator.storage.get(started.handleId);
                 assert.ok(saved);
                 assert.equal(saved.status, "complete");
+                const tasks = (yield* projectTodos.list(root)).items;
+                assert.equal(tasks.length, attachTodo ? 1 : 0);
+                if (attachTodo) {
+                  assert.equal(tasks[0]?.state, "open");
+                  assert.equal(tasks[0]?.associations.length, 1);
+                  const association = tasks[0]?.associations[0];
+                  assert.ok(association?.kind === "subagent");
+                  assert.equal(association.parentSessionId, sessionId);
+                  assert.equal(association.handleId, started.handleId);
+                  assert.equal(
+                    tasks[0]?.associations.some((link) => link.kind === "session"),
+                    false,
+                  );
+                }
                 const storage = yield* SessionFamilyStorage;
                 const notices = (yield* storage.state()).deferredReferences ?? [];
                 assert.equal(notices.length, resultDelivery === "notification" ? 1 : 0);
@@ -1127,7 +1199,14 @@ describe("agent-owned context forks", () => {
                   resultDelivery === "reply" ? 1 : 0,
                 );
                 assert.deepEqual(yield* Ref.get(fixture.parentMessages), []);
-                if (resultDelivery === "notification") {
+                const held = attachTodo && projectPath !== undefined;
+                if (held && resultDelivery === "notification") {
+                  assert.equal(notices[0]?.attentionTodoId, outcome?.id);
+                  assert.equal(notices[0]?.source?.messageId, "answer");
+                  assert.ok(notices[0]?.text.includes("cake://session/source?message=original"));
+                  assert.deepEqual((yield* pendingReports.list(sessionId, {})).items, []);
+                }
+                if (!held && resultDelivery === "notification") {
                   const listed = yield* pendingReports.list(sessionId, {});
                   assert.equal(
                     listed.items[0]?.ref,
@@ -1161,7 +1240,13 @@ describe("agent-owned context forks", () => {
                   const retainedNotices =
                     (yield* (yield* SessionFamilyStorage).state()).deferredReferences ?? [];
                   assert.equal(retainedNotices.length, resultDelivery === "notification" ? 1 : 0);
-                  if (resultDelivery === "notification") {
+                  if (held && resultDelivery === "notification") {
+                    assert.equal(retainedNotices[0]?.attentionTodoId, outcome?.id);
+                    assert.ok(
+                      retainedNotices[0]?.text.includes("cake://session/source?message=original"),
+                    );
+                  }
+                  if (!held && resultDelivery === "notification") {
                     const listed = yield* pendingReports.list(sessionId, {});
                     assert.equal(
                       listed.items[0]?.ref,

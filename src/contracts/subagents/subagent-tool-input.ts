@@ -4,6 +4,10 @@ import { CakeModelSelection } from "../model-presets/cake-model-selection";
 import { inputRefsSchema } from "../conversations/task-input";
 import { messageRefsSchema } from "../conversations/message-reference";
 export const subagentTaskSchema = Schema.Struct({
+  todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))).annotate({
+    description:
+      "Existing open outcome to-do; preserve findings here and carry this ID into implementation/review. Omit for established unlinked investigation behavior.",
+  }),
   continuation: Schema.optionalKey(ParentContinuation),
   task: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
   projectPath: Schema.optionalKey(

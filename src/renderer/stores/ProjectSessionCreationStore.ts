@@ -13,6 +13,7 @@ import { ProjectOpenContext } from "./context/ProjectOpenContext";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface CreatePromptedProjectSessionInput {
+  todoId?: string;
   inputRefs?: readonly string[];
   workspacePath: string;
   name: string;
@@ -114,6 +115,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       input.model,
       input.markdown !== false,
       input.inputRefs,
+      input.todoId,
     );
     return managedWorktree
       ? { workspacePath, sessionId, managedWorktree }
@@ -148,6 +150,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     configuration?: ChatConfiguration,
     renderUserMessageAsMarkdown = true,
     inputRefs: readonly string[] = [],
+    todoId?: string,
   ) {
     const sessionId = crypto.randomUUID();
     this.pending.prepare(path, sessionId);
@@ -155,6 +158,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     conversation.setName(name);
     if (configuration) conversation.setConfiguration(configuration);
     const input: ProjectSessionStartInput = {
+      ...(todoId ? { todoId } : null),
       sessionId,
       workingDirectory: path,
       text: initialPrompt,

@@ -12,6 +12,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect";
+import { attachExisting, detachAdmission } from "../projects/projectTodos";
 import { subagentLink } from "../../contracts/subagents/subagent-reference";
 import {
   SubagentError,
@@ -319,7 +320,18 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
     restored.status !== "running" &&
     (restored.completionDisposition === "notified" || restored.completionDisposition === "waited");
   const scope = yield* Scope.make();
+  const todoLink = {
+    kind: "subagent" as const,
+    parentSessionId: prepared.parent.parentSessionId,
+    handleId,
+    title: subagentTaskTitle(prepared.input.task),
+  };
+  let attached = false;
   return yield* Effect.gen(function* () {
+    if (!restored && prepared.todoScope && prepared.input.todoId)
+      attached = yield* attachExisting(prepared.todoScope, prepared.input.todoId, todoLink).pipe(
+        asError("start"),
+      );
     const completion = yield* Deferred.make<SubagentResult, SubagentError>();
     const acquireParent = yield* Effect.cached(
       sessions
@@ -635,6 +647,13 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         ? SubscriptionRef.update(coordinator.state, (state) => removeHandle(state, handleId)).pipe(
             Effect.andThen(FiberMap.remove(coordinator.fibers, handleId)),
             Effect.andThen(Scope.close(scope, Exit.void)),
+            Effect.andThen(
+              attached && prepared.todoScope && prepared.input.todoId
+                ? detachAdmission(prepared.todoScope, prepared.input.todoId, todoLink).pipe(
+                    Effect.orDie,
+                  )
+                : Effect.void,
+            ),
           )
         : Effect.void,
     ),

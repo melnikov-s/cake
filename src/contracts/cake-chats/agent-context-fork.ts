@@ -4,6 +4,7 @@ import { inputRefsSchema } from "../conversations/task-input";
 import { messageRefsSchema } from "../conversations/message-reference";
 
 export const AgentContextFork = Schema.Struct({
+  todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   inputRefs: Schema.optionalKey(inputRefsSchema),
   messageRefs: Schema.optionalKey(messageRefsSchema),
   workspacePath: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),

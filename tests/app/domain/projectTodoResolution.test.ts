@@ -175,6 +175,112 @@ const worker: SubagentRecord = {
 };
 
 it.effect(
+  "investigation → implementation → review → authorized resolution stays one outcome with a handoff hold",
+  () => {
+    const f = fixture([worker]);
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      let task = yield* controls.create(project, {
+        title: "One outcome",
+        description: "Investigate then implement and review.",
+        associations: [
+          { kind: "subagent", parentSessionId: a, handleId: worker.handleId, title: "Findings" },
+        ],
+      });
+      yield* completeLinked(project);
+      expect((yield* controls.read(project, task.id)).sessions).toEqual([]);
+      expect((yield* todos.read(project, task.id)).state).toBe("open");
+      // The completed investigator is evidence, never an unresolvable required Project Session.
+      yield* todos.attachExisting(project, task.id, link(a));
+      task = yield* todos.read(project, task.id);
+      task = yield* controls.update(project, {
+        id: task.id,
+        expectedRevision: task.revision,
+        remainingWork: "Independent review still needed",
+      });
+      f.resolved.add(a); // actual lifecycle authority, not a report or merge
+      yield* completeLinked(project);
+      expect((yield* controls.list(project, { view: "reconciliation" })).items[0]).toMatchObject({
+        id: task.id,
+        state: "open",
+        remainingWork: "Independent review still needed",
+      });
+      // The implementation may resolve before the review is launched; no close/reopen gap.
+      yield* todos.attachExisting(project, task.id, link(root));
+      task = yield* todos.read(project, task.id);
+      const denied = yield* controls
+        .update(project, {
+          id: task.id,
+          expectedRevision: task.revision,
+          state: "done",
+          remainingWork: null,
+        })
+        .pipe(Effect.flip);
+      expect(denied.message).toContain("unresolved required sessions");
+      const removedBlocker = yield* controls
+        .update(project, {
+          id: task.id,
+          expectedRevision: task.revision,
+          state: "done",
+          remainingWork: null,
+          associations: task.associations.filter((link) => link.kind !== "session"),
+        })
+        .pipe(Effect.flip);
+      expect(removedBlocker.message).toContain("unresolved required sessions");
+      f.resolved.add(root);
+      yield* completeLinked(project);
+      expect((yield* todos.read(project, task.id)).state).toBe("open");
+      task = yield* controls.update(project, {
+        id: task.id,
+        expectedRevision: task.revision,
+        remainingWork: null,
+      });
+      expect(task).toMatchObject({ state: "done", completion: { by: "sessions" } });
+      expect(task).not.toHaveProperty("remainingWork");
+      expect(task.associations).toHaveLength(3);
+      expect((yield* todos.list(project)).items).toHaveLength(1);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
+  "remainingWork never substitutes for required-session blockers and explicit human completion remains available",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      let task = yield* controls.create(project, {
+        title: "Outcome",
+        description: "Work remains.",
+        associations: [link(a)],
+        remainingWork: "Implementation",
+      });
+      task = yield* controls.update(project, {
+        id: task.id,
+        expectedRevision: task.revision,
+        remainingWork: null,
+      });
+      yield* completeLinked(project);
+      expect((yield* todos.read(project, task.id)).state).toBe("open");
+      // Storage's user commit is still available after the human workflow has resolved blockers.
+      f.resolved.add(a);
+      task = yield* todos.update(project, {
+        id: task.id,
+        expectedRevision: task.revision,
+        remainingWork: "Follow-up decision",
+      });
+      yield* todos.mutateUser(project, {
+        _tag: "SetState",
+        id: task.id,
+        expectedRevision: task.revision,
+        state: "done",
+      });
+      expect((yield* todos.read(project, task.id)).completion?.by).toBe("user");
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
   "agent mutations canonicalize suffixes before enforcing ownership, including resolved owners",
   () => {
     const f = fixture();

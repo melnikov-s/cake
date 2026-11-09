@@ -54,6 +54,7 @@ export const fork = Effect.fn("Subagents.forkContext")(function* (
     [
       {
         task: input.initialPrompt,
+        ...(input.todoId ? { todoId: input.todoId } : null),
         projectPath: input.workspacePath,
         model: { prefer: "current" },
         fastMode: parent.options.runtime.fastMode?.get() ?? false,

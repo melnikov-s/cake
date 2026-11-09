@@ -136,6 +136,7 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
     needsAttention: Boolean(item.needsAttention),
     ...(item.attentionReason ? { attentionReason: item.attentionReason } : null),
     ...(item.snoozedUntil ? { snoozedUntil: item.snoozedUntil } : null),
+    ...(item.remainingWork ? { remainingWork: item.remainingWork } : null),
     revision: item.revision,
   });
   if (input.view !== "reconciliation") return { ...page, items: page.items.map(summary) };
@@ -169,12 +170,20 @@ export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(f
         : input;
     }),
   );
-  const changesWork = canonical.filter((input) => input.state === undefined);
+  const changesWork = canonical.filter((input) => input.state !== "open");
   const current = changesWork.length ? (yield* todos.list(scope)).items : [];
   const candidates = changesWork.flatMap((input) => {
     const item = current.find((item) => item.id === input.id);
     return item?.state === "open"
-      ? [{ ...item, associations: input.associations ?? item.associations }]
+      ? [
+          {
+            ...item,
+            associations:
+              input.state === "done" && input.associations
+                ? [...item.associations, ...input.associations]
+                : (input.associations ?? item.associations),
+          },
+        ]
       : [];
   });
   const joined = yield* join(scope, candidates);
@@ -185,6 +194,19 @@ export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(f
       )
       .map(({ item }) => item.id),
   );
+  for (const input of canonical) {
+    if (input.state !== "done") continue;
+    const candidate = joined.find(({ item }) => item.id === input.id);
+    if (
+      candidate &&
+      ((input.remainingWork === undefined ? candidate.item.remainingWork : input.remainingWork) ||
+        (candidate.sessions.length > 0 && !resolved.has(input.id)))
+    )
+      return yield* new ProjectError({
+        operation: "projectTodoAssociations",
+        message: "Cannot complete to-do: remaining work or unresolved required sessions",
+      });
+  }
   yield* todos.updateMany(scope, canonical, false, resolved);
   // Recheck only these items in case resolution raced their commit. Lifecycle/list-access
   // reconciliation owns other items; cheap edits must not wait on unrelated discovery.

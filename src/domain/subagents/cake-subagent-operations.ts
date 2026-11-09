@@ -50,6 +50,7 @@ export function createAgentControlOperations(
     projectAware
       ? "Handles are parent-owned and available for related follow-ups until explicitly closed or expired while idle; turns have no time limit and an active turn is never expired. Handles, exact grants and Pi history survive backend restart. Safe unfinished work resumes; uncertain tool effects require review rather than replay. Follow-ups are asynchronous; detailed live activity is not retained in Cake Chat history."
       : "Handles are parent-owned and remain available for follow-up until explicitly closed; parallel batches contain at most eight tasks.",
+    "Pass todoId to attach supporting findings to the existing open outcome; carry it into implementation/review. Subagent completion never resolves required Project Sessions.",
     "Attachments are not inherited. Pass exact IDs in inputRefs on tasks/follow-ups to grant access. Forwarding shares metadata only; attachments.read reads text/native pixels. Never substitute storage paths or describe unseen images.",
     "Pass exact Cake links in messageRefs to share source identities without reading/paraphrasing. Workers can read only selected refs. Forwarding neither reads message bodies nor grants attachment contents.",
     projectAware

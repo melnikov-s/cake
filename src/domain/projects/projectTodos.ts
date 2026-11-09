@@ -25,10 +25,11 @@ import {
   isCakeChatTodoScope,
   todoChatForScope,
   ProjectTodoUpdates,
-  type ProjectTodo,
+  ProjectTodo,
   projectTodoReminder,
   projectTodoCategory,
   projectTodoSessionIds,
+  projectTodoAssociationKey,
   ProjectTodoCreate,
   PROJECT_TODO_TITLE_LIMIT,
   projectTodoCompletionSummary,
@@ -55,6 +56,7 @@ function commit(
       | "title"
       | "description"
       | "status"
+      | "remainingWork"
       | "state"
       | "associations"
       | "needsAttention"
@@ -66,6 +68,7 @@ function commit(
 ): ProjectTodo {
   const { completion, snoozedUntil, ...rest } = item;
   const next = { ...rest, ...changes, revision: item.revision + 1 };
+  if (next.remainingWork === undefined || next.state === "done") delete next.remainingWork;
   // Completion and reopening never carry an active request into the new lifecycle state.
   if (next.state === "done" || item.state === "done") next.needsAttention = false;
   const until = deadline === undefined ? snoozedUntil : deadline;
@@ -293,12 +296,14 @@ export const create = Effect.fn("ProjectTodos.create")(function* (
   const item = {
     ...input,
     status: input.status ?? "",
-    needsAttention: resolved ? false : (input.needsAttention ?? false),
+    needsAttention: resolved && !input.remainingWork ? false : (input.needsAttention ?? false),
     associations: input.associations ?? [],
     id: randomUUID(),
-    state: resolved ? ("done" as const) : ("open" as const),
+    state: resolved && !input.remainingWork ? ("done" as const) : ("open" as const),
     revision: 0,
-    ...(resolved ? { completion: { revision: 0, by: "sessions" as const } } : null),
+    ...(resolved && !input.remainingWork
+      ? { completion: { revision: 0, by: "sessions" as const } }
+      : null),
   };
   if (input.needsAttention && !input.attentionReason)
     return yield* error("Needs attention requires an attention reason");
@@ -341,6 +346,7 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           input.title !== undefined ||
           input.description !== undefined ||
           input.status !== undefined ||
+          input.remainingWork !== undefined ||
           input.associations !== undefined ||
           input.needsAttention !== undefined ||
           input.attentionReason !== undefined ||
@@ -386,13 +392,16 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
             : (input.needsAttention ?? item.needsAttention ?? false);
         if (needsAttention && !attentionReason)
           return yield* error("Needs attention requires an attention reason");
-        const automatic = input.state === undefined && resolved.has(item.id);
+        const remainingWork =
+          input.remainingWork === null ? undefined : (input.remainingWork ?? item.remainingWork);
+        const automatic = input.state === undefined && !remainingWork && resolved.has(item.id);
         const updated = commit(
           item,
           {
             title: input.title ?? item.title,
             description: input.description ?? item.description,
             status: input.status ?? item.status,
+            remainingWork,
             needsAttention,
             ...(attentionReason ? { attentionReason } : null),
             state: input.state ?? (automatic && item.state === "open" ? "done" : item.state),
@@ -441,7 +450,13 @@ export const completeResolved = Effect.fn("ProjectTodos.completeResolved")(funct
     let result = value;
     for (const candidate of candidates) {
       const item = result.items.find((item) => item.id === candidate.id);
-      if (!item || item.state !== "open" || item.revision !== candidate.revision) continue;
+      if (
+        !item ||
+        item.state !== "open" ||
+        item.remainingWork ||
+        item.revision !== candidate.revision
+      )
+        continue;
       const updated = commit(item, { state: "done" }, "sessions");
       result = enqueue(
         { ...result, items: result.items.map((other) => (other.id === item.id ? updated : other)) },
@@ -526,6 +541,89 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
     // View focus is presentation, never context for an outgoing message.
     return Effect.succeed({ ...value, selectedId: input.selectedId });
   });
+});
+
+/** Resolve only within the caller's task authority; never search unrelated project lists. */
+export const existingTaskScope = Effect.fn("ProjectTodos.existingTaskScope")(function* (
+  projectPath: string | undefined,
+  todoId: string,
+  callerSessionId?: string,
+) {
+  yield* Schema.decodeUnknownEffect(ProjectTodo.fields.id)(todoId).pipe(mapError);
+  const application = yield* ApplicationState;
+  const state = application.snapshot();
+  const chatScope = callerSessionId ? yield* scopeForChat(callerSessionId) : undefined;
+  if (chatScope && chatScope !== CAKE_CHAT_TODO_SCOPE && projectPath && chatScope !== projectPath)
+    return yield* error("To-do is outside the caller's Project");
+  const allowed = new Set([
+    ...(projectPath ? [projectPath] : []),
+    ...(chatScope ? [chatScope] : []),
+    ...(callerSessionId ? owners(state, callerSessionId).map((owner) => owner.scope) : []),
+  ]);
+  const matches = [...allowed].filter((scope) =>
+    stored(state, scope)?.items.some((item) => item.id === todoId),
+  );
+  if (matches.length !== 1) return yield* error("Unknown or inaccessible to-do for this Project");
+  const scope = matches[0];
+  if (scope === undefined) return yield* error("Unknown to-do");
+  const item = yield* read(scope, todoId);
+  if (item.state !== "open") return yield* error("Only an open outcome to-do can accept new work");
+  return scope;
+});
+
+/** Reserve the canonical association before exposing/launching work. Appends serialize with
+ * completion and other admissions; no stale whole-list replacement and no automatic owner. */
+export const attachExisting = Effect.fn("ProjectTodos.attachExisting")(function* (
+  scope: string,
+  todoId: string,
+  association: ProjectTodo["associations"][number],
+) {
+  let attached = false;
+  yield* change(scope, (value) =>
+    Effect.gen(function* () {
+      const item = value.items.find((item) => item.id === todoId);
+      if (!item || item.state !== "open")
+        return yield* error("Only an existing open outcome to-do can accept new work");
+      const key = projectTodoAssociationKey(association);
+      if (item.associations.some((link) => projectTodoAssociationKey(link) === key)) return value;
+      if (item.associations.length >= 20) return yield* error("To-do association list is full");
+      attached = true;
+      const updated = commit(item, { associations: [...item.associations, association] }, "agent");
+      return {
+        ...value,
+        items: value.items.map((other) => (other.id === todoId ? updated : other)),
+      };
+    }),
+  );
+  return attached;
+});
+
+/** Failed pre-launch admissions release only their exact new association, preserving peers. */
+export const detachAdmission = Effect.fn("ProjectTodos.detachAdmission")(function* (
+  scope: string,
+  todoId: string,
+  association: ProjectTodo["associations"][number],
+) {
+  const key = projectTodoAssociationKey(association);
+  yield* change(scope, (value) =>
+    Effect.succeed({
+      ...value,
+      items: value.items.map((item) =>
+        item.id === todoId &&
+        item.associations.some((link) => projectTodoAssociationKey(link) === key)
+          ? commit(
+              item,
+              {
+                associations: item.associations.filter(
+                  (link) => projectTodoAssociationKey(link) !== key,
+                ),
+              },
+              "agent",
+            )
+          : item,
+      ),
+    }),
+  );
 });
 
 /** Creation bookkeeping, serialized by the same authority as manual edits.

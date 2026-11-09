@@ -57,10 +57,10 @@ const line = (command: string) =>
 describe("core coordinator calling reference", () => {
   it("projects real launch and scoped lifecycle contracts, not Project Session-local controls", () => {
     expect(line("sessions.create")).toBe(
-      'sessions.create {workspacePath, name, initialPrompt, worktreeName?, model?, resultDelivery?:"reply"|"notification"|"ignore"}',
+      'sessions.create {workspacePath, name, initialPrompt, worktreeName?, model?, resultDelivery?:"reply"|"notification"|"ignore", todoId?}',
     );
     expect(line("sessions.fork")).toBe(
-      'sessions.fork {workspacePath, name, initialPrompt, worktreeName, resultDelivery?:"reply"|"notification"|"ignore"}',
+      'sessions.fork {workspacePath, name, initialPrompt, worktreeName, resultDelivery?:"reply"|"notification"|"ignore", todoId?}',
     );
     expect(line("sessions.send")).toContain('delivery?:"fyi"|"prompt"|"steer"|"queue"');
     expect(line("sessions.send")).toContain("sessionId");
@@ -127,6 +127,7 @@ describe("core coordinator calling reference", () => {
       "expectedRevision",
       "title?",
       "description?",
+      "remainingWork?",
       'state?:"open"|"done"',
       "associations?",
       "needsAttention?",

@@ -64,6 +64,7 @@ export interface SessionRequester extends Schema.Schema.Type<typeof SessionReque
 
 /** Cake Chat's resolved application control input; caller identity is never model supplied. */
 export const AgentProjectSessionCreate = Schema.Struct({
+  todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   workspacePath: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
   name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
   promptFiles: Schema.optionalKey(promptFilesSchema),

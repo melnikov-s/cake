@@ -58,6 +58,20 @@ it.effect.each(["open", "done"] as const)(
     }).pipe(Effect.provide(projectTodoLayer())),
 );
 
+it.effect(
+  "explicit admission rechecks open state at the serialized commit and never overwrites concurrent work",
+  () =>
+    Effect.gen(function* () {
+      const task = yield* create();
+      const scope = yield* todos.existingTaskScope(project, task.id);
+      yield* todos.update(project, { id: task.id, expectedRevision: task.revision, state: "done" });
+      const before = (yield* ApplicationState).snapshot();
+      const failure = yield* todos.attachExisting(scope, task.id, link(a)).pipe(Effect.flip);
+      expect(failure.message).toContain("open outcome");
+      expect((yield* ApplicationState).snapshot()).toEqual(before);
+    }).pipe(Effect.provide(projectTodoLayer())),
+);
+
 it.effect("same-owner links are idempotent while one item can own several sessions", () =>
   Effect.gen(function* () {
     const owner = yield* create(project, [a]);

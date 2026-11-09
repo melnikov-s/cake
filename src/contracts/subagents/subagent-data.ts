@@ -68,6 +68,7 @@ export const ResolvedAgentModel = Schema.Struct({
 export interface ResolvedAgentModel extends Schema.Schema.Type<typeof ResolvedAgentModel> {}
 
 export const SubagentTaskInput = Schema.Struct({
+  todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   preset: Schema.optionalKey(PresetContext),
   continuation: Schema.optionalKey(ParentContinuation),
   task: nonEmptyBoundedString(262_144),
@@ -82,6 +83,7 @@ export const SubagentTaskInput = Schema.Struct({
 export interface SubagentTaskInput extends Schema.Schema.Type<typeof SubagentTaskInput> {}
 
 export const SubagentTask = Schema.Struct({
+  todoId: SubagentTaskInput.fields.todoId,
   preset: Schema.optionalKey(PresetContext),
   continuation: ParentContinuation,
   task: SubagentTaskInput.fields.task,

@@ -399,6 +399,7 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
   resultDelivery: ResultDelivery | null = "reply",
 
   coordinator = CAKE_CHAT_SESSION_ID,
+  todoId?: string,
 ) {
   const options = yield* assembleCoordinator(coordinator);
   assert.ok(options.runtime.globalControl);
@@ -410,6 +411,7 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
           workspacePath: "/project",
           ...createArgs,
           inputRefs: [...inputRefs],
+          ...(todoId ? { todoId } : null),
           ...(resultDelivery ? { resultDelivery } : null),
         },
       },
@@ -418,6 +420,35 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
   );
   return yield* Schema.decodeUnknownEffect(Schema.Struct({ sessionId: Schema.String }))(result);
 });
+
+it.effect.each(["global", "project"] as const)(
+  "sessions.create tool carries todoId into one canonical %s outcome",
+  (owner) =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.run(
+        Effect.gen(function* () {
+          const scope = owner === "global" ? CAKE_CHAT_TODO_SCOPE : "/project";
+          const coordinator =
+            owner === "global" ? CAKE_CHAT_SESSION_ID : projectChatSessionId("/project");
+          const task = yield* projectTodos.create(scope, {
+            title: "Cohesive outcome",
+            description: "Continue the investigated outcome.",
+          });
+          const created = yield* createFromChat([], "ignore", coordinator, task.id);
+          const items = [
+            ...(yield* projectTodos.list("/project")).items,
+            ...(yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items,
+          ];
+          assert.equal(items.length, 1);
+          assert.equal(items[0]?.id, task.id);
+          assert.deepEqual(items[0]?.associations, [
+            { kind: "session", sessionId: created.sessionId, title: createArgs.name },
+          ]);
+        }),
+      );
+    }),
+);
 
 for (const legacy of [false, true]) {
   it.effect.each(["notification", "reply", "aborted"] as const)(

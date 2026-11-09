@@ -4,6 +4,7 @@ import { CakeModelSelection } from "../model-presets/cake-model-selection";
 import { ResultDelivery } from "../conversations/result-delivery";
 
 export const projectSessionCreateInputSchema = Schema.Struct({
+  todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
   promptFiles: Schema.optionalKey(promptFilesSchema),
   initialPrompt: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),

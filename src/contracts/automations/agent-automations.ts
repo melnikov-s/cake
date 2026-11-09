@@ -76,6 +76,7 @@ export const AutomationAgentInvocation = Schema.Union([
 export type AutomationAgentInvocation = typeof AutomationAgentInvocation.Type;
 
 const AutomationProjectSessionCreate = Schema.Struct({
+  todoId: AgentProjectSessionCreate.fields.todoId,
   workspacePath: AgentProjectSessionCreate.fields.workspacePath,
   name: AgentProjectSessionCreate.fields.name,
   initialPrompt: AgentProjectSessionCreate.fields.initialPrompt,

@@ -1,5 +1,10 @@
-import { Effect, Schedule, Stream } from "effect";
-import { ensureAdmittedSession as ensureSessionTodo } from "../projects/projectTodos";
+import { Effect, Exit, Schedule, Stream } from "effect";
+import {
+  ensureAdmittedSession as ensureSessionTodo,
+  existingTaskScope,
+  attachExisting,
+  detachAdmission,
+} from "../projects/projectTodos";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import type { JsonObject } from "../../contracts/serialization/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
@@ -83,6 +88,7 @@ const acquireExistingTarget = Effect.fn("ProjectSessions.acquireExistingTarget")
 
 export const start = Effect.fn("ProjectSessions.start")(function* (
   input: ProjectSessionStartInput,
+  onAccepted?: () => void,
 ) {
   const locations = yield* projectSessionLocations.locations().pipe(asError("start"));
   const location = locations.find(
@@ -99,38 +105,60 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
   const attachments = yield* prepareTaskInputs(input.sessionId, false, input.attachments).pipe(
     asError("start"),
   );
-  const handle = yield* acquireTarget(location, input.sessionId, true);
-  if (input.labelIds?.length)
-    yield* setProjectSessionLabels(location.projectPath, input.sessionId, input.labelIds).pipe(
-      asError("start"),
-    );
-  if (input.configuration)
-    yield* handle.applyConfiguration(input.configuration).pipe(asError("start"));
-  if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("start"));
-  const brief = parseCrossSessionMessage(input.text)?.text ?? input.text;
-  const turnId = yield* Effect.uninterruptibleMask((restore) =>
-    Effect.gen(function* () {
-      const accepted = yield* restore(
-        handle.prompt(
-          input.text,
-          projectAttachments(attachments),
-          input.renderUserMessageAsMarkdown,
-          input.presentationMode,
-          input.automaticTitle,
-        ),
-      ).pipe(asError("start"));
-      yield* ensureSessionTodo(
-        location.projectPath,
-        input.sessionId,
-        input.name ?? brief.trim().split("\n")[0]?.slice(0, 120) ?? "New Project Session",
-        brief,
+  const todoScope = input.todoId
+    ? yield* existingTaskScope(location.projectPath, input.todoId).pipe(asError("start"))
+    : undefined;
+  const association = {
+    kind: "session" as const,
+    sessionId: input.sessionId,
+    title: input.name ?? "Project Session",
+  };
+  let accepted = false;
+  let attached = false;
+  return yield* Effect.gen(function* () {
+    if (todoScope && input.todoId)
+      attached = yield* attachExisting(todoScope, input.todoId, association).pipe(asError("start"));
+    const handle = yield* acquireTarget(location, input.sessionId, true);
+    if (input.labelIds?.length)
+      yield* setProjectSessionLabels(location.projectPath, input.sessionId, input.labelIds).pipe(
+        asError("start"),
       );
-      return TurnId.make(accepted);
-    }),
+    if (input.configuration)
+      yield* handle.applyConfiguration(input.configuration).pipe(asError("start"));
+    if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("start"));
+    const brief = parseCrossSessionMessage(input.text)?.text ?? input.text;
+    const turnId = yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const acceptedTurn = yield* restore(
+          handle.prompt(
+            input.text,
+            projectAttachments(attachments),
+            input.renderUserMessageAsMarkdown,
+            input.presentationMode,
+            input.automaticTitle,
+          ),
+        ).pipe(asError("start"));
+        accepted = true;
+        onAccepted?.();
+        yield* ensureSessionTodo(
+          location.projectPath,
+          input.sessionId,
+          input.name ?? brief.trim().split("\n")[0]?.slice(0, 120) ?? "New Project Session",
+          brief,
+        );
+        return TurnId.make(acceptedTurn);
+      }),
+    );
+    // The runtime publishes its initial catalog change at Pi's first durable
+    // message, even if this caller disconnects after the turn was accepted.
+    return turnId;
+  }).pipe(
+    Effect.onExit((exit) =>
+      !accepted && attached && Exit.isFailure(exit) && todoScope && input.todoId
+        ? detachAdmission(todoScope, input.todoId, association).pipe(Effect.orDie)
+        : Effect.void,
+    ),
   );
-  // The runtime publishes its initial catalog change at Pi's first durable
-  // message, even if this caller disconnects after the turn was accepted.
-  return turnId;
 });
 
 const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(function* (

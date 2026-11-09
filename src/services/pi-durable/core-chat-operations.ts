@@ -8,8 +8,8 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
     if (reference) lines.push(reference);
     return Boolean(reference);
   };
-  add("sessions.create", ["worktreeName", "model", "resultDelivery"]);
-  if (add("sessions.fork", ["resultDelivery"]))
+  add("sessions.create", ["worktreeName", "model", "resultDelivery", "todoId"]);
+  if (add("sessions.fork", ["resultDelivery", "todoId"]))
     lines.push("Fork: include unfinished-exchange specifics in initialPrompt.");
   add("todos.list", ["state", "query", "limit", "offset"]);
   add("todos.read");
@@ -19,6 +19,7 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
       "title",
       "description",
       "status",
+      "remainingWork",
       "state",
       "associations",
       "needsAttention",
@@ -26,7 +27,7 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
     ])
   )
     lines.push(
-      "Standalone completion/reopening: state done/open. Revision conflict: reread before retrying.",
+      "Standalone completion/reopening: state done/open. remainingWork holds closure; null clears satisfied handoffs. Revision conflict: reread before retrying.",
     );
   if (add("sessions.send", ["delivery", "resultDelivery"]))
     lines.push(

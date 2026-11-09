@@ -120,8 +120,10 @@ export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function*
     scope,
     joined
       .filter(
-        ({ sessions }) =>
-          sessions.length > 0 && sessions.every((session) => session.resolved === true),
+        ({ item, sessions }) =>
+          !item.remainingWork &&
+          sessions.length > 0 &&
+          sessions.every((session) => session.resolved === true),
       )
       .map(({ item }) => item),
   );

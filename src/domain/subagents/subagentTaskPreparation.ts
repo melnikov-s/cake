@@ -5,6 +5,7 @@ import {
 } from "../../contracts/conversations/session-contract";
 import { getState } from "../application/application";
 import { TaskInputReference, inputRefsSchema } from "../../contracts/conversations/task-input";
+import { existingTaskScope } from "../projects/projectTodos";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { PROJECT_CHAT_PREFIX } from "../../contracts/cake-chats/cake-chat-identity";
@@ -55,6 +56,7 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
   );
   const task: SubagentTask = {
     task: decoded.task,
+    ...(decoded.todoId ? { todoId: decoded.todoId } : null),
     continuation: decoded.continuation ?? "resume",
     model: decoded.model ?? { prefer: "current" },
     fastMode: decoded.fastMode ?? false,
@@ -238,6 +240,7 @@ const resolveModel = (
 };
 
 export interface PreparedTask {
+  readonly todoScope?: string;
   /** Persist inherited context before publishing a new handle; never rerun on restore. */
   readonly initializeContext?: (sessionId: string) => Effect.Effect<void, SubagentError>;
   readonly input: SubagentTask;
@@ -279,7 +282,7 @@ export const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
       operation: "preflight",
       message: `An agent may own at most ${MAX_HANDLES_PER_PARENT} subagent handles. Close an unused subagent before starting another.`,
     });
-  return yield* Effect.try({
+  const prepared = yield* Effect.try({
     try: () =>
       tasks.map((input): PreparedTask => {
         const projectAware = cakeChat;
@@ -340,4 +343,15 @@ export const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
         ? cause
         : new SubagentError({ operation: "preflight", message: subagentErrorMessage(cause) }),
   });
+  return yield* Effect.forEach(prepared, (task) =>
+    Effect.gen(function* () {
+      if (!task.input.todoId) return task;
+      const todoScope = yield* existingTaskScope(
+        task.input.projectPath,
+        task.input.todoId,
+        parent.parentSessionId,
+      ).pipe(asError("preflight"));
+      return { ...task, todoScope };
+    }),
+  );
 });

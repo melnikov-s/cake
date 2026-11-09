@@ -94,6 +94,7 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
     input: Schema.Record(Schema.String, Schema.Json),
   },
   CreateSession: {
+    todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
     name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
     initialPrompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
     worktreeName: Schema.optionalKey(
@@ -183,6 +184,7 @@ export interface ProjectSessionPromptInput extends Schema.Schema.Type<
 > {}
 
 export const ProjectSessionStartInput = Schema.Struct({
+  todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   sessionId: boundedId,
   projectPath: Schema.optionalKey(boundedPath),
   workingDirectory: boundedPath,

@@ -25,6 +25,7 @@ export function createProjectSessionOperations(
         resultDeliveryGuidance,
         "This singular Project Session-local operation derives the project from the caller and never accepts a workspacePath or sessionId. Cake Chat uses the separate plural sessions.create application control.",
         "Set worktreeName to create and register a new Cake-managed worktree before the Pi-backed session starts. Do not run git worktree add or try to rebind an already-started session.",
+        "Pass todoId to reuse the existing open outcome for implementation/review instead of creating a phase task; carry it from investigation.",
         "When worktreeName is omitted, the independent session starts in the Project root, preserving the existing behavior.",
         "Omit model unless requested; configured default preset supplies complete settings, falling back to caller only if no default.",
         "Use sessions.create-child for recursive Session Family delegation, whether the child shares the caller's checkout or branches into a child Managed Worktree.",

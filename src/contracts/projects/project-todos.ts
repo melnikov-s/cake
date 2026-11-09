@@ -81,7 +81,7 @@ export const PROJECT_TODO_AUTO_COMPLETION_RULE =
 
 /** When a to-do must exist; shared by the injected baseline, operation help and chat-todos.md. */
 export const PROJECT_TODO_CREATION_RULE =
-  "Track durable ongoing building, multi-step research and discussions/decisions to revisit. Reuse existing/session-created items. No new to-dos for routine one-shot actions (merge approved work, open websites, navigate, direct answers/lookups), even with multiple tools, delegation, verification or blockers. Update underlying tasks for blockers, not administrative umbrella items. Attribution may be null; never create just to attribute turns. Assistant-maintained, not user chores.";
+  "Track durable ongoing building, multi-step research and discussions/decisions to revisit. One to-do per outcome: carry todoId through sessions.fork, subagents.start and sessions.create for investigation, implementation and review; never create phase items. Reuse existing/session-created items. No new to-dos for routine one-shot actions (merge approved work, open websites, navigate, direct answers/lookups), even with multiple tools, delegation, verification or blockers. Update underlying tasks for blockers, not administrative umbrella items. Attribution may be null; never create just to attribute turns. Assistant-maintained, not user chores.";
 
 /** When to close one; session-linked items still close only through session resolution. */
 export const PROJECT_TODO_CLOSING_RULE =
@@ -96,7 +96,7 @@ export const PROJECT_TODO_DESCRIPTION_GUIDANCE = `Titles: short task names, max 
 
 /** Canonical detailed link policy, disclosed by to-do mutation help and chat-todos.md. */
 export const PROJECT_TODO_LINK_GUIDANCE =
-  "Link useful PRs, previews and exact findings originals; never invent refs or use ?message=last. Keep required session/subagent associations: updates replace the whole list. Use public worker handles, not private Pi IDs. Sources do not affect closure; subagent-only items close explicitly. No extra report wake-ups.";
+  "Link useful PRs, previews and exact findings originals; never invent refs or use ?message=last. Keep session/subagent associations: updates replace the whole list. Use public worker handles, not private Pi IDs. Sources do not affect closure; subagents are supporting evidence, not required Project Sessions; subagent-only items close explicitly. Set remainingWork before a known implementation/review handoff; clear with null only when satisfied. It holds automatic closure even when current sessions resolve. Reports/merge never authorize resolution. No extra report wake-ups.";
 
 /** Explicit human requests and held completion reports share the owning chat's attention queue. */
 export const PROJECT_TODO_ATTENTION_GUIDANCE =
@@ -131,6 +131,8 @@ const ProjectTodoSnoozeUntil = Schema.String.check(
   ),
 );
 
+const ProjectTodoRemainingWork = text(512).check(Schema.isTrimmed(), Schema.isMinLength(1));
+
 export const ProjectTodo = Schema.Struct({
   id: identity,
   title: text(512).check(Schema.isTrimmed(), Schema.isMinLength(1)),
@@ -138,6 +140,8 @@ export const ProjectTodo = Schema.Struct({
     description: "The latest update, usually one or two short sentences; not a task restatement.",
   }),
   status: text(4096),
+  /** An explicit phase handoff holds automatic closure until the outcome is satisfied. */
+  remainingWork: Schema.optionalKey(ProjectTodoRemainingWork),
   state: Schema.Literals(["open", "done"]),
   /** Absent on older saved items means false; no reason is invented for existing work. */
   needsAttention: Schema.optionalKey(Schema.Boolean),
@@ -233,6 +237,7 @@ const ProjectTodoInputTitle = Schema.String.check(
 });
 
 export const ProjectTodoCreate = Schema.Struct({
+  remainingWork: ProjectTodo.fields.remainingWork,
   title: ProjectTodoInputTitle,
   description: ProjectTodo.fields.description,
   status: Schema.optionalKey(ProjectTodo.fields.status),
@@ -248,6 +253,7 @@ export const ProjectTodoUpdate = Schema.Struct({
   description: Schema.optionalKey(ProjectTodo.fields.description),
   status: Schema.optionalKey(ProjectTodo.fields.status),
   state: Schema.optionalKey(ProjectTodo.fields.state),
+  remainingWork: Schema.optionalKey(Schema.NullOr(ProjectTodoRemainingWork)),
   needsAttention: Schema.optionalKey(Schema.Boolean),
   attentionReason: Schema.optionalKey(ProjectTodoAttentionReason),
   snoozedUntil: Schema.optionalKey(Schema.NullOr(ProjectTodoSnoozeUntil)),
@@ -292,6 +298,7 @@ const ProjectTodoWorkSession = Schema.Struct({
   reason: Schema.optionalKey(Schema.String),
 });
 const ProjectTodoSummary = Schema.Struct({
+  remainingWork: ProjectTodo.fields.remainingWork,
   id: identity,
   title: ProjectTodo.fields.title,
   state: ProjectTodo.fields.state,
@@ -354,6 +361,7 @@ interface ProjectTodoContextData {
     title: string;
     descriptionPreview: string;
     statusPreview: string;
+    remainingWork?: string;
     needsAttention: boolean;
     attentionReason?: string;
     revision: number;
@@ -423,6 +431,7 @@ export function projectTodoBaseline(value: ProjectTodos, chat: TodoChat = "Proje
           title: item.title,
           descriptionPreview: item.description.slice(0, 240),
           statusPreview: item.status.slice(0, 240),
+          ...(item.remainingWork ? { remainingWork: item.remainingWork } : null),
           needsAttention: Boolean(item.needsAttention),
           ...(item.attentionReason ? { attentionReason: item.attentionReason } : null),
           revision: item.revision,

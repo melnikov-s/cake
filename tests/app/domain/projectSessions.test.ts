@@ -2173,15 +2173,20 @@ describe("Project Sessions domain", () => {
       }).pipe(Effect.provide(makeLayer())),
   );
 
-  it.effect.each(["/project", CAKE_CHAT_TODO_SCOPE])(
-    "human Done in %s commits real session resolution before completion and retries are idempotent",
-    (scope) => {
+  it.effect.each(
+    ["/project", CAKE_CHAT_TODO_SCOPE].flatMap((scope) =>
+      [undefined, "Review still pending"].map((remainingWork) => ({ scope, remainingWork })),
+    ),
+  )(
+    "human Done in $scope commits real session resolution before completion and retries are idempotent (remainingWork=$remainingWork)",
+    ({ scope, remainingWork }) => {
       const archived: string[] = [];
       let resolved = false;
       return Effect.gen(function* () {
         const item = yield* projectTodos.create(scope, {
           title: "Review implementation",
           description: "Review implementation.",
+          ...(remainingWork ? { remainingWork } : null),
           associations: [{ kind: "session", sessionId: "session-1", title: "Implementation" }],
         });
         const request = {
@@ -2204,6 +2209,8 @@ describe("Project Sessions domain", () => {
         );
         const done = yield* projectTodos.read(scope, item.id);
         assert.equal(done.state, "done");
+        assert.equal(done.remainingWork, undefined);
+        if (remainingWork) assert.equal(done.completion?.by, "user");
         assert.equal(done.revision, 1);
         yield* projectTodoHandlers["projectTodos.mutateUser"](request);
         assert.equal((yield* projectTodos.read(scope, item.id)).revision, done.revision);
@@ -4190,6 +4197,129 @@ describe("Project Sessions domain", () => {
     );
   }
 
+  it.effect.each(["global", "project"] as const)(
+    "explicit todoId admits concurrent sessions into one %s outcome without phase tasks",
+    (scopeKind) =>
+      Effect.gen(function* () {
+        const scope = scopeKind === "global" ? CAKE_CHAT_TODO_SCOPE : "/project";
+        const task = yield* projectTodos.create(scope, {
+          title: "One outcome",
+          description: "Investigate, implement and review.",
+        });
+        const results = yield* Effect.all(
+          ["Implementation", "Review"].map((name) =>
+            createPrompted({
+              projectPath: "/project",
+              todoId: task.id,
+              name,
+              initialPrompt: "Complete this phase of the outcome.",
+              model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
+              source: {
+                kind: "cake-chat",
+                sessionId:
+                  scopeKind === "global" ? CAKE_CHAT_SESSION_ID : projectChatSessionId("/project"),
+                title: "Chat",
+              },
+              requester: {
+                kind: "cake-chat",
+                sessionId:
+                  scopeKind === "global" ? CAKE_CHAT_SESSION_ID : projectChatSessionId("/project"),
+                title: "Chat",
+              },
+            }),
+          ),
+          { concurrency: "unbounded" },
+        );
+        const items = [
+          ...(yield* projectTodos.list("/project")).items,
+          ...(yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items,
+        ];
+        assert.equal(items.length, 1);
+        assert.equal(items[0]?.id, task.id);
+        assert.deepEqual(
+          new Set(
+            items[0]?.associations.map((link) =>
+              link.kind === "session" ? link.sessionId : "wrong-kind",
+            ),
+          ),
+          new Set(results.map((result) => result.sessionId)),
+        );
+        assert.equal(items[0]?.state, "open");
+      }).pipe(Effect.provide(makeLayer(undefined, { applicationLayer: projectTodoLayer() }))),
+  );
+
+  it.effect.each(["invalid", "unknown", "done", "wrong-project", "inaccessible"] as const)(
+    "explicit %s todoId fails before any runtime/session/task admission",
+    (kind) => {
+      let constructions = 0;
+      return Effect.gen(function* () {
+        const task = yield* projectTodos.create(
+          kind === "inaccessible" ? CAKE_CHAT_TODO_SCOPE : "/project",
+          { title: "Existing", description: "Keep the original." },
+        );
+        if (kind === "done")
+          yield* projectTodos.update("/project", {
+            id: task.id,
+            expectedRevision: task.revision,
+            state: "done",
+          });
+        const before = (yield* ApplicationState).snapshot();
+        const failure = yield* createPrompted({
+          projectPath: "/project",
+          todoId:
+            kind === "invalid" ? "not-a-uuid" : kind === "unknown" ? crypto.randomUUID() : task.id,
+          source: {
+            kind: "cake-chat",
+            sessionId: projectChatSessionId(kind === "wrong-project" ? "/other" : "/project"),
+            title: "Chat",
+          },
+          name: "Do not launch",
+          initialPrompt: "Invalid task reference.",
+          model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
+        }).pipe(Effect.flip);
+        assert.ok(failure.message);
+        assert.equal(constructions, 0);
+        assert.deepEqual((yield* ApplicationState).snapshot(), before);
+        assert.equal((yield* (yield* SessionFamilyStorage).state()).spawnedSessions.length, 0);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            applicationLayer: projectTodoLayer(),
+            runtime: (options) => {
+              constructions++;
+              return fakeRuntime(options);
+            },
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect(
+    "explicit renderer start reuses an existing outcome through the application boundary",
+    () =>
+      Effect.gen(function* () {
+        const task = yield* projectTodos.create("/project", {
+          title: "Existing",
+          description: "Do not split phases.",
+        });
+        yield* projectSessionOperations.start({
+          sessionId: "explicit-start",
+          renderUserMessageAsMarkdown: true,
+          workingDirectory: "/project",
+          todoId: task.id,
+          text: "Implementation",
+          attachments: [],
+          name: "Implementation",
+        });
+        const items = (yield* projectTodos.list("/project")).items;
+        assert.equal(items.length, 1);
+        assert.deepEqual(items[0]?.associations, [
+          { kind: "session", sessionId: "explicit-start", title: "Implementation" },
+        ]);
+      }).pipe(Effect.provide(makeLayer(undefined, { applicationLayer: projectTodoLayer() }))),
+  );
+
   it.effect.each(["global chat", "project chat", "user"] as const)(
     "sessions.create from %s creates exactly one Project-owned to-do and queues the original task once",
     (source) => {
@@ -4293,6 +4423,47 @@ describe("Project Sessions domain", () => {
       ),
     );
   });
+
+  it.effect(
+    "a failed explicit launch releases only its reservation and keeps the existing outcome and findings",
+    () =>
+      Effect.gen(function* () {
+        const original = {
+          kind: "source" as const,
+          ref: "https://example.test/findings",
+          title: "Findings",
+        };
+        const task = yield* projectTodos.create("/project", {
+          title: "Outcome",
+          description: "Keep findings.",
+          associations: [original],
+        });
+        const failure = yield* createPrompted({
+          projectPath: "/project",
+          todoId: task.id,
+          name: "Implementation",
+          initialPrompt: "Implement findings.",
+          model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
+        }).pipe(Effect.flip);
+        assert.match(failure.message, /Configuration unavailable/);
+        const items = (yield* projectTodos.list("/project")).items;
+        assert.equal(items.length, 1);
+        assert.equal(items[0]?.state, "open");
+        assert.deepEqual(items[0]?.associations, [original]);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            applicationLayer: projectTodoLayer(),
+            runtime: (options) => ({
+              ...fakeRuntime(options),
+              applyConfiguration: async () => {
+                throw new Error("Configuration unavailable");
+              },
+            }),
+          }),
+        ),
+      ),
+  );
 
   it.effect("preserves fork creation failure without to-do bookkeeping", () => {
     let forks = 0;
