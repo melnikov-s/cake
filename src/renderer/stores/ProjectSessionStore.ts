@@ -286,6 +286,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       onMergeAndResolveStarted: (operationId) =>
         SessionRegistryContext.consume(this)!.silenceWorktreeLanding(operationId),
       onLanded: (_record, result) => {
+        // Automatic landings have one project-owned transient announcement. Their
+        // snapshots can be observed by siblings, other windows, or after reconnect.
+        if (this.props.worktreeOperation()?.automatic) return;
         if (SessionRegistryContext.consume(this)!.isWorktreeLandingSilent(result.operationId))
           return;
         // Sibling sessions sharing this Working Directory observe the same operation; keying

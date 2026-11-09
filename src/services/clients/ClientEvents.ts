@@ -22,6 +22,7 @@ export interface ClientEventsService {
       | "notification"
       | "provider-auth-notice"
       | "agent-action-notice"
+      | "auto-merge-landed"
       | "pi-settings-changed"
       | "extension-ui-intent"
       | "project-session-control-requested"

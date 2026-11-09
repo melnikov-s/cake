@@ -83,6 +83,7 @@ export const ClientEventsLive = Layer.effect(
           "notification",
           "provider-auth-notice",
           "agent-action-notice",
+          "auto-merge-landed",
           "pi-settings-changed",
           "interview-requested",
           "extension-ui-intent",

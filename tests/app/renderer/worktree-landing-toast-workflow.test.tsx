@@ -2,6 +2,10 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
+import { Effect, Queue, Stream } from "effect";
+import type { applicationEventSchema } from "../../../src/contracts/application/cake-rpc-contract";
+import { observeApplicationEvents } from "../../../src/renderer/observers/application-events";
+import { observerClient, observerRuntime } from "./observers/observer-test-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
@@ -62,6 +66,7 @@ function renderSessions(selectedSessionId = "parent", landing: "merge" | "pull-r
   const sessions = [
     sessionSummary({
       sessionId: "parent",
+      title: "Fix the merge toast",
       projectPath: "/project",
       workingDirectory: "/family",
       familyId,
@@ -168,6 +173,7 @@ function renderSessions(selectedSessionId = "parent", landing: "merge" | "pull-r
   );
   return {
     user: userEvent.setup(),
+    root: fixture.root,
     activeConversation: () => fixture.root.appShellStore.activeConversation,
     startLanding,
     cancelLanding,
@@ -193,6 +199,79 @@ function renderSessions(selectedSessionId = "parent", landing: "merge" | "pull-r
 afterEach(cleanup);
 
 describe("Worktree landing completion toasts", () => {
+  it.each(["event-first", "snapshot-first", "resolution-failed"] as const)(
+    "announces auto-merge with session identity once across family observers and event paths: %s",
+    async (order) => {
+      using fixture = renderSessions();
+      const events = Effect.runSync(Queue.unbounded<typeof applicationEventSchema.Type>());
+      const runtime = observerRuntime(
+        observerClient({ events: { application: () => Stream.fromQueue(events) } }),
+      );
+      const stop = observeApplicationEvents(runtime, fixture.root);
+      const event = {
+        type: "auto-merge-landed",
+        operationId: "automatic",
+        sessionId: "parent",
+        title: "Original title",
+      } as const;
+      const emit = async () => {
+        await act(async () => {
+          Queue.offerUnsafe(events, event);
+          await Effect.runPromise(Queue.take(runtime.consumed));
+        });
+      };
+      try {
+        if (order === "event-first") await emit();
+        await fixture.publish({
+          ...landed("automatic", "/family", "parent", [
+            "parent",
+            "child-1",
+            "child-2",
+            "grandchild",
+          ]),
+          automatic: true,
+          ...(order === "resolution-failed"
+            ? {
+                phase: "failed",
+                error: "Session resolution failed",
+                resolutionError: "Session resolution failed",
+              }
+            : {}),
+        });
+        if (order !== "resolution-failed") {
+          await waitFor(() =>
+            expect(
+              fixture.cancelLanding.mock.calls.filter(
+                ([request]) => request.intent === "acknowledge",
+              ),
+            ).toHaveLength(4),
+          );
+        } else {
+          expect(
+            await fixture.pane("parent").findByText("Session resolution failed"),
+          ).toBeDefined();
+        }
+        if (order !== "event-first") {
+          expect(fixture.toasts()).toHaveLength(0);
+          await emit();
+        }
+        await emit();
+        expect(screen.getAllByRole("status")).toHaveLength(1);
+        expect(screen.getByRole("status").textContent).toContain("Session auto-merged");
+        expect(screen.getByRole("status").textContent).toContain(
+          "“Fix the merge toast” was merged into the project.",
+        );
+        expect(screen.getByRole("status").textContent).not.toContain("resolved");
+        await fixture.user.click(screen.getByRole("button", { name: "Dismiss notification" }));
+        await emit();
+        expect(screen.queryByRole("status")).toBeNull();
+      } finally {
+        stop();
+        await runtime.dispose();
+      }
+    },
+  );
+
   it("resolves external work without an unmerged-work confirmation or landing toast", async () => {
     using fixture = renderSessions("standalone", "pull-request");
     await fixture.user.click(

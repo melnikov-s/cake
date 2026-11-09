@@ -405,6 +405,39 @@ const sideChatActions: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="side-chat-layout"]'),
 };
 
+const autoMergeToastScenario: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "auto-merge-toast",
+  description:
+    "Synthetic confirmed auto-merge event using the real application toast path; no merge is run",
+  states: ["default"],
+  async prepare(page, state, application) {
+    if (!application) throw new Error("Auto-merge toast requires Electron");
+    // The toast only needs the app shell/event subscription, not transcript syntax highlighting.
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).waitFor();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await emitRendererEvent(application, {
+      type: "auto-merge-landed",
+      operationId: "visual-auto-merge",
+      sessionId: "visual-auto-merged-session",
+      title: "Auto-merge success toasts",
+    });
+    const toast = page.getByRole("status").filter({ hasText: "Session auto-merged" });
+    await expect(toast).toContainText("“Auto-merge success toasts” was merged into the project.");
+    await toast.evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+      );
+    });
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page
+      .locator('[aria-live="polite"]')
+      .filter({ has: page.getByText("Session auto-merged", { exact: true }) });
+  },
+};
+
 const toastNotificationsScenario: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "toast-notifications",
@@ -7598,6 +7631,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   assistantStandaloneDiagram,
   rendererCrash,
   toastNotificationsScenario,
+  autoMergeToastScenario,
   emptyAssistantScenario,
   nestedToolActivityScenario,
   toolCallRowsScenario,

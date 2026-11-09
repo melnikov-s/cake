@@ -38,6 +38,29 @@ const notification: CakeEvent = {
 };
 
 describe("ClientEvents", () => {
+  it.effect(
+    "auto-merge success validates, reaches only its owning window, and is never replayed",
+    () =>
+      Effect.gen(function* () {
+        const events = yield* ClientEvents;
+        const owner = yield* subscribe(events.application(1));
+        const other = yield* subscribe(events.application(2));
+        const notice = yield* Schema.decodeUnknownEffect(cakeEventSchema)({
+          type: "auto-merge-landed",
+          operationId: "turn:1",
+          sessionId: "session-1",
+          title: "Fix toast delivery",
+        });
+        expect(yield* Schema.decodeUnknownEffect(applicationEventSchema)(notice)).toEqual(notice);
+        expect(events.sendTo(1, notice)).toBe(true);
+        expect(yield* Queue.take(owner.received)).toEqual(notice);
+        const late = yield* subscribe(events.application(1));
+        events.broadcast(notification);
+        expect(yield* Queue.take(owner.received)).toEqual(notification);
+        expect(yield* Queue.take(other.received)).toEqual(notification);
+        expect(yield* Queue.take(late.received)).toEqual(notification);
+      }).pipe(Effect.provide(ClientEventsLive)),
+  );
   it.effect("native_window_blur_validates_and_reaches_only_target_application_connection", () =>
     Effect.gen(function* () {
       const events = yield* ClientEvents;

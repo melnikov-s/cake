@@ -15,6 +15,7 @@ export class WorktreeOperation extends Model {
   strategy: WorktreeLandingOperation["strategy"];
   allowDirtyTarget = false;
   resolveAfterLanding: WorktreeLandingOperation["resolveAfterLanding"];
+  automatic: WorktreeLandingOperation["automatic"];
   pauseReason: WorktreeLandingOperation["pauseReason"];
   error: string | undefined;
   resolvedSessionIds: WorktreeLandingOperation["resolvedSessionIds"];

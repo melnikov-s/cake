@@ -8,6 +8,8 @@ import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorag
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
+import { ClientEvents } from "../../services/clients/ClientEvents";
+import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import * as landings from "./worktreeLandings";
 import * as worktreeLifecycle from "./worktreeLifecycle";
 
@@ -20,6 +22,8 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
   const worktrees = yield* ManagedWorktrees;
   const sessions = yield* CakeSessionRuntimes;
   const application = yield* ApplicationState;
+  const clientEvents = yield* ClientEvents;
+  const renderer = yield* RendererRequestCoordinator;
   const requests = (yield* storage.state()).autoMergeRequests ?? emptyRequests;
   yield* SubscriptionRef.update(coordinator.state, (state) =>
     state.autoMergeRequests === requests ? state : { ...state, autoMergeRequests: requests },
@@ -161,6 +165,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       yield* finish(request, "canceled", "Owning project is unavailable; fresh readiness required");
       continue;
     }
+    const owningProjectChatSessionId = projectChatSessionId(request.projectPath);
     const project = current.autoMergeProjects?.find(
       (item) => item.projectPath === request.projectPath,
     );
@@ -266,7 +271,25 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         allowDirtyTarget: false,
         commitBeforeLanding: false,
         resolveAfterLanding: true,
-        automatic: { commit: request.commit, authorize },
+        automatic: {
+          commit: request.commit,
+          authorize,
+          onLanded: Effect.gen(function* () {
+            // Project Chat outlives source-session resolution. Its existing binding owns
+            // notification delivery; never broadcast to other projects/windows or replay.
+            const connectionId = yield* renderer.connectionForSession(owningProjectChatSessionId);
+            if (connectionId === undefined) return;
+            const spawn = document.spawnedSessions.find(
+              (item) => item.sessionId === request.sessionId,
+            );
+            clientEvents.sendTo(connectionId, {
+              type: "auto-merge-landed",
+              operationId,
+              sessionId: request.sessionId,
+              title: spawn?.title || `Session ${request.sessionId}`,
+            });
+          }),
+        },
       })
       .pipe(Effect.catch((error) => finish(request, "failed", error.message)));
     // Read the next request only after the launched operation is observed on a later pass.

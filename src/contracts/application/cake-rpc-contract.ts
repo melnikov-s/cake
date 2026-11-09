@@ -179,6 +179,12 @@ const cakeEventSchemas = {
     title: ipcProjectionString(256),
     message: ipcProjectionString(2_048),
   }),
+  "auto-merge-landed": Schema.Struct({
+    type: Schema.Literal("auto-merge-landed"),
+    operationId: bounded(1, 256),
+    sessionId: bounded(1, 256),
+    title: ipcProjectionString(500),
+  }),
   "provider-auth-notice": Schema.Struct({
     type: Schema.Literal("provider-auth-notice"),
     provider: bounded(1, 256),
@@ -330,6 +336,7 @@ const cakeEventSchemas = {
 } as const;
 
 export const applicationEventSchema = Schema.Union([
+  cakeEventSchemas["auto-merge-landed"],
   cakeEventSchemas["window-control-requested"],
   cakeEventSchemas["agent-action-notice"],
   cakeEventSchemas["pi-settings-changed"],
@@ -418,6 +425,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["complete"],
   cakeEventSchemas["fatal"],
   cakeEventSchemas["notification"],
+  cakeEventSchemas["auto-merge-landed"],
   cakeEventSchemas["provider-auth-notice"],
   cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["project-session-control-requested"],

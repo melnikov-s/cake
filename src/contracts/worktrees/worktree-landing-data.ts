@@ -40,6 +40,8 @@ export const WorktreeLandingOperation = Schema.Struct({
   strategy: Schema.optionalKey(Schema.Literals(["preserve", "squash"])),
   allowDirtyTarget: Schema.Boolean,
   resolveAfterLanding: Schema.optionalKey(Schema.Boolean),
+  /** Auto-merge success is announced by a transient event, never by this replayable snapshot. */
+  automatic: Schema.optionalKey(Schema.Literal(true)),
   pauseReason: Schema.optionalKey(
     Schema.Literals(["commit", "conflict", "rebase-conflict", "squash-message"]),
   ),

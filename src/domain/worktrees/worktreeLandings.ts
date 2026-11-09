@@ -26,6 +26,7 @@ const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandin
   const normalized = { ...operation };
   if (normalized.strategy === undefined) delete normalized.strategy;
   if (normalized.resolveAfterLanding === undefined) delete normalized.resolveAfterLanding;
+  if (normalized.automatic === undefined) delete normalized.automatic;
   if (normalized.pauseReason === undefined) delete normalized.pauseReason;
   if (normalized.error === undefined) delete normalized.error;
   if (normalized.conflictFiles === undefined) delete normalized.conflictFiles;
@@ -191,6 +192,8 @@ const completeLanding = Effect.fn("WorktreeLandings.completeLanding")(function* 
 interface AutomaticLanding {
   readonly commit: string;
   readonly authorize: Effect.Effect<void, WorktreeLandingError>;
+  /** Transient presentation of confirmed Git success, never snapshot/recovery delivery. */
+  readonly onLanded: Effect.Effect<void>;
 }
 
 const performLanding: (
@@ -252,6 +255,7 @@ const performLanding: (
           ...current,
           landedCommit: outcome.commit,
         }));
+      yield* automatic.onLanded;
       yield* automatic.authorize;
       if (operation.resolveAfterLanding)
         yield* worktrees
@@ -504,6 +508,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
     strategy: input.strategy,
     allowDirtyTarget: input.allowDirtyTarget,
     resolveAfterLanding: input.resolveAfterLanding || undefined,
+    automatic: input.automatic ? true : undefined,
   });
   yield* insert(operation);
   yield* run(

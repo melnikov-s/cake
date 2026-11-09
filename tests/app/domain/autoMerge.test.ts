@@ -4,6 +4,10 @@ import { expect } from "vitest";
 import * as digest from "../../../src/domain/cake-chats/cakeChatDigest";
 import { snapshot } from "../helpers/piRuntimeFixture";
 import { runPass } from "../../../src/domain/worktrees/autoMerge";
+import { start } from "../../../src/domain/worktrees/worktreeLandings";
+import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
+import { ClientEvents } from "../../../src/services/clients/ClientEvents";
+import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { initialize, report, setEnabled } from "../../../src/domain/worktrees/autoMergeReadiness";
 import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
@@ -58,9 +62,13 @@ function fixture(
     landing?: "merge" | "pull-request";
     externalSecond?: boolean;
     savedAutoMerge?: boolean;
+    manual?: boolean;
+    noRecipient?: boolean;
   } = {},
 ) {
   const events: string[] = [];
+  const notices: Array<{ connectionId: number; event: CakeEvent }> = [];
+  const recipients: string[] = [];
   let landing = options.landing ?? "merge";
   const externalRecord = { ...record, projectPath: "/external", worktreePath: "/external-tree" };
   let active: string[] = [];
@@ -83,6 +91,7 @@ function fixture(
                   : [
                       {
                         sessionId: "owner",
+                        title: "Fix the merge toast",
                         projectPath: "/project",
                         workingDirectory: "/tree",
                         requester: {
@@ -100,6 +109,22 @@ function fixture(
       ]),
     ).layer,
     WorktreeLandingCoordinatorLive,
+    Layer.mock(ClientEvents, {
+      broadcast: () => {
+        throw new Error("Auto-merge must not broadcast notifications");
+      },
+      sendTo: (connectionId, event) => {
+        notices.push({ connectionId, event });
+        return true;
+      },
+    }),
+    Layer.mock(RendererRequestCoordinator, {
+      connectionForSession: (sessionId) =>
+        Effect.sync(() => {
+          recipients.push(sessionId);
+          return options.noRecipient ? undefined : 42;
+        }),
+    }),
     Layer.mock(SessionCatalogChanges, { publish: () => Effect.void }),
     Layer.mock(CakeSessionRuntimes, {
       executingTurnIds: () => Effect.succeed(options.executingTurns ?? ["turn"]),
@@ -160,7 +185,7 @@ function fixture(
           yield* authorize ?? Effect.void;
           if (
             request.strategy !== "preserve" ||
-            request.expectedSourceCommit !== (options.head ?? commit)
+            request.expectedSourceCommit !== (options.manual ? undefined : (options.head ?? commit))
           )
             return yield* new ManagedWorktreeError({
               operation: "land",
@@ -198,6 +223,8 @@ function fixture(
   return {
     layer,
     events,
+    notices,
+    recipients,
     setLanding: (value: "merge" | "pull-request") => {
       landing = value;
     },
@@ -220,6 +247,7 @@ it.effect.each([
       const storage = yield* SessionFamilyStorage;
       yield* storage.registerSpawn({
         sessionId: "owner",
+        title: "Fix the merge toast",
         projectPath: "/project",
         workingDirectory: "/tree",
         requester: {
@@ -237,6 +265,22 @@ it.effect.each([
       yield* runPass();
       yield* runPass();
       const state = yield* storage.state();
+      expect(test.notices).toEqual(
+        scenario.merged
+          ? [
+              {
+                connectionId: 42,
+                event: {
+                  type: "auto-merge-landed",
+                  operationId: "turn",
+                  sessionId: "owner",
+                  title: "Fix the merge toast",
+                },
+              },
+            ]
+          : [],
+      );
+      expect(test.recipients).toEqual(scenario.merged ? [projectChatSessionId("/project")] : []);
       expect(state.coordinatorDigest).toHaveLength(1);
       expect(state.coordinatorDigest?.[0]?.userInputOnly).toBe(true);
       expect(state.coordinatorDigest?.[0]?.summary).toContain(
@@ -640,6 +684,68 @@ it.effect(
   },
 );
 
+it.effect(
+  "announces confirmed auto-merge once, not readiness, enabling, or replayed outcomes",
+  () => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* ready;
+      expect(test.notices).toEqual([]);
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      yield* runPass();
+      expect(test.notices).toHaveLength(1);
+      const operation = (yield* SubscriptionRef.get(
+        (yield* WorktreeLandingCoordinator).state,
+      )).operations.get("/tree");
+      expect(operation?.automatic).toBe(true);
+      // A recovered/acknowledged terminal outcome must not re-announce the merge.
+      yield* (yield* SessionFamilyStorage).updateAutoMerge("turn", "landing");
+      yield* runPass();
+      expect(test.notices).toHaveLength(1);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("keeps successful manual landing outside the automatic announcement path", () => {
+  const test = fixture({ manual: true });
+  return Effect.gen(function* () {
+    yield* start({
+      operationId: "manual",
+      workspacePath: "/tree",
+      sessionId: "owner",
+      strategy: "preserve",
+      allowDirtyTarget: false,
+      commitBeforeLanding: false,
+    });
+    yield* terminal;
+    expect(test.events).toEqual(["land"]);
+    expect(test.notices).toEqual([]);
+    expect(
+      (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state)).operations.get(
+        "/tree",
+      )?.automatic,
+    ).toBeUndefined();
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect(
+  "does not broadcast or retain success when the owning project has no bound window",
+  () => {
+    const test = fixture({ noRecipient: true });
+    return Effect.gen(function* () {
+      yield* ready;
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect((yield* requests)[0]?.state).toBe("landed");
+      expect(test.recipients).toEqual([projectChatSessionId("/project")]);
+      expect(test.notices).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
 it.effect.each(["off", "new-input", "re-enabled"] as const)(
   "rechecks %s after queue wait, before Git or resolution",
   (change) =>
@@ -735,6 +841,7 @@ it.effect(
       yield* runPass();
       expect(test.events.filter((event) => event === "resolve")).toHaveLength(1);
       expect(test.events).not.toContain("land");
+      expect(test.notices).toEqual([]);
       expect((yield* requests)[0]?.state).toBe("landed");
     }).pipe(Effect.provide(test.layer));
   },

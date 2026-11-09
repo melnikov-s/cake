@@ -59,6 +59,18 @@ export const observeApplicationEvents = (
         root.settingsStore.providers.piSettings = event.settings;
         return;
       }
+      if (event.type === "auto-merge-landed") {
+        if (root.sessionRegistry.isWorktreeLandingSilent(event.operationId)) return;
+        root.sessionRegistry.silenceWorktreeLanding(event.operationId);
+        const title = root.sessionCatalogStore.find(event.sessionId)?.title || event.title;
+        root.toastStore.show({
+          title: "Session auto-merged",
+          // Git success is independent of subsequent resolution/cleanup failures.
+          message: `“${title}” was merged into the project.`,
+          coalesceKey: `worktree-landed:${event.operationId}`,
+        });
+        return;
+      }
       if (event.type === "agent-action-notice") {
         root.applicationControlStore.presentAgentAction(event);
         return;
