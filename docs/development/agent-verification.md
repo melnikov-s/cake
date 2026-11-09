@@ -155,11 +155,17 @@ reproduction is necessary for the claim, not a mandatory detour for every
 unclassified failure. Never weaken tests, relabel a failed check as passed, or
 claim readiness with known task-relevant failures.
 
-After two unsuccessful repair/verification cycles on the same blocker, stop
-expanding work. Report the evidence, exact blocker and smallest next experiment
-or decision; do not automatically widen into architectural work. See the
-two-failed-hypothesis rule under Debugging discipline below. These are bounded
-investigation rules, not a global wall-clock timeout.
+After two failed hypotheses or repair/verification cycles on the same blocker,
+checkpoint and reassess the evidence and approach. Record what failed, what the
+checks proved and the smallest next experiment that distinguishes remaining
+hypotheses. Do not blindly repeat repairs or broaden abstractions. Continue
+evidence-backed, owned, in-scope repairs without asking the user to restart
+unfinished work. Escalate actual blockers, scope/authorization changes or decisions
+needing human input, stating the unresolved boundary and smallest experiment or
+decision needed to proceed. Cycle count alone is not a reason to abandon work or
+declare completion; a checkpoint changes the approach, not task ownership or
+readiness. These are bounded investigation rules, not a retry budget or global
+wall-clock timeout.
 
 Report implementation, scoped validation, unrelated validation debt and readiness
 separately. Scope complete + relevant checks passed = ready. `validationPassed`
@@ -494,7 +500,7 @@ To profile instead:
 ### Debugging discipline
 
 - Reproduce a reported UI defect in the smallest real Electron fixture before refactoring shared abstractions.
-- After two failed implementation hypotheses, stop changing architecture. After two unsuccessful repair/verification cycles on the same blocker, stop expanding work even if no architecture changed. In either case, report the evidence, exact blocker or unresolved boundary, and smallest next experiment or decision; do not automatically begin more repairs or architectural work.
+- After two failed hypotheses or repair/verification cycles, use the [checkpoint and reassessment rule](#failures-checkpoints-and-readiness): choose the smallest evidence-backed next experiment, continue owned in-scope repairs, and escalate only actual blockers or decisions needing human input. Do not blindly repeat repairs or broaden abstractions.
 - Remove temporary diagnostics before broader verification.
 - Do not broaden a surface-specific fix into `Chat`, `ChatStore`, or another shared primitive unless the behavior belongs to every consumer.
 - When a shared chat primitive changes, run Electron smoke tests for the affected secondary chat, normal project chat input, and slash-command keyboard handling.

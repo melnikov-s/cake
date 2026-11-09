@@ -51,6 +51,31 @@ it("makes scoped readiness visible without a globally-green repository gate", ()
   );
   expect(reports).toContain("Never weaken tests or relabel a failed task check as passed");
 });
+it.each([
+  ["repository instructions", repo],
+  ["verification guide", verification],
+])("checkpoints failed repairs without abandoning owned work in %s", (_name, policy) => {
+  const text = policy.replace(/\s+/g, " ");
+  expect(text).toMatch(/After two failed hypotheses/);
+  expect(text).toContain("checkpoint and reassess the evidence and approach");
+  expect(text).toContain("smallest next experiment");
+  expect(text).toMatch(/do not blindly repeat repairs or broaden abstractions/i);
+  expect(text).toContain("Continue evidence-backed, owned, in-scope repairs");
+  expect(text).toContain("without asking the user to restart unfinished work");
+  expect(text).toContain("Escalate actual blockers, scope/authorization changes or decisions");
+  expect(text).toContain("needing human input");
+  expect(text).toContain("Cycle count alone is not a reason to abandon work or declare completion");
+  expect(text).not.toMatch(
+    /stop and report|stop expanding work|stop changing architecture|do not automatically begin more repairs/i,
+  );
+});
+it("uses the same checkpoint rule for debugging and verification", () => {
+  const debugging = verification.split("### Debugging discipline")[1];
+  expect(debugging).toContain(
+    "[checkpoint and reassessment rule](#failures-checkpoints-and-readiness)",
+  );
+  expect(debugging).toContain("continue owned in-scope repairs");
+});
 it.each(["merge", "pull-request"] as const)(
   "requires landing authorization before the %s workflow",
   (landing) => {
