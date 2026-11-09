@@ -10,8 +10,8 @@
  *   viewport resizes) are compensated so the visible reading content keeps
  *   its exact on-screen position, including changes inside a tall row.
  *
- * Only the reader may start following again, by scrolling back to the bottom.
- * The one programmatic jump to the bottom is sending a message. Revealing a
+ * The reader may start following again by scrolling or explicitly jumping to
+ * the bottom. Sending a message also jumps to the bottom. Revealing a
  * message selected with the keyboard, a link, or an explicit attention click
  * stops following. Attention reveals hold the exact result's start until input.
  *
@@ -45,7 +45,9 @@ export interface TranscriptScrollOwner {
   reconcile(): void;
   /** Capture immediately before older rows commit, including a virtual range replacement. */
   preserveForPrepend(scrollToItem: (key: string) => void): void;
-  /** The reader sent a message: the one programmatic jump to the bottom. */
+  /** Explicitly return to the latest content and resume following. */
+  jumpToBottom(navigation?: { itemKey: string; scrollToIndex(): void }): void;
+  /** The reader sent a message: return to the bottom and resume following. */
   scrollToBottomForSentMessage(navigation?: { itemKey: string; scrollToIndex(): void }): void;
   /**
    * Reveals the row with this stable item key. An unrendered virtual row is
@@ -65,6 +67,8 @@ export interface TranscriptScrollOwner {
 export interface TranscriptScrollOwnerOptions {
   /** Whether to follow the bottom before the reader has scrolled. */
   following: boolean;
+  /** Updated by the existing scroll/layout lifecycle, only when visibility changes. */
+  onJumpToBottomVisibilityChange?(visible: boolean): void;
   /** Saved row placement; virtual index navigation only estimates this position. */
   restore?: { messageId: string; offset: number };
   /** Cancels the virtualizer's pending index-navigation retries without moving. */
@@ -146,9 +150,17 @@ export function createTranscriptScrollOwner(
   const gap = () => scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
   const atBottom = () => gap() <= bottomThreshold;
   const atEnd = () => gap() < endTolerance;
+  let jumpVisible: boolean | undefined;
+  const publishJumpVisibility = () => {
+    const visible = !covered && measurable() && !positioning() && gap() > scroller.clientHeight;
+    if (visible === jumpVisible) return;
+    jumpVisible = visible;
+    options.onJumpToBottomVisibilityChange?.(visible);
+  };
   const write = (top: number) => {
     scroller.scrollTop = top;
     knownTop = scroller.scrollTop;
+    publishJumpVisibility();
   };
   const rows = () => scroller.querySelectorAll<HTMLElement>(rowSelector);
   const row = (key: string) =>
@@ -394,6 +406,10 @@ export function createTranscriptScrollOwner(
   };
 
   const reconcile = () => {
+    reconcilePosition();
+    publishJumpVisibility();
+  };
+  const reconcilePosition = () => {
     if (covered || !measurable()) return;
     observeViewport();
     const pendingMeasurements = measuring();
@@ -502,6 +518,10 @@ export function createTranscriptScrollOwner(
   };
 
   const handleScroll = () => {
+    observeScroll();
+    publishJumpVisibility();
+  };
+  const observeScroll = () => {
     if (covered || !measurable()) return;
     observeViewport();
     if (
@@ -660,19 +680,22 @@ export function createTranscriptScrollOwner(
   observer.observe(content);
   observer.observe(scroller);
 
+  const jumpToBottom: TranscriptScrollOwner["jumpToBottom"] = (navigation) => {
+    if (covered) return;
+    cancelReveal();
+    options.cancelVirtualNavigation();
+    following = true;
+    pendingBottom = navigation?.itemKey ?? "";
+    bottomNavigationSettled = !navigation;
+    pin();
+    navigation?.scrollToIndex();
+  };
+
   return {
     reconcile,
     preserveForPrepend,
-    scrollToBottomForSentMessage(navigation) {
-      if (covered) return;
-      cancelReveal();
-      options.cancelVirtualNavigation();
-      following = true;
-      pendingBottom = navigation?.itemKey ?? "";
-      bottomNavigationSettled = !navigation;
-      pin();
-      navigation?.scrollToIndex();
-    },
+    jumpToBottom,
+    scrollToBottomForSentMessage: jumpToBottom,
     reveal(itemKey, scrollToIndex) {
       following = false;
       cancelReveal();
@@ -723,6 +746,7 @@ export function createTranscriptScrollOwner(
       following = !next && !selecting && atBottom();
       knownTop = scroller.scrollTop;
       anchor = findAnchor();
+      publishJumpVisibility();
     },
     dispose() {
       abort.abort();

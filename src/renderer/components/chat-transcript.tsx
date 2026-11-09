@@ -61,6 +61,11 @@ export {
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
 
+export interface TranscriptBottomNavigation {
+  conversationId: string;
+  jumpToBottom(): void;
+}
+
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
 const selectionRevealMargin = 16;
 
@@ -94,6 +99,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   error: errorOverride,
   virtualized = true,
   annotationSubmitFocusRef,
+  onBottomNavigationChange,
 }: {
   store: ChatStore;
   behavior?: ChatTranscriptBehavior;
@@ -102,6 +108,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   error?: { message: string; details?: string; title?: string };
   virtualized?: boolean;
   annotationSubmitFocusRef?: RefObject<HTMLElement | null>;
+  onBottomNavigationChange?(navigation: TranscriptBottomNavigation | undefined): void;
 }) {
   useEffect(() => store.retainTranscript(), [store]);
   useEffect(
@@ -142,6 +149,8 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (!scroller || !content) return;
     const owner = createTranscriptScrollOwner(scroller, content, {
       following: initiallyFollowing,
+      onJumpToBottomVisibilityChange: (visible) =>
+        onBottomNavigationChange?.(visible ? bottomNavigation : undefined),
       restore: restoredScrollPosition?.kind === "message" ? restoredScrollPosition : undefined,
       cancelVirtualNavigation: () => virtuosoRef.current?.cancelScrollToIndex(),
       scrollToItem,
@@ -155,14 +164,46 @@ export const ChatTranscript = observer(function ChatTranscript({
         return true;
       },
     });
+    const bottomNavigation: TranscriptBottomNavigation = {
+      conversationId: store.id,
+      jumpToBottom() {
+        const keys = renderedItemKeys.current;
+        const itemKey = keys.at(-1);
+        owner.jumpToBottom(
+          virtualized && itemKey !== undefined
+            ? {
+                itemKey,
+                scrollToIndex: () =>
+                  virtuosoRef.current?.scrollToIndex({
+                    index: "LAST",
+                    align: "end",
+                    behavior: "auto",
+                  }),
+              }
+            : undefined,
+        );
+        // The control disappears at its destination; keep keyboard scrolling
+        // available instead of leaving focus on an unmounted button/the body.
+        scroller.focus({ preventScroll: true });
+      },
+    };
     scrollOwner.current = owner;
     return () => {
+      onBottomNavigationChange?.(undefined);
       owner.dispose();
       scrollOwner.current = undefined;
     };
-  }, [initiallyFollowing, restoredScrollPosition, scroller, scrollToItem, store]);
-  // Sending a message (from any composer path) is the only time the transcript
-  // scrolls to the bottom for the reader.
+  }, [
+    initiallyFollowing,
+    restoredScrollPosition,
+    scroller,
+    scrollToItem,
+    store,
+    virtualized,
+    onBottomNavigationChange,
+  ]);
+  // Sending a message (from any composer path) returns to the bottom, just like
+  // the reader's explicit jump-to-bottom action.
   const sentMessageRevision = store.transcriptInteraction.sentMessageRevision;
   const scrolledForSentMessage = useRef(sentMessageRevision);
   const supportsTodoFocus = Boolean(

@@ -146,6 +146,159 @@ export default function Widget() {
   },
 });
 
+test.describe("composer jump-to-bottom control", () => {
+  test.use({ chatMode: "full" });
+
+  for (const theme of ["light", "dark"] as const) {
+    for (const width of [1000, 390]) {
+      test(`jump-to-bottom is separate from Send at ${width}px in ${theme}`, async ({
+        fixturePage: page,
+      }) => {
+        await page.setViewportSize({ width, height: 700 });
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        await page.evaluate((theme) => {
+          document.documentElement.dataset.theme = theme;
+        }, theme);
+        const transcript = page.locator(".transcript");
+        const jump = page.getByRole("button", { name: "Scroll to bottom", exact: true });
+        const input = page.getByRole("combobox", { name: "Message", exact: true });
+        await input.fill("Keep this draft unchanged.");
+        await expect(jump).toHaveCount(0);
+
+        // Native geometry and the production virtualizer, not a document-height estimate.
+        await wheel(page, transcript, -1400);
+        await expect(jump).toBeVisible();
+        const reading = await anchor(transcript);
+        await input.press("Shift+Enter");
+        await expect(input).toHaveValue("Keep this draft unchanged.\n");
+        await settle(page);
+        expect(await anchor(transcript)).toEqual(reading);
+        await input.fill("Keep this draft unchanged.");
+        for (const operation of ["stream", "arrive", "activity"] as const) {
+          await command(page, operation);
+          await settle(page);
+          await expect(jump).toBeVisible();
+          expect(await anchor(transcript)).toEqual(reading);
+        }
+        await page.evaluate(() => {
+          (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).sessionUpdates(
+            "Background report",
+          );
+        });
+        await settle(page);
+        expect(await anchor(transcript)).toEqual(reading);
+        // A tall queue/header must not overlap the gutter's bottom-aligned target.
+        await page.evaluate(() => {
+          (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).setDockHeight(
+            60,
+          );
+        });
+        const bounds = await jump.evaluate((button) => {
+          const target = button.getBoundingClientRect();
+          const composer = button
+            .parentElement!.querySelector(".workbench-composer")!
+            .getBoundingClientRect();
+          return {
+            outside: target.left >= composer.right,
+            insidePane:
+              target.right <= button.closest('[data-slot="chat"]')!.getBoundingClientRect().right,
+            hitTarget: target.width >= 36 && target.height >= 36,
+          };
+        });
+        expect(bounds).toEqual({ outside: true, insidePane: true, hitTarget: true });
+        await page.evaluate(() => {
+          (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).setDockHeight(0);
+        });
+        await jump.focus();
+        await expect(jump).toBeFocused();
+        await expect(page.getByRole("tooltip")).toContainText("Scroll to bottom");
+        await transcript.focus();
+        await page.mouse.move(1, 1);
+        await mkdir(join(repositoryRoot, ".visual-captures"), { recursive: true });
+        await page.screenshot({
+          path: join(repositoryRoot, `.visual-captures/jump-bottom-${theme}-${width}-up.png`),
+        });
+
+        // A keyboard activation must neither submit nor change the draft.
+        await jump.focus();
+        await jump.press("Enter");
+        await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+        await expect(jump).toHaveCount(0);
+        await expect(transcript).toBeFocused();
+        await expect(input).toHaveValue("Keep this draft unchanged.");
+        expect(
+          await page.evaluate(() =>
+            (
+              Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+            ).submittedText(),
+          ),
+        ).toBeUndefined();
+        await command(page, "arrive");
+        await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+        await page.screenshot({
+          path: join(repositoryRoot, `.visual-captures/jump-bottom-${theme}-${width}-bottom.png`),
+        });
+      });
+    }
+  }
+
+  test("visibility tracks actual viewport resize, content growth, and conversation switching", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const jump = page.getByRole("button", { name: "Scroll to bottom", exact: true });
+    await wheel(page, transcript, -1400);
+    await expect(jump).toBeVisible();
+    await command(page, "switchConversation");
+    await expect(jump).toHaveCount(0);
+    await command(page, "switchConversation");
+    await expect(jump).toBeVisible();
+    await jump.click();
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    await expect(jump).toHaveCount(0);
+
+    await wheel(page, transcript, -450);
+    await expect(jump).toHaveCount(0);
+    // Shrink the actual scroller, not the full document or composer.
+    await page.evaluate(() => {
+      const root = document.getElementById("root")!;
+      root.style.minHeight = "0px";
+      root.style.height = "300px";
+    });
+    await expect.poll(() => transcript.evaluate((element) => element.clientHeight)).toBe(300);
+    await expect(jump).toBeVisible();
+    await page.evaluate(() => {
+      document.getElementById("root")!.style.height = "600px";
+    });
+    await expect(jump).toHaveCount(0);
+    await command(page, "arrive");
+    await expect(jump).toBeVisible();
+  });
+});
+
+test.describe("embedded composer jump-to-bottom control", () => {
+  test.use({ chatMode: "compact", withUpdates: true });
+  test("jumps without submitting from the shared embedded composer", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const input = page.getByRole("combobox", { name: "Message", exact: true });
+    const jump = page.getByRole("button", { name: "Scroll to bottom", exact: true });
+    await input.fill("Embedded draft");
+    await wheel(page, transcript, -1400);
+    await expect(jump).toBeVisible();
+    await jump.click();
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    await expect(jump).toHaveCount(0);
+    await expect(input).toHaveValue("Embedded draft");
+    expect(
+      await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).submittedText(),
+      ),
+    ).toBeUndefined();
+  });
+});
+
 test.describe("attention result navigation boundary", () => {
   test.use({ chatMode: "full", messageCount: 200 });
 

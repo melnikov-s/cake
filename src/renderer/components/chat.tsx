@@ -12,7 +12,13 @@ import type { ComposerFocusHandle } from "./slash-command-combobox";
 import { useComposerEnterContinuation } from "../hooks/use-composer-enter-continuation";
 import { ChatSubmitAction } from "@/components/chat-submit-action";
 import { ImagePreview } from "@/components/image-preview";
-import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
+import {
+  ChatTranscript,
+  type ChatTranscriptBehavior,
+  type TranscriptBottomNavigation,
+} from "@/components/chat-transcript";
+import { IconButton } from "@/components/ui/icon-button";
+import { ArrowDownIcon } from "@/components/ui/icons";
 import { ChatConversationControls } from "./chat-conversation-controls";
 import { QueuedPrompts } from "@/components/queued-prompts";
 import { ScheduledPrompts } from "@/components/scheduled-prompts";
@@ -190,6 +196,7 @@ export const Chat = observer(function Chat({
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<ComposerInputElement>(null);
   const composerFocusRef = useRef<ComposerFocusHandle>(null);
+  const [bottomNavigation, setBottomNavigation] = useState<TranscriptBottomNavigation>();
   const [promptedSelection, setPromptedSelection] = useState<{
     draft: string;
     start: number;
@@ -321,113 +328,129 @@ export const Chat = observer(function Chat({
           : "absolute inset-x-0 bottom-0 z-10 w-full max-w-full min-w-0 pointer-events-none bg-gradient-to-b from-transparent to-background/28 px-6 pb-4 pt-5 max-[620px]:px-2.5",
       )}
     >
-      <ChatComposer
-        className={embedded ? "chat-embedded-workbench-composer" : undefined}
-        configuration={composerConfiguration}
-        inline={inlineComposer}
-        header={composerHeader}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (activatingDraft) void store.activateDraft();
-          else void submitMessage();
-        }}
-        input={
-          activatingDraft ? undefined : (
-            <ChatComposerInput
-              key={store.id}
-              store={store}
-              inputRef={composerInputRef}
-              focusRef={composerFocusRef}
-              focusEnabled={composerFocusEnabled}
-              parkFocusWhileDictating={parkComposerFocusWhileDictating}
-              onReword={(selection) => void reword(selection)}
-              onPromptedReword={setPromptedSelection}
-              onSubmit={(value) => submitMessage(value)}
-            />
-          )
-        }
-        toolbarSeparated={!activatingDraft}
-        leadingAccessory={composerLeadingAccessory?.content}
-        leadingAccessoryVisible={composerLeadingAccessory?.visible}
-        toolbarLeading={
-          !activatingDraft && (
-            <>
-              {store.conversationMode && (
-                <ChatConversationControls
-                  conversation={store.conversationMode.workflow}
-                  target={store.conversationMode.target}
-                />
-              )}
-              {store.conversationMode?.workflow.enabled && composerConfiguration && (
-                <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
-              )}
-            </>
-          )
-        }
-        toolbarActions={
-          <>
-            {showContextUsage &&
-              !activatingDraft &&
-              (store.contextInspector ? (
-                <ContextInspector store={store.contextInspector} usage />
-              ) : (
-                <Usage store={store} />
-              ))}
-            {!activatingDraft && pluginActions}
-            <ChatSubmitAction store={store} />
-          </>
-        }
+      <div
+        className={cn(
+          "relative mx-auto w-full min-w-0 pr-12",
+          composerLeadingAccessory?.content ? "max-w-[58.25rem]" : "max-w-[54.25rem]",
+        )}
       >
-        {!activatingDraft && <QueuedPrompts store={store} />}
-        {!activatingDraft && store.rewording && (
-          <div className="px-2 pb-2 text-xs text-muted-foreground" role="status">
-            Rewording selection…
-          </div>
+        <ChatComposer
+          className={embedded ? "chat-embedded-workbench-composer" : undefined}
+          configuration={composerConfiguration}
+          inline={inlineComposer}
+          header={composerHeader}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (activatingDraft) void store.activateDraft();
+            else void submitMessage();
+          }}
+          input={
+            activatingDraft ? undefined : (
+              <ChatComposerInput
+                key={store.id}
+                store={store}
+                inputRef={composerInputRef}
+                focusRef={composerFocusRef}
+                focusEnabled={composerFocusEnabled}
+                parkFocusWhileDictating={parkComposerFocusWhileDictating}
+                onReword={(selection) => void reword(selection)}
+                onPromptedReword={setPromptedSelection}
+                onSubmit={(value) => submitMessage(value)}
+              />
+            )
+          }
+          toolbarSeparated={!activatingDraft}
+          leadingAccessory={composerLeadingAccessory?.content}
+          leadingAccessoryVisible={composerLeadingAccessory?.visible}
+          toolbarLeading={
+            !activatingDraft && (
+              <>
+                {store.conversationMode && (
+                  <ChatConversationControls
+                    conversation={store.conversationMode.workflow}
+                    target={store.conversationMode.target}
+                  />
+                )}
+                {store.conversationMode?.workflow.enabled && composerConfiguration && (
+                  <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
+                )}
+              </>
+            )
+          }
+          toolbarActions={
+            <>
+              {showContextUsage &&
+                !activatingDraft &&
+                (store.contextInspector ? (
+                  <ContextInspector store={store.contextInspector} usage />
+                ) : (
+                  <Usage store={store} />
+                ))}
+              {!activatingDraft && pluginActions}
+              <ChatSubmitAction store={store} />
+            </>
+          }
+        >
+          {!activatingDraft && <QueuedPrompts store={store} />}
+          {!activatingDraft && store.rewording && (
+            <div className="px-2 pb-2 text-xs text-muted-foreground" role="status">
+              Rewording selection…
+            </div>
+          )}
+          {!activatingDraft && composerContent}
+          {!activatingDraft && (
+            <AnnotationSummary
+              annotations={store.annotations}
+              onRemove={(id) => store.removeAnnotation(id)}
+            />
+          )}
+          {!activatingDraft && store.attachments.length > 0 && (
+            <div className="flex flex-wrap items-start gap-2 px-1.5 pb-1.5 pt-0.5">
+              {store.attachments.map((attachment, index) =>
+                attachment.kind === "annotation" ? null : attachment.kind === "source" ? (
+                  <SourceAttachment
+                    key={`${attachment.kind}-${attachment.name}-${index}`}
+                    attachment={attachment}
+                    presentation="attachment"
+                    onOpen={transcriptBehavior?.openSourceLocation}
+                    onRemove={() => store.removeAttachment(index)}
+                  />
+                ) : attachment.kind === "text" ? (
+                  <TextAttachment
+                    key={`text-${index}`}
+                    name={attachment.name}
+                    text={attachment.text}
+                    onRemove={() => store.removeAttachment(index)}
+                  />
+                ) : attachment.kind === "image" ? (
+                  <ImagePreview
+                    key={`${attachment.kind}-${attachment.name}-${index}`}
+                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                    alt={attachment.name}
+                    presentation="attachment"
+                    onRemove={() => store.removeAttachment(index)}
+                  />
+                ) : (
+                  <AttachmentTile
+                    key={`${attachment.kind}-${attachment.name}-${index}`}
+                    name={attachment.name}
+                    onRemove={() => store.removeAttachment(index)}
+                  />
+                ),
+              )}
+            </div>
+          )}
+        </ChatComposer>
+        {bottomNavigation?.conversationId === store.id && (
+          <IconButton
+            tooltip="Scroll to bottom"
+            className="pointer-events-auto absolute right-0 bottom-2 size-9 rounded-full hover:bg-muted/85 focus-visible:ring-3 focus-visible:ring-ring/25 motion-reduce:transition-none"
+            onClick={() => bottomNavigation.jumpToBottom()}
+          >
+            <ArrowDownIcon />
+          </IconButton>
         )}
-        {!activatingDraft && composerContent}
-        {!activatingDraft && (
-          <AnnotationSummary
-            annotations={store.annotations}
-            onRemove={(id) => store.removeAnnotation(id)}
-          />
-        )}
-        {!activatingDraft && store.attachments.length > 0 && (
-          <div className="flex flex-wrap items-start gap-2 px-1.5 pb-1.5 pt-0.5">
-            {store.attachments.map((attachment, index) =>
-              attachment.kind === "annotation" ? null : attachment.kind === "source" ? (
-                <SourceAttachment
-                  key={`${attachment.kind}-${attachment.name}-${index}`}
-                  attachment={attachment}
-                  presentation="attachment"
-                  onOpen={transcriptBehavior?.openSourceLocation}
-                  onRemove={() => store.removeAttachment(index)}
-                />
-              ) : attachment.kind === "text" ? (
-                <TextAttachment
-                  key={`text-${index}`}
-                  name={attachment.name}
-                  text={attachment.text}
-                  onRemove={() => store.removeAttachment(index)}
-                />
-              ) : attachment.kind === "image" ? (
-                <ImagePreview
-                  key={`${attachment.kind}-${attachment.name}-${index}`}
-                  src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                  alt={attachment.name}
-                  presentation="attachment"
-                  onRemove={() => store.removeAttachment(index)}
-                />
-              ) : (
-                <AttachmentTile
-                  key={`${attachment.kind}-${attachment.name}-${index}`}
-                  name={attachment.name}
-                  onRemove={() => store.removeAttachment(index)}
-                />
-              ),
-            )}
-          </div>
-        )}
-      </ChatComposer>
+      </div>
       {status}
       {promptedSelection && (
         <RewordPromptDialog
@@ -462,6 +485,7 @@ export const Chat = observer(function Chat({
       >
         <ChatTranscript
           store={store}
+          onBottomNavigationChange={setBottomNavigation}
           annotationSubmitFocusRef={composerFocusEnabled ? composerInputRef : undefined}
           behavior={
             transcriptBehavior?.canReplyToMessage && composerVisible

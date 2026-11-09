@@ -302,6 +302,11 @@ export const TrashIcon = ({ size = 15 }: { size?: number } = {}) => (
     <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
   </Icon>
 );
+export const ArrowDownIcon = () => (
+  <Icon>
+    <path d="M12 5v14m-7-7 7 7 7-7" />
+  </Icon>
+);
 export const ArrowLeftIcon = () => (
   <Icon>
     <path d="m12 19-7-7 7-7M5 12h14" />

@@ -195,7 +195,9 @@ const fixture = createRendererStoreFixture({
     },
   },
   projects: [projectRecord({ path: "/project", name: "Project" })],
-  sessions: [sessionSummary({ sessionId: "ownership", projectPath: "/project" })],
+  sessions: ["ownership", "empty-conversation"].map((sessionId) =>
+    sessionSummary({ sessionId, projectPath: "/project" }),
+  ),
 });
 const session = fixture.root.sessionRegistry.load("ownership", "/project");
 // The active session can send from its composer (the one scroll-to-bottom exception).
@@ -282,6 +284,13 @@ function publish(streaming = false) {
   });
 }
 publish();
+const alternateSession = fixture.root.sessionRegistry.load("empty-conversation", "/project");
+applyConversationUpdate(alternateSession.model, {
+  _tag: "Snapshot",
+  revision: 1,
+  snapshot: { ...snapshot, sessionId: alternateSession.sessionId, parts: [] },
+});
+let alternateConversation = false;
 const root = createRoot(document.getElementById("root")!);
 let liveTimer: ReturnType<typeof setInterval> | undefined;
 let dockHeight = 0;
@@ -293,7 +302,11 @@ function render() {
           <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
             {chatMode ? (
               <Chat
-                store={store}
+                store={
+                  alternateConversation
+                    ? alternateSession.conversationSessionStore.chatStore
+                    : store
+                }
                 transcriptBehavior={
                   widget
                     ? {
@@ -360,6 +373,7 @@ export interface TranscriptOwnershipFixture {
   /** Leave and reopen the same transcript, retaining its real Store reading position. */
   remount(): void;
   readingPosition(): TranscriptScrollPosition | undefined;
+  switchConversation(): void;
   loadAttachment(content: AttachmentContent): void;
   /** Deliver live external projections after the transcript has already rendered. */
   partsUpdated(updates: UiPart[]): void;
@@ -479,6 +493,10 @@ Reflect.set(window, "transcriptFixture", {
   },
   readingPosition() {
     return store.transcriptInteraction.transcriptScrollPosition;
+  },
+  switchConversation() {
+    alternateConversation = !alternateConversation;
+    render();
   },
   loadAttachment(content) {
     releaseAttachment?.(content);
