@@ -5,11 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { measureDesktopStartup } from "../../scripts/performance/desktop-startup.mjs";
-import {
-  store,
-  windowStateChildren,
-  windowStateDocument,
-} from "../fixtures/window-state";
+import { store, windowStateChildren, windowStateDocument } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
