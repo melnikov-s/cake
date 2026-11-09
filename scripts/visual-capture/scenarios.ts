@@ -5192,10 +5192,11 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
     }
   },
   async prepare(page, state) {
-    await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
     const batch = page.getByRole("status", { name: "Session results" });
     await expect(batch.getByRole("button")).toHaveCount(5);
+    await page.getByRole("combobox", { name: "Message Cake Chat", exact: true }).focus();
+    await page.mouse.move(1, 1);
     const standalone = page
       .locator('[data-slot="session-message"]:not([role="status"] [data-slot="session-message"])')
       .first()
@@ -5228,6 +5229,111 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
         );
       });
       expect(inset).toBeGreaterThan(0);
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".transcript"),
+};
+
+const sessionUpdateSpacingScenario: VisualCaptureScenario = {
+  name: "session-update-spacing",
+  description: "Three compact auto-merge completion summaries with retained disclosure targets",
+  states: ["default", "expanded"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    await mkdir(join(paths.cakeHome, "pi", "global-chat"), { recursive: true });
+    const reminder = formatSessionDigestReminder({
+      lines: (
+        [
+          ["e37674d0", "Switch right pane to Chat when entering VS Code"],
+          ["8ac9f5fc", "Put user header before submitted content"],
+          ["1b1baa0d", "Protect unsent annotations from accidental dismissal"],
+        ] as const
+      ).map(([sessionId, title]) => ({
+        reference: sessionId,
+        sessionId,
+        title,
+        status: "completed" as const,
+        summary:
+          "Auto-merge backend outcome: merged. Scoped checks passed; changes committed and landed.",
+      })),
+    });
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
+    );
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await root.commit(async (tx) => {
+        await tx.appendEntry(UserEntry, root.id, {
+          model: [{ role: "user", content: reminder!, timestamp: 10 }],
+        });
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page, state) {
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
+    const batch = page.getByRole("status", { name: "Session results" });
+    const toggles = batch.locator('[data-slot="response-disclosure"]');
+    await expect(toggles).toHaveCount(3);
+    // Release the navigation rail's focus/hover expansion before clicking a
+    // narrow transcript, just as moving into the conversation does in the app.
+    await page.getByRole("combobox", { name: "Message Cake Chat", exact: true }).focus();
+    await page.mouse.move(1, 1);
+    const verifyCompactRows = async () => {
+      const rows = await batch.locator('[data-slot="session-message"]').evaluateAll((elements) =>
+        elements.map((element) => {
+          const bounds = element.getBoundingClientRect();
+          const card = element.querySelector('[data-slot="session-message-card"]')!;
+          const button = element.querySelector('[data-slot="response-disclosure"]')!;
+          return {
+            top: bounds.top,
+            bottom: bounds.bottom,
+            height: bounds.height,
+            cardHeight: card.getBoundingClientRect().height,
+            targetHeight: button.getBoundingClientRect().height,
+            overflow: element.scrollWidth > element.clientWidth,
+          };
+        }),
+      );
+      for (const [index, row] of rows.entries()) {
+        expect(row.height).toBe(row.cardHeight);
+        expect(row.height).toBeLessThanOrEqual(44);
+        expect(row.targetHeight).toBeGreaterThanOrEqual(28);
+        expect(row.overflow).toBe(false);
+        if (index > 0) {
+          const gap = row.top - rows[index - 1]!.bottom;
+          expect(gap).toBeGreaterThanOrEqual(0);
+          expect(gap).toBeLessThanOrEqual(4);
+        }
+      }
+      // The virtual row measures the real stack, not a reserved full-message height.
+      const item = batch.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
+      expect((await item.boundingBox())!.height).toBeLessThanOrEqual(3 * 44 + 2 * 4 + 20);
+    };
+    await verifyCompactRows();
+    await toggles.first().click();
+    await expect(toggles.first()).toHaveAttribute("aria-expanded", "true");
+    const bodyId = await toggles.first().getAttribute("aria-controls");
+    const body = batch.locator(`[id="${bodyId}"]`);
+    await expect(body).toBeVisible();
+    await expect(body).toContainText("Scoped checks passed; changes committed and landed.");
+    const title = toggles.first().locator("..").getByRole("link");
+    await expect(title).toHaveText("Switch right pane to Chat when entering VS Code");
+    expect((await title.boundingBox())!.width).toBeGreaterThan(80);
+    if (state !== "expanded") {
+      await toggles.first().click();
+      await expect(toggles.first()).toHaveAttribute("aria-expanded", "false");
+      await expect(body).toHaveCount(0);
+      await verifyCompactRows();
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
@@ -7508,6 +7614,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionMessageVariantsScenario,
   incomingReportRecapScenario,
   sessionUpdateReportsScenario,
+  sessionUpdateSpacingScenario,
   cakeChatSessionUpdatesScenario,
   activityWorktreeScenario,
   existingWorktreePickerScenario,

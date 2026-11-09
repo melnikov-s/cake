@@ -28,6 +28,7 @@ export const SessionMessage = observer(function SessionMessage({
   todo,
   messageActions,
   replyAction,
+  compact = false,
   children,
 }: {
   source?: { sessionId?: string; title?: string; href?: string };
@@ -46,6 +47,8 @@ export const SessionMessage = observer(function SessionMessage({
   todo?: ResultTodoLink;
   messageActions?: ReactNode;
   replyAction?: ReactNode;
+  /** Update summaries keep actions in the header, without exterior toolbar rows. */
+  compact?: boolean;
   children?: ReactNode;
 }) {
   const actions = useMarkdownLinkActions();
@@ -89,6 +92,13 @@ export const SessionMessage = observer(function SessionMessage({
   const reference = (sources[0] ?? originals[0])?.props.reference;
   const linkedTodos = todo?.origin ? (todo.todos?.itemsForResult(todo.origin) ?? []) : [];
   const href = reference ?? source?.href ?? (id ? `cake://session/${encodeURIComponent(id)}` : "");
+  const messageToolbar = (
+    <>
+      {messageActions}
+      {sources[0] && <MessageSourceCopy store={sources[0]} />}
+      {replyAction}
+    </>
+  );
   const renderTodos = () =>
     linkedTodos.length > 0 && (
       <footer className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-5 py-2 text-xs text-muted-foreground">
@@ -102,13 +112,7 @@ export const SessionMessage = observer(function SessionMessage({
       aria-label={
         relation === "notice" ? "Notice about another session" : "Message from another session"
       }
-      actions={
-        <>
-          {messageActions}
-          {sources[0] && <MessageSourceCopy store={sources[0]} />}
-          {replyAction}
-        </>
-      }
+      actions={compact ? undefined : messageToolbar}
       fullscreen={
         canOpenFullscreen
           ? {
@@ -179,6 +183,11 @@ export const SessionMessage = observer(function SessionMessage({
               )}
             </div>
           </div>
+          {compact && (
+            <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100">
+              {messageToolbar}
+            </div>
+          )}
         </div>
         {open && (
           <>
