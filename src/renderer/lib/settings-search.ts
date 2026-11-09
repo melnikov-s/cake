@@ -334,6 +334,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         settings: [
           { label: "Theme", targetId: "setting-theme", keywords: "light dark system color" },
           {
+            label: "Left toolbar",
+            targetId: "setting-left-toolbar",
+            keywords: "rail auto-hide full slim dynamic layout",
+          },
+          {
             label: "Show session characters",
             targetId: "setting-sidebar-characters",
             keywords: "avatars icons labels squares appearance",

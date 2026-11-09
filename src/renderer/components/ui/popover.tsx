@@ -18,6 +18,8 @@ import { IconButton, type IconButtonProps } from "./icon-button";
 import { NumberedIconButton, type NumberedIconButtonProps } from "./numbered-icon-button";
 import { cn } from "@/lib/utils";
 
+import { NavigationRailContext } from "./navigation-rail-context";
+
 type PopoverSide = "top" | "right" | "bottom" | "left" | "left-or-vertical";
 type PopoverAlign = "start" | "center" | "end";
 
@@ -59,6 +61,14 @@ export function Popover({
   onOpenChangeRef.current = onOpenChange;
 
   const open = controlledOpen ?? uncontrolledOpen;
+  const rail = useContext(NavigationRailContext);
+  const [railOwner] = useState(() => Symbol("rail-popover"));
+  const retainRail = rail?.retain;
+  useLayoutEffect(() => {
+    if (!open || !retainRail) return;
+    retainRail(railOwner, true);
+    return () => retainRail(railOwner, false);
+  }, [open, retainRail, railOwner]);
   const setOpen = useCallback(
     (next: boolean) => {
       if (controlledOpen === undefined) setUncontrolledOpen(next);

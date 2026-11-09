@@ -1,5 +1,6 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore, Struct } from "effect";
 import { ProjectTodo, ProjectTodos } from "../../contracts/projects/project-todos";
+import { normalizeLeftToolbarPreferences } from "../../utils/left-toolbar-preferences";
 import { clearProjectTodoSelection } from "../../utils/project-todo-selection";
 import {
   ApplicationState,
@@ -636,13 +637,16 @@ export const makeApplicationStorageLive = (userDataDirectory: string, promptsDir
         const decoded = yield* Schema.decodeUnknownEffect(ApplicationState)(data).pipe(
           Effect.mapError((cause) => new ApplicationDecodeError({ message: cause.message })),
         );
-        let repaired = false;
+        const leftToolbar =
+          decoded.leftToolbar && normalizeLeftToolbarPreferences(decoded.leftToolbar);
+        let repaired = JSON.stringify(leftToolbar) !== JSON.stringify(decoded.leftToolbar);
         // A selection lives only while a to-do panel is open, and none is open at startup.
         const cakeChatTodos =
           decoded.cakeChatTodos && clearProjectTodoSelection(decoded.cakeChatTodos);
         if (cakeChatTodos !== decoded.cakeChatTodos) repaired = true;
         const state = {
           ...decoded,
+          ...(leftToolbar ? { leftToolbar } : null),
           ...(cakeChatTodos ? { cakeChatTodos } : null),
           projects: decoded.projects.map((project) => {
             if (!project.todos) return project;

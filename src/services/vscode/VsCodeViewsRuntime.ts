@@ -71,14 +71,15 @@ export class VsCodeViewsRuntime {
         event.preventDefault();
     });
     // Native views paint above Cake's DOM, so an HTML edge target alone cannot
-    // receive the pointer. Forward only edge motion; reserve no activation gutter.
+    // receive the pointer. Forward edge motion and taps; reserve no layout gutter.
+    // A tap gets the same 28px target as the explicit DOM reveal button.
     let navigationAtEdge = false;
     view.webContents.on("before-mouse-event", (_event, mouse) => {
-      if (mouse.type !== "mouseMove") return;
+      if (mouse.type !== "mouseMove" && mouse.type !== "mouseDown") return;
       const bounds = this.requestedBounds.get(nativeId);
       const atEdge = Boolean(
         mouse.x >= 0 &&
-        mouse.x <= 2 &&
+        mouse.x <= (mouse.type === "mouseDown" ? 28 : 2) &&
         bounds?.visible &&
         bounds.x === 0 &&
         !this.fullscreenWindows.has(nativeId),

@@ -25,22 +25,27 @@ import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog
 import { SessionSearchDialog } from "./session-search-dialog";
 
 /** Persistent project homes and global actions; never a second session list. */
-export const ProjectRail = observer(function ProjectRail({
-  autoHide = false,
-}: {
-  autoHide?: boolean;
-}) {
+export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHide?: boolean }) {
   const root = useStore(RootStore);
   const projects = root.projectCatalogStore;
+  const preferences = root.settingsStore.appearance.leftToolbar.preferences;
+  const hide = autoHide ?? preferences.autoHide;
+  const [nativeMenuOpen, setNativeMenuOpen] = useState(false);
   useLayoutEffect(() => {
     root.projectRailStore.setRevealed(false);
     return () => root.projectRailStore.setRevealed(false);
-  }, [root, autoHide]);
+  }, [root, hide, preferences.layout]);
   const [action, setAction] = useState<{ path: string; kind: ProjectAction }>();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string>();
   const projectMenu = async (path: string, x: number, y: number) => {
-    const selected = await root.sidebarStore.showProjectContextMenu(path, x, y);
+    setNativeMenuOpen(true);
+    let selected;
+    try {
+      selected = await root.sidebarStore.showProjectContextMenu(path, x, y);
+    } finally {
+      setNativeMenuOpen(false);
+    }
     if (selected === "settings") root.projectSettingsStore.open(path);
     else if (selected === "remove-project" || selected === "delete-resolved-worktrees") {
       setActionError(undefined);
@@ -67,13 +72,19 @@ export const ProjectRail = observer(function ProjectRail({
     (right: number) => root.projectRailStore.setOverlayRight(right),
     [root],
   );
+  const setRevealed = useCallback(
+    (revealed: boolean) => root.projectRailStore.setRevealed(revealed),
+    [root],
+  );
   return (
     <>
       <NavigationRail
         label="Projects and global utilities"
-        autoHide={autoHide}
+        autoHide={hide}
+        layout={preferences.layout}
+        retained={nativeMenuOpen}
         revealed={root.projectRailStore.revealed}
-        onRevealChange={(revealed) => root.projectRailStore.setRevealed(revealed)}
+        onRevealChange={setRevealed}
         onOverlayRightChange={setOverlayRight}
         header={
           <>

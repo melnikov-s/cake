@@ -1,4 +1,8 @@
 import { DateTime, Effect, Schema } from "effect";
+import {
+  changeLeftToolbarPreferences,
+  type LeftToolbarChange,
+} from "../../utils/left-toolbar-preferences";
 import { normalizeCakePromptOverrides } from "../../contracts/application/cake-prompt-defaults";
 import { type CakePromptOverrides } from "../../contracts/application/cake-prompt-data";
 import { jsonObjectSchema, type JsonObject } from "../../contracts/serialization/json-contract";
@@ -117,6 +121,15 @@ export const renameProject = Effect.fn("Application.renameProject")(function* (
     ),
   }));
 });
+
+export const setLeftToolbarPreferences = Effect.fn("Application.setLeftToolbarPreferences")(
+  function* (change: LeftToolbarChange) {
+    return yield* update((current) => ({
+      ...current,
+      leftToolbar: changeLeftToolbarPreferences(current.leftToolbar, change),
+    }));
+  },
+);
 
 export const setCakeChatPreferences = Effect.fn("Application.setCakeChatPreferences")(function* (
   preferences: CakeChatPreferences,

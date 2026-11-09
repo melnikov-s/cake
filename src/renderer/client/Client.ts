@@ -1,3 +1,4 @@
+import type { LeftToolbarChange } from "../../utils/left-toolbar-preferences";
 import type { ProjectIconArtwork } from "../../contracts/projects/project-icon-generation";
 import type { CakeModelChoice } from "../../contracts/model-presets/cake-model-selection";
 import type { ArtifactExecutionStatus } from "../../contracts/artifacts/global-artifact-control";
@@ -281,6 +282,10 @@ interface WorkspaceCommands {
   ): Promise<string | undefined>;
   setUtilityModel(
     model: UtilityModel | undefined,
+    options?: ClientCommandOptions,
+  ): Promise<ApplicationState>;
+  setLeftToolbarPreferences(
+    change: LeftToolbarChange,
     options?: ClientCommandOptions,
   ): Promise<ApplicationState>;
   setCakeChatPreferences(

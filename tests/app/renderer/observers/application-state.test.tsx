@@ -55,6 +55,7 @@ it("updates open preset and label settings from ordered authority, without repla
     fastModeSessionIds: [],
     modelPresets: [externalPreset],
     defaultModelPresetId: externalPreset.id,
+    leftToolbar: { autoHide: true, layout: "full", previousLayout: "dynamic" },
   };
   const emit = async (update: RendererApplicationProjection) => {
     await act(async () => {
@@ -64,6 +65,7 @@ it("updates open preset and label settings from ordered authority, without repla
   };
   try {
     await emit({ revision: 7, state });
+    expect(fixture.root.settingsStore.appearance.leftToolbar.preferences.layout).toBe("full");
     expect(screen.getByText("Changed elsewhere")).toBeDefined();
     expect(screen.getByRole("button", { name: "Default" }).getAttribute("aria-pressed")).toBe(
       "true",
@@ -77,9 +79,14 @@ it("updates open preset and label settings from ordered authority, without repla
         ...state,
         modelPresets: [{ ...externalPreset, name: "Newest authority" }],
         globalSessionLabels: [],
+        leftToolbar: { autoHide: false, layout: "slim" },
       },
     });
     await emit({ revision: 7, state });
+    expect(fixture.root.settingsStore.appearance.leftToolbar.preferences).toEqual({
+      autoHide: false,
+      layout: "slim",
+    });
     expect(screen.getByText("No labels yet.")).toBeDefined();
     expect(screen.queryByText("Changed elsewhere")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Edit" }));
@@ -93,6 +100,7 @@ it("updates open preset and label settings from ordered authority, without repla
     await act(async () => {
       Queue.offerUnsafe(updates, { revision: 9, state });
     });
+    expect(fixture.root.settingsStore.appearance.leftToolbar.preferences.layout).toBe("slim");
     expect(screen.getByText("Newest authority")).toBeDefined();
     expect(screen.getByText("No labels yet.")).toBeDefined();
   } finally {

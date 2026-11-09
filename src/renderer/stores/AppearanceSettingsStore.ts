@@ -1,4 +1,4 @@
-import { observable, snapshot, Store } from "r-state-tree";
+import { child, createStore, observable, snapshot, Store } from "r-state-tree";
 import type {
   AppearanceMode,
   ColorScheme,
@@ -17,8 +17,14 @@ import type {
   WorkLogsExpansion,
 } from "../../contracts/conversations/session-contract";
 
+import { LeftToolbarSettingsStore } from "./LeftToolbarSettingsStore";
+
 /** Owns window appearance and shared work-log presentation preferences. */
 export class AppearanceSettingsStore extends Store<Record<string, never>> {
+  @child get leftToolbar(): LeftToolbarSettingsStore {
+    return createStore(LeftToolbarSettingsStore);
+  }
+
   @snapshot theme: AppearanceMode = "system";
   @snapshot lightTheme: ColorThemeChoice = "bundled:cake-light";
   @snapshot darkTheme: ColorThemeChoice = "bundled:cake-dark";

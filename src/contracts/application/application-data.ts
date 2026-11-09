@@ -15,6 +15,17 @@ const nonEmptyBoundedString = (maximum: number) =>
 const boundedArray = <S extends Schema.Top>(item: S, maximum: number) =>
   Schema.Array(item).check(Schema.isMaxLength(maximum));
 
+export const LeftToolbarLayout = Schema.Literals(["full", "slim", "dynamic"]);
+const LeftToolbarPreferences = Schema.Struct({
+  autoHide: Schema.Boolean,
+  layout: LeftToolbarLayout,
+  previousLayout: Schema.optionalKey(LeftToolbarLayout),
+});
+export const LeftToolbarChange = Schema.Struct({
+  autoHide: Schema.optionalKey(Schema.Boolean),
+  layout: Schema.optionalKey(LeftToolbarLayout),
+});
+
 export const UtilityModel = Schema.Struct({
   provider: nonEmptyBoundedString(256),
   modelId: nonEmptyBoundedString(512),
@@ -256,6 +267,7 @@ const RendererApplicationFields = {
   fastModeSessionIds: SessionIds,
   utilityModel: Schema.optionalKey(UtilityModel),
   nonChatModelPreferences: Schema.optionalKey(NonChatModelPreferences),
+  leftToolbar: Schema.optionalKey(LeftToolbarPreferences),
   vscodeServerPath: Schema.optionalKey(boundedString(4_096)),
   modelPresets: boundedArray(ModelPreset, 100),
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),

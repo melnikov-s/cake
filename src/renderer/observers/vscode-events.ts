@@ -11,6 +11,7 @@ export const observeVsCodeEvents = (runtime: Runtime, root: RootStore) =>
         if (event.type === "embedded-editor-navigation-reveal") {
           const editor = root.projectWorkbenchStore.presentationStore.embeddedEditorStore;
           if (
+            root.settingsStore.appearance.leftToolbar.preferences.autoHide &&
             editor.visible &&
             root.workspaceSession?.presentationMode === "vscode" &&
             event.workspacePath === editor.props.projectPath()

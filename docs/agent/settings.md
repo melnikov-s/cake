@@ -5,7 +5,11 @@ Use tools, never settings files. Change settings/instructions only when authoriz
 ## Discover and update
 
 settings.list: categories; category/query narrows keys. settings.get/update: one key. Defaults appear for changed values; read full detail when needed. Report previous and effective values.
-settings.window._: appearance/hotkeys. settings.dictation._: speech preferences.
+settings.window._: window appearance/hotkeys. settings.dictation._: speech preferences.
+Left toolbar preferences are shared across windows: `appearance.leftToolbar.autoHide` and
+`appearance.leftToolbar.layout` in settings.list/get/update (Appearance). Full/Slim/Dynamic
+are layouts, not OS fullscreen. Dynamic requires Auto-hide off; enabling Auto-hide remembers
+it and reveals Full. Disabling Auto-hide restores the prior layout. Hover/focus is never saved.
 settings.open: navigate, not change; user-owned navigation permission applies. No window means explain the limit, not bypass it.
 [Voice and dictation](settings-voice.md): voice-submit matching, discard filters, recognition tuning and navigation identities.
 [Theme workflows](settings-themes.md): palette import, apply now versus when-active, System mode and visible/effective receipts.

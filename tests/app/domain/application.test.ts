@@ -13,6 +13,7 @@ import {
   setGlobalCustomInstructions,
   getCakeChatInstructions,
   setCakeChatPreferences,
+  setLeftToolbarPreferences,
   updateCakeChatInstructions,
   setProjectSessionLabels,
   setProjectSessionLabelsIfUnlabelled,
@@ -64,6 +65,28 @@ const run = <A, E>(effect: Effect.Effect<A, E, ApplicationState>) => {
 };
 
 describe("Application domain", () => {
+  it.effect(
+    "persists toolbar transitions atomically and restores the prior layout after reload",
+    () => {
+      const f = makeLayer();
+      return Effect.gen(function* () {
+        yield* Effect.gen(function* () {
+          yield* setLeftToolbarPreferences({ autoHide: true });
+          yield* setLeftToolbarPreferences({ layout: "slim" });
+          assert.deepEqual(f.persisted().leftToolbar, {
+            autoHide: true,
+            layout: "slim",
+            previousLayout: "dynamic",
+          });
+        }).pipe(Effect.provide(f.layer, { local: true }));
+        yield* Effect.gen(function* () {
+          yield* (yield* ApplicationState).initialize();
+          const state = yield* setLeftToolbarPreferences({ autoHide: false });
+          assert.deepEqual(state.leftToolbar, { autoHide: false, layout: "dynamic" });
+        }).pipe(Effect.provide(f.layer, { local: true }));
+      });
+    },
+  );
   it.effect("persists global personal instructions without changing project settings", () =>
     run(
       Effect.gen(function* () {

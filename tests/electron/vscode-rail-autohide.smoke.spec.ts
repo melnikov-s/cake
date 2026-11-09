@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -31,11 +32,20 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
   await writeFile(
     join(paths.cakeHome, "state", "application.json"),
     JSON.stringify({
-      schemaVersion: 1,
-      projects: [
-        { path: paths.project, name: "Rail fixture", addedAt: timestamp, lastOpenedAt: timestamp },
-      ],
-      vscodeServerPath: "/opt/homebrew/bin/code-server",
+      version: 11,
+      data: {
+        ...defaultApplicationState(),
+        leftToolbar: { autoHide: true, layout: "full", previousLayout: "dynamic" },
+        projects: [
+          {
+            path: paths.project,
+            name: "Rail fixture",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+          },
+        ],
+        vscodeServerPath: "/opt/homebrew/bin/code-server",
+      },
     }),
   );
   const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -56,6 +66,7 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
     await expect(
       page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
     ).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Show left toolbar", exact: true }).click();
     await page
       .getByRole("button", { name: "Open Project Chat for Rail fixture", exact: true })
       .click();
@@ -72,6 +83,7 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
     await expect(rail).toHaveAttribute("data-auto-hide", "true");
     await expect.poll(width).toBe(0);
     expect((await workspace.boundingBox())!.x).toBe(0);
+    await expect(page.locator("html")).toHaveAttribute("data-title-bar", "vscode");
     const before = await workspace.boundingBox();
     const nativeBounds = () =>
       application.evaluate(({ BrowserWindow }) =>
@@ -82,7 +94,8 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
     await expect.poll(async () => (await nativeBounds())?.x).toBe(0);
 
     // The DOM target works over host chrome/iframe surfaces.
-    await edge.hover();
+    const edgeBounds = (await edge.boundingBox())!;
+    await page.mouse.move(1, edgeBounds.y + 100);
     await expect.poll(width).toBe(240);
     const settings = rail.getByRole("button", { name: "Settings", exact: true });
     await settings.hover();
@@ -115,6 +128,24 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
     });
     await expect.poll(width).toBe(0);
 
+    // A synthesized touch/click at the native edge also reveals without hover.
+    await application.evaluate(({ BrowserWindow }) => {
+      const view = BrowserWindow.getAllWindows()[0]!.contentView.children.find(
+        (candidate) => candidate.getBounds().width > 0,
+      ) as import("electron").WebContentsView;
+      view.webContents.sendInputEvent({
+        type: "mouseDown",
+        button: "left",
+        clickCount: 1,
+        x: 12,
+        y: 150,
+      });
+    });
+    await expect.poll(width).toBe(240);
+    await settings.hover();
+    await page.mouse.move(600, 220);
+    await expect.poll(width).toBe(0);
+
     // Tab into clipped navigation reveals it; leaving the pointer cannot hide
     // a focused control. No native window is shown or focused.
     const first = rail.getByRole("button", { name: "Open Cake Chat", exact: true });
@@ -139,10 +170,10 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
     await page.getByRole("button", { name: "Main", exact: true }).click();
     await page.mouse.move(600, 220);
     await input.focus();
-    await expect(rail).toHaveAttribute("data-auto-hide", "false");
-    await expect.poll(width).toBe(54);
-    expect((await workspace.boundingBox())!.x).toBe(54);
-    await expect(edge).toHaveCount(0);
+    await expect(rail).toHaveAttribute("data-auto-hide", "true");
+    await expect.poll(width).toBe(0);
+    expect((await workspace.boundingBox())!.x).toBe(0);
+    await expect(edge).toHaveCount(1);
     const windows = await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().map((window) => ({
         visible: window.isVisible(),

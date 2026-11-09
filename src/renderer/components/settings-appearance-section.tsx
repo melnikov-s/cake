@@ -73,6 +73,55 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
             </p>
           ) : null}
         </div>
+        <div
+          id="setting-left-toolbar"
+          className="grid scroll-mt-8 gap-2 py-3"
+          role="group"
+          aria-labelledby="left-toolbar-title"
+        >
+          <h3 id="left-toolbar-title" className="px-3.5 text-xs font-semibold">
+            Left toolbar
+          </h3>
+          <SettingsToggle
+            id="setting-left-toolbar-auto-hide"
+            label="Auto-hide"
+            description="Reveal at the left edge, or use the Show left toolbar button with keyboard or touch."
+            checked={appearance.leftToolbar.preferences.autoHide}
+            onChange={(autoHide) => void appearance.leftToolbar.change({ autoHide })}
+          />
+          <div className="grid gap-1.5 px-3.5">
+            <label htmlFor="left-toolbar-layout" className="text-xs font-medium">
+              Layout
+            </label>
+            <Select
+              id="left-toolbar-layout"
+              aria-describedby="left-toolbar-help"
+              value={appearance.leftToolbar.preferences.layout}
+              onChange={(event) => {
+                const layout = event.target.value;
+                if (layout === "full" || layout === "slim" || layout === "dynamic")
+                  void appearance.leftToolbar.change({ layout });
+              }}
+            >
+              <option value="full">Full</option>
+              <option value="slim">Slim</option>
+              <option value="dynamic" disabled={appearance.leftToolbar.preferences.autoHide}>
+                Dynamic
+              </option>
+            </Select>
+            <p id="left-toolbar-help" className="text-xs text-muted-foreground">
+              Full shows names; Slim shows icons. Dynamic expands on hover or keyboard focus.
+              Dynamic requires Auto-hide off. Turning Auto-hide off restores your previous layout.
+              On touch, tap the reveal button or the editor’s left edge. Escape dismisses after any
+              open menu.
+            </p>
+            {appearance.leftToolbar.error && (
+              <p role="alert" className="text-xs text-destructive">
+                {appearance.leftToolbar.error}
+              </p>
+            )}
+          </div>
+        </div>
         <SettingsToggle
           id="setting-project-avatars"
           label="Project avatars"

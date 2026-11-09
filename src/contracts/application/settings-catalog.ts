@@ -29,6 +29,7 @@ export const settingsCategories = [
   "Cake Chat",
   "Instructions & prompts",
   "Pi terminal",
+  "Appearance",
 ] as const;
 type SettingsCategory = (typeof settingsCategories)[number];
 
@@ -237,6 +238,22 @@ const piDefinitions = piSettingUpdateSchema.members.map((member) => {
 });
 
 export const settingsCatalog: readonly SettingDefinition[] = [
+  setting({
+    key: "appearance.leftToolbar.autoHide",
+    category: "Appearance",
+    label: "Left toolbar Auto-hide",
+    description:
+      "Hide until the left edge is hovered or the reveal button is activated. Remembers the prior layout; Dynamic reveals as Full.",
+    value: Schema.Boolean,
+  }),
+  setting({
+    key: "appearance.leftToolbar.layout",
+    category: "Appearance",
+    label: "Left toolbar layout",
+    description:
+      "Full labels, Slim icons, or Dynamic expansion. Dynamic requires Auto-hide off; while on, Dynamic normalizes to Full. Disabling Auto-hide restores the prior layout.",
+    value: Schema.Literals(["full", "slim", "dynamic"]),
+  }),
   setting({
     key: "cakeChat.contextLimitTokens",
     category: "Cake Chat",

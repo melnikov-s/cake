@@ -114,7 +114,7 @@ describe("VsCodeViewsRuntime native presentation", () => {
     expect(view.setVisible).toHaveBeenLastCalledWith(true);
   });
 
-  it("forwards left-edge motion without a gutter, only for a visible edge-aligned editor", async () => {
+  it("forwards left-edge motion and taps without a gutter, only for a visible edge-aligned editor", async () => {
     const { runtime, open, send } = fixture();
     runtime.updateBounds(7, { ...shownBounds, x: 0 });
     await open();
@@ -137,7 +137,20 @@ describe("VsCodeViewsRuntime native presentation", () => {
       revealed: false,
     });
     send.mockClear();
-    move(1, "mouseDown");
+    move(28, "mouseDown");
+    expect(send).toHaveBeenLastCalledWith(7, {
+      type: "embedded-editor-navigation-reveal",
+      workspacePath: endpoint.workspacePath,
+      revealed: true,
+    });
+    move(29, "mouseDown");
+    expect(send).toHaveBeenLastCalledWith(7, {
+      type: "embedded-editor-navigation-reveal",
+      workspacePath: endpoint.workspacePath,
+      revealed: false,
+    });
+    send.mockClear();
+    move(1, "mouseUp");
     runtime.updateBounds(7, shownBounds);
     move(1);
     runtime.updateBounds(7, { ...shownBounds, x: 0, visible: false });

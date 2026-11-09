@@ -434,6 +434,8 @@ describe("ApplicationStorage", () => {
             const preset = presets.presets[0];
             assert.ok(preset);
             const updates: SettingsUpdateInput[] = [
+              { key: "appearance.leftToolbar.autoHide", value: true },
+              { key: "appearance.leftToolbar.layout", value: "slim" },
               { key: "cakeChat.contextLimitTokens", value: 128_000 },
               { key: "cakeChat.memoryViewBytes", value: 20_000 },
               { key: "companion.contextLimitTokens", value: 64_000 },

@@ -1,5 +1,10 @@
 import { Effect, Schema } from "effect";
 import {
+  normalizeLeftToolbarPreferences,
+  defaultLeftToolbarPreferences,
+} from "../../utils/left-toolbar-preferences";
+import { LeftToolbarLayout } from "../../contracts/application/application-data";
+import {
   CakePromptKey,
   settingTypeSummary,
   settingsCatalog,
@@ -90,6 +95,10 @@ function applicationValue(state: ApplicationStateValue, key: string) {
       ([name]) => name === prompt,
     )?.[1];
   switch (key) {
+    case "appearance.leftToolbar.autoHide":
+      return normalizeLeftToolbarPreferences(state.leftToolbar).autoHide;
+    case "appearance.leftToolbar.layout":
+      return normalizeLeftToolbarPreferences(state.leftToolbar).layout;
     case "cakeChat.contextLimitTokens":
       return chat.contextLimitTokens ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS;
     case "cakeChat.memoryViewBytes":
@@ -119,6 +128,10 @@ function defaultValue(key: string, piDefaults: PiSettingsValue | undefined) {
       ([name]) => name === key.slice("prompts.".length),
     )?.[1];
   switch (key) {
+    case "appearance.leftToolbar.autoHide":
+      return defaultLeftToolbarPreferences().autoHide;
+    case "appearance.leftToolbar.layout":
+      return defaultLeftToolbarPreferences().layout;
     case "cakeChat.contextLimitTokens":
       return DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS;
     case "cakeChat.memoryViewBytes":
@@ -266,6 +279,16 @@ const write = Effect.fn("SettingsCatalog.write")(function* (key: string, value: 
     return;
   }
   switch (key) {
+    case "appearance.leftToolbar.autoHide":
+      yield* application.setLeftToolbarPreferences({
+        autoHide: yield* typed(Schema.Boolean, key, value),
+      });
+      return;
+    case "appearance.leftToolbar.layout":
+      yield* application.setLeftToolbarPreferences({
+        layout: yield* typed(LeftToolbarLayout, key, value),
+      });
+      return;
     case "companion.contextLimitTokens": {
       const contextLimitTokens = yield* typed(
         CakeChatPreferences.fields.contextLimitTokens,

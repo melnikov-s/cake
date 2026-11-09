@@ -13,7 +13,6 @@ import { ConversationFocusContext } from "../lib/conversation-focus-context";
 import { FullscreenViewportContext } from "./fullscreen-viewport-context";
 import { SessionChatHomeButton } from "./session-chat-home-button";
 import { ShellHeaderContext } from "./ui/workspace-header";
-import { useHoverPointer } from "../lib/hover-pointer";
 import { isMacPlatform } from "../lib/platform";
 
 export const AppShellLayout = observer(function AppShellLayout({
@@ -32,8 +31,8 @@ export const AppShellLayout = observer(function AppShellLayout({
   onCommandPaneWidthChange(width: number): void;
 }) {
   const root = useStore(RootStore);
-  const hoverPointer = useHoverPointer();
-  const autoHideRail = workspaceMode === "vscode" && hoverPointer;
+  const toolbar = root.settingsStore.appearance.leftToolbar.preferences;
+  const autoHideRail = toolbar.autoHide;
   const nativeEditorTitlebar =
     workspaceMode === "vscode" && isMacPlatform && !root.props.browserHost;
   const store = root.projectWorkbenchStore;
@@ -65,6 +64,10 @@ export const AppShellLayout = observer(function AppShellLayout({
           "relative grid h-full w-full max-w-[100vw] grid-rows-[auto_minmax(0,1fr)] grid-cols-[var(--project-rail-width)_minmax(0,1fr)_var(--navigator-width)_var(--command-width)] overflow-hidden bg-background text-foreground [--project-rail-width:54px] max-[700px]:grid-cols-[var(--project-rail-width)_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:44px]",
           applicationView &&
             "grid-cols-[0px_minmax(0,1fr)_0px_var(--command-width)] [--project-rail-width:0px] max-[700px]:grid-cols-[0px_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:0px]",
+          !applicationView &&
+            !autoHideRail &&
+            toolbar.layout === "full" &&
+            "[--project-rail-width:15rem] max-[700px]:[--project-rail-width:15rem]",
           autoHideRail && "[--project-rail-width:0px] max-[700px]:[--project-rail-width:0px]",
           // Match the existing native-control drag area, not the transient rail overlay.
           nativeEditorTitlebar &&

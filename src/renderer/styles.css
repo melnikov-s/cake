@@ -177,24 +177,6 @@
   --title-bar-height: 44px;
 }
 
-/* The editor owns the full grid track. Reveal the same navigation as an overlay;
-   focus-within keeps offscreen/tabbed navigation reachable without a hover input. */
-[data-slot="project-rail"][data-auto-hide="true"] {
-  width: 0;
-  border-right-width: 0;
-}
-[data-slot="project-rail"][data-auto-hide="true"]:is(
-    :hover,
-    :focus-within,
-    [data-revealed="true"]
-  ) {
-  width: 15rem;
-  border-right-width: 1px;
-}
-[data-slot="project-rail"][data-auto-hide="true"] [data-slot="icon-button-label"] {
-  visibility: visible;
-}
-
 :root[data-title-bar="vscode"] {
   --title-bar-height: 34px;
 }

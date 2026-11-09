@@ -256,6 +256,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
 
   applyApplicationState(revision: number, state: ApplicationState) {
+    this.appearance.leftToolbar.applyApplicationState(revision, state);
     this.utilityModel.applyApplicationState(revision, state);
     this.nonChatModels.applyApplicationState(revision, state);
     this.modelPresets.applyApplicationState(revision, state);

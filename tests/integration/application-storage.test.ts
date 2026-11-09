@@ -20,6 +20,35 @@ afterEach(async () => {
 });
 
 describe("ApplicationStorage filesystem integration", () => {
+  it("repairs invalid stored Auto-hide + Dynamic without dropping old settings", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-toolbar-storage-"));
+    directories.push(directory);
+    const target = join(directory, APPLICATION_DOCUMENT_NAME);
+    const data = {
+      ...defaultApplicationState(),
+      globalCustomInstructions: "keep me",
+      leftToolbar: { autoHide: true, layout: "dynamic" },
+    };
+    await writeFile(target, JSON.stringify({ version: 11, data }));
+    const live = makeApplicationStorageLive(directory, join(directory, "prompts")).pipe(
+      Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+    );
+    const load = () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* (yield* ApplicationStorage).load();
+        }).pipe(Effect.provide(live)),
+      );
+    const loaded = await load();
+    assert.deepEqual(loaded.state.leftToolbar, {
+      autoHide: true,
+      layout: "full",
+      previousLayout: "dynamic",
+    });
+    assert.equal(loaded.state.globalCustomInstructions, "keep me");
+    assert.deepEqual(JSON.parse(await readFile(target, "utf8")).data, loaded.state);
+    assert.deepEqual((await load()).state, loaded.state);
+  });
   it("migrates the legacy document and atomically persists the current envelope", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cake-application-storage-"));
     directories.push(directory);

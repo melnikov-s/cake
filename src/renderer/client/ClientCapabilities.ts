@@ -229,6 +229,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.workspaces["set-utility-model"]({ model }),
           options,
         ).then((response) => response.state),
+      setLeftToolbarPreferences: (change, options) =>
+        execute(
+          "workspaces.set-left-toolbar-preferences",
+          (client) => client.workspaces["set-left-toolbar-preferences"](change),
+          options,
+        ).then((response) => response.state),
       setCakeChatPreferences: (preferences, options, companion = false) =>
         execute(
           "workspaces.set-cake-chat-preferences",
