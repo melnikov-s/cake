@@ -241,6 +241,8 @@ export const ProjectRecord = Schema.Struct({
   addedAt: IsoTimestamp,
   lastOpenedAt: IsoTimestamp,
   settings: Schema.optionalKey(ProjectSettings),
+  /** User-owned Auto-merge preference. Missing/legacy projects stay off. */
+  autoMergeEnabled: Schema.optionalKey(Schema.Boolean),
   workflow: Schema.optionalKey(ProjectWorkflow),
   todos: Schema.optionalKey(ProjectTodos),
 });

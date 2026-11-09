@@ -743,15 +743,22 @@ through a per-worktree lock instead. Configured removal must leave `checkoutPath
 absent, because external tools can report success without removing anything.
 
 `worktreeLanding` is project-level direct-merge permission, independent of checkout
-location, managed ownership and the application-wide Auto-merge opt-in. `"merge"`
+location, managed ownership and each project's user-owned Auto-merge opt-in. `"merge"`
 (Merge with Cake, also the missing-setting default) permits manual merging even with
 Auto-merge off. `"pull-request"` (Merge outside Cake) hides Cake merge/Auto-merge
 controls and rejects manual, tool and automatic landing/readiness. `worktreeLifecycle`
 checks current settings at admission and through the engine’s execution authorization
 hook, so queued/replayed requests cannot bypass a live policy change. Mixed projects
-retain the application-wide opt-in; selecting an outside-Cake project never disables it. Resolving their sessions retires an active checkout only when it
+retain their independent opt-ins; selecting an outside-Cake project never disables them. Resolving their sessions retires an active checkout only when it
 has no uncommitted, conflicted or in-progress work; its branch is kept when it has
 commits so restoration can recreate the same Working Directory.
+
+The Auto-merge toggle persists as `ProjectRecord.autoMergeEnabled` through the existing
+ApplicationState transaction and ApplicationStorage document. Missing values default off.
+Backend initialization restores preferences only after ApplicationState hydration and before
+workers or endpoints start. The shared landing coordinator broadcasts changes to all windows;
+save failures leave its toggle unchanged. Run IDs and authorization epochs remain transient,
+so restart never authorizes prior-run readiness or replays an uncertain landing.
 
 A landed record's `landedSourceCommit` is the acknowledged source-history boundary,
 not its original `baseCommit` or the target's current tip. Status and landing exclude

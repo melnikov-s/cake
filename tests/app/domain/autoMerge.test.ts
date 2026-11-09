@@ -4,7 +4,7 @@ import { expect } from "vitest";
 import * as digest from "../../../src/domain/cake-chats/cakeChatDigest";
 import { snapshot } from "../helpers/piRuntimeFixture";
 import { runPass } from "../../../src/domain/worktrees/autoMerge";
-import { report, setEnabled } from "../../../src/domain/worktrees/autoMergeReadiness";
+import { initialize, report, setEnabled } from "../../../src/domain/worktrees/autoMergeReadiness";
 import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import {
@@ -57,6 +57,7 @@ function fixture(
     requester?: string | null;
     landing?: "merge" | "pull-request";
     externalSecond?: boolean;
+    savedAutoMerge?: boolean;
   } = {},
 ) {
   const events: string[] = [];
@@ -105,11 +106,13 @@ function fixture(
       activeWorkingDirectories: () => Effect.sync(() => active),
     }),
     Layer.mock(ApplicationState, {
+      transact: (transition) => transition(defaultApplicationState()),
       snapshot: () => ({
         ...defaultApplicationState(),
         projects: ["/project", "/other", "/external"].map((path) => ({
           path,
           name: path,
+          autoMergeEnabled: options.savedAutoMerge ?? false,
           addedAt: record.createdAt,
           lastOpenedAt: record.createdAt,
           settings: {
@@ -684,8 +687,13 @@ it.effect.each([
 it.effect(
   "invalidates persisted ready work on restart and never replays uncertain landing attempts",
   () => {
-    const test = fixture();
+    const test = fixture({ savedAutoMerge: true });
     return Effect.gen(function* () {
+      yield* initialize();
+      expect(
+        (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state))
+          .autoMergeProjects?.[0]?.enabled,
+      ).toBe(true);
       const storage = yield* SessionFamilyStorage;
       for (const state of ["ready", "landing"] as const) {
         yield* storage.recordAutoMerge({
@@ -693,6 +701,8 @@ it.effect(
           id: state,
           sessionId: "owner",
           workspacePath: "/tree",
+          projectPath: "/project",
+          coordinatorSessionId: projectChatSessionId("/project"),
           epoch: "previous-process",
           runId: "previous-process",
           commit,

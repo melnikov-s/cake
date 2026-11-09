@@ -9,13 +9,31 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import * as worktreeLifecycle from "./worktreeLifecycle";
 
+/** Restore only the preference, after ApplicationState hydration and before workers/endpoints.
+ * Run identity and epochs stay fresh: no previous-run readiness is authorized here.
+ */
+export const initialize = Effect.fn("AutoMerge.initialize")(function* () {
+  const projects = (yield* ApplicationState).snapshot().projects;
+  const coordinator = yield* WorktreeLandingCoordinator;
+  yield* SubscriptionRef.update(coordinator.state, (state) => ({
+    ...state,
+    autoMergeProjects: projects.map((project) => ({
+      projectPath: project.path,
+      enabled: project.autoMergeEnabled ?? false,
+      epoch: crypto.randomUUID(),
+      status: project.autoMergeEnabled
+        ? "Merging validated work directly delegated by this project’s Project Chat"
+        : "Off",
+    })),
+  }));
+});
+
 export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (
   projectPath: string,
   enabled: boolean,
 ) {
-  if (
-    !(yield* ApplicationState).snapshot().projects.some((project) => project.path === projectPath)
-  )
+  const application = yield* ApplicationState;
+  if (!application.snapshot().projects.some((project) => project.path === projectPath))
     return yield* new WorktreeLandingError({
       operation: "setAutoMerge",
       message:
@@ -38,21 +56,33 @@ export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (
           projectPath,
           projectChatSessionId(projectPath),
         );
-      yield* SubscriptionRef.update(coordinator.state, (state) => ({
-        ...state,
-        autoMergeRunId: runId,
-        autoMergeProjects: [
-          ...(state.autoMergeProjects ?? []).filter((item) => item.projectPath !== projectPath),
-          {
-            projectPath,
-            enabled,
-            epoch,
-            status: enabled
-              ? "Merging validated work directly delegated by this project’s Project Chat"
-              : "Off",
-          },
-        ],
-      }));
+      // Commit the project preference before publishing success to any window. Once
+      // persistence starts, finish publication together with it, even on interruption.
+      yield* Effect.gen(function* () {
+        yield* application.transact((state) =>
+          Effect.succeed({
+            ...state,
+            projects: state.projects.map((project) =>
+              project.path === projectPath ? { ...project, autoMergeEnabled: enabled } : project,
+            ),
+          }),
+        );
+        yield* SubscriptionRef.update(coordinator.state, (state) => ({
+          ...state,
+          autoMergeRunId: runId,
+          autoMergeProjects: [
+            ...(state.autoMergeProjects ?? []).filter((item) => item.projectPath !== projectPath),
+            {
+              projectPath,
+              enabled,
+              epoch,
+              status: enabled
+                ? "Merging validated work directly delegated by this project’s Project Chat"
+                : "Off",
+            },
+          ],
+        }));
+      }).pipe(Effect.uninterruptible);
     }),
   );
 });

@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import * as autoMergeReadiness from "../domain/worktrees/autoMergeReadiness";
 import { VsCodeServer } from "../services/vscode/VsCodeServer";
 import { initialize } from "../domain/application/application";
 import { initializeRegisteredProjectAccess } from "../domain/projects/projects";
@@ -8,6 +9,7 @@ import { startupDiagnostics } from "../services/diagnostics/startup-diagnostics"
 /** Runs once before workers or host endpoints can use the acquired backend. */
 export const initializeBackend = Effect.fn("Backend.initialize")(function* () {
   yield* startupDiagnostics.measure("application-initialize", initialize());
+  yield* startupDiagnostics.measure("auto-merge-initialize", autoMergeReadiness.initialize());
   yield* startupDiagnostics.measure(
     "project-access-initialize",
     initializeRegisteredProjectAccess(),

@@ -14,6 +14,15 @@ import { PiSettings } from "../../../../src/services/pi/PiSettings";
 import { CakeSessionRuntimes } from "../../../../src/services/pi/CakeSessionRuntimes";
 import { it } from "@effect/vitest";
 import { describe } from "vitest";
+import * as autoMergeReadiness from "../../../../src/domain/worktrees/autoMergeReadiness";
+import {
+  WorktreeLandingCoordinator,
+  WorktreeLandingCoordinatorLive,
+} from "../../../../src/services/worktrees/WorktreeLandingCoordinator";
+import { familyStorageHarness } from "../../helpers/familyStorageHarness";
+import { SubscriptionRef, Stream } from "effect";
+import { observeOperations } from "../../../../src/domain/worktrees/worktreeLandings";
+import { ManagedWorktrees } from "../../../../src/services/worktrees/ManagedWorktrees";
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PlatformError, Schema } from "effect";
 import {
   APPLICATION_DOCUMENT_NAME,
@@ -134,6 +143,12 @@ const makeFakeFileSystem = Effect.fn("makeFakeFileSystem")(function* (
   return { controls, fileSystem };
 });
 
+const expectPreference = (
+  projects: { path: string; autoMergeEnabled?: boolean }[],
+  path: string,
+  enabled: boolean,
+) => assert.equal(projects.find((project) => project.path === path)?.autoMergeEnabled, enabled);
+
 const documentPath = `data/${APPLICATION_DOCUMENT_NAME}`;
 const current = defaultApplicationState();
 const legacy = {
@@ -167,6 +182,152 @@ const withStorage = <A, E>(
   });
 
 describe("ApplicationStorage", () => {
+  const autoMergeRuntime = (fake: {
+    fileSystem: FileSystem.FileSystem;
+    controls: FakeFileSystemControls;
+  }) =>
+    Layer.mergeAll(
+      ApplicationState.layer.pipe(
+        Layer.provide(
+          makeApplicationStorageLive("data", "/cake/prompts").pipe(
+            Layer.provide(Layer.succeed(FileSystem.FileSystem)(fake.fileSystem)),
+            Layer.provide(Path.layer),
+          ),
+        ),
+      ),
+      WorktreeLandingCoordinatorLive,
+      familyStorageHarness(fake.controls.files).layer,
+      Layer.mock(ManagedWorktrees, { observeLandingQueue: () => Stream.succeed([]) }),
+    );
+
+  const initializeAutoMerge = Effect.gen(function* () {
+    yield* (yield* ApplicationState).initialize();
+    yield* autoMergeReadiness.initialize();
+    return yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state);
+  });
+
+  it.effect.each([true, false])(
+    "restores Auto-merge=%s from persisted bytes in independent restarted owners; projects stay isolated",
+    (enabled) =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakeFileSystem();
+        const first = yield* Effect.gen(function* () {
+          yield* initializeAutoMerge;
+          yield* upsertProject("/a", "A");
+          yield* upsertProject("/b", "B");
+          yield* autoMergeReadiness.setEnabled("/a", true);
+          if (!enabled) yield* autoMergeReadiness.setEnabled("/a", false);
+          yield* autoMergeReadiness.setEnabled("/b", true);
+          if (enabled) yield* autoMergeReadiness.setEnabled("/b", false);
+          // Settings edits must not erase the separate user-owned preference.
+          yield* setProjectSettings("/a", defaultProjectSettings());
+          return yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state);
+        }).pipe(Effect.provide(autoMergeRuntime(fake)));
+        const document = JSON.parse(fake.controls.files.get(documentPath) ?? "{}");
+        expectPreference(document.data.projects, "/a", enabled);
+        expectPreference(document.data.projects, "/b", !enabled);
+        const restarted = yield* initializeAutoMerge.pipe(Effect.provide(autoMergeRuntime(fake)));
+        assert.equal(
+          restarted.autoMergeProjects?.find((p) => p.projectPath === "/a")?.enabled,
+          enabled,
+        );
+        assert.equal(
+          restarted.autoMergeProjects?.find((p) => p.projectPath === "/b")?.enabled,
+          !enabled,
+        );
+        assert.notEqual(restarted.autoMergeRunId, first.autoMergeRunId);
+        assert.notEqual(
+          restarted.autoMergeProjects?.[0]?.epoch,
+          first.autoMergeProjects?.[0]?.epoch,
+        );
+        assert.deepEqual(restarted.autoMergeRequests ?? [], []);
+      }),
+  );
+
+  it.effect.each([true, false])(
+    "failed Auto-merge=%s save reports failure, leaves published/durable preference unchanged",
+    (enabled) =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakeFileSystem();
+        yield* Effect.gen(function* () {
+          yield* initializeAutoMerge;
+          yield* upsertProject("/a", "A");
+          yield* autoMergeReadiness.setEnabled("/a", !enabled);
+          const before = fake.controls.files.get(documentPath);
+          fake.controls.failRename = true;
+          const result = yield* autoMergeReadiness.setEnabled("/a", enabled).pipe(Effect.result);
+          assert.equal(result._tag, "Failure");
+          if (result._tag === "Failure") assert.equal(result.failure._tag, "ApplicationWriteError");
+          assert.equal(fake.controls.files.get(documentPath), before);
+          const state = yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state);
+          assert.equal(
+            state.autoMergeProjects?.find((p) => p.projectPath === "/a")?.enabled ?? false,
+            !enabled,
+          );
+        }).pipe(Effect.provide(autoMergeRuntime(fake)));
+        const restarted = yield* initializeAutoMerge.pipe(Effect.provide(autoMergeRuntime(fake)));
+        assert.equal(
+          restarted.autoMergeProjects?.find((p) => p.projectPath === "/a")?.enabled ?? false,
+          !enabled,
+        );
+      }),
+  );
+
+  it.effect("missing and legacy project preferences stay off without startup authorization", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakeFileSystem();
+      const missing = yield* initializeAutoMerge.pipe(Effect.provide(autoMergeRuntime(fake)));
+      assert.deepEqual(missing.autoMergeProjects, []);
+      fake.controls.files.set(
+        documentPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          projects: [
+            {
+              path: "/legacy",
+              name: "Legacy",
+              addedAt: "2026-01-01T00:00:00Z",
+              lastOpenedAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        }),
+      );
+      const restarted = yield* initializeAutoMerge.pipe(Effect.provide(autoMergeRuntime(fake)));
+      assert.equal(restarted.autoMergeProjects?.[0]?.enabled, false);
+      assert.equal(fake.controls.files.has("state/session-families.json"), false);
+    }),
+  );
+
+  it.effect(
+    "two independent window subscriptions and reconnect see committed Auto-merge preferences",
+    () =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakeFileSystem();
+        yield* Effect.gen(function* () {
+          yield* initializeAutoMerge;
+          yield* upsertProject("/a", "A");
+          const firstWindow = yield* observeOperations();
+          const secondWindow = yield* observeOperations();
+          const on = (stream: typeof firstWindow) =>
+            stream.pipe(
+              Stream.filter((state) =>
+                state.autoMergeProjects.some((p) => p.projectPath === "/a" && p.enabled),
+              ),
+              Stream.take(1),
+              Stream.runCollect,
+            );
+          const first = yield* on(firstWindow).pipe(Effect.forkChild);
+          const second = yield* on(secondWindow).pipe(Effect.forkChild);
+          yield* autoMergeReadiness.setEnabled("/a", true);
+          assert.deepEqual(yield* Fiber.join(first), yield* Fiber.join(second));
+          const reconnected = yield* (yield* observeOperations()).pipe(
+            Stream.take(1),
+            Stream.runCollect,
+          );
+          assert.equal(reconnected[0]?.autoMergeProjects[0]?.enabled, true);
+        }).pipe(Effect.provide(autoMergeRuntime(fake)));
+      }),
+  );
   it.effect(
     "persists per-project browser startup URLs across fresh owners and clearing restores Google",
     () =>
