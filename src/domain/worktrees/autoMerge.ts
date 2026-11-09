@@ -80,10 +80,17 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
     const repairPredecessor =
       request.repairAttempt !== undefined &&
       operation?.automatic &&
+      !operation.cancellationRequested &&
+      (operation.phase === "resolving" || operation.phase === "stalled") &&
       operation.sessionId === request.sessionId &&
       requests.some(
         (previous) =>
           operation.autoMergeRequestId === previous.id &&
+          request.repairOfRequestId === previous.id &&
+          previous.workspacePath === request.workspacePath &&
+          previous.sessionId === request.sessionId &&
+          previous.projectPath === request.projectPath &&
+          previous.runId === request.runId &&
           (previous.repairAttempt ?? 0) + 1 === request.repairAttempt,
       );
     // Pi can retire active input before its completion hooks finish. A repair
@@ -333,6 +340,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
           authorize,
           repair: (text) =>
             Effect.gen(function* () {
+              yield* authorize;
               // Retire the immutable declaration before admitting a repair input. A
               // toggle cycle must not resurrect validation of the pre-repair commit.
               yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
@@ -354,6 +362,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
                   item.workspacePath === request.workspacePath &&
                   item.runId === request.runId &&
                   item.repairAttempt === (request.repairAttempt ?? 0) + 1 &&
+                  item.repairOfRequestId === request.id &&
                   item.readyToMerge &&
                   (item.state === "pending" || item.state === "ready") &&
                   item.commit !== request.commit,
@@ -370,7 +379,8 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
                   new WorktreeLandingError({ operation: "repair", message: error.message }),
               ),
               Effect.tapError((error) =>
-                storage.invalidateAutoMerge(request.workspacePath).pipe(
+                landings.revokeReadiness(request.workspacePath, request.id).pipe(
+                  Effect.provideService(SessionFamilyStorage, storage),
                   Effect.andThen(finish(request, "failed", error.message)),
                   Effect.mapError(
                     (failure) =>

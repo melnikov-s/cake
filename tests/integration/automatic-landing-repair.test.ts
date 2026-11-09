@@ -36,10 +36,10 @@ import { makeTestWorktreeService } from "../helpers/worktree-service";
 
 const exec = promisify(execFile);
 
-it(
-  "automatically repairs a real Git conflict, runs scoped validation, declares fresh readiness and lands without Retry",
+it.each(["conflict", "clean-rebase"] as const)(
+  "automatically revalidates a real Git %s, declares fresh readiness and lands without Retry",
   { timeout: 30_000 },
-  async () => {
+  async (scenario) => {
     const root = await mkdtemp(join(tmpdir(), "cake-auto-repair-"));
     const engine = makeTestWorktreeService(join(root, ".git", "cake-test-worktrees.json"));
     const git = (cwd: string, ...args: string[]) => exec("git", args, { cwd });
@@ -67,12 +67,13 @@ it(
       await git(source.worktreePath, "commit", "-m", "feature with scoped acceptance check");
       const original = await head(source.worktreePath);
       await exec(process.execPath, ["--test", "feature.test.mjs"], { cwd: source.worktreePath });
-      await writeFile(join(root, "feature.mjs"), "export const feature = 'upstream';\n");
+      const upstreamModule = scenario === "conflict" ? "feature.mjs" : "upstream.mjs";
+      await writeFile(join(root, upstreamModule), "export const feature = 'upstream';\n");
       await writeFile(
         join(root, "upstream.test.mjs"),
-        "import { strict as assert } from 'node:assert';\nimport { feature } from './feature.mjs';\nassert.match(feature, /upstream/);\n",
+        `import { strict as assert } from 'node:assert';\nimport { feature } from './${upstreamModule}';\nassert.match(feature, /upstream/);\n`,
       );
-      await git(root, "add", "feature.mjs", "upstream.test.mjs");
+      await git(root, "add", upstreamModule, "upstream.test.mjs");
       await git(root, "commit", "-m", "upstream requirement");
       const targetBeforeRepair = await head(root);
       const target = {
@@ -171,20 +172,21 @@ it(
                 yield* Effect.tryPromise({
                   try: async () => {
                     expect(await head(root)).toBe(targetBeforeRepair);
-                    expect(
-                      (
-                        await git(source.worktreePath, "diff", "--name-only", "--diff-filter=U")
-                      ).stdout.trim(),
-                    ).toBe("feature.mjs");
-                    await writeFile(
-                      join(source.worktreePath, "feature.mjs"),
-                      "export const feature = 'upstream+feature';\n",
-                    );
-                    await git(source.worktreePath, "add", "feature.mjs");
-                    await exec("git", ["rebase", "--continue"], {
-                      cwd: source.worktreePath,
-                      env: { ...process.env, GIT_EDITOR: "true" },
-                    });
+                    const unmerged = (
+                      await git(source.worktreePath, "diff", "--name-only", "--diff-filter=U")
+                    ).stdout.trim();
+                    expect(unmerged).toBe(scenario === "conflict" ? "feature.mjs" : "");
+                    if (scenario === "conflict") {
+                      await writeFile(
+                        join(source.worktreePath, "feature.mjs"),
+                        "export const feature = 'upstream+feature';\n",
+                      );
+                      await git(source.worktreePath, "add", "feature.mjs");
+                      await exec("git", ["rebase", "--continue"], {
+                        cwd: source.worktreePath,
+                        env: { ...process.env, GIT_EDITOR: "true" },
+                      });
+                    }
                     await git(source.worktreePath, "diff", "--check");
                     const check = await exec(
                       process.execPath,
@@ -249,11 +251,14 @@ it(
           yield* pass;
           yield* terminal;
           yield* pass;
+          yield* pass;
+          yield* pass;
           const requests = (yield* families.state()).autoMergeRequests;
           expect(requests?.[0]).toMatchObject({ commit: original, readyToMerge: false });
           expect(requests?.[1]).toMatchObject({
             commit: validated,
             repairAttempt: 1,
+            repairOfRequestId: "task-turn",
             state: "landed",
           });
           expect(events).toEqual([

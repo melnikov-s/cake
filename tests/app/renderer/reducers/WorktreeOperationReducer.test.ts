@@ -74,6 +74,8 @@ it("retains equivalent readiness records and observes every real field/outcome/o
     runId: "run",
     commit: "a".repeat(40),
     state: "ready",
+    repairAttempt: 1,
+    repairOfRequestId: "predecessor",
     outcome: {
       targetBranch: "main",
       merged: true,
@@ -123,7 +125,9 @@ it("retains equivalent readiness records and observes every real field/outcome/o
                 ? "b".repeat(40)
                 : typeof value === "boolean"
                   ? !value
-                  : `${value}-changed`,
+                  : typeof value === "number"
+                    ? value + 1
+                    : `${value}-changed`,
       };
       update([changed]);
       expect(catalog.autoMergeRequests[0]).not.toBe(first);

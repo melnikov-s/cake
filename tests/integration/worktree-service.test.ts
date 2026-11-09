@@ -170,12 +170,24 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     ).rejects.toThrow(/HEAD changed/);
     expect((await worktrees.status(first.worktreePath))?.landingState).toBeUndefined();
     const repairedHead = (await git(first.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    const targetBeforeRevalidation = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
     expect(
       await worktrees.land(first.worktreePath, {
         operationId: "fresh-a",
         request: { strategy: "preserve", expectedSourceCommit: repairedHead },
       }),
-    ).toMatchObject({ outcome: "landed" });
+    ).toMatchObject({ outcome: "resolving", files: [] });
+    // B advanced main while A was repairing. A's clean rebase still needs new validation.
+    expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(targetBeforeRevalidation);
+    const revalidatedHead = (await git(first.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    expect(revalidatedHead).not.toBe(repairedHead);
+    await git(first.worktreePath, "diff", "--check");
+    expect(
+      await worktrees.land(first.worktreePath, {
+        operationId: "revalidated-a",
+        request: { strategy: "preserve", expectedSourceCommit: revalidatedHead },
+      }),
+    ).toMatchObject({ outcome: "landed", commit: revalidatedHead });
     expect(await readFile(join(repo, "README.md"), "utf8")).toBe("source and target repaired\n");
     expect(await readFile(join(repo, "second.txt"), "utf8")).toBe("second\n");
     expect(

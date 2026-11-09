@@ -9,7 +9,14 @@ import { makeTurnLifecycle } from "../../../src/domain/project-sessions/projectS
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCoordination } from "../../../src/services/session-catalogs/SessionCoordination";
-import { cancel, acknowledge, start, inspect, retry, mergeAndResolve } from "../../../src/domain/worktrees/worktreeLandings";
+import {
+  cancel,
+  acknowledge,
+  start,
+  inspect,
+  retry,
+  mergeAndResolve,
+} from "../../../src/domain/worktrees/worktreeLandings";
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
@@ -75,7 +82,8 @@ function fixture(
     manual?: boolean;
     noRecipient?: boolean;
     onLandedWait?: Effect.Effect<void>;
-    cancelWait?: Effect.Effect<void>;
+    afterGitWait?: Effect.Effect<void>;
+    cancelWait?: Effect.Effect<void, ManagedWorktreeError>;
     statusWait?: Effect.Effect<void>;
     queue?: Effect.Success<ReturnType<typeof makeWorktreeLandingQueue>>;
     failStorageWrites?: () => boolean;
@@ -88,8 +96,8 @@ function fixture(
   const externalRecord = { ...record, projectPath: "/external", worktreePath: "/external-tree" };
   let active: string[] = [];
   let head = options.head ?? commit;
-  let conflict = options.conflict;
-  let executingTurns = options.executingTurns ?? ["turn"];
+  let conflict: boolean | undefined;
+  let executingTurns: string[] | undefined;
   let repair: Effect.Effect<void, WorktreeLandingAgentError> = Effect.void;
   let currentRecord: WorktreeRecord = options.recovery
     ? { ...record, state: "landed", resolveAfterLanding: true, landedSourceCommit: commit }
@@ -162,7 +170,8 @@ function fixture(
     Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active") }),
     Layer.mock(SessionCoordination, { settleTurn: () => Effect.void }),
     Layer.mock(CakeSessionRuntimes, {
-      executingTurnIds: () => Effect.sync(() => executingTurns),
+      executingTurnIds: () =>
+        Effect.sync(() => executingTurns ?? options.executingTurns ?? ["turn"]),
       activeWorkingDirectories: () => Effect.sync(() => active),
     }),
     Layer.mock(ApplicationState, {
@@ -190,7 +199,7 @@ function fixture(
     Layer.mock(ManagedWorktrees, {
       status: () =>
         Effect.succeed({
-          record,
+          record: currentRecord,
           targetBranch: "main",
           dirtyCount: 0,
           aheadCount: options.recovery ? 0 : 1,
@@ -240,12 +249,17 @@ function fixture(
               operation: "land",
               message: "Stale validated commit",
             });
+          if (request.expectedSourceCommit)
+            currentRecord = { ...currentRecord, pendingAutomaticLanding: true };
           events.push("land");
+          yield* options.afterGitWait ?? Effect.void;
           if (options.failure)
             return yield* new ManagedWorktreeError({ operation: "land", message: "Target dirty" });
-          return conflict
-            ? { outcome: "resolving" as const, files: ["conflict.ts"] }
-            : { outcome: "landed" as const, commit: head };
+          if (conflict ?? options.conflict)
+            return { outcome: "resolving" as const, files: ["conflict.ts"] };
+          currentRecord = { ...currentRecord };
+          Reflect.deleteProperty(currentRecord, "pendingAutomaticLanding");
+          return { outcome: "landed" as const, commit: head };
         }).pipe(
           Effect.ensuring(
             options.queue
@@ -1554,6 +1568,172 @@ it.effect(
   },
 );
 
+it.effect.each(["off", "new-epoch"] as const)(
+  "does not dispatch repair if %s revokes authority after Git returns conflicts",
+  (change) =>
+    Effect.gen(function* () {
+      const gitReturned = yield* Deferred.make<void>();
+      const finishGit = yield* Deferred.make<void>();
+      const test = fixture({
+        conflict: true,
+        afterGitWait: Deferred.succeed(gitReturned, undefined).pipe(
+          Effect.andThen(Deferred.await(finishGit)),
+        ),
+      });
+      yield* Effect.gen(function* () {
+        yield* ready;
+        yield* runPass();
+        yield* Deferred.await(gitReturned);
+        yield* setEnabled("/project", false);
+        if (change === "new-epoch") yield* setEnabled("/project", true);
+        yield* Deferred.succeed(finishGit, undefined);
+        yield* terminal;
+        yield* runPass();
+        expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+        expect(test.events).not.toContain("repair");
+        expect(test.events).not.toContain("resolve");
+        expect((yield* requests)[0]).toMatchObject({ state: "failed", readyToMerge: false });
+      }).pipe(Effect.provide(test.layer));
+    }),
+);
+
+it.effect.each(["revocation", "cleanup"] as const)(
+  "retires canceled repair lineage after %s failure without revoking unrelated fresh readiness",
+  (failure) => {
+    let failWrites = false;
+    let failCleanup = false;
+    const test = fixture({
+      conflict: true,
+      failStorageWrites: () => failWrites,
+      cancelWait: Effect.suspend(() =>
+        failCleanup
+          ? Effect.fail(
+              new ManagedWorktreeError({ operation: "cancel", message: "cleanup failed" }),
+            )
+          : Effect.void,
+      ),
+    });
+    return Effect.gen(function* () {
+      yield* ready;
+      test.setRepair(yield* completedRepair(test));
+      yield* runPass();
+      yield* terminal;
+      expect((yield* requests)[1]).toMatchObject({
+        id: "repair-turn",
+        readyToMerge: true,
+        repairOfRequestId: "turn",
+      });
+      failWrites = failure === "revocation";
+      failCleanup = failure === "cleanup";
+      expect((yield* cancel("/tree", "turn").pipe(Effect.result))._tag).toBe("Failure");
+      const coordinator = yield* WorktreeLandingCoordinator;
+      expect((yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree")).toMatchObject(
+        {
+          phase: "stalled",
+          cancellationRequested: true,
+        },
+      );
+      if (failWrites) {
+        expect((yield* runPass().pipe(Effect.result))._tag).toBe("Failure");
+        expect((yield* requests)[1]?.readyToMerge).toBe(true);
+      }
+      failWrites = false;
+      failCleanup = false;
+      yield* setEnabled("/project", false);
+      // A new task declared during cancellation is not a repair of the retired operation.
+      test.setExecutingTurns(["unrelated-task"]);
+      expect(yield* report(target, { ...readiness, validatedCommit: "b".repeat(40) })).toEqual({
+        eligible: true,
+      });
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.updateAutoMerge("unrelated-task", "ready");
+      expect((yield* requests)[2]?.repairOfRequestId).toBeUndefined();
+      expect((yield* requests)[2]?.repairAttempt).toBeUndefined();
+      yield* runPass();
+      expect((yield* requests).slice(0, 2).every((item) => !item.readyToMerge)).toBe(true);
+      expect((yield* requests)[2]?.readyToMerge).toBe(true);
+      expect((yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree")).toMatchObject(
+        {
+          phase: "failed",
+        },
+      );
+      expect(
+        (yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree")
+          ?.cancellationRequested,
+      ).toBeUndefined();
+      expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+      expect(test.events.filter((item) => item === "repair")).toHaveLength(1);
+      expect(test.events).not.toContain("resolve");
+      // Off/on cannot authorize the canceled repair; only the independent fresh report lands.
+      test.setConflict(false);
+      yield* setEnabled("/project", true);
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      yield* runPass();
+      expect((yield* requests)[1]?.readyToMerge).toBe(false);
+      expect((yield* requests)[2]?.state).toBe("landed");
+      expect(test.events.filter((item) => item === "land")).toHaveLength(2);
+      expect(test.events.filter((item) => item === "repair")).toHaveLength(1);
+      expect(test.events.filter((item) => item === "resolve")).toHaveLength(1);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect(
+  "repair error cleanup revokes only the failed declaration and its proven repair result",
+  () => {
+    const test = fixture({ conflict: true });
+    return Effect.gen(function* () {
+      yield* ready;
+      const repaired = yield* completedRepair(test);
+      const storage = yield* SessionFamilyStorage;
+      test.setRepair(
+        repaired.pipe(
+          Effect.andThen(
+            Effect.gen(function* () {
+              const old = (yield* storage.state()).autoMergeRequests?.[0];
+              if (!old) return yield* Effect.die("Missing task declaration");
+              // Independent task metadata, not a repair declaration.
+              yield* storage.recordAutoMerge({
+                ...old,
+                id: "unrelated-newer",
+                commit: "b".repeat(40),
+                readyToMerge: true,
+                state: "ready",
+              });
+              return yield* new WorktreeLandingAgentError({
+                operation: "repair",
+                message: "repair failed after report",
+              });
+            }),
+          ),
+          Effect.mapError(
+            (error) =>
+              new WorktreeLandingAgentError({ operation: "repair", message: error.message }),
+          ),
+        ),
+      );
+      yield* runPass();
+      yield* terminal;
+      expect((yield* requests)[0]).toMatchObject({ state: "failed", readyToMerge: false });
+      expect((yield* requests)[1]).toMatchObject({ state: "canceled", readyToMerge: false });
+      expect((yield* requests)[2]).toMatchObject({
+        id: "unrelated-newer",
+        state: "ready",
+        readyToMerge: true,
+      });
+      expect(test.events).not.toContain("resolve");
+      test.setConflict(false);
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect((yield* requests)[2]?.state).toBe("landed");
+      expect(test.events.filter((item) => item === "resolve")).toHaveLength(1);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
 it.effect(
   "admits concurrent ready sessions to repository scheduling without stealing a running operation",
   () =>
@@ -1599,3 +1779,448 @@ it.effect(
       }).pipe(Effect.provide(test.layer));
     }),
 );
+
+it.effect(
+  "requires fresh validation after conflict, never ordinary Retry or toggle-only replay",
+  () => {
+    const options = { conflict: true, executingTurns: ["turn"] };
+    const test = fixture(options);
+    return Effect.gen(function* () {
+      yield* ready;
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect((yield* requests)[0]).toMatchObject({ state: "failed", readyToMerge: false });
+      options.conflict = false;
+      yield* inspect({ workspacePath: "/tree", sessionId: "owner" });
+      expect(
+        (yield* retry({ workspacePath: "/tree", sessionId: "owner" }).pipe(Effect.result))._tag,
+      ).toBe("Failure");
+      expect(
+        (yield* mergeAndResolve({ workspacePath: "/tree", sessionId: "owner" }).pipe(Effect.result))
+          ._tag,
+      ).toBe("Failure");
+      yield* setEnabled("/project", false);
+      yield* setEnabled("/project", true);
+      yield* runPass();
+      expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+      expect(test.events).not.toContain("resolve");
+      // B is already queued when A's fresh readiness arrives: no scheduler cycle.
+      yield* SubscriptionRef.update((yield* WorktreeLandingCoordinator).state, (state) => ({
+        ...state,
+        operations: new Map(state.operations).set("/other-tree", {
+          operationId: "queued-b",
+          workspacePath: "/other-tree",
+          sessionId: "b",
+          kind: "landing",
+          phase: "queued",
+          allowDirtyTarget: false,
+        }),
+      }));
+      options.executingTurns = ["repair-turn"];
+      expect(yield* report(target, readiness)).toEqual({ eligible: true });
+      yield* (yield* SessionFamilyStorage).updateAutoMerge("repair-turn", "ready");
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect(test.events.filter((item) => item === "land")).toHaveLength(2);
+      expect(test.events.filter((item) => item === "resolve")).toHaveLength(1);
+      expect((yield* requests).find((item) => item.id === "repair-turn")?.state).toBe("landed");
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect.each([
+  { action: "cancel", attempt: 0 },
+  { action: "cancel", attempt: 1 },
+  { action: "acknowledge", attempt: 0 },
+  { action: "acknowledge", attempt: 1 },
+] as const)(
+  "durably revokes $action attempt $attempt before scheduler observation",
+  ({ action, attempt }) => {
+    const options = { conflict: false, failure: attempt === 1, executingTurns: ["turn"] };
+    const test = fixture(options);
+    return Effect.gen(function* () {
+      yield* ready;
+      if (attempt === 1) {
+        yield* runPass();
+        yield* terminal;
+        yield* runPass();
+        yield* setEnabled("/project", false);
+        yield* setEnabled("/project", true);
+      }
+      options.failure = action === "acknowledge";
+      options.conflict = action === "cancel";
+      if (action === "cancel") test.setRepair(yield* completedRepair(test));
+      yield* runPass();
+      yield* terminal;
+      const operationId = attempt ? "turn:1" : "turn";
+      const coordinator = yield* WorktreeLandingCoordinator;
+      expect((yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree")).toMatchObject(
+        {
+          operationId,
+          autoMergeRequestId: "turn",
+          phase: action === "cancel" ? "stalled" : "failed",
+        },
+      );
+      if (attempt === 1) {
+        yield* cancel("/tree", "turn");
+        yield* acknowledge("/tree", "turn");
+        expect((yield* requests)[0]?.readyToMerge).toBe(action === "acknowledge");
+        expect(
+          (yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree")?.operationId,
+        ).toBe("turn:1");
+      }
+      // Deliberately no runPass between the pause/failure and its retirement.
+      expect((yield* requests)[0]?.state).toBe(action === "cancel" ? "canceled" : "landing");
+      const landings = test.events.filter((item) => item === "land").length;
+      yield* action === "cancel" ? cancel("/tree", operationId) : acknowledge("/tree", operationId);
+      expect(
+        (yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree"),
+      ).toBeUndefined();
+      expect((yield* requests)[0]).toMatchObject({ state: "canceled", readyToMerge: false });
+      expect(
+        JSON.parse(test.files.get("state/session-families.json") ?? "{}").data.autoMergeRequests[0],
+      ).toMatchObject({ id: "turn", readyToMerge: false });
+      // A conflict repair has a new HEAD; retirement must revoke its linked declaration too.
+      if (action === "cancel") expect((yield* requests)[1]?.readyToMerge).toBe(false);
+      options.conflict = false;
+      options.failure = false;
+      yield* setEnabled("/project", false);
+      yield* setEnabled("/project", true);
+      yield* runPass();
+      yield* runPass();
+      expect(test.events.filter((item) => item === "land")).toHaveLength(landings);
+      expect(test.events).not.toContain("resolve");
+      expect(yield* report(target, readiness)).toMatchObject({ eligible: false });
+      test.setExecutingTurns(["fresh-repair-turn"]);
+      expect(
+        yield* report(target, {
+          ...readiness,
+          validatedCommit: action === "cancel" ? "b".repeat(40) : commit,
+        }),
+      ).toEqual({ eligible: true });
+      yield* (yield* SessionFamilyStorage).updateAutoMerge("fresh-repair-turn", "ready");
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect(test.events.filter((item) => item === "land")).toHaveLength(landings + 1);
+      expect(test.events.filter((item) => item === "resolve")).toHaveLength(1);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("stale retirement cannot revoke a newer operation or a newer declaration", () => {
+  const options = { failure: true, executingTurns: ["turn"] };
+  const test = fixture(options);
+  return Effect.gen(function* () {
+    yield* ready;
+    yield* runPass();
+    yield* terminal;
+    // A fresh declaration may exist before the old operation is dismissed.
+    options.executingTurns = ["new-declaration"];
+    yield* report(target, readiness);
+    const storage = yield* SessionFamilyStorage;
+    yield* storage.updateAutoMerge("new-declaration", "ready");
+    yield* acknowledge("/tree", "turn");
+    expect((yield* requests).find((item) => item.id === "new-declaration")).toMatchObject({
+      readyToMerge: true,
+      state: "ready",
+    });
+    yield* runPass();
+    yield* terminal;
+    yield* cancel("/tree", "turn");
+    yield* acknowledge("/tree", "turn");
+    expect(
+      (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state)).operations.get(
+        "/tree",
+      ),
+    ).toMatchObject({ operationId: "new-declaration", autoMergeRequestId: "new-declaration" });
+    expect((yield* requests).find((item) => item.id === "new-declaration")?.readyToMerge).toBe(
+      true,
+    );
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect(
+  "acknowledgment revokes the same declaration even if a toggle already advanced its attempt",
+  () =>
+    Effect.gen(function* () {
+      const authorized = yield* Deferred.make<void>();
+      const publishEpoch = yield* Deferred.make<void>();
+      const test = fixture({ failure: true });
+      yield* Effect.gen(function* () {
+        yield* ready;
+        yield* runPass();
+        yield* terminal;
+        yield* runPass();
+        yield* setEnabled("/project", false);
+        const storage = yield* SessionFamilyStorage;
+        const toggling = yield* setEnabled("/project", true).pipe(
+          Effect.provideService(SessionFamilyStorage, {
+            ...storage,
+            authorizeAutoMerge: (...args) =>
+              storage
+                .authorizeAutoMerge(...args)
+                .pipe(
+                  Effect.andThen(Deferred.succeed(authorized, undefined)),
+                  Effect.andThen(Deferred.await(publishEpoch)),
+                ),
+          }),
+          Effect.forkScoped,
+        );
+        yield* Deferred.await(authorized);
+        expect((yield* requests)[0]).toMatchObject({ attempt: 1, readyToMerge: true });
+        yield* acknowledge("/tree", "turn");
+        yield* Deferred.succeed(publishEpoch, undefined);
+        yield* Fiber.join(toggling);
+        yield* runPass();
+        expect((yield* requests)[0]).toMatchObject({ attempt: 1, readyToMerge: false });
+        expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+        expect(test.events).not.toContain("resolve");
+      }).pipe(Effect.provide(test.layer));
+    }),
+);
+
+it.effect("cancellation commits revocation before cleanup and toggle reauthorization", () =>
+  Effect.gen(function* () {
+    const retiring = yield* Deferred.make<void>();
+    const finish = yield* Deferred.make<void>();
+    const test = fixture({
+      conflict: true,
+      cancelWait: Deferred.succeed(retiring, undefined).pipe(
+        Effect.andThen(Deferred.await(finish)),
+      ),
+    });
+    yield* Effect.gen(function* () {
+      yield* ready;
+      test.setRepair(yield* completedRepair(test));
+      yield* runPass();
+      yield* terminal;
+      const storage = yield* SessionFamilyStorage;
+      const canceling = yield* cancel("/tree", "turn").pipe(Effect.forkScoped);
+      yield* Deferred.await(retiring);
+      expect((yield* requests)[0]?.readyToMerge).toBe(false);
+      const state = yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state);
+      yield* storage.authorizeAutoMerge(
+        state.autoMergeRunId ?? "",
+        "racing-epoch",
+        "/project",
+        projectChatSessionId("/project"),
+      );
+      expect((yield* requests)[0]?.readyToMerge).toBe(false);
+      yield* Deferred.succeed(finish, undefined);
+      yield* Fiber.join(canceling);
+      yield* setEnabled("/project", false);
+      yield* setEnabled("/project", true);
+      yield* runPass();
+      expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+      expect(test.events).not.toContain("resolve");
+    }).pipe(Effect.provide(test.layer));
+  }),
+);
+
+it.effect("a scheduler snapshot taken before retirement cannot reuse the revoked declaration", () =>
+  Effect.gen(function* () {
+    const starting = yield* Deferred.make<void>();
+    const continueStart = yield* Deferred.make<void>();
+    const options = { failure: true, statusWait: Effect.void };
+    const test = fixture(options);
+    yield* Effect.gen(function* () {
+      yield* ready;
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      yield* setEnabled("/project", false);
+      yield* setEnabled("/project", true);
+      options.failure = false;
+      // Pause the stale scheduler after it read ready metadata, before operation insertion.
+      options.statusWait = Deferred.succeed(starting, undefined).pipe(
+        Effect.andThen(Deferred.await(continueStart)),
+      );
+      const scheduling = yield* runPass().pipe(Effect.forkScoped);
+      yield* Deferred.await(starting);
+      yield* acknowledge("/tree", "turn");
+      expect((yield* requests)[0]?.readyToMerge).toBe(false);
+      yield* Deferred.succeed(continueStart, undefined);
+      yield* Fiber.join(scheduling);
+      yield* terminal;
+      yield* runPass();
+      yield* setEnabled("/project", false);
+      yield* setEnabled("/project", true);
+      yield* runPass();
+      expect((yield* requests)[0]?.readyToMerge).toBe(false);
+      expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+      expect(test.events).not.toContain("resolve");
+    }).pipe(Effect.provide(test.layer));
+  }),
+);
+
+it.effect("successful acknowledgment retains the confirmed outcome without replay", () => {
+  const test = fixture();
+  return Effect.gen(function* () {
+    yield* ready;
+    yield* runPass();
+    yield* terminal;
+    yield* acknowledge("/tree", "turn");
+    yield* runPass();
+    yield* runPass();
+    expect((yield* requests)[0]).toMatchObject({
+      state: "landed",
+      outcome: { merged: true, resolutionSucceeded: true },
+    });
+    expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+    expect(test.events.filter((item) => item === "resolve")).toHaveLength(1);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect.each([false, true])(
+  "retains cancellation through a queued worker and revocation-write failure (newer declaration=%s)",
+  (newerDeclaration) =>
+    Effect.gen(function* () {
+      const queue = yield* makeWorktreeLandingQueue(() => Effect.succeed("/repository"));
+      const blocker = { ...record, worktreePath: "/blocker" };
+      yield* queue.acquireLanding(blocker, "blocker");
+      let failWrites = false;
+      const options = { queue, failStorageWrites: () => failWrites, executingTurns: ["turn"] };
+      const test = fixture(options);
+      yield* Effect.gen(function* () {
+        const coordinator = yield* WorktreeLandingCoordinator;
+        const waitQueued = SubscriptionRef.changes(coordinator.state).pipe(
+          Stream.filter((state) => state.operations.get("/tree")?.phase === "queued"),
+          Stream.runHead,
+        );
+        yield* ready;
+        yield* runPass();
+        yield* waitQueued;
+        failWrites = true;
+        expect((yield* cancel("/tree", "turn").pipe(Effect.result))._tag).toBe("Failure");
+        // The real FIFO fails its Deferred waiter; the real domain worker publishes failed.
+        yield* terminal;
+        expect(
+          (yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree"),
+        ).toMatchObject({
+          phase: "failed",
+          cancellationRequested: true,
+          autoMergeRequestId: "turn",
+        });
+        expect(yield* queue.landingState(record)).toBeUndefined();
+        expect(yield* queue.landingState(blocker)).toMatchObject({
+          state: "running",
+          operationId: "blocker",
+        });
+        expect((yield* requests)[0]?.readyToMerge).toBe(true);
+        expect(
+          (yield* retry({ workspacePath: "/tree", sessionId: "owner" }).pipe(Effect.result))._tag,
+        ).toBe("Failure");
+        expect((yield* runPass().pipe(Effect.result))._tag).toBe("Failure");
+        expect(test.events).not.toContain("land");
+        expect(test.events).not.toContain("repair");
+        expect(test.events).not.toContain("resolve");
+        failWrites = false;
+        const storage = yield* SessionFamilyStorage;
+        if (newerDeclaration) {
+          options.executingTurns = ["fresh-after-cancel"];
+          yield* report(target, readiness);
+          yield* storage.updateAutoMerge("fresh-after-cancel", "ready");
+        }
+        yield* runPass();
+        expect((yield* requests).find((item) => item.id === "turn")?.readyToMerge).toBe(false);
+        expect(
+          JSON.parse(
+            test.files.get("state/session-families.json") ?? "{}",
+          ).data.autoMergeRequests.find((item: { id: string }) => item.id === "turn").readyToMerge,
+        ).toBe(false);
+        if (newerDeclaration) {
+          expect(
+            (yield* requests).find((item) => item.id === "fresh-after-cancel")?.readyToMerge,
+          ).toBe(true);
+          yield* waitQueued;
+          yield* cancel("/tree", "turn");
+          yield* acknowledge("/tree", "turn");
+          expect(
+            (yield* requests).find((item) => item.id === "fresh-after-cancel")?.readyToMerge,
+          ).toBe(true);
+        } else {
+          yield* setEnabled("/project", false);
+          yield* setEnabled("/project", true);
+          yield* runPass();
+          expect(yield* queue.landingState(record)).toBeUndefined();
+        }
+        yield* queue.releaseLanding(blocker, "blocker");
+        const worker = yield* FiberMap.get(coordinator.fibers, "/tree");
+        if (Option.isSome(worker)) yield* Fiber.join(worker.value);
+        if (!newerDeclaration) {
+          // No HEAD change: only durable cancellation, not the commit guard, blocks replay.
+          expect(test.events).not.toContain("land");
+          expect(test.events).not.toContain("resolve");
+          options.executingTurns = ["fresh-after-cancel"];
+          expect(yield* report(target, readiness)).toEqual({ eligible: true });
+          yield* storage.updateAutoMerge("fresh-after-cancel", "ready");
+          yield* runPass();
+          yield* terminal;
+        }
+        yield* runPass();
+        expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+        expect(test.events.filter((item) => item === "resolve")).toHaveLength(1);
+        expect((yield* requests).find((item) => item.id === "fresh-after-cancel")?.state).toBe(
+          "landed",
+        );
+      }).pipe(Effect.provide(test.layer));
+    }),
+);
+
+it.effect("failed acknowledgment retains revocation intent across toggle reauthorization", () => {
+  let failWrites = false;
+  const options = { failure: true, failStorageWrites: () => failWrites };
+  const test = fixture(options);
+  return Effect.gen(function* () {
+    yield* ready;
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    failWrites = true;
+    expect((yield* acknowledge("/tree", "turn").pipe(Effect.result))._tag).toBe("Failure");
+    expect(
+      (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state)).operations.get(
+        "/tree",
+      ),
+    ).toMatchObject({ phase: "failed", cancellationRequested: true });
+    failWrites = false;
+    options.failure = false;
+    yield* setEnabled("/project", false);
+    yield* setEnabled("/project", true);
+    expect((yield* requests)[0]).toMatchObject({ attempt: 1, readyToMerge: true });
+    yield* runPass();
+
+    expect((yield* requests)[0]?.readyToMerge).toBe(false);
+    expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+    expect(test.events).not.toContain("resolve");
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect("failed durable revocation does not retire an automatic operation", () => {
+  const test = fixture({ conflict: true });
+  return Effect.gen(function* () {
+    yield* ready;
+    test.setRepair(yield* completedRepair(test));
+    yield* runPass();
+    yield* terminal;
+    const storage = yield* SessionFamilyStorage;
+    const result = yield* cancel("/tree", "turn").pipe(
+      Effect.provideService(SessionFamilyStorage, {
+        ...storage,
+        invalidateAutoMerge: () =>
+          Effect.fail(new SessionFamilyStorageError({ operation: "save", message: "disk full" })),
+      }),
+      Effect.result,
+    );
+    expect(result).toMatchObject({ _tag: "Failure", failure: { message: "disk full" } });
+    expect(
+      (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state)).operations.get(
+        "/tree",
+      ),
+    ).toMatchObject({ phase: "stalled", cancellationRequested: true });
+    expect(test.events).not.toContain("resolve");
+  }).pipe(Effect.provide(test.layer));
+});

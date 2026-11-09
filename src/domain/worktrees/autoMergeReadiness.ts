@@ -169,13 +169,18 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
   const operation = state.operations.get(target.workingDirectory);
   if (
     operation?.automatic &&
+    !operation.cancellationRequested &&
     operation.sessionId === target.sessionId &&
     (operation.phase === "resolving" || operation.phase === "stalled")
   ) {
     const previous = document.autoMergeRequests?.find(
       (item) => item.id === operation.autoMergeRequestId,
     );
-    if (previous) Object.assign(request, { repairAttempt: (previous.repairAttempt ?? 0) + 1 });
+    if (previous)
+      Object.assign(request, {
+        repairAttempt: (previous.repairAttempt ?? 0) + 1,
+        repairOfRequestId: previous.id,
+      });
   }
   yield* storage.recordAutoMerge(request);
   const stored = (yield* storage.state()).autoMergeRequests?.find((item) => item.id === id);

@@ -56,6 +56,8 @@ export const AutoMergeRequest = Schema.Struct({
   commit: Schema.String,
   /** Consecutive agent repair turns; absent on an original task declaration. */
   repairAttempt: Schema.optionalKey(Schema.Int),
+  /** Exact predecessor declaration; counts alone do not prove repair lineage. */
+  repairOfRequestId: Schema.optionalKey(Schema.String),
   state: Schema.Literals(["pending", "ready", "landing", "landed", "failed", "canceled"]),
   message: Schema.optionalKey(Schema.String),
 });

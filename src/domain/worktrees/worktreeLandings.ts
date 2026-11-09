@@ -811,9 +811,34 @@ const revokeRetiredReadiness = Effect.fn("WorktreeLandings.revokeRetiredReadines
   operation: WorktreeLandingOperation,
 ) {
   if (!operation.automatic || !operation.autoMergeRequestId) return;
-  yield* (yield* SessionFamilyStorage)
-    .invalidateAutoMerge(operation.workspacePath, operation.autoMergeRequestId)
-    .pipe(asError("retireReadiness"));
+  yield* revokeReadiness(operation.workspacePath, operation.autoMergeRequestId);
+});
+
+/** Revoke only this declaration and its explicitly linked repairs, never a newer task. */
+export const revokeReadiness = Effect.fn("WorktreeLandings.revokeReadiness")(function* (
+  workspacePath: string,
+  requestId: string,
+) {
+  const storage = yield* SessionFamilyStorage;
+  const requests =
+    (yield* storage.state().pipe(asError("retireReadiness"))).autoMergeRequests ?? [];
+  const ids = new Set([requestId]);
+  for (const id of ids) {
+    const previous = requests.find((request) => request.id === id);
+    if (!previous || previous.workspacePath !== workspacePath) continue;
+    for (const request of requests)
+      if (
+        request.repairOfRequestId === id &&
+        request.workspacePath === workspacePath &&
+        request.sessionId === previous.sessionId &&
+        request.projectPath === previous.projectPath &&
+        request.runId === previous.runId &&
+        request.repairAttempt === (previous.repairAttempt ?? 0) + 1
+      )
+        ids.add(request.id);
+  }
+  for (const id of ids)
+    yield* storage.invalidateAutoMerge(workspacePath, id).pipe(asError("retireReadiness"));
 });
 
 /** Reconcile cancellation before considering any readiness, including failed/canceled
@@ -833,7 +858,12 @@ export const reconcileCancellations = Effect.fn("WorktreeLandings.reconcileCance
           yield* revokeRetiredReadiness(operation);
           operations.set(
             path,
-            normalizeOperation({ ...operation, cancellationRequested: undefined }),
+            normalizeOperation({
+              ...operation,
+              phase: "failed",
+              cancellationRequested: undefined,
+              error: "Automatic landing canceled; fresh task readiness required.",
+            }),
           );
         }
         return [undefined, { ...state, operations }] as const;
@@ -994,7 +1024,6 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
           : ready
             ? "rebasing"
             : "stalled",
-      automatic: status.record.pendingAutomaticLanding ? true : undefined,
       strategy,
       allowDirtyTarget: false,
       resolveAfterLanding: automatic || status.record.resolveAfterLanding,
