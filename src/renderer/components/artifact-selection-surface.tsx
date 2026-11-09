@@ -92,9 +92,12 @@ export function ArtifactSelectionSurface({
           anchor={annotationDraft.rect}
           selection={annotationDraft.selection}
           onAdd={(annotation) => {
-            session.conversationSessionStore.composerStore.draftStore.annotationDraft.add(
-              annotation,
-            );
+            if (
+              !session.conversationSessionStore.composerStore.draftStore.annotationDraft.add(
+                annotation,
+              )
+            )
+              return false;
             setAnnotationDraft(undefined);
             onReturnToChat();
           }}

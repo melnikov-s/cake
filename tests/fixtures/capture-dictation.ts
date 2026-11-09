@@ -15,6 +15,7 @@ export async function seedCaptureDictation(userData: string) {
     helper,
     `#!${process.execPath}
 const readline = require('node:readline');
+const speech = new Set();
 process.stdout.write(JSON.stringify({ready:true})+'\\n');
 readline.createInterface({input:process.stdin}).on('line', (line) => {
   const request = JSON.parse(line);
@@ -24,7 +25,13 @@ readline.createInterface({input:process.stdin}).on('line', (line) => {
     process.stdout.write(JSON.stringify({speech: voiced > pcm.length / 8})+'\\n');
     return;
   }
-  process.stdout.write(JSON.stringify({text:'Fixture dictated annotation'})+'\\n');
+  const pcm = Buffer.from(request.pcm || '', 'base64');
+  for (let offset = 0; offset < pcm.length; offset += 4) {
+    if (Math.abs(pcm.readFloatLE(offset)) >= 0.015) speech.add(request.utteranceId);
+  }
+  const text = speech.has(request.utteranceId) ? 'Fixture dictated annotation' : '';
+  if (request.final) speech.delete(request.utteranceId);
+  process.stdout.write(JSON.stringify({text})+'\\n');
 });
 `,
   );
@@ -41,7 +48,8 @@ export async function installCaptureMicrophone(page: Page) {
       constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
         super(context, name, options);
         this.port.addEventListener("message", (event) => {
-          if (event.isTrusted) event.stopImmediatePropagation();
+          // Suppress real microphone PCM, not the drain acknowledgement awaited by Submit.
+          if (event.isTrusted && event.data !== "flushed") event.stopImmediatePropagation();
         });
         Object.assign(globalThis, { captureDictationProcessor: this });
       }

@@ -22,6 +22,7 @@ import { voiceDiagnosticReport } from "../../../src/renderer/speech/diagnostics"
 import { builtinSlashCommands } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
+import { AnnotationDraftPopover } from "../../../src/renderer/components/annotation-draft-popover";
 import { AnnotationItemPopover } from "../../../src/renderer/components/annotation-item-popover";
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
 import { SettingsSpeechInputSection } from "../../../src/renderer/components/settings-speech-input-section";
@@ -2420,6 +2421,168 @@ describe("Dictation writing-field workflow", () => {
     expect(message().value).toBe("New session speech");
   });
 
+  it.each(["Keep editing", "Submit", "Discard"])(
+    "drains pending annotation transcription before %s without losing the draft",
+    async (choice) => {
+      using fixture = renderDictation();
+      await fixture.user.click(mode());
+      const close = vi.fn();
+      const save = vi.fn();
+      const view = render(
+        <StoreProvider store={fixture.root.dictationStore}>
+          <AnnotationDraftPopover anchor={document.body} onSave={save} onClose={close} />
+        </StoreProvider>,
+      );
+      try {
+        const input = screen.getByRole<HTMLTextAreaElement>("textbox", {
+          name: "Annotation comment",
+        });
+        await fixture.user.type(input, "Typed prefix");
+        await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+        await fixture.audio.push(new Float32Array(3200));
+        await fixture.user.click(message());
+        expect(screen.getByRole("alertdialog")).toBeDefined();
+        expect(screen.getByRole<HTMLButtonElement>("button", { name: "Submit" }).disabled).toBe(
+          true,
+        );
+        expect(input.isConnected).toBe(true);
+        expect(close).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
+        await fixture.recognize(0, "Beginning");
+        await waitFor(() => expect(fixture.requests).toHaveLength(2));
+        await fixture.recognize(1, "Beginning and final words");
+        await waitFor(() =>
+          expect(screen.getByRole<HTMLButtonElement>("button", { name: choice }).disabled).toBe(
+            false,
+          ),
+        );
+        expect(input.value).toBe("Typed prefix Beginning and final words");
+        await fixture.user.click(screen.getByRole("button", { name: choice }));
+        if (choice === "Submit")
+          expect(save).toHaveBeenCalledExactlyOnceWith("Typed prefix Beginning and final words");
+        else expect(save).not.toHaveBeenCalled();
+        if (choice === "Keep editing") {
+          expect(close).not.toHaveBeenCalled();
+          expect(document.activeElement).toBe(input);
+          expect(input.value).toBe("Typed prefix Beginning and final words");
+        } else expect(close).toHaveBeenCalledOnce();
+        expect(message().value).toBe("");
+      } finally {
+        view.unmount();
+      }
+    },
+  );
+
+  it.each(["Enter", "button"])(
+    "explicit annotation %s waits for final words without asking for dismissal confirmation",
+    async (submit) => {
+      using fixture = renderDictation();
+      await fixture.user.click(mode());
+      const save = vi.fn();
+      const close = vi.fn();
+      const view = render(
+        <StoreProvider store={fixture.root.dictationStore}>
+          <AnnotationDraftPopover anchor={document.body} onSave={save} onClose={close} />
+        </StoreProvider>,
+      );
+      try {
+        const input = screen.getByRole<HTMLTextAreaElement>("textbox", {
+          name: "Annotation comment",
+        });
+        await fixture.user.type(input, "Typed prefix");
+        await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+        await fixture.audio.push(new Float32Array(3200));
+        if (submit === "Enter") await fixture.user.keyboard("{Enter}");
+        else await fixture.user.click(screen.getByRole("button", { name: "Add annotation" }));
+        // A click during explicit submission cannot interrupt finalization or open a second decision.
+        await fixture.user.click(message());
+        expect(save).not.toHaveBeenCalled();
+        expect(screen.queryByRole("alertdialog")).toBeNull();
+        await fixture.recognize(0, "Beginning");
+        await waitFor(() => expect(fixture.requests).toHaveLength(2));
+        await fixture.recognize(1, "Beginning and final words");
+        await waitFor(() =>
+          expect(save).toHaveBeenCalledExactlyOnceWith("Typed prefix Beginning and final words"),
+        );
+        expect(close).toHaveBeenCalledOnce();
+        expect(screen.queryByRole("alertdialog")).toBeNull();
+      } finally {
+        view.unmount();
+      }
+    },
+  );
+
+  it("keeps the annotation editable when final transcription fails", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    const save = vi.fn();
+    const close = vi.fn();
+    const view = render(
+      <StoreProvider store={fixture.root.dictationStore}>
+        <AnnotationDraftPopover anchor={document.body} onSave={save} onClose={close} />
+      </StoreProvider>,
+    );
+    try {
+      const input = screen.getByRole<HTMLTextAreaElement>("textbox", {
+        name: "Annotation comment",
+      });
+      await fixture.user.type(input, "Typed prefix");
+      await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+      await fixture.recognize(0, "Visible speech");
+      await fixture.audio.push(new Float32Array(3200));
+      await fixture.user.click(message());
+      await waitFor(() => expect(fixture.requests).toHaveLength(2));
+      await act(async () => {
+        fixture.requests[1]!.reply.reject(engineFailure());
+      });
+      await screen.findByText(
+        "Dictation could not finish. Keep editing to retry, or discard the draft.",
+      );
+      expect(input.value).toBe("Typed prefix Visible speech");
+      expect(save).not.toHaveBeenCalled();
+      expect(close).not.toHaveBeenCalled();
+      await fixture.user.click(screen.getByRole("button", { name: "Keep editing" }));
+      expect(input.value).toBe("Typed prefix Visible speech");
+      expect(document.activeElement).toBe(input);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("protects detected annotation speech even before the first text arrives", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    const close = vi.fn();
+    const view = render(
+      <StoreProvider store={fixture.root.dictationStore}>
+        <AnnotationDraftPopover anchor={document.body} onSave={vi.fn()} onClose={close} />
+      </StoreProvider>,
+    );
+    try {
+      const input = screen.getByRole<HTMLTextAreaElement>("textbox", {
+        name: "Annotation comment",
+      });
+      await fixture.user.click(input);
+      await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+      await fixture.user.click(message());
+      expect(screen.getByRole("alertdialog")).toBeDefined();
+      expect(close).not.toHaveBeenCalled();
+      await fixture.recognize(0, "Not lost before transcription");
+      await waitFor(() => expect(fixture.requests).toHaveLength(2));
+      await fixture.recognize(1, "Not lost before transcription");
+      await waitFor(() =>
+        expect(
+          screen.getByRole<HTMLButtonElement>("button", { name: "Keep editing" }).disabled,
+        ).toBe(false),
+      );
+      await fixture.user.click(screen.getByRole("button", { name: "Keep editing" }));
+      expect(input.value).toBe("Not lost before transcription");
+      expect(document.activeElement).toBe(input);
+    } finally {
+      view.unmount();
+    }
+  });
+
   it("keeps a silent annotation field dictating after blur", async () => {
     using fixture = renderDictation();
     await fixture.user.click(mode());
@@ -2499,8 +2662,9 @@ describe("Dictation writing-field workflow", () => {
       await fixture.recognize(2, "Second speech");
       expect(edit().value).toBe("Second note Second speech");
       await fixture.audio.push(new Float32Array(12_800));
-      await fixture.user.click(message());
+      // Forced parent teardown is distinct from a user dismissal, which is now guarded.
       view.unmount();
+      await fixture.user.click(message());
       await fixture.recognize(3, "Late second annotation tail");
       expect(message().value).toBe("Composer draft");
       listening();

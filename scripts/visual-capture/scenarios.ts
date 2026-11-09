@@ -1151,6 +1151,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
     "destination",
     "annotate",
     "annotation-input",
+    "annotation-confirmation",
     "annotation-details",
     "color-picker",
     "capture-preview",
@@ -1187,7 +1188,8 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
   },
   async prepare(page, state, application) {
     if (!application) throw new Error("Screen capture requires Electron");
-    await assistantMarkdownCode.prepare(page, "default", application);
+    // Capture edits do not depend on the startup conversation or its restored transcript.
+    await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
     const dimensions = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     // Fake only the native still. Never read the user's desktop or show/focus a window.
     await application.evaluate(
@@ -1247,6 +1249,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
     const annotationState =
       state === "annotate" ||
       state === "annotation-input" ||
+      state === "annotation-confirmation" ||
       state === "annotation-details" ||
       state === "color-picker" ||
       state === "capture-preview";
@@ -1260,6 +1263,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       await expect(overlay.getByRole("textbox", { name: "Annotation comment" })).toBeFocused();
       await overlay.keyboard.type("Point to this first");
       await overlay.keyboard.press("Enter");
+      await expect(overlay.getByRole("textbox", { name: "Annotation comment" })).toHaveCount(0);
       await overlay.getByRole("button", { name: "Freehand", exact: true }).click();
       await overlay.mouse.move(dimensions.width * 0.25, dimensions.height * 0.7);
       await overlay.mouse.down();
@@ -1272,7 +1276,20 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
       await expect(
         overlay.getByRole("button", { name: "Add annotation", exact: true }),
       ).toBeEnabled();
-      if (state !== "annotation-input") await overlay.keyboard.press("Enter");
+      if (state === "annotation-confirmation") {
+        await overlay.mouse.click(1, 1);
+        await expect(
+          overlay.getByRole("alertdialog", { name: "Unsubmitted annotation" }),
+        ).toBeVisible();
+        const keep = overlay.getByRole("button", { name: "Keep editing", exact: true });
+        await expect(keep).toBeEnabled();
+        await keep.click();
+        const input = overlay.getByRole("textbox", { name: "Annotation comment" });
+        await expect(input).toBeFocused();
+        await expect(input).toHaveValue("Draw around this area");
+        await overlay.mouse.click(1, 1);
+        await expect(keep).toBeEnabled();
+      } else if (state !== "annotation-input") await overlay.keyboard.press("Enter");
       if (state === "annotation-details") {
         await overlay.getByRole("button", { name: "Edit annotation 1", exact: true }).click();
         await expect(overlay.getByRole("dialog", { name: "Annotation details" })).toBeVisible();

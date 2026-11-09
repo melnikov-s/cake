@@ -7,6 +7,7 @@ import { expect, test } from "@playwright/test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -178,6 +179,11 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
 
   try {
     const page = await application.firstWindow();
+    await showSessions(page);
+    await page
+      .locator(`.session-item[data-session-id="${sessionId}"]`)
+      .getByRole("button", { name: /^Show the settings shape/ })
+      .click();
     const code = page.locator('[data-streamdown="code-block-body"] code');
     await expect(code).toContainText("UtilityModePreferences", { timeout: 20_000 });
     await page.waitForFunction(() =>
@@ -297,6 +303,13 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     await expect(annotationDialog).toBeVisible();
     await expect(annotationInput).toBeFocused();
     await annotationInput.pressSequentially("Remember this type");
+    await expect(annotationInput).toHaveValue("Remember this type");
+    await page.mouse.click(1, 1);
+    const confirmation = page.getByRole("alertdialog", { name: "Unsubmitted annotation" });
+    await expect(confirmation).toBeVisible();
+    await expect(annotationInput).toHaveValue("Remember this type");
+    await confirmation.getByRole("button", { name: "Keep editing", exact: true }).click();
+    await expect(annotationInput).toBeFocused();
     await expect(annotationInput).toHaveValue("Remember this type");
     await expect(annotationDialog.getByRole("button", { name: "Add annotation" })).toBeEnabled();
     await annotationInput.press("Enter");

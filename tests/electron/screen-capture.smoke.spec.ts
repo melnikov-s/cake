@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type Page } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 import { installCaptureMicrophone, seedCaptureDictation } from "../fixtures/capture-dictation";
+import { createSessionInProject } from "./fixtures/workspace-navigation";
 import {
   readClipboardImage,
   restoreClipboardSnapshot,
@@ -124,6 +125,7 @@ test("captures and annotates through the hidden native overlay into the existing
       },
     );
     const page = await application.firstWindow();
+    await createSessionInProject(page, /^project(?:\s|$)/);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.click();
@@ -309,6 +311,18 @@ test("captures and annotates through the hidden native overlay into the existing
     });
     await expect(label).toHaveValue("Look here Fixture dictated annotation");
     await expect(label).toBeFocused();
+    // The initiating tool click must not switch modes or remove the arrow/dictated draft.
+    await overlay.getByRole("button", { name: "Crop", exact: true }).click();
+    const confirmation = overlay.getByRole("alertdialog", { name: "Unsubmitted annotation" });
+    await expect(confirmation).toBeVisible();
+    await expect(label).toHaveValue("Look here Fixture dictated annotation");
+    await expect(overlay.getByRole("button", { name: "Annotate", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await confirmation.getByRole("button", { name: "Keep editing", exact: true }).click();
+    await expect(label).toBeFocused();
+    await expect(label).toHaveValue("Look here Fixture dictated annotation");
     await label.fill("Look here");
     await overlay.getByRole("button", { name: "Add annotation", exact: true }).click();
     await expect(label).toHaveCount(0);
@@ -320,11 +334,10 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(label).toBeFocused();
     await overlay.keyboard.type("Discard me");
     await expect(label).toHaveValue("Discard me");
-    // Exactly like other annotations: Escape first mutes live dictation, then cancels.
     await overlay.keyboard.press("Escape");
-    await expect(overlay.getByRole("button", { name: "Unmute dictation" })).toBeVisible();
+    await expect(confirmation).toBeVisible();
     await expect(label).toHaveValue("Discard me");
-    await overlay.keyboard.press("Escape");
+    await confirmation.getByRole("button", { name: "Discard", exact: true }).click();
     await expect(label).toHaveCount(0);
     await expect(overlay.getByRole("toolbar")).toBeVisible();
     // Markers reuse annotation details; edit/cancel stays separate from creation.
@@ -345,6 +358,7 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(edit).toHaveValue("Look here\nSecond line");
     await edit.fill("Discard this edit");
     await overlay.keyboard.press("Escape");
+    await confirmation.getByRole("button", { name: "Discard", exact: true }).click();
     await expect(details.getByText("Look here\nSecond line", { exact: true })).toBeVisible();
     await overlay.keyboard.press("Escape");
     await expect(details).toHaveCount(0);
@@ -720,6 +734,7 @@ test("captures and annotates through the hidden native overlay into the existing
       ).toBeFocused();
       await cancelledOverlay.keyboard.type("Cancel draft arrow");
       await cancelledOverlay.keyboard.press("Escape");
+      await cancelledOverlay.getByRole("button", { name: "Discard", exact: true }).click();
       await expect(
         cancelledOverlay.getByRole("textbox", { name: "Annotation comment" }),
       ).toHaveCount(0);

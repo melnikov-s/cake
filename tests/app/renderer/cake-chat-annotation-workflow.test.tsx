@@ -53,6 +53,24 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("propagates rejected annotation submission so a full collection cannot close the draft", () => {
+  using fixture = createRendererStoreFixture({});
+  const chat = fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
+  const store = chat.conversationSessionStore.chatStore;
+  const annotation = {
+    messageId: "entry-7-text-0",
+    selectedText: "database migration",
+    startOffset: 0,
+    endOffset: 18,
+    contextBefore: "",
+    contextAfter: "",
+    comment: "Keep this draft",
+  };
+  for (let index = 0; index < 100; index++) expect(store.addAnnotation(annotation)).toBe(true);
+  expect(store.addAnnotation(annotation)).toBe(false);
+  expect(store.annotations).toHaveLength(100);
+});
+
 it("adds a selected Cake Chat passage as a composer annotation sent with the next message", async () => {
   const user = userEvent.setup();
   const showTranscriptSelectionContextMenu = vi.fn<

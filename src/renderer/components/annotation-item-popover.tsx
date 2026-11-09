@@ -11,6 +11,7 @@ import { observer } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
 import { CheckIcon, CloseIcon, EditIcon, TrashIcon } from "@/components/ui/icons";
 import { Textarea } from "@/components/ui/textarea";
+import { useAnnotationDismissal } from "./annotation-dismissal";
 import type { Annotation } from "../../contracts/conversations/session-contract";
 import type { MessageCommentAnchorRect } from "./message-comment-anchor";
 
@@ -84,20 +85,18 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
     const previouslyFocused =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dismiss = (event: PointerEvent) => {
-      if (!(event.target instanceof Node) || !surfaceRef.current?.contains(event.target)) {
+      if (
+        !isEditing &&
+        (!(event.target instanceof Node) || !surfaceRef.current?.contains(event.target))
+      ) {
         onClose();
       }
     };
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
+      if (!isEditing && event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
         event.preventDefault();
         event.stopPropagation();
-        if (isEditing) {
-          setIsEditing(false);
-          setDraftComment(annotation.comment ?? "");
-        } else {
-          onClose();
-        }
+        onClose();
       }
     };
     document.addEventListener("pointerdown", dismiss);
@@ -109,102 +108,114 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
     };
   }, [isEditing, onClose, annotation.comment]);
 
-  const handleSave = useCallback(() => {
-    onSave(draftComment.trim());
-    setIsEditing(false);
-  }, [draftComment, onSave]);
+  const dismissal = useAnnotationDismissal({
+    surface: surfaceRef,
+    input: textareaRef,
+    enabled: isEditing,
+    changed: draftComment !== (annotation.comment ?? ""),
+    onDismiss() {
+      setDraftComment(annotation.comment ?? "");
+      setIsEditing(false);
+    },
+    onSubmit(value) {
+      onSave(value.trim());
+      setIsEditing(false);
+    },
+  });
 
   return createPortal(
-    <div
-      ref={surfaceRef}
-      className="fixed z-50 flex max-h-72 w-[min(22rem,calc(100vw-24px))] flex-col gap-2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-2xl"
-      style={position}
-      role="dialog"
-      aria-label="Annotation details"
-    >
-      {isEditing ? (
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            handleSave();
-          }}
-        >
-          <Textarea
-            dictation
-            ref={textareaRef}
-            rows={2}
-            aria-label="Edit annotation comment"
-            className="max-h-40 min-h-12 resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30"
-            placeholder="Add annotation..."
-            value={draftComment}
-            onChange={(event) => {
-              setDraftComment(event.currentTarget.value);
-              const el = event.currentTarget;
-              el.style.height = "auto";
-              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    <>
+      <div
+        ref={surfaceRef}
+        className="fixed z-50 flex max-h-72 w-[min(22rem,calc(100vw-24px))] flex-col gap-2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-2xl"
+        style={position}
+        role="dialog"
+        aria-label="Annotation details"
+      >
+        {isEditing ? (
+          <form
+            className="flex flex-col gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              dismissal.submit();
             }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                handleSave();
-              }
-            }}
-          />
-          <div className="flex items-center justify-end gap-1">
-            <IconButton
-              type="button"
-              className="size-7"
-              tooltip="Cancel"
-              ariaLabel="Cancel editing"
-              onClick={() => {
-                setDraftComment(annotation.comment ?? "");
-                setIsEditing(false);
+          >
+            <Textarea
+              dictation
+              ref={textareaRef}
+              data-dictation-submission-owner={dismissal.owner}
+              rows={2}
+              aria-label="Edit annotation comment"
+              className="max-h-40 min-h-12 resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30"
+              placeholder="Add annotation..."
+              value={draftComment}
+              onChange={(event) => {
+                setDraftComment(event.currentTarget.value);
+                const el = event.currentTarget;
+                el.style.height = "auto";
+                el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
               }}
-            >
-              <CloseIcon size={14} />
-            </IconButton>
-            <IconButton
-              type="submit"
-              className="size-7 bg-primary text-primary-foreground hover:bg-primary/90"
-              tooltip="Save annotation"
-              ariaLabel="Save annotation"
-            >
-              <CheckIcon />
-            </IconButton>
-          </div>
-        </form>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <div className="max-h-48 overflow-y-auto px-1 py-0.5 text-xs leading-relaxed text-foreground whitespace-pre-wrap">
-            {annotation.comment || (
-              <span className="italic text-muted-foreground">{annotation.selectedText}</span>
-            )}
-          </div>
-          <div className="flex items-center justify-end gap-1 border-t border-border/60 pt-1.5">
-            <IconButton
-              className="size-7"
-              tooltip="Edit annotation"
-              ariaLabel="Edit annotation"
-              onClick={() => setIsEditing(true)}
-            >
-              <EditIcon />
-            </IconButton>
-            <IconButton
-              className="size-7"
-              tooltip="Delete annotation"
-              ariaLabel="Delete annotation"
-              onClick={() => {
-                onRemove();
-                onClose();
+              onKeyDownCapture={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  dismissal.submit();
+                }
               }}
-            >
-              <TrashIcon size={14} />
-            </IconButton>
+            />
+            <div className="flex items-center justify-end gap-1">
+              <IconButton
+                type="button"
+                className="size-7"
+                tooltip="Cancel"
+                ariaLabel="Cancel editing"
+                onClick={() => dismissal.dismiss()}
+              >
+                <CloseIcon size={14} />
+              </IconButton>
+              <IconButton
+                type="submit"
+                className="size-7 bg-primary text-primary-foreground hover:bg-primary/90"
+                tooltip="Save annotation"
+                ariaLabel="Save annotation"
+              >
+                <CheckIcon />
+              </IconButton>
+            </div>
+          </form>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <div className="max-h-48 overflow-y-auto px-1 py-0.5 text-xs leading-relaxed text-foreground whitespace-pre-wrap">
+              {annotation.comment || (
+                <span className="italic text-muted-foreground">{annotation.selectedText}</span>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-1 border-t border-border/60 pt-1.5">
+              <IconButton
+                className="size-7"
+                tooltip="Edit annotation"
+                ariaLabel="Edit annotation"
+                onClick={() => setIsEditing(true)}
+              >
+                <EditIcon />
+              </IconButton>
+              <IconButton
+                className="size-7"
+                tooltip="Delete annotation"
+                ariaLabel="Delete annotation"
+                onClick={() => {
+                  onRemove();
+                  onClose();
+                }}
+              >
+                <TrashIcon size={14} />
+              </IconButton>
+            </div>
           </div>
-        </div>
-      )}
-    </div>,
+        )}
+      </div>
+      {dismissal.confirmation}
+    </>,
     document.body,
   );
 });

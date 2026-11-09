@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { listenForModifierTap } from "../lib/modifier-tap";
+import { requestAnnotationDismissal } from "../lib/annotation-dismissal";
 import {
   cakeHotkeyEventName,
   cakeNativeHotkeyInputEventName,
@@ -27,6 +28,12 @@ export function useAppHotkeys(
     const recordingHotkey = () =>
       Boolean(document.querySelector('[data-slot="hotkey-recorder"][data-recording="true"]'));
     const runAction = (action: CakeHotkeyActionId, target: EventTarget | null) => {
+      if (
+        action !== "toggle-dictation-mute" &&
+        action !== "show-ui-hints" &&
+        requestAnnotationDismissal()
+      )
+        return;
       if (action === "new-terminal-tab" && target instanceof Element && target.closest(".xterm"))
         return;
       if (action === "open-hovered-message") {

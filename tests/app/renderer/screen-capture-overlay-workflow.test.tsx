@@ -217,6 +217,7 @@ describe("Screen capture overlay", () => {
     const edit = () => screen.getByRole("textbox", { name: "Edit annotation comment" });
     await fixture.user.clear(edit());
     await fixture.user.type(edit(), "Discard change{Escape}");
+    await fixture.user.click(screen.getByRole("button", { name: "Discard" }));
     expect(screen.getByText("First")).toBeDefined();
     expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
     await fixture.user.click(screen.getByRole("button", { name: "Edit annotation" }));
@@ -243,6 +244,7 @@ describe("Screen capture overlay", () => {
     await fixture.user.type(comment(), "Keep{Enter}");
     draw(fixture.store);
     await fixture.user.type(comment(), "Discard{Escape}");
+    await fixture.user.click(screen.getByRole("button", { name: "Discard" }));
     expect(screen.queryByRole("textbox", { name: "Annotation comment" })).toBeNull();
     expect(fixture.store.drawings.map((drawing) => drawing.label)).toEqual(["Keep"]);
     expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
@@ -254,7 +256,33 @@ describe("Screen capture overlay", () => {
     );
   });
 
-  it("copies image plus numbered text, commits open input and reports clipboard failure without closing", async () => {
+  it.each([
+    "Crop",
+    "Freehand",
+    "Undo drawing",
+    "Cancel",
+    "Attach full display",
+    "Copy image and text",
+  ])("protects the draft and geometry before %s can run", async (action) => {
+    using fixture = await renderOverlay();
+    await fixture.user.click(screen.getByRole("button", { name: "Annotate" }));
+    draw(fixture.store);
+    await fixture.user.type(comment(), "  Preserve this{Shift>}{Enter}{/Shift}exact note  ");
+    const drawings = JSON.parse(JSON.stringify(fixture.store.drawings));
+    await fixture.user.click(screen.getByRole("button", { name: action }));
+    expect(screen.getByRole("alertdialog")).toBeDefined();
+    expect(fixture.store.mode).toBe("annotate");
+    expect(fixture.store.editingIndex).toBe(0);
+    expect(fixture.store.drawings).toEqual(drawings);
+    expect(fixture.finishScreenCapture).not.toHaveBeenCalled();
+    expect(fixture.copy).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(comment()).toHaveProperty("value", "  Preserve this\nexact note  ");
+    expect(document.activeElement).toBe(comment());
+    expect(fixture.store.drawings).toEqual(drawings);
+  });
+
+  it("copies image plus numbered text after explicit submission and reports clipboard failure without closing", async () => {
     const copy = vi
       .fn<ScreenCaptureOverlayStore["props"]["copy"]>(async () => {})
       .mockRejectedValueOnce(new Error("Clipboard cannot write both formats"));
@@ -262,6 +290,9 @@ describe("Screen capture overlay", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Annotate" }));
     draw(fixture.store);
     await fixture.user.type(comment(), "Still editing");
+    await fixture.user.click(screen.getByRole("button", { name: "Copy image and text" }));
+    expect(copy).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Submit" }));
     await fixture.user.click(screen.getByRole("button", { name: "Copy image and text" }));
     expect(await screen.findByText("Clipboard cannot write both formats")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Copy image and text" }));

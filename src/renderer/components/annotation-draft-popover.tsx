@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { ChatComposer } from "@/components/chat-composer";
 import { ComposerInput } from "@/components/ai-elements/composer";
 import { ComposerSubmitButton } from "@/components/ui/composer-submit-button";
+import { useAnnotationDismissal } from "./annotation-dismissal";
 import type { Annotation } from "../../contracts/conversations/session-contract";
 import type { MessageSelectionAnchor } from "../stores/MessageCommentsStore";
 import type { MessageCommentAnchorRect } from "./message-comment-anchor";
@@ -38,7 +39,7 @@ export function AnnotationDraftPopover({
 } & (
   | {
       selection: MessageSelectionAnchor;
-      onAdd(annotation: Omit<Annotation, "id">): void;
+      onAdd(annotation: Omit<Annotation, "id">): void | boolean;
       onSave?: never;
     }
   | { selection?: never; onAdd?: never; onSave(comment: string): void }
@@ -84,74 +85,64 @@ export function AnnotationDraftPopover({
   useEffect(() => {
     const previouslyFocused =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusFrame = requestAnimationFrame(() => {
-      textareaRef.current?.focus({ preventScroll: true });
-    });
-    const dismiss = (event: PointerEvent) => {
-      if (!(event.target instanceof Node) || !surfaceRef.current?.contains(event.target)) {
-        onClose();
-      }
-    };
-    const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) {
-        event.preventDefault();
-        event.stopPropagation();
-        onCancel();
-      }
-    };
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", keydown);
     return () => {
-      cancelAnimationFrame(focusFrame);
-      document.removeEventListener("pointerdown", dismiss);
-      document.removeEventListener("keydown", keydown);
       const target = submittedFocus.current ?? previouslyFocused;
       if (target?.isConnected) target.focus({ preventScroll: true });
     };
-  }, [onClose, onCancel]);
+  }, []);
 
-  const handleSubmit = useCallback(() => {
-    if (selection) onAdd({ ...selection, comment: comment.trim() || undefined });
-    else onSave(comment.trim());
-    // Set only after the annotation callback returns successfully. Cleanup must
-    // perform the handoff so ordinary dismissal focus cannot overwrite it.
-    submittedFocus.current = submitFocusRef?.current ?? null;
-    onClose();
-  }, [comment, onAdd, onSave, onClose, selection, submitFocusRef]);
+  const dismissal = useAnnotationDismissal({
+    surface: surfaceRef,
+    input: textareaRef,
+    onDismiss: onCancel,
+    onSubmit(value) {
+      if (selection) {
+        if (onAdd({ ...selection, comment: value.trim() || undefined }) === false) return false;
+      } else onSave(value.trim());
+      // Only successful explicit submission bypasses dismissal protection.
+      submittedFocus.current = submitFocusRef?.current ?? null;
+      onClose();
+    },
+  });
 
   return createPortal(
-    <div
-      ref={surfaceRef}
-      className="fixed z-50 w-[min(22rem,calc(100vw-24px))] rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl"
-      style={position}
-      role="dialog"
-      aria-label="Add annotation"
-    >
-      <ChatComposer
-        inline
-        onSubmit={(event) => {
-          event.preventDefault();
-          handleSubmit();
-        }}
-        input={
-          <ComposerInput
-            ref={textareaRef}
-            autoFocus
-            aria-label="Annotation comment"
-            placeholder="Add annotation..."
-            value={comment}
-            onChange={(event) => setComment(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                handleSubmit();
-              }
-            }}
-          />
-        }
-        toolbarActions={<ComposerSubmitButton tooltip="Add annotation" />}
-      />
-    </div>,
+    <>
+      <div
+        ref={surfaceRef}
+        className="fixed z-50 w-[min(22rem,calc(100vw-24px))] rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl"
+        style={position}
+        role="dialog"
+        aria-label="Add annotation"
+      >
+        <ChatComposer
+          inline
+          onSubmit={(event) => {
+            event.preventDefault();
+            dismissal.submit();
+          }}
+          input={
+            <ComposerInput
+              ref={textareaRef}
+              data-dictation-submission-owner={dismissal.owner}
+              autoFocus
+              aria-label="Annotation comment"
+              placeholder="Add annotation..."
+              value={comment}
+              onChange={(event) => setComment(event.currentTarget.value)}
+              onKeyDownCapture={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  dismissal.submit();
+                }
+              }}
+            />
+          }
+          toolbarActions={<ComposerSubmitButton tooltip="Add annotation" />}
+        />
+      </div>
+      {dismissal.confirmation}
+    </>,
     document.body,
   );
 }
