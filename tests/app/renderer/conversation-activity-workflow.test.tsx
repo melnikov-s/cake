@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ChatIcon, ForkIcon } from "../../../src/renderer/components/ui/icons";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
@@ -342,7 +343,7 @@ it("regular sessions show only running direct children and open the selected ses
 });
 
 it.each(["project", "cake-chat"] as const)(
-  "%s counts only running rows in mixed states and distinguishes work type from status",
+  "%s counts only running rows with session forks, subagent chats and no visible Inspect action",
   async (kind) => {
     const launch =
       kind === "cake-chat"
@@ -408,16 +409,21 @@ it.each(["project", "cake-chat"] as const)(
     const workerIcon = within(rows[1]!).getByRole("img", { name: "Temporary subagent" });
     expect(sessionIcon.getAttribute("title")).toBe("Project Session");
     expect(workerIcon.getAttribute("title")).toBe("Temporary subagent");
-    expect(sessionIcon.querySelector("path")?.getAttribute("d")).not.toBe(
-      workerIcon.querySelector("path")?.getAttribute("d"),
-    );
+    const referenceIcons = render(
+      <>
+        <ForkIcon />
+        <ChatIcon size={14} />
+      </>,
+    ).container.querySelectorAll("svg");
+    expect(sessionIcon.querySelector("svg")?.innerHTML).toBe(referenceIcons[0]!.innerHTML);
+    expect(workerIcon.querySelector("svg")?.innerHTML).toBe(referenceIcons[1]!.innerHTML);
     for (const row of rows) {
       expect(row.lastElementChild?.querySelector(".bg-accent")).not.toBeNull();
       expect(row.firstElementChild?.getAttribute("role")).toBe("img");
       expect(row.textContent).toContain("Running");
       expect(row.getAttribute("aria-description")).toMatch(/Project Session|Temporary subagent/);
     }
-    expect(within(rows[1]!).getByText("Inspect")).toBeTruthy();
+    expect(within(menu).queryByText("Inspect", { exact: true })).toBeNull();
     view.publishSessions(nonRunning);
     expect(screen.getByRole("button", { name: "Activity · 1 running" })).toBeTruthy();
     expect(within(menu).getAllByRole("button")).toHaveLength(1);

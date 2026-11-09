@@ -44,7 +44,7 @@ export const ConversationActivity = observer(function ConversationActivity({
           id: `session:${session.sessionId}`,
           title: session.title,
           description: ["Running", session.projectName].filter(Boolean).join(" · "),
-          icon: <ChatIcon size={14} />,
+          icon: <ForkIcon />,
           iconLabel: "Project Session",
           status: "running" as const,
           accessibleLabel: `Open session: ${session.title}`,
@@ -54,10 +54,9 @@ export const ConversationActivity = observer(function ConversationActivity({
           id: `subagent:${run.key}`,
           title: run.task,
           description: "Running · Temporary subagent",
-          icon: <ForkIcon />,
+          icon: <ChatIcon size={14} />,
           iconLabel: "Temporary subagent",
           status: "running" as const,
-          action: "Inspect",
           accessibleLabel: `Inspect subagent: ${run.task}`,
           onSelect: () => {
             const chatStore = subagents.chatStore(run.key);
