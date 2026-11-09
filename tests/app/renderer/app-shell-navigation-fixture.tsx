@@ -9,6 +9,7 @@ import { defaultApplicationState } from "../../../src/contracts/application/appl
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import { App } from "../../../src/renderer/components/app";
+import { NewSessionDialog } from "../../../src/renderer/components/new-session-dialog";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -117,6 +118,7 @@ export function renderAppShellNavigation(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
         <App />
+        <NewSessionDialog store={fixture.root.newSessionStore} />
       </StoreProvider>
     </StoreProvider>
   );

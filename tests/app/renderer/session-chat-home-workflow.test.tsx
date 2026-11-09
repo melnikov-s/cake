@@ -289,8 +289,12 @@ async function inspectWorker(
       screen.getByRole("button", { name: "Inspect subagent: Inspect the boundary" }),
     );
   } else {
-    if (!screen.queryByRole("button", { name: "Open subagent chat" }))
-      await fixture.user.click(document.querySelector('[data-slot="activity-group"] > summary')!);
+    // Wait for the virtualized transcript before opening its work-log disclosure.
+    if (!screen.queryByRole("button", { name: "Open subagent chat" })) {
+      const summary = (await screen.findByText("Work log")).closest("summary");
+      if (!summary) throw new Error("Missing work log disclosure");
+      await fixture.user.click(summary);
+    }
     await fixture.user.click(await screen.findByRole("button", { name: "Open subagent chat" }));
   }
   expect(screen.getByRole("region", { name: "Subagent" })).toBeDefined();
