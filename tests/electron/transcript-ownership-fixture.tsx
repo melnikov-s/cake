@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { installedDictationState } from "../helpers/dictation";
 import { TurnId } from "../../src/contracts/conversations/conversation-data";
 import type { TestClientOverrides } from "../app/renderer/test-client";
 import { formatSessionDigestReminder } from "../../src/contracts/cake-chats/session-digest-reminder";
@@ -119,8 +120,45 @@ let releaseAttachment: ((content: AttachmentContent) => void) | undefined;
 const attachmentReady = new Promise<AttachmentContent>((resolve) => {
   releaseAttachment = resolve;
 });
+let deliverAudio: ((samples: Float32Array) => void) | undefined;
+let releaseRecognition: ((text: string) => void) | undefined;
+let releaseSubmission: (() => void) | undefined;
+let submissionReady: Promise<void> | undefined;
+let submittedText: string | undefined;
 const fixture = createRendererStoreFixture({
+  microphone: {
+    devices: async () => [],
+    open: async (onAudio) => {
+      deliverAudio = onAudio;
+      return { finish: async () => {}, stop() {}, discardPending: async () => {} };
+    },
+  },
   client: {
+    dictation: {
+      listVocabulary: async () => ({ revision: 0, entries: [], total: 0, nextOffset: null }),
+      prepare: async () =>
+        fixture.root.dictationStore.applyState({ ...installedDictationState, status: "ready" }),
+      claim: async ({ owner }) => {
+        const claim = (fixture.root.dictationStore.state?.captureClaim ?? 0) + 1;
+        fixture.root.dictationStore.applyState({
+          ...installedDictationState,
+          status: "ready",
+          captureOwner: owner,
+          captureClaim: claim,
+        });
+        return { claim };
+      },
+      release: async () => {},
+      trace: async () => {},
+      detectSpeech: async () => true,
+      transcribe: async ({ final }) =>
+        final
+          ? new Promise<string>((resolve) => {
+              releaseRecognition = resolve;
+            })
+          : "Dictated message. ".repeat(25),
+    },
+    workspaces: { postProcessDictation: async (text) => text },
     ...client,
     sessionChats: {
       ...client?.sessionChats,
@@ -143,6 +181,9 @@ const fixture = createRendererStoreFixture({
         };
       },
       prompt: async ({ text }) => {
+        submittedText = text;
+        await submissionReady;
+        submissionReady = undefined;
         parts = [
           ...parts,
           { kind: "text", id: `sent-${revision}`, role: "user", status: "complete", text },
@@ -248,42 +289,44 @@ function render() {
   flushSync(() =>
     root.render(
       <StoreProvider store={fixture.root}>
-        <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-          {chatMode ? (
-            <Chat
-              store={store}
-              transcriptBehavior={
-                widget
-                  ? {
-                      messageReferenceSessionId: session.sessionId,
-                      inlineWidgets: fixture.root.inlineWidgetStore,
-                      inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
-                    }
-                  : undefined
-              }
-              composerHeader={
-                dockHeight ? (
-                  <div style={{ height: dockHeight }}>Attention header fixture</div>
-                ) : undefined
-              }
-              compact={chatMode === "compact"}
-              embedded={withUpdates && chatMode === "compact"}
-            />
-          ) : (
-            <ChatTranscript
-              store={store}
-              behavior={
-                widget
-                  ? {
-                      messageReferenceSessionId: session.sessionId,
-                      inlineWidgets: fixture.root.inlineWidgetStore,
-                      inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
-                    }
-                  : undefined
-              }
-              footer={<div>Activity revision {revision}</div>}
-            />
-          )}
+        <StoreProvider store={fixture.root.dictationStore}>
+          <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+            {chatMode ? (
+              <Chat
+                store={store}
+                transcriptBehavior={
+                  widget
+                    ? {
+                        messageReferenceSessionId: session.sessionId,
+                        inlineWidgets: fixture.root.inlineWidgetStore,
+                        inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
+                      }
+                    : undefined
+                }
+                composerHeader={
+                  dockHeight ? (
+                    <div style={{ height: dockHeight }}>Attention header fixture</div>
+                  ) : undefined
+                }
+                compact={chatMode === "compact"}
+                embedded={withUpdates && chatMode === "compact"}
+              />
+            ) : (
+              <ChatTranscript
+                store={store}
+                behavior={
+                  widget
+                    ? {
+                        messageReferenceSessionId: session.sessionId,
+                        inlineWidgets: fixture.root.inlineWidgetStore,
+                        inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
+                      }
+                    : undefined
+                }
+                footer={<div>Activity revision {revision}</div>}
+              />
+            )}
+          </StoreProvider>
         </StoreProvider>
       </StoreProvider>,
     ),
@@ -294,6 +337,16 @@ render();
 // These entry points control only external projection delivery / React commit
 // ordering. DOM scrolling, measurements, Virtuoso and transcript policy are real.
 export interface TranscriptOwnershipFixture {
+  /** Send intent before its external projection arrives; keep current embedded content mounted. */
+  sendIntent(): void;
+  enableDictation(): Promise<void>;
+  dictate(): void;
+  finishRecognition(): boolean;
+  submittedText(): string | undefined;
+  /** Schedule real reminder rows through the observer, leaving mount/measurement to React/Virtuoso. */
+  sessionUpdates(batch: string): void;
+  delaySubmission(): void;
+  admitSubmission(): void;
   openAttention(partId?: string): number;
   openAttentionResponse(turnId: string): number;
   archivePart(partId: string): void;
@@ -325,6 +378,56 @@ export interface TranscriptOwnershipFixture {
   newestId(): string | undefined;
 }
 Reflect.set(window, "transcriptFixture", {
+  sendIntent() {
+    store.transcriptInteraction.noteSentMessage();
+    render();
+  },
+  async enableDictation() {
+    fixture.root.dictationStore.applyState({ ...installedDictationState, status: "ready" });
+    await fixture.root.dictationStore.setEnabled(true);
+  },
+  dictate() {
+    deliverAudio?.(new Float32Array(16_384).fill(0.1));
+  },
+  finishRecognition() {
+    if (!releaseRecognition) return false;
+    releaseRecognition("Dictated message. ".repeat(25) + "Final recognition.");
+    releaseRecognition = undefined;
+    return true;
+  },
+  submittedText() {
+    return submittedText;
+  },
+  sessionUpdates(batch) {
+    parts = [
+      ...parts,
+      ...Array.from({ length: 3 }, (_, index): UiPart => ({
+        kind: "context",
+        id: `${batch}-${index}`,
+        title: "Session updates",
+        text: formatSessionDigestReminder({
+          lines: [
+            {
+              reference: `${batch}-${index}`,
+              sessionId: `completed-${index}`,
+              title: `${batch} auto-merge update ${index}`,
+              status: "completed",
+              summary: "Auto-merge backend outcome: merged and resolved.",
+            },
+          ],
+        })!,
+      })),
+    ];
+    publish();
+  },
+  delaySubmission() {
+    submissionReady = new Promise<void>((resolve) => {
+      releaseSubmission = resolve;
+    });
+  },
+  admitSubmission() {
+    releaseSubmission?.();
+  },
   openAttention(partId) {
     const revision = store.transcriptInteraction.beginResultReveal();
     if (partId) store.transcriptInteraction.completeResultReveal(revision, [partId]);

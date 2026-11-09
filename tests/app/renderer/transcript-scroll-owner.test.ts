@@ -400,6 +400,26 @@ describe("transcript scroll owner measurement boundaries", () => {
     },
   );
 
+  it.each(["wheel", "pointerdown", "keydown"])(
+    "lets %s cancel send ownership even after virtual navigation settled",
+    (input) => {
+      addRow("last", 3_000, 300);
+      owner.scrollToBottomForSentMessage({ itemKey: "last", scrollToIndex: vi.fn() });
+      owner.reconcile();
+      scroller.dispatchEvent(
+        input === "wheel"
+          ? new WheelEvent("wheel", { deltaY: -100 })
+          : input === "keydown"
+            ? new KeyboardEvent("keydown", { key: "PageUp" })
+            : new Event("pointerdown"),
+      );
+      scroller.scrollTop -= 100;
+      contentHeight += 400;
+      owner.reconcile();
+      expect(scroller.scrollTop).toBe(3_300);
+    },
+  );
+
   it("keeps an ordinary send at the actual bottom after a measured row, footer clamp, then virtual growth", () => {
     addRow("last", 3_000, 300);
     scroller.style.setProperty("--composer-dock-height", "600px");
@@ -418,10 +438,51 @@ describe("transcript scroll owner measurement boundaries", () => {
     expect(scroller.scrollTop).toBe(3_500);
   });
 
-  it("respects native reader movement without a local input event after the send row measures", () => {
+  it.each(["same-geometry clamp", "delayed virtual correction"])(
+    "keeps send ownership through %s after navigation settles",
+    (movement) => {
+      addRow("last", 3_000, 300);
+      owner.scrollToBottomForSentMessage({ itemKey: "last", scrollToIndex: vi.fn() });
+      owner.reconcile();
+      if (movement === "same-geometry clamp") {
+        contentHeight -= 1_200;
+        scroller.scrollTop = scroller.scrollTop;
+        contentHeight += 1_200;
+      } else scroller.scrollTop -= 1_200;
+      scroller.dispatchEvent(new Event("scroll"));
+      owner.reconcile();
+      expect(scroller.scrollTop).toBe(3_400);
+      contentHeight += 1_000;
+      owner.reconcile();
+      expect(scroller.scrollTop).toBe(4_400);
+    },
+  );
+
+  it("follows the actual submitted row when admission replaces the old destination and loading row later", () => {
+    addRow("old-last", 3_000, 300);
+    owner.scrollToBottomForSentMessage({ itemKey: "old-last", scrollToIndex: vi.fn() });
+    owner.reconcile();
+    addRow("loading", 3_300, 100);
+    owner.reconcile();
+    list.lastElementChild!.remove();
+    addRow("submitted", 3_300, 800, 100);
+    contentHeight += 700;
+    scroller.scrollTop -= 500;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(4_100);
+    list.lastElementChild!.setAttribute("data-known-size", "800");
+    contentHeight += 300;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(4_400);
+  });
+
+  it("respects forwarded embedded reader input after the send row measures", () => {
     addRow("last", 3_000, 300);
     owner.scrollToBottomForSentMessage({ itemKey: "last", scrollToIndex: vi.fn() });
     owner.reconcile();
+    const frame = document.createElement("iframe");
+    scroller.append(frame);
+    frame.dispatchEvent(new CustomEvent("transcript-reader-input", { bubbles: true, detail: -1 }));
     scroller.scrollTop -= 100;
     scroller.dispatchEvent(new Event("scroll"));
     contentHeight += 400;

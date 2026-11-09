@@ -38,6 +38,43 @@ function setup() {
   return { actions, frame, post, request, replace: () => view.rerender(content(nextToken)) };
 }
 
+describe("inline widget scroll intent host binding", () => {
+  it("forwards only authenticated directions from the mounted frame, without link capabilities", () => {
+    const view = render(
+      <InlineWidgetFrame
+        title="Input"
+        compiled={{ token, url: `cake-widget://document/${token}` }}
+      />,
+    );
+    const frame = view.container.querySelector("iframe")!;
+    const readerInput = vi.fn();
+    view.container.addEventListener("transcript-reader-input", readerInput);
+    const post = (
+      value: unknown,
+      activeToken = token,
+      source: MessageEventSource | null = frame.contentWindow,
+    ) =>
+      act(() =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source,
+            data: { source: "cake-inline-widget", token: activeToken, type: "scroll-input", value },
+          }),
+        ),
+      );
+    post(-1, token, window);
+    post(-1, nextToken);
+    for (const value of [null, "up", -100, {}, true]) post(value);
+    expect(readerInput).not.toHaveBeenCalled();
+    for (const value of [-1, 0, 1]) post(value);
+    expect(readerInput.mock.calls.map(([event]) => event.detail)).toEqual([-1, 0, 1]);
+    expect(readerInput.mock.calls.every(([event]) => event.target === frame)).toBe(true);
+    view.unmount();
+    post(-1);
+    expect(readerInput).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe("inline widget link host binding", () => {
   it("opens once through the hosting view and ignores other sources, tokens and malformed URLs", () => {
     const { actions, post, request, frame } = setup();

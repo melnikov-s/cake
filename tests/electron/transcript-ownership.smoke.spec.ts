@@ -635,6 +635,180 @@ for (const chatMode of ["virtualized", "compact"]) {
 }
 
 for (const chatMode of ["virtualized", "compact"]) {
+  test.describe(`${chatMode} dictated send ownership`, () => {
+    test.use({ chatMode, messageCount: 200, withImages: true });
+    test("session-update reminders injected around Enter follow measured bottom, then yield to the reader", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await transcript.focus();
+      await page.keyboard.press("Home");
+      await settle(page);
+      expect(await gap(transcript)).toBeGreaterThan(1000);
+      await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).delaySubmission(),
+      );
+      await composer.fill("Enter while auto-merge updates arrive");
+      await composer.press("Enter");
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            (
+              Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+            ).submittedText(),
+          ),
+        )
+        .toBe("Enter while auto-merge updates arrive");
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).sessionUpdates(
+          "Before admission",
+        ),
+      );
+      await expect(
+        transcript.getByText("Before admission auto-merge update 2", { exact: true }),
+      ).toBeVisible();
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).admitSubmission(),
+      );
+      await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+        "Enter while auto-merge updates arrive",
+      );
+      await settle(page);
+      await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).sessionUpdates(
+          "After admission",
+        ),
+      );
+      await expect(
+        transcript.getByText("After admission auto-merge update 2", { exact: true }),
+      ).toBeVisible();
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      await command(page, "stream");
+      await settle(page);
+      expect(await gap(transcript)).toBeLessThanOrEqual(1);
+      // Anchor assertions compare painted coordinates. Finish finite entrance
+      // animations, not the loading spinner, before taking the reading baseline.
+      await transcript.evaluate((element) =>
+        Promise.all(
+          element
+            .getAnimations({ subtree: true })
+            .filter((animation) =>
+              Number.isFinite(animation.effect?.getComputedTiming().iterations),
+            )
+            .map((animation) => animation.finished),
+        ),
+      );
+      await wheel(page, transcript, -180);
+      const reading = await anchor(transcript);
+      await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).sessionUpdates(
+          "While reading",
+        ),
+      );
+      await settle(page);
+      expect(await anchor(transcript)).toEqual(reading);
+      expect(await gap(transcript)).toBeGreaterThan(180);
+    });
+    for (const correction of ["transient clamp", "delayed programmatic correction"]) {
+      test(`final recognition and delayed admission stay at bottom through ${correction}`, async ({
+        fixturePage: page,
+      }) => {
+        const transcript = page.locator(".transcript");
+        const composer = page.getByRole("combobox", { name: "Message", exact: true });
+        await transcript.focus();
+        await page.keyboard.press("Home");
+        await settle(page);
+        expect(await gap(transcript)).toBeGreaterThan(1000);
+        await page.evaluate(async () => {
+          const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+          fixture.setDockHeight(240);
+          fixture.delaySubmission();
+          await fixture.enableDictation();
+        });
+        await composer.focus();
+        await expect(page.locator('[data-slot="dictation-indicator"]')).toContainText("Listening");
+        await page.evaluate(() =>
+          (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).dictate(),
+        );
+        await expect(composer).toHaveValue("Dictated message. ".repeat(25).trim());
+        await composer.press("Enter");
+        await expect(page.locator('[data-slot="dictation-indicator"]')).toContainText("Finishing");
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              (
+                Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+              ).finishRecognition(),
+            ),
+          )
+          .toBe(true);
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              (
+                Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+              ).submittedText(),
+            ),
+          )
+          .toContain("Final recognition.");
+        // The old last row can already be measured while admission is still held.
+        await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+        await page.evaluate(() => {
+          const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+          fixture.setDockHeight(0);
+          fixture.admitSubmission();
+        });
+        await expect(composer).toHaveValue("");
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "Final recognition.",
+        );
+        await settle(page);
+        await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+        const geometry = await transcript.evaluate((element, correction) => {
+          const content = element.firstElementChild as HTMLElement;
+          const height = element.scrollHeight;
+          const before = element.scrollTop;
+          let clamped = before;
+          if (correction === "transient clamp") {
+            content.style.height = `${element.clientHeight + 100}px`;
+            content.style.overflow = "hidden";
+            clamped = element.scrollTop;
+            content.style.removeProperty("height");
+            content.style.removeProperty("overflow");
+          } else element.scrollTop -= 1200;
+          return {
+            height,
+            finalHeight: element.scrollHeight,
+            before,
+            clamped,
+            corrected: element.scrollTop,
+          };
+        }, correction);
+        expect(geometry.finalHeight).toBe(geometry.height);
+        if (correction === "transient clamp")
+          expect(geometry.before - geometry.clamped).toBeGreaterThan(100);
+        else expect(geometry.before - geometry.corrected).toBeGreaterThan(100);
+        await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+        for (const operation of ["arrive", "stream", "activity"] as const) {
+          await command(page, operation);
+          await settle(page);
+          expect(await gap(transcript)).toBeLessThanOrEqual(1);
+        }
+        await wheel(page, transcript, -120);
+        const reading = await anchor(transcript);
+        await command(page, "stream");
+        await settle(page);
+        expect(await anchor(transcript)).toEqual(reading);
+        expect(await gap(transcript)).toBeGreaterThan(100);
+      });
+    }
+  });
+}
+
+for (const chatMode of ["virtualized", "compact"]) {
   test.describe(`${chatMode} image-heavy virtual history`, () => {
     test.use({ chatMode });
     test.use({ messageCount: 80, withImages: true });
@@ -758,6 +932,7 @@ const command = (
     | "archivePart"
     | "admitAttention"
     | "setDockHeight"
+    | "sessionUpdates"
   >,
 ) =>
   page.evaluate((operation) => {
@@ -1732,16 +1907,20 @@ test.describe("reader scrolling up while content streams", () => {
 test.describe("reader scrolling over an inline widget while content streams", () => {
   test.use({ withWidget: true });
 
-  test("the first upward iframe gesture detaches and preserves painted reading progress", async ({
+  test("the first upward iframe gesture cancels a settled send and preserves painted reading progress", async ({
     fixturePage: page,
   }) => {
     const transcript = page.locator(".transcript");
     const iframe = transcript.locator("iframe");
+    await page.evaluate(() =>
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).sendIntent(),
+    );
+    await settle(page);
     await expect(transcript.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
     const bounds = (await iframe.boundingBox())!;
     const viewport = (await transcript.boundingBox())!;
-    // Wheel events over the iframe belong to its document: the transcript sees
-    // only the chained scroll, never the input.
+    // The opaque frame forwards escaping gestures, independently of the chained
+    // native scroll. Even a measured send must yield to the very first gesture.
     await page.mouse.move(bounds.x + bounds.width / 2, Math.max(viewport.y, bounds.y) + 30);
     await live(page, "text");
     await page.waitForTimeout(200);

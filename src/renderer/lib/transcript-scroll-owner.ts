@@ -15,11 +15,11 @@
  * message selected with the keyboard, a link, or an explicit attention click
  * stops following. Attention reveals hold the exact result's start until input.
  *
- * Any upward movement that leaves the very end is the reader, whatever caused
- * it: wheel, keys, touch, a scrollbar drag, find-in-page, or a gesture over an
- * iframe that never reaches this document as input. Following stops before
- * anything can pin over it. Only a browser clamp (content shrank) moves up and
- * still lands exactly at the end.
+ * Outside a sent-message destination, unowned upward movement pauses following.
+ * During a send, virtual corrections and browser clamps are not reader intent,
+ * even when a transient shrink/regrowth leaves identical final geometry. Local
+ * input and forwarded embedded-content gestures cancel that destination before
+ * reconciliation can pin over the reader.
  *
  * Every layout trigger calls `reconcile()`. Nothing else in the renderer writes
  * this scroller's `scrollTop`; the virtualizer only moves it for an explicit
@@ -99,16 +99,10 @@ export function createTranscriptScrollOwner(
   let covered = false;
   let anchor: Anchor | undefined;
   let pendingReveal: string | undefined;
-  // Row measurement settles virtual navigation, not bottom-following. Keep
-  // classifying dock/footer clamps through subsequent virtual measurements.
+  // Row measurement settles virtual retries, not send-following ownership.
+  // Only a newer navigation intent or reader input ends that ownership.
   let pendingBottom: string | undefined;
   let bottomNavigationSettled = false;
-  const bottomLayout = () => ({
-    content: scroller.scrollHeight,
-    viewport: scroller.clientHeight,
-    dock: getComputedStyle(scroller).getPropertyValue("--composer-dock-height"),
-  });
-  let sentLayout: ReturnType<typeof bottomLayout> | undefined;
   let resultReveal: { key?: string; cancel(): void; navigating: boolean } | undefined;
   let intentRevision = 0;
   let pendingRestore = options.restore;
@@ -403,21 +397,6 @@ export function createTranscriptScrollOwner(
     if (covered || !measurable()) return;
     observeViewport();
     const pendingMeasurements = measuring();
-    if (pendingBottom !== undefined) {
-      const layout = bottomLayout();
-      // Once virtual navigation is measured, movement in unchanged geometry is
-      // the reader's (including iframe gestures with no input event here).
-      if (
-        bottomNavigationSettled &&
-        sentLayout &&
-        layout.content === sentLayout.content &&
-        layout.viewport === sentLayout.viewport &&
-        layout.dock === sentLayout.dock &&
-        scroller.scrollTop !== knownTop
-      )
-        pendingBottom = undefined;
-      sentLayout = layout;
-    }
     if (positioning()) {
       knownTop = scroller.scrollTop;
       if (following) pin();
@@ -509,6 +488,9 @@ export function createTranscriptScrollOwner(
       !pendingMeasurements &&
       row(pendingBottom)
     ) {
+      // Only settle the virtualizer's retries, not the reader's send intent.
+      // This row may predate admission; the submitted row and late measurements
+      // can arrive afterwards. Neither can detach bottom-following without input.
       bottomNavigationSettled = true;
       options.cancelVirtualNavigation();
       pin();
@@ -643,24 +625,29 @@ export function createTranscriptScrollOwner(
     anchor = findAnchor(false);
   };
 
+  const cancelForPointer = () => {
+    const navigating = pendingBottom !== undefined || resultReveal || pendingReveal !== undefined;
+    cancelReveal();
+    if (navigating) {
+      following = false;
+      anchor = findAnchor();
+    }
+  };
+  const handleEmbeddedInput = (event: Event) => {
+    if (!(event instanceof CustomEvent)) return;
+    const direction: unknown = event.detail;
+    if (direction === 0) cancelForPointer();
+    else if (direction === -1 || direction === 1) intent(event.target, direction);
+  };
+
   const abort = new AbortController();
   const listen = { signal: abort.signal, passive: true };
   scroller.addEventListener("click", handleDisclosureClick, {
     signal: abort.signal,
     capture: true,
   });
-  scroller.addEventListener(
-    "pointerdown",
-    () => {
-      const navigating = pendingBottom !== undefined || resultReveal || pendingReveal !== undefined;
-      cancelReveal();
-      if (navigating) {
-        following = false;
-        anchor = findAnchor();
-      }
-    },
-    listen,
-  );
+  scroller.addEventListener("pointerdown", cancelForPointer, listen);
+  scroller.addEventListener("transcript-reader-input", handleEmbeddedInput, listen);
   scroller.addEventListener("scroll", handleScroll, listen);
   scroller.addEventListener("wheel", handleWheel, listen);
   scroller.addEventListener("keydown", handleKeyDown, { signal: abort.signal });
@@ -683,7 +670,6 @@ export function createTranscriptScrollOwner(
       following = true;
       pendingBottom = navigation?.itemKey ?? "";
       bottomNavigationSettled = !navigation;
-      sentLayout = bottomLayout();
       pin();
       navigation?.scrollToIndex();
     },

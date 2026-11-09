@@ -1,5 +1,6 @@
 import type { CompiledInlineWidgetDocument } from "./inline-widget-service";
 import { withInlineWidgetLinks } from "./inline-widget-links";
+import { withInlineWidgetScrollInput } from "./inline-widget-scroll-input";
 
 export const inlineWidgetScheme = "cake-widget";
 
@@ -10,7 +11,10 @@ const documents = new Map<string, CompiledInlineWidgetDocument>();
 export function publishInlineWidget(compiled: CompiledInlineWidgetDocument) {
   documents.set(compiled.token, {
     ...compiled,
-    document: withInlineWidgetLinks(compiled.document, compiled.token),
+    document: withInlineWidgetScrollInput(
+      withInlineWidgetLinks(compiled.document, compiled.token),
+      compiled.token,
+    ),
   });
   return { token: compiled.token, url: `${inlineWidgetScheme}://document/${compiled.token}` };
 }

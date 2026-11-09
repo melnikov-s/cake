@@ -13,7 +13,10 @@ import { cn } from "@/lib/utils";
 import type { CompiledInlineWidget } from "../../contracts/widgets/inline-widget-contract";
 import { widgetDocumentUrl } from "../lib/widget-document-url";
 import { Option, Schema } from "effect";
-import { inlineWidgetLinkMessage } from "../../utils/inline-widget-link-message";
+import {
+  inlineWidgetLinkMessage,
+  inlineWidgetScrollInputMessage,
+} from "../../utils/inline-widget-link-message";
 import { useMarkdownLinkActions } from "./ai-elements/markdown";
 import { openWidgetLink } from "../lib/open-widget-link";
 
@@ -47,7 +50,15 @@ export const InlineWidgetFrame = forwardRef<
   const frame = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     const receive = (event: MessageEvent<unknown>) => {
-      if (!linkActions || event.source !== frame.current?.contentWindow) return;
+      if (event.source !== frame.current?.contentWindow) return;
+      const input = Schema.decodeUnknownOption(inlineWidgetScrollInputMessage)(event.data);
+      if (Option.isSome(input) && input.value.token === compiled.token) {
+        frame.current?.dispatchEvent(
+          new CustomEvent("transcript-reader-input", { bubbles: true, detail: input.value.value }),
+        );
+        return;
+      }
+      if (!linkActions) return;
       const parsed = Schema.decodeUnknownOption(inlineWidgetLinkMessage)(event.data);
       if (Option.isNone(parsed) || parsed.value.token !== compiled.token) return;
       openWidgetLink(parsed.value.value.url, linkActions);
