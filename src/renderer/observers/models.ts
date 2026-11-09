@@ -77,6 +77,8 @@ interface ModelSource {
   readonly navigationTargets?: () => readonly ConversationNavigationMetadataTarget[];
   readonly focusedDiscussionOwners?: () => readonly ConversationNavigationMetadataTarget[];
   readonly focusedDiscussionTargets?: () => readonly ReviewThread[];
+  readonly discussionSessionTargets?: () => readonly ReviewThread[];
+  readonly selectedConversationId?: () => string | undefined;
   readonly projection: RootProjection;
   readonly observeSessionSignals?: boolean;
   readonly projectSessionCatalogQueries: () => ReadonlyArray<ProjectSessionCatalogQuery>;
@@ -107,6 +109,7 @@ interface ModelObservation {
 type ModelObservationOptions = Omit<ModelObservation, "model" | "stop">;
 
 type ModelInput = {
+  readonly selectedConversationId?: string;
   readonly focusedDiscussionCatalogs?: readonly {
     target: ConversationNavigationMetadataTarget;
     discussions: DiscussionCatalog;
@@ -259,6 +262,88 @@ export const createModelObserver = (
         },
       );
 
+    // Start the selected projection before any ancillary catalog acquisition.
+    // These remain independent scoped Streams: a slow catalog cannot hold chat startup.
+    const conversations = [
+      ...input.projectSessions.map(({ target, conversation }) => ({
+        sessionId: target.sessionId,
+        start: () => {
+          assertSessionIdentity(conversation, target.sessionId);
+          observe(
+            `conversation:${target.sessionId}`,
+            conversation,
+            (client) => client.conversations.observe({ _tag: "ProjectSession", ...target }),
+            (update) => applyConversationUpdate(conversation, update),
+            {
+              clear: () => unloadConversationProjection(conversation),
+              failed: (error) => {
+                conversation.historyOnly = true;
+                conversation.observationError =
+                  error instanceof Error ? error.message : String(error);
+              },
+            },
+          );
+        },
+      })),
+      ...input.cakeChats.map(({ target, conversation }) => ({
+        sessionId: target.sessionId,
+        start: () => {
+          assertSessionIdentity(conversation, target.sessionId);
+          observe(
+            `conversation:${target.sessionId}`,
+            conversation,
+            (client) => {
+              if (target.sessionId === CAKE_CHAT_SESSION_ID)
+                rendererStartupTiming("cake-chat-projection-observe-start");
+              return client.conversations.observe({ _tag: "CakeChatSession", ...target });
+            },
+            (update) => {
+              const initial =
+                target.sessionId === CAKE_CHAT_SESSION_ID && update._tag === "Snapshot";
+              if (initial) rendererStartupTiming("cake-chat-projection-received");
+              applyConversationUpdate(conversation, update);
+              if (initial) rendererStartupTiming("cake-chat-projection-reduced");
+            },
+            {
+              // Loaded chats retain their last history projection when hidden. The registry
+              // owns its lifetime; closing an observation must not make a warm switch cold.
+              failed: (error) => {
+                conversation.observationError =
+                  error instanceof Error ? error.message : String(error);
+              },
+            },
+          );
+        },
+      })),
+      ...(input.automationSessions ?? []).map(({ target, conversation }) => ({
+        sessionId: target.sessionId,
+        start: () => {
+          assertSessionIdentity(conversation, target.sessionId);
+          observe(
+            `conversation:${target.sessionId}`,
+            conversation,
+            (client) =>
+              client.conversations.observe({
+                _tag: "AutomationSession",
+                sessionId: target.sessionId,
+              }),
+            (update) => applyConversationUpdate(conversation, update),
+            {
+              clear: () => unloadConversationProjection(conversation),
+              failed: (error) => {
+                conversation.historyOnly = true;
+                conversation.observationError =
+                  error instanceof Error ? error.message : String(error);
+              },
+            },
+          );
+        },
+      })),
+    ];
+    conversations.find(({ sessionId }) => sessionId === input.selectedConversationId)?.start();
+    for (const conversation of conversations)
+      if (conversation.sessionId !== input.selectedConversationId) conversation.start();
+
     const automations = input.automations;
     if (automations)
       observe(
@@ -272,23 +357,6 @@ export const createModelObserver = (
           },
         },
       );
-    for (const { target, conversation } of input.automationSessions ?? []) {
-      assertSessionIdentity(conversation, target.sessionId);
-      observe(
-        `conversation:${target.sessionId}`,
-        conversation,
-        (client) =>
-          client.conversations.observe({ _tag: "AutomationSession", sessionId: target.sessionId }),
-        (update) => applyConversationUpdate(conversation, update),
-        {
-          clear: () => unloadConversationProjection(conversation),
-          failed: (error) => {
-            conversation.historyOnly = true;
-            conversation.observationError = error instanceof Error ? error.message : String(error);
-          },
-        },
-      );
-    }
 
     const worktreeOperations = input.worktreeOperations;
     if (worktreeOperations)
@@ -374,27 +442,7 @@ export const createModelObserver = (
       );
     }
 
-    for (const {
-      target,
-      conversation,
-      discussions,
-      subagents,
-      schedules,
-    } of input.projectSessions) {
-      assertSessionIdentity(conversation, target.sessionId);
-      observe(
-        `conversation:${target.sessionId}`,
-        conversation,
-        (client) => client.conversations.observe({ _tag: "ProjectSession", ...target }),
-        (update) => applyConversationUpdate(conversation, update),
-        {
-          clear: () => unloadConversationProjection(conversation),
-          failed: (error) => {
-            conversation.historyOnly = true;
-            conversation.observationError = error instanceof Error ? error.message : String(error);
-          },
-        },
-      );
+    for (const { target, discussions, subagents, schedules } of input.projectSessions) {
       observe(
         `scheduled-messages:${target.sessionId}`,
         schedules,
@@ -443,6 +491,15 @@ export const createModelObserver = (
             }),
         },
       );
+      // Full worker channels already provide the parent's worker indicators.
+      if (
+        [
+          ...input.projectSessions,
+          ...input.cakeChats,
+          ...(input.focusedDiscussionCatalogs ?? []),
+        ].some((entry) => entry.target.sessionId === target.sessionId)
+      )
+        continue;
       observe(
         `navigation-subagents:${target.sessionId}`,
         subagents,
@@ -497,7 +554,12 @@ export const createModelObserver = (
         model,
         (client) => client.discussionSessions.observe(target),
         (update: DiscussionSessionUpdate) => applyDiscussionSessionUpdate(model, sessionId, update),
-        { clear: () => unloadConversationProjection(model) },
+        {
+          clear: () => unloadConversationProjection(model),
+          failed: (error) => {
+            model.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
       );
     }
 
@@ -516,28 +578,6 @@ export const createModelObserver = (
         (client) => client.cakeChats.observeSideChats({ sessionId: target.sessionId }),
         (update: DiscussionCatalogUpdate) =>
           applyDiscussionCatalogUpdate(sideChats, target.sessionId, update),
-      );
-      observe(
-        `conversation:${target.sessionId}`,
-        conversation,
-        (client) => {
-          if (target.sessionId === CAKE_CHAT_SESSION_ID)
-            rendererStartupTiming("cake-chat-projection-observe-start");
-          return client.conversations.observe({ _tag: "CakeChatSession", ...target });
-        },
-        (update) => {
-          const initial = target.sessionId === CAKE_CHAT_SESSION_ID && update._tag === "Snapshot";
-          if (initial) rendererStartupTiming("cake-chat-projection-received");
-          applyConversationUpdate(conversation, update);
-          if (initial) rendererStartupTiming("cake-chat-projection-reduced");
-        },
-        {
-          // Loaded chats retain their last history projection when hidden. The registry
-          // owns its lifetime; closing an observation must not make a warm switch cold.
-          failed: (error) => {
-            conversation.observationError = error instanceof Error ? error.message : String(error);
-          },
-        },
       );
       observe(
         `subagents:${target.sessionId}`,
@@ -681,9 +721,6 @@ export const createModelObserver = (
           target,
           model: source.projection.discussionCatalog(target.sessionId),
         }));
-      // Every observed parent's threads with a sidecar demand its Conversation
-      // payload. Conversation Model identity remains window-scoped; leaving
-      // retention stops observation and clears payload without reallocating it.
       const cakeChats = source.cakeChatTargets().map((target) => ({
         target,
         conversation: source.projection.cakeChatConversation(target.sessionId),
@@ -692,12 +729,12 @@ export const createModelObserver = (
         schedules: source.projection.scheduledMessageCatalog(target.sessionId),
         sideChats: source.projection.discussionCatalog(target.sessionId),
       }));
-      const liveThreads = [
-        ...projectSessions.map(({ discussions }) => discussions),
-        ...discussionCatalogs.map(({ model }) => model),
-        ...cakeChats.map(({ sideChats }) => sideChats),
-      ].flatMap(({ threads }) => threads.filter(hasSidecarConversation));
-      for (const thread of source.focusedDiscussionTargets?.() ?? []) {
+      // Parent catalogs are metadata demand, never implicit transcript readers.
+      const liveThreads: ReviewThread[] = [];
+      for (const thread of [
+        ...(source.discussionSessionTargets?.() ?? []),
+        ...(source.focusedDiscussionTargets?.() ?? []),
+      ]) {
         if (
           hasSidecarConversation(thread) &&
           !liveThreads.some((existing) => existing.sidecarSessionId === thread.sidecarSessionId)
@@ -705,12 +742,29 @@ export const createModelObserver = (
           liveThreads.push(thread);
       }
       sync({
+        selectedConversationId: source.selectedConversationId?.(),
         focusedDiscussionCatalogs: (source.focusedDiscussionOwners?.() ?? []).map((target) => ({
           target,
           discussions: source.projection.discussionCatalog(target.sessionId),
           subagents: source.projection.subagentCatalog(target.sessionId),
         })),
-        navigationCatalogs: (source.navigationTargets?.() ?? []).map((target) => ({
+        navigationCatalogs: [
+          ...new Map(
+            [
+              ...(source.navigationTargets?.() ?? []),
+              ...projectSessions.map(({ target }) => ({
+                ...target,
+                kind: "project-session" as const,
+              })),
+              ...cakeChats.map(({ target }) => ({
+                ...target,
+                workingDirectory: "",
+                kind: "cake-chat" as const,
+              })),
+              ...(source.focusedDiscussionOwners?.() ?? []),
+            ].map((target) => [target.sessionId, target]),
+          ).values(),
+        ].map((target) => ({
           target,
           discussions: source.projection.discussionCatalog(target.sessionId),
           subagents: source.projection.subagentCatalog(target.sessionId),
@@ -809,6 +863,21 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
         : [],
     focusedDiscussionOwners: () => root.discussionNavigationStore.ownerTargets,
     focusedDiscussionTargets: () => root.discussionNavigationStore.discussionTargets,
+    selectedConversationId: () => root.appShellStore.activeConversation?.sessionId,
+    discussionSessionTargets: () => {
+      const projectSessions = root.sessionRegistry.discussionSessionDemand;
+      const cakeChats = root.cakeChatCollectionStore.registry.sessions;
+      return [
+        ...projectSessions.flatMap((session) => session.openingDiscussionThread ?? []),
+        ...[
+          ...root.reviewsStore.discussionSessions,
+          ...cakeChats.flatMap((session) => session.sideChats.discussionSessions),
+          ...root.discussionNavigationStore.sessions,
+        ]
+          .filter((session) => session.transcriptDemanded)
+          .map((session) => session.thread),
+      ];
+    },
     projectSessionCatalogQueries: () =>
       root.sidebarStore.sessionListStore.projectSessionCatalogQueries,
     onProjectSessionTitleChanged: (sessionId, title) =>

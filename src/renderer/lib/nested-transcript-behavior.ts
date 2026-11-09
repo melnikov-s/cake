@@ -4,7 +4,7 @@ import type { DiscussionSessionStore } from "../stores/DiscussionSessionStore";
 import type { RootStore } from "../stores/RootStore";
 
 /** Resolve the displayed sidecar, never the focused parent or a display-only chat ID. */
-export function discussionSessionFor(
+function discussionSessionFor(
   root: RootStore,
   matches: (session: DiscussionSessionStore) => boolean,
 ): DiscussionSessionStore | undefined {

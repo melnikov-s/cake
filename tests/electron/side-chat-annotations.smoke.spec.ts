@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -108,11 +107,8 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
       if (parent === "Cake Chat") {
         await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
       } else {
-        const projectId = `project-chat:${createHash("sha256").update(project).digest("hex")}`;
         await page
-          .locator(
-            `[data-slot="project-header"][data-session-id="${projectId}"] [data-slot="project-label"]`,
-          )
+          .getByRole("button", { name: "Open Project Chat for Project", exact: true })
           .click();
       }
       const parentInput = page.getByRole("combobox", { name: `Message ${parent}`, exact: true });
@@ -254,6 +250,11 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
       await app.close();
       app = await launch();
       page = await app.firstWindow();
+      // Startup selects global Cake Chat, not the last Project Chat destination.
+      if (parent === "Project Chat")
+        await page
+          .getByRole("button", { name: "Open Project Chat for Project", exact: true })
+          .click();
       await page.getByRole("button", { name: "Side chats, 1 open" }).click();
       await page
         .getByRole("dialog", { name: "Open side chats" })

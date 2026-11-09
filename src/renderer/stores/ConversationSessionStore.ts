@@ -55,6 +55,7 @@ type ConfigurationCapabilities = Omit<
 >;
 
 interface ConversationChatCapabilities {
+  retainTranscript?(): () => void;
   sendQueuedToSideChat?(sessionId: string, partId: string): Promise<void>;
   contextUsage?: boolean;
   estimatedContextUsage?: boolean;
@@ -241,6 +242,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       cakeChatSideChatConversationId(this.sessionId) !== undefined;
     return createStore(ChatStore, {
       id: () => this.sessionId,
+      retainTranscript: capabilities.retainTranscript,
       parts: () =>
         capabilities.leadingParts
           ? [...capabilities.leadingParts(), ...this.composerStore.parts]
@@ -384,44 +386,63 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   private async deliver(input: ComposerDeliveryInput) {
     if (this.props.configuration.deferredNewSession?.() && this.props.startSession)
       return this.props.startSession(input);
-    const active = await this.activeSession();
-    if (!active) return false;
-    const command =
-      input.delivery === "steer" ? this.client.sessionChats.steer : this.client.sessionChats.prompt;
-    const turnId = await command(
-      {
-        sessionId: input.sessionId,
-        text: input.text,
-        attachments: input.attachments,
-        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-        responseMode: input.responseMode ?? "text",
-        ...(input.artifactPresentation === undefined
-          ? null
-          : { artifactPresentation: input.artifactPresentation }),
-        ...(input.presentationMode === undefined
-          ? null
-          : { presentationMode: input.presentationMode }),
-      },
-      { signal: this.signal },
-    );
-    return { turnId };
+    return this.withTranscript(async () => {
+      const active = await this.activeSession();
+      if (!active) return false;
+      const command =
+        input.delivery === "steer"
+          ? this.client.sessionChats.steer
+          : this.client.sessionChats.prompt;
+      const turnId = await command(
+        {
+          sessionId: input.sessionId,
+          text: input.text,
+          attachments: input.attachments,
+          renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+          responseMode: input.responseMode ?? "text",
+          ...(input.artifactPresentation === undefined
+            ? null
+            : { artifactPresentation: input.artifactPresentation }),
+          ...(input.presentationMode === undefined
+            ? null
+            : { presentationMode: input.presentationMode }),
+        },
+        { signal: this.signal },
+      );
+      return { turnId };
+    });
   }
 
   private async configureActiveSession(command: () => Promise<void>) {
-    if (await this.activeSession()) await command();
+    return this.withTranscript(async () => {
+      if (await this.activeSession()) await command();
+    });
   }
 
   private async withActiveSession(command: () => Promise<void>) {
-    if (!(await this.activeSession())) throw new Error("That conversation is unavailable");
-    await command();
+    return this.withTranscript(async () => {
+      if (!(await this.activeSession())) throw new Error("That conversation is unavailable");
+      await command();
+    });
+  }
+
+  private async withTranscript<A>(command: () => Promise<A>) {
+    const release = this.props.chat.retainTranscript?.();
+    try {
+      return await command();
+    } finally {
+      release?.();
+    }
   }
 
   /** Restores the session when needed and waits for its assembled live projection. */
   async prepareForCommand() {
-    const revision = this.model.observedSnapshotRevision;
-    if (!(await this.activeSession())) return false;
-    if (this.model.observedSnapshotRevision > 0) return true;
-    return this.waitForActiveProjection(revision);
+    return this.withTranscript(async () => {
+      const revision = this.model.observedSnapshotRevision;
+      if (!(await this.activeSession())) return false;
+      if (this.model.observedSnapshotRevision > 0) return true;
+      return this.waitForActiveProjection(revision);
+    });
   }
 
   private async activeSession() {

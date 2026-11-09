@@ -114,11 +114,21 @@ function baseClient(overrides: ObserverClientOverrides = {}) {
     automations: { observe: () => Stream.never },
     cakeChats: { observeCatalog: () => Stream.never },
     conversations: { observe: () => Stream.never },
-    discussionSessions: { observeCatalog: () => Stream.never, observe: () => Stream.never },
-    subagents: { observe: () => Stream.never },
+
     scheduledMessages: { observe: () => Stream.never },
     ...overrides,
     projectSessions: { observeSignals: () => Stream.never, ...overrides.projectSessions },
+    discussionSessions: {
+      observeCatalog: () => Stream.never,
+      observe: () => Stream.never,
+      observeMetadata: () => Stream.never,
+      ...overrides.discussionSessions,
+    },
+    subagents: {
+      observe: () => Stream.never,
+      observeMetadata: () => Stream.never,
+      ...overrides.subagents,
+    },
   });
 }
 
@@ -436,7 +446,10 @@ describe("Project Session composition observer", () => {
       await vi.waitFor(() =>
         expect(fixture.models.projects.runningProjectPaths).toEqual(["/other"]),
       );
-      expect(metadata).not.toHaveBeenCalled();
+      // Only the observed parent's lightweight indicators are demanded, never dormant Sessions.
+      expect(metadata.mock.calls.map(([input]) => input)).toEqual([
+        { sessionId: CAKE_CHAT_SESSION_ID },
+      ]);
       expect(fixture.models.discussionCatalogs.map((catalog) => catalog.sessionId)).toEqual([
         CAKE_CHAT_SESSION_ID,
       ]);
@@ -445,13 +458,16 @@ describe("Project Session composition observer", () => {
       ]);
       fixture.root.workspaceNavigatorStore.show("sessions");
       await vi.waitFor(() => expect(metadata).toHaveBeenCalled());
-      expect(
-        metadata.mock.calls.every(
-          ([input]) =>
-            input.sessionId === "ca4ec4a7-0000-4000-8000-000000000001" ||
-            input.parentSessionId === "ca4ec4a7-0000-4000-8000-000000000001",
+      await vi.waitFor(() =>
+        expect(
+          new Set(metadata.mock.calls.map(([input]) => input.sessionId ?? input.parentSessionId)),
+        ).toEqual(
+          new Set([
+            CAKE_CHAT_SESSION_ID,
+            ...Array.from({ length: 30 }, (_, index) => `cold-${index}`),
+          ]),
         ),
-      ).toBe(true);
+      );
     } finally {
       stop();
     }
@@ -761,8 +777,8 @@ describe("focused projection lifetimes", () => {
         root.sessionRegistry.load("replacement", "/project");
       });
       expect(conversations).toHaveBeenCalledTimes(8);
-      // Conversation, discussions, schedules and subagents.
-      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(4);
+      // Conversation, discussions, lightweight discussion activity, schedules and subagents.
+      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(5);
       expect(projection.findProjectConversation("idle-1")?.parts).toEqual([]);
       expect(projection.findProjectConversation("idle-4")?.observedSnapshotRevision).toBe(1);
       expect(projection.findProjectConversation("running")?.streaming).toBe(true);
@@ -839,8 +855,8 @@ describe("focused projection lifetimes", () => {
       expect(conversations).toHaveBeenCalledTimes(3);
       retainedIds.splice(0, 1, "cold");
       await Effect.runPromise(Queue.take(applied));
-      expect(cancellations).toHaveLength(initialObservationCount + 4);
-      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(4);
+      expect(cancellations).toHaveLength(initialObservationCount + 5);
+      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(5);
       expect(conversations).toHaveBeenCalledTimes(4);
       expect(conversations.mock.calls[3]?.[0].sessionId).toBe("cold");
       expect(projection.findProjectConversation("cold")).toBe(cold);
@@ -849,7 +865,7 @@ describe("focused projection lifetimes", () => {
       expect(identity?.observedSnapshotRevision).toBe(1);
 
       // True unload releases identity and focused projections; re-entry creates
-      // a new Model and only its own four streams receive fresh snapshots.
+      // a new Model and only its own five streams receive fresh snapshots.
       batch(() => {
         retainedIds.splice(0, 1);
         loadedIds.splice(loadedIds.indexOf("cold"), 1);
@@ -868,7 +884,7 @@ describe("focused projection lifetimes", () => {
       expect(projection.findProjectConversation("cold")).not.toBe(cold);
       expect(projection.findProjectConversation("cold")?.observedSnapshotRevision).toBe(1);
       expect(conversations).toHaveBeenCalledTimes(5);
-      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(8);
+      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(10);
       expect(identity?.observedSnapshotRevision).toBe(1);
     } finally {
       observer.stop();
@@ -949,7 +965,7 @@ describe("focused projection lifetimes", () => {
 });
 
 describe("Discussion sidecar retention", () => {
-  it("unloads sidecar payload with parent observation demand and rehydrates without a reactive cycle", async () => {
+  it("unloads sidecar payload with reader demand and rehydrates without a reactive cycle", async () => {
     const parentId = "project-1";
     const sidecarId = "sidecar-1";
     const catalogUpdates = await Effect.runPromise(Queue.unbounded<DiscussionCatalogUpdate>());
@@ -1008,6 +1024,9 @@ describe("Discussion sidecar retention", () => {
           ],
         }),
       );
+      await vi.waitFor(() => expect(catalog.threads).toHaveLength(1));
+      expect(sidecarObservations).toHaveLength(0);
+      const release = reviews.discussionSession("thread-1")!.retainTranscript();
       await vi.waitFor(() => expect(sidecarObservations).toHaveLength(1));
       await Effect.runPromise(
         Queue.offer(sidecarObservations[0]!, discussionSnapshot(sidecarId, "old sidecar")),
@@ -1019,13 +1038,16 @@ describe("Discussion sidecar retention", () => {
       const sidecarModel = projection.findDiscussionConversation(sidecarId);
 
       // The real Registry keeps identity loaded while both consumers lose retention.
+      release();
       root.sessionRegistry.observationRetention.remove(parentId);
-      await vi.waitFor(() => expect(reviews.discussionSessions).toHaveLength(0));
+      // Workflow identity and unsent drafts survive dropping live transcript demand.
+      expect(reviews.discussionSessions).toHaveLength(1);
       await vi.waitFor(() => expect(sidecarModel?.parts).toEqual([]));
       expect(projection.findDiscussionConversation(sidecarId)).toBe(sidecarModel);
       expect(projection.discussionCatalog(parentId).threads).toHaveLength(1);
 
       root.sessionRegistry.load(parentId, "/project");
+      const releaseAgain = reviews.discussionSession("thread-1")!.retainTranscript();
       await vi.waitFor(() => expect(sidecarObservations).toHaveLength(2));
       expect(reviews.discussionSessions).toHaveLength(1);
       expect(projection.findDiscussionConversation(sidecarId)).toBe(sidecarModel);
@@ -1041,6 +1063,7 @@ describe("Discussion sidecar retention", () => {
 
       // A true unload first removes Store/observation demand, then releases the
       // parent's focused Models, including sidecar identity.
+      releaseAgain();
       root.sessionRegistry.removeSession(parentId);
       await vi.waitFor(() => expect(reviews.discussionSessions).toHaveLength(0));
       await vi.waitFor(() =>
@@ -1087,10 +1110,13 @@ describe("Discussion sidecar retention", () => {
           ],
         }),
       );
+      await vi.waitFor(() => expect(reloadedCatalog.threads).toHaveLength(1));
+      const releaseReloaded = reviews.discussionSession("thread-1")!.retainTranscript();
       await vi.waitFor(() => expect(sidecarObservations).toHaveLength(3));
       const reloadedSidecar = projection.findDiscussionConversation(sidecarId);
       expect(reloadedSidecar).not.toBe(sidecarModel);
       expect(reloadedSidecar?.parts).toEqual([]);
+      releaseReloaded();
     } finally {
       stop();
     }

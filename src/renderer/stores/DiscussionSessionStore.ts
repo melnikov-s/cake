@@ -27,6 +27,23 @@ export interface DiscussionSessionStoreProps {
  * chat prompts, queues, steers, stops, edits, and configures identically.
  */
 export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
+  private transcriptConsumers = 0;
+
+  get transcriptDemanded() {
+    return this.transcriptConsumers > 0 || this.conversationSessionStore.interviewStore.waiting;
+  }
+
+  /** Views, embedded hosts and nonvisual workflows share one observation, not one per reader. */
+  retainTranscript() {
+    this.transcriptConsumers += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.transcriptConsumers -= 1;
+    };
+  }
+
   get thread() {
     return this.props.thread;
   }
@@ -76,7 +93,10 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
 
   @child
   get history(): ConversationHistoryStore {
-    return createStore(ConversationHistoryStore, { model: this.model });
+    return createStore(ConversationHistoryStore, {
+      model: this.model,
+      retainTranscript: () => this.retainTranscript(),
+    });
   }
 
   @child
@@ -101,6 +121,7 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
       },
       configuration: {},
       chat: {
+        retainTranscript: () => this.retainTranscript(),
         sendQueuedToSideChat: this.props.sendQueuedToSideChat,
         estimatedContextUsage: true,
         history: this.history,

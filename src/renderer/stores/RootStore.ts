@@ -944,11 +944,16 @@ export class RootStore extends Store<{
           this.cakeChatCollectionStore.registry.find(sessionId) ??
           this.sessionRegistry.findSession(sessionId)
         )?.conversationSessionStore.sideChatStore,
-      directDiscussion: (sessionId) =>
-        this.reviewsStore.discussionSessions.find((session) => session.sessionId === sessionId) ??
-        this.cakeChatCollectionStore.registry.sessions
-          .flatMap((session) => session.sideChats.discussionSessions)
-          .find((session) => session.sessionId === sessionId),
+      directDiscussion: (sessionId) => {
+        const thread = this.props.projection.discussionCatalogs
+          .flatMap((catalog) => catalog.threads)
+          .find((thread) => thread.sidecarSessionId === sessionId);
+        if (!thread) return undefined;
+        const cakeChat = this.cakeChatCollectionStore.registry.find(thread.parentSessionId);
+        return cakeChat
+          ? cakeChat.sideChats.discussionSession(thread.id)
+          : this.reviewsStore.discussionSession(thread.id);
+      },
       activeOwnerSessionId: () => this.appShellStore.activeConversation?.sessionId,
       activeSecondaryTarget: () =>
         this.workspaceSession?.conversationSessionStore.sideChatStore.target?.navigationTarget,

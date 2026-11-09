@@ -81,11 +81,14 @@ it("offers an actionable retry when a Discussion observation is no longer availa
     projects: [projectRecord({ path: "/project" })],
     sessions: [sessionSummary({ sessionId: "parent", projectPath: "/project" })],
   });
-  fixture.root.sessionRegistry.load("parent", "/project");
+  const parent = fixture.root.sessionRegistry.load("parent", "/project");
   const view = render(<ToastHost store={fixture.root.toastStore} />);
   const stop = observeModels(runtime, fixture.models, fixture.root);
   const user = userEvent.setup();
   try {
+    await waitFor(() => expect(parent.props.discussionCatalog.threads).toHaveLength(1));
+    expect(observe).not.toHaveBeenCalled();
+    parent.openSideChat("thread-1");
     expect(await screen.findByText("Updates stopped")).toBeDefined();
     expect(screen.getByText("That session is no longer available")).toBeDefined();
     expect(observe).toHaveBeenCalledOnce();

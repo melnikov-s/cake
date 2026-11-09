@@ -1,3 +1,4 @@
+import type { ChatStore } from "./ChatStore";
 import type { Project } from "../models/Project";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
@@ -88,6 +89,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   }
 
   private pendingSideChatThreadId: string | undefined;
+  private sourceNavigation: { chat: ChatStore; entryId: string } | undefined;
 
   constructor(props: CakeChatSessionStore["props"]) {
     super(props);
@@ -102,6 +104,29 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         ),
       (ready) => {
         if (ready && this.pendingSideChatThreadId) this.openSideChat(this.pendingSideChatThreadId);
+      },
+    );
+    // Source links can open a cold sidecar before its first snapshot arrives.
+    this.reaction(
+      () => {
+        const request = this.sourceNavigation;
+        if (!request) return undefined;
+        const current =
+          this.conversationSessionStore.sideChatStore.target?.chatStore === request.chat;
+        const part = current
+          ? request.chat.parts.find(
+              (part) =>
+                ("entryId" in part && part.entryId === request.entryId) ||
+                part.id === request.entryId,
+            )
+          : undefined;
+        return { request, current, part };
+      },
+      (result) => {
+        if (!result || (result.current && !result.part)) return;
+        this.sourceNavigation = undefined;
+        if (result.part)
+          result.request.chat.transcriptInteraction.navigateToMessage(result.part.id);
       },
     );
     // Unsent text holds interrupt-policy session results back until it is sent or cleared.
@@ -223,13 +248,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     const chatStore = this.sideChats.chatStore(threadId);
     if (!thread || !chatStore || !thread.sidecarSessionId) return false;
     this.pendingSideChatThreadId = undefined;
-    if (sourceEntryId) {
-      const part = chatStore.parts.find(
-        (part) =>
-          ("entryId" in part && part.entryId === sourceEntryId) || part.id === sourceEntryId,
-      );
-      if (part) chatStore.transcriptInteraction.navigateToMessage(part.id);
-    }
     this.conversationSessionStore.sideChatStore.open({
       key: `discussion:${thread.id}`,
       navigationTarget: {
@@ -244,6 +262,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       resolve: () => this.sideChats.resolveThread(threadId),
       chatStore,
     });
+    this.sourceNavigation = sourceEntryId ? { chat: chatStore, entryId: sourceEntryId } : undefined;
     return true;
   }
 

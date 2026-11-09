@@ -1,5 +1,4 @@
 import { toStoreEvent } from "../events/StoreEvent";
-import { discussionSessionFor } from "../lib/nested-transcript-behavior";
 import { respondBrowserNative } from "./browser-native-responder";
 import { respondWidgetCapture } from "./widget-capture-responder";
 import { createNativeRequestDispatch } from "./native-request-dispatch";
@@ -126,7 +125,7 @@ export const observeApplicationEvents = (
           const sessionId = storeEvent.record.sessionId;
           const owner =
             root.sessionRegistry.findSession(sessionId) ??
-            discussionSessionFor(root, (session) => session.sessionId === sessionId);
+            root.discussionNavigationStore.session(sessionId);
           owner?.conversationSessionStore.receive(storeEvent);
           return;
         }

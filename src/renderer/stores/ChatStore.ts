@@ -68,6 +68,8 @@ interface ComposerRewordCapabilities {
 }
 
 export interface ChatStoreProps {
+  /** Live projection demand owned by the actual transcript consumer. */
+  retainTranscript?(): () => void;
   /** Optional disk-history workflow, shared by every chat surface. */
   history?: {
     readonly hasMore: boolean;
@@ -156,6 +158,10 @@ interface EnterContinuation {
 
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
+  retainTranscript() {
+    return this.props.retainTranscript?.();
+  }
+
   private localInputHistoryRevision = 0;
   private enterContinuation: EnterContinuation | undefined;
   private enterContinuationGeneration = 0;

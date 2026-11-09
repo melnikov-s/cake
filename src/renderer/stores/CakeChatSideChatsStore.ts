@@ -1,4 +1,4 @@
-import { Store, child, computed, createStore } from "r-state-tree";
+import { Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
 import {
   hasSidecarConversation,
   type CakeChatSideChatStartInput,
@@ -35,12 +35,13 @@ export interface CakeChatSideChatsStoreProps {
 
 /**
  * Side chats branched from Cake Chat messages: starting them, one shared
- * Discussion Session conversation Store per live thread, and resolution.
+ * Discussion Session conversation Store per requested thread, and resolution.
  */
 export class CakeChatSideChatsStore
   extends Store<CakeChatSideChatsStoreProps>
   implements MessageSideChatHost
 {
+  @snapshot private readonly requestedThreadIds: string[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
 
@@ -62,27 +63,32 @@ export class CakeChatSideChatsStore
 
   @child
   get discussionSessions(): DiscussionSessionStore[] {
-    return this.props.catalog.threads.filter(hasSidecarConversation).map((thread) =>
-      createStore(DiscussionSessionStore, {
-        key: thread.id,
-        thread,
-        model: this.props.discussionSessionModel(
-          thread.sidecarSessionId!,
-          thread.workingDirectory,
-          thread.parentSessionId,
-        ),
-        operations: this.props.operations,
-        modelPresets: this.props.modelPresets,
-        openModelPresetSettings: this.props.openModelPresetSettings,
+    return this.props.catalog.threads
+      .filter(
+        (thread) => hasSidecarConversation(thread) && this.requestedThreadIds.includes(thread.id),
+      )
+      .map((thread) =>
+        createStore(DiscussionSessionStore, {
+          key: thread.id,
+          thread,
+          model: this.props.discussionSessionModel(
+            thread.sidecarSessionId!,
+            thread.workingDirectory,
+            thread.parentSessionId,
+          ),
+          operations: this.props.operations,
+          modelPresets: this.props.modelPresets,
+          openModelPresetSettings: this.props.openModelPresetSettings,
 
-        parentBusy: this.props.parentBusy,
-        sendQueuedToSideChat: this.props.sendQueuedToSideChat,
-        setResolved: (resolved) => this.resolveThread(thread.id, resolved),
-      }),
-    );
+          parentBusy: this.props.parentBusy,
+          sendQueuedToSideChat: this.props.sendQueuedToSideChat,
+          setResolved: (resolved) => this.resolveThread(thread.id, resolved),
+        }),
+      );
   }
 
   discussionSession(threadId: string) {
+    if (!this.requestedThreadIds.includes(threadId)) this.requestedThreadIds.push(threadId);
     return this.discussionSessions.find((session) => session.threadId === threadId);
   }
 
@@ -91,7 +97,12 @@ export class CakeChatSideChatsStore
   }
 
   threadStreaming(threadId: string) {
-    return this.discussionSession(threadId)?.streaming ?? false;
+    const thread = this.props.catalog.threads.find((thread) => thread.id === threadId);
+    return (
+      this.props.catalog.metadata.find((thread) => thread.id === threadId)?.running ??
+      thread?.pending ??
+      false
+    );
   }
 
   /** Starts a side chat on Cake Chat's current model; it then moves on its own. */

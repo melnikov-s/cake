@@ -79,6 +79,12 @@ export class SideChatStore extends Store<SideChatStoreProps> {
   width = 416;
   resolving = false;
   resolutionError: string | undefined;
+  private releaseTranscript: (() => void) | undefined;
+
+  constructor(props: SideChatStore["props"]) {
+    super(props);
+    this.effect(() => () => this.releaseTranscript?.());
+  }
 
   /** Direct siblings of the selected chat; artifacts, drafts and private workers are not tabs. */
   get tabs(): readonly SideChatTab[] {
@@ -104,6 +110,14 @@ export class SideChatStore extends Store<SideChatStoreProps> {
   }
 
   open(target: SideChatTarget) {
+    // Acquire the replacement first: changing tabs/hosts must not drop a shared reader.
+    const release = target.chatStore?.retainTranscript();
+    const releaseParent = target.chatStore ? target.parentChatStore?.retainTranscript() : undefined;
+    this.releaseTranscript?.();
+    this.releaseTranscript = () => {
+      release?.();
+      releaseParent?.();
+    };
     this.resolutionError = undefined;
     this.target = target;
   }
@@ -141,6 +155,8 @@ export class SideChatStore extends Store<SideChatStoreProps> {
 
   close() {
     this.target = undefined;
+    this.releaseTranscript?.();
+    this.releaseTranscript = undefined;
     this.props.onClose?.();
   }
 

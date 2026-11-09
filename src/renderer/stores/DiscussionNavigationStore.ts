@@ -39,6 +39,7 @@ export class DiscussionNavigationStore extends Store<{
 }> {
   @snapshot private retained: readonly RetainedDiscussion[] = [];
   private openingRevision = 0;
+  private openingTarget: ConversationNavigationTarget | undefined;
 
   constructor(props: DiscussionNavigationStore["props"]) {
     super(props);
@@ -59,6 +60,14 @@ export class DiscussionNavigationStore extends Store<{
 
   /** Existing full thread records whose actual sidecar conversations should be observed. */
   get discussionTargets() {
+    const target = this.openingTarget ?? this.props.activeSecondaryTarget();
+    const ids = new Set(
+      target ? this.props.lineage(target).map((entry) => entry.target.sessionId) : [],
+    );
+    return this.retainedDiscussionThreads.filter((thread) => ids.has(thread.sidecarSessionId!));
+  }
+
+  private get retainedDiscussionThreads() {
     return this.retained.flatMap((target) => {
       const thread = this.props.projection
         .discussionCatalog(target.parentSessionId)
@@ -71,7 +80,7 @@ export class DiscussionNavigationStore extends Store<{
 
   @child
   get sessions(): DiscussionSessionStore[] {
-    return this.discussionTargets
+    return this.retainedDiscussionThreads
       .filter(
         (thread) =>
           this.retained.find((target) => target.sessionId === thread.sidecarSessionId)?.nested,
@@ -173,6 +182,7 @@ export class DiscussionNavigationStore extends Store<{
 
   cancelOpening() {
     this.openingRevision += 1;
+    this.openingTarget = undefined;
   }
 
   async open(target: ConversationNavigationTarget): Promise<void> {
@@ -187,54 +197,59 @@ export class DiscussionNavigationStore extends Store<{
     )
       throw new Error("The conversation's owning Session is unavailable");
     this.retainLineage(lineage);
-    await this.props.openPrimary(primary.target);
-    if (revision !== this.openingRevision) return;
-    const panel = this.props.primarySideChat(primary.target.sessionId);
-    if (!panel || this.props.activeOwnerSessionId() !== primary.target.sessionId) return;
-    const previousTarget = panel.target;
-    const current = () =>
-      revision === this.openingRevision &&
-      this.props.activeOwnerSessionId() === primary.target.sessionId &&
-      panel.target === previousTarget;
-    const title = lineage.at(-1)?.title ?? "Conversation";
-    if (target.kind === "side-chat") {
-      const session = await this.waitFor(() => this.session(target.sessionId), revision);
-      if (!session || !current()) return;
-      const parent =
-        target.parentSessionId === primary.target.sessionId
-          ? undefined
-          : await this.waitFor(() => this.session(target.parentSessionId), revision);
-      if (!current()) return;
-      panel.open({
-        key: `discussion:${target.threadId}`,
-        navigationTarget: target,
-        title,
-        currentTitle: () => session.thread.title || title,
-        chatStore: session.chatStore,
-        parentChatStore: parent?.chatStore,
-        merge: session.mergeStore,
-        resolve: () => session.resolve(),
-      });
-      return;
-    }
-    if (target.kind === "subagent") {
-      const workers = this.subagents.find(
-        (workers) => workers.parentSessionId === target.sessionId,
-      );
-      if (!workers) throw new Error("The subagent's Discussion owner is unavailable");
-      await workers.ready();
-      if (!current()) return;
-      const chatStore = workers.chatStore(target.handleId);
-      if (!chatStore)
-        throw new Error("The retained public subagent handle has no conversation mapping");
-      panel.open({
-        key: `subagent:${target.handleId}`,
-        navigationTarget: target,
-        title,
-        eyebrow: () => `Subagent · ${workers.run(target.handleId)?.status ?? "unavailable"}`,
-        model: () => workers.model(target.handleId),
-        chatStore,
-      });
+    this.openingTarget = target;
+    try {
+      await this.props.openPrimary(primary.target);
+      if (revision !== this.openingRevision) return;
+      const panel = this.props.primarySideChat(primary.target.sessionId);
+      if (!panel || this.props.activeOwnerSessionId() !== primary.target.sessionId) return;
+      const previousTarget = panel.target;
+      const current = () =>
+        revision === this.openingRevision &&
+        this.props.activeOwnerSessionId() === primary.target.sessionId &&
+        panel.target === previousTarget;
+      const title = lineage.at(-1)?.title ?? "Conversation";
+      if (target.kind === "side-chat") {
+        const session = await this.waitFor(() => this.session(target.sessionId), revision);
+        if (!session || !current()) return;
+        const parent =
+          target.parentSessionId === primary.target.sessionId
+            ? undefined
+            : await this.waitFor(() => this.session(target.parentSessionId), revision);
+        if (!current()) return;
+        panel.open({
+          key: `discussion:${target.threadId}`,
+          navigationTarget: target,
+          title,
+          currentTitle: () => session.thread.title || title,
+          chatStore: session.chatStore,
+          parentChatStore: parent?.chatStore,
+          merge: session.mergeStore,
+          resolve: () => session.resolve(),
+        });
+        return;
+      }
+      if (target.kind === "subagent") {
+        const workers = this.subagents.find(
+          (workers) => workers.parentSessionId === target.sessionId,
+        );
+        if (!workers) throw new Error("The subagent's Discussion owner is unavailable");
+        await workers.ready();
+        if (!current()) return;
+        const chatStore = workers.chatStore(target.handleId);
+        if (!chatStore)
+          throw new Error("The retained public subagent handle has no conversation mapping");
+        panel.open({
+          key: `subagent:${target.handleId}`,
+          navigationTarget: target,
+          title,
+          eyebrow: () => `Subagent · ${workers.run(target.handleId)?.status ?? "unavailable"}`,
+          model: () => workers.model(target.handleId),
+          chatStore,
+        });
+      }
+    } finally {
+      if (revision === this.openingRevision) this.openingTarget = undefined;
     }
   }
 

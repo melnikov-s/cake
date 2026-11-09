@@ -103,6 +103,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   virtualized?: boolean;
   annotationSubmitFocusRef?: RefObject<HTMLElement | null>;
 }) {
+  useEffect(() => store.retainTranscript(), [store]);
   useEffect(
     () => behavior.inlineArtifactPreviews?.observeConversation(store.id, () => store.parts),
     [behavior.inlineArtifactPreviews, store],

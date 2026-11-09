@@ -345,6 +345,13 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return true;
   }
 
+  /** Demand bridges the pending pane until ChatTranscript mounts its own reader. */
+  get openingDiscussionThread() {
+    if (!this.pendingSideChatThreadId || !this.isSideChatOpening(this.pendingSideChatTarget))
+      return undefined;
+    return this.sideChatThreads.find((thread) => thread.id === this.pendingSideChatThreadId);
+  }
+
   private isSideChatOpening(target: SideChatTarget | undefined) {
     return Boolean(
       target &&

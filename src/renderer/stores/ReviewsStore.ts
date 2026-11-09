@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import {
   hasSidecarConversation,
   type DiscussionAnchor,
@@ -31,6 +31,7 @@ export interface ReviewsStoreProps {
  * new thread, the per-thread conversation Stores, and thread resolution.
  */
 export class ReviewsStore extends Store<ReviewsStoreProps> {
+  @snapshot private readonly requestedThreadIds: string[] = observable([]);
   activeThreadId: string | undefined;
   draftAnchor: DiscussionAnchor | undefined;
   draftFocusRequestRevision = 0;
@@ -84,8 +85,10 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       .configurationStore;
   }
   private get liveThreads(): ReviewThread[] {
-    return this.props.sessionRegistry.discussionSessionDemand.flatMap((session) =>
-      session.props.discussionCatalog.threads.filter(hasSidecarConversation),
+    return this.props.sessionRegistry.sessions.flatMap((session) =>
+      session.props.discussionCatalog.threads.filter(
+        (thread) => hasSidecarConversation(thread) && this.requestedThreadIds.includes(thread.id),
+      ),
     );
   }
   private thread(threadId: string) {
@@ -94,7 +97,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       .find((thread) => thread.id === threadId);
   }
 
-  /** One conversation Store per thread whose sidecar this window observes. */
+  /** Requested workflows retain drafts independently of live transcript demand. */
   @child
   get discussionSessions(): DiscussionSessionStore[] {
     return this.liveThreads.map((thread) =>
@@ -112,6 +115,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
 
   discussionSession(threadId: string) {
+    if (!this.requestedThreadIds.includes(threadId)) this.requestedThreadIds.push(threadId);
     return this.discussionSessions.find((session) => session.threadId === threadId);
   }
 
@@ -120,7 +124,15 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
 
   threadStreaming(threadId: string) {
-    return this.discussionSession(threadId)?.streaming ?? false;
+    const thread = this.thread(threadId);
+    const catalog =
+      thread &&
+      this.props.sessionRegistry.findSession(thread.parentSessionId)?.props.discussionCatalog;
+    return (
+      catalog?.metadata.find((thread) => thread.id === threadId)?.running ??
+      thread?.pending ??
+      false
+    );
   }
 
   selectThread(threadId: string) {
