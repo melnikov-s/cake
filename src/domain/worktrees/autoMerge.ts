@@ -26,6 +26,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
   const clientEvents = yield* ClientEvents;
   const renderer = yield* RendererRequestCoordinator;
   const agent = yield* WorktreeLandingAgent;
+  yield* landings.reconcileCancellations();
   const requests = (yield* storage.state()).autoMergeRequests ?? emptyRequests;
   yield* SubscriptionRef.update(coordinator.state, (state) =>
     state.autoMergeRequests === requests ? state : { ...state, autoMergeRequests: requests },
@@ -286,6 +287,8 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         latest.runId !== request.runId ||
         latest.epoch !== request.epoch ||
         !latest.readyToMerge ||
+        (authorization.operations.get(request.workspacePath)?.autoMergeRequestId === request.id &&
+          authorization.operations.get(request.workspacePath)?.cancellationRequested === true) ||
         latest.commit !== request.commit ||
         document.turns.some((turn) => turn.sessionId === request.sessionId && !turn.reported) ||
         document.spawnedSessions.some(

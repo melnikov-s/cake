@@ -3,7 +3,10 @@ import { makeSessionFamilyStorageLive } from "../../../src/services/storage/Sess
 const failure = (method: string) =>
   PlatformError.systemError({ _tag: "Unknown", module: "SessionFamilyStorageTest", method });
 
-export const familyStorageHarness = (initialFiles = new Map<string, string>()) => {
+export const familyStorageHarness = (
+  initialFiles = new Map<string, string>(),
+  options: { failWrites?: () => boolean } = {},
+) => {
   const files = initialFiles;
   // Any content change, including a test's direct `files.set`, yields a new modification time.
   const revisions = new Map<string, { readonly content: string; readonly revision: number }>();
@@ -28,7 +31,10 @@ export const familyStorageHarness = (initialFiles = new Map<string, string>()) =
         mtime: Option.some(new Date(revisions.get(path)?.revision ?? 0)),
       } as FileSystem.File.Info);
     },
-    writeFileString: (path, content) => Effect.sync(() => files.set(path, content)),
+    writeFileString: (path, content) =>
+      options.failWrites?.()
+        ? Effect.fail(failure("writeFileString"))
+        : Effect.sync(() => files.set(path, content)),
     makeDirectory: () => Effect.void,
     chmod: () => Effect.void,
     rename: (source, target) =>

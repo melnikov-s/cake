@@ -29,6 +29,7 @@ const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandin
   if (normalized.resolveAfterLanding === undefined) delete normalized.resolveAfterLanding;
   if (normalized.automatic === undefined) delete normalized.automatic;
   if (normalized.autoMergeRequestId === undefined) delete normalized.autoMergeRequestId;
+  if (normalized.cancellationRequested === undefined) delete normalized.cancellationRequested;
   if (normalized.pauseReason === undefined) delete normalized.pauseReason;
   if (normalized.error === undefined) delete normalized.error;
   if (normalized.conflictFiles === undefined) delete normalized.conflictFiles;
@@ -504,6 +505,7 @@ const insert = Effect.fn("WorktreeLandings.insert")(function* (
   const inserted = yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
     Effect.gen(function* () {
       const current = state.operations.get(operation.workspacePath);
+      if (current?.cancellationRequested) return [false, state] as const;
       if (
         current &&
         !isTerminal(current) &&
@@ -597,6 +599,11 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
   const claimed = yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
     Effect.gen(function* () {
       const current = state.operations.get(input.workspacePath);
+      if (current?.cancellationRequested)
+        return yield* new WorktreeLandingError({
+          operation: "mergeAndResolve",
+          message: "Finish cancellation before starting another landing.",
+        });
       if (current?.automatic && !isTerminal(current))
         return yield* new WorktreeLandingError({
           operation: "mergeAndResolve",
@@ -708,7 +715,12 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
     });
   const operation = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.operations.get(input.workspacePath);
-    if (!current || current.phase !== "stalled" || current.automatic)
+    if (
+      !current ||
+      current.phase !== "stalled" ||
+      current.automatic ||
+      current.cancellationRequested
+    )
       return [undefined, state] as const;
     const retryPhase =
       current.pauseReason === "rebase-conflict"
@@ -804,24 +816,57 @@ const revokeRetiredReadiness = Effect.fn("WorktreeLandings.revokeRetiredReadines
     .pipe(asError("retireReadiness"));
 });
 
+/** Reconcile cancellation before considering any readiness, including failed/canceled
+ * requests that the ordinary scheduler skips. Keep the marker if persistence fails. */
+export const reconcileCancellations = Effect.fn("WorktreeLandings.reconcileCancellations")(
+  function* () {
+    const coordinator = yield* WorktreeLandingCoordinator;
+    yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+      Effect.gen(function* () {
+        const canceled = [...state.operations].filter(
+          ([, operation]) =>
+            operation.cancellationRequested && operation.automatic && operation.autoMergeRequestId,
+        );
+        if (!canceled.length) return [undefined, state] as const;
+        const operations = new Map(state.operations);
+        for (const [path, operation] of canceled) {
+          yield* revokeRetiredReadiness(operation);
+          operations.set(
+            path,
+            normalizeOperation({ ...operation, cancellationRequested: undefined }),
+          );
+        }
+        return [undefined, { ...state, operations }] as const;
+      }),
+    ).pipe(Effect.uninterruptible);
+  },
+);
+
 export const acknowledge = Effect.fn("WorktreeLandings.acknowledge")(function* (
   workspacePath: string,
   operationId: string,
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
-  yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+  const error = yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
     Effect.gen(function* () {
       const current = state.operations.get(workspacePath);
       if (!current || current.operationId !== operationId || !isTerminal(current))
         return [undefined, state] as const;
       // Successful acknowledgment must retain the scheduler's confirmed outcome.
-      // Dismissing a failed attempt must not leave its declaration reusable.
-      if (current.phase === "failed") yield* revokeRetiredReadiness(current);
+      const revoked = yield* (
+        current.phase === "failed" ? revokeRetiredReadiness(current) : Effect.void
+      ).pipe(Effect.result);
       const operations = new Map(state.operations);
-      operations.delete(workspacePath);
-      return [undefined, { ...state, operations }] as const;
+      if (revoked._tag === "Failure")
+        operations.set(workspacePath, { ...current, cancellationRequested: true });
+      else operations.delete(workspacePath);
+      return [
+        revoked._tag === "Failure" ? revoked.failure : undefined,
+        { ...state, operations },
+      ] as const;
     }),
-  );
+  ).pipe(Effect.uninterruptible);
+  if (error) return yield* error;
 });
 
 export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
@@ -830,7 +875,7 @@ export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
   const worktrees = yield* ManagedWorktrees;
-  yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+  const error = yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
     Effect.gen(function* () {
       const current = state.operations.get(workspacePath);
       // Claim against Retry/reconciliation before interrupting a worker. A delayed
@@ -846,18 +891,30 @@ export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
         yield* worktrees
           .cancelLanding(workspacePath, current.operationId, true)
           .pipe(asError("cancel"));
-      yield* revokeRetiredReadiness(current);
-      yield* FiberMap.remove(coordinator.fibers, workspacePath);
-      // Retire durable intent only after preparation/worker finalizers have settled.
-      if (current.kind === "landing")
-        yield* worktrees.cancelLanding(workspacePath, current.operationId).pipe(asError("cancel"));
-      if (current.resolveAfterLanding)
-        yield* worktrees.setResolveAfterLanding(workspacePath, false).pipe(asError("cancel"));
+      const retired = yield* Effect.gen(function* () {
+        yield* revokeRetiredReadiness(current);
+        yield* FiberMap.remove(coordinator.fibers, workspacePath);
+        // Retire durable intent only after preparation/worker finalizers have settled.
+        if (current.kind === "landing")
+          yield* worktrees
+            .cancelLanding(workspacePath, current.operationId)
+            .pipe(asError("cancel"));
+        if (current.resolveAfterLanding)
+          yield* worktrees.setResolveAfterLanding(workspacePath, false).pipe(asError("cancel"));
+      }).pipe(Effect.result);
       const operations = new Map(state.operations);
-      operations.delete(workspacePath);
-      return [undefined, { ...state, operations }] as const;
+      if (retired._tag === "Failure")
+        // FIFO cancellation may already have failed its waiter. Preserve this intent
+        // when that worker subsequently publishes failed; never turn it into a retry.
+        operations.set(workspacePath, { ...current, cancellationRequested: true });
+      else operations.delete(workspacePath);
+      return [
+        retired._tag === "Failure" ? retired.failure : undefined,
+        { ...state, operations },
+      ] as const;
     }),
-  );
+  ).pipe(Effect.uninterruptible);
+  if (error) return yield* error;
 });
 
 export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
@@ -970,6 +1027,7 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
           .pipe(asError("inspect"));
     } else if (
       !operation.automatic &&
+      !operation.cancellationRequested &&
       !landingBlocked(status, operation.strategy ?? "preserve") &&
       (operation.kind === "landing" || status.behindCount === 0)
     ) {
@@ -978,7 +1036,12 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
       const pausedId = operation.operationId;
       const claimed = yield* SubscriptionRef.modify(coordinator.state, (state) => {
         const current = state.operations.get(input.workspacePath);
-        if (current?.operationId !== pausedId || current.phase !== "stalled" || current.automatic)
+        if (
+          current?.operationId !== pausedId ||
+          current.phase !== "stalled" ||
+          current.automatic ||
+          current.cancellationRequested
+        )
           return [undefined, state] as const;
         const resumed = normalizeOperation({ ...current, phase: "waiting", error: undefined });
         const operations = new Map(state.operations).set(input.workspacePath, resumed);

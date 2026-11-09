@@ -45,9 +45,21 @@ it("projects the stable declaration binding independently of attempts and clears
     expect(catalog.find("/worktree")?.autoMergeRequestId).toBe("declaration");
   }
   applyWorktreeOperationCatalogUpdate(catalog, {
-    operations: [{ ...operation("waiting"), operationId: "manual" }],
+    operations: [
+      {
+        ...operation("waiting"),
+        operationId: "declaration:1",
+        automatic: true,
+        autoMergeRequestId: "declaration",
+        cancellationRequested: true,
+      },
+    ],
   });
+  expect(catalog.find("/worktree")?.autoMergeRequestId).toBe("declaration");
+  expect(catalog.find("/worktree")?.cancellationRequested).toBe(true);
+  applyWorktreeOperationCatalogUpdate(catalog, { operations: [operation("landing")] });
   expect(catalog.find("/worktree")?.autoMergeRequestId).toBeUndefined();
+  expect(catalog.find("/worktree")?.cancellationRequested).toBeUndefined();
 });
 
 it("retains equivalent readiness records and observes every real field/outcome/order change", () => {

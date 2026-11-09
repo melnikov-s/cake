@@ -44,6 +44,8 @@ export const WorktreeLandingOperation = Schema.Struct({
   automatic: Schema.optionalKey(Schema.Literal(true)),
   /** Stable declaration identity, independent of toggle-authorized attempt IDs. */
   autoMergeRequestId: Schema.optionalKey(bounded(1, 256)),
+  /** Accepted cancellation; block replay until readiness revocation is reconciled. */
+  cancellationRequested: Schema.optionalKey(Schema.Literal(true)),
   pauseReason: Schema.optionalKey(
     Schema.Literals(["commit", "conflict", "rebase-conflict", "squash-message"]),
   ),

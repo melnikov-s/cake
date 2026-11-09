@@ -17,6 +17,7 @@ export class WorktreeOperation extends Model {
   resolveAfterLanding: WorktreeLandingOperation["resolveAfterLanding"];
   automatic: WorktreeLandingOperation["automatic"];
   autoMergeRequestId: WorktreeLandingOperation["autoMergeRequestId"];
+  cancellationRequested: WorktreeLandingOperation["cancellationRequested"];
   pauseReason: WorktreeLandingOperation["pauseReason"];
   error: string | undefined;
   resolvedSessionIds: WorktreeLandingOperation["resolvedSessionIds"];

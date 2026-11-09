@@ -1,6 +1,6 @@
 import { sessionNotificationEntries } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer, Stream, SubscriptionRef } from "effect";
+import { Deferred, Effect, Fiber, FiberMap, Layer, Option, Stream, SubscriptionRef } from "effect";
 import { expect } from "vitest";
 import * as digest from "../../../src/domain/cake-chats/cakeChatDigest";
 import { snapshot } from "../helpers/piRuntimeFixture";
@@ -29,6 +29,7 @@ import {
   WorktreeLandingAgent,
   WorktreeLandingAgentError,
 } from "../../../src/services/worktrees/WorktreeLandingAgent";
+import { makeWorktreeLandingQueue } from "../../../src/services/worktrees/WorktreeLandingQueue";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import {
   WorktreeLandingCoordinator,
@@ -76,6 +77,8 @@ function fixture(
     onLandedWait?: Effect.Effect<void>;
     cancelWait?: Effect.Effect<void>;
     statusWait?: Effect.Effect<void>;
+    queue?: Effect.Success<ReturnType<typeof makeWorktreeLandingQueue>>;
+    failStorageWrites?: () => boolean;
   } = {},
 ) {
   const events: string[] = [];
@@ -122,6 +125,14 @@ function fixture(
         }),
       ],
     ]),
+    { failWrites: options.failStorageWrites },
+  );
+  const queueError = Effect.mapError(
+    (error: unknown) =>
+      new ManagedWorktreeError({
+        operation: "queue",
+        message: error instanceof Error ? error.message : String(error),
+      }),
   );
   const layer = Layer.mergeAll(
     family.layer,
@@ -197,15 +208,28 @@ function fixture(
           ...(options.extraRecords ?? []),
           ...(options.externalSecond ? [externalRecord] : []),
         ]),
-      prepareLanding: () => Effect.void,
-      releaseLanding: () => Effect.void,
-      cancelLanding: () => options.cancelWait ?? Effect.void,
+      observeLandingQueue: () => options.queue?.observe() ?? Stream.succeed([]),
+      prepareLanding: (_path, id) =>
+        options.queue?.acquireLanding(record, id, undefined, false).pipe(queueError) ?? Effect.void,
+      releaseLanding: (_path, id) =>
+        options.queue?.cancelLandingInternal(record, id, false).pipe(queueError, Effect.asVoid) ??
+        Effect.void,
+      cancelLanding: (_path, id, onlyIfQueued = false) =>
+        options.queue
+          ?.cancelLandingInternal(record, id, onlyIfQueued)
+          .pipe(queueError, Effect.asVoid) ??
+        options.cancelWait ??
+        Effect.void,
       setResolveAfterLanding: (_path, value) =>
         Effect.sync(() => {
           events.push(`intent:${value}`);
         }),
-      land: (_path, _id, request, _progress, authorize) =>
+      land: (_path, id, request, progress, authorize) =>
         Effect.gen(function* () {
+          if (options.queue) {
+            yield* options.queue.acquireLanding(record, id, progress?.("queued")).pipe(queueError);
+            yield* progress?.("landing") ?? Effect.void;
+          }
           yield* options.wait ?? Effect.void;
           yield* authorize ?? Effect.void;
           if (
@@ -222,7 +246,13 @@ function fixture(
           return conflict
             ? { outcome: "resolving" as const, files: ["conflict.ts"] }
             : { outcome: "landed" as const, commit: head };
-        }),
+        }).pipe(
+          Effect.ensuring(
+            options.queue
+              ? options.queue.cancelLandingInternal(record, id, false).pipe(Effect.orDie)
+              : Effect.void,
+          ),
+        ),
     }),
     Layer.mock(WorktreeLandingAgent, {
       promptAndWait: ({ text }) =>

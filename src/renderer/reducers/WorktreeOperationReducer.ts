@@ -55,6 +55,7 @@ export function applyWorktreeOperationCatalogUpdate(
       const snapshot = {
         ...operation,
         autoMergeRequestId: operation.autoMergeRequestId,
+        cancellationRequested: operation.cancellationRequested,
         cleanupFailures: operation.cleanupFailures?.map((failure) => ({
           _tag: failure._tag,
           operation: failure.operation,
