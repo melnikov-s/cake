@@ -4,6 +4,7 @@ import { MarkdownLink, useMarkdownLinkActions } from "./ai-elements/markdown";
 import { Message } from "./ai-elements/message";
 import type { CrossSessionBadge } from "../lib/cross-session-presentation";
 import { markdownSummary } from "../lib/message-summary";
+import { reportMessagePresentation } from "../lib/report-message-presentation";
 import { canFullscreenText } from "../lib/text-fullscreen";
 import { cn } from "../lib/utils";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
@@ -84,7 +85,10 @@ export const SessionMessage = observer(function SessionMessage({
         0,
       ),
   );
-  const opening = markdownSummary(preview || sources.find((store) => store.page)?.page?.text || "");
+  const opening = markdownSummary(
+    reportMessagePresentation(preview || sources.find((store) => store.page)?.page?.text || "")
+      .body,
+  );
   // A preview that restates the title adds nothing; show what follows it.
   const summary = opening?.startsWith(title)
     ? opening.slice(title.length).replace(/^[\s:·—–-]+/, "")
@@ -102,7 +106,9 @@ export const SessionMessage = observer(function SessionMessage({
   const renderTodos = () =>
     linkedTodos.length > 0 && (
       <footer className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-5 py-2 text-xs text-muted-foreground">
-        <ResultTodoDone {...todo} />
+        {/* Reports are evidence, not a task-completion authority. Explicit human completion
+            remains available in the To-do pane, using its existing lifecycle checks. */}
+        <ResultTodoDone {...todo} readOnly />
       </footer>
     );
   return (
@@ -153,7 +159,7 @@ export const SessionMessage = observer(function SessionMessage({
               />
             </Button>
             <div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-2 pr-2 pl-8">
-              <span className="max-w-[45%] min-w-0 shrink text-sm font-medium">
+              <span className={cn("min-w-0 shrink text-sm font-medium", !open && "max-w-[45%]")}>
                 {href && actions ? (
                   <MarkdownLink
                     href={href}

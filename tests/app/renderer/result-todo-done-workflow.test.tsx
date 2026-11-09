@@ -42,6 +42,10 @@ import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surf
 import { AppShellLayout } from "../../../src/renderer/components/app-shell-layout";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SessionMessage } from "../../../src/renderer/components/session-message";
+import { ResultTodoDone } from "../../../src/renderer/components/result-todo-done";
+import { ChatTextMessage } from "../../../src/renderer/components/chat-message";
+import { formatCrossSessionReportText } from "../../../src/contracts/conversations/cross-session-message";
+import { resultTodoOrigin } from "../../../src/renderer/lib/result-todo-origin";
 import { projectTranscriptBehaviorFor } from "../../../src/renderer/lib/project-transcript-behavior";
 import { nestedTranscriptBehaviorFor } from "../../../src/renderer/lib/nested-transcript-behavior";
 import { cakeChatTranscriptBehaviorFor } from "../../../src/renderer/lib/cake-chat-transcript-behavior";
@@ -283,6 +287,7 @@ async function renderChat(kind: ChatKind) {
     [...view.container.querySelectorAll(`[data-part-id="${partId}"]`)]
       .map((part) => part.querySelector<HTMLElement>('[data-slot="result-todo-done"]'))
       .find(Boolean) ?? null;
+  const completionGroups = new Map<string, HTMLElement>();
   const pane = async () => {
     const open = screen.queryByRole("complementary", { name: "Workspace" });
     if (open) return open;
@@ -305,6 +310,18 @@ async function renderChat(kind: ChatKind) {
     mutateUser,
     items: { workerTodo, sessionTodo, sourceTodo },
     groupFor,
+    // Explicit human completion remains tested independently of passive report cards.
+    completionGroupFor(partId: string) {
+      if (completionGroups.has(partId)) return completionGroups.get(partId)!;
+      const part = parts.find((candidate) => candidate.id === partId)!;
+      const origin = resultTodoOrigin(part, chat.sessionId);
+      const controls = render(<ResultTodoDone origin={origin} todos={chat.todos} />);
+      const group = controls.container.querySelector<HTMLElement>(
+        '[data-slot="result-todo-done"]',
+      )!;
+      completionGroups.set(partId, group);
+      return group;
+    },
     read: (id: string) => runtime.runPromise(projectTodos.read(scope, id)),
     list: () => runtime.runPromise(projectTodos.list(scope)),
     /** The pane's own open/done rows, expanding Done history when needed. */
@@ -330,49 +347,63 @@ async function renderChat(kind: ChatKind) {
   };
 }
 
-it.each(["Project Chat"] as const)(
-  "keeps linked to-do actions in named footers, never collapsed headers in %s",
-  async (kind) => {
-    await using f = await renderChat(kind);
-    for (const [partId, title] of [
-      ["worker-report", "Research options"],
-      ["session-progress", "Fix the build"],
-      ["session-reply", "Fix the build"],
-      ["session-request", "Fix the build"],
-    ]) {
-      const group = f.groupFor(partId!)!;
-      const card = group.closest<HTMLElement>('[data-slot="session-message-card"]')!;
-      const action = within(group).getByRole("button", { name: `Mark done: ${title}` });
-      expect(group.closest("footer")).not.toBeNull();
-      expect(action.textContent).toBe("Mark done");
-      expect(action.getAttribute("title")).toBe(`Mark done: ${title}`);
-      expect(action.previousElementSibling?.textContent).toBe(`To-do · ${title}`);
-      expect(
-        card
-          .querySelector('[data-slot="response-header"]')!
-          .parentElement!.querySelector('[data-slot="result-todo-done"]'),
-      ).toBeNull();
-      const disclosure = within(card).getByRole("button", { expanded: true });
-      await f.user.click(disclosure);
-      expect(card.querySelector("footer")).toBeNull();
-      expect(within(card).queryByRole("button", { name: /^(Mark done|Done):/ })).toBeNull();
-      expect(within(card).queryByRole("checkbox")).toBeNull();
-      await f.user.click(disclosure);
-      expect(within(card).getByRole("button", { name: `Mark done: ${title}` })).toBeDefined();
-    }
-    for (const [partId, title] of [
-      ["notice", "Benchmark startup"],
-      ["standalone-original", "Fix the build"],
-    ]) {
-      const part = f.view.container.querySelector<HTMLElement>(`[data-part-id="${partId}"]`)!;
-      await f.user.click(within(part).getAllByRole("button", { expanded: false })[0]!);
-      expect(
-        within(f.groupFor(partId!)!).getByRole("button", { name: `Mark done: ${title}` }),
-      ).toBeDefined();
-    }
-    expect(f.groupFor("unlinked-report")).toBeNull();
-    expect(f.groupFor("different-source")).toBeNull();
+it("keeps report footers passive for completed, interim, request, notice and exact-source cards", async () => {
+  await using f = await renderChat("Project Chat");
+  for (const [partId, title] of [
+    ["worker-report", "Research options"],
+    ["session-progress", "Fix the build"],
+    ["session-reply", "Fix the build"],
+    ["session-request", "Fix the build"],
+    ["notice", "Benchmark startup"],
+    ["standalone-original", "Fix the build"],
+  ]) {
+    const part = f.view.container.querySelector<HTMLElement>(`[data-part-id="${partId}"]`)!;
+    const collapsed = within(part).queryAllByRole("button", { expanded: false })[0];
+    if (collapsed) await f.user.click(collapsed);
+    const group = f.groupFor(partId!)!;
+    expect(group.closest("footer")).not.toBeNull();
+    expect(within(group).queryByRole("button", { name: /^(Mark done|Done|Reopen):/ })).toBeNull();
+    await f.user.click(within(group).getByRole("button", { name: `View linked to-do: ${title}` }));
+    expect(await f.paneState(title!)).toBe("open");
+  }
+  expect(f.groupFor("unlinked-report")).toBeNull();
+  expect(f.groupFor("different-source")).toBeNull();
+  expect(f.mutateUser).not.toHaveBeenCalled();
+  await f.clickPane("Mark done", "Fix the build");
+  expect((await f.read(f.items.sessionTodo.id)).state).toBe("done");
+  expect(within(f.groupFor("session-progress")!).getByText("Done · View to-do")).toBeDefined();
+});
+
+it.each(["blocked", "failed", "result", "completed"] as const)(
+  "does not offer completion on a %s report, regardless of completion-sounding prose",
+  async (outcome) => {
+    await using f = await renderChat("Project Chat");
+    const view = render(
+      <ChatTextMessage
+        part={{
+          id: "status-report",
+          kind: "text",
+          role: "user",
+          status: "complete",
+          text: formatCrossSessionReportText(
+            sessionA,
+            outcome,
+            "Done. Ready to merge. All checks passed.",
+          ),
+          crossSession: crossSession(sessionA, "Build fix"),
+        }}
+        todo={{ origin: { sessionIds: [sessionA] }, todos: f.chat.todos }}
+      />,
+    );
+    expect(
+      within(view.container).queryByRole("button", { name: /^(Mark done|Done|Reopen):/ }),
+    ).toBeNull();
+    await f.user.click(
+      within(view.container).getByRole("button", { name: "View linked to-do: Fix the build" }),
+    );
     expect(f.mutateUser).not.toHaveBeenCalled();
+    expect((await f.read(f.items.sessionTodo.id)).state).toBe("open");
+    view.unmount();
   },
 );
 
@@ -413,7 +444,7 @@ it("keeps multiple linked legacy titles flexible beside non-shrinking right-hand
       );
     }),
   );
-  const group = f.groupFor("session-reply")!;
+  const group = f.completionGroupFor("session-reply")!;
   const entries = group.querySelectorAll<HTMLElement>('[data-slot="result-todo-entry"]');
   expect(entries).toHaveLength(2);
   const expectRow = (entry: HTMLElement) => {
@@ -459,7 +490,7 @@ it.each(
       ],
     }),
   );
-  const group = f.groupFor(partId)!;
+  const group = f.completionGroupFor(partId)!;
   const entries = group.querySelectorAll('[data-slot="result-todo-entry"]');
   expect(entries).toHaveLength(2);
   for (const item of [linked, standalone]) {
@@ -508,7 +539,7 @@ it("shows Done after session-driven completion and clicking it reopens through t
   await f.commit(projectTodos.completeResolved(f.scope, [linked]));
   const completed = await f.read(linked.id);
   expect(completed.completion?.by).toBe("sessions");
-  const group = f.groupFor("session-reply")!;
+  const group = f.completionGroupFor("session-reply")!;
   const done = within(group).getByRole("button", { name: `Done: ${linked.title}` });
   expect(done.textContent).toBe("Done");
   expect(done.title).toBe(`Done: ${linked.title}`);
@@ -541,7 +572,7 @@ it.each(["Project Chat"] as const)(
         "Cake cannot resolve a Project Session while its turn is active or input is pending",
       ),
     );
-    const group = f.groupFor("session-reply")!;
+    const group = f.completionGroupFor("session-reply")!;
     await f.user.click(within(group).getByRole("button", { name: "Mark done: Fix the build" }));
     await waitFor(() =>
       expect(within(group).getByRole("alert").textContent).toContain("turn is active"),
@@ -565,16 +596,17 @@ it.each(["Project Chat"] as const)(
       return f.commit(projectTodos.mutateUser(scope, mutation));
     });
     try {
-      const group = f.groupFor("session-reply")!;
+      const group = f.completionGroupFor("session-reply")!;
+      f.completionGroupFor("worker-report");
       await f.user.click(within(group).getByRole("button", { name: "Mark done: Fix the build" }));
       expect(f.chat.todos.busy).toBe(true);
-      const actions = f.view.container.querySelectorAll<HTMLButtonElement>(
-        '[data-slot="result-todo-done"] button',
-      );
+      const actions = screen
+        .getAllByRole<HTMLButtonElement>("button", { name: /^(Mark done|Done):/ })
+        .filter((button) => button.closest('[data-slot="result-todo-done"]'));
       expect(actions.length).toBeGreaterThan(1);
       expect([...actions].every((action) => action.disabled)).toBe(true);
       await f.user.click(
-        within(f.groupFor("worker-report")!).getByRole("button", {
+        within(f.completionGroupFor("worker-report")!).getByRole("button", {
           name: "Mark done: Research options",
         }),
       );
@@ -587,7 +619,7 @@ it.each(["Project Chat"] as const)(
     }
     await waitFor(() => expect(f.chat.todos.busy).toBe(false));
     expect(
-      within(f.groupFor("session-reply")!)
+      within(f.completionGroupFor("session-reply")!)
         .getByRole("button", { name: "Done: Fix the build" })
         .hasAttribute("disabled"),
     ).toBe(false);
@@ -595,7 +627,7 @@ it.each(["Project Chat"] as const)(
   },
 );
 
-it("keeps fullscreen completion actions under the named to-do, not in its toolbar", async () => {
+it("keeps fullscreen report footers passive and preserves explicit completion in the pane", async () => {
   await using f = await renderChat("Project Chat");
   f.view.unmount();
   const text = "Detailed result findings. ".repeat(250);
@@ -614,16 +646,13 @@ it("keeps fullscreen completion actions under the named to-do, not in its toolba
   );
   await f.user.click(screen.getByRole("button", { name: "View message fullscreen: Build report" }));
   const dialog = screen.getByRole("dialog", { name: "Build report" });
-  const action = within(dialog).getByRole("button", { name: "Mark done: Fix the build" });
-  expect(action.closest("footer")).not.toBeNull();
+  expect(within(dialog).queryByRole("button", { name: /^(Mark done|Done|Reopen):/ })).toBeNull();
   expect(
-    within(dialog.querySelector("header")!).queryByRole("button", { name: /^(Mark done|Done):/ }),
-  ).toBeNull();
-  await f.user.click(action);
-  expect((await f.read(f.items.sessionTodo.id)).state).toBe("done");
-  expect(within(dialog).getByRole("button", { name: "Done: Fix the build" })).toBeDefined();
-  await f.user.click(within(dialog).getByRole("button", { name: "Exit fullscreen Build report" }));
-  expect(screen.getByRole("button", { name: "Done: Fix the build" })).toBeDefined();
+    within(dialog)
+      .getByRole("button", { name: "View linked to-do: Fix the build" })
+      .closest("footer"),
+  ).not.toBeNull();
+  expect(f.mutateUser).not.toHaveBeenCalled();
   view.unmount();
 });
 

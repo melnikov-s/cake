@@ -2,7 +2,7 @@ import { useId } from "react";
 import { observer } from "r-state-tree/react";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
 import { attachmentLink } from "../../contracts/conversations/message-reference";
-import { Markdown } from "./ai-elements/markdown";
+import { ReportMessageBody } from "./report-message-body";
 import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 import { MarkdownImage } from "./markdown-image";
 import { isAttachmentImageMimeType } from "../../contracts/conversations/attachment-reference-control";
@@ -66,7 +66,7 @@ export const MessageSourceBody = observer(function MessageSourceBody({
             loadWorkspaceImage={store.loadWorkspaceImage}
             loadAttachmentImage={store.loadAttachmentImage}
           >
-            <Markdown>{page.text || "No textual content."}</Markdown>
+            <ReportMessageBody>{page.text || "No textual content."}</ReportMessageBody>
           </ConversationMarkdownProvider>
           {page.message.inputRefs.map((input) =>
             isAttachmentImageMimeType(input.mimeType) ? (

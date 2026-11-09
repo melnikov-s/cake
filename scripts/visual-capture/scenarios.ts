@@ -1,5 +1,6 @@
 import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
+import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
 import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
 import { createInterfaceIconsScenario } from "./interface-icons";
 import { projectSetupScenario } from "./project-setup.ts";
@@ -5072,13 +5073,18 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
   name: "session-update-reports",
   description:
     "Deduplicated title-only batch entries with lazy exact reports and a unique ongoing note",
-  states: ["default", "expanded", "note"],
+  states: ["default", "expanded", "note", "wrapped", "technical"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     await mkdir(join(paths.cakeHome, "pi", "global-chat"), { recursive: true });
     const timestamp = new Date(0).toISOString();
     const sourceId = "visual-session-update-reports";
     const reports = [
+      {
+        id: "wrapped",
+        title: "Share catalog change computation and remove redundant events",
+        text: wrappedWorkerReport,
+      },
       {
         id: "merge",
         title: "Review and land ready Cake changes",
@@ -5227,7 +5233,7 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
     const batch = page.getByRole("status", { name: "Session results" });
-    await expect(batch.getByRole("button")).toHaveCount(5);
+    await expect(batch.getByRole("button")).toHaveCount(6);
     await page.getByRole("combobox", { name: "Message Cake Chat", exact: true }).focus();
     await page.mouse.move(1, 1);
     const standalone = page
@@ -5248,6 +5254,16 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
         .getByRole("button", { name: "Simplify Cake prompts with progressive disclosure" })
         .click();
       await expect(batch.getByText(/Core instructions remain immediately available/)).toBeVisible();
+    } else if (state === "wrapped" || state === "technical") {
+      await batch
+        .getByRole("button", {
+          name: "Share catalog change computation and remove redundant events",
+        })
+        .click();
+      await expect(batch.getByText(/Scoped validation surfaced baseline debt/)).toBeVisible();
+      await expect(batch.getByText(/command execution not verified/)).toBeVisible();
+      if (state === "technical")
+        await batch.getByRole("button", { name: "View technical details" }).click();
     } else if (state === "note") {
       await batch.getByRole("button", { name: "Keyboard navigation review continues" }).click();
       await expect(batch.getByText(/No final report yet/)).toBeVisible();

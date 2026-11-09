@@ -3,7 +3,7 @@ import type { SourceLocation } from "../../contracts/editor/source-location";
 import type { SessionUpdateEntryStore } from "../stores/SessionUpdateEntryStore";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import { referenceTodoOrigin } from "../lib/result-todo-origin";
-import { Markdown } from "./ai-elements/markdown";
+import { ReportMessageBody } from "./report-message-body";
 import { SessionMessage } from "./session-message";
 
 export const SessionUpdateEntry = observer(function SessionUpdateEntry({
@@ -35,7 +35,11 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
         todos,
       }}
     >
-      {!source && <Markdown onOpenSourceLocation={onOpenSourceLocation}>{entry.text}</Markdown>}
+      {!source && (
+        <ReportMessageBody onOpenSourceLocation={onOpenSourceLocation}>
+          {entry.text}
+        </ReportMessageBody>
+      )}
     </SessionMessage>
   );
 });

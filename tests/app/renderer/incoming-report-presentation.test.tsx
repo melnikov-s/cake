@@ -16,6 +16,7 @@ import { internalInputEntryType } from "../../../src/services/pi/runtime/interna
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { readMessageReference } from "../../../src/services/pi/runtime/message-references";
 import { renderChatSurface } from "./chat-surface-workflow-fixture";
+import { wrappedWorkerReport } from "../../fixtures/wrapped-worker-report";
 
 const title = "Side-chat shared to-dos and merge-back memory";
 const sender = { sessionId: "producer", title, kind: "project-session" as const };
@@ -46,6 +47,61 @@ const assistant = (text: string): AssistantMessage => ({
   },
 });
 afterEach(cleanup);
+
+it.each(["receipt", "digest"] as const)(
+  "projects existing wrapped %s originals while retaining exact source and raw disclosure",
+  async (delivery) => {
+    const source = SessionManager.inMemory("/producer");
+    const entryId = source.appendMessage(assistant(wrappedWorkerReport));
+    const original = readMessageReference(source, { entryId });
+    const ref = original.message.ref;
+    const parent = SessionManager.inMemory("/project");
+    parent.appendMessage({
+      role: "user",
+      timestamp: 1,
+      content:
+        delivery === "receipt"
+          ? encodeCrossSessionMessage(appendMessageReferences(protectedResponseNotice, [ref]), {
+              ...metadata,
+              sender: { ...sender, sessionId: source.getSessionId() },
+            })
+          : formatSessionDigestReminder({
+              lines: [
+                {
+                  reference: "producer",
+                  sessionId: source.getSessionId(),
+                  title,
+                  summary: "An update",
+                  status: "completed",
+                  resultMessageRef: ref,
+                },
+              ],
+            })!,
+    });
+    const inspect = vi.fn(async () => original);
+    using fixture = renderChatSurface({
+      parts: projectSessionEntries(parent.getEntries()),
+      client: { sessionChats: { inspect } },
+    });
+    const card = screen.getByRole("region", { name: "Message from another session" });
+    await fixture.user.click(within(card).getByRole("button", { name: title }));
+    await within(card).findByText(/Scoped validation surfaced baseline debt/);
+    expect(card.textContent).not.toContain('"command"');
+    expect(within(card).getByRole("link", { name: title }).getAttribute("href")).toBe(ref);
+    await fixture.user.click(within(card).getByRole("button", { name: "View technical details" }));
+    expect(card.querySelector('[data-slot="report-raw-original"]')?.textContent).toBe(
+      wrappedWorkerReport,
+    );
+    expect(original.text).toBe(wrappedWorkerReport);
+    expect(inspect).toHaveBeenCalledTimes(1);
+    // Digest cards expose source copy in their header. Receipt toolbar visibility
+    // has separate, pre-existing failing coverage in inline-message-source-workflow.
+    if (delivery === "digest") {
+      await fixture.user.click(within(card).getByRole("button", { name: "Copy message" }));
+      expect(await navigator.clipboard.readText()).toBe(wrappedWorkerReport);
+    }
+  },
+);
 
 it.each(["receipt", "digest"] as const)(
   "applies the source-text threshold after lazy loading a %s",

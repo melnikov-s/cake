@@ -21,6 +21,7 @@ import { rangeAtOffsets, useMessageHighlights } from "@/lib/message-highlights";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenMessage } from "@/components/fullscreen-message";
 import { SessionMessage } from "@/components/session-message";
+import { ReportMessageBody } from "./report-message-body";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   ChatIcon,
@@ -103,7 +104,7 @@ export const ChatTextMessage = forwardRef<
     reportSource?: { href?: string };
     /** Retained assignment for a worker progress message. */
     workerTask?: string;
-    /** To-dos tracking an incoming message, with Done checkboxes on its card. */
+    /** To-dos tracking an incoming message, with navigation to explicit human actions. */
     todo?: ResultTodoLink;
   }
 >(function ChatTextMessage(
@@ -173,6 +174,7 @@ export const ChatTextMessage = forwardRef<
         ? "You · draft"
         : "You";
   if (!agentMessage && !text.trim() && !beforeContent) return null;
+  const BodyMarkdown = report || part.crossSession || agentSource ? ReportMessageBody : Markdown;
   const content = (agentMessage ? text : text.trim()) ? (
     <MessageContent
       ref={contentRef}
@@ -202,7 +204,7 @@ export const ChatTextMessage = forwardRef<
         part.crossSession ||
         agentSource ||
         part.renderAs === "markdown" ? (
-        <Markdown
+        <BodyMarkdown
           renderModelReferences={!assistant}
           streaming={part.status === "streaming"}
           normalizeLatexDelimiters={part.status !== "streaming"}
@@ -211,7 +213,7 @@ export const ChatTextMessage = forwardRef<
           className="has-[[data-slot=artifact-disclosure]]:[&>:not([data-slot=artifact-disclosure])]:mx-auto has-[[data-slot=artifact-disclosure]]:[&>:not([data-slot=artifact-disclosure])]:max-w-[45.375rem]"
         >
           {text}
-        </Markdown>
+        </BodyMarkdown>
       ) : (
         text
       )}

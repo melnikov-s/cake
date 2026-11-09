@@ -13,7 +13,11 @@ export interface ResultTodoLink {
  * Each linked to-do owns its title and done/reopen action in the result footer.
  * Read the same live items as the To-do pane and use its user mutation path.
  */
-export const ResultTodoDone = observer(function ResultTodoDone({ origin, todos }: ResultTodoLink) {
+export const ResultTodoDone = observer(function ResultTodoDone({
+  origin,
+  todos,
+  readOnly = false,
+}: ResultTodoLink & { readOnly?: boolean }) {
   const items = origin && todos ? todos.itemsForResult(origin) : [];
   if (!todos || !items.length) return null;
   return (
@@ -38,21 +42,33 @@ export const ResultTodoDone = observer(function ResultTodoDone({ origin, todos }
             className="flex min-w-0 items-start gap-2"
           >
             <span className="min-w-0 flex-1 break-words">To-do · {item.title}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`${action}: ${item.title}`}
-              title={`${action}: ${item.title}`}
-              disabled={todos.busy}
-              className={cn(
-                "shrink-0 gap-1.5 [&_svg]:size-3",
-                done && "bg-accent/15 text-accent hover:bg-accent/20 hover:text-accent",
-              )}
-              onClick={() => void todos.setDone(item)}
-            >
-              {done ? <CheckIcon aria-hidden="true" /> : <CircleIcon aria-hidden="true" />}
-              {action}
-            </Button>
+            {readOnly ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                aria-label={`View linked to-do: ${item.title}`}
+                onClick={() => todos.reveal(item)}
+              >
+                {done ? "Done · View to-do" : "View to-do"}
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`${action}: ${item.title}`}
+                title={`${action}: ${item.title}`}
+                disabled={todos.busy}
+                className={cn(
+                  "shrink-0 gap-1.5 [&_svg]:size-3",
+                  done && "bg-accent/15 text-accent hover:bg-accent/20 hover:text-accent",
+                )}
+                onClick={() => void todos.setDone(item)}
+              >
+                {done ? <CheckIcon aria-hidden="true" /> : <CircleIcon aria-hidden="true" />}
+                {action}
+              </Button>
+            )}
           </div>
         );
       })}
