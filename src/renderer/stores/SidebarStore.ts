@@ -47,6 +47,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return createStore(SidebarSessionListStore, {
       catalog: this.props.catalog,
       cakeChat: this.props.cakeChat,
+      additionalCatalogDemand: () => this.sessionSearchStore.open,
       selectedConversation: this.props.selectedConversation,
     });
   }

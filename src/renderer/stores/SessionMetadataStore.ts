@@ -18,7 +18,7 @@ export class SessionMetadataStore extends Store<{
 }> {
   workingDirectory(sessionId: string) {
     return (
-      this.props.catalog.find(sessionId)?.workingDirectory ??
+      this.props.catalog.backgroundSession(sessionId)?.workingDirectory ??
       this.props.sessions.findSession(sessionId)?.workspacePath
     );
   }
@@ -33,7 +33,9 @@ export class SessionMetadataStore extends Store<{
   }
 
   exists(sessionId: string) {
-    return !!(this.props.catalog.find(sessionId) || this.props.sessions.findSession(sessionId));
+    return !!(
+      this.props.catalog.backgroundSession(sessionId) || this.props.sessions.findSession(sessionId)
+    );
   }
 
   isResolved(sessionId: string) {
@@ -84,7 +86,7 @@ export class SessionMetadataStore extends Store<{
   @computed
   get activeSessionIds() {
     const ids = new Set(
-      this.props.catalog.activeSessions
+      this.props.catalog.backgroundSessions
         .filter((session) => session.running)
         .map((session) => session.sessionId),
     );
@@ -173,15 +175,15 @@ export class SessionMetadataStore extends Store<{
   sessionWorkActivity(sessionId: string): SessionWorkActivity | undefined {
     const activity = this.sessionActivity(sessionId);
     if (activity && activity !== "unread") return activity;
-    const summary = this.props.catalog.find(sessionId);
+    const summary = this.props.catalog.backgroundSession(sessionId);
     const outcome =
       summary && "latestTurnOutcome" in summary ? summary.latestTurnOutcome : undefined;
     return outcome === "complete" ? "ready" : undefined;
   }
 
   sessionActivity(sessionId: string): SessionActivity | undefined {
-    const session = this.props.catalog.find(sessionId);
-    if (session?.resolved) return undefined;
+    const session = this.props.catalog.backgroundSession(sessionId);
+    if (session && "resolved" in session && session.resolved) return undefined;
     const activity = this.props.sessions.findSession(sessionId)?.activity;
     if (activity === "waiting") return activity;
     // A blocked journal is authoritative even if a retained projection still has
@@ -199,6 +201,6 @@ export class SessionMetadataStore extends Store<{
         return session.unread ? "unread" : undefined;
     }
     if (this.activeSessionIds.has(sessionId)) return "running";
-    return activity ?? (this.props.catalog.find(sessionId)?.unread ? "unread" : undefined);
+    return activity ?? (session?.unread ? "unread" : undefined);
   }
 }

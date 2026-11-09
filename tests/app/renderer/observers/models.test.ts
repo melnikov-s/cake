@@ -1,6 +1,7 @@
 import { Effect, Queue, Stream } from "effect";
 import { batch, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
+import type { ProjectSessionSignalsUpdate } from "../../../../src/contracts/project-sessions/project-session-signals";
 import type {
   DiscussionCatalogUpdate,
   SessionCatalogUpdate,
@@ -14,6 +15,7 @@ import type { CakeChatControlUpdate } from "../../../../src/contracts/cake-chats
 import type { ProjectSessionCatalogQuery } from "../../../../src/contracts/project-sessions/project-session-data";
 import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
+import { applySessionSignalsUpdate } from "../../../../src/renderer/reducers/SessionSignalsReducer";
 import { createModelObserver, observeModels } from "../../../../src/renderer/observers";
 import type { Runtime } from "../../../../src/renderer/runtime";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
@@ -116,10 +118,225 @@ function baseClient(overrides: ObserverClientOverrides = {}) {
     subagents: { observe: () => Stream.never },
     scheduledMessages: { observe: () => Stream.never },
     ...overrides,
+    projectSessions: { observeSignals: () => Stream.never, ...overrides.projectSessions },
   });
 }
 
 describe("Project Session composition observer", () => {
+  it("loads only the selected owner's delegated workflow details while To-dos stays open", async () => {
+    const worker = sessionSummary({
+      sessionId: "owned-worker",
+      projectPath: "/project",
+      title: "Owned work",
+      cakeChatLaunch: { requesterSessionId: CAKE_CHAT_SESSION_ID },
+    });
+    const lookup = vi.fn(async () => worker);
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      client: { projectSessions: { lookup } },
+    });
+    const workflow = fixture.root.conversationActivityStore;
+    applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+      _tag: "Snapshot",
+      sessions: [
+        {
+          sessionId: worker.sessionId,
+          projectPath: "/project",
+          workingDirectory: "/project",
+          running: true,
+          unread: false,
+          cakeChatLaunch: { requesterSessionId: CAKE_CHAT_SESSION_ID },
+        },
+        {
+          sessionId: "unrelated-idle",
+          projectPath: "/project",
+          workingDirectory: "/project",
+          running: false,
+          unread: false,
+        },
+      ],
+    });
+    await vi.waitFor(() =>
+      expect(workflow.sessionsFor(CAKE_CHAT_SESSION_ID)).toEqual([
+        expect.objectContaining({
+          sessionId: worker.sessionId,
+          title: "Owned work",
+          status: "running",
+        }),
+      ]),
+    );
+    expect(lookup).toHaveBeenCalledOnce();
+    expect(fixture.root.workspaceNavigatorStore.mode).toBe("todos");
+    expect(fixture.root.sidebarStore.sessionListStore.projectSessionCatalogQueries).toEqual([]);
+    expect(fixture.root.sessionMetadataStore.exists("unrelated-idle")).toBe(true);
+    applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+      _tag: "Upserted",
+      session: {
+        sessionId: worker.sessionId,
+        projectPath: "/project",
+        workingDirectory: "/project",
+        running: false,
+        unread: false,
+        latestTurnOutcome: "complete",
+        cakeChatLaunch: { requesterSessionId: CAKE_CHAT_SESSION_ID },
+      },
+    });
+    expect(fixture.root.sessionMetadataStore.sessionWorkActivity(worker.sessionId)).toBe("ready");
+    expect(workflow.sessionsFor(CAKE_CHAT_SESSION_ID)[0]?.status).toBe("done");
+    expect(lookup).toHaveBeenCalledOnce();
+  });
+
+  it("defers list snapshots until Sessions opens, releases them on exit, and keeps background signals live", async () => {
+    const alpha = sessionSummary({
+      sessionId: "alpha",
+      projectPath: "/project",
+      title: "Current alpha",
+    });
+    const beta = sessionSummary({
+      sessionId: "beta",
+      projectPath: "/other",
+      title: "Current beta",
+    });
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" }), projectRecord({ path: "/other" })],
+      client: { projectSessions: { lookup: async () => alpha, open: async () => {} } },
+    });
+    const signals = Effect.runSync(Queue.unbounded<ProjectSessionSignalsUpdate>());
+    const signalStream = vi.fn(() => Stream.fromQueue(signals));
+    let revision = 0;
+    let freshTitle = alpha.title;
+    const ended: string[] = [];
+    const catalogs = vi.fn((query: ProjectSessionCatalogQuery) =>
+      Stream.succeed({
+        _tag: "Snapshot" as const,
+        revision: ++revision,
+        sessions: [query.projectPath === "/project" ? { ...alpha, title: freshTitle } : beta],
+      }).pipe(
+        Stream.concat(Stream.never),
+        Stream.ensuring(
+          Effect.sync(() => {
+            ended.push(query.projectPath);
+          }),
+        ),
+      ),
+    );
+    const client = baseClient({
+      managedWorktrees: {
+        observeCatalog: () => Stream.never,
+        observeOperations: () => Stream.never,
+      },
+      projectSessions: { observeCatalog: catalogs, observeSignals: signalStream },
+      conversations: {
+        observe: (target) =>
+          Stream.succeed(conversationSnapshot(target.sessionId)).pipe(Stream.concat(Stream.never)),
+      },
+      cakeChats: {
+        observeCatalog: () => Stream.never,
+        observeControls: () => Stream.never,
+        observeSideChats: () => Stream.never,
+        observeSideChatMetadata: () => Stream.never,
+      },
+      discussionSessions: {
+        observeCatalog: () => Stream.never,
+        observeMetadata: () => Stream.never,
+      },
+      subagents: { observe: () => Stream.never, observeMetadata: () => Stream.never },
+    });
+    const stop = observeModels(runtimeFor(client), fixture.models, fixture.root);
+    try {
+      Queue.offerUnsafe(signals, {
+        _tag: "Snapshot",
+        sessions: [
+          {
+            sessionId: "alpha",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            running: true,
+            unread: false,
+          },
+          {
+            sessionId: "beta",
+            projectPath: "/other",
+            workingDirectory: "/other",
+            running: false,
+            unread: true,
+            latestTurnOutcome: "failed",
+          },
+        ],
+      });
+      await vi.waitFor(() => expect(fixture.models.sessionCatalog.signals.loaded).toBe(true));
+      expect(fixture.root.workspaceNavigatorStore.mode).toBe("todos");
+      expect(catalogs).not.toHaveBeenCalled();
+      expect(fixture.models.sessionCatalog.sessions).toHaveLength(0);
+      expect(fixture.root.sessionMetadataStore.sessionActivity("alpha")).toBe("running");
+      expect(fixture.root.conversationNavigatorStore.projectUnread("/other")).toBe(true);
+      expect(fixture.root.sidebarStore.sessionListStore.projectHasError("/other")).toBe(true);
+      expect(fixture.root.conversationNavigatorStore.summaryCounts()).toMatchObject({
+        running: 1,
+        unread: 1,
+      });
+      expect(fixture.root.sidebarStore.sessionListStore.adjacentActiveSession("next")).toEqual({
+        kind: "project-session",
+        sessionId: "alpha",
+      });
+      expect(fixture.models.projectConversations).toHaveLength(0);
+
+      fixture.root.workspaceNavigatorStore.show("sessions");
+      await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(2));
+      expect(catalogs).toHaveBeenCalledTimes(2);
+      expect(
+        fixture.root.conversationNavigatorStore.tree(undefined).byKey.get("session:alpha")?.title,
+      ).toBe("Current alpha");
+      fixture.root.workspaceNavigatorStore.show("sessions");
+      expect(catalogs).toHaveBeenCalledTimes(2);
+      fixture.root.workspaceNavigatorStore.show("todos");
+      await vi.waitFor(() => expect(ended).toHaveLength(2));
+      Queue.offerUnsafe(signals, {
+        _tag: "Upserted",
+        session: {
+          sessionId: "alpha",
+          projectPath: "/project",
+          workingDirectory: "/project",
+          running: false,
+          unread: true,
+          latestTurnOutcome: "complete",
+        },
+      });
+      await vi.waitFor(() =>
+        expect(fixture.root.sessionMetadataStore.sessionActivity("alpha")).toBe("unread"),
+      );
+      expect(catalogs).toHaveBeenCalledTimes(2);
+      expect(signalStream).toHaveBeenCalledOnce();
+
+      freshTitle = "Fresh reentry title";
+      fixture.root.workspaceNavigatorStore.show("sessions");
+      await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(4));
+      await vi.waitFor(() =>
+        expect(fixture.models.sessionCatalog.find("alpha")?.title).toBe("Fresh reentry title"),
+      );
+      fixture.root.workspaceNavigatorStore.close();
+      await vi.waitFor(() => expect(ended).toHaveLength(4));
+      await fixture.root.navigationStore.openSessionLink("alpha");
+      expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("alpha");
+      expect(fixture.root.workspaceNavigatorStore.visible).toBe(false);
+      expect(catalogs).toHaveBeenCalledTimes(4);
+      expect(signalStream).toHaveBeenCalledOnce();
+      fixture.root.workspaceNavigatorStore.show("sessions");
+      await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(5));
+      expect(catalogs.mock.calls[4]?.[0]).toEqual({ projectPath: "/project", resolved: false });
+      fixture.root.workspaceNavigatorStore.close();
+      await vi.waitFor(() => expect(ended).toHaveLength(5));
+      fixture.root.sidebarStore.sessionSearchStore.show();
+      await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(7));
+      expect(fixture.root.workspaceNavigatorStore.visible).toBe(false);
+      fixture.root.sidebarStore.sessionSearchStore.close();
+      await vi.waitFor(() => expect(ended).toHaveLength(7));
+      expect(signalStream).toHaveBeenCalledOnce();
+    } finally {
+      stop();
+    }
+  });
+
   it("activates, replaces paged demand and releases collapsed archive subscriptions", async () => {
     using fixture = createRendererStoreFixture({
       projects: [projectRecord({ path: "/project" })],
@@ -154,7 +371,13 @@ describe("Project Session composition observer", () => {
         observeOperations: () => Stream.never,
       },
       projectSessions: { observeCatalog: catalogs },
+      cakeChats: {
+        observeCatalog: () => Stream.never,
+        observeSideChatMetadata: () => Stream.never,
+      },
+      subagents: { observe: () => Stream.never, observeMetadata: () => Stream.never },
     });
+    fixture.root.workspaceNavigatorStore.show("sessions");
     const stop = observeModels(runtimeFor(client), fixture.models, fixture.root);
     const list = fixture.root.sidebarStore.sessionListStore;
     try {
@@ -282,7 +505,7 @@ describe("Project Session composition observer", () => {
   });
 
   it("delivers a title event to the pending projection before a file-backed catalog entry exists", async () => {
-    const updates = await Effect.runPromise(Queue.unbounded<SessionCatalogUpdate>());
+    const updates = await Effect.runPromise(Queue.unbounded<ProjectSessionSignalsUpdate>());
     using fixture = createRendererStoreFixture({
       projects: [projectRecord({ path: "/project", name: "Project" })],
     });
@@ -295,19 +518,18 @@ describe("Project Session composition observer", () => {
         observeOperations: () => Stream.never,
       },
       projectSessions: {
-        observeCatalog: (query) => (query.resolved ? Stream.never : Stream.fromQueue(updates)),
+        observeCatalog: () => Stream.never,
+        observeSignals: () => Stream.fromQueue(updates),
       },
     });
     const stop = observeModels(runtimeFor(client), projection, root);
     try {
-      await Effect.runPromise(
-        Queue.offer(updates, { _tag: "Snapshot", revision: 1, sessions: [] }),
-      );
+      await Effect.runPromise(Queue.offer(updates, { _tag: "Snapshot", sessions: [] }));
       await Effect.runPromise(
         Queue.offer(updates, {
-          _tag: "Event",
-          revision: 2,
-          event: { _tag: "TitleChanged", sessionId: "new-session", title: "Generated title" },
+          _tag: "TitleChanged",
+          sessionId: "new-session",
+          title: "Generated title",
         }),
       );
       await vi.waitFor(() =>

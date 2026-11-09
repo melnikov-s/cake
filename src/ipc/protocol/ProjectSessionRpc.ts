@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
+import { ProjectSessionSignalsUpdate } from "../../contracts/project-sessions/project-session-signals";
 import { TurnId } from "../../contracts/conversations/conversation-data";
 import {
   ProjectSessionResolutionDomainFailure,
@@ -19,6 +20,11 @@ import { jsonObjectSchema, jsonValueSchema } from "../../contracts/serialization
 import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
 
 export const ProjectSessionRpc = RpcGroup.make(
+  Rpc.make("projectSessions.observeSignals", {
+    success: ProjectSessionSignalsUpdate,
+    error: ProjectSessionError,
+    stream: true,
+  }),
   Rpc.make("projectSessions.observeCatalog", {
     payload: ProjectSessionCatalogQuery,
     success: SessionCatalogUpdate,

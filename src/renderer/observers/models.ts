@@ -16,6 +16,8 @@ import type {
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import type { AutomationCatalogUpdate } from "../../contracts/automations/automation-control";
 import type { AutomationCatalog } from "../models/AutomationCatalog";
+import { applySessionSignalsUpdate } from "../reducers/SessionSignalsReducer";
+import type { ProjectSessionSignalsUpdate } from "../../contracts/project-sessions/project-session-signals";
 import { applyAutomationCatalogUpdate } from "../reducers/AutomationReducer";
 import { DiscussionSessionError } from "../../contracts/discussion-sessions/discussion-session-data";
 import type {
@@ -76,6 +78,7 @@ interface ModelSource {
   readonly focusedDiscussionOwners?: () => readonly ConversationNavigationMetadataTarget[];
   readonly focusedDiscussionTargets?: () => readonly ReviewThread[];
   readonly projection: RootProjection;
+  readonly observeSessionSignals?: boolean;
   readonly projectSessionCatalogQueries: () => ReadonlyArray<ProjectSessionCatalogQuery>;
   readonly onProjectSessionTitleChanged?: (sessionId: string, title: string) => void;
   readonly cakeChatCatalogQueries?: () => ReadonlyArray<CakeChatCatalogQuery>;
@@ -121,6 +124,7 @@ type ModelInput = {
     conversation: Conversation;
   }>;
   readonly sessionCatalog: SessionCatalog;
+  readonly observeSessionSignals?: boolean;
   readonly worktrees?: WorktreeCatalog;
   readonly worktreeOperations?: WorktreeOperationCatalog;
   readonly projectSessionCatalogQueries?: ReadonlyArray<ProjectSessionCatalogQuery>;
@@ -310,6 +314,17 @@ export const createModelObserver = (
       (client) => client.projects.observeCatalog(),
       (update: ProjectCatalogUpdate) => applyProjectCatalogUpdate(input.projects, update),
     );
+    if (input.observeSessionSignals)
+      observe(
+        "project-session-signals",
+        input.sessionCatalog.signals,
+        (client) => client.projectSessions.observeSignals(),
+        (update: ProjectSessionSignalsUpdate) => {
+          applySessionSignalsUpdate(input.sessionCatalog, update);
+          if (update._tag === "TitleChanged")
+            input.onProjectSessionTitleChanged?.(update.sessionId, update.title);
+        },
+      );
     for (const query of input.projectSessionCatalogQueries ?? []) {
       const group = `project-session-catalog:${query.resolved ? "resolved" : "active"}:${query.projectPath}`;
       const key = query.resolved ? `${group}:${query.limit ?? 10}` : group;
@@ -324,12 +339,14 @@ export const createModelObserver = (
         },
         {
           replacementGroup: group,
-          clear: () =>
-            applySessionCatalogGroupUpdate(input.sessionCatalog, query, {
-              _tag: "Snapshot",
-              revision: 0,
-              sessions: [],
-            }),
+          clear: query.resolved
+            ? () =>
+                applySessionCatalogGroupUpdate(input.sessionCatalog, query, {
+                  _tag: "Snapshot",
+                  revision: 0,
+                  sessions: [],
+                })
+            : undefined,
         },
       );
     }
@@ -705,6 +722,7 @@ export const createModelObserver = (
           conversation: source.projection.automationConversation(target.sessionId),
         })),
         sessionCatalog: source.projection.sessionCatalog,
+        observeSessionSignals: source.observeSessionSignals,
         worktrees: source.projection.worktrees,
         worktreeOperations: source.projection.worktreeOperations,
         projectSessionCatalogQueries: source.projectSessionCatalogQueries(),
@@ -784,6 +802,7 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
   });
   observer.observe({
     projection,
+    observeSessionSignals: true,
     navigationTargets: () =>
       root.workspaceNavigatorStore.visible && root.workspaceNavigatorStore.mode === "sessions"
         ? root.conversationNavigatorStore.metadataTargets(root.workspaceProjectPath)

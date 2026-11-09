@@ -89,6 +89,28 @@ export class SessionCatalogStore extends Store<{
     return index;
   }
 
+  /** Attention, membership and routing stay current even before the Sessions list is opened. */
+  get backgroundSessions() {
+    if (!this.props.model.signals.loaded) return this.activeSessions;
+    const sessions = this.props.model.signals.sessions.map((session) => ({
+      ...session,
+      resolved: false as const,
+    }));
+    const ids = new Set(sessions.map((session) => session.sessionId));
+    return [
+      ...sessions,
+      ...(this.props.pendingSessions?.().filter((session) => !ids.has(session.sessionId)) ?? []),
+    ];
+  }
+
+  backgroundSession(sessionId: string) {
+    return this.props.model.signals.find(sessionId) ?? this.find(sessionId);
+  }
+
+  get backgroundSignalsLoaded() {
+    return this.props.model.signals.loaded;
+  }
+
   find(sessionId: string) {
     return this.props.model.find(sessionId) ?? this.pendingSessionIndex.get(sessionId);
   }
@@ -163,9 +185,11 @@ export class SessionCatalogStore extends Store<{
 
   resolvedWorktrees(projectPath: string) {
     // Landing authority is the Worktree catalog, not whichever archive page happens
-    // to be loaded. The active lane is always observed and vetoes unfinished checkouts.
+    // to be loaded. Background membership vetoes unfinished checkouts without list demand.
     const activeDirectories = new Set(
-      this.projectSessions(projectPath, false).map((session) => session.workingDirectory),
+      this.backgroundSessions
+        .filter((session) => session.projectPath === projectPath)
+        .map((session) => session.workingDirectory),
     );
     return this.managedWorktreesForProject(projectPath).filter(
       (record) => record.state === "landed" && !activeDirectories.has(record.worktreePath),
@@ -173,6 +197,11 @@ export class SessionCatalogStore extends Store<{
   }
 
   get authoritativeSessionIds() {
-    return this.props.model.sessions.map((session) => session.sessionId);
+    return [
+      ...new Set([
+        ...this.props.model.signals.sessions.map((session) => session.sessionId),
+        ...this.props.model.sessions.map((session) => session.sessionId),
+      ]),
+    ];
   }
 }

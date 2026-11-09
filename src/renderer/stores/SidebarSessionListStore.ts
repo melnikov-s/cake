@@ -12,6 +12,7 @@ import {
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
+import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 
 type ProjectSession = ReturnType<SessionCatalogStore["projectSessions"]>[number];
@@ -25,6 +26,7 @@ interface ProjectSessionRoots {
 export class SidebarSessionListStore extends Store<{
   catalog: SessionCatalogStore;
   cakeChat(): CakeChatCollectionStore;
+  additionalCatalogDemand?(): boolean;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
 }> {
   private get projects() {
@@ -144,6 +146,17 @@ export class SidebarSessionListStore extends Store<{
         }));
       }),
     ];
+    // Cold running identities remain keyboard-navigable without opening the list.
+    const knownIds = new Set(conversations.map((conversation) => conversation.sessionId));
+    conversations.push(
+      ...this.props.catalog.backgroundSessions
+        .filter((session) => !knownIds.has(session.sessionId))
+        .map((session) => ({
+          kind: "project-session" as const,
+          sessionId: session.sessionId,
+          active: isActiveSessionActivity(this.metadata.sessionActivity(session.sessionId)),
+        })),
+    );
     const selected = this.props.selectedConversation?.();
     const currentIndex = conversations.findIndex(
       (conversation) =>
@@ -273,8 +286,8 @@ export class SidebarSessionListStore extends Store<{
   /** Like unread, settled failure attention belongs to Project Chat and family roots. */
   projectHasError(projectPath: string) {
     if (
-      this.props.catalog
-        .projectSessions(projectPath, false)
+      this.props.catalog.backgroundSessions
+        .filter((session) => session.projectPath === projectPath)
         .some(
           (session) =>
             (!session.familyParentSessionId ||
@@ -301,7 +314,11 @@ export class SidebarSessionListStore extends Store<{
       : undefined;
     return sessionActivityWithInheritedWorking(
       own,
-      this.sessionsWorking(this.props.catalog.projectSessions(projectPath, false)),
+      this.sessionsWorking(
+        this.props.catalog.backgroundSessions.filter(
+          (session) => session.projectPath === projectPath,
+        ),
+      ),
     );
   }
 
@@ -315,7 +332,7 @@ export class SidebarSessionListStore extends Store<{
       visited.add(session.sessionId);
       if (isActiveSessionActivity(this.metadata.sessionActivity(session.sessionId))) return true;
       return (session.familyChildSessionIds ?? []).some((id) =>
-        visit(this.props.catalog.find(id) ?? { sessionId: id }),
+        visit(this.props.catalog.backgroundSession(id) ?? { sessionId: id }),
       );
     };
     return sessions.some(visit);
@@ -349,7 +366,15 @@ export class SidebarSessionListStore extends Store<{
   }
 
   get projectSessionCatalogQueries(): ReadonlyArray<ProjectSessionCatalogQuery> {
-    return this.projects.orderedProjectPaths.flatMap((projectPath) => [
+    const navigator = WorkspaceNavigatorContext.consume(this);
+    const searchDemand = this.props.additionalCatalogDemand?.() ?? false;
+    if (!searchDemand && navigator && (!navigator.visible || navigator.mode !== "sessions"))
+      return [];
+    const paths =
+      !searchDemand && navigator?.projectPath
+        ? [navigator.projectPath]
+        : this.projects.orderedProjectPaths;
+    return paths.flatMap((projectPath) => [
       { projectPath, resolved: false },
       ...(this.isResolvedGroupExpanded(projectPath)
         ? [{ projectPath, resolved: true, limit: this.sessionLimit(projectPath, true) }]
@@ -358,7 +383,11 @@ export class SidebarSessionListStore extends Store<{
   }
 
   get cakeChatCatalogQueries(): ReadonlyArray<CakeChatCatalogQuery> {
-    return this.activatedResolvedCakeChatCatalogs["cake-chat"]
+    const navigator = WorkspaceNavigatorContext.consume(this);
+    const visible = !navigator || (navigator.visible && navigator.mode === "sessions");
+    // Active permanent-chat summaries also serve Project Chat/to-do ownership and rail attention.
+    // Only their archive lane is a list-only observation.
+    return visible && this.activatedResolvedCakeChatCatalogs["cake-chat"]
       ? [{ resolved: false }, { resolved: true, limit: this.sessionLimit("cake-chat", true) }]
       : [{ resolved: false }];
   }

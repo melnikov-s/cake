@@ -27,6 +27,8 @@ import { CAKE_CHAT_TODO_SCOPE } from "../../../src/contracts/projects/project-to
 import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream, SubscriptionRef } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, vi } from "vitest";
+import { observeSignals } from "../../../src/domain/project-sessions/projectSessionSignals";
+import type { ProjectSessionSignalsUpdate } from "../../../src/contracts/project-sessions/project-session-signals";
 import * as projectSessionMetadata from "../../../src/domain/project-sessions/projectSessionMetadata";
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
@@ -924,6 +926,106 @@ const sessionSummary = (id: string): PiSessionSummary => ({
 });
 
 describe("Project Sessions domain", () => {
+  it.effect(
+    "background signals read filename/recovery facts, never list details, and stream targeted changes",
+    () => {
+      let membershipReads = 0;
+      const catalogRead = vi.fn();
+      const titleRead = vi.fn(() => Effect.succeed(undefined));
+      return Effect.gen(function* () {
+        const recovery = yield* RuntimeRecoveryStorage;
+        yield* recovery.update({
+          sessionId: "failed",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          profile: "ProjectSession",
+          transcriptPersisted: true,
+          inputs: [],
+          state: "failed",
+        });
+        const stream = yield* observeSignals();
+        assert.equal(membershipReads, 0);
+        const received = yield* Queue.unbounded<ProjectSessionSignalsUpdate>();
+        yield* stream.pipe(
+          Stream.runForEach((update) => Queue.offer(received, update)),
+          Effect.forkScoped,
+        );
+        const initial = yield* Queue.take(received);
+        assert.equal(initial._tag, "Snapshot");
+        if (initial._tag !== "Snapshot") return;
+        assert.deepEqual(
+          initial.sessions.map((session) => session.sessionId),
+          ["failed", "idle"],
+        );
+        assert.equal(initial.sessions[0]?.latestTurnOutcome, "failed");
+        assert.equal(initial.sessions[0]?.unread, true);
+        assert.equal("title" in initial.sessions[0]!, false);
+        assert.equal(membershipReads, 1);
+        assert.equal(catalogRead.mock.calls.length, 0);
+        assert.equal(titleRead.mock.calls.length, 0);
+        const changes = yield* SessionCatalogChanges;
+        yield* changes.publish({
+          _tag: "ProjectSessionActivityChanged",
+          sessionId: "idle",
+          projectPath: "/project",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+        });
+        const activity = yield* Queue.take(received);
+        assert.equal(activity._tag, "Upserted");
+        if (activity._tag === "Upserted") assert.equal(activity.session.sessionId, "idle");
+        assert.equal(membershipReads, 1);
+        yield* changes.publish({
+          _tag: "ProjectSessionStatusChanged",
+          sessionId: "idle",
+          projectPath: "/project",
+          workingDirectory: "/project",
+          resolved: true,
+          unread: false,
+        });
+        assert.deepEqual(yield* Queue.take(received), { _tag: "Removed", sessionId: "idle" });
+        yield* changes.publish({
+          _tag: "ProjectSessionTitleChanged",
+          sessionId: "failed",
+          projectPath: "/project",
+          title: "Live title",
+        });
+        assert.deepEqual(yield* Queue.take(received), {
+          _tag: "TitleChanged",
+          sessionId: "failed",
+          title: "Live title",
+        });
+        assert.equal(titleRead.mock.calls.length, 0);
+      }).pipe(
+        Effect.provide(
+          makeLayer(
+            {
+              ...defaultApplicationState(),
+              projects: [
+                {
+                  path: "/project",
+                  name: "Project",
+                  addedAt: "2026-01-01",
+                  lastOpenedAt: "2026-01-01",
+                },
+              ],
+              unreadSessionIds: ["failed"],
+            },
+            {
+              sessionIds: () => Stream.make("failed", "idle", "archived"),
+              initialResolvedSessionIds: ["archived"],
+              onSessionIds: () => {
+                membershipReads++;
+              },
+              onCatalog: catalogRead,
+              catalogEntry: titleRead,
+            },
+          ),
+        ),
+      );
+    },
+  );
+
   it.effect.each([false, true])(
     "exact-ID recovery preserves family routing, root-owned resolution and user metadata (resolved=%s)",
     (resolved) => {

@@ -212,8 +212,8 @@ export class ConversationNavigatorStore extends Store<{
   /** Only top-level sessions' own unread counts; descendants still contribute to running. */
   projectUnread(projectPath: string) {
     return (
-      this.props.catalog
-        .projectSessions(projectPath, false)
+      this.props.catalog.backgroundSessions
+        .filter((session) => session.projectPath === projectPath)
         .some(
           (session) =>
             session.unread &&
@@ -225,8 +225,44 @@ export class ConversationNavigatorStore extends Store<{
     );
   }
 
+  /** Tab/rail summaries do not demand the Sessions tree or list details. */
+  summaryCounts(projectPath?: string) {
+    if (!this.props.catalog.backgroundSignalsLoaded) return this.tree(projectPath);
+    const model = this.props.projection;
+    const sessions = this.props.catalog.backgroundSessions.filter(
+      (session) => projectPath === undefined || session.projectPath === projectPath,
+    );
+    const chats = model.cakeChatCatalog.sessions.filter(
+      (chat) => !chat.resolved && (projectPath === undefined || chat.projectPath === projectPath),
+    );
+    const live = new Map(
+      [...model.projectConversations, ...model.cakeChatConversations].map((conversation) => [
+        conversation.sessionId,
+        conversation.streaming || conversation.activeTurnIds.length > 0,
+      ]),
+    );
+    return {
+      total:
+        sessions.length +
+        chats.length +
+        Number(
+          projectPath === undefined &&
+            !chats.some((chat) => chat.sessionId === CAKE_CHAT_SESSION_ID),
+        ),
+      running: [...sessions, ...chats].filter(
+        (session) => session.running || live.get(session.sessionId),
+      ).length,
+      unread:
+        sessions.filter(
+          (session) =>
+            session.unread &&
+            (!session.familyParentSessionId || session.familyParentSessionId === session.sessionId),
+        ).length + chats.filter((chat) => chat.unread).length,
+    };
+  }
+
   countFor(projectPath?: string) {
-    return this.tree(projectPath).total;
+    return this.summaryCounts(projectPath).total;
   }
 
   get selectedKey(): string | undefined {

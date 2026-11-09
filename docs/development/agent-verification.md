@@ -403,6 +403,35 @@ connections reopen but OS caches are warm. It is not an end-to-end launch benchm
 Validate paint, editable composer, selected live transcript and catalog settlement
 in an isolated app with the integrated backend workstream before claiming launch savings.
 
+### Sessions startup demand
+
+Normal launch selects Global Cake Chat with its To-dos accessory visible. Startup
+normalization deliberately overrides the saved accessory tab/visibility while retaining
+its width, conversation drafts/history and tool-companion state. It is a startup policy,
+not a persisted-preference migration; explicit navigation and in-app tab choices after
+mount remain authoritative. VS Code/Browser entry still selects Chat.
+
+Project Session list details (`projectSessions.observeCatalog`) are observed while
+Sessions is visible, for the current project or all registered projects in Global Chat.
+The explicit Search sessions dialog also demands the active catalog across projects,
+independently of the tab. Leaving both consumers releases those streams; re-entry takes
+a fresh snapshot. Active rows may remain
+cached for explicit navigation; resolved pages are released. Background
+`projectSessions.observeSignals` independently reads filename membership and recovery/
+activity/routing/family facts, never list titles, message counts or transcript metadata.
+It still enumerates membership and reads recovery facts: this is not zero startup I/O.
+Permanent Cake Chat summaries remain independently observed for registered Project Chat
+addresses, to-do ownership and rail attention. Selected-owner delegated workflow cards
+may perform exact detail lookups; an unrelated hidden Sessions list does not demand them.
+None of these changes gates backend execution, recovery or application notifications.
+
+The observer fixture measures two projects: zero list subscriptions at To-dos startup,
+two on opening Global Sessions, no duplicates on repeated open, both released on exit,
+and two fresh subscriptions on re-entry, while one signal stream remains live. The
+domain fixture verifies zero catalog/catalogEntry calls for background signals. These
+counts are not a launch-latency benchmark. The isolated startup Electron smoke captures
+`startup-todos.png` and `opened-sessions.png` in its Playwright result directory.
+
 ### Shutdown diagnostics
 
 Electron's next quit attempt writes `Cake shutdown` records to the terminal and

@@ -849,6 +849,7 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       metadata: () => this.sessionMetadataStore,
       openSession: (sessionId) => this.navigationStore.openSessionLink(sessionId),
+      selectedSessionId: () => this.appShellStore.activeConversation?.sessionId,
     });
   }
 

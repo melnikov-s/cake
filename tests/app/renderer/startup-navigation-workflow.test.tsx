@@ -55,6 +55,12 @@ function savedDestination(sessionId: string, presentationMode = "normal"): Store
   return node(
     {},
     {
+      workspaceNavigatorStore: node({
+        mode: "sessions",
+        accessoryVisible: false,
+        width: 376,
+        companionTab: "sessions",
+      }),
       appShellStore: node({
         navigationVersion: 4,
         workspace:
@@ -115,6 +121,12 @@ describe("unconditional global startup navigation", () => {
       );
       // The first rendered composer is already bound to the global conversation.
       expect(globalComposer()).toHaveProperty("value", "");
+      expect(fixture.root.workspaceNavigatorStore.mode).toBe("todos");
+      expect(fixture.root.workspaceNavigatorStore.visible).toBe(true);
+      expect(fixture.root.workspaceNavigatorStore.width).toBe(376);
+      expect(screen.getByRole("button", { name: /^To-dos / }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
       expect(screen.queryByRole("region", { name: "VS Code workspace" })).toBeNull();
       expect(screen.queryByPlaceholderText("Ask Cake to work in alpha…")).toBeNull();
       await act(async () => fixture.root.initialize());
@@ -147,6 +159,7 @@ describe("unconditional global startup navigation", () => {
       );
       expect(globalComposer()).toBeDefined();
       if (navigated) {
+        act(() => fixture.root.workspaceNavigatorStore.show("sessions"));
         await fixture.selectSession("beta");
         expect(await screen.findByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
       }
@@ -159,8 +172,10 @@ describe("unconditional global startup navigation", () => {
         await fixture.root.initialize();
         await fixture.root.cakeChatCollectionStore.initialize();
       });
-      if (navigated) expect(screen.getByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
-      else expect(globalComposer()).toBeDefined();
+      if (navigated) {
+        expect(screen.getByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
+        expect(fixture.root.workspaceNavigatorStore.mode).toBe("sessions");
+      } else expect(globalComposer()).toBeDefined();
       await fixture.selectSession("alpha");
       expect(await screen.findByPlaceholderText("Ask Cake to work in alpha…")).toHaveProperty(
         "value",

@@ -1,9 +1,11 @@
 import { Model, child, findModelById, observable } from "r-state-tree";
+import { SessionSignals } from "./SessionSignals";
 import { SessionSummary } from "./SessionSummary";
 
 /** Passive authoritative Project Session catalog projection. */
 export class SessionCatalog extends Model {
   @child(SessionSummary) sessions: SessionSummary[] = observable([]);
+  @child(SessionSignals) signals = SessionSignals.create();
   resolvedHasMoreByProject: Record<string, boolean> = observable({});
 
   find(sessionId: string): SessionSummary | undefined {

@@ -58,7 +58,7 @@ function renderHydration() {
     observerClient({
       projects: { observeCatalog: () => Stream.never },
       automations: { observe: () => Stream.never },
-      projectSessions: { observeCatalog: () => Stream.never },
+      projectSessions: { observeCatalog: () => Stream.never, observeSignals: () => Stream.never },
       cakeChats: { observeCatalog: () => Stream.never },
       managedWorktrees: {
         observeCatalog: () => Stream.never,

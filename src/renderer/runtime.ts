@@ -242,6 +242,7 @@ export const makeRemoteRuntime = (
         projectSessions: {
           ...remote.projectSessions,
           observeCatalog: (input) => ready(remote.projectSessions.observeCatalog(input)),
+          observeSignals: () => ready(remote.projectSessions.observeSignals()),
         },
         cakeChats: {
           ...remote.cakeChats,

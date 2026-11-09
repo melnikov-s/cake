@@ -4,6 +4,7 @@ import * as automationRuns from "../../domain/automations/automationRuns";
 import type { ProjectSessionTarget } from "../../contracts/project-sessions/project-session-data";
 import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
 import * as projects from "../../domain/projects/projects";
+import { observeSignals } from "../../domain/project-sessions/projectSessionSignals";
 import * as projectSessionMetadata from "../../domain/project-sessions/projectSessionMetadata";
 import * as projectSessionOperations from "../../domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../domain/project-sessions/projectSessionContinuations";
@@ -61,6 +62,7 @@ const setResolved = Effect.fn("SessionLifecycle.setResolved")(function* (
 });
 
 export const projectSessionHandlers = ProjectSessionRpc.of({
+  "projectSessions.observeSignals": () => Stream.unwrap(observeSignals()),
   "projectSessions.observeCatalog": (query) =>
     Stream.unwrap(projectSessionMetadata.observeCatalog(query)),
   "projectSessions.lookup": (target) => projectSessionMetadata.lookup(target),

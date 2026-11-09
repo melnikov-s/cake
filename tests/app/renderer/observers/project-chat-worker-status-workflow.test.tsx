@@ -94,7 +94,7 @@ async function renderWorkerStatus(status: "queued" | "running" = "running") {
         observeCatalog: () => Stream.never,
         observeOperations: () => Stream.never,
       },
-      projectSessions: { observeCatalog: () => Stream.never },
+      projectSessions: { observeCatalog: () => Stream.never, observeSignals: () => Stream.never },
       cakeChats: {
         observeCatalog: (query) =>
           Stream.make({

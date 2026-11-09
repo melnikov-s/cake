@@ -7,8 +7,9 @@ export function startupSnapshot(saved: StoreSnapshot): StoreSnapshot {
   const snapshot = migrateNavigation(saved);
   const shell = snapshot.children.appShellStore;
   const collection = snapshot.children.cakeChatCollectionStore;
+  const navigator = snapshot.children.workspaceNavigatorStore;
   // These are singular @child Stores, not keyed child arrays.
-  if (Array.isArray(shell) || Array.isArray(collection))
+  if (Array.isArray(shell) || Array.isArray(collection) || Array.isArray(navigator))
     throw new Error("Invalid startup navigation snapshot");
   const layout = collection?.children.sessionLayoutStore;
   if (Array.isArray(layout)) throw new Error("Invalid Cake Chat layout snapshot");
@@ -21,6 +22,12 @@ export function startupSnapshot(saved: StoreSnapshot): StoreSnapshot {
     ...snapshot,
     children: {
       ...snapshot.children,
+      // Normal launch deliberately resets accessory selection/visibility, not its size
+      // or any conversation data. Explicit navigation after mount remains authoritative.
+      workspaceNavigatorStore: {
+        state: { ...navigator?.state, mode: "todos", accessoryVisible: true },
+        children: navigator?.children ?? {},
+      },
       appShellStore: {
         state: shellState,
         children: shell?.children ?? {},

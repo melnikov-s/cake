@@ -1,5 +1,6 @@
 import { applySnapshot, effect } from "r-state-tree";
 import { describe, expect, it } from "vitest";
+import { applySessionSignalsUpdate } from "../../../../src/renderer/reducers/SessionSignalsReducer";
 import { applySessionCatalogGroupUpdate } from "../../../../src/renderer/reducers/CatalogReducer";
 import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
@@ -30,9 +31,7 @@ describe("Session catalog derivation integration", () => {
       ],
     });
     const catalog = fixture.root.sessionCatalogStore;
-    expect(fixture.root.sidebarStore.sessionListStore.projectSessionCatalogQueries).toEqual([
-      { projectPath: "/project", resolved: false },
-    ]);
+    expect(fixture.root.sidebarStore.sessionListStore.projectSessionCatalogQueries).toEqual([]);
     expect(catalog.resolvedWorktrees("/project").map((record) => record.worktreePath)).toEqual([
       "/tree",
     ]);
@@ -61,6 +60,27 @@ describe("Session catalog derivation integration", () => {
         },
       },
     );
+    expect(catalog.resolvedWorktrees("/project").map((record) => record.worktreePath)).toEqual([
+      "/tree",
+    ]);
+    applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+      _tag: "Snapshot",
+      sessions: [
+        {
+          sessionId: "cold-restored",
+          projectPath: "/project",
+          workingDirectory: "/tree",
+          running: false,
+          unread: false,
+        },
+      ],
+    });
+    expect(catalog.resolvedWorktrees("/project")).toEqual([]);
+    expect(fixture.root.sidebarStore.sessionListStore.projectSessionCatalogQueries).toEqual([]);
+    applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+      _tag: "Removed",
+      sessionId: "cold-restored",
+    });
     expect(catalog.resolvedWorktrees("/project").map((record) => record.worktreePath)).toEqual([
       "/tree",
     ]);

@@ -9,7 +9,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
   const root = useStore(RootStore);
   const navigator = root.workspaceNavigatorStore;
   const todos = navigator.todos;
-  const sessions = root.conversationNavigatorStore.tree(navigator.projectPath);
+  const sessions = root.conversationNavigatorStore.summaryCounts(navigator.projectPath);
   return (
     <aside
       id="workspace-navigator"

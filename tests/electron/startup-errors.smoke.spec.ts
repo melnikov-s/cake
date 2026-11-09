@@ -3,11 +3,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
-import { windowState } from "../fixtures/window-state";
+import { store, windowStateChildren, windowStateDocument } from "../fixtures/window-state";
+import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("cold launch opens global Cake Chat instead of restoring a missing Project Session", async () => {
+test("cold launch opens global To-dos instead of restoring Sessions, then opens the current Sessions list", async ({}, testInfo) => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-startup-errors-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -18,7 +19,10 @@ test("cold launch opens global Cake Chat instead of restoring a missing Project 
   // The persisted window still points at a Pi session whose file is no longer available.
   await writeFile(
     join(userData, "window-state.json"),
-    windowState({ project, sessionId: "missing-restored-session", theme: "dark" }),
+    windowStateDocument({
+      ...windowStateChildren({ project, sessionId: "missing-restored-session", theme: "dark" }),
+      workspaceNavigatorStore: store({ mode: "sessions", accessoryVisible: false }),
+    }),
   );
   const timestamp = new Date(0).toISOString();
   await writeFile(
@@ -27,6 +31,27 @@ test("cold launch opens global Cake Chat instead of restoring a missing Project 
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
     }),
+  );
+  const directory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, "1970-01-01T00-00-00-000Z_startup-fixture.jsonl"),
+    [
+      { type: "session", version: 3, id: "startup-fixture", timestamp, cwd: project },
+      {
+        type: "message",
+        id: "user",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Demand-loaded startup session" }],
+          timestamp: 0,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
   );
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -51,6 +76,19 @@ test("cold launch opens global Cake Chat instead of restoring a missing Project 
     await expect(page.getByRole("alert").filter({ hasText: "Could not open session" })).toHaveCount(
       0,
     );
+    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+    const todos = workspace.getByRole("button", { name: /^To-dos / });
+    const sessions = workspace.getByRole("button", { name: /^Sessions / });
+    await expect(todos).toHaveAttribute("aria-pressed", "true");
+    await expect(sessions).toHaveAttribute("aria-pressed", "false");
+    await page.screenshot({ path: testInfo.outputPath("startup-todos.png") });
+    await sessions.click();
+    await expect(sessions).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("Demand-loaded startup session", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("opened-sessions.png") });
+    await todos.click();
+    await sessions.click();
+    await expect(page.getByText("Demand-loaded startup session", { exact: true })).toHaveCount(1);
     await application.close();
     closed = true;
     // Shutdown flushes the operational logger; all receipts belong to this isolated profile.

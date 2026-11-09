@@ -169,8 +169,15 @@ async function verifyNavigation(activityOrdering: boolean) {
       process.platform === "darwin" ? "Meta+Shift+BracketLeft" : "Alt+Shift+ArrowLeft";
     const back = process.platform === "darwin" ? "Meta+BracketLeft" : "Alt+ArrowLeft";
     const forward = process.platform === "darwin" ? "Meta+BracketRight" : "Alt+ArrowRight";
-    await expect(pane).toHaveAttribute("data-session-id", "alpha-worker", { timeout: 20_000 });
-    await showSessions(page);
+    // Startup intentionally ignores the old selected session; explicit navigation still works.
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: /^To-dos / })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await openSession("alpha-worker");
     if (activityOrdering) {
       const alphaOrder = () =>
         page
@@ -242,7 +249,8 @@ async function verifyNavigation(activityOrdering: boolean) {
       await expect(row(id).locator('[aria-label="Running"]')).toBeVisible();
     }
     await expect.poll(() => streams.length).toBe(2);
-    await row("alpha-idle").locator(".session-row").click();
+    // The list follows the selected Project; Search remains cross-project on demand.
+    await openSession("alpha-idle");
     await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
     await openSession("idle-session");
     await expect(pane).toHaveAttribute("data-session-id", "idle-session");
@@ -269,7 +277,7 @@ async function verifyNavigation(activityOrdering: boolean) {
     await page.keyboard.press(previous);
     await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");
 
-    await row("idle-session").locator(".session-row").click();
+    await openSession("idle-session");
     await expect(composer).toHaveValue("Retained idle draft");
     await page.keyboard.press(back);
     await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");

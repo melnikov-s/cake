@@ -33,7 +33,7 @@ it("offers an actionable retry when a Discussion observation is no longer availa
         observeCatalog: () => Stream.never,
         observeOperations: () => Stream.never,
       },
-      projectSessions: { observeCatalog: () => Stream.never },
+      projectSessions: { observeCatalog: () => Stream.never, observeSignals: () => Stream.never },
       cakeChats: {
         observeCatalog: () => Stream.never,
         observeSideChats: () => Stream.never,
