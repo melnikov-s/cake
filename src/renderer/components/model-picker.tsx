@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
+import { IconSizeProvider } from "./ui/icon-size";
 import { NavItem } from "./ui/nav-item";
 import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
@@ -318,7 +319,9 @@ export const ModelPicker = observer(function ModelPicker({
           </span>
           <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
             {triggerTrailing}
-            <ChevronDownIcon size={12} />
+            <IconSizeProvider size="inline">
+              <ChevronDownIcon />
+            </IconSizeProvider>
           </div>
         </PopoverTrigger>
       )}

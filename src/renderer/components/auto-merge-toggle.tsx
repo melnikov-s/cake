@@ -20,6 +20,7 @@ export const AutoMergeToggle = observer(function AutoMergeToggle({
   const enabled = project?.enabled ?? false;
   return (
     <IconButton
+      iconSize="inline"
       tooltip={`Auto-merge ${enabled ? "on" : "off"} — ${project?.status ?? "Enable for validated work directly delegated by this project’s Project Chat"}`}
       ariaLabel={`Auto-merge: ${enabled ? "on" : "off"}`}
       aria-pressed={enabled}

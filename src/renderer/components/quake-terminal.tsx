@@ -105,7 +105,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
           )}
         >
           <span className="grid shrink-0 place-items-center text-muted-foreground">
-            <TerminalIcon size={24} />
+            <TerminalIcon size={18} />
           </span>
           {target && (
             <span
@@ -151,6 +151,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
                   </Button>
                   {isActive && store.activeEntries.length > 1 && (
                     <IconButton
+                      iconSize="inline"
                       className="mr-0.5 size-6"
                       tooltip={`Close ${label} tab`}
                       onClick={() => void store.closeTab(entry.key)}
@@ -168,7 +169,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
               disabled={!target}
               onClick={() => void store.newTab()}
             >
-              <PlusIcon size={24} />
+              <PlusIcon size={18} />
             </IconButton>
           </div>
           <span className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -176,15 +177,15 @@ export const QuakeTerminal = observer(function QuakeTerminal({
           </span>
           {store.docked ? (
             <IconButton tooltip="Move terminal to top" onClick={() => store.moveToTop()}>
-              <MoveTopIcon size={24} />
+              <MoveTopIcon size={18} />
             </IconButton>
           ) : (
             <IconButton tooltip="Pin terminal to bottom" onClick={() => store.dock()}>
-              <DockBottomIcon size={24} />
+              <DockBottomIcon size={18} />
             </IconButton>
           )}
           <IconButton tooltip="Hide terminal" hotkey="toggle-terminal" onClick={() => store.hide()}>
-            <CloseIcon size={24} />
+            <CloseIcon size={18} />
           </IconButton>
         </header>
         <div className="relative min-h-0 flex-1 overflow-hidden bg-background px-2 pb-2 pt-1">

@@ -8,6 +8,7 @@ export function CopyFilePathButton({ path, className }: { path: string; classNam
 
   return (
     <IconButton
+      iconSize="inline"
       className={cn(
         "pointer-events-none size-6 shrink-0 opacity-0 transition-opacity group-hover/path:pointer-events-auto group-hover/path:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
         className,

@@ -1,6 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronIcon } from "./icons";
+import { IconSizeProvider } from "./icon-size";
 import { StatusDot, statusDotGapClassName, type StatusDotProps } from "./status-dot";
 
 export interface DisclosureTriggerProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -58,12 +59,14 @@ export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTrigger
           )}
         >
           {showChevron && chevronPosition === "start" && (
-            <ChevronIcon
-              className={cn(
-                "mt-1 shrink-0 text-muted-foreground transition-transform duration-150",
-                !open && "-rotate-90",
-              )}
-            />
+            <IconSizeProvider size="inline">
+              <ChevronIcon
+                className={cn(
+                  "mt-1 shrink-0 text-muted-foreground transition-transform duration-150",
+                  !open && "-rotate-90",
+                )}
+              />
+            </IconSizeProvider>
           )}
           {status && <StatusDot status={status} />}
           <span className={cn(wrapTitle ? "min-w-0 whitespace-pre-wrap break-words" : "truncate")}>
@@ -77,9 +80,11 @@ export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTrigger
         <div className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
           {trailing}
           {showChevron && chevronPosition === "end" && (
-            <ChevronIcon
-              className={cn("transition-transform duration-150", open && "rotate-180")}
-            />
+            <IconSizeProvider size="inline">
+              <ChevronIcon
+                className={cn("transition-transform duration-150", open && "rotate-180")}
+              />
+            </IconSizeProvider>
           )}
         </div>
         {children}

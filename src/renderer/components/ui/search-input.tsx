@@ -26,7 +26,10 @@ export function SearchInput({
   };
   return (
     <div className={cn("relative min-w-0", className)}>
-      <SearchIcon className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+      <SearchIcon
+        size={18}
+        className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+      />
       <Input
         {...inputProps}
         ref={ref}
@@ -48,6 +51,7 @@ export function SearchInput({
       />
       {value && (
         <IconButton
+          iconSize="inline"
           tooltip={`Clear ${label.toLowerCase()}`}
           onClick={clear}
           className="absolute right-0.5 top-1/2 size-6 -translate-y-1/2"

@@ -32,12 +32,10 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   return (
     <div role="group" aria-label="Workspace tools" className="flex shrink-0 items-center gap-1">
       <WorkspaceModeSlot>
-        <SegmentedControlGroup
-          aria-label="Conversation workspace"
-          className="shrink-0 [&_button>svg]:size-6"
-        >
+        <SegmentedControlGroup aria-label="Conversation workspace" className="shrink-0">
           <IconButton
             tooltip="Main"
+            iconSize="view"
             className={modeButtonClassName}
             pressedAppearance="subtle"
             aria-pressed={mode === "normal"}
@@ -48,6 +46,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
           {ideAvailable && (
             <IconButton
               tooltip="VS Code"
+              iconSize="view"
               pressedAppearance="subtle"
               aria-pressed={mode === "vscode"}
               className={`${modeButtonClassName} phone:hidden`}
@@ -59,6 +58,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
           {!browserHost && (
             <IconButton
               tooltip="Browser"
+              iconSize="view"
               className={modeButtonClassName}
               pressedAppearance="subtle"
               aria-pressed={mode === "browser"}
@@ -79,7 +79,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
         aria-pressed={terminalOpen}
         onClick={onToggleTerminal}
       >
-        <TerminalIcon size={24} />
+        <TerminalIcon />
       </IconButton>
     </div>
   );

@@ -87,6 +87,7 @@ export function CaptureToolbar({
         <UndoIcon />
       </IconButton>
       <IconButton
+        iconSize="inline"
         tooltip={copied ? "Copied image and text" : "Copy image and text"}
         ariaLabel="Copy image and text"
         disabled={busy}
@@ -95,6 +96,7 @@ export function CaptureToolbar({
         {copied ? <CheckIcon /> : <CopyIcon />}
       </IconButton>
       <IconButton
+        iconSize="inline"
         tooltip={busy ? "Attaching screenshot…" : "Attach full display · Enter"}
         ariaLabel="Attach full display"
         disabled={busy || !canAttach}

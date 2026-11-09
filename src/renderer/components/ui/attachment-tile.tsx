@@ -61,6 +61,7 @@ export function AttachmentTile({
       )}
       {onRemove && (
         <IconButton
+          iconSize="inline"
           className="absolute right-1 top-1 size-5 rounded-md"
           tooltip={`Remove ${name}`}
           onClick={onRemove}

@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "./button";
 import { CheckIcon, ChevronIcon, CircleIcon, ExpandIcon } from "./icons";
 import { IconButton } from "./icon-button";
+import { IconSizeProvider } from "./icon-size";
 
 /** An unbordered task heading above the section's message rule. */
 export function MarginRail({
@@ -48,11 +49,13 @@ export function MarginRail({
             role="img"
             aria-label={done ? "Done" : "Open"}
             className={cn(
-              "mt-1.5 mr-2 ml-1 shrink-0 text-muted-foreground [&_svg]:size-3.5",
+              "mt-1.5 mr-2 ml-1 shrink-0 text-muted-foreground",
               done && "text-success",
             )}
           >
-            {done ? <CheckIcon /> : <CircleIcon />}
+            <IconSizeProvider size="inline">
+              {done ? <CheckIcon /> : <CircleIcon />}
+            </IconSizeProvider>
           </span>
           <Button
             variant="ghost"
@@ -67,10 +70,16 @@ export function MarginRail({
           >
             <span className="min-w-0 wrap-anywhere">{title}</span>
           </Button>
-          <IconButton tooltip={`Focus to-do: ${title}`} aria-pressed={focused} onClick={onFocus}>
+          <IconButton
+            iconSize="inline"
+            tooltip={`Focus to-do: ${title}`}
+            aria-pressed={focused}
+            onClick={onFocus}
+          >
             <ExpandIcon />
           </IconButton>
           <IconButton
+            iconSize="inline"
             data-slot="task-section-disclosure"
             tooltip={`${expanded ? "Collapse" : "Expand"} conversation: ${title}`}
             ariaLabel={title}

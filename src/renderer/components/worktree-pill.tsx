@@ -16,6 +16,7 @@ import {
 } from "./ai-elements/confirmation";
 import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
+import { IconSizeProvider } from "./ui/icon-size";
 import {
   BranchIcon,
   CautionIcon,
@@ -190,7 +191,9 @@ export const WorktreePill = observer(function WorktreePill({
                 ? `${selectedExisting.sessionTitle} · ${selectedExisting.branch.replace(/^agent\//, "")}`
                 : "Existing worktree"}
             </span>
-            <ChevronDownIcon size={12} />
+            <IconSizeProvider size="inline">
+              <ChevronDownIcon />
+            </IconSizeProvider>
           </PopoverIconTrigger>
           <PopoverContent
             align="start"

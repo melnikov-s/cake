@@ -5,13 +5,18 @@ import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
 import { visualCaptureResultPrefix } from "../../scripts/visual-capture/result";
 
-for (const [state, width, theme] of [
-  ["todos", 1280, "light"],
-  ["todos", 760, "dark"],
-  ["sessions", 760, "light"],
-  ["terminal", 760, "dark"],
+for (const [scenario, state, width, theme] of [
+  ["interface-icons", "todos", 1280, "light"],
+  ["interface-icons", "todos", 760, "dark"],
+  ["interface-icons", "sessions", 760, "light"],
+  ["interface-icons", "terminal", 760, "dark"],
+  ["interface-icons", "actions", 1280, "light"],
+  ["interface-icons", "actions", 1280, "dark"],
+  ["interface-icons-auto-merge", "default", 1280, "light"],
+  ["interface-icons-auto-merge", "default", 1280, "dark"],
 ] as const) {
-  test(`application icons and compact ${state} at ${width}px in ${theme}`, async () => {
+  test(`${scenario} ${state} at ${width}px in ${theme}`, async () => {
+    test.setTimeout(90_000);
     const repository = resolve(import.meta.dirname, "../..");
     const output = test.info().outputPath("icons.png");
     // Use the supported bundled CLI: the scenario graph contains CSS/raw imports
@@ -20,7 +25,7 @@ for (const [state, width, theme] of [
       process.execPath,
       [
         join(repository, "scripts/visual-capture/run.mjs"),
-        "interface-icons",
+        scenario,
         "--state",
         state,
         "--theme",
@@ -35,12 +40,12 @@ for (const [state, width, theme] of [
         output,
         "--no-build",
       ],
-      { cwd: repository, timeout: 30_000 },
+      { cwd: repository, timeout: 80_000 },
     );
     const line = stdout.split("\n").find((line) => line.startsWith(visualCaptureResultPrefix));
     expect(line).toBeDefined();
     expect(JSON.parse(line!.slice(visualCaptureResultPrefix.length))).toMatchObject({
-      scenario: "interface-icons",
+      scenario,
       state,
       dimensions: { width, height: 800 },
       outputPath: output,

@@ -11,6 +11,7 @@ import { IconButton } from "./ui/icon-button";
 import { CakeIcon, ChevronIcon, ChevronDownIcon, FolderIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Avatar } from "./ui/avatar";
+import { IconSizeProvider } from "./ui/icon-size";
 import { NavItem } from "./ui/nav-item";
 import { SessionListItem } from "./ui/session-list-item";
 
@@ -131,6 +132,7 @@ export const CaptureDestinationPicker = observer(function CaptureDestinationPick
                     "size-5 rounded text-muted-foreground transition-transform duration-150 hover:text-foreground",
                     collapsed && "-rotate-90",
                   )}
+                  iconSize="inline"
                   tooltip={collapsed ? "Expand" : "Collapse"}
                   ariaLabel={`${collapsed ? "Expand" : "Collapse"} ${project.name}`}
                   aria-expanded={!collapsed}
@@ -143,10 +145,13 @@ export const CaptureDestinationPicker = observer(function CaptureDestinationPick
                     kind="project"
                     seed={project.name}
                     customIcon={project.icon}
+                    className="size-[18px]"
                     aria-hidden="true"
                   />
                 ) : (
-                  <FolderIcon />
+                  <IconSizeProvider size="navigation">
+                    <FolderIcon />
+                  </IconSizeProvider>
                 )}
                 <Button
                   data-slot="project-label"

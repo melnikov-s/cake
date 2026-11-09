@@ -53,6 +53,7 @@ export const AnnotationSummary = observer(function AnnotationSummary({
                 </div>
                 {onRemove ? (
                   <IconButton
+                    iconSize="inline"
                     tooltip="Remove annotation"
                     ariaLabel={`Remove annotation ${index + 1}`}
                     onClick={() => onRemove(annotation.id)}

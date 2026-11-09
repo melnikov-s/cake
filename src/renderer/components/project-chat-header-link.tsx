@@ -26,7 +26,7 @@ export const ProjectChatHeaderLink = observer(function ProjectChatHeaderLink({
         kind="project"
         seed={project.name}
         customIcon={project.settings.icon}
-        className="size-5"
+        className="size-[18px]"
         aria-hidden="true"
       />
     </IconButton>

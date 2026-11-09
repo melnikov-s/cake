@@ -59,6 +59,7 @@ export function ActivityDisclosure({
         )}
       >
         <Button
+          iconSize="inline"
           ref={triggerRef}
           variant={presentation === "strip" ? "ghost" : "outline"}
           size="sm"
@@ -86,6 +87,7 @@ export function ActivityDisclosure({
         {actions}
         {presentation === "strip" && (
           <IconButton
+            iconSize="inline"
             tooltip="Toggle conversation activity"
             aria-expanded={open}
             aria-controls={contentId}

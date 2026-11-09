@@ -99,7 +99,8 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
       <span className="flex w-5 shrink-0 items-center justify-center">
         {node.children.length > 0 && (
           <IconButton
-            className={cn("size-5 text-muted-foreground [&_svg]:size-3", !expanded && "-rotate-90")}
+            iconSize="inline"
+            className={cn("size-5 text-muted-foreground", !expanded && "-rotate-90")}
             tooltip={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
             ariaLabel={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
             aria-expanded={expanded}
@@ -158,10 +159,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
             </span>
           }
           icon={
-            <span
-              className="flex w-6 items-center justify-center [&_[data-slot=icon]]:size-4"
-              aria-hidden="true"
-            >
+            <span className="flex w-6 items-center justify-center" aria-hidden="true">
               {node.relationship === "home" && !project ? (
                 <CakeIcon />
               ) : (
@@ -173,7 +171,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
                       : node.target.sessionId
                   }
                   customIcon={node.relationship === "home" ? project?.settings.icon : undefined}
-                  className="size-5"
+                  className={node.relationship === "home" ? "size-[18px]" : "size-5"}
                 />
               )}
             </span>

@@ -12,6 +12,7 @@ import { formatHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { TooltipBubble, useTooltip } from "./tooltip";
 import { viewFocusHighlightClassName } from "./view-focus";
+import { IconSizeProvider, useIconRole, type IconSize } from "./icon-size";
 
 const HotkeyBindingsContext = createContext<((id: CakeHotkeyActionId) => string) | null>(null);
 
@@ -32,6 +33,8 @@ export type IconButtonProps = Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   "title" | "aria-label"
 > & {
+  /** Glyph role only; leaves the hit target unchanged. Inherits an inline scope. */
+  iconSize?: IconSize;
   hotkey?: CakeHotkeyActionId;
   /** Visible navigation label; the containing rail controls its disclosure. */
   label?: ReactNode;
@@ -45,6 +48,7 @@ export type IconButtonProps = Omit<
 /** Square transparent button for a single icon; tooltips show quickly by default. */
 const ObservedIconButton = observer(function ObservedIconButton({
   tooltip,
+  iconSize,
   hotkey,
   label: visibleLabel,
   ariaLabel,
@@ -62,6 +66,7 @@ const ObservedIconButton = observer(function ObservedIconButton({
   buttonRef,
   ...props
 }: IconButtonProps & { buttonRef?: Ref<HTMLButtonElement> }) {
+  const inheritedIconSize = useIconRole();
   const { anchor, hide, show } = useTooltip();
   const bindingFor = useContext(HotkeyBindingsContext);
   const binding = hotkey && bindingFor?.(hotkey);
@@ -106,16 +111,21 @@ const ObservedIconButton = observer(function ObservedIconButton({
         onBlur?.(event);
       }}
     >
-      {visibleLabel === undefined ? (
-        children
-      ) : (
-        <>
-          <span className="grid h-9 w-11 place-items-center">{children}</span>
-          <span data-slot="icon-button-label" className="w-full min-w-0 truncate text-left text-xs">
-            {visibleLabel}
-          </span>
-        </>
-      )}
+      <IconSizeProvider size={iconSize ?? inheritedIconSize ?? "navigation"}>
+        {visibleLabel === undefined ? (
+          children
+        ) : (
+          <>
+            <span className="grid h-9 w-11 place-items-center">{children}</span>
+            <span
+              data-slot="icon-button-label"
+              className="w-full min-w-0 truncate text-left text-xs"
+            >
+              {visibleLabel}
+            </span>
+          </>
+        )}
+      </IconSizeProvider>
       {label && anchor && (
         <TooltipBubble label={label} anchor={anchor} wrap={wrapTooltip || Boolean(binding)} />
       )}

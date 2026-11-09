@@ -30,7 +30,7 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
             tooltip="Back to chat"
             onClick={returnToWorkbench}
           >
-            <BackIcon size={24} />
+            <BackIcon size={18} />
           </IconButton>
         )}
         {surface === "workbench" && session && (
@@ -64,7 +64,7 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
       <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
         {surface === "artifact-library" && (
           <IconButton tooltip="Close all artifacts" onClick={returnToWorkbench}>
-            <CloseIcon size={24} />
+            <CloseIcon size={18} />
           </IconButton>
         )}
         {terminal.available && surface !== "automations" && surface !== "automation-session" && (
@@ -76,7 +76,7 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
             aria-pressed={terminal.open}
             onClick={() => void terminal.toggle()}
           >
-            <TerminalIcon size={24} />
+            <TerminalIcon size={18} />
           </IconButton>
         )}
       </div>

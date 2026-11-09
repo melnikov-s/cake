@@ -43,12 +43,12 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu({
       >
         {pending ? (
           <span className="motion-safe:animate-spin">
-            <ReloadIcon size={24} />
+            <ReloadIcon size={18} />
           </span>
         ) : error || sharing.state?.status === "failed" ? (
-          <CautionIcon size={24} />
+          <CautionIcon size={18} />
         ) : (
-          <NetworkIcon size={24} />
+          <NetworkIcon size={18} />
         )}
       </PopoverIconTrigger>
       <PopoverContent align="end" className="grid w-72 gap-3" aria-label="Browser sharing">

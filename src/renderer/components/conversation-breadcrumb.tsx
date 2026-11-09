@@ -65,7 +65,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               kind="project"
               seed={root.projectCatalogStore.nameForPath(projectPath)}
               customIcon={root.projectCatalogStore.find(projectPath)?.settings?.icon}
-              className="size-5"
+              className="size-[18px]"
               aria-hidden="true"
             />
             {root.projectCatalogStore.nameForPath(projectPath)}

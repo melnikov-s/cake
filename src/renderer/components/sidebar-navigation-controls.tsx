@@ -17,7 +17,7 @@ export const SidebarNavigationControls = observer(function SidebarNavigationCont
       aria-controls={navigator.inCompanion ? "workspace-companion" : "workspace-navigator"}
       onClick={() => navigator.togglePane()}
     >
-      <ChatSidebarIcon size={24} />
+      <ChatSidebarIcon size={18} />
     </IconButton>
   );
 });

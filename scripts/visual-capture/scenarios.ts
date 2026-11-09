@@ -2,7 +2,7 @@ import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
 import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
-import { createInterfaceIconsScenario } from "./interface-icons";
+import { createInterfaceIconsScenario, createAutoMergeIconsScenario } from "./interface-icons";
 import { projectSetupScenario } from "./project-setup.ts";
 import { serializeModelReference } from "../../src/contracts/model-presets/model-reference.ts";
 import { toolCallRowsScenario } from "./tool-call-rows";
@@ -2871,7 +2871,7 @@ const projectChatTodos: VisualCaptureScenario = {
     await workspace.getByRole("button", { name: /^To-dos / }).click();
     await expect(workspace).toBeVisible();
     // Focus is a window-local overlay. Establish it through the user action.
-    const selected = page.getByRole("button", { name: "Startup investigation", exact: true });
+    const selected = workspace.getByRole("button", { name: "Startup investigation", exact: true });
     if ((await selected.getAttribute("aria-pressed")) !== "true") await selected.click();
     await expect(selected).toHaveAttribute("aria-pressed", "true");
     if (state === "reply-context") {
@@ -5396,6 +5396,8 @@ async function startActivityFixtureSession(page: Page, title: string) {
   const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
   await search.getByRole("combobox", { name: "Search session titles" }).fill(title);
   await search.getByRole("option").filter({ hasText: title }).click();
+  // Wait for the selected session, not the previous Project Chat configuration trigger.
+  await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Model configuration", exact: true }).click();
   const changeModel = page.getByRole("button", { name: "Change model", exact: true });
   const modelSearch = page.getByLabel("Search presets and models");
@@ -7714,7 +7716,8 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   scheduledPromptsScenario,
   taskInputAttachmentsScenario,
   projectChatTodos,
-  createInterfaceIconsScenario(projectChatTodos),
+  createInterfaceIconsScenario(projectChatTodos, seedDurableChat),
+  createAutoMergeIconsScenario(activityWorktreeScenario, startActivityFixtureSession),
   projectChatAttention,
   projectChatTaskRails,
   adjacentTaskHeadings,

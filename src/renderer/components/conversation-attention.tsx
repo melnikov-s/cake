@@ -79,6 +79,7 @@ export const ConversationAttention = observer(function ConversationAttention({
               <span className="min-w-0 whitespace-normal break-words">{item.attentionReason}</span>
             </Button>
             <IconButton
+              iconSize="inline"
               tooltip={`Clear attention: ${item.title}`}
               disabled={todos.busy}
               className="mr-1 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground [@media(hover:hover)_and_(not_(any-pointer:coarse))]:opacity-0 [@media(hover:hover)_and_(not_(any-pointer:coarse))]:group-hover/attention:opacity-100 group-focus-within/attention:opacity-100"

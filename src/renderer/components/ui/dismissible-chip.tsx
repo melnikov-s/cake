@@ -25,6 +25,7 @@ export function DismissibleChip({
         {children}
       </Chip>
       <IconButton
+        iconSize="inline"
         className="size-6 shrink-0 rounded-full"
         tooltip={removeLabel}
         disabled={disabled}

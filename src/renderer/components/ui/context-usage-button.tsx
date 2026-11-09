@@ -1,6 +1,7 @@
 import type { FocusEvent, MouseEvent, Ref } from "react";
 import { Button } from "./button";
 import { ContextIcon } from "./icons";
+import { IconSizeProvider } from "./icon-size";
 import { TooltipBubble, useTooltip } from "./tooltip";
 import { cn } from "@/lib/utils";
 
@@ -49,7 +50,7 @@ export function ContextUsageButton({
     "data-slot": "context-usage",
     "data-cache-state": cacheState,
     className: cn(
-      "inline-flex h-7 w-7 shrink-0 items-center justify-center gap-1.5 rounded-sm border border-border/65 bg-transparent p-0 font-mono text-xs font-normal tabular-nums [&>svg]:size-3.5 [&>svg]:shrink-0 @min-[28rem]/context-composer:w-auto @min-[28rem]/context-composer:px-[0.4375rem] transition-colors",
+      "inline-flex h-7 w-7 shrink-0 items-center justify-center gap-1.5 rounded-sm border border-border/65 bg-transparent p-0 font-mono text-xs font-normal tabular-nums [&>svg]:shrink-0 @min-[28rem]/context-composer:w-auto @min-[28rem]/context-composer:px-[0.4375rem] transition-colors",
       cacheState === "likely-warm" &&
         "shadow-[inset_0_-1px_color-mix(in_srgb,var(--success)_40%,transparent)]",
     ),
@@ -62,7 +63,9 @@ export function ContextUsageButton({
   };
   const content = (
     <>
-      <ContextIcon />
+      <IconSizeProvider size="navigation">
+        <ContextIcon />
+      </IconSizeProvider>
       {available ? (
         <>
           <span className="hidden font-medium text-foreground @min-[28rem]/context-composer:inline @min-[40rem]/context-composer:hidden">

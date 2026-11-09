@@ -122,6 +122,7 @@ export const ScheduledGroup = observer(function ScheduledGroup({
                 </time>
                 {store.canCancel && (
                   <IconButton
+                    iconSize="inline"
                     tooltip="Cancel scheduled message"
                     ariaLabel={`Cancel scheduled message: ${message.text}`}
                     onClick={() => void store.cancel(message.id)}

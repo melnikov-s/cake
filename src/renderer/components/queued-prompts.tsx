@@ -189,6 +189,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                             )}
                           {store.canSendQueuedToSideChat(entry) && (
                             <IconButton
+                              iconSize="inline"
                               tooltip="Send to side chat"
                               ariaLabel={`Send to side chat: ${label}`}
                               disabled={store.sendingQueuedToSideChat}
@@ -209,6 +210,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                             </IconIndicator>
                           ) : entry.editable !== false && store.canEditQueuedPrompt ? (
                             <IconButton
+                              iconSize="inline"
                               disabled={entry.pending}
                               tooltip="Edit"
                               ariaLabel={`Edit queued prompt: ${label}`}
@@ -221,6 +223,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                           ) : null}
                           {store.canRemoveQueuedPrompt && (
                             <IconButton
+                              iconSize="inline"
                               disabled={entry.pending}
                               tooltip="Cancel message"
                               ariaLabel={`Cancel ${entry.state === "steering" ? "steering" : "queued message"}: ${label}`}

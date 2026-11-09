@@ -20,6 +20,7 @@ export function CopyReferenceButton({
   }, [copied]);
   return (
     <IconButton
+      iconSize="inline"
       className={className}
       tooltip={copied ? `Copied ${label}` : `Copy ${label}`}
       ariaLabel={copied ? `Copied ${label}` : `Copy ${label}`}

@@ -106,7 +106,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => void root.navigationStore.chooseProject()}
             >
-              <FolderPlusIcon size={24} />
+              <FolderPlusIcon size={18} />
             </IconButton>
           </>
         }
@@ -119,7 +119,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => root.newSessionStore.show()}
             >
-              <PlusIcon size={24} />
+              <PlusIcon size={18} />
             </IconButton>
             <IconButton
               tooltip="Search sessions"
@@ -127,7 +127,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => root.sidebarStore.sessionSearchStore.show()}
             >
-              <SearchIcon size={24} />
+              <SearchIcon size={18} />
             </IconButton>
             {!root.props.browserHost && !root.desktopConnection?.remote && (
               <div className="w-full shrink-0">
@@ -146,7 +146,7 @@ export const ProjectRail = observer(function ProjectRail({
               data-cake-hint-key="a"
               onClick={() => root.navigationStore.showArtifactLibrary()}
             >
-              <ArtifactIcon size={24} />
+              <ArtifactIcon size={18} />
             </IconButton>
             <IconButton
               tooltip="Automations"
@@ -154,7 +154,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => root.navigationStore.showAutomations()}
             >
-              <LightningIcon size={24} />
+              <LightningIcon size={18} />
             </IconButton>
             <IconButton
               tooltip="Settings"
@@ -163,7 +163,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => root.navigationStore.showSettings()}
             >
-              <SettingsIcon size={24} />
+              <SettingsIcon size={18} />
             </IconButton>
           </>
         }
@@ -213,7 +213,7 @@ export const ProjectRail = observer(function ProjectRail({
                   <span className="relative grid size-9 place-items-center">
                     <Avatar
                       kind="project"
-                      className="size-[32.5px]"
+                      className="size-[18px]"
                       seed={projects.nameForPath(path)}
                       customIcon={projects.find(path)?.settings?.icon}
                       title={projects.nameForPath(path)}

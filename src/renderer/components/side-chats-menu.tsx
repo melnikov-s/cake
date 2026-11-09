@@ -33,7 +33,7 @@ export const SideChatsMenu = observer(function SideChatsMenu({
         tooltip={`Side chats, ${entries.length} open`}
         onClick={onOpen}
       >
-        <ChatIcon size={24} />
+        <ChatIcon size={18} />
       </PopoverNumberedIconTrigger>
       <PopoverContent
         align="end"

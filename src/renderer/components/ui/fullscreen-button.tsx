@@ -15,6 +15,7 @@ export function FullscreenButton({
 }) {
   return (
     <IconButton
+      iconSize="inline"
       className={cn("fullscreen-trigger", className)}
       tooltip="View fullscreen"
       ariaLabel={label}

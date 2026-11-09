@@ -25,7 +25,7 @@ export function VoiceConversationControls(props: VoiceConversationControlsProps)
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5 rounded-full bg-muted/50 px-3 text-foreground [&_svg]:size-4"
+          className="gap-1.5 rounded-full bg-muted/50 px-3 text-foreground"
           aria-label="Enter conversation mode"
           disabled={props.disabled}
           onMouseEnter={(event) => show(event.currentTarget)}

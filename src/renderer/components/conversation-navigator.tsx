@@ -89,6 +89,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
           variant="ghost"
           size="sm"
           className="mt-2 w-full justify-start gap-1 text-muted-foreground"
+          iconSize="inline"
           aria-expanded={resolvedExpanded}
           onClick={() => list.toggleResolvedGroupExpanded(scope)}
         >

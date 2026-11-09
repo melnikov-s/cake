@@ -86,6 +86,7 @@ export function SourceAttachment({
       )}
       {onRemove ? (
         <IconButton
+          iconSize="inline"
           className="absolute right-2 top-1.5"
           tooltip={`Remove ${label}`}
           onClick={onRemove}

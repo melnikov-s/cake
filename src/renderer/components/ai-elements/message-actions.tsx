@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { IconSizeProvider } from "../ui/icon-size";
 import {
   messageActionPlacement,
   type MessageActionPlacement,
@@ -152,7 +153,7 @@ export function MessageActions({ children }: { children: ReactNode }) {
                 : undefined
           }
         >
-          {children}
+          <IconSizeProvider size="inline">{children}</IconSizeProvider>
         </div>
       </div>
     </>

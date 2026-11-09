@@ -145,7 +145,7 @@ export const SessionListItem = observer(function SessionListItem({
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
         "session-item group group/session relative grid min-h-11 w-full items-center rounded-md text-sm tracking-[-0.005em] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
-        focusMode && "min-h-14 text-sm [&_svg]:size-5",
+        focusMode && "min-h-14 text-sm",
         focusMode && charactersEnabled && "[&_[data-slot=avatar]]:size-7",
         avatarsEnabled
           ? isFamilyChild
@@ -184,6 +184,7 @@ export const SessionListItem = observer(function SessionListItem({
           />
           {isFamilyParent && onToggleFamily && (
             <IconButton
+              iconSize="inline"
               className={cn(
                 "size-5 shrink-0 text-muted-foreground transition-transform",
                 avatarsEnabled && "col-start-1 row-start-1",
@@ -336,7 +337,7 @@ export const SessionListItem = observer(function SessionListItem({
                           kind="project"
                           seed={source.avatarSeed}
                           customIcon={source.customIcon}
-                          className="size-3.5"
+                          className="size-[18px]"
                           aria-hidden="true"
                         />
                       ) : null}
@@ -368,6 +369,7 @@ export const SessionListItem = observer(function SessionListItem({
                 )}
                 {canResolve && (
                   <IconButton
+                    iconSize="inline"
                     className={cn(
                       "session-resolve-action col-start-1 row-start-1 size-6 flex items-center justify-center rounded transition-opacity",
                       selected && !activity

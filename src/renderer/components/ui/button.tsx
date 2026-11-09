@@ -1,6 +1,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
+import { IconSizeProvider, useIconRole, type IconSize } from "./icon-size";
 
 export const buttonVariants = cva(
   "inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-medium tracking-[-0.005em] transition-all outline-none select-none active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
@@ -29,18 +30,25 @@ export const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
+  extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
+  iconSize?: IconSize;
+}
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant, size, type = "button", ...props },
+  { className, variant, size, iconSize, children, type = "button", ...props },
   ref,
 ) {
+  const inheritedIconSize = useIconRole();
   return (
     <button
       ref={ref}
       className={cn(buttonVariants({ variant, size }), className)}
       type={type}
       {...props}
-    />
+    >
+      <IconSizeProvider size={iconSize ?? inheritedIconSize ?? "navigation"}>
+        {children}
+      </IconSizeProvider>
+    </button>
   );
 });

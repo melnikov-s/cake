@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useIconSize } from "./icon-size";
 import rawCakeIconMarkup from "../../../assets/cake-icon.svg?raw";
 
 const cakeIconMarkup = rawCakeIconMarkup.replace(/>\s+</g, "><").trim();
@@ -14,12 +15,13 @@ function Icon({
   className?: string;
   strokeWidth?: number;
 }) {
+  const dimension = useIconSize(size);
   return (
     <svg
       aria-hidden="true"
       className={className}
-      width={size}
-      height={size}
+      width={dimension}
+      height={dimension}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -96,9 +98,11 @@ export const FolderPlusIcon = ({ size = 16 }: { size?: number }) => (
     <path strokeWidth={2.2} d="M12 10v6M9 13h6" />
   </Icon>
 );
-export const CakeIcon = () => (
-  <span className="contents" dangerouslySetInnerHTML={{ __html: cakeIconMarkup }} />
-);
+export const CakeIcon = () => {
+  const size = useIconSize(18);
+  const markup = cakeIconMarkup.replace(/(width|height)="16"/g, `$1="${size}"`);
+  return <span className="contents" dangerouslySetInnerHTML={{ __html: markup }} />;
+};
 export const PlusIcon = ({ size = 16 }: { size?: number }) => (
   <Icon size={size}>
     <path d="M12 5v14M5 12h14" />
@@ -121,12 +125,12 @@ export const CaptureArrowIcon = () => (
   </Icon>
 );
 export const PaperclipIcon = () => (
-  <Icon size={14}>
+  <Icon size={12}>
     <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l10-10a4 4 0 0 1 5.66 5.66l-10 10a2 2 0 0 1-2.83-2.83l9.19-9.19" />
   </Icon>
 );
 export const ReplyIcon = () => (
-  <Icon>
+  <Icon size={12}>
     <path d="m9 5-6 6 6 6M3 11h10a7 7 0 0 1 7 7v1" />
   </Icon>
 );
@@ -174,12 +178,24 @@ export const ResetZoomIcon = () => (
   </Icon>
 );
 export const LightningIcon = ({ size = 13 }: { size?: number }) => (
-  <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+  <svg
+    aria-hidden="true"
+    width={useIconSize(size)}
+    height={useIconSize(size)}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+  >
     <path d="M13.4 2 4 13.1h6.6L9.7 22 20 9.7h-6.8L13.4 2Z" />
   </svg>
 );
 export const BranchIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  <svg
+    width={useIconSize(14)}
+    height={useIconSize(14)}
+    viewBox="0 0 16 16"
+    fill="none"
+    aria-hidden="true"
+  >
     <circle cx="4" cy="3.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
     <circle cx="4" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
     <circle cx="12" cy="5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
@@ -237,7 +253,7 @@ export const AnnotationIcon = ({ size = 16 }: { size?: number }) => (
   </Icon>
 );
 export const CopyIcon = () => (
-  <Icon size={15}>
+  <Icon size={12}>
     <rect x="8" y="8" width="11" height="11" rx="2" />
     <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
   </Icon>
@@ -353,7 +369,13 @@ export const ChevronDownIcon = ({ size = 14 }: { size?: number }) => (
   </Icon>
 );
 export const MarkdownIcon = () => (
-  <svg aria-hidden="true" width="18" height="16" viewBox="0 0 18 16" fill="currentColor">
+  <svg
+    aria-hidden="true"
+    width={useIconSize(18)}
+    height={useIconSize(16)}
+    viewBox="0 0 18 16"
+    fill="currentColor"
+  >
     <path d="M1 3.25A1.25 1.25 0 0 1 2.25 2h13.5A1.25 1.25 0 0 1 17 3.25v9.5A1.25 1.25 0 0 1 15.75 14H2.25A1.25 1.25 0 0 1 1 12.75zm2 2v5.5h1.5V7.5L6 9.35 7.5 7.5v3.25H9v-5.5H7.5L6 7.2 4.5 5.25zm8 0v3h-1.5L12.75 11l3.25-2.75h-1.5v-3z" />
   </svg>
 );
@@ -423,7 +445,13 @@ export const TerminalIcon = ({ size = 16 }: { size?: number }) => (
   </Icon>
 );
 export const VsCodeIcon = () => (
-  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+  <svg
+    aria-hidden="true"
+    width={useIconSize(16)}
+    height={useIconSize(16)}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+  >
     <path d="M17.5 2.3 9.2 10 4.4 6.3 2 7.7v8.6l2.4 1.4 4.8-3.7 8.3 7.7 4.5-2.2v-15zM4.7 14.5v-5l2.9 2.5zm12.6 2.2L11.1 12l6.2-4.7z" />
   </svg>
 );

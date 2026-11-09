@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/utils";
+import { IconSizeProvider } from "./icon-size";
 import { viewFocusHighlightClassName } from "./view-focus";
 
 /** Advisory relationship cue, deliberately weaker than navigation selection and focus. */
@@ -118,7 +119,11 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
         if (actionProps?.["aria-disabled"] !== true) onClick?.(event);
       }}
     >
-      {icon && <span className="shrink-0 text-inherit">{icon}</span>}
+      {icon && (
+        <span className="shrink-0 text-inherit">
+          <IconSizeProvider size="navigation">{icon}</IconSizeProvider>
+        </span>
+      )}
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         <div className="flex min-w-0 items-center gap-1.5">
           <span
