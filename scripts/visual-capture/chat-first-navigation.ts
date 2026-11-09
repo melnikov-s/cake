@@ -108,6 +108,7 @@ export function createChatFirstNavigationScenario(
       "rail-keyboard",
       "rail-activity",
       "rail-selection",
+      "rail-thumbnails",
       "application-settings",
       "application-automations",
       "browser-rail",
@@ -568,6 +569,8 @@ export function createChatFirstNavigationScenario(
       };
     },
     async prepare(page, state, application) {
+      const thumbnails = state === "rail-thumbnails";
+      if (thumbnails) state = "rail-selection";
       const browserState =
         state === "browser" ||
         state === "browser-todos" ||
@@ -709,13 +712,20 @@ export function createChatFirstNavigationScenario(
           await expect(page.getByText("Reviews are running.", { exact: true })).toBeVisible({
             timeout: 30_000,
           });
-          await page.getByRole("button", { name: /^Side chats and subagents,/ }).click();
-          await expect(
-            page
-              .getByRole("dialog", { name: "Open side chats" })
-              .getByRole("img", { name: "Running", exact: true }),
-          ).toHaveCount(3);
-          await page.keyboard.press("Escape");
+          if (thumbnails) {
+            // Artwork captures need real aggregate activity, not the worker-picker UI.
+            await expect(
+              rail.getByRole("img", { name: "Work running in cake", exact: true }),
+            ).toBeVisible();
+          } else {
+            await page.getByRole("button", { name: /^Side chats and subagents,/ }).click();
+            await expect(
+              page
+                .getByRole("dialog", { name: "Open side chats" })
+                .getByRole("img", { name: "Running", exact: true }),
+            ).toHaveCount(3);
+            await page.keyboard.press("Escape");
+          }
           runningStarted = true;
           if (
             state === "sessions" ||

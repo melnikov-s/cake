@@ -92,8 +92,8 @@ export function createInterfaceIconsScenario(
       expect(cakeGeometry.inside).toBe(true);
       const project = rail.getByRole("button", { name: /^Open Project Chat for / }).first();
       const projectIcon = await project.locator('[data-slot="avatar"] img').boundingBox();
-      expect(projectIcon!.width).toBe(18);
-      expect(projectIcon!.height).toBe(18);
+      expect(projectIcon!.width).toBe(32.5);
+      expect(projectIcon!.height).toBe(32.5);
       expect((await project.boundingBox())!.height).toBe(36);
       const breadcrumbIcon = page
         .getByRole("navigation", { name: "Conversation breadcrumb" })
@@ -244,6 +244,70 @@ export function createInterfaceIconsScenario(
       }
     },
     region: (page) => page.locator("body"),
+  };
+}
+
+/** Project artwork keeps its historical dimensions in both rail disclosure states. */
+export function createProjectThumbnailsScenario(
+  navigation: VisualCaptureScenario,
+): VisualCaptureScenario {
+  return {
+    name: "project-thumbnails",
+    description:
+      "32.5px custom/fallback project artwork, selected/running project and unchanged targets",
+    states: ["compact", "expanded"],
+    seed: navigation.seed,
+    async prepare(page, state, application) {
+      await navigation.prepare(page, "rail-thumbnails", application);
+      const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
+      const selected = rail.getByRole("button", {
+        name: "Open Project Chat for cake",
+        exact: true,
+      });
+      await expect(selected).toHaveAttribute("aria-current", "page");
+      if (state === "compact") {
+        await selected.blur();
+        await page.mouse.move(500, 200);
+        await expect(rail).toHaveCSS("width", "54px");
+      } else {
+        await expect(selected).toBeFocused();
+        await expect(rail).toHaveCSS("width", "240px");
+      }
+      const buttons = rail.getByRole("button", { name: /^Open Project Chat for / });
+      expect(await buttons.count()).toBeGreaterThan(3);
+      for (const button of (await buttons.all()).slice(0, 5)) {
+        const artwork = button.locator('[data-slot="avatar"] img');
+        await expect(artwork).toHaveCSS("width", "32.5px");
+        await expect(artwork).toHaveCSS("height", "32.5px");
+        await expect(button).toHaveCSS("height", "36px");
+        const image = (await artwork.boundingBox())!;
+        const target = (await button.boundingBox())!;
+        const bounds = (await rail.boundingBox())!;
+        expect(image.x).toBeGreaterThanOrEqual(target.x);
+        expect(image.x + image.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+        expect(image.y).toBeGreaterThanOrEqual(target.y);
+        expect(image.y + image.height).toBeLessThanOrEqual(target.y + target.height);
+      }
+      await expect(selected.locator("img")).toHaveCSS("object-fit", "contain");
+      const dot = selected.getByRole("img", { name: "Work running in cake", exact: true });
+      await expect(dot).toHaveCSS("width", "6px");
+      await expect(dot).toHaveCSS("height", "6px");
+      const dotBox = (await dot.boundingBox())!;
+      const target = (await selected.boundingBox())!;
+      expect(dotBox.x + dotBox.width).toBeLessThanOrEqual(target.x + target.width);
+      expect(dotBox.y + dotBox.height).toBeLessThanOrEqual(target.y + target.height);
+      console.log(
+        "PROJECT_THUMBNAIL_GEOMETRY",
+        JSON.stringify({
+          artwork: ["32.5px", "32.5px"],
+          targetHeight: "36px",
+          status: ["6px", "6px"],
+          state,
+          railWidth: await rail.evaluate((element) => getComputedStyle(element).width),
+        }),
+      );
+    },
+    region: navigation.region,
   };
 }
 

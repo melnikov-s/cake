@@ -2,7 +2,11 @@ import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
 import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
-import { createInterfaceIconsScenario, createAutoMergeIconsScenario } from "./interface-icons";
+import {
+  createInterfaceIconsScenario,
+  createAutoMergeIconsScenario,
+  createProjectThumbnailsScenario,
+} from "./interface-icons";
 import { projectSetupScenario } from "./project-setup.ts";
 import { serializeModelReference } from "../../src/contracts/model-presets/model-reference.ts";
 import { toolCallRowsScenario } from "./tool-call-rows";
@@ -7725,6 +7729,9 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   userMessageContentOrderScenario,
   projectSetupScenario,
   createChatFirstNavigationScenario(assistantMarkdownCode.seed, seedDurableChat),
+  createProjectThumbnailsScenario(
+    createChatFirstNavigationScenario(assistantMarkdownCode.seed, seedDurableChat),
+  ),
   sessionChangesScenario,
   sideChatActions,
   sideChatTabsScenario,

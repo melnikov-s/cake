@@ -6,6 +6,9 @@ import { expect, test } from "@playwright/test";
 import { visualCaptureResultPrefix } from "../../scripts/visual-capture/result";
 
 for (const [scenario, state, width, theme] of [
+  ["project-thumbnails", "expanded", 1280, "light"],
+  ["project-thumbnails", "compact", 1280, "dark"],
+  ["project-thumbnails", "compact", 760, "light"],
   ["interface-icons", "todos", 1280, "light"],
   ["interface-icons", "todos", 760, "dark"],
   ["interface-icons", "sessions", 760, "light"],

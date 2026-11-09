@@ -20,6 +20,8 @@ import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
 import { AutoMergeToggle } from "../../../src/renderer/components/auto-merge-toggle";
 import { ToastHost } from "../../../src/renderer/components/toast-host";
+import { IconSizeProvider, iconSizes } from "../../../src/renderer/components/ui/icon-size";
+import { Avatar } from "../../../src/renderer/components/ui/avatar";
 
 afterEach(cleanup);
 
@@ -34,6 +36,51 @@ function createRendererStoreFixture(options: Parameters<typeof createStoreFixtur
     },
   };
 }
+
+it.each(Object.keys(iconSizes) as (keyof typeof iconSizes)[])(
+  "keeps custom and fallback project thumbnails outside the %s control-icon role",
+  (role) => {
+    using fixture = createRendererStoreFixture({
+      projects: [
+        projectRecord({
+          path: "/cake",
+          name: "Cake",
+          settings: {
+            ...defaultProjectSettings(),
+            icon: { mimeType: "image/png", data: "fixture" },
+          },
+        }),
+        projectRecord({ path: "/fallback", name: "Fallback" }),
+      ],
+    });
+    render(
+      <StoreProvider store={fixture.root}>
+        <IconSizeProvider size={role}>
+          <ProjectRail />
+          <Avatar kind="project" seed="Elsewhere" data-testid="other-project-avatar" />
+        </IconSizeProvider>
+      </StoreProvider>,
+    );
+    for (const name of ["Cake", "Fallback"]) {
+      const button = screen.getByRole("button", { name: `Open Project Chat for ${name}` });
+      const thumbnail = button.querySelector('[data-slot="avatar"]')!;
+      // Historical rail artwork box, independent of the 24/18/12px control system.
+      expect(thumbnail.classList.contains("size-[32.5px]")).toBe(true);
+      expect(thumbnail.classList.contains("size-[18px]")).toBe(false);
+      expect(thumbnail.querySelector("img")!.classList.contains("size-full")).toBe(true);
+      expect(thumbnail.parentElement!.classList.contains("size-9")).toBe(true);
+      expect(button.classList.contains("h-9")).toBe(true);
+    }
+    expect(
+      screen.getByRole("button", { name: "Open Project Chat for Cake" }).querySelector("img")!
+        .className,
+    ).toContain("object-contain");
+    expect(screen.getByTestId("other-project-avatar").classList.contains("size-5")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Settings" }).querySelector("svg")!.getAttribute("width"),
+    ).toBe(String(iconSizes[role]));
+  },
+);
 
 it("has no global rail toggle; explicit project controls stay independent across view switches", async () => {
   const setAutoMerge = vi.fn(async (projectPath: string, enabled: boolean) => {
