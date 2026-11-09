@@ -20,10 +20,11 @@ export const NumberedIconButton = forwardRef<HTMLButtonElement, NumberedIconButt
             <span className="absolute bottom-0 left-0 flex size-6 items-center justify-center">
               {children}
             </span>
+            {/* Counts are compact metadata, below the shared 14px small-copy tier. */}
             <Badge
               size="xs"
               variant="mono"
-              className="relative col-start-2 h-4 min-w-4 justify-center self-start whitespace-nowrap bg-card px-1 text-card-foreground leading-none"
+              className="relative col-start-2 h-3.5 min-w-3.5 justify-center self-start whitespace-nowrap bg-muted px-0.5 font-sans text-[0.625rem] font-semibold text-muted-foreground leading-none"
             >
               {count}
             </Badge>

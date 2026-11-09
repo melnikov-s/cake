@@ -122,7 +122,7 @@ it("reserves the existing badge/target track independently of the navigation gly
   const svg = view.container.querySelector("svg")!;
   expect(svg.getAttribute("width")).toBe("18");
   expect(svg.parentElement!.classList.contains("size-6")).toBe(true);
-  expect(view.getByText("1000").classList.contains("min-w-4")).toBe(true);
+  expect(view.getByText("1000").classList.contains("min-w-3.5")).toBe(true);
 });
 
 it("only the three view controls are 24px, retaining pressed states and handlers", () => {

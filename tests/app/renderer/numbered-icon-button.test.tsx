@@ -15,8 +15,8 @@ import {
 afterEach(cleanup);
 
 describe("NumberedIconButton", () => {
-  it.each([0, 1, 4, 35, 1234, 1234567])(
-    "shows the exact count %i in an opaque inset bubble",
+  it.each([0, 1, 7, 12, 35, 1234, 1234567, Number.MAX_SAFE_INTEGER])(
+    "shows the exact count %i in a compact inset bubble",
     (count) => {
       render(
         <NumberedIconButton count={count} tooltip={`${count} artifacts`}>
@@ -25,11 +25,27 @@ describe("NumberedIconButton", () => {
       );
       const button = screen.getByRole("button", { name: `${count} artifacts` });
       const badge = screen.getByText(String(count));
-      expect(badge.classList.contains("bg-card")).toBe(true);
-      expect(badge.classList.contains("min-w-4")).toBe(true);
+      expect(badge.classList.contains("bg-muted")).toBe(true);
+      expect(badge.classList.contains("text-muted-foreground")).toBe(true);
+      expect(badge.classList.contains("h-3.5")).toBe(true);
+      expect(badge.classList.contains("min-w-3.5")).toBe(true);
+      expect(badge.classList.contains("text-[0.625rem]")).toBe(true);
+      expect(badge.classList.contains("font-semibold")).toBe(true);
+      expect(badge.classList.contains("font-sans")).toBe(true);
+      for (const inherited of ["text-xs", "font-medium", "font-mono", "leading-tight"])
+        expect(badge.classList.contains(inherited)).toBe(false);
+      expect(badge.classList.contains("tabular-nums")).toBe(true);
+      expect(badge.classList.contains("whitespace-nowrap")).toBe(true);
+      expect(badge.classList.contains("col-start-2")).toBe(true);
       expect(badge.closest('[aria-hidden="true"]')).not.toBeNull();
       expect(button.classList.contains("min-w-8")).toBe(true);
       expect(button.classList.contains("w-auto")).toBe(true);
+      expect(button.classList.contains("h-8")).toBe(true);
+      expect(button.className).toContain("[@media(pointer:coarse)]:min-h-11");
+      expect(button.className).toContain("[@media(pointer:coarse)]:min-w-11");
+      expect(button.querySelector("svg")!.getAttribute("width")).toBe("18");
+      expect(button.querySelector("svg")!.parentElement!.classList.contains("size-6")).toBe(true);
+      expect(badge.parentElement!.classList.contains("grid-cols-[0.75rem_auto]")).toBe(true);
     },
   );
 
@@ -55,6 +71,17 @@ describe("NumberedIconButton", () => {
     expect(button.classList.contains("aria-pressed:text-accent")).toBe(true);
     fireEvent.click(button);
     expect(click).not.toHaveBeenCalled();
+  });
+
+  it("preserves count meaning supplied as an accessible description", () => {
+    render(
+      <NumberedIconButton count={0} tooltip="To-do" aria-description="0 open to-dos">
+        <ArtifactIcon />
+      </NumberedIconButton>,
+    );
+    const button = screen.getByRole("button", { name: "To-do" });
+    expect(button.getAttribute("aria-description")).toBe("0 open to-dos");
+    expect(screen.getByText("0").closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
   it("retains tooltip text and click handling", () => {
