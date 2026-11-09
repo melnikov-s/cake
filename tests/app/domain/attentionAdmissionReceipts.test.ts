@@ -52,7 +52,7 @@ it("newly consumed attention receipts still wait for projection instead of searc
     const item = await f.runtime.runPromise(
       todos.create(scope, {
         title: "Review",
-        description: "",
+        description: "Review the queued findings",
         needsAttention: true,
         attentionReason: "Review findings",
       }),

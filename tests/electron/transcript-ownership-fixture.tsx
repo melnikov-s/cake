@@ -391,12 +391,14 @@ function render() {
                     : undefined
                 }
                 composerHeader={
-                  <>
-                    {cakeSession && <CakeChatComposerHeader session={cakeSession} />}
-                    {dockHeight > 0 && (
-                      <div style={{ height: dockHeight }}>Attention header fixture</div>
-                    )}
-                  </>
+                  cakeSession || dockHeight > 0 ? (
+                    <>
+                      {cakeSession && <CakeChatComposerHeader session={cakeSession} />}
+                      {dockHeight > 0 && (
+                        <div style={{ height: dockHeight }}>Attention header fixture</div>
+                      )}
+                    </>
+                  ) : undefined
                 }
                 compact={chatMode === "compact"}
                 embedded={withUpdates && chatMode === "compact"}
