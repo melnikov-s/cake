@@ -72,6 +72,8 @@ import {
   installCaptureMicrophone,
   seedCaptureDictation,
 } from "../../tests/fixtures/capture-dictation";
+import { promptText } from "../../src/services/pi/runtime/user-message-transport.ts";
+import { orderingAnnotation, orderingFile } from "../../tests/fixtures/user-message-content.ts";
 import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage.ts";
 import { makeTaskInputStorageLive } from "../../src/services/storage/TaskInputStorageLive.ts";
 
@@ -7378,7 +7380,91 @@ const assistantStandaloneDiagram: VisualCaptureScenario = {
       : page.locator('[data-slot="message"]').filter({ has: page.locator("svg.pele") }),
 };
 
+const userMessageContentOrderScenario: VisualCaptureScenario = {
+  name: "user-message-content-order",
+  description: "Attributed annotation-only and combined human messages, with no blank body",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const directory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const file = join(directory, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl");
+    const entries = (await readFile(file, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const annotations = { kind: "annotation" as const, annotations: [orderingAnnotation] };
+    entries[1].message.content = [{ type: "text", text: promptText("", [annotations]) }];
+    entries[2].message.content = [
+      { type: "text", text: "The annotation above is attributed without an empty body bubble." },
+    ];
+    entries.push({
+      ...entries[1],
+      id: "user-combined",
+      parentId: "assistant-1",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: promptText("Review the attached notes and the annotation together.", [
+              annotations,
+              orderingFile,
+            ]),
+          },
+        ],
+        timestamp: 2,
+      },
+    });
+    await writeFile(file, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  },
+  async prepare(page) {
+    // Startup opens Cake Chat; select the seeded session through the real picker.
+    await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Search sessions", exact: true })
+      .locator('[data-session-id="visual-assistant-markdown-code"]')
+      .click();
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole("button", { name: "View 1 annotation" })).toHaveCount(2);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    const messages = page
+      .locator('.transcript [data-slot="message"]')
+      .filter({ has: page.locator('[data-slot="message-label"]') });
+    await expect(messages).toHaveCount(2);
+    for (const [index, expected] of [
+      ["author", "annotations"],
+      ["author", "attachments", "annotations", "body"],
+    ].entries()) {
+      const message = messages.nth(index);
+      await expect(message.locator('[data-slot="message-label"]')).toHaveText("You");
+      const order = await message
+        .locator('[data-slot="message-label"], [data-part-id], [data-slot="message-content"]')
+        .evaluateAll((elements) =>
+          elements.map((element) =>
+            element.getAttribute("data-slot") === "message-label"
+              ? "author"
+              : element.getAttribute("data-slot") === "message-content"
+                ? "body"
+                : element.querySelector('[aria-label="View 1 annotation"]')
+                  ? "annotations"
+                  : "attachments",
+          ),
+        );
+      expect(order).toEqual(expected);
+    }
+    await expect(messages.first().locator('[data-slot="message-content"]')).toHaveCount(0);
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".transcript").first(),
+};
+
 export const visualCaptureScenarios: VisualCaptureScenario[] = [
+  userMessageContentOrderScenario,
   projectSetupScenario,
   createChatFirstNavigationScenario(assistantMarkdownCode.seed, seedDurableChat),
   sessionChangesScenario,

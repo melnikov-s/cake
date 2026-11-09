@@ -355,6 +355,16 @@ describe.each([
       });
       using chat = mountCakeChat(sessionId, { sessionChats: { prompt, readAttachment } });
       await sendScreenshot(chat.view.container, text);
+      const sentMessage = chat.view.container.querySelector(
+        '[data-part-id^="optimistic-user-"] [data-slot="message"]',
+      )!;
+      expect(sentMessage).not.toBeNull();
+      expect(sentMessage.querySelector('[data-slot="message-label"]')?.textContent).toBe(
+        "You · sending",
+      );
+      expect(sentMessage.querySelectorAll('[data-slot="message-content"]')).toHaveLength(
+        text ? 1 : 0,
+      );
       expect(prompt).toHaveBeenCalledWith(
         expect.objectContaining({
           text,

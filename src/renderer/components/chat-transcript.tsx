@@ -38,6 +38,7 @@ import {
   type TranscriptItem,
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
+import { transcriptItemParts, type TranscriptContentPart } from "./chat-transcript-items";
 import { ChatTranscriptItem } from "./chat-transcript-item";
 import { transcriptItemKeys } from "./chat-transcript-items";
 import { transcriptTaskSections } from "../lib/transcript-task-sections";
@@ -213,10 +214,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   ];
   const allItemKeys = transcriptItemKeys(allItems);
   const matchesFocus = (item: TranscriptItem) =>
-    !focused ||
-    ("parts" in item
-      ? item.parts.some((part) => matchedPartIds.has(part.id))
-      : matchedPartIds.has(item.id));
+    !focused || transcriptItemParts(item).some((part) => matchedPartIds.has(part.id));
   const resultReveal = store.transcriptInteraction.resultReveal;
   const resultMessage = store.transcriptInteraction.resultMessage;
   const resultPartId = resultMessage?.id;
@@ -239,8 +237,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     supportsTodoFocus && behavior.todos
       ? transcriptTaskSections(allItems, (item) => {
           if (focused) {
-            const parts =
-              "parts" in item ? item.parts : item.kind === "loading-state" ? [] : [item];
+            const parts = transcriptItemParts(item);
             return focusedTodos.find((todo) =>
               parts.some((part) => todoMessageMatches(part, store.id, todo)),
             )?.id;
@@ -272,7 +269,8 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (!target) return;
     const messageId =
       "parts" in target
-        ? target.parts.findLast((part) => !focused || matchedPartIds.has(part.id))?.id
+        ? transcriptItemParts(target).findLast((part) => !focused || matchedPartIds.has(part.id))
+            ?.id
         : target.id;
     if (messageId) store.transcriptInteraction.navigateToMessage(messageId);
   });
@@ -303,9 +301,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const selectedHiddenSection = revealMessageId
     ? sectionViews?.[
         allItems.findIndex((item) =>
-          "parts" in item
-            ? item.parts.some((part) => part.id === revealMessageId)
-            : item.id === revealMessageId,
+          transcriptItemParts(item).some((part) => part.id === revealMessageId),
         )
       ]
     : undefined;
@@ -329,10 +325,30 @@ export const ChatTranscript = observer(function ChatTranscript({
   });
   const items = visibleIndices.map((index) => {
     const item = allItems[index]!;
+    // Task focus matches exact tagged parts, not neighboring submitted content.
+    if (focused && "userContent" in item)
+      return {
+        ...item,
+        userContent: item.userContent?.filter((part) => matchedPartIds.has(part.id)),
+      };
     if (!focused || (item.kind !== "original-history" && item.kind !== "side-chat-import"))
       return item;
     // Group containers must not leak their untagged siblings into focused chat.
-    return { ...item, parts: item.parts.filter((part) => matchedPartIds.has(part.id)) };
+    return {
+      ...item,
+      parts: item.parts
+        .filter((part) =>
+          transcriptItemParts(part).some((content) => matchedPartIds.has(content.id)),
+        )
+        .map((part: TranscriptContentPart) =>
+          "userContent" in part
+            ? {
+                ...part,
+                userContent: part.userContent?.filter((content) => matchedPartIds.has(content.id)),
+              }
+            : part,
+        ),
+    };
   });
   const itemKeys = visibleIndices.map((index) => allItemKeys[index]!);
   const reconcileScroll = useCallback(() => {
@@ -374,11 +390,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     );
   }, [lastItemKey, scroller, sentMessageRevision, virtualized, presentedFullscreens]);
   const resultItemIndex = resultPartId
-    ? items.findIndex((item) =>
-        "parts" in item
-          ? item.parts.some((part) => part.id === resultPartId)
-          : item.id === resultPartId,
-      )
+    ? items.findIndex((item) => transcriptItemParts(item).some((part) => part.id === resultPartId))
     : -1;
   const resultItemKey = resultItemIndex < 0 ? undefined : itemKeys[resultItemIndex];
   useLayoutEffect(() => {
@@ -438,26 +450,14 @@ export const ChatTranscript = observer(function ChatTranscript({
   );
   const selectedItemIndex = selectedMessageId
     ? items.findIndex((item) =>
-        item.kind === "original-history" ||
-        item.kind === "side-chat-import" ||
-        item.kind === "activity-group" ||
-        item.kind === "source-group" ||
-        item.kind === "context-group"
-          ? item.parts.some((part) => part.id === selectedMessageId)
-          : item.id === selectedMessageId,
+        transcriptItemParts(item).some((part) => part.id === selectedMessageId),
       )
     : -1;
   const navigationItemIndex = messageSelection?.origin === "navigation" ? selectedItemIndex : -1;
   const restoredMessageItemIndex =
     restoredScrollPosition?.kind === "message"
       ? items.findIndex((item) =>
-          item.kind === "original-history" ||
-          item.kind === "side-chat-import" ||
-          item.kind === "activity-group" ||
-          item.kind === "source-group" ||
-          item.kind === "context-group"
-            ? item.parts.some((part) => part.id === restoredScrollPosition.messageId)
-            : item.id === restoredScrollPosition.messageId,
+          transcriptItemParts(item).some((part) => part.id === restoredScrollPosition.messageId),
         )
       : -1;
   const openingItemLocation = useMemo(() => {

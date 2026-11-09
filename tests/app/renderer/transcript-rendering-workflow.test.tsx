@@ -253,7 +253,7 @@ describe("Projected transcript rendering workflows", () => {
       Array.from(fixture.container.querySelectorAll("[data-part-id]"), (part) =>
         part.getAttribute("data-part-id"),
       ),
-    ).toEqual(["file", "image", "browser", "user", "answer", "plain-user"]);
+    ).toEqual(["user", "file", "image", "browser", "answer", "plain-user"]);
     expect(screen.getByText("notes.txt")).toBeDefined();
     expect(screen.getByRole("img", { name: "Screenshot" }).getAttribute("src")).toBe(
       "data:image/png;base64,aW1hZ2U=",

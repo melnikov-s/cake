@@ -127,7 +127,7 @@ export const ChatTranscriptItem = memo(
           ) : item.kind === "review-run" ? (
             <ReviewRunMessage run={item} onOpen={behavior.onOpenReviewRun} />
           ) : (
-            <TranscriptPart part={item} behavior={behavior} />
+            <TranscriptPart part={item} userContent={item.userContent} behavior={behavior} />
           )}
         </div>
       </div>

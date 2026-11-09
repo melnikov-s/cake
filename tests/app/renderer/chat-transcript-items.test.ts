@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import {
   groupTranscriptParts,
+  groupUserMessageContent,
   transcriptItemKeys,
 } from "../../../src/renderer/components/chat-transcript-items";
 
@@ -57,9 +58,27 @@ describe("groupTranscriptParts", () => {
     const assistantImage: UiPart = { ...attachments[1]!, id: "assistant-image" };
     const input = [user, ...attachments, assistant, assistantImage];
     const result = groupTranscriptParts(input);
-    expect(result).toEqual([...attachments, user, assistant, assistantImage]);
+    expect(result).toEqual([{ ...user, userContent: attachments }, assistant, assistantImage]);
     expect(input).toEqual([user, ...attachments, assistant, assistantImage]);
-    for (const part of result) expect(part).toBe(input.find((original) => original.id === part.id));
+    expect(result[1]).toBe(assistant);
+    expect(result[2]).toBe(assistantImage);
+    if (result[0]?.kind === "text")
+      result[0].userContent?.forEach((part, index) => expect(part).toBe(attachments[index]));
+  });
+
+  it("orders attachments before annotations even when annotation parts arrived first", () => {
+    const user: UiPart = { id: "user", kind: "text", role: "user", text: "", status: "complete" };
+    const annotation: UiPart = { id: "annotation", kind: "annotation", annotations: [] };
+    const attachment: UiPart = {
+      id: "file",
+      kind: "attachment",
+      attachmentKind: "file",
+      name: "notes",
+      mediaType: "text/plain",
+    };
+    expect(groupUserMessageContent([user, annotation, attachment])).toEqual([
+      { ...user, userContent: [attachment, annotation] },
+    ]);
   });
 
   it("keeps attachment-free messages in their original order", () => {
@@ -119,7 +138,7 @@ describe("groupTranscriptParts", () => {
       groupTranscriptParts([tool("before"), imported, attachment, between, incremental]),
     ).toMatchObject([
       { kind: "activity-group", parts: [{ id: "before" }] },
-      { kind: "side-chat-import", parts: [attachment, imported] },
+      { kind: "side-chat-import", parts: [{ ...imported, userContent: [attachment] }] },
       between,
       { kind: "side-chat-import", parts: [incremental] },
     ]);

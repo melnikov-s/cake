@@ -90,6 +90,8 @@ export const ChatTextMessage = forwardRef<
     contentRef?: RefObject<HTMLDivElement | null>;
     children?: ReactNode;
     messageActions?: ReactNode;
+    /** Submitted attachments and annotations, between the human header and body. */
+    beforeContent?: ReactNode;
     onReply?(entryId: string): void;
     fullscreen?: ComponentProps<typeof Message>["fullscreen"];
     onMouseEnter?: MouseEventHandler<HTMLElement>;
@@ -110,6 +112,7 @@ export const ChatTextMessage = forwardRef<
     contentRef,
     children,
     messageActions,
+    beforeContent,
     onReply,
     fullscreen,
     onMouseEnter,
@@ -169,7 +172,8 @@ export const ChatTextMessage = forwardRef<
       : part.draft
         ? "You · draft"
         : "You";
-  const content = text ? (
+  if (!agentMessage && !text.trim() && !beforeContent) return null;
+  const content = (agentMessage ? text : text.trim()) ? (
     <MessageContent
       ref={contentRef}
       className={cn(
@@ -240,6 +244,7 @@ export const ChatTextMessage = forwardRef<
         ) : (
           <MessageLabel>{userLabel}</MessageLabel>
         ))}
+      {beforeContent}
       {part.crossSession || report || agentSource ? (
         <SessionMessage
           source={agentSource ?? part.crossSession?.sender ?? reportSource}

@@ -6,7 +6,7 @@ import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { Link } from "./ui/link";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { ChatTextMessage, type CanonicalTranscriptBehavior } from "./chat-message";
-import { TranscriptPart } from "./chat-transcript-part";
+import { TranscriptPart, UserMessageContent } from "./chat-transcript-part";
 import type { TranscriptItem } from "./chat-transcript-items";
 
 /** Historical dialogue remains a quiet, collapsed entry at the point it was imported. */
@@ -71,7 +71,15 @@ export const SideChatImportGroup = observer(function SideChatImportGroup({
                   </div>
                 )}
                 {part.kind === "text" ? (
-                  <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />
+                  <ChatTextMessage
+                    part={part}
+                    beforeContent={
+                      part.userContent?.length ? (
+                        <UserMessageContent parts={part.userContent} behavior={behavior} />
+                      ) : undefined
+                    }
+                    onOpenSourceLocation={behavior.openSourceLocation}
+                  />
                 ) : (
                   <TranscriptPart part={part} behavior={behavior} />
                 )}

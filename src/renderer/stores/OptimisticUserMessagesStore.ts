@@ -179,7 +179,10 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
       return [];
     });
     const parts: UiPart[] = [
-      ...(text || deliveryState === "queued" || deliveryState === "steering"
+      ...(text ||
+      attachmentParts.length ||
+      deliveryState === "queued" ||
+      deliveryState === "steering"
         ? [
             {
               id: `optimistic-user-${id}`,

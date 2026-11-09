@@ -8,7 +8,7 @@ export function transcriptTaskSections(
   let discussion: string | undefined;
   let current: string | undefined;
   const attributions: (string | undefined)[] = [];
-  items.forEach((item, index) => {
+  items.forEach((item) => {
     const linked = linkedTodo?.(item);
     const incoming =
       (item.kind === "text" &&
@@ -23,13 +23,6 @@ export function transcriptTaskSections(
           : item.taskTodoId === undefined
             ? linked
             : (item.taskTodoId ?? undefined);
-      // Presentation moves a user turn's attachments before its body. They
-      // belong to that turn, not the discussion that happened to precede it.
-      for (let preceding = index - 1; preceding >= 0; preceding--) {
-        const attached = items[preceding]!;
-        if (attached.kind !== "attachment" && attached.kind !== "annotation") break;
-        attributions[preceding] = discussion;
-      }
     }
     if (item.kind === "skill") discussion = undefined;
     // A source card owns only its row, not the next conversational response.

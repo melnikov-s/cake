@@ -1,4 +1,5 @@
 import { observer } from "r-state-tree/react";
+import type { UserContentPart } from "./chat-transcript-items";
 import { InlineArtifactContext } from "./inline-artifact-context";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Reasoning } from "@/components/ai-elements/reasoning";
@@ -47,8 +48,10 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   subagentParts,
   live,
   omitToolDiff,
+  userContent,
 }: {
   part: UiPart;
+  userContent?: readonly UserContentPart[];
   behavior: CanonicalTranscriptBehavior;
   /** True when rendered inside a work log, so item expansion follows the global mode. */
   workLogItem?: boolean;
@@ -124,8 +127,20 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         }}
         onReply={behavior.onReplyToMessage}
         onOpenSourceLocation={behavior.openSourceLocation}
+        beforeContent={
+          userContent?.length ? (
+            <UserMessageContent parts={userContent} behavior={behavior} />
+          ) : undefined
+        }
       >
-        <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">
+        <div
+          className={
+            part.text.trim()
+              ? "ml-auto flex min-h-[30px] items-center gap-2"
+              : "absolute top-0 right-0 flex items-center gap-2"
+          }
+          aria-label="User actions"
+        >
           {part.entryId &&
             behavior.store.transcriptInteraction.canToggleUserMessageMarkdown &&
             !hasArtifactReference &&
@@ -398,11 +413,23 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   return <RetryNotice part={part} />;
 });
 
+/** Reuse canonical previews and part markers in live, inherited and imported turns. */
+export function UserMessageContent({
+  parts,
+  behavior,
+}: {
+  parts: readonly UserContentPart[];
+  behavior: CanonicalTranscriptBehavior;
+}) {
+  return parts.map((part) => <TranscriptPart key={part.id} part={part} behavior={behavior} />);
+}
+
 /** Marks every rendered transcript part in the DOM so right-click selection
  *  capture can resolve any selectable surface back to its conversation part.
  *  The wrapper is layout-invisible via `display: contents`. */
 export const TranscriptPart = observer(function TranscriptPart(props: {
   part: UiPart;
+  userContent?: readonly UserContentPart[];
   behavior: CanonicalTranscriptBehavior;
   workLogItem?: boolean;
   subagentStartPart?: Extract<UiPart, { kind: "tool" }>;

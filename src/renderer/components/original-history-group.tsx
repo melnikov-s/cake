@@ -2,7 +2,8 @@ import { useId } from "react";
 import { observer } from "r-state-tree/react";
 import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { ChatTextMessage, type CanonicalTranscriptBehavior } from "./chat-message";
-import { TranscriptPart } from "./chat-transcript-part";
+import { TranscriptPart, UserMessageContent } from "./chat-transcript-part";
+import { groupUserMessageContent } from "./chat-transcript-items";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 
 /** Pi-owned inherited originals, kept apart from the new side-chat dialogue. */
@@ -27,11 +28,16 @@ export const OriginalHistoryGroup = observer(function OriginalHistoryGroup({
       />
       {open && (
         <div id={contentId} className="grid min-w-0 gap-5 border-t border-border/65 p-3">
-          {parts.map((part) =>
+          {groupUserMessageContent(parts).map((part) =>
             part.kind === "text" ? (
               <ChatTextMessage
                 key={part.id}
                 part={part}
+                beforeContent={
+                  part.userContent?.length ? (
+                    <UserMessageContent parts={part.userContent} behavior={behavior} />
+                  ) : undefined
+                }
                 onOpenSourceLocation={behavior.openSourceLocation}
               />
             ) : (

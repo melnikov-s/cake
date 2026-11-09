@@ -64,7 +64,7 @@ it("starts one section at each A → B → A transition, not on follow-ups or st
   expect(transcriptTaskSections(items).sections).toEqual(sections);
 });
 
-it("attributes preceding attachments to their own turn across switches, repeats and unresolved inputs", () => {
+it("keeps composed attachments in their own turn across switches, repeats and unresolved inputs", () => {
   const image = (id: string): UiPart => ({
     id,
     kind: "attachment",
@@ -92,27 +92,32 @@ it("attributes preceding attachments to their own turn across switches, repeats 
   ]);
   const result = transcriptTaskSections(items);
   expect(items.map((item, index) => [item.id, result.sections[index]!.todoId])).toEqual([
-    ["a-shot", "A"],
     ["a", "A"],
     ["a-answer", "A"],
-    ["b-shot", "B"],
-    ["b-detail", "B"],
     ["b", "B"],
     ["b-answer", "B"],
-    ["b-followup-shot", "B"],
     ["b-followup", "B"],
-    ["none-shot", undefined],
     ["none", undefined],
-    ["a-return-shot", "A"],
     ["a-return", "A"],
-    ["pending-shot", undefined],
     ["pending", undefined],
   ]);
   expect(
     result.sections.flatMap((section, index) => (section.start ? [items[index]!.id] : [])),
-  ).toEqual(["a-shot", "b-shot", "a-return-shot"]);
-  expect(result.sections[5]!.startIndex).toBe(3);
-  expect(result.sections[8]!.startIndex).toBe(3);
+  ).toEqual(["a", "b", "a-return"]);
+  expect(result.sections[3]!.startIndex).toBe(2);
+  expect(result.sections[4]!.startIndex).toBe(2);
+  expect(
+    items.flatMap((item) =>
+      "userContent" in item ? [item.userContent?.map((part) => part.id)] : [],
+    ),
+  ).toEqual([
+    ["a-shot"],
+    ["b-shot", "b-detail"],
+    ["b-followup-shot"],
+    ["none-shot"],
+    ["a-return-shot"],
+    ["pending-shot"],
+  ]);
 });
 
 it("uses known incoming associations once per switch and lets explicit human attribution clear a section", () => {
