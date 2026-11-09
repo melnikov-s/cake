@@ -45,7 +45,7 @@ export const ResultTodoDone = observer(function ResultTodoDone({ origin, todos }
               title={`${action}: ${item.title}`}
               disabled={todos.busy}
               className={cn(
-                "shrink-0 gap-1.5 [&_svg]:size-3.5",
+                "shrink-0 gap-1.5 [&_svg]:size-3",
                 done && "bg-accent/15 text-accent hover:bg-accent/20 hover:text-accent",
               )}
               onClick={() => void todos.setDone(item)}

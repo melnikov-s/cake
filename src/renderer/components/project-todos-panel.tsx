@@ -99,6 +99,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             {section.toggle ? (
               <div className="flex items-center gap-3">
                 <DisclosureTrigger
+                  className="[&_svg]:size-3"
                   title={`${section.title} (${section.items.length})`}
                   open={section.open}
                   onClick={section.toggle}

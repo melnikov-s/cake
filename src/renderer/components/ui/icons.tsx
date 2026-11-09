@@ -90,8 +90,8 @@ export const FolderIcon = () => (
     <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
   </Icon>
 );
-export const FolderPlusIcon = () => (
-  <Icon>
+export const FolderPlusIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
     <path strokeWidth={2.2} d="M12 10v6M9 13h6" />
   </Icon>
@@ -99,8 +99,8 @@ export const FolderPlusIcon = () => (
 export const CakeIcon = () => (
   <span className="contents" dangerouslySetInnerHTML={{ __html: cakeIconMarkup }} />
 );
-export const PlusIcon = () => (
-  <Icon>
+export const PlusIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <path d="M12 5v14M5 12h14" />
   </Icon>
 );
@@ -173,8 +173,8 @@ export const ResetZoomIcon = () => (
     <path d="M3 10a9 9 0 1 1 2 8M3 4v6h6" />
   </Icon>
 );
-export const LightningIcon = () => (
-  <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+export const LightningIcon = ({ size = 13 }: { size?: number }) => (
+  <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
     <path d="M13.4 2 4 13.1h6.6L9.7 22 20 9.7h-6.8L13.4 2Z" />
   </svg>
 );
@@ -265,8 +265,8 @@ export const CheckIcon = () => (
     <path d="m5 12 4 4L19 6" />
   </Icon>
 );
-export const CautionIcon = () => (
-  <Icon size={15} strokeWidth={2}>
+export const CautionIcon = ({ size = 15 }: { size?: number }) => (
+  <Icon size={size} strokeWidth={2}>
     <path d="M10.3 3.6 2.5 17.1A2 2 0 0 0 4.2 20h15.6a2 2 0 0 0 1.7-2.9L13.7 3.6a2 2 0 0 0-3.4 0Z" />
     <path d="M12 9v4M12 17h.01" />
   </Icon>
@@ -291,8 +291,8 @@ export const ArrowLeftIcon = () => (
     <path d="m12 19-7-7 7-7M5 12h14" />
   </Icon>
 );
-export const BackIcon = () => (
-  <Icon>
+export const BackIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <path d="m15 18-6-6 6-6" />
   </Icon>
 );
@@ -301,14 +301,14 @@ export const ForwardIcon = () => (
     <path d="m9 18 6-6-6-6" />
   </Icon>
 );
-export const ReloadIcon = () => (
-  <Icon>
+export const ReloadIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <path d="M20 6v5h-5" />
     <path d="M18.5 15a7 7 0 1 1-1-8.5L20 11" />
   </Icon>
 );
-export const NetworkIcon = () => (
-  <Icon>
+export const NetworkIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <path d="M2 8.8a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8.5 15.5a5.5 5.5 0 0 1 7 0" />
     <circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" />
   </Icon>
@@ -330,14 +330,14 @@ export const InspectIcon = () => (
     <path d="m8 8 8 4-4 2-2 4z" />
   </Icon>
 );
-export const SidebarIcon = () => (
-  <Icon>
+export const SidebarIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <rect x="3.5" y="4" width="17" height="16" rx="3" />
     <path d="M9 4v16" />
   </Icon>
 );
-export const ChatSidebarIcon = () => (
-  <Icon>
+export const ChatSidebarIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <rect x="3.5" y="4" width="17" height="16" rx="3" />
     <path d="M15 4v16" />
   </Icon>
@@ -357,8 +357,8 @@ export const MarkdownIcon = () => (
     <path d="M1 3.25A1.25 1.25 0 0 1 2.25 2h13.5A1.25 1.25 0 0 1 17 3.25v9.5A1.25 1.25 0 0 1 15.75 14H2.25A1.25 1.25 0 0 1 1 12.75zm2 2v5.5h1.5V7.5L6 9.35 7.5 7.5v3.25H9v-5.5H7.5L6 7.2 4.5 5.25zm8 0v3h-1.5L12.75 11l3.25-2.75h-1.5v-3z" />
   </svg>
 );
-export const ArtifactIcon = () => (
-  <Icon size={15}>
+export const ArtifactIcon = ({ size = 15 }: { size?: number }) => (
+  <Icon size={size}>
     <path d="M7 3.5h7l4 4V20H7z" />
     <path d="M14 3.5V8h4M10 12h5M10 15h5" />
   </Icon>
@@ -410,14 +410,14 @@ export const RestoreIcon = () => (
     <path d="M4.5 4.5V9H9" />
   </Icon>
 );
-export const SettingsIcon = () => (
-  <Icon>
+export const SettingsIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.83 2.83-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06-2.83-2.83.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3v-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06 2.83-2.83.06.06A1.65 1.65 0 0 0 9 4.68h.08a1.65 1.65 0 0 0 1-1.51V3h4v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06 2.83 2.83-.06.06A1.65 1.65 0 0 0 19.32 9v.08a1.65 1.65 0 0 0 1.51 1H21v4h-.09A1.65 1.65 0 0 0 19.4 15z" />
   </Icon>
 );
-export const TerminalIcon = () => (
-  <Icon>
+export const TerminalIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <rect x="3.5" y="4" width="17" height="16" rx="3" />
     <path d="m7.5 9 3 3-3 3M13 15h3.5" />
   </Icon>
@@ -427,14 +427,14 @@ export const VsCodeIcon = () => (
     <path d="M17.5 2.3 9.2 10 4.4 6.3 2 7.7v8.6l2.4 1.4 4.8-3.7 8.3 7.7 4.5-2.2v-15zM4.7 14.5v-5l2.9 2.5zm12.6 2.2L11.1 12l6.2-4.7z" />
   </svg>
 );
-export const DockBottomIcon = () => (
-  <Icon>
+export const DockBottomIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
     <path d="M4 14h16M9 17h6" />
   </Icon>
 );
-export const MoveTopIcon = () => (
-  <Icon>
+export const MoveTopIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
     <path d="M4 10h16M9 7h6" />
   </Icon>

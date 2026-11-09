@@ -130,7 +130,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
             trailing={
               <div className="flex items-start gap-2.5">
                 <IconButton
-                  className="-ml-0.5 size-5"
+                  className="-ml-0.5 size-5 [&>svg]:size-3"
                   disabled={store.busy}
                   tooltip={`${item.state === "done" ? "Reopen" : "Mark done"}: ${item.title}`}
                   onClick={() => void store.setDone(item)}
@@ -145,7 +145,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
               className="col-start-3 row-start-1 grid grid-cols-[1.75rem_1.25rem] items-start"
             >
               <IconButton
-                className={cn("-my-1 size-7 [&>svg]:size-[9px]", hoverActionClassName)}
+                className={cn("-my-1 size-7 [&>svg]:size-3", hoverActionClassName)}
                 tooltip={`Attach to-do as context: ${item.title}`}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -165,7 +165,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
                     else void store.dismissAttention(item);
                   }}
                 >
-                  <CloseIcon />
+                  <CloseIcon size={12} />
                 </IconButton>
               )}
             </div>

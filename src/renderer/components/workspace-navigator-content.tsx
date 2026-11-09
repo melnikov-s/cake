@@ -12,7 +12,7 @@ export const WorkspaceNavigatorContent = observer(function WorkspaceNavigatorCon
     <ConversationNavigator projectPath={navigator.projectPath} />
   ) : todos ? (
     <>
-      <div className="px-3 py-2">
+      <div className="px-3 py-2 [&_svg]:size-3">
         <SearchInput
           label="Search to-dos"
           value={todos.query}

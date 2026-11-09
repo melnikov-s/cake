@@ -1,6 +1,7 @@
 import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
+import { createInterfaceIconsScenario } from "./interface-icons";
 import { projectSetupScenario } from "./project-setup.ts";
 import { serializeModelReference } from "../../src/contracts/model-presets/model-reference.ts";
 import { toolCallRowsScenario } from "./tool-call-rows";
@@ -7347,6 +7348,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   scheduledPromptsScenario,
   taskInputAttachmentsScenario,
   projectChatTodos,
+  createInterfaceIconsScenario(projectChatTodos),
   projectChatAttention,
   projectChatTaskRails,
   adjacentTaskHeadings,

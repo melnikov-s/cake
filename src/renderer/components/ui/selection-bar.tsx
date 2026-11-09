@@ -25,7 +25,7 @@ export function SelectionBar({
         {title}
       </span>
       <IconButton tooltip={clearLabel} disabled={disabled} onClick={onClear}>
-        <CloseIcon />
+        <CloseIcon size={12} />
       </IconButton>
     </div>
   );

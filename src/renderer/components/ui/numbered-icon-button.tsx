@@ -16,8 +16,8 @@ export const NumberedIconButton = forwardRef<HTMLButtonElement, NumberedIconButt
         {count === undefined ? (
           <span aria-hidden="true">{children}</span>
         ) : (
-          <span aria-hidden="true" className="relative grid h-6 min-w-6 grid-cols-[0.5rem_auto]">
-            <span className="absolute bottom-0 left-0 flex size-4 items-center justify-center">
+          <span aria-hidden="true" className="relative grid h-7 min-w-7 grid-cols-[0.75rem_auto]">
+            <span className="absolute bottom-0 left-0 flex size-6 items-center justify-center">
               {children}
             </span>
             <Badge

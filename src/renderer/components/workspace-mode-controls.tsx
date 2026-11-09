@@ -34,7 +34,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       <WorkspaceModeSlot>
         <SegmentedControlGroup
           aria-label="Conversation workspace"
-          className="shrink-0 [&_button>svg]:size-5"
+          className="shrink-0 [&_button>svg]:size-6"
         >
           <IconButton
             tooltip="Main"
@@ -79,7 +79,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
         aria-pressed={terminalOpen}
         onClick={onToggleTerminal}
       >
-        <TerminalIcon />
+        <TerminalIcon size={24} />
       </IconButton>
     </div>
   );

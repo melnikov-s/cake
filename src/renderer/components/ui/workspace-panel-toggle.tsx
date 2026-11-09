@@ -20,7 +20,7 @@ export function WorkspacePanelToggle({
       aria-expanded={visible}
       onClick={onToggle}
     >
-      {panel === "sidebar" ? <SidebarIcon /> : <ChatSidebarIcon />}
+      {panel === "sidebar" ? <SidebarIcon size={24} /> : <ChatSidebarIcon size={24} />}
     </IconButton>
   );
 }

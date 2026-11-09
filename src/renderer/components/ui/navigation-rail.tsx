@@ -66,7 +66,7 @@ export function NavigationRail({
             className="hidden h-9 [@media(hover:none)]:grid"
             onClick={(event) => event.currentTarget.focus()}
           >
-            <SidebarIcon />
+            <SidebarIcon size={24} />
           </IconButton>
           {header}
         </div>

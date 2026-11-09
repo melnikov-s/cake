@@ -106,7 +106,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => void root.navigationStore.chooseProject()}
             >
-              <FolderPlusIcon />
+              <FolderPlusIcon size={24} />
             </IconButton>
           </>
         }
@@ -119,7 +119,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => root.newSessionStore.show()}
             >
-              <PlusIcon />
+              <PlusIcon size={24} />
             </IconButton>
             <IconButton
               tooltip="Search sessions"
@@ -127,7 +127,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => root.sidebarStore.sessionSearchStore.show()}
             >
-              <SearchIcon />
+              <SearchIcon size={24} />
             </IconButton>
             {!root.props.browserHost && !root.desktopConnection?.remote && (
               <div className="w-full shrink-0">
@@ -146,7 +146,7 @@ export const ProjectRail = observer(function ProjectRail({
               data-cake-hint-key="a"
               onClick={() => root.navigationStore.showArtifactLibrary()}
             >
-              <ArtifactIcon />
+              <ArtifactIcon size={24} />
             </IconButton>
             <IconButton
               tooltip="Automations"
@@ -154,7 +154,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => root.navigationStore.showAutomations()}
             >
-              <LightningIcon />
+              <LightningIcon size={24} />
             </IconButton>
             <IconButton
               tooltip="Settings"
@@ -163,7 +163,7 @@ export const ProjectRail = observer(function ProjectRail({
               className="h-9 shrink-0"
               onClick={() => root.navigationStore.showSettings()}
             >
-              <SettingsIcon />
+              <SettingsIcon size={24} />
             </IconButton>
           </>
         }
