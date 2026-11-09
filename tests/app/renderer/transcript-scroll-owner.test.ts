@@ -186,6 +186,7 @@ describe("transcript scroll owner measurement boundaries", () => {
   }
 
   function scroll(top: number) {
+    scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: top - scroller.scrollTop }));
     scroller.scrollTop = top;
     scroller.dispatchEvent(new Event("scroll"));
   }
@@ -209,6 +210,64 @@ describe("transcript scroll owner measurement boundaries", () => {
     scroll(150);
     expect(load).toHaveBeenCalledTimes(2);
   });
+
+  it("dock_resize_and_browser_clamp_do_not_admit_history", () => {
+    const load = vi.fn(() => true);
+    pagingOwner(load);
+    for (const top of [120, 800, 100, 900, 0]) {
+      scroller.scrollTop = top;
+      owner.reconcile();
+      scroller.dispatchEvent(new Event("scroll"));
+    }
+    expect(load).not.toHaveBeenCalled();
+    // A click in content is not a scrollbar gesture.
+    scroller.dispatchEvent(new MouseEvent("pointerdown", { clientX: 50 }));
+    scroller.scrollTop = 120;
+    owner.reconcile();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it.each(["wheel", "keyboard", "touch", "scrollbar"])(
+    "wheel_keyboard_touch_and_scrollbar_upward_navigation_remain_bounded: %s",
+    (input) => {
+      const load = vi.fn(() => true);
+      pagingOwner(load);
+      Object.defineProperty(scroller, "clientWidth", { value: 100 });
+      scroller.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 600, left: 0, right: 115 }) as DOMRect;
+      if (input === "wheel") scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -1000 }));
+      if (input === "keyboard")
+        scroller.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp" }));
+      if (input === "scrollbar")
+        scroller.dispatchEvent(new MouseEvent("pointerdown", { clientX: 110 }));
+      if (input === "touch") {
+        for (const [type, clientY] of [
+          ["touchstart", 100],
+          ["touchmove", 200],
+        ] as const) {
+          const event = new Event(type);
+          Object.defineProperty(event, "touches", { value: [{ clientY }] });
+          scroller.dispatchEvent(event);
+        }
+      }
+      scroller.scrollTop = 120;
+      scroller.dispatchEvent(new Event("scroll"));
+      expect(load).toHaveBeenCalledOnce();
+      for (const top of [100, 80, 40, 0]) {
+        scroller.scrollTop = top;
+        owner.reconcile();
+        scroller.dispatchEvent(new Event("scroll"));
+      }
+      expect(load).toHaveBeenCalledOnce();
+      scroller.dispatchEvent(new Event("scrollend"));
+      document.dispatchEvent(new Event("pointerup"));
+      scroller.scrollTop = 800;
+      owner.reconcile();
+      scroller.scrollTop = 120;
+      scroller.dispatchEvent(new Event("scroll"));
+      expect(load).toHaveBeenCalledOnce();
+    },
+  );
 
   it("does not page initial bottom, hidden, covered, positioning or disposed views", () => {
     const load = vi.fn(() => true);
@@ -258,14 +317,16 @@ describe("transcript scroll owner measurement boundaries", () => {
     }
   });
 
-  it("retains a prepended anchor even when its old virtual range is evicted", () => {
+  it("prepend_virtual_range_eviction_preserves_anchor_without_rearming", async () => {
     const navigate = vi.fn();
+    const load = vi.fn(() => true);
     owner.dispose();
     let currentIndex = 0;
     owner = createTranscriptScrollOwner(scroller, scroller.firstElementChild as HTMLElement, {
       following: false,
       cancelVirtualNavigation: vi.fn(),
       itemIndex: () => currentIndex,
+      loadEarlier: load,
     });
     const reading = list.firstElementChild as HTMLElement;
     reading.dataset.index = "0";
@@ -278,6 +339,8 @@ describe("transcript scroll owner measurement boundaries", () => {
     shift = 1200;
     contentHeight += 1200;
     owner.reconcile();
+    expect(navigate).not.toHaveBeenCalled();
+    await Promise.resolve(); // after the complete virtualizer layout commit
     expect(navigate).toHaveBeenCalledExactlyOnceWith("reading");
     owner.reconcile();
     expect(navigate).toHaveBeenCalledOnce();
@@ -291,6 +354,21 @@ describe("transcript scroll owner measurement boundaries", () => {
     shift += 380;
     owner.reconcile();
     expect(scroller.scrollTop).toBe(2580);
+    scroller.scrollTop = 120;
+    scroller.dispatchEvent(new Event("scroll"));
+    owner.reconcile();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it.each(["reader", "dispose"])("cancels post-commit prepend navigation on %s", async (cancel) => {
+    const navigate = vi.fn();
+    owner.preserveForPrepend(navigate);
+    list.replaceChildren();
+    owner.reconcile();
+    if (cancel === "reader") scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+    else owner.dispose();
+    await Promise.resolve();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("preserves the anchor when measured older rows are prepended", () => {

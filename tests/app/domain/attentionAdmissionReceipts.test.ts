@@ -28,7 +28,8 @@ it("retries the same durable request after an interrupted handoff without anothe
     // Pi-owned receipt survives interruption; activation has no local in-flight memory.
     f.receipts.set(f.submissions[0]!.turnId, "consumed");
     f.state.publishFail = false;
-    await f.runtime.runPromise(attention.activate(scope, item.id, item.revision));
+    const result = await f.runtime.runPromise(attention.activate(scope, item.id, item.revision));
+    expect(result.resultSource).toBe("history");
     expect(f.submissions).toHaveLength(1);
     expect((await f.runtime.runPromise(todos.read(scope, item.id))).needsAttention).toBe(false);
     expect(
@@ -40,6 +41,25 @@ it("retries the same durable request after an interrupted handoff without anothe
         )
       ).handledReports ?? [],
     ).toHaveLength(0);
+  } finally {
+    await f.runtime.dispose();
+  }
+});
+
+it("newly consumed attention receipts still wait for projection instead of searching history", async () => {
+  const f = heldAttentionHarness();
+  try {
+    const item = await f.runtime.runPromise(
+      todos.create(scope, {
+        title: "Review",
+        description: "",
+        needsAttention: true,
+        attentionReason: "Review findings",
+      }),
+    );
+    f.state.afterSubmit = () => f.receipts.set(f.submissions[0]!.turnId, "consumed");
+    const result = await f.runtime.runPromise(attention.activate(scope, item.id, item.revision));
+    expect(result.resultSource).toBe("incoming");
   } finally {
     await f.runtime.dispose();
   }
@@ -62,7 +82,8 @@ it("canceled admission preserves attention; retry gets a new receipt while X dis
     ).rejects.toThrow("canceled");
     expect((await f.runtime.runPromise(todos.read(scope, item.id))).needsAttention).toBe(true);
     f.state.cancelOnSubmit = false;
-    await f.runtime.runPromise(attention.activate(scope, item.id, item.revision));
+    const result = await f.runtime.runPromise(attention.activate(scope, item.id, item.revision));
+    expect(result.resultSource).toBe("incoming");
     expect(f.submissions).toHaveLength(2);
     expect(f.submissions[0]?.turnId).not.toBe(f.submissions[1]?.turnId);
     const next = await f.runtime.runPromise(

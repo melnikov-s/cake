@@ -116,6 +116,9 @@ export function createTranscriptScrollOwner(
   let knownViewportHeight = scroller.clientHeight;
   let touchY: number | undefined;
   let earlierRequested = false;
+  // Pagination authority comes from input, never from reconciliation/clamping.
+  let upwardApproachTop: number | undefined;
+  let draggingScrollbar = false;
   let lastUpwardInput = -Infinity;
   let prepend:
     | { anchor: Anchor; offset: number; navigate(key: string): void; navigating: boolean }
@@ -335,7 +338,6 @@ export function createTranscriptScrollOwner(
    * a browser clamp. Classify it before anything can pin over it.
    */
   const observeMovement = (pendingMeasurements: boolean) => {
-    const movedUp = scroller.scrollTop < knownTop;
     const movedDown = scroller.scrollTop > knownTop;
     // First compensate any layout change that has not been reconciled yet
     // (content coordinates ignore the movement itself).
@@ -347,12 +349,6 @@ export function createTranscriptScrollOwner(
     if (pendingReveal === undefined && !resultReveal)
       following = movedDown ? following || atBottom() : following && atEnd();
     if (!pendingMeasurements) anchor = findAnchor();
-    // Own writes, streaming/layout and duplicate scroll events never enter here
-    // as upward reading motion. A new page needs another reader approach.
-    if (pendingReveal === undefined && !pendingRestore && !prepend && !atEnd()) {
-      if (scroller.scrollTop > earlierThreshold) earlierRequested = false;
-      else if (movedUp) requestEarlier();
-    }
   };
 
   const preserveForPrepend = (navigate: (key: string) => void) => {
@@ -363,7 +359,7 @@ export function createTranscriptScrollOwner(
       following ||
       pendingReveal !== undefined ||
       pendingBottom !== undefined ||
-      resultReveal ||
+      resultReveal?.key !== undefined ||
       pendingRestore
     )
       return;
@@ -429,16 +425,22 @@ export function createTranscriptScrollOwner(
         Number(renderedIndex) !== options.itemIndex(saved.anchor.key)
       )
         return;
+      // New virtual rows must be measured before index navigation can use
+      // the new page's size tree rather than the previous range's estimates.
+      if (pendingMeasurements) return;
       if (!element) {
         // Prepending can evict the old index range. Reveal the same stable key,
         // not the top, then finish with measured geometry rather than estimates.
         if (!saved.navigating) {
           saved.navigating = true;
-          saved.navigate(saved.anchor.key);
+          // This reconciliation can run in a child layout effect, before
+          // Virtuoso installs its scroll subscription in the same commit.
+          queueMicrotask(() => {
+            if (prepend === saved) saved.navigate(saved.anchor.key);
+          });
         }
         return;
       }
-      if (pendingMeasurements) return;
       if (saved.navigating) {
         options.cancelVirtualNavigation();
         write(
@@ -518,6 +520,20 @@ export function createTranscriptScrollOwner(
   };
 
   const handleScroll = () => {
+    const top = scroller.scrollTop;
+    if (
+      upwardApproachTop !== undefined &&
+      top < upwardApproachTop &&
+      pendingReveal === undefined &&
+      !pendingRestore &&
+      !prepend &&
+      !resultReveal &&
+      pendingBottom === undefined
+    ) {
+      if (draggingScrollbar && top > earlierThreshold) earlierRequested = false;
+      if (top <= earlierThreshold) requestEarlier();
+    }
+    if (upwardApproachTop !== undefined) upwardApproachTop = top;
     observeScroll();
     publishJumpVisibility();
   };
@@ -580,6 +596,7 @@ export function createTranscriptScrollOwner(
       anchor = findAnchor();
     }
     if (direction < 0) {
+      upwardApproachTop = scroller.scrollTop;
       const now = performance.now();
       // At the absolute top there may be no native movement. Only a new
       // gesture after a pause can retry the approach; a visible threshold,
@@ -592,7 +609,10 @@ export function createTranscriptScrollOwner(
         following = false;
         anchor = findAnchor();
       }
-    } else if (atBottom()) following = true;
+    } else {
+      upwardApproachTop = undefined;
+      if (atBottom()) following = true;
+    }
   };
 
   const handleWheel = (event: WheelEvent) => intent(event.target, event.deltaY);
@@ -653,6 +673,23 @@ export function createTranscriptScrollOwner(
       anchor = findAnchor();
     }
   };
+  const handlePointerDown = (event: PointerEvent) => {
+    cancelForPointer();
+    const rect = scroller.getBoundingClientRect();
+    // Native scrollbar drags have no wheel/key event. Restrict admission to
+    // the gutter, not arbitrary clicks followed by a layout-induced scroll.
+    draggingScrollbar =
+      event.target === scroller &&
+      (event.clientX < rect.left + scroller.clientLeft ||
+        event.clientX >= rect.left + scroller.clientLeft + scroller.clientWidth);
+    if (draggingScrollbar) upwardApproachTop = scroller.scrollTop;
+  };
+  const handlePointerUp = () => {
+    draggingScrollbar = false;
+  };
+  const handleScrollEnd = () => {
+    upwardApproachTop = undefined;
+  };
   const handleEmbeddedInput = (event: Event) => {
     if (!(event instanceof CustomEvent)) return;
     const direction: unknown = event.detail;
@@ -666,7 +703,9 @@ export function createTranscriptScrollOwner(
     signal: abort.signal,
     capture: true,
   });
-  scroller.addEventListener("pointerdown", cancelForPointer, listen);
+  scroller.addEventListener("pointerdown", handlePointerDown, listen);
+  document.addEventListener("pointerup", handlePointerUp, listen);
+  scroller.addEventListener("scrollend", handleScrollEnd, listen);
   scroller.addEventListener("transcript-reader-input", handleEmbeddedInput, listen);
   scroller.addEventListener("scroll", handleScroll, listen);
   scroller.addEventListener("wheel", handleWheel, listen);
@@ -749,6 +788,7 @@ export function createTranscriptScrollOwner(
       publishJumpVisibility();
     },
     dispose() {
+      cancelReveal();
       abort.abort();
       observer.disconnect();
     },

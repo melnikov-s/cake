@@ -195,6 +195,9 @@ export const activate = Effect.fn("ProjectTodoAttention.activate")(
         return {
           todos: yield* todos.list(scope),
           responseTurnId: turnId,
+          // New admissions can be consumed before their projection arrives.
+          // Only a receipt already consumed when this click began is historical.
+          resultSource: receipt === "consumed" ? ("history" as const) : ("incoming" as const),
           resultPartIds: [
             ...originals.updates.map((update) => `agent-update-${update.id}`),
             ...originals.notices.map((notice) => `passive-${notice.id}`),

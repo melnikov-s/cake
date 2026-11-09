@@ -308,7 +308,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     const receipt = await this.todos.activateAttention(item);
     if (this.signal.aborted) return;
     if (receipt)
-      interaction.completeResultReveal(revision, receipt.resultPartIds, receipt.responseTurnId);
+      interaction.completeResultReveal(
+        revision,
+        receipt.resultPartIds,
+        receipt.responseTurnId,
+        receipt.resultSource,
+      );
     else interaction.cancelResultReveal(revision);
   }
 

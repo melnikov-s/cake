@@ -87,6 +87,7 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   resultReveal:
     | {
         revision: number;
+        source?: "incoming" | "history";
         partIds?: readonly string[];
         responseTurnId?: string;
         messageId?: string;
@@ -102,10 +103,15 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
     return revision;
   }
 
-  completeResultReveal(revision: number, partIds: readonly string[], responseTurnId?: string) {
+  completeResultReveal(
+    revision: number,
+    partIds: readonly string[],
+    responseTurnId?: string,
+    source: "incoming" | "history" = "incoming",
+  ) {
     if (this.resultReveal?.revision !== revision) return;
     this.resultReveal =
-      partIds.length || responseTurnId ? { revision, partIds, responseTurnId } : undefined;
+      partIds.length || responseTurnId ? { revision, source, partIds, responseTurnId } : undefined;
   }
 
   @computed
@@ -136,10 +142,11 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
 
   bindResultMessage(revision: number, part: UiPart) {
     const reveal = this.resultReveal;
-    if (!reveal || reveal.revision !== revision || reveal.partIds?.length || reveal.messageId)
-      return;
+    if (!reveal || reveal.revision !== revision || reveal.messageId) return;
+    // Once seen, this exact result may legitimately move into persisted history.
     this.resultReveal = {
       ...reveal,
+      source: "history",
       messageId: part.id,
       renderKey: part.kind === "text" ? part.renderKey : undefined,
     };

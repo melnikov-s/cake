@@ -111,6 +111,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   onBottomNavigationChange?(navigation: TranscriptBottomNavigation | undefined): void;
 }) {
   useEffect(() => store.retainTranscript(), [store]);
+  useEffect(() => () => store.transcriptInteraction.cancelResultReveal(), [store]);
   useEffect(
     () => behavior.inlineArtifactPreviews?.observeConversation(store.id, () => store.parts),
     [behavior.inlineArtifactPreviews, store],
@@ -459,15 +460,27 @@ export const ChatTranscript = observer(function ChatTranscript({
   const historyError = history?.error;
   useEffect(() => {
     if (
-      !(resultReveal?.partIds?.length || resultReveal?.messageId) ||
+      resultReveal?.source !== "history" ||
+      !(resultReveal.partIds?.length || resultReveal.messageId) ||
       resultPartId ||
       !historyHasMore ||
       historyLoading ||
       historyError
     )
       return;
-    void history?.load();
-  }, [resultReveal, resultPartId, history, historyLoading, historyHasMore, historyError]);
+    const owner = scrollOwner.current;
+    void history?.load(() => {
+      if (owner && scrollOwner.current === owner) owner.preserveForPrepend(scrollToItem);
+    });
+  }, [
+    resultReveal,
+    resultPartId,
+    history,
+    historyLoading,
+    historyHasMore,
+    historyError,
+    scrollToItem,
+  ]);
   const isArriving = useArrivals(itemKeys, store.id);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({

@@ -12,6 +12,7 @@ export function scrollTranscriptEarlier(indicator: HTMLElement) {
   if (list) list.style.visibility = "visible";
   scroller.scrollTop = 800;
   fireEvent.scroll(scroller);
+  fireEvent.wheel(scroller, { deltaY: -680 });
   scroller.scrollTop = 120;
   fireEvent.scroll(scroller);
 }

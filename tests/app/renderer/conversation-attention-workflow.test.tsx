@@ -66,11 +66,17 @@ it.each(["send", "reader", "navigation", "none"])(
       todos: emptyProjectTodos(),
       resultPartIds: ["passive-exact-report"],
       responseTurnId: "attention-turn",
+      resultSource: "incoming",
     });
     await activation;
     expect(interaction.resultReveal).toEqual(
       superseding === "none"
-        ? { revision, partIds: ["passive-exact-report"], responseTurnId: "attention-turn" }
+        ? {
+            revision,
+            source: "incoming",
+            partIds: ["passive-exact-report"],
+            responseTurnId: "attention-turn",
+          }
         : undefined,
     );
     if (superseding === "send") expect(interaction.sentMessageRevision).toBe(1);
@@ -88,6 +94,7 @@ it("no-original attention binds only its causal explanation and retains its rend
           todos: emptyProjectTodos(),
           resultPartIds: [],
           responseTurnId: "attention-turn",
+          resultSource: "incoming",
         }),
       },
     },
@@ -174,7 +181,12 @@ it("shows every own attention item even when focused or filtered; X never activa
             todo.id === input.id ? { ...todo, needsAttention: false, revision: 1 } : todo,
           );
           applySnapshot(fixture.models.projects, { projects: [project()] });
-          return { todos: project().todos, resultPartIds: [], responseTurnId: "attention-turn" };
+          return {
+            todos: project().todos,
+            resultPartIds: [],
+            responseTurnId: "attention-turn",
+            resultSource: "incoming" as const,
+          };
         },
         mutateUser: async (input) => {
           calls.push(["mutate", input]);

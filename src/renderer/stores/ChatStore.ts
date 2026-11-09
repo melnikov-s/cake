@@ -806,6 +806,9 @@ export class ChatStore extends Store<ChatStoreProps> {
     return this.props.editQueuedPrompt?.(id, text) ?? Promise.resolve(false);
   }
   removeQueuedPrompt(id: string) {
+    const turnId = this.queuedPrompts.find((entry) => entry.id === id)?.turnId;
+    if (turnId && this.transcriptInteraction.resultReveal?.responseTurnId === turnId)
+      this.transcriptInteraction.cancelResultReveal();
     this.props.removeQueuedPrompt?.(id);
   }
   get draftActivationCandidates() {

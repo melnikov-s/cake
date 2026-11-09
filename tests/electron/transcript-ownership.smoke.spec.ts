@@ -515,13 +515,148 @@ test.describe("attention result navigation boundary", () => {
   });
 });
 
+test.describe("queued Project Chat attention", () => {
+  test.use({ withHistory: true, chatMode: "project", messageCount: 160 });
+  for (const receiptFirst of [false, true]) {
+    test(
+      receiptFirst
+        ? "attention_receipt_before_queue_projection_does_not_page"
+        : "queued_attention_does_not_search_all_history",
+      async ({ fixturePage: page }, testInfo) => {
+        const transcript = page.locator(".transcript");
+        await page.evaluate(
+          (defer) =>
+            (
+              Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+            ).queueAttentionProjection(defer),
+          receiptFirst,
+        );
+        await wheel(page, transcript, -500);
+        await expect.poll(() => gap(transcript)).toBeGreaterThan(200);
+        const saved = await anchor(transcript);
+        expect(saved).not.toBeNull();
+        await page.getByRole("button", { name: "Open attention: Review queued result" }).click();
+        await expect(page.getByRole("region", { name: "Needs attention" })).toHaveCount(0);
+        if (receiptFirst) await command(page, "projectAttentionQueue");
+        // Absent from EVERY historical page. Releasing erroneous reads catches
+        // sequential drain, not merely one pending request.
+        for (let i = 0; i < 4; i++) {
+          await command(page, "releaseHistory");
+          await command(page, "stream");
+          await page.evaluate(
+            (batch) =>
+              (
+                Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+              ).sessionUpdates(batch),
+            `report-${i}`,
+          );
+          await page.evaluate(
+            async (height) => {
+              (
+                Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+              ).setDockHeight(height);
+              for (let frame = 0; frame < 5; frame++) await new Promise(requestAnimationFrame);
+            },
+            i % 2 ? 0 : 180,
+          );
+        }
+        const requests = await page.evaluate(() =>
+          (
+            Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+          ).historyRequests(),
+        );
+        await testInfo.attach("retained-reading-position", {
+          body: JSON.stringify({
+            saved,
+            after: await anchor(transcript),
+            historyRequests: requests,
+          }),
+          contentType: "application/json",
+        });
+        const screenshot = testInfo.outputPath("queued-attention.png");
+        await page.screenshot({ path: screenshot });
+        await testInfo.attach("queued-attention", { path: screenshot, contentType: "image/png" });
+        expect(requests).toEqual([]);
+        await expect.poll(() => anchor(transcript)).toEqual(saved);
+      },
+    );
+  }
+  test("incoming_queue_stream_and_report_updates_preserve_reading_position", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    await wheel(page, transcript, -500);
+    const saved = await anchor(transcript);
+    await page.evaluate(() => {
+      const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+      fixture.queueAttentionProjection(false);
+      fixture.stream();
+      fixture.sessionUpdates("background-report");
+      fixture.arrive();
+    });
+    await expect.poll(() => anchor(transcript)).toEqual(saved);
+  });
+  test("normal_bottom_follow_and_explicit_enter_send_jump_still_work", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    await command(page, "stream");
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    for (const send of ["Enter", "Send", "jump"]) {
+      await wheel(page, transcript, -1200);
+      const composer = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
+      if (send === "jump") await page.getByRole("button", { name: "Scroll to bottom" }).click();
+      else {
+        await composer.fill(`Explicit ${send}`);
+        if (send === "Enter") await composer.press("Enter");
+        else await page.getByRole("button", { name: "Send", exact: true }).click();
+      }
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      await command(page, "stream");
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    }
+  });
+  test("chat_reentry_does_not_resume_stale_attention_search", async ({ fixturePage: page }) => {
+    await page.evaluate(() =>
+      (
+        Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+      ).queueAttentionProjection(true),
+    );
+    await page.getByRole("button", { name: "Open attention: Review queued result" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).revealPending(),
+        ),
+      )
+      .toBe(true);
+    await command(page, "remount");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).revealPending(),
+        ),
+      )
+      .toBe(false);
+    await command(page, "projectAttentionQueue");
+    await command(page, "stream");
+    expect(
+      await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).historyRequests(),
+      ),
+    ).toEqual([]);
+  });
+});
+
 test.describe("bounded scroll-up pagination", () => {
   test.use({ withHistory: true, chatMode: "full" });
-  test("result reveal waits for its exact unloaded history page", async ({ fixturePage: page }) => {
+  test("persisted_exact_result_navigation_still_reaches_older_target", async ({
+    fixturePage: page,
+  }) => {
     const transcript = page.locator(".transcript");
     await page.evaluate(() =>
       (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).openAttention(
-        "older-1-8",
+        "older-2-8",
       ),
     );
     await expect
@@ -534,7 +669,17 @@ test.describe("bounded scroll-up pagination", () => {
       )
       .toEqual(["1"]);
     await command(page, "releaseHistory");
-    const row = transcript.locator('[data-transcript-anchor-id="older-1-8"]');
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (
+            Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture
+          ).historyRequests(),
+        ),
+      )
+      .toEqual(["1", "2"]);
+    await command(page, "releaseHistory");
+    const row = transcript.locator('[data-transcript-anchor-id="older-2-8"]');
     await expect(row).toBeAttached();
     await expect
       .poll(() =>
@@ -596,9 +741,7 @@ test.describe("bounded scroll-up pagination", () => {
     fixturePage: page,
   }) => {
     const transcript = page.locator(".transcript");
-    await transcript.evaluate((element) => {
-      element.scrollTop = 120;
-    });
+    await transcript.press("Home");
     await expect
       .poll(() =>
         page.evaluate(() =>
@@ -635,6 +778,7 @@ test.describe("bounded scroll-up pagination", () => {
       );
     expect(await requests()).toEqual([]);
     await transcript.evaluate((element) => {
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1000 }));
       element.scrollTop = 120;
     });
     await expect.poll(requests).toEqual(["1"]);
@@ -660,6 +804,7 @@ test.describe("bounded scroll-up pagination", () => {
     );
     await expect.poll(() => anchor(transcript)).toEqual(saved);
     await transcript.evaluate((element) => {
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1000 }));
       element.scrollTop = 120;
     });
     await expect.poll(requests).toEqual(["1", "2"]);

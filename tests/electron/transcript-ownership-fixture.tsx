@@ -1,4 +1,7 @@
 import { createRoot } from "react-dom/client";
+import { applySnapshot } from "r-state-tree";
+import { emptyProjectTodos, type ProjectTodo } from "../../src/contracts/projects/project-todos";
+import { CakeChatComposerHeader } from "../../src/renderer/components/cake-chat-composer-header";
 import { installedDictationState } from "../helpers/dictation";
 import { TurnId } from "../../src/contracts/conversations/conversation-data";
 import type { TestClientOverrides } from "../app/renderer/test-client";
@@ -54,6 +57,48 @@ const widgetRevision: ArtifactRevision = {
 const withUpdates = parameters.get("updates") === "true";
 const withHistory = parameters.get("history") === "true";
 const historyRequests: string[] = [];
+const projectAttention = parameters.get("chatMode") === "project";
+const projectChatId = `project-chat:${"a".repeat(64)}`;
+const attentionTodo: ProjectTodo = {
+  id: "00000000-0000-4000-8000-000000000011",
+  title: "Review queued result",
+  description: "",
+  status: "",
+  state: "open",
+  revision: 0,
+  associations: [],
+  needsAttention: true,
+  attentionReason: "Review findings",
+};
+let deferAttentionProjection = false;
+function queuePart(automatic: boolean): UiPart {
+  const text = automatic ? "Queued attention activation" : "Already queued input";
+  return {
+    kind: "text",
+    id: automatic ? "attention-queue" : "existing-queue",
+    role: "user",
+    status: "complete",
+    text,
+    deliveryState: "queued",
+    queuedInput: {
+      itemId: automatic
+        ? "20000000-0000-4000-8000-000000000002"
+        : "20000000-0000-4000-8000-000000000001",
+      turnId: automatic
+        ? "10000000-0000-4000-8000-000000000002"
+        : "10000000-0000-4000-8000-000000000001",
+      text,
+      attachments: [],
+      renderUserMessageAsMarkdown: false,
+      ...(automatic ? { internal: "UpdateBatch" as const } : {}),
+    },
+  };
+}
+function projectAttentionQueue() {
+  parts = [...parts.filter((part) => part.id !== "attention-queue"), queuePart(true)];
+  publish(true);
+  render();
+}
 const archivedParts = new Map<string, UiPart>();
 let releaseHistory: (() => void) | undefined;
 let releaseReport: (() => void) | undefined;
@@ -160,6 +205,22 @@ const fixture = createRendererStoreFixture({
     },
     workspaces: { postProcessDictation: async (text) => text },
     ...client,
+    projectTodos: {
+      activateAttention: async () => {
+        if (!deferAttentionProjection) projectAttentionQueue();
+        applySnapshot(fixture.models.projects, {
+          projects: [
+            { ...projectRecord({ path: "/project", name: "Project" }), todos: emptyProjectTodos() },
+          ],
+        });
+        return {
+          todos: emptyProjectTodos(),
+          resultPartIds: ["future-attention-result"],
+          responseTurnId: "10000000-0000-4000-8000-000000000002",
+          resultSource: "incoming",
+        };
+      },
+    },
     sessionChats: {
       ...client?.sessionChats,
       readAttachment: async () => attachmentReady,
@@ -194,12 +255,25 @@ const fixture = createRendererStoreFixture({
       },
     },
   },
-  projects: [projectRecord({ path: "/project", name: "Project" })],
+  projects: [
+    {
+      ...projectRecord({ path: "/project", name: "Project" }),
+      ...(projectAttention ? { todos: { ...emptyProjectTodos(), items: [attentionTodo] } } : {}),
+    },
+  ],
   sessions: ["ownership", "empty-conversation"].map((sessionId) =>
     sessionSummary({ sessionId, projectPath: "/project" }),
   ),
 });
-const session = fixture.root.sessionRegistry.load("ownership", "/project");
+if (projectAttention)
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [{ sessionId: projectChatId, title: "Project Chat", projectPath: "/project" }],
+  });
+const cakeSession = projectAttention
+  ? fixture.root.cakeChatCollectionStore.registry.load(projectChatId)
+  : undefined;
+const session = cakeSession ?? fixture.root.sessionRegistry.load("ownership", "/project");
 // The active session can send from its composer (the one scroll-to-bottom exception).
 fixture.root.navigationStore.selectProjectSession("ownership");
 fixture.root.projectWorkbenchStore.showLoadedSession("ownership");
@@ -261,7 +335,7 @@ if (withUpdates)
     })!,
   });
 const snapshot: ConversationSnapshot = {
-  sessionId: "ownership",
+  sessionId: session.sessionId,
   workspacePath: "/project",
   sessionFile: "/project/ownership.jsonl",
   ...(withHistory ? { historyCursor: "1" } : {}),
@@ -317,9 +391,12 @@ function render() {
                     : undefined
                 }
                 composerHeader={
-                  dockHeight ? (
-                    <div style={{ height: dockHeight }}>Attention header fixture</div>
-                  ) : undefined
+                  <>
+                    {cakeSession && <CakeChatComposerHeader session={cakeSession} />}
+                    {dockHeight > 0 && (
+                      <div style={{ height: dockHeight }}>Attention header fixture</div>
+                    )}
+                  </>
                 }
                 compact={chatMode === "compact"}
                 embedded={withUpdates && chatMode === "compact"}
@@ -360,6 +437,9 @@ export interface TranscriptOwnershipFixture {
   sessionUpdates(batch: string): void;
   delaySubmission(): void;
   admitSubmission(): void;
+  queueAttentionProjection(defer: boolean): void;
+  projectAttentionQueue(): void;
+  revealPending(): boolean;
   openAttention(partId?: string): number;
   openAttentionResponse(turnId: string): number;
   archivePart(partId: string): void;
@@ -442,9 +522,20 @@ Reflect.set(window, "transcriptFixture", {
   admitSubmission() {
     releaseSubmission?.();
   },
+  queueAttentionProjection(defer) {
+    deferAttentionProjection = defer;
+    parts = [...parts, queuePart(false)];
+    publish(true);
+    render();
+  },
+  projectAttentionQueue,
+  revealPending() {
+    return store.transcriptInteraction.resultReveal !== undefined;
+  },
   openAttention(partId) {
     const revision = store.transcriptInteraction.beginResultReveal();
-    if (partId) store.transcriptInteraction.completeResultReveal(revision, [partId]);
+    if (partId)
+      store.transcriptInteraction.completeResultReveal(revision, [partId], undefined, "history");
     render();
     return revision;
   },
@@ -462,7 +553,7 @@ Reflect.set(window, "transcriptFixture", {
     applyConversationUpdate(session.model, {
       _tag: "Event",
       revision: ++revision,
-      event: { _tag: "PartRemoved", sessionId: "ownership", partId },
+      event: { _tag: "PartRemoved", sessionId: session.sessionId, partId },
     });
     render();
   },
@@ -510,7 +601,7 @@ Reflect.set(window, "transcriptFixture", {
       applyConversationUpdate(session.model, {
         _tag: "Event",
         revision: ++revision,
-        event: { _tag: "PartUpdated", sessionId: "ownership", part },
+        event: { _tag: "PartUpdated", sessionId: session.sessionId, part },
       });
     }
     render();
