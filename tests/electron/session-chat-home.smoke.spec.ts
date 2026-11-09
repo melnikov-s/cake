@@ -54,7 +54,7 @@ for (const theme of ["light", "dark"] as const) {
           id: "title",
           parentId: null,
           timestamp,
-          name: "Session navigation",
+          name: "Session navigation: clearer breadcrumbs and parent-home navigation",
         },
       ]
         .map((entry) => JSON.stringify(entry))
@@ -98,8 +98,42 @@ for (const theme of ["light", "dark"] as const) {
       await expect(back).toBeVisible({ timeout: 20_000 });
       const breadcrumb = page.getByRole("navigation", { name: "Conversation breadcrumb" });
       await expect(breadcrumb).toContainText("Session navigation");
+      const currentTitle = breadcrumb.locator('[aria-current="page"]');
+      await expect(currentTitle).toHaveCSS("font-weight", "700");
+      await expect(breadcrumb.getByRole("button", { name: "Cake Chat", exact: true })).toHaveCSS(
+        "font-weight",
+        "400",
+      );
+      const titleContrast = await currentTitle.evaluate((element) => {
+        const foreground = getComputedStyle(element).color;
+        const background = getComputedStyle(document.body).backgroundColor;
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d")!;
+        const luminance = (color: string) => {
+          context.fillStyle = color;
+          context.fillRect(0, 0, 1, 1);
+          const [r, g, b] = [...context.getImageData(0, 0, 1, 1).data].map((value) => {
+            const channel = value / 255;
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+        };
+        const fg = luminance(foreground);
+        const bg = luminance(background);
+        return {
+          foreground,
+          primaryForeground: getComputedStyle(document.body).color,
+          contrast: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05),
+        };
+      });
+      expect(titleContrast.foreground).toBe(titleContrast.primaryForeground);
+      expect(titleContrast.contrast).toBeGreaterThanOrEqual(4.5);
       await expect(page.locator('[data-slot="context-group"]').first()).toBeVisible();
       await mkdir(join(repository, ".visual-captures"), { recursive: true });
+      await page.locator('[data-slot="workspace-header"]').screenshot({
+        path: join(repository, `.visual-captures/session-title-${theme}.png`),
+      });
       await page.screenshot({
         path: join(repository, `.visual-captures/session-chat-home-${theme}.png`),
       });
@@ -172,6 +206,13 @@ for (const theme of ["light", "dark"] as const) {
         window.setContentSize(480, 900);
       });
       expect(await page.evaluate(() => window.innerWidth)).toBe(480);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      ).toBe(true);
+      await expect(currentTitle).toHaveCSS("white-space", "nowrap");
+      await expect(breadcrumb).toHaveCSS("overflow-x", "auto");
       await expect(back).toHaveCount(1);
       await expect(back).toBeVisible();
       const narrow = (await back.boundingBox())!;

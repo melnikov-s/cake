@@ -72,7 +72,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
             <span aria-hidden="true" className="text-muted-foreground">
               ›
             </span>
-            <span aria-current="page" className="px-1 font-medium text-foreground">
+            <span aria-current="page" className="px-1 font-bold text-foreground">
               {previewTitle}
             </span>
           </>
@@ -87,7 +87,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               size="sm"
               className={cn(
                 "h-6 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
-                index === lineage.length - 1 && "font-medium text-foreground",
+                index === lineage.length - 1 && "font-bold text-foreground",
               )}
               title={node.title}
               aria-current={index === lineage.length - 1 ? "page" : undefined}
