@@ -14,7 +14,10 @@ export const WorkspaceCompanion = observer(function WorkspaceCompanion({
   const navigator = useStore(RootStore).workspaceNavigatorStore;
   const chat = navigator.companionTab === "chat";
   return (
-    <>
+    <div
+      data-slot="workspace-companion-content"
+      className={cn("flex min-h-0 flex-1 flex-col", !chat && "bg-sidebar")}
+    >
       <div className="h-10 shrink-0 border-b border-border/65 bg-sidebar/30">
         <SegmentedControlGroup
           aria-label="Companion content"
@@ -49,6 +52,6 @@ export const WorkspaceCompanion = observer(function WorkspaceCompanion({
       </div>
       <div className={cn("flex min-h-0 flex-1 flex-col", !chat && "hidden")}>{children}</div>
       {!chat && <WorkspaceNavigatorContent />}
-    </>
+    </div>
   );
 });

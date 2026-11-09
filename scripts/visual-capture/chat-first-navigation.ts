@@ -86,6 +86,7 @@ export function createChatFirstNavigationScenario(
       "Real conversation homes, recursive Sessions, shared To-dos and native workspace tools",
     states: [
       "project-todos",
+      "panel-sessions",
       "sessions",
       "sessions-unread",
       "sessions-collapsed",
@@ -97,6 +98,8 @@ export function createChatFirstNavigationScenario(
       "nested-subagent",
       "discussion-worker",
       "browser",
+      "browser-todos",
+      "browser-sessions",
       "browser-compact",
       "vscode",
       "closed",
@@ -566,8 +569,13 @@ export function createChatFirstNavigationScenario(
     },
     async prepare(page, state, application) {
       const browserState =
-        state === "browser" || state === "browser-compact" || state === "browser-rail";
+        state === "browser" ||
+        state === "browser-todos" ||
+        state === "browser-sessions" ||
+        state === "browser-compact" ||
+        state === "browser-rail";
       const vscodeState = state === "vscode" || state === "vscode-rail";
+      const panelBrowser = state === "browser-todos" || state === "browser-sessions";
       const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
       const settle = () =>
         page.evaluate(async () => {
@@ -599,6 +607,13 @@ export function createChatFirstNavigationScenario(
           exact: true,
         }),
       ).toBeVisible({ timeout: 20_000 });
+      // Project homes arrive in the catalog independently of the global transcript.
+      // Wait for the real Sessions row before invoking its rail action.
+      const globalWorkspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+      await globalWorkspace.getByRole("button", { name: /^Sessions / }).click();
+      await expect(globalWorkspace.getByRole("button", { name: "cake", exact: true })).toBeVisible({
+        timeout: 20_000,
+      });
       await rail.getByRole("button", { name: "Open Project Chat for cake", exact: true }).click();
       await expect(
         page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
@@ -668,7 +683,10 @@ export function createChatFirstNavigationScenario(
       } else if (state !== "project-todos") {
         await workspace.getByRole("button", { name: /^Sessions / }).click();
         const tree = page.getByRole("region", { name: "Sessions", exact: true });
-        if (!runningStarted) {
+        if (
+          !runningStarted &&
+          !["panel-sessions", "browser-todos", "browser-sessions"].includes(state)
+        ) {
           if (!application) throw new Error("Controlled running workers require isolated Electron");
           await application.evaluate(() => {
             const original = globalThis.fetch;
@@ -765,17 +783,20 @@ export function createChatFirstNavigationScenario(
             tree.getByRole("button", { name: /^Focus restoration(?: |$)/ }),
           ).toBeVisible();
         } else if (state === "deep-worker" || browserState || vscodeState) {
-          await tree
-            .locator(`[data-session-id="${sessions[2][0]}"]`)
-            .getByRole("button", { name: /^Focus restoration(?: |$)/ })
-            .click();
-          await expect(
-            page.getByRole("navigation", { name: "Conversation breadcrumb" }),
-          ).toContainText(sessions[1][1]);
-          const focusedAssistant = page.getByText(
-            "The focus restoration work is ready for review.",
-            { exact: true },
-          );
+          // Background-only captures stay on Project Chat; recursive-worker fixtures
+          // and running reviews are independent of the surface-color contract.
+          if (!panelBrowser) {
+            await tree
+              .locator(`[data-session-id="${sessions[2][0]}"]`)
+              .getByRole("button", { name: /^Focus restoration(?: |$)/ })
+              .click();
+            await expect(
+              page.getByRole("navigation", { name: "Conversation breadcrumb" }),
+            ).toContainText(sessions[1][1]);
+          }
+          const focusedAssistant = panelBrowser
+            ? homeAssistant
+            : page.getByText("The focus restoration work is ready for review.", { exact: true });
           await expect(focusedAssistant).toBeVisible({ timeout: 20_000 });
           if (state === "deep-worker") {
             await workspace.getByRole("button", { name: /^To-dos / }).click();
@@ -801,6 +822,11 @@ export function createChatFirstNavigationScenario(
                 exact: true,
               }),
             ).toBeVisible();
+            if (panelBrowser)
+              await page
+                .getByRole("group", { name: "Companion content" })
+                .getByRole("button", { name: "Chat", exact: true })
+                .click();
             await expect(focusedAssistant).toBeVisible({ timeout: 20_000 });
             if (browserState) {
               if (!application) throw new Error("Native browser capture requires Electron");
@@ -821,6 +847,24 @@ export function createChatFirstNavigationScenario(
                   { timeout: 20_000 },
                 )
                 .toBe(true);
+            }
+            if (state === "browser-todos" || state === "browser-sessions") {
+              const companion = page.getByRole("complementary", {
+                name: "Current conversation companion",
+                exact: true,
+              });
+              await companion
+                .getByRole("button", {
+                  name: state === "browser-todos" ? "Todos" : "Sessions",
+                  exact: true,
+                })
+                .click();
+              await expect(
+                companion.getByRole(state === "browser-todos" ? "searchbox" : "region", {
+                  name: state === "browser-todos" ? "Search to-dos" : "Sessions",
+                  exact: true,
+                }),
+              ).toBeVisible();
             }
             if (state === "browser-compact") {
               await page.getByRole("button", { name: "Close chat", exact: true }).click();
@@ -1012,6 +1056,51 @@ export function createChatFirstNavigationScenario(
             .toBe(true);
       } else await page.mouse.move(1, 1);
       await settle();
+      if (
+        ["project-todos", "panel-sessions", "browser-todos", "browser-sessions"].includes(state)
+      ) {
+        const colors = await page.evaluate((companion) => {
+          const panel = document.querySelector(
+            companion
+              ? '[data-slot="workspace-companion-content"]'
+              : '[data-slot="workspace-navigator"]',
+          )!;
+          const rail = document.querySelector('[data-slot="project-rail"]')!;
+          const shell = document.querySelector('[data-slot="workspace"]')!.parentElement!;
+          const probe = document.createElement("div");
+          probe.style.backgroundColor = "var(--sidebar)";
+          panel.append(probe);
+          const sidebar = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          const panelColor = getComputedStyle(panel).backgroundColor;
+          const chatColor = getComputedStyle(shell).backgroundColor;
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 1;
+          const context = canvas.getContext("2d")!;
+          const luminance = (color: string) => {
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            const [r, g, b] = Array.from(context.getImageData(0, 0, 1, 1).data).map((byte) => {
+              const value = byte / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+          };
+          return {
+            sidebar,
+            panel: panelColor,
+            rail: getComputedStyle(rail).backgroundColor,
+            chat: chatColor,
+            panelLuminance: luminance(panelColor),
+            chatLuminance: luminance(chatColor),
+          };
+        }, state.startsWith("browser-"));
+        expect(colors.panel).toBe(colors.sidebar);
+        expect(colors.rail).toBe(colors.sidebar);
+        expect(colors.panel).not.toBe(colors.chat);
+        expect(colors.panelLuminance).toBeLessThan(colors.chatLuminance);
+        console.log("PANEL_BACKGROUND_EVIDENCE", JSON.stringify({ state, ...colors }));
+      }
     },
     region: (page) => page.locator("body"),
   };

@@ -106,9 +106,13 @@ it.each(["browser", "vscode"] as const)(
       screen.getByRole("complementary", { name: "Current conversation companion" }),
     );
     const tabs = within(companion.getByRole("group", { name: "Companion content" }));
+    const surface = document.querySelector('[data-slot="workspace-companion-content"]')!;
+    expect(surface.classList.contains("bg-sidebar")).toBe(false);
     expect(tabs.getByRole("button", { name: "Chat" }).getAttribute("aria-pressed")).toBe("true");
     await fixture.user.click(tabs.getByRole("button", { name: "Todos" }));
-    expect(await companion.findByText("Shared with Project Chat")).toBeDefined();
+    await fixture.user.hover(companion.getByRole("button", { name: "Project-owned task" }));
+    expect(await screen.findByText("Shared with Project Chat")).toBeDefined();
+    expect(surface.classList.contains("bg-sidebar")).toBe(true);
     await fixture.user.click(
       companion.getByRole("button", { name: "Mark done: Project-owned task" }),
     );
@@ -122,10 +126,12 @@ it.each(["browser", "vscode"] as const)(
       ),
     );
     await fixture.user.click(tabs.getByRole("button", { name: "Sessions" }));
+    expect(surface.classList.contains("bg-sidebar")).toBe(true);
     expect(
       within(companion.getByRole("region", { name: "Sessions" })).getByText("Editor conversation"),
     ).toBeDefined();
     await fixture.user.click(tabs.getByRole("button", { name: "Chat" }));
+    expect(surface.classList.contains("bg-sidebar")).toBe(false);
     expect(tabs.getByRole("button", { name: "Chat" }).getAttribute("aria-pressed")).toBe("true");
     await act(async () => {
       expect(
