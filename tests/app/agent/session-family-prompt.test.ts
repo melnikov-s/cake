@@ -9,6 +9,7 @@ import lifecycle from "../../../docs/agent/family-lifecycle.md?raw";
 import { createSessionFamilyOperations } from "../../../src/domain/session-families/cake-session-family-operations";
 import { createProjectSessionOperations } from "../../../src/domain/project-sessions/cake-session-operations";
 import { resultDeliveryGuidance } from "../../../src/contracts/conversations/result-delivery";
+import { backendAgentTools } from "../../../src/contracts/application/backend-agent-tools";
 it("keeps family authority and startup self-contained", () => {
   for (const rule of [
     "Family coordination defaults to Workboard, including descendants",
@@ -47,8 +48,35 @@ it("shares launch result semantics without prerequisite guide reads", () => {
   expect(common).toContain(
     "reply for owed answers/dependencies, notification for background review",
   );
+  expect(common).toContain("No acknowledgment-only replies or duplicate reports");
+  expect(common).toContain("Private pending reports: reports.md");
+  expect(operations.find((o) => o.command === "sessions.send")?.guidance?.join("\n")).toContain(
+    "receiving a report or notification does not require a response",
+  );
+  expect(operations.find((o) => o.command === "sessions.reply")?.guidance?.join("\n")).toContain(
+    "Do not reply merely to acknowledge",
+  );
   expect(project).toContain("No prerequisite guide reads");
   expect(
     operations.find((o) => o.command === "sessions.create-child")?.guidance?.join("\n"),
   ).toContain("no prerequisite guide reads");
+});
+it("limits report-tool guidance to existing private-report bookkeeping in both tool catalogs", () => {
+  const operations = createSessionFamilyOperations(() => {
+    throw Error("help must not invoke runtime");
+  });
+  for (const catalog of [operations, backendAgentTools()]) {
+    const guidance = catalog
+      .find((operation) => operation.command === "sessions.reports.acknowledge")
+      ?.guidance?.join("\n");
+    for (const rule of [
+      "Only for pending private reports actually communicated",
+      "their IDs with exact already-emitted communicatedText",
+      "mark handled and stop reminders, not to reply to the sender",
+      "Never planned prose/intake/tool receipts/unrelated answers",
+      "persisted visible text",
+      "Dismiss only by user decision",
+    ])
+      expect(guidance).toContain(rule);
+  }
 });

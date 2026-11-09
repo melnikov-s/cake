@@ -23,7 +23,7 @@ export const SessionMessageDeliveryOptions = Schema.Struct({
 }).check(sessionMessageDeliveryCheck);
 
 export const sessionMessageDeliveryGuidance =
-  "delivery: fyi is passive context, batched at user input/within 5 minutes; opening does not drain it. Busy waits for idle; stopped waits for user input. Receipts prove retention/admission, not visibility/execution. prompt assigns now; queue orders future work; omission steers active work or starts idle work. resultDelivery is separate. No acknowledgments.";
+  "delivery: fyi is passive context, batched at user input/within 5 minutes; opening does not drain it. Busy waits for idle; stopped waits for user input. Receipts prove retention/admission, not visibility/execution. prompt assigns now; queue orders future work; omission steers active work or starts idle work. resultDelivery is separate. No acknowledgment-only replies.";
 
 export function immediateDelivery(
   streaming: boolean | undefined,

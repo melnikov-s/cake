@@ -138,7 +138,8 @@ describe("Pi 1.0.0 foundation contract", () => {
       "The assignment is inline",
     );
     const deliveryDocs = await readFile(join(docsDirectory, "communication.md"), "utf8");
-    expect(deliveryDocs).toContain("No acknowledgments or duplicate recaps");
+    expect(deliveryDocs).toContain("Incoming session messages need no acknowledgment-only reply");
+    expect(deliveryDocs).toContain("Private pending-report bookkeeping is separate");
     const workgroupDocs = await readFile(join(docsDirectory, "workgroups.md"), "utf8");
     expect(workgroupDocs).toContain("Family coordination defaults to Workboard");
     expect(workgroupDocs).toContain("family-delegation.md");

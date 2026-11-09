@@ -264,7 +264,7 @@ const definitions = [
       topic: "sessions",
       summary: "Attest visible report handling",
       guidance: [
-        "Emit visible notice first; acknowledge IDs with exact communicatedText, never planned/unrelated prose. Dismiss only by user decision. Evidence is visible text, not automatic semantic judgment.",
+        "Only for pending private reports actually communicated: acknowledge their IDs with exact already-emitted communicatedText to mark handled and stop reminders, not to reply to the sender. Never planned prose/intake/tool receipts/unrelated answers. Dismiss only by user decision. Evidence is persisted visible text, not automatic semantic judgment.",
       ],
     },
   },

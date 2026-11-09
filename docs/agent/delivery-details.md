@@ -15,7 +15,7 @@ Direct questions are immediate. outcome:blocked escalates after the worker turn 
 
 Notifications, FYIs, routine board posts and quiet worker reports share one pending batch per conversation. The first item starts its timer; the next user message takes the batch and cancels it. Otherwise delivery is one turn within five minutes or sooner before estimated prompt-cache expiry; unknown/expired cache uses five minutes.
 Busy conversations receive batches after current work, including intervening arrivals; no parallel steering. Explicit stops/interrupted-work review wait for user input. Timers/admissions survive restart and deduplicate.
-A batch has no new user message. Handle obligations together, answer owed questions/blockers, and continue only authorized work. No acknowledgment, receipt echo or automatic recap is needed.
+A batch has no new user message. Handle obligations together, answer owed questions/blockers, and continue only authorized work. No acknowledgment-only reply, receipt echo or automatic recap is needed.
 Fresh Project Chats accept FYIs/immediate handoffs before first manual open. Opening selects/loads the chat but neither sends input nor drains FYIs. Sender-attributed Markdown is not recipient-user authorship. Synthetic instructions stay in context/Pi originals rather than ordinary transcript copy.
 Canceled inputs do not rearm delivery; already admitted inputs cannot be unsent.
 

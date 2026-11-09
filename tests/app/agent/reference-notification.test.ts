@@ -47,6 +47,28 @@ const correlatedReport = (id: string, resultMessageRef = ref): PendingReport => 
 });
 
 describe("passive reference notifications", () => {
+  it("separates sender replies from bookkeeping for actually communicated pending reports", () => {
+    const context = addReferenceNotifications("Current question", [
+      correlatedReport(metadata.messageId),
+    ]);
+    for (const rule of [
+      "no acknowledgment-only reply is needed",
+      "Answer the user first",
+      "communicate useful results once",
+      "Check sessions.reports before repeating stale notices",
+      "Only for pending reports actually communicated",
+      "sessions.reports.acknowledge with their IDs and exact already-emitted communicatedText",
+      "mark handled and stop reminders",
+      "never planned prose/intake/tool receipts/unrelated answers",
+      "Dismiss only by user decision",
+      "interruption retains obligations",
+      "No mutations/polling/wakes authorized",
+    ])
+      expect(context).toContain(rule);
+    expect(context).not.toContain("After visible text, call");
+    expect(splitContextReminders(context).text).toBe("Current question");
+  });
+
   it("presents one exact result across distinct correlations, preserving every handling obligation", () => {
     const reports = [correlatedReport(metadata.messageId), correlatedReport(metadata.threadId)];
     const presentation = pendingReportPresentation(reports);

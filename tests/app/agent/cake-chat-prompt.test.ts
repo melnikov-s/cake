@@ -30,6 +30,8 @@ describe("compact Cake Chat guidance", () => {
       "Omit model overrides unless requested",
       "Never edit settings files",
       "Launch asynchronously",
+      "No acknowledgment-only replies or duplicate reports",
+      "Private pending reports: reports.md",
       "reply for owed answers/dependencies",
       "notification for background review",
       "task done + scoped checks passed = ready, not repo-wide green",

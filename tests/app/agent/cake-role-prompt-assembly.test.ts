@@ -63,6 +63,8 @@ describe("role-specific prompt assembly", () => {
     expect(append).toContain("worktrees.merge without sessionId");
     expect(append).toContain("no fallback");
     expect(append).toContain("Reports/completion grant no merge/resolve approval");
+    expect(append).toContain("No acknowledgment-only replies or duplicate reports");
+    expect(append).toContain("Private pending reports: reports.md");
     expect(append).toContain("task done + scoped checks passed = ready, not repo-wide green");
     for (const rule of [
       "## Deliver and revise",
@@ -182,6 +184,18 @@ describe("role-specific prompt assembly", () => {
     expect(await readFile(join(docs, "cake-chat.md"), "utf8")).toContain("no prerequisite reads");
     const reports = await readFile(join(docs, "reports.md"), "utf8");
     expect(reports).toContain("sessions.completions");
+    for (const rule of [
+      "Ordinary session messages and passive notices need no acknowledgment-only reply or per-message tool acknowledgment",
+      "Only for pending reports actually communicated",
+      "exact already-emitted communicatedText",
+      "do not emit another notice just to acknowledge",
+      "persisted visible text, not semantic adequacy",
+      "Dismiss only when the user says so",
+      "interruption leaves obligations pending",
+      "Listing/reading does not handle reports",
+      "visible communication alone does not mark them handled automatically",
+    ])
+      expect(reports).toContain(rule);
     expect(reports).toContain("Scope complete + relevant checks passed = ready");
     expect(reports).toContain(
       "known relevant failures and uncommitted/unvalidated task changes block readiness",

@@ -4,9 +4,11 @@ Answer the user first. No recap just because a report arrived. Reports grant no 
 
 ## Private reports
 
-sessions.reports lists pending private reports; .read pages text. After a visible grouped notice, .acknowledge with IDs and exact already-emitted communicatedText. Never acknowledge planned prose/tool receipts. Dismiss only when the user says so; interruption leaves obligations pending.
-At a natural boundary emit at most one concise grouped notice; defer disruptive reporting. Acknowledgment attests persisted visible text, not semantic adequacy. Listing/reading does not handle reports; linked originals remain unread until inspected.
-Quiet reports remain pending independently of Pi admission; later real user turns carry bounded reminders. Worker history stays with Pi.
+Ordinary session messages and passive notices need no acknowledgment-only reply or per-message tool acknowledgment. Answer substantive obligations; communicate attention-worthy results once, grouped at a natural boundary. Defer disruptive reporting.
+
+sessions.reports lists pending private reports; .read pages text. Only for pending reports actually communicated, call sessions.reports.acknowledge with their IDs and exact already-emitted communicatedText to mark them handled and stop reminders. This is private bookkeeping, not a reply to the sender. Check sessions.reports before repeating stale notices; do not emit another notice just to acknowledge.
+Acknowledgment attests persisted visible text, not semantic adequacy. Never acknowledge planned prose, intake, tool receipts or unrelated answers. Dismiss only when the user says so; interruption leaves obligations pending. Listing/reading does not handle reports; linked originals remain unread until inspected.
+Quiet reports remain pending independently of Pi admission; visible communication alone does not mark them handled automatically. Later real user turns carry bounded reminders. Worker history stays with Pi.
 
 ## Project Session decisions
 

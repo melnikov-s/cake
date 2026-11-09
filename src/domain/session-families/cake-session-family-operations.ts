@@ -99,7 +99,7 @@ export function createSessionFamilyOperations(
       topic: "sessions",
       summary: "Attest visible report handling",
       guidance: [
-        "Emit grouped notice first, then acknowledge IDs with exact visible communicatedText. Never planned prose/intake/unrelated replies. Dismiss only by user decision; interruption retains obligations. No wake/mutation authorization.",
+        "Only for pending private reports actually communicated: acknowledge their IDs with exact already-emitted communicatedText to mark handled and stop reminders, not to reply to the sender. Never planned prose/intake/tool receipts/unrelated answers. Evidence is persisted visible text. Dismiss only by user decision; interruption retains obligations. No wake/mutation authorization.",
       ],
       inputSchema: PendingReportAcknowledge,
       examples: [
