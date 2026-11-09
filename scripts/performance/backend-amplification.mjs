@@ -30,7 +30,10 @@ import { SavedDraftStorage } from "../../src/services/storage/SavedDraftStorage"
 import { SessionArchiveStorage } from "../../src/services/storage/SessionArchiveStorage";
 import { makeSessionArchiveStorageLive } from "../../src/services/storage/SessionArchiveStorageLive";
 import { makeSessionFamilyStorageLive } from "../../src/services/storage/SessionFamilyStorage";
-import { workingDirectorySessionPath } from "../../src/services/storage/session-files";
+import {
+  snapshotSessionFiles,
+  workingDirectorySessionPath,
+} from "../../src/services/storage/session-files";
 import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees";
 import { ProjectAccess } from "../../src/services/projects/ProjectAccess";
 
@@ -292,9 +295,20 @@ async function sessionCases() {
           streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, query).pipe(
             Stream.mapError((cause) => failure("catalog", cause)),
           ),
-        catalogEntry: (query, id) =>
+        catalogSnapshot: (query) =>
+          Effect.tryPromise({
+            try: (signal) =>
+              snapshotSessionFiles(
+                { workingDirectory: query.workingDirectory, root: query.sessionDirectory },
+                signal,
+              ),
+            catch: (cause) => failure("catalogSnapshot", cause),
+          }),
+        catalogEntry: (query, id, fileSnapshot) =>
           promise("catalogEntry", () =>
-            loadWorkspacePiSessionSummary(query.workingDirectory, id, query.sessionDirectory),
+            loadWorkspacePiSessionSummary(query.workingDirectory, id, query.sessionDirectory, {
+              fileSnapshot,
+            }),
           ),
         inspect: (target, options) =>
           promise("inspect", () =>

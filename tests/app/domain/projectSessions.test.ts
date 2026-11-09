@@ -414,9 +414,9 @@ const makeLayer = (
             resolved: false,
           });
     },
-    catalogEntry: (query, sessionId) =>
+    catalogEntry: (query, sessionId, fileSnapshot) =>
       hooks.catalogEntry
-        ? hooks.catalogEntry(query, sessionId)
+        ? hooks.catalogEntry(query, sessionId, fileSnapshot)
         : hooks.sessionExists === false
           ? Effect.succeed(undefined)
           : Effect.succeed({
@@ -3958,7 +3958,8 @@ describe("Project Sessions domain", () => {
       }).pipe(
         Effect.provideService(CakeSessionRuntimes, {
           ...runtimes,
-          catalogEntry: (query, id) => count("discovery", runtimes.catalogEntry(query, id)),
+          catalogEntry: (query, id, fileSnapshot) =>
+            count("discovery", runtimes.catalogEntry(query, id, fileSnapshot)),
           currentStatus: (target) => count("status", runtimes.currentStatus(target)),
         }),
         Effect.provideService(SessionFamilyStorage, {
@@ -4102,8 +4103,10 @@ describe("Project Sessions domain", () => {
         }),
         Effect.provideService(CakeSessionRuntimes, {
           ...runtimes,
-          catalogEntry: (query, id) =>
-            Effect.sync(() => memberReads++).pipe(Effect.andThen(runtimes.catalogEntry(query, id))),
+          catalogEntry: (query, id, fileSnapshot) =>
+            Effect.sync(() => memberReads++).pipe(
+              Effect.andThen(runtimes.catalogEntry(query, id, fileSnapshot)),
+            ),
         }),
         Effect.provideService(SessionArchiveStorage, {
           ...archive,

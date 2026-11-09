@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect";
+import { Cache, Effect, Stream } from "effect";
 import { summary, archivedSummary } from "./projectSessionSummary";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -152,20 +152,53 @@ export const nextCopyTitle = (sourceTitle: string, existingTitles: ReadonlySet<s
   return formatCopyTitle(baseTitle, copyNumber);
 };
 
+type CatalogFileRoute = Pick<ProjectSessionLocation, "workingDirectory" | "sessionDirectory">;
+
+const makeCatalogFileSnapshots = Effect.fn("ProjectSessions.makeCatalogFileSnapshots")(function* (
+  capacity: number,
+) {
+  const runtimes = yield* CakeSessionRuntimes;
+  return yield* Cache.make({
+    capacity: Math.max(1, capacity),
+    lookup: (route: CatalogFileRoute) => runtimes.catalogSnapshot(route).pipe(asError("catalog")),
+  });
+});
+
 /** Shared metadata belongs to one projection, never a retained cross-request cache. */
 const catalogMetadata = Effect.fn("ProjectSessions.catalogMetadata")(function* () {
   const familyState = yield* (yield* SessionFamilyStorage).state().pipe(asError("catalog"));
   const locations = yield* Effect.cached(
     projectSessionLocations.locations({ includeInactive: true }).pipe(asError("catalog")),
   );
+  // Entries are lazy: inactive/resolved-only lanes need no filename listings.
+  // Every family route is represented by a member; exact lookup adds at most
+  // two fallback routes. This finite roster bounds the cache without eviction
+  // during one projection, including routes shared by different families.
+  const fileSnapshots = yield* makeCatalogFileSnapshots(
+    familyState.families.reduce((count, family) => count + familyMemberIds(family).length, 0) + 2,
+  );
   return {
     families: familyState.families,
     spawns: new Map(familyState.spawnedSessions.map((spawn) => [spawn.sessionId, spawn])),
     locations,
+    fileSnapshots,
   };
 });
 
 type CatalogMetadata = Effect.Success<ReturnType<typeof catalogMetadata>>;
+
+const catalogEntryAt = Effect.fn("ProjectSessions.catalogEntryAt")(function* (
+  route: CatalogFileRoute,
+  sessionId: string,
+  metadata: CatalogMetadata,
+) {
+  const runtimes = yield* CakeSessionRuntimes;
+  const fileSnapshot = yield* Cache.get(metadata.fileSnapshots, {
+    workingDirectory: route.workingDirectory,
+    sessionDirectory: route.sessionDirectory,
+  });
+  return yield* runtimes.catalogEntry(route, sessionId, fileSnapshot).pipe(asError("catalog"));
+});
 
 const FAMILY_CATALOG_MEMBER_CONCURRENCY = 8;
 
@@ -229,15 +262,14 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
           sessionDirectory: configuration.sessionDirectory,
           resolvedSessionDirectory: configuration.resolvedSessionDirectory,
         };
-        const item = yield* sessions
-          .catalogEntry(
-            {
-              workingDirectory: member.workingDirectory,
-              sessionDirectory: configuration.sessionDirectory,
-            },
-            sessionId,
-          )
-          .pipe(asError("catalog"));
+        const item = yield* catalogEntryAt(
+          {
+            workingDirectory: member.workingDirectory,
+            sessionDirectory: configuration.sessionDirectory,
+          },
+          sessionId,
+          metadata,
+        );
         const status = yield* sessions.currentStatus({ ...location, sessionId });
         return item
           ? summary(
@@ -468,7 +500,7 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
   evidence?: {
     readonly state: ApplicationState;
     readonly metadata: CatalogMetadata;
-    readonly entry: ProjectSessionArchiveMetadata | undefined;
+    readonly entry?: ProjectSessionArchiveMetadata | undefined;
   },
 ) {
   const state = evidence?.state ?? (yield* getState());
@@ -483,9 +515,10 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
         : archiveLocation(location),
     )
     .pipe(asError("catalog"));
-  const entry = evidence
-    ? evidence.entry
-    : yield* archive.resolvedProjectEntry(sessionId).pipe(asError("catalog"));
+  const entry =
+    evidence && "entry" in evidence
+      ? evidence.entry
+      : yield* archive.resolvedProjectEntry(sessionId).pipe(asError("catalog"));
   if (entry) {
     const item = yield* archive
       .resolvedEntry(sessionId, archivedStorageLocation(entry))
@@ -496,12 +529,7 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
     };
   }
   const sessions = yield* CakeSessionRuntimes;
-  const item = yield* sessions
-    .catalogEntry(
-      { workingDirectory: location.workingDirectory, sessionDirectory: location.sessionDirectory },
-      sessionId,
-    )
-    .pipe(asError("catalog"));
+  const item = yield* catalogEntryAt(location, sessionId, metadata);
   if (!item) return undefined;
   const status = yield* sessions.currentStatus({ ...location, sessionId });
   return summary(
@@ -529,6 +557,9 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
   const configuration = yield* ProjectSessionConfiguration;
   const runtimes = yield* CakeSessionRuntimes;
   const archive = yield* SessionArchiveStorage;
+  const fileSnapshots = yield* makeCatalogFileSnapshots(
+    discovery.locations.length + discovery.roster.length + 1,
+  );
   const unread = new Set(state.unreadSessionIds);
   const families = new Map(
     discovery.familyState.families.flatMap((family) =>
@@ -662,7 +693,15 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
       if (entry && !item) {
         // A missing archived file keeps its ID title; a corrupt/unreadable file must
         // still fail exact lookup rather than being silently revived by the bulk stream.
-        const exact = yield* Effect.result(runtimes.catalogEntry(location, sessionId));
+        const exact = yield* Effect.result(
+          Effect.gen(function* () {
+            const fileSnapshot = yield* Cache.get(fileSnapshots, {
+              workingDirectory: location.workingDirectory,
+              sessionDirectory: location.sessionDirectory,
+            });
+            return yield* runtimes.catalogEntry(location, sessionId, fileSnapshot);
+          }),
+        );
         if (exact._tag === "Failure") continue;
         item = exact.success;
       }
@@ -735,10 +774,11 @@ export const lookupWithLocation = Effect.fn("ProjectSessions.lookupWithLocation"
         : Effect.fail(error),
     ),
   );
-  let session = yield* discoverSessionAt(location, target.sessionId);
+  const evidence = { state: yield* getState(), metadata: yield* catalogMetadata() };
+  let session = yield* discoverSessionAt(location, target.sessionId, evidence);
   if (!session && target.workingDirectory !== undefined) {
     location = yield* findLocation({ sessionId: target.sessionId });
-    session = yield* discoverSessionAt(location, target.sessionId);
+    session = yield* discoverSessionAt(location, target.sessionId, evidence);
   }
   if (!session)
     return yield* new ProjectSessionError({

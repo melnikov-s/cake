@@ -250,12 +250,13 @@ it.effect.each([0, 1000, 5000])(
             });
           },
           catalog: () => Stream.empty,
-          catalogEntry: (query, sessionId) =>
+          catalogEntry: (query, sessionId, fileSnapshot) =>
             Effect.promise(() =>
               loadWorkspacePiSessionSummary(
                 query.workingDirectory,
                 sessionId,
                 query.sessionDirectory,
+                { fileSnapshot },
               ),
             ),
           inspect: (target) =>
