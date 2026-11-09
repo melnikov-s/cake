@@ -28,6 +28,28 @@ it("preserves operation identity across authoritative progress snapshots", () =>
   expect(catalog.find("/worktree")).toBeUndefined();
 });
 
+it("projects the stable declaration binding independently of attempts and clears it on manual replacement", () => {
+  using fixture = createRendererStoreFixture();
+  const catalog = fixture.models.worktreeOperations;
+  for (const operationId of ["declaration", "declaration:2"]) {
+    applyWorktreeOperationCatalogUpdate(catalog, {
+      operations: [
+        {
+          ...operation("waiting"),
+          operationId,
+          automatic: true,
+          autoMergeRequestId: "declaration",
+        },
+      ],
+    });
+    expect(catalog.find("/worktree")?.autoMergeRequestId).toBe("declaration");
+  }
+  applyWorktreeOperationCatalogUpdate(catalog, {
+    operations: [{ ...operation("waiting"), operationId: "manual" }],
+  });
+  expect(catalog.find("/worktree")?.autoMergeRequestId).toBeUndefined();
+});
+
 it("retains equivalent readiness records and observes every real field/outcome/order change", () => {
   using fixture = createRendererStoreFixture();
   const catalog = fixture.models.worktreeOperations;

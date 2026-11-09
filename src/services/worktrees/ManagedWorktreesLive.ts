@@ -129,6 +129,7 @@ export const ManagedWorktreesLive: Layer.Layer<
         } satisfies WorktreeRecord;
         if (landedSourceCommit) closed.landedSourceCommit = landedSourceCommit;
         Reflect.deleteProperty(closed, "pendingStrategy");
+        Reflect.deleteProperty(closed, "pendingAutomaticLanding");
         if (state === "landed") Reflect.deleteProperty(closed, "pendingLandedSourceCommit");
         return closed;
       });
@@ -471,7 +472,12 @@ export const ManagedWorktreesLive: Layer.Layer<
                 ),
               );
               // landRecord refreshes source, checkpoint and target under the final locks.
-              if (outcome.outcome === "landed") yield* releaseLanding(record, operationId);
+              // Automatic repair is a new validated turn, never an owner of this FIFO slot.
+              if (
+                outcome.outcome === "landed" ||
+                (request.strategy === "preserve" && request.expectedSourceCommit)
+              )
+                yield* releaseLanding(record, operationId);
               yield* publish(worktreePath);
               if (outcome.outcome === "ready")
                 return yield* internalError("Landing unexpectedly stopped after preparation");
@@ -495,6 +501,7 @@ export const ManagedWorktreesLive: Layer.Layer<
                   yield* updateRecord(record, (current) => {
                     const next = { ...current };
                     Reflect.deleteProperty(next, "pendingStrategy");
+                    Reflect.deleteProperty(next, "pendingAutomaticLanding");
                     return next;
                   });
                   yield* landing.clearProposal(record);

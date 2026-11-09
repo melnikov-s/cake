@@ -32,6 +32,8 @@ export const makeTestWorktreeService = (
   ) => run(Effect.flatMap(ManagedWorktrees, operation));
 
   return {
+    /** Compose domain integration checks with the real managed-worktree engine. */
+    run,
     records: () => withService((service) => service.records()),
     create: (
       projectPath: string,

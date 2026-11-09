@@ -54,6 +54,7 @@ export function applyWorktreeOperationCatalogUpdate(
       // Error instances are not Model snapshot values. Project only their validated data.
       const snapshot = {
         ...operation,
+        autoMergeRequestId: operation.autoMergeRequestId,
         cleanupFailures: operation.cleanupFailures?.map((failure) => ({
           _tag: failure._tag,
           operation: failure.operation,

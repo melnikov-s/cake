@@ -23,6 +23,8 @@ export const WorktreeRecord = Schema.Struct({
   // Retirement must retain landing classification. Explicit undefined clears the live projection.
   resolvedFrom: Schema.optional(Schema.Literals(["landed", "discarded"])),
   pendingStrategy: Schema.optionalKey(Schema.Literals(["preserve", "squash"])),
+  // Recovery must not turn automatic repair into unvalidated manual landing.
+  pendingAutomaticLanding: Schema.optionalKey(Schema.Boolean),
   resolveAfterLanding: Schema.optionalKey(Schema.Boolean),
   createdAt: Schema.String,
 });

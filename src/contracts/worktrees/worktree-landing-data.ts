@@ -42,6 +42,8 @@ export const WorktreeLandingOperation = Schema.Struct({
   resolveAfterLanding: Schema.optionalKey(Schema.Boolean),
   /** Auto-merge success is announced by a transient event, never by this replayable snapshot. */
   automatic: Schema.optionalKey(Schema.Literal(true)),
+  /** Stable declaration identity, independent of toggle-authorized attempt IDs. */
+  autoMergeRequestId: Schema.optionalKey(bounded(1, 256)),
   pauseReason: Schema.optionalKey(
     Schema.Literals(["commit", "conflict", "rebase-conflict", "squash-message"]),
   ),

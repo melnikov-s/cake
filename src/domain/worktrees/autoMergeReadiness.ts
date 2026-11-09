@@ -166,6 +166,17 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
     readyToMerge: true,
   };
   if (coordinatorSessionId) Object.assign(request, { coordinatorSessionId });
+  const operation = state.operations.get(target.workingDirectory);
+  if (
+    operation?.automatic &&
+    operation.sessionId === target.sessionId &&
+    (operation.phase === "resolving" || operation.phase === "stalled")
+  ) {
+    const previous = document.autoMergeRequests?.find(
+      (item) => item.id === operation.autoMergeRequestId,
+    );
+    if (previous) Object.assign(request, { repairAttempt: (previous.repairAttempt ?? 0) + 1 });
+  }
   yield* storage.recordAutoMerge(request);
   const stored = (yield* storage.state()).autoMergeRequests?.find((item) => item.id === id);
   if (!stored) return { eligible: false as const, reason: "Readiness was not retained." };

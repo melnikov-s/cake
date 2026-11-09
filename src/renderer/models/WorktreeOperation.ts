@@ -16,6 +16,7 @@ export class WorktreeOperation extends Model {
   allowDirtyTarget = false;
   resolveAfterLanding: WorktreeLandingOperation["resolveAfterLanding"];
   automatic: WorktreeLandingOperation["automatic"];
+  autoMergeRequestId: WorktreeLandingOperation["autoMergeRequestId"];
   pauseReason: WorktreeLandingOperation["pauseReason"];
   error: string | undefined;
   resolvedSessionIds: WorktreeLandingOperation["resolvedSessionIds"];

@@ -54,6 +54,8 @@ export const AutoMergeRequest = Schema.Struct({
   runId: Schema.String,
   attempt: Schema.optionalKey(Schema.Int),
   commit: Schema.String,
+  /** Consecutive agent repair turns; absent on an original task declaration. */
+  repairAttempt: Schema.optionalKey(Schema.Int),
   state: Schema.Literals(["pending", "ready", "landing", "landed", "failed", "canceled"]),
   message: Schema.optionalKey(Schema.String),
 });

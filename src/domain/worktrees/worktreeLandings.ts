@@ -27,6 +27,7 @@ const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandin
   if (normalized.strategy === undefined) delete normalized.strategy;
   if (normalized.resolveAfterLanding === undefined) delete normalized.resolveAfterLanding;
   if (normalized.automatic === undefined) delete normalized.automatic;
+  if (normalized.autoMergeRequestId === undefined) delete normalized.autoMergeRequestId;
   if (normalized.pauseReason === undefined) delete normalized.pauseReason;
   if (normalized.error === undefined) delete normalized.error;
   if (normalized.conflictFiles === undefined) delete normalized.conflictFiles;
@@ -190,10 +191,13 @@ const completeLanding = Effect.fn("WorktreeLandings.completeLanding")(function* 
 });
 
 interface AutomaticLanding {
+  readonly requestId: string;
   readonly commit: string;
   readonly authorize: Effect.Effect<void, WorktreeLandingError>;
   /** Transient presentation of confirmed Git success, never snapshot/recovery delivery. */
   readonly onLanded: Effect.Effect<void>;
+  /** Retires old readiness and waits for a separate, validated repair turn. Never lands. */
+  readonly repair: (text: string) => Effect.Effect<void, WorktreeLandingError>;
 }
 
 const performLanding: (
@@ -273,11 +277,16 @@ const performLanding: (
     conflictFiles: outcome.outcome === "resolving" ? outcome.files : undefined,
   }));
   if (automatic) {
+    yield* automatic.repair(
+      renderCakePrompt(configuredPrompts(application).worktreePreserveConflict, {
+        target: status.targetBranch,
+        files: outcome.outcome === "resolving" ? outcome.files : [],
+      }),
+    );
     yield* update(operation.workspacePath, operation.operationId, (current) => ({
       ...current,
       phase: "stalled",
-      resolveAfterLanding: undefined,
-      error: "Auto-merge needs conflict resolution and fresh validation before retrying.",
+      error: "Repair completed; waiting for fresh authorized readiness.",
     }));
     return;
   }
@@ -475,7 +484,12 @@ const insert = Effect.fn("WorktreeLandings.insert")(function* (
   const coordinator = yield* WorktreeLandingCoordinator;
   const inserted = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.operations.get(operation.workspacePath);
-    if (current && !isTerminal(current)) return [false, state] as const;
+    if (
+      current &&
+      !isTerminal(current) &&
+      !(operation.automatic && current.automatic && current.phase === "stalled")
+    )
+      return [false, state] as const;
     const operations = new Map(state.operations);
     operations.set(operation.workspacePath, normalizeOperation(operation));
     return [true, { ...state, operations }] as const;
@@ -509,6 +523,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
     allowDirtyTarget: input.allowDirtyTarget,
     resolveAfterLanding: input.resolveAfterLanding || undefined,
     automatic: input.automatic ? true : undefined,
+    autoMergeRequestId: input.automatic?.requestId,
   });
   yield* insert(operation);
   yield* run(
@@ -630,6 +645,12 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
   );
   if (current?.kind === "landing")
     yield* worktreeLifecycle.requireDirectMerge(status.record.projectPath);
+  if (current?.automatic)
+    return yield* new WorktreeLandingError({
+      operation: "retry",
+      message:
+        "Automatic repair requires fresh commit-bound readiness and current Auto-merge authorization.",
+    });
   const operation = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.operations.get(input.workspacePath);
     if (!current || current.phase !== "stalled") return [undefined, state] as const;
@@ -833,7 +854,14 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
       workspacePath: input.workspacePath,
       sessionId: input.sessionId,
       kind: strategy ? "landing" : "rebase",
-      phase: strategy ? "waiting" : ready ? "rebasing" : "stalled",
+      phase: status.record.pendingAutomaticLanding
+        ? "stalled"
+        : strategy
+          ? "waiting"
+          : ready
+            ? "rebasing"
+            : "stalled",
+      automatic: status.record.pendingAutomaticLanding ? true : undefined,
       strategy,
       allowDirtyTarget: false,
       resolveAfterLanding: status.record.resolveAfterLanding,
@@ -846,7 +874,7 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
           : "rebase-conflict",
     });
     yield* insert(operation);
-    if (strategy) yield* run(operation, adoptLanding(operation, ready));
+    if (strategy && !operation.automatic) yield* run(operation, adoptLanding(operation, ready));
   }
   const snapshot: WorktreeLandingSnapshot = {};
   if (status) Object.assign(snapshot, { status });

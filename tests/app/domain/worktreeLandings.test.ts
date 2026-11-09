@@ -185,6 +185,33 @@ const awaitPhase = (phase: WorktreeLandingPhase) =>
   });
 
 describe("WorktreeLandings", () => {
+  it.effect.each([true, false])(
+    "recovers automatic repair as a validation-only pause (rebasing=%s)",
+    (rebasing) => {
+      const events: string[] = [];
+      return Effect.gen(function* () {
+        const inspected = yield* worktreeLandings.inspect({ workspacePath, sessionId: "owner" });
+        expect(inspected.operation).toMatchObject({ automatic: true, phase: "stalled" });
+        expect(events).toEqual([]);
+        const error = yield* worktreeLandings
+          .retry({ workspacePath, sessionId: "owner" })
+          .pipe(Effect.flip);
+        expect(error.message).toContain("fresh commit-bound readiness");
+        expect(events).toEqual([]);
+      }).pipe(
+        Effect.provide(
+          services({
+            status: () => ({
+              ...baseStatus(),
+              rebasing,
+              record: { ...record, pendingStrategy: "preserve", pendingAutomaticLanding: true },
+            }),
+            events,
+          }),
+        ),
+      );
+    },
+  );
   it.effect("missing project settings keep the existing direct-merge default", () =>
     Effect.gen(function* () {
       yield* worktreeLifecycle.requireDirectMerge("/project-without-settings");

@@ -742,6 +742,92 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await git(repo, "checkout", "main");
   });
 
+  it("releases automatic conflict admission while repair runs and requires a fresh validated commit", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const first = await worktrees.create(repo);
+    const second = await worktrees.create(repo);
+    await writeFile(join(repo, "shared.txt"), "main version\n");
+    await commitAll(repo, "main change");
+    await writeFile(join(first.worktreePath, "shared.txt"), "source version\n");
+    await commitAll(first.worktreePath, "source change");
+    const validated = (await git(first.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    const target = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
+    await expect(
+      worktrees.land(first.worktreePath, {
+        operationId: "automatic-before-repair",
+        request: { strategy: "preserve", expectedSourceCommit: validated },
+      }),
+    ).resolves.toEqual({ outcome: "resolving", files: ["shared.txt"] });
+    expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(target);
+    await expect(worktrees.status(first.worktreePath)).resolves.toMatchObject({
+      rebasing: true,
+      record: { pendingStrategy: "preserve", pendingAutomaticLanding: true },
+    });
+    // A second landing completes before the first repair, proving no retained slot.
+    await writeFile(join(second.worktreePath, "second.txt"), "second\n");
+    await commitAll(second.worktreePath, "second change");
+    await expect(
+      worktrees.land(second.worktreePath, {
+        request: { strategy: "preserve" },
+      }),
+    ).resolves.toMatchObject({ outcome: "landed" });
+    await writeFile(join(first.worktreePath, "shared.txt"), "resolved version\n");
+    await git(first.worktreePath, "add", "-A");
+    await execFileAsync("git", ["rebase", "--continue"], {
+      cwd: first.worktreePath,
+      env: { ...process.env, GIT_EDITOR: "true" },
+    });
+    await git(first.worktreePath, "rebase", "main");
+    const repaired = (await git(first.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    expect(repaired).not.toBe(validated);
+    // Repair does not imply permission to retry with either manual or stale authority.
+    await expect(
+      worktrees.land(first.worktreePath, { request: { strategy: "preserve" } }),
+    ).rejects.toThrow(/fresh validated readiness/);
+    await expect(
+      worktrees.land(first.worktreePath, {
+        request: { strategy: "preserve", expectedSourceCommit: validated },
+      }),
+    ).rejects.toThrow(/readiness is stale/);
+    await expect(
+      worktrees.land(first.worktreePath, {
+        operationId: "fresh-validated-retry",
+        request: { strategy: "preserve", expectedSourceCommit: repaired },
+      }),
+    ).resolves.toMatchObject({ outcome: "landed", commit: repaired });
+    expect(await readFile(join(repo, "shared.txt"), "utf8")).toBe("resolved version\n");
+    expect(
+      (await worktrees.records()).find((item) => item.worktreePath === first.worktreePath),
+    ).not.toHaveProperty("pendingAutomaticLanding");
+  });
+
+  it("hands even a clean automatic rebase back for validation before touching the target", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const source = await worktrees.create(repo);
+    await writeFile(join(source.worktreePath, "feature.txt"), "feature\n");
+    await commitAll(source.worktreePath, "source change");
+    const validated = (await git(source.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    await writeFile(join(repo, "upstream.txt"), "upstream\n");
+    await commitAll(repo, "upstream change");
+    const target = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
+    await expect(
+      worktrees.land(source.worktreePath, {
+        request: { strategy: "preserve", expectedSourceCommit: validated },
+      }),
+    ).resolves.toEqual({ outcome: "resolving", files: [] });
+    const rebased = (await git(source.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    expect(rebased).not.toBe(validated);
+    expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(target);
+    expect(existsSync(join(repo, "feature.txt"))).toBe(false);
+    await expect(
+      worktrees.land(source.worktreePath, {
+        request: { strategy: "preserve", expectedSourceCommit: rebased },
+      }),
+    ).resolves.toMatchObject({ outcome: "landed", commit: rebased });
+  });
+
   it("pauses on rebase conflicts for preserve landing and lands after the agent resolves them", async () => {
     const repo = await repository();
     const worktrees = service();

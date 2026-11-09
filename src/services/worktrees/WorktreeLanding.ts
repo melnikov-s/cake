@@ -269,6 +269,22 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
     if (
       request.strategy === "preserve" &&
       request.expectedSourceCommit &&
+      !record.pendingAutomaticLanding
+    ) {
+      yield* updateRecord(record, (current) => ({
+        ...current,
+        pendingAutomaticLanding: true,
+        pendingStrategy: request.strategy,
+      }));
+    }
+    if (
+      record.pendingAutomaticLanding &&
+      !(request.strategy === "preserve" && request.expectedSourceCommit)
+    )
+      return yield* internalError("Automatic repair requires fresh validated readiness");
+    if (
+      request.strategy === "preserve" &&
+      request.expectedSourceCommit &&
       (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim() !== request.expectedSourceCommit
     )
       return yield* internalError("Merge readiness is stale: HEAD changed after validation");
@@ -333,6 +349,16 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
       if (conflicts) {
         yield* rememberPendingLanding(record, "preserve");
         return { outcome: "resolving", files: conflicts };
+      }
+      if (
+        request.expectedSourceCommit &&
+        (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim() !==
+          request.expectedSourceCommit
+      ) {
+        // Even a clean rebase creates unvalidated commits. Hand back to the owner
+        // before touching the target; the old readiness must never authorize them.
+        yield* rememberPendingLanding(record, "preserve");
+        return { outcome: "resolving", files: [] };
       }
       if (prepareOnly) return { outcome: "ready" };
       const merge = yield* Effect.result(

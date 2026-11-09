@@ -7,6 +7,7 @@ import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
+import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -24,6 +25,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
   const application = yield* ApplicationState;
   const clientEvents = yield* ClientEvents;
   const renderer = yield* RendererRequestCoordinator;
+  const agent = yield* WorktreeLandingAgent;
   const requests = (yield* storage.state()).autoMergeRequests ?? emptyRequests;
   yield* SubscriptionRef.update(coordinator.state, (state) =>
     state.autoMergeRequests === requests ? state : { ...state, autoMergeRequests: requests },
@@ -71,11 +73,42 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
     }));
   });
   for (const request of requests) {
-    if (request.state !== "ready" && request.state !== "landing" && request.state !== "pending")
-      continue;
     const operationId = request.attempt ? `${request.id}:${request.attempt}` : request.id;
     const current = yield* SubscriptionRef.get(coordinator.state);
     const operation = current.operations.get(request.workspacePath);
+    const repairPredecessor =
+      request.repairAttempt !== undefined &&
+      operation?.automatic &&
+      operation.sessionId === request.sessionId &&
+      requests.some(
+        (previous) =>
+          operation.autoMergeRequestId === previous.id &&
+          (previous.repairAttempt ?? 0) + 1 === request.repairAttempt,
+      );
+    // Pi can retire active input before its completion hooks finish. A repair
+    // declaration may still be pending when promptAndWait returns; only the
+    // normal successful-settlement path may promote it to an authorized retry.
+    if (
+      repairPredecessor &&
+      request.state === "canceled" &&
+      !request.readyToMerge &&
+      operation.phase === "stalled"
+    ) {
+      const error =
+        request.message ??
+        "Repair turn did not complete successfully; no retry or resolution occurred";
+      yield* SubscriptionRef.update(coordinator.state, (state) => {
+        if (state.operations.get(request.workspacePath)?.operationId !== operation.operationId)
+          return state;
+        const operations = new Map(state.operations);
+        operations.set(request.workspacePath, { ...operation, phase: "failed", error });
+        return { ...state, operations };
+      });
+      yield* finish(request, "failed", error);
+      continue;
+    }
+    if (request.state !== "ready" && request.state !== "landing" && request.state !== "pending")
+      continue;
     if (request.state === "landing") {
       if (operation?.operationId === operationId) {
         if (operation.phase === "landed") {
@@ -154,6 +187,17 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
       continue;
     }
+    // A repair declaration belongs to its live predecessor operation. Dismissal
+    // must not turn that follow-up into an independent task (or survive off/on).
+    if (request.repairAttempt !== undefined && !repairPredecessor) {
+      yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
+      yield* finish(
+        request,
+        "canceled",
+        "Automatic repair was canceled; fresh task readiness required",
+      );
+      continue;
+    }
     const owner = (yield* worktrees.records()).find(
       (item) => item.worktreePath === request.workspacePath,
     );
@@ -195,7 +239,13 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
               : (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)
                 ? "Waiting for session to become idle"
                 : [...current.operations.values()].some(
-                      (item) => !["landed", "complete", "failed", "stalled"].includes(item.phase),
+                      (item) =>
+                        !["landed", "complete", "failed", "stalled"].includes(item.phase) &&
+                        !(
+                          item.automatic &&
+                          item.phase === "resolving" &&
+                          item.workspacePath !== request.workspacePath
+                        ),
                     )
                   ? "Waiting for another landing"
                   : undefined;
@@ -250,16 +300,9 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         (error) => new WorktreeLandingError({ operation: "autoMerge", message: error.message }),
       ),
     );
-    if (operation?.phase === "stalled") {
-      const previous = requests.find(
-        (item) =>
-          item.id === operation.operationId || operation.operationId.startsWith(`${item.id}:`),
-      );
-      if (!previous) {
-        yield* finish(request, "failed", "A manual landing is stalled; finish or cancel it first");
-        continue;
-      }
-      yield* landings.cancel(request.workspacePath, operation.operationId);
+    if (operation?.phase === "stalled" && !operation.automatic) {
+      yield* finish(request, "failed", "A manual landing is stalled; finish or cancel it first");
+      continue;
     }
     yield* storage.updateAutoMerge(request.id, "landing");
     yield* landings
@@ -272,8 +315,57 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         commitBeforeLanding: false,
         resolveAfterLanding: true,
         automatic: {
+          requestId: request.id,
           commit: request.commit,
           authorize,
+          repair: (text) =>
+            Effect.gen(function* () {
+              // Retire the immutable declaration before admitting a repair input. A
+              // toggle cycle must not resurrect validation of the pre-repair commit.
+              yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
+              if ((request.repairAttempt ?? 0) >= 2)
+                return yield* new WorktreeLandingError({
+                  operation: "repair",
+                  message:
+                    "Automatic repair stopped after two repair turns with recurring conflicts; no merge or resolution occurred.",
+                });
+              yield* agent.promptAndWait({
+                sessionId: request.sessionId,
+                text: `${text}\n\nAutomatic landing repair: own routine merge/rebase conflicts. If Git already completed a clean rebase, review the updated commits. Revalidate the final changes with task-scoped checks, commit, then call worktrees.reportReadiness with that exact HEAD. Do not call worktrees.merge, resolve sessions, or change Auto-merge. Cake will retry only after successful turn completion and fresh current authorization. Report genuine repair failures or ambiguous design/permission decisions honestly.`,
+              });
+              const status = yield* worktrees.status(request.workspacePath);
+              const fresh = (yield* storage.state()).autoMergeRequests?.find(
+                (item) =>
+                  item.id !== request.id &&
+                  item.sessionId === request.sessionId &&
+                  item.workspacePath === request.workspacePath &&
+                  item.runId === request.runId &&
+                  item.repairAttempt === (request.repairAttempt ?? 0) + 1 &&
+                  item.readyToMerge &&
+                  (item.state === "pending" || item.state === "ready") &&
+                  item.commit !== request.commit,
+              );
+              if (!status || status.dirtyCount > 0 || status.merging || status.rebasing || !fresh)
+                return yield* new WorktreeLandingError({
+                  operation: "repair",
+                  message:
+                    "Automatic repair did not produce clean committed changes and fresh validated completion; no retry or resolution occurred.",
+                });
+            }).pipe(
+              Effect.mapError(
+                (error) =>
+                  new WorktreeLandingError({ operation: "repair", message: error.message }),
+              ),
+              Effect.tapError((error) =>
+                storage.invalidateAutoMerge(request.workspacePath).pipe(
+                  Effect.andThen(finish(request, "failed", error.message)),
+                  Effect.mapError(
+                    (failure) =>
+                      new WorktreeLandingError({ operation: "repair", message: failure.message }),
+                  ),
+                ),
+              ),
+            ),
           onLanded: Effect.gen(function* () {
             // Project Chat outlives source-session resolution. Its existing binding owns
             // notification delivery; never broadcast to other projects/windows or replay.

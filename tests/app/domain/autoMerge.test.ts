@@ -5,7 +5,11 @@ import { expect } from "vitest";
 import * as digest from "../../../src/domain/cake-chats/cakeChatDigest";
 import { snapshot } from "../helpers/piRuntimeFixture";
 import { runPass } from "../../../src/domain/worktrees/autoMerge";
-import { start } from "../../../src/domain/worktrees/worktreeLandings";
+import { makeTurnLifecycle } from "../../../src/domain/project-sessions/projectSessionTurnLifecycle";
+import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
+import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import { SessionCoordination } from "../../../src/services/session-catalogs/SessionCoordination";
+import { cancel, start } from "../../../src/domain/worktrees/worktreeLandings";
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
@@ -20,7 +24,10 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
+import {
+  WorktreeLandingAgent,
+  WorktreeLandingAgentError,
+} from "../../../src/services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import {
   WorktreeLandingCoordinator,
@@ -73,6 +80,10 @@ function fixture(
   let landing = options.landing ?? "merge";
   const externalRecord = { ...record, projectPath: "/external", worktreePath: "/external-tree" };
   let active: string[] = [];
+  let head = options.head ?? commit;
+  let conflict = options.conflict;
+  let executingTurns = options.executingTurns ?? ["turn"];
+  let repair: Effect.Effect<void, WorktreeLandingAgentError> = Effect.void;
   let currentRecord: WorktreeRecord = options.recovery
     ? { ...record, state: "landed", resolveAfterLanding: true, landedSourceCommit: commit }
     : record;
@@ -127,8 +138,15 @@ function fixture(
         }),
     }),
     Layer.mock(SessionCatalogChanges, { publish: () => Effect.void }),
+    Layer.succeed(ProjectSessionConfiguration, {
+      agentDirectory: "/cake",
+      sessionDirectory: "/sessions",
+      resolvedSessionDirectory: "/resolved",
+    }),
+    Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active") }),
+    Layer.mock(SessionCoordination, { settleTurn: () => Effect.void }),
     Layer.mock(CakeSessionRuntimes, {
-      executingTurnIds: () => Effect.succeed(options.executingTurns ?? ["turn"]),
+      executingTurnIds: () => Effect.sync(() => executingTurns),
       activeWorkingDirectories: () => Effect.sync(() => active),
     }),
     Layer.mock(ApplicationState, {
@@ -186,7 +204,7 @@ function fixture(
           yield* authorize ?? Effect.void;
           if (
             request.strategy !== "preserve" ||
-            request.expectedSourceCommit !== (options.manual ? undefined : (options.head ?? commit))
+            request.expectedSourceCommit !== (options.manual ? undefined : head)
           )
             return yield* new ManagedWorktreeError({
               operation: "land",
@@ -195,13 +213,18 @@ function fixture(
           events.push("land");
           if (options.failure)
             return yield* new ManagedWorktreeError({ operation: "land", message: "Target dirty" });
-          return options.conflict
+          return conflict
             ? { outcome: "resolving" as const, files: ["conflict.ts"] }
-            : { outcome: "landed" as const, commit };
+            : { outcome: "landed" as const, commit: head };
         }),
     }),
     Layer.mock(WorktreeLandingAgent, {
-      promptAndWait: () => Effect.die("Automatic landing must not ask an LLM for repairs"),
+      promptAndWait: ({ text }) =>
+        Effect.sync(() => {
+          events.push("repair");
+          expect(text).toContain("worktrees.reportReadiness");
+          expect(text).toContain("Do not call worktrees.merge");
+        }).pipe(Effect.andThen(Effect.suspend(() => repair))),
     }),
     Layer.mock(WorktreeLandingCompletion, {
       resolveWorkingDirectory: () =>
@@ -226,6 +249,18 @@ function fixture(
     events,
     notices,
     recipients,
+    setRepair: (value: Effect.Effect<void, WorktreeLandingAgentError>) => {
+      repair = value;
+    },
+    setHead: (value: string) => {
+      head = value;
+    },
+    setConflict: (value: boolean) => {
+      conflict = value;
+    },
+    setExecutingTurns: (value: string[]) => {
+      executingTurns = value;
+    },
     setLanding: (value: "merge" | "pull-request") => {
       landing = value;
     },
@@ -260,8 +295,8 @@ it.effect.each([
         handoffSettled: true,
       });
       yield* ready;
-      yield* runPass();
       expect((yield* storage.state()).coordinatorDigest ?? []).toEqual([]);
+      yield* runPass();
       yield* terminal;
       yield* runPass();
       yield* runPass();
@@ -562,27 +597,345 @@ it.effect(
   },
 );
 
+const completedRepair = Effect.fn("test.completedRepair")(function* (
+  test: ReturnType<typeof fixture>,
+  id = "repair-turn",
+  head = "b".repeat(40),
+  outcome: "complete" | "aborted" | "failed" = "complete",
+  settle = true,
+) {
+  const context =
+    yield* Effect.context<
+      Effect.Services<ReturnType<typeof report> | ReturnType<typeof makeTurnLifecycle>>
+    >();
+  return Effect.gen(function* () {
+    const old = (yield* requests).filter((item) => item.id !== id).at(-1);
+    expect(old?.readyToMerge).toBe(false);
+    test.setHead(head);
+    test.setExecutingTurns([id]);
+    test.events.push("scoped-validation");
+    expect(yield* report(target, { ...readiness, validatedCommit: head })).toEqual({
+      eligible: true,
+    });
+    if (!settle) return;
+    const hooks = yield* makeTurnLifecycle({
+      sessionId: "owner",
+      location: {
+        projectPath: "/project",
+        projectName: "Project",
+        workingDirectory: "/tree",
+        sessionDirectory: "/sessions",
+        resolvedSessionDirectory: "/resolved",
+      },
+    });
+    yield* hooks.onTurnSettled({
+      sessionId: "owner",
+      turnId: id,
+      outcome,
+      result: {
+        stopReason: "stop",
+        text: "Repaired conflicts, committed final changes, and task-scoped validation passed.",
+      },
+    });
+  }).pipe(
+    Effect.provide(context),
+    Effect.mapError(
+      (error) =>
+        new WorktreeLandingAgentError({
+          operation: "repair",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+    ),
+  );
+});
+
 it.effect(
-  "retries its own stalled automatic operation without misclassifying it as a manual landing",
+  "repairs, revalidates and retries only a fresh immutable commit with resolution intent",
   () => {
     const test = fixture({ conflict: true });
     return Effect.gen(function* () {
       yield* ready;
+      test.setRepair(yield* completedRepair(test));
+      yield* runPass();
+      yield* terminal;
+      const coordinator = yield* WorktreeLandingCoordinator;
+      const paused = (yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree");
+      expect(paused).toMatchObject({
+        automatic: true,
+        autoMergeRequestId: "turn",
+        resolveAfterLanding: true,
+        phase: "stalled",
+      });
+      expect(
+        (yield* requests).map((item) => [
+          item.id,
+          item.commit,
+          item.readyToMerge,
+          item.repairAttempt,
+        ]),
+      ).toEqual([
+        ["turn", commit, false, undefined],
+        ["repair-turn", "b".repeat(40), true, 1],
+      ]);
+      expect(test.events).toEqual(["land", "repair", "scoped-validation"]);
+      test.setConflict(false);
       yield* runPass();
       yield* terminal;
       yield* runPass();
-      yield* setEnabled("/project", false);
-      yield* setEnabled("/project", true);
-      yield* runPass();
-      yield* terminal;
-      yield* runPass();
-      expect((yield* requests)[0]?.message).toContain("conflict resolution");
-      expect((yield* requests)[0]?.message).not.toContain("manual landing");
-      expect(test.events.filter((item) => item === "land")).toHaveLength(2);
-      expect(test.events).not.toContain("resolve");
+      expect(test.events).toEqual([
+        "land",
+        "repair",
+        "scoped-validation",
+        "land",
+        "intent:true",
+        "resolve",
+        "intent:false",
+      ]);
+      expect((yield* requests)[1]).toMatchObject({ state: "landed", commit: "b".repeat(40) });
+      expect(
+        (yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree")?.autoMergeRequestId,
+      ).toBe("repair-turn");
+      expect(test.notices).toHaveLength(1);
     }).pipe(Effect.provide(test.layer));
   },
 );
+
+it.effect.each(["complete", "aborted"] as const)(
+  "resumes only after delayed real completion hooks settle (%s), without Retry",
+  (outcome) => {
+    const test = fixture({ conflict: true });
+    return Effect.gen(function* () {
+      yield* ready;
+      test.setRepair(
+        yield* completedRepair(test, "repair-turn", "b".repeat(40), "complete", false),
+      );
+      yield* runPass();
+      yield* terminal;
+      test.setConflict(false);
+      yield* runPass();
+      expect((yield* requests)[1]?.state).toBe("pending");
+      expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+      const hooks = yield* makeTurnLifecycle({
+        sessionId: "owner",
+        location: {
+          projectPath: "/project",
+          projectName: "Project",
+          workingDirectory: "/tree",
+          sessionDirectory: "/sessions",
+          resolvedSessionDirectory: "/resolved",
+        },
+      });
+      yield* hooks.onTurnSettled({
+        sessionId: "owner",
+        turnId: "repair-turn",
+        outcome,
+        result: {
+          stopReason: "stop",
+          text: "Conflict repair committed and final scoped validation passed successfully.",
+        },
+      });
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect((yield* requests)[1]?.state).toBe(outcome === "complete" ? "landed" : "failed");
+      expect(test.events.filter((item) => item === "land")).toHaveLength(
+        outcome === "complete" ? 2 : 1,
+      );
+      expect(test.events.includes("resolve")).toBe(outcome === "complete");
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect.each(["revoked", "input", "changed-commit", "failed-turn"] as const)(
+  "does not reuse repaired readiness after %s",
+  (change) => {
+    const test = fixture({ conflict: true });
+    return Effect.gen(function* () {
+      yield* ready;
+      test.setRepair(yield* completedRepair(test));
+      yield* runPass();
+      yield* terminal;
+      test.setConflict(false);
+      if (change === "revoked") yield* setEnabled("/project", false);
+      if (change === "input") yield* (yield* SessionFamilyStorage).invalidateAutoMerge("/tree");
+      if (change === "changed-commit") test.setHead("c".repeat(40));
+      if (change === "failed-turn") {
+        yield* (yield* SessionFamilyStorage).invalidateAutoMerge("/tree");
+        yield* (yield* SessionFamilyStorage).updateAutoMerge("repair-turn", "canceled");
+      }
+      yield* runPass();
+      if (change === "changed-commit") yield* terminal;
+      expect(test.events.filter((event) => event === "land")).toHaveLength(1);
+      expect(test.events).not.toContain("resolve");
+      expect(test.notices).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect.each([false, true])(
+  "canceled repaired work never resumes, including an off/on cycle (%s)",
+  (toggle) => {
+    const test = fixture({ conflict: true });
+    return Effect.gen(function* () {
+      yield* ready;
+      test.setRepair(yield* completedRepair(test));
+      yield* runPass();
+      yield* terminal;
+      yield* cancel("/tree", "turn");
+      if (toggle) {
+        yield* setEnabled("/project", false);
+        yield* setEnabled("/project", true);
+      }
+      test.setConflict(false);
+      yield* runPass();
+      yield* runPass();
+      expect((yield* requests).every((item) => !item.readyToMerge)).toBe(true);
+      expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+      expect(test.events).not.toContain("resolve");
+      expect(test.notices).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect.each(["aborted", "failed"] as const)(
+  "never automatically resumes a %s repair turn, even after readiness was declared",
+  (outcome) => {
+    const test = fixture({ conflict: true });
+    return Effect.gen(function* () {
+      yield* ready;
+      test.setRepair(yield* completedRepair(test, "repair-turn", "b".repeat(40), outcome));
+      yield* runPass();
+      yield* terminal;
+      test.setConflict(false);
+      yield* runPass();
+      expect((yield* requests)[1]).toMatchObject({ readyToMerge: false, state: "canceled" });
+      expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+      expect(test.events).not.toContain("resolve");
+      expect(test.notices).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("bounds recurring conflicts across fresh repair declarations", () => {
+  const test = fixture({ conflict: true });
+  return Effect.gen(function* () {
+    yield* ready;
+    for (const [index, head] of ["b", "c"].entries()) {
+      test.setRepair(yield* completedRepair(test, `repair-${index}`, head.repeat(40)));
+      yield* runPass();
+      yield* terminal;
+    }
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    expect(test.events.filter((event) => event === "repair")).toHaveLength(2);
+    expect(test.events.filter((event) => event === "land")).toHaveLength(3);
+    expect((yield* requests).at(-1)).toMatchObject({
+      state: "failed",
+      readyToMerge: false,
+      repairAttempt: 2,
+    });
+    expect((yield* requests).at(-1)?.message).toContain("two repair turns");
+    expect(test.events).not.toContain("resolve");
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect("reports a failed repair without resurrecting validation or resolving", () => {
+  const test = fixture({ conflict: true });
+  return Effect.gen(function* () {
+    yield* ready;
+    test.setRepair(
+      Effect.fail(
+        new WorktreeLandingAgentError({ operation: "prompt", message: "Repair turn failed" }),
+      ),
+    );
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    expect((yield* requests)[0]).toMatchObject({
+      state: "failed",
+      readyToMerge: false,
+      message: "Repair turn failed",
+    });
+    expect(test.events).not.toContain("resolve");
+    expect(test.notices).toEqual([]);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect(
+  "repair waiting does not block another worktree and cannot be canceled as queued Git",
+  () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const test = fixture({
+        conflict: true,
+        extraRecords: [{ ...record, worktreePath: "/other-tree" }],
+      });
+      yield* Effect.gen(function* () {
+        yield* ready;
+        test.setRepair(
+          Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))),
+        );
+        yield* runPass();
+        yield* Deferred.await(entered);
+        const cancelError = yield* cancel("/tree", "turn").pipe(Effect.flip);
+        expect(cancelError.message).toContain("already started");
+        const storage = yield* SessionFamilyStorage;
+        const first = (yield* requests)[0];
+        if (!first) return yield* Effect.die("Missing original request");
+        yield* storage.registerSpawn({
+          sessionId: "other-owner",
+          projectPath: "/project",
+          workingDirectory: "/other-tree",
+          requester: {
+            sessionId: projectChatSessionId("/project"),
+            kind: "cake-chat",
+            title: "Project Chat",
+          },
+          reportDelivered: true,
+          handoffSettled: true,
+        });
+        yield* storage.recordAutoMerge({
+          ...first,
+          id: "other-turn",
+          sessionId: "other-owner",
+          workspacePath: "/other-tree",
+          state: "ready",
+          readyToMerge: true,
+        });
+        test.setConflict(false);
+        yield* runPass();
+        const coordinator = yield* WorktreeLandingCoordinator;
+        yield* SubscriptionRef.changes(coordinator.state).pipe(
+          Stream.filter((state) => state.operations.get("/other-tree")?.phase === "landed"),
+          Stream.runHead,
+        );
+        expect(test.events.filter((event) => event === "land")).toHaveLength(2);
+        yield* Deferred.succeed(release, undefined);
+        yield* terminal;
+      }).pipe(Effect.provide(test.layer));
+    }),
+);
+
+it.effect("does not resurrect pre-repair readiness through a toggle cycle", () => {
+  const test = fixture({ conflict: true });
+  return Effect.gen(function* () {
+    yield* ready;
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    yield* setEnabled("/project", false);
+    yield* setEnabled("/project", true);
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    expect((yield* requests)[0]?.message).toContain("fresh validated completion");
+    expect((yield* requests)[0]?.readyToMerge).toBe(false);
+    expect(test.events.filter((item) => item === "land")).toHaveLength(1);
+    expect(test.events).not.toContain("resolve");
+  }).pipe(Effect.provide(test.layer));
+});
 
 it.effect.each([{ executingTurns: [] }])(
   "rejects readiness without an executing run and includes diagnostic IDs: %j",
@@ -792,7 +1145,10 @@ it.effect.each([
     yield* runPass();
     yield* terminal;
     yield* runPass();
-    expect((yield* requests)[0]).toMatchObject({ state: "failed", readyToMerge: true });
+    expect((yield* requests)[0]).toMatchObject({
+      state: "failed",
+      readyToMerge: !options.conflict,
+    });
     if (!options.resolveFailure) expect(test.events).not.toContain("resolve");
     if (options.head) expect((yield* requests)[0]?.message).toContain("Stale validated commit");
     yield* runPass();
