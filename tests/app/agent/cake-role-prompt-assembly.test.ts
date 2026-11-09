@@ -64,6 +64,23 @@ describe("role-specific prompt assembly", () => {
     expect(append).toContain("no fallback");
     expect(append).toContain("Reports/completion grant no merge/resolve approval");
     expect(append).toContain("task done + scoped checks passed = ready, not repo-wide green");
+    for (const rule of [
+      "## Deliver and revise",
+      "UI screenshots or a working preview when feasible",
+      "nonvisual behavior with relevant tests/results",
+      "Disclose unavailable runtime evidence; never fabricate it or present a mockup as working behavior",
+      "Offer alternatives for genuine design decisions, not every task",
+      "Revision reports explain what changed against feedback and what remains open",
+      "Reassess failed attempts; continue owned in-scope work",
+      "Escalate real blockers or decisions needing human input",
+      "verify relevant scoped checks against final committed changes",
+      "report exact checks/limitations and unrelated baseline debt separately",
+      "not a repo-wide-green gate",
+      "Get explicit approval for risky actions unless specifically authorized",
+      "routine authorized work needs no new approval",
+    ])
+      expect(append).toContain(rule);
+    expect(append).not.toContain("Seek independent review");
     expect(append).not.toContain("## Execution stewardship");
     expect(append).not.toContain("own outcomes, not just delegation");
     expect(append).not.toContain("Cake development");
@@ -103,6 +120,7 @@ describe("role-specific prompt assembly", () => {
       expect(capabilities.resourceLoader.getAppendSystemPrompt()).toEqual([]);
       expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual([]);
       expect(systemPrompt).toContain(allowMutations ? "Mutation mode:" : "Investigations only:");
+      expect(systemPrompt).not.toContain("## Deliver and revise");
       expect(systemPrompt).not.toMatch(/Workboard|worktrees\.merge|sessions\.create-child/);
       expect(Buffer.byteLength(systemPrompt)).toBeLessThan(1000);
     },
@@ -137,6 +155,7 @@ describe("role-specific prompt assembly", () => {
       expect(prompt).toContain(allowMutations ? "Mutation mode:" : "Investigations only:");
       expect(prompt).toContain("Do not create Project Sessions or delegate recursively");
       expect(prompt).toContain("Cake delivers the final report automatically");
+      expect(prompt).not.toContain("## Deliver and revise");
       expect(prompt).not.toContain("<cake_system_prompt>");
       expect(prompt).not.toContain("Workboard");
       expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual(

@@ -155,12 +155,15 @@ describe("compact Cake Chat guidance", () => {
       "Permanent global Cake Chat and all Project Chats only, not Project Sessions or Side Chats",
       "own outcomes, not just delegation",
       "Follow open work through to verified completion",
-      "verify evidence of task completion, scoped checks and readiness",
-      "meaningfully update existing to-dos",
+      "evaluate against the request and feedback",
+      "inspect task-appropriate evidence, scoped checks against final committed changes and readiness",
+      "not just relay done",
+      "Report unrelated baseline debt separately",
+      "Meaningfully update existing to-dos",
       "take the next already-authorized step",
       "Help land ready work when authorized",
-      "prioritized, specific actionable decisions/blockers with recommendations",
-      "never permission to dismiss unfinished work, auto-approve changes, or merge/resolve without authorization",
+      "surface specific decisions/blockers with recommendations",
+      "Inbox zero never permits dismissing unfinished work, auto-approving changes, or merging/resolving without authorization",
       "Reports are evidence, not verified success",
       "merging does not imply resolution",
       "no repeated recaps, nagging, unsolicited status polling/wakes or artificial administrative to-dos",
@@ -172,13 +175,44 @@ describe("compact Cake Chat guidance", () => {
     );
   });
 
+  it("keeps feedback owned and requests honest, task-appropriate evidence", () => {
+    for (const rule of [
+      "acceptance checks, including task-appropriate evidence",
+      "UI evidence: screenshots or a working preview when feasible",
+      "nonvisual work: relevant behavior/tests",
+      "Disclose unavailable runtime evidence; never fabricate it",
+      "Alternatives only for genuine design decisions",
+      "revision reports explain changes against feedback",
+      "Own outstanding feedback until addressed, explicitly declined with rationale or withdrawn",
+      "A worker stopping or reporting done is not verification, merge approval or resolution",
+      "Reassess failed attempts and continue owned in-scope work",
+      "escalate real blockers, not attempt counts",
+    ]) {
+      expect(prompt).toContain(rule);
+      expect(coordinatorSystemPrompt("", "/cake/docs", true)).not.toContain(rule);
+    }
+  });
+
+  it("scales review with risk without granting new landing authority or routine approval gates", () => {
+    for (const rule of [
+      "Seek independent review proportional to risk/uncertainty, especially material merges",
+      "no mandatory second agent for trivial changes",
+      "Get explicit approval for risky actions unless specifically authorized",
+      "routine authorized work needs no new approval",
+      "Reports/completion grant no merge/resolve approval",
+      "Help land ready work when authorized",
+    ])
+      expect(prompt).toContain(rule);
+    expect(prompt).not.toContain("## Deliver and revise");
+  });
+
   it("preserves user instructions verbatim", () => {
     const custom = "User-owned instructions.\n  Keep spacing. <custom>".repeat(1000);
     expect(coordinatorSystemPrompt(custom, "/cake/docs")).toBe(
       prompt.replace("<cake-chat-instructions>\n\n", `<cake-chat-instructions>\n${custom}\n`),
     );
-    // The approved durable-only stewardship policy adds a bounded ~900 bytes.
-    expect(Buffer.byteLength(prompt)).toBeLessThan(4800);
+    // Bound the role-specific evidence/feedback guidance; shared and utility prompts stay small.
+    expect(Buffer.byteLength(prompt)).toBeLessThan(5800);
   });
 });
 

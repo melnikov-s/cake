@@ -6,13 +6,14 @@ import { defaultCakePrompts } from "../../../src/contracts/application/cake-prom
 
 const promptDirectory = new URL("../../../src/services/pi/runtime/prompts/", import.meta.url);
 const budgets = {
-  "cake-chat.md": 3100,
+  // Evidence/feedback stewardship belongs to lead and task roles, not common/utility prompts.
+  "cake-chat.md": 4000,
   "common.md": 850,
   "general-research.md": 650,
   "interview.md": 150,
   "project-interaction.md": 300,
   "project-investigation.md": 700,
-  "project.md": 800,
+  "project.md": 1600,
   "subagent.md": 350,
   "worker-investigation-only.md": 300,
   "worker-mutations.md": 450,
