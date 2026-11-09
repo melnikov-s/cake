@@ -356,6 +356,10 @@ it.each(["breadcrumb", "rail", "menu"] as const)(
     await act(async () => fixture.root.navigationStore.openSession("beta"));
     expect(owner.conversationSessionStore.sideChatStore.target).toBeDefined();
     if (entry === "breadcrumb") {
+      // Project breadcrumbs no longer include global chat. Reopen the retained global
+      // inspection without an explicit home selection, then choose its real ancestor.
+      await act(async () => fixture.root.navigationStore.openCakeChat(CAKE_CHAT_SESSION_ID));
+      expect(screen.getByRole("region", { name: "Subagent" })).toBeDefined();
       await fixture.user.click(
         within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(
           "button",

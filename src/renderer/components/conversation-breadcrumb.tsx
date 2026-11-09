@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 
@@ -35,37 +36,40 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
         aria-label="Conversation breadcrumb"
         className="flex h-full min-w-0 flex-1 items-center gap-x-0.5 overflow-x-auto text-xs leading-5 [&>*]:shrink-0"
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
-          aria-current={!projectPath && lineage.length === 0 ? "page" : undefined}
-          onClick={() => {
-            root.appShellStore.recordConversationInteraction({
-              kind: "cake-chat",
-              sessionId: CAKE_CHAT_SESSION_ID,
-            });
-            void root.navigationStore.openGlobalChat();
-          }}
-        >
-          Cake Chat
-        </Button>
-        {projectPath && (
-          <>
-            <span aria-hidden="true" className="text-muted-foreground">
-              ›
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 max-w-full px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
-              title={projectPath}
-              aria-current={lineage.length === 0 && !previewTitle ? "page" : undefined}
-              onClick={() => void root.navigationStore.openProjectChat(projectPath)}
-            >
-              {root.projectCatalogStore.nameForPath(projectPath)}
-            </Button>
-          </>
+        {!projectPath ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
+            aria-current={!projectPath && lineage.length === 0 ? "page" : undefined}
+            onClick={() => {
+              root.appShellStore.recordConversationInteraction({
+                kind: "cake-chat",
+                sessionId: CAKE_CHAT_SESSION_ID,
+              });
+              void root.navigationStore.openGlobalChat();
+            }}
+          >
+            Cake Chat
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 max-w-full gap-2 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
+            title={projectPath}
+            aria-current={lineage.length === 0 && !previewTitle ? "page" : undefined}
+            onClick={() => void root.navigationStore.openProjectChat(projectPath)}
+          >
+            <Avatar
+              kind="project"
+              seed={root.projectCatalogStore.nameForPath(projectPath)}
+              customIcon={root.projectCatalogStore.find(projectPath)?.settings?.icon}
+              className="size-5"
+              aria-hidden="true"
+            />
+            {root.projectCatalogStore.nameForPath(projectPath)}
+          </Button>
         )}
         {previewTitle && (
           <>

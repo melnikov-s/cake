@@ -10,6 +10,7 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import {
   defaultApplicationState,
+  defaultProjectSettings,
   type ProjectRecord,
 } from "../../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../../src/contracts/projects/project-todos";
@@ -925,18 +926,35 @@ it("keeps the destination selected and accepts a draft while its authority has n
   );
 });
 
-it("uses each registered project name for its breadcrumb, header and home navigation row", async () => {
+it("roots project breadcrumbs in sidebar artwork and name, preserving session and global navigation", async () => {
+  const icon = { mimeType: "image/png", data: "project-artwork" } as const;
   using f = await fixture(undefined, [
-    projectRecord({ path: "/zombies", name: "Orchard" }),
+    projectRecord({
+      path: "/zombies",
+      name: "Orchard",
+      settings: { ...defaultProjectSettings(), icon },
+    }),
     projectRecord({ path: "/finance", name: "Ledger" }),
   ]);
   for (const name of ["Orchard", "Ledger"]) {
     await f.user.click(screen.getByRole("button", { name: `Open Project Chat for ${name}` }));
     const breadcrumb = within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }));
-    expect(breadcrumb.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Cake Chat",
-      name,
-    ]);
+    expect(breadcrumb.getAllByRole("button").map((button) => button.textContent)).toEqual([name]);
+    expect(breadcrumb.queryByRole("button", { name: "Cake Chat" })).toBeNull();
+    expect(breadcrumb.queryByText("›")).toBeNull();
+    const projectButton = breadcrumb.getByRole("button", { name });
+    const artwork = projectButton.querySelector('[data-slot="avatar"]')!;
+    expect(artwork.getAttribute("aria-hidden")).toBe("true");
+    const source = artwork.querySelector("img")!.getAttribute("src");
+    expect(source).toBe(
+      screen
+        .getByRole("button", { name: `Open Project Chat for ${name}` })
+        .querySelector('[data-slot="avatar"] img')!
+        .getAttribute("src"),
+    );
+    expect(source).toMatch(
+      name === "Orchard" ? /^data:image\/png;base64,project-artwork$/ : /^data:image\/svg\+xml/,
+    );
     expect(breadcrumb.getByRole("button", { name }).getAttribute("aria-current")).toBe("page");
     expect(breadcrumb.queryByRole("button", { name: "Project Chat" })).toBeNull();
     expect(
@@ -953,9 +971,28 @@ it("uses each registered project name for its breadcrumb, header and home naviga
     await f.root.navigationStore.openSession("task");
   });
   const breadcrumb = within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }));
+  expect(breadcrumb.getAllByRole("button").map((button) => button.textContent)).toEqual([
+    "Orchard",
+    "task",
+  ]);
+  expect(breadcrumb.queryByRole("button", { name: "Cake Chat" })).toBeNull();
+  expect(breadcrumb.getByRole("button", { name: "task" }).getAttribute("aria-current")).toBe(
+    "page",
+  );
+  expect(
+    breadcrumb.getByRole("button", { name: "Orchard" }).querySelector("img")?.getAttribute("src"),
+  ).toBe("data:image/png;base64,project-artwork");
   expect(
     breadcrumb.getByRole("button", { name: "Orchard" }).getAttribute("aria-current"),
   ).toBeNull();
   await f.user.click(breadcrumb.getByRole("button", { name: "Orchard" }));
   expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
+  await f.user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
+  const global = within(screen.getByRole("navigation", { name: "Conversation breadcrumb" }));
+  expect(global.getAllByRole("button").map((button) => button.textContent)).toEqual(["Cake Chat"]);
+  expect(global.getByRole("button", { name: "Cake Chat" }).getAttribute("aria-current")).toBe(
+    "page",
+  );
+  await f.user.click(global.getByRole("button", { name: "Cake Chat" }));
+  expect(screen.getByRole("combobox", { name: "Message Cake Chat" })).toBeTruthy();
 });

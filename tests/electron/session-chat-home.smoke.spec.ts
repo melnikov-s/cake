@@ -100,9 +100,17 @@ for (const theme of ["light", "dark"] as const) {
       await expect(breadcrumb).toContainText("Session navigation");
       const currentTitle = breadcrumb.locator('[aria-current="page"]');
       await expect(currentTitle).toHaveCSS("font-weight", "700");
-      await expect(breadcrumb.getByRole("button", { name: "Cake Chat", exact: true })).toHaveCSS(
-        "font-weight",
-        "400",
+      await expect(breadcrumb.getByRole("button", { name: "Cake Chat", exact: true })).toHaveCount(
+        0,
+      );
+      const projectButton = breadcrumb.getByRole("button", { name: "Home fixture", exact: true });
+      await expect(projectButton).toHaveCSS("font-weight", "400");
+      await expect(projectButton.locator('[data-slot="avatar"] img')).toHaveAttribute(
+        "src",
+        (await page
+          .getByRole("button", { name: "Open Project Chat for Home fixture", exact: true })
+          .locator('[data-slot="avatar"] img')
+          .getAttribute("src"))!,
       );
       const titleContrast = await currentTitle.evaluate((element) => {
         const foreground = getComputedStyle(element).color;
@@ -250,6 +258,10 @@ for (const theme of ["light", "dark"] as const) {
       await expect(
         page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
       ).toBeVisible();
+      await expect(breadcrumb.getByRole("button")).toHaveText(["Cake Chat"]);
+      await expect(
+        breadcrumb.getByRole("button", { name: "Cake Chat", exact: true }),
+      ).toHaveAttribute("aria-current", "page");
       await expect(
         page.getByRole("button", { name: /^Back to (Project Chat|Cake Chat)/ }),
       ).toHaveCount(0);

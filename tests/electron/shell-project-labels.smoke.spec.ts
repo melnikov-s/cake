@@ -62,7 +62,19 @@ for (const theme of ["dark", "light"] as const) {
         page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
       ).toBeVisible();
       const breadcrumb = page.getByRole("navigation", { name: "Conversation breadcrumb" });
-      await expect(breadcrumb.getByRole("button")).toHaveText(["Cake Chat", "cake"]);
+      await expect(breadcrumb.getByRole("button")).toHaveText(["cake"]);
+      await expect(breadcrumb.getByRole("button", { name: "Cake Chat", exact: true })).toHaveCount(
+        0,
+      );
+      const projectButton = breadcrumb.getByRole("button", { name: "cake", exact: true });
+      const artwork = projectButton.locator('[data-slot="avatar"]');
+      await expect(artwork).toHaveAttribute("aria-hidden", "true");
+      const source = await page
+        .getByRole("button", { name: "Open Project Chat for cake", exact: true })
+        .locator('[data-slot="avatar"] img')
+        .getAttribute("src");
+      await expect(artwork.locator("img")).toHaveAttribute("src", source!);
+      await expect(projectButton).toHaveCSS("-webkit-app-region", "no-drag");
       await expect(breadcrumb.getByRole("button", { name: "cake", exact: true })).toHaveAttribute(
         "aria-current",
         "page",
@@ -102,6 +114,9 @@ for (const theme of ["dark", "light"] as const) {
         await expect(toggle).toHaveCSS("-webkit-app-region", "no-drag");
         console.log(`${theme} ${width}: open/closed/reopened toggle ${JSON.stringify(initial)}`);
       }
+      // The narrow layout removes Workspace's grid track; restore it before interaction.
+      await window.evaluate((native) => native.setContentSize(960, 784));
+      await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(960);
       await workspace.getByRole("button", { name: /^Sessions / }).click();
       await expect(workspace.getByRole("button", { name: "cake", exact: true })).toBeVisible();
       await expect(
