@@ -1,4 +1,5 @@
 import { Option, Schema } from "effect";
+import { AutoMergeOutcome } from "../worktrees/auto-merge";
 import type { CompletionInboxItem } from "../conversations/completion-inbox";
 import type { CakeChatLaunchStatus } from "../project-sessions/session-reporting";
 import { messageReference, parseSessionLink } from "../conversations/message-reference";
@@ -19,6 +20,7 @@ export interface SessionDigestLine {
   readonly title: string;
   readonly status: CakeChatLaunchStatus;
   readonly summary: string;
+  readonly autoMergeOutcome?: AutoMergeOutcome;
   readonly references?: string;
   readonly resultMessageRef?: string;
   readonly kind?: CompletionInboxItem["kind"];
@@ -40,7 +42,10 @@ function sessionDigestLine(line: SessionDigestLine) {
     ? ` · pending decisions: ${line.decisions.join(", ")} (suggestions only)`
     : "";
   const kind = line.kind ? ` · ${line.kind}` : "";
-  return `- [${line.resultMessageRef ? `Full agent response — ${title}` : title}](${line.resultMessageRef ?? `cake://session/${line.sessionId}`}) (${line.reference}) ${statusText[line.status]}${kind}${summary}${decisions}${line.references ? ` · ${line.references}` : ""}`;
+  const outcome = line.autoMergeOutcome
+    ? ` <cake-auto-merge-outcome>${JSON.stringify(line.autoMergeOutcome)}</cake-auto-merge-outcome>`
+    : "";
+  return `- [${line.resultMessageRef ? `Full agent response — ${title}` : title}](${line.resultMessageRef ?? `cake://session/${line.sessionId}`}) (${line.reference}) ${statusText[line.status]}${kind}${summary}${decisions}${line.references ? ` · ${line.references}` : ""}${outcome}`;
 }
 
 const digestGuidance =
@@ -83,6 +88,11 @@ export interface SessionNotificationEntry {
   readonly text: string;
   readonly reference?: string;
   readonly sessionId?: string;
+  readonly autoMergeOutcome?: AutoMergeOutcome;
+  /** Agent-only notices have no report original. Keep their exact text in system details. */
+  readonly systemDetail?: boolean;
+  readonly needsReview?: boolean;
+  readonly body?: string;
 }
 
 // Old Pi originals retain this sentence; omit only that Cake-owned status from presentation.
@@ -115,12 +125,41 @@ export function sessionNotificationEntries(text: string): readonly SessionNotifi
     const key = reference ?? line;
     if (seen.has(key)) continue;
     seen.add(key);
+    const outcomePayload = / <cake-auto-merge-outcome>([^\n]*)<\/cake-auto-merge-outcome>$/.exec(
+      line,
+    )?.[1];
+    const decoded = outcomePayload
+      ? Schema.decodeUnknownOption(Schema.fromJsonString(AutoMergeOutcome))(outcomePayload)
+      : Option.none();
+    const autoMergeOutcome = Option.getOrUndefined(decoded);
+    // Only classify diagnostics inside Cake's own reminder, never arbitrary worker prose.
+    // Legacy outcomes carry no typed lifecycle authority: do not infer success from text.
+    const systemDetail =
+      !reference &&
+      (line.includes("Auto-merge backend outcome:") ||
+        line.includes("<cake-auto-merge-outcome>") ||
+        line === interruptedReportNote);
+    const needsReview =
+      systemDetail &&
+      (/\) (?:failed|is blocked|was interrupted|stopped without a result)(?:[: ·]|$)/.test(line) ||
+        /(?:merged|resolutionSucceeded)=false/.test(line));
+    const body = link
+      ? line
+          .slice(link[0].length)
+          .replace(
+            /^ \([^)]*\) (?:finished|failed|is blocked|stopped without a result|was interrupted)(?: · (?:ready|blocked|investigation))?:?\s*/,
+            "",
+          )
+      : undefined;
     entries.push({
       key,
       title,
       text: line,
       reference,
       ...(target ? { sessionId: target.sessionId } : null),
+      ...(autoMergeOutcome ? { autoMergeOutcome } : null),
+      ...(systemDetail ? { systemDetail: true, needsReview } : null),
+      ...(!reference && !systemDetail && body ? { body } : null),
     });
   }
   return entries;

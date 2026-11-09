@@ -56,9 +56,7 @@ it("extracts the exact wrapped send prose without treating routing or commands a
   );
   expect(openSession).not.toHaveBeenCalled();
   expect(openExternalUrl).not.toHaveBeenCalled();
-  await userEvent
-    .setup()
-    .click(screen.getByRole("link", { name: "Share catalog change computation" }));
+  await userEvent.setup().click(screen.getByRole("link", { name: "Open session" }));
   expect(openSession).toHaveBeenCalledExactlyOnceWith("worker");
 });
 

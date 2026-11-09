@@ -49,7 +49,7 @@ test("incoming report owns its source before and after recap/reload", async () =
       await expect(card.locator('[data-slot="message-source"]')).toHaveCount(1);
       await expect(
         card.getByRole("link", {
-          name: "Side-chat shared to-dos and merge-back memory",
+          name: "Open source",
           exact: true,
         }),
       ).toHaveAttribute("href", "cake://session/visual-incoming-report?message=original-result");
@@ -198,14 +198,14 @@ for (const state of ["default", "project", "reference"]) {
           fallback.getByRole("button", { name: "Untitled session", exact: true }),
         ).toBeVisible();
         await expect(fallback).toContainText("Historical report from a now-unavailable session.");
-        await fallback.getByRole("link", { name: "Untitled session", exact: true }).click();
+        await fallback.getByRole("link", { name: "Open session", exact: true }).click();
         await expect(
           page.getByText("Cake could not find Project Session missing-session", { exact: true }),
         ).toBeVisible();
         await expect(card).toBeVisible();
       }
       const source = card.getByRole("link", {
-        name: "Add and globally install manual post-mortem skill",
+        name: "Open session",
         exact: true,
       });
       await expect(source).toHaveAttribute("href", "cake://session/visual-report-source");

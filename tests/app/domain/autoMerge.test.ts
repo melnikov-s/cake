@@ -1,3 +1,4 @@
+import { sessionNotificationEntries } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream, SubscriptionRef } from "effect";
 import { expect } from "vitest";
@@ -283,11 +284,18 @@ it.effect.each([
       expect(test.recipients).toEqual(scenario.merged ? [projectChatSessionId("/project")] : []);
       expect(state.coordinatorDigest).toHaveLength(1);
       expect(state.coordinatorDigest?.[0]?.userInputOnly).toBe(true);
-      expect(state.coordinatorDigest?.[0]?.summary).toContain(
-        `merged=${scenario.merged}; resolutionSucceeded=${scenario.resolved}; targetBranch=main`,
-      );
-      expect(state.coordinatorDigest?.[0]?.summary).toContain(
-        `landedCommit=${scenario.merged ? commit : "none"}`,
+      expect(state.coordinatorDigest?.[0]?.autoMergeOutcome).toMatchObject({
+        merged: scenario.merged,
+        resolutionSucceeded: scenario.resolved,
+        targetBranch: "main",
+        ...(scenario.merged ? { landedCommit: commit } : {}),
+      });
+      expect(state.coordinatorDigest?.[0]?.summary).toBe(
+        !scenario.merged
+          ? "Merge blocked"
+          : scenario.resolved
+            ? "Merged and resolved"
+            : "Merged · resolution failed",
       );
       // This outbox is independent of the now-resolved source and schedules no new wake.
       expect((yield* storage.state()).updateBatches ?? []).toEqual([]);
@@ -298,8 +306,10 @@ it.effect.each([
       const prepared = yield* digest.prepareUserMessage(handle, "My next question");
       expect(prepared.text).toContain("<system-reminder>");
       expect(prepared.text).toContain("cake://session/owner");
-      expect(prepared.text).toContain("targetBranch=main");
-      expect(prepared.text).toContain(`resolutionSucceeded=${scenario.resolved}`);
+      expect(sessionNotificationEntries(prepared.text)[0]?.autoMergeOutcome).toMatchObject({
+        targetBranch: "main",
+        resolutionSucceeded: scenario.resolved,
+      });
       expect(prepared.digestIds).toEqual(["auto-merge:turn"]);
       yield* storage.removeDigest(prepared.digestIds);
       yield* runPass();

@@ -1,5 +1,9 @@
 import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
-import type { AutoMergeOutcome, AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
+import {
+  autoMergeOutcomeLabel,
+  type AutoMergeOutcome,
+  type AutoMergeRequest,
+} from "../../contracts/worktrees/auto-merge";
 import { ReadableMessageReference } from "../../contracts/conversations/message-reference";
 import type { StoredPassiveNotice } from "../../contracts/conversations/passive-notice";
 import {
@@ -631,8 +635,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                   title:
                     document.spawnedSessions.find((item) => item.sessionId === request.sessionId)
                       ?.title ?? `Session ${request.sessionId}`,
-                  status: outcome.resolutionSucceeded ? "completed" : "blocked",
-                  summary: `Auto-merge backend outcome: merged=${outcome.merged}; resolutionSucceeded=${outcome.resolutionSucceeded}; targetBranch=${outcome.targetBranch}; landedCommit=${outcome.landedCommit ?? "none"}. ${outcome.message.slice(0, 500)}`,
+                  status: outcome.merged && outcome.resolutionSucceeded ? "completed" : "blocked",
+                  summary: autoMergeOutcomeLabel(outcome),
+                  autoMergeOutcome: outcome,
                   reportedAt,
                   userInputOnly: true,
                 },

@@ -37,6 +37,7 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
       title: item.title,
       status: item.status,
       summary: item.summary,
+      autoMergeOutcome: item.autoMergeOutcome,
       resultMessageRef: item.resultMessageRef,
       references: state.completionInbox?.find((entry) => entry.id === item.id)?.references,
       kind: state.completionInbox?.find((entry) => entry.id === item.id)?.kind,

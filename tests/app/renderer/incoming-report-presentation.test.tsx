@@ -87,7 +87,7 @@ it.each(["receipt", "digest"] as const)(
     await fixture.user.click(within(card).getByRole("button", { name: title }));
     await within(card).findByText(/Scoped validation surfaced baseline debt/);
     expect(card.textContent).not.toContain('"command"');
-    expect(within(card).getByRole("link", { name: title }).getAttribute("href")).toBe(ref);
+    expect(within(card).getByRole("link", { name: "Open source" }).getAttribute("href")).toBe(ref);
     await fixture.user.click(within(card).getByRole("button", { name: "View technical details" }));
     expect(card.querySelector('[data-slot="report-raw-original"]')?.textContent).toBe(
       wrappedWorkerReport,
@@ -219,7 +219,7 @@ it("retries a complete fullscreen original without changing a collapsed inline r
     await within(fullscreen).findByRole("heading", { name: "Complete original" }),
   ).toBeTruthy();
   expect(within(fullscreen).getByText("Final finding.")).toBeTruthy();
-  expect(within(card).getByRole("link", { name: title }).getAttribute("href")).toBe(ref);
+  expect(within(card).getByRole("link", { name: "Open source" }).getAttribute("href")).toBe(ref);
   await fixture.user.click(within(fullscreen).getByRole("button", { name: "Copy message" }));
   expect(await within(fullscreen).findByRole("button", { name: "Copied message" })).toBeTruthy();
   expect(await navigator.clipboard.readText()).toBe(text);

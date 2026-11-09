@@ -3,7 +3,7 @@ import { MessageReference } from "../conversations/message-reference";
 import { StoredPassiveNotice } from "../conversations/passive-notice";
 import { PendingReport, ReportHandlingReceipt } from "../conversations/pending-report";
 import { BoardDelivery } from "../artifacts/board-delivery";
-import { AutoMergeRequest } from "../worktrees/auto-merge";
+import { AutoMergeOutcome, AutoMergeRequest } from "../worktrees/auto-merge";
 import { CompletionInboxItem } from "../conversations/completion-inbox";
 import { ResultDelivery } from "../conversations/result-delivery";
 import { TurnStop } from "../conversations/turn-stop";
@@ -150,6 +150,7 @@ export const CoordinatorDigestItem = Schema.Struct({
   title: Schema.String.check(Schema.isMaxLength(500)),
   resultMessageRef: Schema.optionalKey(MessageReference),
   status: CakeChatLaunchStatus,
+  autoMergeOutcome: Schema.optionalKey(AutoMergeOutcome),
   summary: Schema.String.check(Schema.isMaxLength(2000)),
   reportedAt: Schema.String,
 });

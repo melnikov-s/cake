@@ -154,7 +154,7 @@ describe("cross-session message presentation", () => {
     ["cake://session/source-session", undefined],
     ["cake://session/source-session?message=original-42", "original-42"],
   ])(
-    "navigates the title without toggling, while disclosure remains independent (%s)",
+    "keeps the title plain and source navigation separate from disclosure (%s)",
     async (href, entryId) => {
       const openSession = vi.fn();
       const onToggle = vi.fn();
@@ -169,7 +169,9 @@ describe("cross-session message presentation", () => {
           </SessionMessage>
         </MarkdownLinkProvider>,
       );
-      const link = screen.getByRole("link", { name: "Investigation update" });
+      const link = screen.getByRole("link", { name: "Open source" });
+      expect(screen.queryByRole("link", { name: "Investigation update" })).toBeNull();
+      expect(document.querySelector('[data-slot="response-header"] a')).toBeNull();
       expect(link.getAttribute("href")).toBe(href);
       await userEvent.setup().click(link);
       expect(openSession.mock.calls).toEqual([
@@ -200,7 +202,7 @@ describe("cross-session message presentation", () => {
       </MarkdownLinkProvider>,
     );
     expect(screen.getByRole("button", { name: "Review worker" })).toBeTruthy();
-    await userEvent.setup().click(screen.getByRole("link", { name: "Review worker" }));
+    await userEvent.setup().click(screen.getByRole("link", { name: "Open source" }));
     expect(openSubagent).toHaveBeenCalledExactlyOnceWith(
       "parent",
       "10000000-0000-4000-8000-000000000002",

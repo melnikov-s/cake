@@ -1,3 +1,4 @@
+import { createSessionOutcomesScenario } from "./session-outcomes";
 import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
@@ -4264,33 +4265,36 @@ const reportHeadersScenario: VisualCaptureScenario = {
       "aria-expanded",
       state === "collapsed" ? "false" : "true",
     );
-    const link = card.getByRole("link", { name: title, exact: true });
+    const link = card.getByRole("link", { name: "Open source", exact: true });
     await expect(link).toHaveAttribute("href", /cake:\/\/subagent\//);
+    await expect(card.locator('[data-slot="response-header"] a')).toHaveCount(0);
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await disclosure.focus();
-    const geometry = await link.evaluate((element) => {
-      const header = element.closest('[data-slot="response-header"]')!;
-      const status = element.parentElement!.nextElementSibling!;
-      const bounds = element.getBoundingClientRect();
-      const row = header.getBoundingClientRect();
-      const badge = status.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      return {
-        top: bounds.top,
-        bottom: bounds.bottom,
-        right: bounds.right,
-        rowTop: row.top,
-        rowBottom: row.bottom,
-        badgeLeft: badge.left,
-        badgeTop: badge.top,
-        badgeBottom: badge.bottom,
-        badgeRight: badge.right,
-        height: bounds.height,
-        lineHeight: parseFloat(style.lineHeight),
-        textOverflow: style.textOverflow,
-        clipped: element.scrollWidth > element.clientWidth,
-      };
-    });
+    const geometry = await card
+      .locator('[data-slot="response-header"] span.block')
+      .evaluate((element) => {
+        const header = element.closest('[data-slot="response-header"]')!;
+        const status = element.parentElement!.nextElementSibling!;
+        const bounds = element.getBoundingClientRect();
+        const row = header.getBoundingClientRect();
+        const badge = status.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          top: bounds.top,
+          bottom: bounds.bottom,
+          right: bounds.right,
+          rowTop: row.top,
+          rowBottom: row.bottom,
+          badgeLeft: badge.left,
+          badgeTop: badge.top,
+          badgeBottom: badge.bottom,
+          badgeRight: badge.right,
+          height: bounds.height,
+          lineHeight: parseFloat(style.lineHeight),
+          textOverflow: style.textOverflow,
+          clipped: element.scrollWidth > element.clientWidth,
+        };
+      });
     expect(geometry.top).toBeGreaterThanOrEqual(geometry.rowTop);
     expect(geometry.bottom).toBeLessThanOrEqual(geometry.rowBottom);
     expect(geometry.height).toBeLessThanOrEqual(geometry.lineHeight + 1);
@@ -5442,42 +5446,30 @@ const sessionUpdateSpacingScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
     const batch = page.getByRole("status", { name: "Session results" });
-    const toggles = batch.locator('[data-slot="response-disclosure"]');
+    const toggles = batch.getByRole("button", { name: "System details" });
     await expect(toggles).toHaveCount(3);
+    await expect(batch.locator('[data-slot="session-message"]')).toHaveCount(0);
     // Release the navigation rail's focus/hover expansion before clicking a
     // narrow transcript, just as moving into the conversation does in the app.
     await page.getByRole("combobox", { name: "Message Cake Chat", exact: true }).focus();
     await page.mouse.move(1, 1);
     const verifyCompactRows = async () => {
-      const rows = await batch.locator('[data-slot="session-message"]').evaluateAll((elements) =>
-        elements.map((element) => {
-          const bounds = element.getBoundingClientRect();
-          const card = element.querySelector('[data-slot="session-message-card"]')!;
-          const button = element.querySelector('[data-slot="response-disclosure"]')!;
-          return {
-            top: bounds.top,
-            bottom: bounds.bottom,
-            height: bounds.height,
-            cardHeight: card.getBoundingClientRect().height,
-            targetHeight: button.getBoundingClientRect().height,
+      const rows = await batch
+        .locator('[data-slot="session-system-update"]')
+        .evaluateAll((elements) =>
+          elements.map((element) => ({
+            height: element.getBoundingClientRect().height,
+            targetHeight: element.querySelector("button")!.getBoundingClientRect().height,
             overflow: element.scrollWidth > element.clientWidth,
-          };
-        }),
-      );
-      for (const [index, row] of rows.entries()) {
-        expect(row.height).toBe(row.cardHeight);
-        expect(row.height).toBeLessThanOrEqual(44);
-        expect(row.targetHeight).toBeGreaterThanOrEqual(28);
+          })),
+        );
+      for (const row of rows) {
+        expect(row.height).toBeLessThanOrEqual(84);
+        expect(row.targetHeight).toBeGreaterThanOrEqual(24);
         expect(row.overflow).toBe(false);
-        if (index > 0) {
-          const gap = row.top - rows[index - 1]!.bottom;
-          expect(gap).toBeGreaterThanOrEqual(0);
-          expect(gap).toBeLessThanOrEqual(4);
-        }
       }
-      // The virtual row measures the real stack, not a reserved full-message height.
       const item = batch.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
-      expect((await item.boundingBox())!.height).toBeLessThanOrEqual(3 * 44 + 2 * 4 + 20);
+      expect((await item.boundingBox())!.height).toBeLessThanOrEqual(3 * 84 + 2 * 4 + 20);
     };
     await verifyCompactRows();
     await toggles.first().click();
@@ -5486,9 +5478,9 @@ const sessionUpdateSpacingScenario: VisualCaptureScenario = {
     const body = batch.locator(`[id="${bodyId}"]`);
     await expect(body).toBeVisible();
     await expect(body).toContainText("Scoped checks passed; changes committed and landed.");
-    const title = toggles.first().locator("..").getByRole("link");
-    await expect(title).toHaveText("Switch right pane to Chat when entering VS Code");
-    expect((await title.boundingBox())!.width).toBeGreaterThan(80);
+    const source = batch.getByRole("link", { name: "Open session" }).first();
+    await expect(source).toHaveAttribute("href", "cake://session/e37674d0");
+    await expect(batch.getByText("Switch right pane to Chat when entering VS Code")).toBeVisible();
     if (state !== "expanded") {
       await toggles.first().click();
       await expect(toggles.first()).toHaveAttribute("aria-expanded", "false");
@@ -7786,6 +7778,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   assistantMarkdownTable,
   contextPillsScenario,
   sessionMessagesScenario,
+  createSessionOutcomesScenario(),
   sessionMessageVariantsScenario,
   incomingReportRecapScenario,
   sessionUpdateReportsScenario,

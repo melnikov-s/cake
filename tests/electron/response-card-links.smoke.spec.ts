@@ -148,7 +148,7 @@ test("Project Chat response cards route conversation links, report missing files
     const preview = page.getByRole("dialog", { name: /reference\.md$/ });
     await expect(preview).toContainText("Useful document content.");
     await preview.getByRole("button", { name: "Exit fullscreen" }).click();
-    await card.getByRole("link", { name: "Investigation update", exact: true }).click();
+    await card.getByRole("link", { name: "Open session", exact: true }).click();
     await expect(page.getByText("Original diagram investigation", { exact: true })).toBeVisible();
     expect(
       await app.evaluate(({ BrowserWindow }) =>

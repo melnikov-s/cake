@@ -8,9 +8,11 @@ export function ContextPill({
   title,
   text,
   onOpenSourceLocation,
+  plainText = false,
 }: {
   title: string;
   text: string;
+  plainText?: boolean;
   onOpenSourceLocation?(location: SourceLocation): void;
 }) {
   const [open, setOpen] = useState(false);
@@ -29,7 +31,11 @@ export function ContextPill({
           id={contentId}
           className="order-1 mt-2 max-h-96 w-full min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-card p-3 font-mono text-xs text-muted-foreground"
         >
-          <Markdown onOpenSourceLocation={onOpenSourceLocation}>{text}</Markdown>
+          {plainText ? (
+            text
+          ) : (
+            <Markdown onOpenSourceLocation={onOpenSourceLocation}>{text}</Markdown>
+          )}
         </div>
       )}
     </section>

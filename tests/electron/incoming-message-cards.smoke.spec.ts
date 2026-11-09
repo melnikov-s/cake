@@ -87,7 +87,7 @@ for (const theme of ["dark", "light"] as const)
       await expect(source.locator('[data-streamdown="code-block-body"]')).toContainText(
         "const ready = true;",
       );
-      const titleLink = source.getByRole("link", { name: "Fix the flaky build", exact: true });
+      const titleLink = source.getByRole("link", { name: "Open source", exact: true });
       await expect(titleLink).toHaveAttribute(
         "href",
         "cake://session/3d4e5f6a-7b8c-4d9e-8f01-2a3b4c5d6e71?message=build-result",
@@ -149,6 +149,7 @@ for (const theme of ["dark", "light"] as const)
       await sourceToggle.click({ position: { x: headerBox.width - 8, y: 16 } });
       await expect(sourceToggle).toHaveAttribute("aria-expanded", "true");
       await titleLink.focus();
+      await expect(source.locator('[data-slot="response-header"] a')).toHaveCount(0);
       await titleLink.press("Shift+Tab");
       await expect(sourceToggle).toBeFocused();
       await sourceToggle.press("Enter");
@@ -184,7 +185,7 @@ for (const theme of ["dark", "light"] as const)
       await expect(sourceToggle).toHaveAttribute("aria-expanded", "false");
       await expect(doneStatus).toBeVisible();
       const titleLinkAfterReload = source.getByRole("link", {
-        name: "Fix the flaky build",
+        name: "Open source",
         exact: true,
       });
       await titleLinkAfterReload.focus();

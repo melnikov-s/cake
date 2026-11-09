@@ -193,7 +193,7 @@ describe("exact response presentation", () => {
       "Committed as d58aa9b5. Worktree clean; ready for review. No merge, resolution, or restart.",
     );
     const promptCard = within(prompts.closest<HTMLElement>('[data-slot="session-message"]')!);
-    const fullResponse = promptCard.getByRole("link", { name: titles[1] });
+    const fullResponse = promptCard.getByRole("link", { name: "Open source" });
     expect(fullResponse.getAttribute("href")).toBe(promptRef);
     await user.click(fullResponse);
     expect(openSession).toHaveBeenCalledWith(source.getSessionId(), promptId);

@@ -160,18 +160,7 @@ export const SessionMessage = observer(function SessionMessage({
             </Button>
             <div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-2 pr-2 pl-8">
               <span className={cn("min-w-0 shrink text-sm font-medium", !open && "max-w-[45%]")}>
-                {href && actions ? (
-                  <MarkdownLink
-                    href={href}
-                    showIcon={false}
-                    title={reference ? "Open the original message" : "Open source conversation"}
-                    className="pointer-events-auto block max-w-full truncate text-inherit decoration-transparent hover:decoration-current"
-                  >
-                    {title}
-                  </MarkdownLink>
-                ) : (
-                  <span className="block truncate">{title}</span>
-                )}
+                <span className="block truncate">{title}</span>
               </span>
               {badges.map((badge) => (
                 <span
@@ -189,6 +178,11 @@ export const SessionMessage = observer(function SessionMessage({
               )}
             </div>
           </div>
+          {href && actions && (
+            <MarkdownLink href={href} className="shrink-0 text-xs">
+              {reference || source?.href ? "Open source" : "Open session"}
+            </MarkdownLink>
+          )}
           {compact && (
             <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100">
               {messageToolbar}

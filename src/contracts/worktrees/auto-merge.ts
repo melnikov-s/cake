@@ -27,6 +27,12 @@ export const AutoMergeOutcome = Schema.Struct({
 });
 export interface AutoMergeOutcome extends Schema.Schema.Type<typeof AutoMergeOutcome> {}
 
+/** Presentation only: never grants landing or resolution authority. */
+export function autoMergeOutcomeLabel(outcome: AutoMergeOutcome): string {
+  if (!outcome.merged) return "Merge blocked";
+  return outcome.resolutionSucceeded ? "Merged and resolved" : "Merged · resolution failed";
+}
+
 export const ProjectAutoMerge = Schema.Struct({
   projectPath: Schema.NonEmptyString,
   enabled: Schema.Boolean,

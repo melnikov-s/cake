@@ -1,3 +1,4 @@
+import { sessionNotificationEntries } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
@@ -353,9 +354,11 @@ describe("timed batch delivery", () => {
         assert.equal(f.admitted.length, 1);
         assert.match(f.admitted[0]?.text ?? "", /<system-reminder>/);
         assert.match(f.admitted[0]?.text ?? "", /cake:\/\/session\/child/);
-        assert.match(f.admitted[0]?.text ?? "", /targetBranch=main/);
-        assert.match(f.admitted[0]?.text ?? "", /landedCommit=bbbb/);
-        assert.match(f.admitted[0]?.text ?? "", /resolutionSucceeded=true/);
+        const [entry] = sessionNotificationEntries(f.admitted[0]?.text ?? "");
+        assert.equal(entry?.autoMergeOutcome?.targetBranch, "main");
+        assert.equal(entry?.autoMergeOutcome?.landedCommit, "b".repeat(40));
+        assert.equal(entry?.autoMergeOutcome?.resolutionSucceeded, true);
+        assert.match(f.admitted[0]?.text ?? "", /Merged and resolved/);
         yield* f.pass();
         assert.equal((yield* f.state()).coordinatorDigest?.length, 0);
       }),
