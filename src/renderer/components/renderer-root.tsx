@@ -56,17 +56,20 @@ export const RendererRoot = observer(function RendererRoot({
         ...rootStore.props.projection.automations.unresolvedSessions.map((item) => item.sessionId),
         ...rootStore.automationSessionsStore.identities.map((item) => item.sessionId),
       ],
+      // Passive summaries only: rendering a reference must never load a conversation.
       sessionTitle: (sessionId) =>
-        rootStore.props.projection.automations.unresolvedSessions.find(
-          (item) => item.sessionId === sessionId,
-        )?.title ??
-        rootStore.automationSessionsStore.sessions.find(
-          (session) => session.sessionId === sessionId,
-        )?.displayTitle ??
         rootStore.sessionCatalogStore.find(sessionId)?.title ??
         rootStore.cakeChatCollectionStore.summaries.find(
           (session) => session.sessionId === sessionId,
-        )?.title,
+        )?.title ??
+        rootStore.props.projection.automations.unresolvedSessions.find(
+          (item) => item.sessionId === sessionId,
+        )?.title ??
+        (rootStore.automationSessionsStore.identities.some((item) => item.sessionId === sessionId)
+          ? rootStore.automationSessionsStore.sessions.find(
+              (session) => session.sessionId === sessionId,
+            )?.displayTitle
+          : undefined),
       renderArtifactReference: (reference, label) => (
         <ArtifactReferencePreview
           reference={formatArtifactRef(parseArtifactRef(reference))}

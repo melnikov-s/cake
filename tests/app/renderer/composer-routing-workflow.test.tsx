@@ -160,7 +160,7 @@ describe("composer routing catalog isolation", () => {
       expect(picker.querySelector('[data-session-id="project-1-1"]')).toBeTruthy(),
     );
     await fixture.user.click(within(row()).getByRole("button"));
-    expect(fixture.chat.draft).toBe(`[Session](${sessionLink(targetId)})`);
+    expect(fixture.chat.draft).toBe(`[Session](${sessionLink(targetId)}) `);
     expect(
       screen.getByRole("button", { name: "Edit session reference: Renamed destination" }),
     ).toBeTruthy();

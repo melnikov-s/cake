@@ -72,7 +72,7 @@ describe("composer session references", () => {
     expect(chip.getAttribute("aria-haspopup")).toBe("dialog");
     expect(chip.querySelectorAll("svg")).toHaveLength(2);
     expect(chip.className).toContain("rounded-full");
-    expect(input().value).toBe(`Review [Session](${sessionLink("second")})`);
+    expect(input().value).toBe(`Review [Session](${sessionLink("second")}) `);
     // Insert another reference and edit the first, preserving the second token verbatim.
     input().setSelectionRange(input().value.length, input().value.length);
     fireEvent.contextMenu(input());
@@ -93,12 +93,12 @@ describe("composer session references", () => {
       first.getByRole("button", { name: "Edit session reference: Review implementation" }),
     ).toBeTruthy();
     expect(first.getByRole("button", { name: "Edit session reference: Check tests" })).toBeTruthy();
-    const text = `Review [Session](${sessionLink("first")})[Session](${sessionLink("second")})`;
+    const text = `Review [Session](${sessionLink("first")}) [Session](${sessionLink("second")}) `;
     expect(input().value).toBe(text);
     expect(fixture.chatStore.draft).toBe(text);
     await fixture.user.click(first.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
-    expect(prompt.mock.calls[0]![0]).toMatchObject({ sessionId: "first", text });
+    expect(prompt.mock.calls[0]![0]).toMatchObject({ sessionId: "first", text: text.trim() });
     await waitFor(() => expect(fixture.chatStore.draft).toBe(""));
   });
 

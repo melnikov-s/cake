@@ -259,7 +259,9 @@ export function SlashCommandCombobox({
     suggestFilesRef.current = suggestFiles;
   }, [suggestFiles]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // External reference insertion may replace the textarea with the token editor.
+    // Its authoritative text must be in the DOM before focus/selection restoration.
     setInputValue(value);
   }, [value]);
 

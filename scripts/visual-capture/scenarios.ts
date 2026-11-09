@@ -1487,6 +1487,90 @@ const inlineLinks: VisualCaptureScenario = {
   },
 };
 
+const sessionReferencePills: VisualCaptureScenario = {
+  name: "session-reference-pills",
+  description: "Named session pills in human and assistant prose, alongside model mentions",
+  states: ["default", "hover"],
+  async seed(paths, theme) {
+    await inlineLinks.seed(paths, theme);
+    const sessionId = "visual-assistant-markdown-code";
+    const sessionFile = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`,
+    );
+    const entries = (await readFile(sessionFile, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    entries.push({
+      type: "session_info",
+      id: "session-title",
+      parentId: "assistant-1",
+      timestamp: new Date(0).toISOString(),
+      name: "Strengthen workflow-friction recognition instructions",
+    });
+    const model = serializeModelReference({
+      provider: "anthropic",
+      modelId: "claude-sonnet-4-5",
+      thinkingLevel: "off",
+      fastMode: false,
+    });
+    entries.find((entry) => entry.id === "user-1").message.content = [
+      {
+        type: "text",
+        text: `[Session](cake://session/${sessionId})can this be resolved now or what?\n\nReview with ${model}.`,
+      },
+    ];
+    entries.find((entry) => entry.id === "assistant-1").message.content = [
+      {
+        type: "text",
+        text: [
+          "## Session references",
+          `Known title: [Session](cake://session/${sessionId}). The pill stays inline with surrounding prose.`,
+          `Authored report: [Full agent response](cake://session/${sessionId}?message=assistant-1).`,
+          "Unavailable title: [Session](cake://session/unavailable-session).",
+        ].join("\n\n"),
+      },
+    ];
+    await writeFile(sessionFile, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  },
+  async prepare(page, state) {
+    await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+    const search = page.getByRole("dialog", { name: "Search sessions" });
+    await search.getByRole("combobox").fill("Strengthen workflow-friction");
+    await search.getByRole("option", { name: /Strengthen workflow-friction/ }).click();
+    const human = page.locator("article").filter({ hasText: "can this be resolved now or what?" });
+    await human.hover();
+    await human.getByRole("button", { name: "Render as Markdown", exact: true }).click();
+    const named = human.getByRole("link", {
+      name: "Strengthen workflow-friction recognition instructions",
+      exact: true,
+    });
+    await expect(named).toBeVisible();
+    const answer = page.locator('[data-slot="message-content"]').filter({
+      has: page.getByRole("heading", { name: "Session references", exact: true }),
+    });
+    await expect(answer.locator('[data-slot="session-reference"]')).toHaveCount(3);
+    const label = named.locator("span");
+    expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    await named.focus();
+    await expect(named).toBeFocused();
+    await named.press("Enter");
+    await expect(human).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Full agent response", exact: true }),
+    ).toHaveAttribute("href", "cake://session/visual-assistant-markdown-code?message=assistant-1");
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    if (state === "hover") {
+      await named.hover();
+      await expect(page.getByRole("tooltip")).toContainText(
+        "Strengthen workflow-friction recognition instructions",
+      );
+    } else await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".transcript"),
+};
+
 async function retainArtifactBrowser(
   paths: ScenarioFixturePaths,
   language: "html" | "react",
@@ -7679,6 +7763,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   agentNavigationSettingsScenario,
   screenCaptureOverlayScenario,
   inlineLinks,
+  sessionReferencePills,
   requestExplanationScenario,
   messageBoardScenario,
   inlineArtifactScenario,

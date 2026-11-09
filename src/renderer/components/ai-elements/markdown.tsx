@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import type { ComponentProps, ReactNode } from "react";
+import { observer } from "r-state-tree/react";
 import type { Code, Root, RootContent } from "mdast";
 import remarkParse from "remark-parse";
 import {
@@ -35,7 +36,8 @@ import { resolveSessionLinkReference } from "../../../contracts/project-sessions
 import { sessionDisplayId } from "../../lib/session-display-id";
 import { Link, type LinkProps } from "../ui/link";
 import { MarkdownTable } from "../ui/markdown-table";
-import { ModelReferenceChip } from "../ui/model-reference-chip";
+import { ModelReferenceChip, modelReferenceChipClassName } from "../ui/model-reference-chip";
+import { LinkIcon } from "../ui/icons";
 import {
   splitModelReferences,
   type ModelReferenceSelection,
@@ -286,6 +288,16 @@ function normalizeLatexMathDelimiters(markdown: string) {
   return result;
 }
 
+function linkLabelText(label: ReactNode): string {
+  return Children.toArray(label)
+    .map((child) =>
+      isValidElement<{ children?: ReactNode }>(child)
+        ? linkLabelText(child.props.children)
+        : String(child),
+    )
+    .join("");
+}
+
 function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
   const props = { showIcon: true, ...allProps };
   delete props.node;
@@ -316,10 +328,12 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
     const ids = actions?.sessionIds?.() ?? [];
     const resolved = resolveSessionLinkReference(session.sessionId, ids);
     const sessionId = resolved.ok ? resolved.sessionId : session.sessionId;
-    // Only identity-only labels change. Authored titles and prose remain literal.
+    const title = actions?.sessionTitle?.(sessionId)?.trim() || undefined;
+    // Generic picker labels use the passive catalog; authored report labels stay literal.
     const displayLabel = (label: ReactNode): ReactNode => {
       // oxlint-disable-next-line anti-slop/no-runtime-typeof -- ReactNode is an already-typed React union, not an unparsed input.
       if (typeof label === "string") {
+        if (/^session$/i.test(label.trim())) return title ?? label;
         const target = resolveSessionLinkReference(label, [...ids, sessionId]);
         return target.ok && target.sessionId === sessionId
           ? sessionDisplayId(sessionId, ids)
@@ -334,13 +348,22 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
     };
     const children = Children.toArray(props.children);
     const label = children.length === 1 ? displayLabel(children[0]) : props.children;
+    const reference = sessionLink(sessionId, session.messageId, session.attachmentId);
+    const labelText = linkLabelText(label);
     return (
       <Link
         {...props}
-        href={sessionLink(sessionId, session.messageId, session.attachmentId)}
-        title={sessionLink(sessionId, session.messageId, session.attachmentId)}
-        children={label}
-        className={cn("inline-block max-w-[80ch] truncate align-bottom", props.className)}
+        href={reference}
+        title={[labelText, title !== labelText ? title : undefined, reference]
+          .filter(Boolean)
+          .join("\n")}
+        showIcon={false}
+        data-slot="session-reference"
+        className={cn(
+          modelReferenceChipClassName,
+          "mx-0.5 gap-1 align-[-0.125em] no-underline hover:bg-accent/20",
+          props.className,
+        )}
         onClick={(event) => {
           event.preventDefault();
           if (session.attachmentId)
@@ -348,7 +371,10 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
           else if (session.messageId) actions?.openSession(sessionId, session.messageId);
           else actions?.openSession(sessionId);
         }}
-      />
+      >
+        <LinkIcon className="size-3 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 truncate">{label}</span>
+      </Link>
     );
   }
   const external = href ? /^https?:\/\//i.test(href) : false;
@@ -372,7 +398,7 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
 }
 
 /** Structured links reuse exactly the same destination handling as conversation Markdown. */
-export function MarkdownLink({
+export const MarkdownLink = observer(function MarkdownLink({
   onOpenSourceLocation,
   ...allProps
 }: AnchorProps & {
@@ -404,7 +430,7 @@ export function MarkdownLink({
       }}
     />
   );
-}
+});
 
 const configuredPlugins = {
   code: syntaxHighlighter,

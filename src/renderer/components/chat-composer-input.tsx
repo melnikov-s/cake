@@ -46,7 +46,11 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   onSubmit(value: string): Promise<void>;
 }) {
   const [reference, setReference] = useState<
-    ComposerSelection & { kind?: "session" | "move"; model?: ModelReferenceSelection }
+    ComposerSelection & {
+      kind?: "session" | "move";
+      model?: ModelReferenceSelection;
+      editing?: boolean;
+    }
   >();
   const referenceAnchor = useRef<HTMLElement | null>(null);
   const dictation = useOptionalStore(DictationStore);
@@ -76,11 +80,19 @@ export const ChatComposerInput = observer(function ChatComposerInput({
       setReferenceInteraction(false);
       return;
     }
-    store.setDraft(
-      reference.draft.slice(0, reference.start) + token + reference.draft.slice(reference.end),
-    );
-    const cursor = reference.start + token.length;
-    setReference(undefined);
+    const after = reference.draft.slice(reference.end);
+    // New session mentions leave a writing position outside the atomic token.
+    // Reuse an existing space, and leave edits of existing chips byte-for-byte.
+    const sessionInsertion = reference.kind === "session" && !reference.editing;
+    const separator = sessionInsertion && !after.startsWith(" ") ? " " : "";
+    const spaceAfter = sessionInsertion || (reference.kind === "session" && after.startsWith(" "));
+    const cursor = reference.start + token.length + (spaceAfter ? 1 : 0);
+    // Commit the textarea-to-token-editor swap, including its controlled value,
+    // before the focus frame can clamp the caret against the old draft's length.
+    flushSync(() => {
+      store.setDraft(reference.draft.slice(0, reference.start) + token + separator + after);
+      setReference(undefined);
+    });
     requestAnimationFrame(() => {
       // Focus while still opted out, then let normal focus eligibility re-register the field.
       // A manually stopped user must not be re-armed by the textarea-to-chip-input swap.
@@ -224,7 +236,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
                 };
                 if (segment.sessionId && sessionPicker) {
                   referenceAnchor.current = anchor;
-                  setReference({ ...selection, kind: "session" });
+                  setReference({ ...selection, kind: "session", editing: true });
                 } else if (segment.model && configuration)
                   openReference(selection, anchor, segment.model);
                 else setReferenceInteraction(false);

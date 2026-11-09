@@ -149,6 +149,14 @@ test("shared model and session reference pickers preserve composer input and foc
   });
   try {
     const page = await application.firstWindow();
+    // This fixture owns reference behavior, not startup navigation restoration.
+    const openSession = async (title: string) => {
+      await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+      const search = page.getByRole("dialog", { name: "Search sessions" });
+      await search.getByRole("combobox").fill(title);
+      await search.getByRole("option", { name: new RegExp(title) }).click();
+    };
+    await openSession("Picker source");
     await expect(
       page.locator(".transcript").getByText("Model picker fixture ready", { exact: true }),
     ).toBeVisible();
@@ -156,6 +164,15 @@ test("shared model and session reference pickers preserve composer input and foc
     const composerValue = () => composer.evaluate((element: ComposerInputElement) => element.value);
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await expect(composer).toBeFocused();
+    // Shared slash completion must still restore a writable, correctly placed caret.
+    await composer.fill("/mod");
+    await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
+    await composer.press("Tab");
+    await expect(composer).toHaveValue("/model ");
+    await expect(composer).toBeFocused();
+    await page.keyboard.type("fixture");
+    await expect(composer).toHaveValue("/model fixture");
+    await composer.fill("");
     // Verify a real draft survives every keyboard/mouse model-picker interaction.
     await composer.pressSequentially("Pending first prompt");
     await expect(composer).toHaveValue("Pending first prompt");
@@ -240,8 +257,37 @@ test("shared model and session reference pickers preserve composer input and foc
     await application.evaluate(({ Menu }) =>
       Reflect.set(Menu, "referenceAction", "Insert session reference"),
     );
-    await composer.click({ button: "right" });
     const sessions = page.getByRole("dialog", { name: "Session reference" });
+    // The first insertion swaps the textarea for the atomic-token editor. Type
+    // immediately, before reopening/editing a chip can accidentally repair focus.
+    for (const { draft, start, end } of [
+      { draft: "", start: 0, end: 0 },
+      { draft: "Before", start: 6, end: 6 },
+      { draft: "Before after", start: 7, end: 7 },
+      { draft: "Before replace after", start: 7, end: 14 },
+    ]) {
+      await composer.fill(draft);
+      await composer.evaluate(
+        (element: ComposerInputElement, range) => {
+          element.focus();
+          element.setSelectionRange(range.start, range.end);
+          element.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+        },
+        { start, end },
+      );
+      await expect(sessions).toBeVisible();
+      await sessions.locator(`[data-session-id="${moveDestination}"]`).getByRole("button").click();
+      await expect(sessions).toBeHidden();
+      await expect(composer).toBeFocused();
+      await page.keyboard.type("typed");
+      const token = `[Session](cake://session/${moveDestination})`;
+      await expect
+        .poll(composerValue)
+        .toBe(draft.slice(0, start) + token + " typed" + draft.slice(end).replace(/^ /, ""));
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    }
+    await composer.fill("Pending first prompt retained");
+    await composer.click({ button: "right" });
     await expect(sessions).toBeVisible();
     const labels = await application.evaluate(
       ({ Menu }) => Reflect.get(Menu, "referenceLabels") as string[],
@@ -282,6 +328,7 @@ test("shared model and session reference pickers preserve composer input and foc
       composer.getByRole("button", { name: "Edit session reference: Picker source", exact: true }),
     ).toBeVisible();
     await expect.poll(composerValue).toBe(linked.replace(moveDestination, sessionId));
+    await expect(composer).toBeFocused();
     // Space follows the same native button activation convention as Enter.
     const changedChip = composer.getByRole("button", {
       name: "Edit session reference: Picker source",
@@ -295,7 +342,7 @@ test("shared model and session reference pickers preserve composer input and foc
     const prefix = "Pending first prompt retained".slice(0, selection.start);
     const suffix = "Pending first prompt retained".slice(selection.end);
     const link = linked.slice(prefix.length, linked.length - suffix.length);
-    expect(link).toMatch(/^\[Session\]\(cake:\/\/session\/[^\s)]+\)$/);
+    expect(link).toMatch(/^\[Session\]\(cake:\/\/session\/[^\s)]+\) ?$/);
     expect(linked).toBe(prefix + link + suffix);
     await composer.pressSequentially(" session retained");
     await expect.poll(composerValue).toBe(prefix + link + " session retained" + suffix);
@@ -320,13 +367,17 @@ test("shared model and session reference pickers preserve composer input and foc
     await composer.fill("Pending first prompt retained");
     await application.evaluate(({ Menu }) => Reflect.deleteProperty(Menu, "referenceAction"));
 
-    await composer.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(8, 13));
-    await composer.click({ button: "right", position: { x: 80, y: 20 } });
+    // The editor remains token-capable after clearing the earlier references.
+    // Capture the intended selection before the picker moves DOM focus away.
+    await composer.evaluate((element: ComposerInputElement) => {
+      element.focus();
+      element.setSelectionRange(8, 13);
+      element.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    });
     const reference = page.getByRole("dialog", { name: "Model reference" });
     await expect(reference).toBeVisible();
-    const insertionPoint = await composer.evaluate(
-      (element: HTMLTextAreaElement) => element.selectionStart,
-    );
+    const insertionPoint = 8;
+    const selectionEnd = 13;
     await reference.getByRole("button", { name: /Fixture preset/ }).click();
     const richInput = page.getByRole("combobox", { name: "Message", exact: true });
     const chip = richInput.getByRole("button", { name: /Edit model reference/ });
@@ -354,7 +405,7 @@ test("shared model and session reference pickers preserve composer input and foc
     const token = canonical.match(/<cake-model>.*?<\/cake-model>/)![0];
     const original = "Pending first prompt retained";
     expect(canonical).toBe(
-      `${original.slice(0, insertionPoint)}${token} inserted${original.slice(insertionPoint)}`,
+      `${original.slice(0, insertionPoint)}${token} inserted${original.slice(selectionEnd)}`,
     );
 
     await richInput.click();
@@ -373,6 +424,7 @@ test("shared model and session reference pickers preserve composer input and foc
     await expect(sentChips).toHaveCount(2);
     await expect(sentChips.first()).not.toHaveRole("button");
     await page.reload();
+    await openSession("Picker source");
     await expect(sentChips).toHaveCount(2);
     const sentMessage = page
       .locator("article")
@@ -387,12 +439,14 @@ test("shared model and session reference pickers preserve composer input and foc
     await markdownToggle.click();
     await expect(sentChips).toHaveCount(2);
     await page.reload();
+    await openSession("Picker source");
     await expect(sentChips).toHaveCount(2);
 
     // Move the whole composer (not just its selection) through native RPC and
     // the shared destination popover. This must navigate without submitting.
     const movingInput = page.getByRole("combobox", { name: "Message", exact: true });
-    await movingInput.click();
+    // Start this independent routing phase with an explicit draft, not a restored one.
+    await movingInput.fill("");
     await movingInput.pressSequentially("A draft to move, not send");
     await application.evaluate(({ Menu }) =>
       Reflect.set(Menu, "referenceAction", "Move draft to session…"),
@@ -421,6 +475,7 @@ test("shared model and session reference pickers preserve composer input and foc
       page.getByText("Cannot undo because a draft changed. Both drafts were left untouched."),
     ).toBeVisible();
     await page.reload();
+    await openSession("Draft destination");
     await expect(movingInput).toHaveValue("A draft to move, not send and review");
     await expect(
       page

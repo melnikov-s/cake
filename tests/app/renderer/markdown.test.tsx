@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
+import { observable } from "r-state-tree";
 import {
   fencedCode,
   isStandaloneDiagram,
@@ -284,7 +285,9 @@ describe("Markdown rendering integration", () => {
     );
     const session = screen.getByRole("link", { name: "Authentication refactor" });
     expect(session.getAttribute("href")).toBe("cake://session/session-123");
-    expect(session.getAttribute("aria-description")).toBe("cake://session/session-123");
+    expect(session.getAttribute("aria-description")).toBe(
+      "Authentication refactor\ncake://session/session-123",
+    );
     await fixture.user.click(session);
     await waitFor(() =>
       expect(openSession).toHaveBeenCalledWith(
@@ -300,6 +303,68 @@ describe("Markdown rendering integration", () => {
     ).toBe("cake://artifact/report-1@r2");
   });
 
+  it("renders generic session labels as compact named inline pills and follows passive title updates", async () => {
+    const id = "97029b94-7529-41e7-989e-e5bc1f4dd622";
+    const title = "Strengthen workflow-friction recognition instructions";
+    const titles = observable(new Map([[id, title]]));
+    const openSession = vi.fn();
+    using fixture = renderMarkdown(`[Session](cake://session/${id})can this be resolved now?`, {
+      actions: { sessionTitle: (id) => titles.get(id), openSession },
+    });
+    const link = screen.getByRole("link", { name: title });
+    expect(link.dataset.slot).toBe("session-reference");
+    expect(link.className).toContain("inline-flex");
+    expect(link.className).toContain("bg-accent/10");
+    expect(link.className).toContain("no-underline");
+    expect(link.querySelector("span")?.className).toContain("truncate");
+    expect(link.closest("p")?.textContent).toBe(`${title}can this be resolved now?`);
+    expect(link.nextSibling?.textContent).toBe("can this be resolved now?");
+    await fixture.user.click(link);
+    expect(openSession).toHaveBeenCalledWith(id);
+    act(() => titles.set(id, "Updated session title"));
+    await waitFor(() => expect(link.textContent).toBe("Updated session title"));
+    expect(link.getAttribute("aria-description")).toBe(
+      `Updated session title\ncake://session/${id}`,
+    );
+    act(() => titles.delete(id));
+    await waitFor(() => expect(link.textContent).toBe("Session"));
+  });
+
+  it.each([undefined, "", "   "])("falls back safely when the known title is %s", (title) => {
+    using fixture = renderMarkdown(
+      "Before [Session](cake://session/unavailable?message=entry-42) after",
+      {
+        actions: { sessionTitle: () => title },
+      },
+    );
+    const link = screen.getByRole("link", { name: "Session" });
+    expect(link.getAttribute("href")).toBe("cake://session/unavailable?message=entry-42");
+    expect(link.closest("p")?.textContent).toBe("Before Session after");
+  });
+
+  it("preserves authored report labels and exact encoded message and attachment targets when titles are known", async () => {
+    const openSession = vi.fn();
+    const id = "session with spaces";
+    const target = "cake://session/session%20with%20spaces?message=entry%2F42";
+    using fixture = renderMarkdown(
+      `[Full **agent response**](${target}) · [Capture notes](cake://session/session%20with%20spaces?attachment=00000000-0000-4000-8000-000000000001)`,
+      { actions: { sessionTitle: () => "Actual title", openSession } },
+    );
+    const report = screen.getByRole("link", { name: "Full agent response" });
+    expect(report.getAttribute("href")).toBe(target);
+    expect(report.getAttribute("aria-description")).toBe(
+      `Full agent response\nActual title\n${target}`,
+    );
+    await fixture.user.click(report);
+    expect(openSession).toHaveBeenLastCalledWith(id, "entry/42");
+    await fixture.user.click(screen.getByRole("link", { name: "Capture notes" }));
+    expect(openSession).toHaveBeenLastCalledWith(
+      id,
+      undefined,
+      "00000000-0000-4000-8000-000000000001",
+    );
+  });
+
   it.each(["f80c961e", "01957936-0000-7000-8000-0001f80c961e", "`f80c961e`"])(
     "displays the identity label %s without a prefix and navigates with its full Pi UUID",
     async (label) => {
@@ -311,7 +376,7 @@ describe("Markdown rendering integration", () => {
       });
       const link = screen.getByRole("link", { name: "f80c961e" });
       expect(link.getAttribute("href")).toBe(`cake://session/${sessionId}`);
-      expect(link.getAttribute("aria-description")).toBe(`cake://session/${sessionId}`);
+      expect(link.getAttribute("aria-description")).toBe(`f80c961e\ncake://session/${sessionId}`);
       await fixture.user.click(link);
       await waitFor(() =>
         expect(open).toHaveBeenCalledWith(
