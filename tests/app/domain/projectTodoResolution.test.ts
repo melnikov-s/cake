@@ -545,6 +545,117 @@ it.effect(
 );
 
 it.effect(
+  "honors caller-selected to-do page sizes through the tool and backend without changing defaults, filters or scope",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const active = yield* Effect.forEach(
+        Array.from({ length: 130 }, (_, n) => n),
+        (n) => todos.create(project, { title: `Task ${n}`, description: "Work." }),
+      );
+      yield* todos.create(project, {
+        title: "Task attention",
+        description: "Work.",
+        needsAttention: true,
+        attentionReason: "Review this.",
+      });
+      const snoozed = yield* todos.create(project, { title: "Task snoozed", description: "Work." });
+      yield* todos.mutateUser(project, {
+        _tag: "Snooze",
+        id: snoozed.id,
+        expectedRevision: 0,
+        until: "2099-01-01T00:00:00.000Z",
+      });
+      const done = yield* todos.create(project, { title: "Task done", description: "Work." });
+      yield* todos.mutateUser(project, {
+        _tag: "SetState",
+        id: done.id,
+        expectedRevision: 0,
+        state: "done",
+      });
+      yield* todos.create(project, { title: "Other work", description: "Work." });
+      yield* upsertProject("/other", "Other");
+      yield* todos.create("/other", { title: "Task other project", description: "Work." });
+      yield* todos.create(CAKE_CHAT_TODO_SCOPE, { title: "Task global", description: "Work." });
+
+      const defaults = yield* controls.list(project, {});
+      expect(defaults).toMatchObject({ total: 134, offset: 0, nextOffset: 20 });
+      expect(defaults.items.map((item) => item.id)).toEqual(
+        active.slice(0, 20).map((item) => item.id),
+      );
+      for (const view of ["summary", "reconciliation"] as const) {
+        for (const limit of [51, 100, 125]) {
+          const page = yield* controls.list(project, { view, limit });
+          expect(page.items.map((item) => item.id)).toEqual(
+            active.slice(0, limit).map((item) => item.id),
+          );
+          expect(page).toMatchObject({ total: 134, offset: 0, nextOffset: limit });
+          expect(Schema.is(ProjectTodoList)(page)).toBe(true);
+          if (view === "reconciliation")
+            expect(page.items.every((item) => "sessions" in item)).toBe(true);
+        }
+      }
+      const filter = { query: "tAsK", state: "open", category: "active" } as const;
+      const filtered = yield* controls.list(project, { ...filter, limit: 100, offset: 30 });
+      expect(filtered.items.map((item) => item.id)).toEqual(
+        active.slice(30).map((item) => item.id),
+      );
+      expect(filtered).toMatchObject({ total: 130, offset: 30, nextOffset: null });
+      expect(yield* controls.list(project, { ...filter, limit: 100, offset: 130 })).toEqual({
+        items: [],
+        total: 130,
+        offset: 130,
+        nextOffset: null,
+      });
+      expect(
+        (yield* controls.list(project, { state: "open", limit: Number.MAX_SAFE_INTEGER })).items,
+      ).toHaveLength(133);
+      expect(
+        (yield* controls.list(project, { state: "done", limit: 100 })).items.map((item) => item.id),
+      ).toEqual([done.id]);
+      expect(
+        (yield* controls.list(project, { category: "snoozed", limit: 100 })).items.map(
+          (item) => item.id,
+        ),
+      ).toEqual([snoozed.id]);
+      expect((yield* controls.list("/unregistered", { limit: 100 }).pipe(Effect.result))._tag).toBe(
+        "Failure",
+      );
+
+      const context = yield* Effect.context<Layer.Success<typeof f.layer>>();
+      const unused = async () => {
+        throw Error("Only list should be called");
+      };
+      const registry = new CakeOperationRegistry(
+        createProjectTodoOperations({
+          select: unused,
+          read: unused,
+          create: unused,
+          update: unused,
+          updateMany: unused,
+          list: (input) =>
+            Effect.runPromise(controls.list(project, input).pipe(Effect.provide(context))),
+        }),
+      );
+      const result = yield* Effect.tryPromise(() =>
+        registry.invoke(
+          { command: "todos.list", input: { limit: 100 } },
+          { signal: new AbortController().signal, toolCallId: "list-100", runtime: {} },
+        ),
+      );
+      const { result: page } = Schema.decodeUnknownSync(
+        Schema.Struct({ command: Schema.Literal("todos.list"), result: ProjectTodoList }),
+      )(result.structuredContent);
+      expect(page.items.map((item) => item.id)).toEqual(
+        active.slice(0, 100).map((item) => item.id),
+      );
+      expect(page).toMatchObject({ total: 134, nextOffset: 100 });
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
   "atomic bulk updates use one commit, preserve input order, and stale backfill cannot clobber a concurrent reopen",
   () => {
     const f = fixture();

@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { Schema } from "effect";
+import { fullProjectTodos } from "../helpers/projectTodoHarness";
 import guide from "../../../docs/agent/chat-todos.md?raw";
 import {
   emptyProjectTodos,
@@ -59,6 +60,30 @@ it("excludes routine actions while preserving durable work across both chats, he
   expect(guide).toContain(PROJECT_TODO_CREATION_RULE);
   expect(registry.operationHelp("todos.create")).toContain(PROJECT_TODO_CREATION_RULE);
 });
+it("retains bounded admission-time previews independently of list page sizes", () => {
+  const todos = fullProjectTodos();
+  const baseline = projectTodoBaseline({
+    ...todos,
+    items: todos.items.map((item) => ({
+      ...item,
+      description: "d".repeat(300),
+      status: "s".repeat(300),
+    })),
+  });
+  expect(baseline.match(/"descriptionPreview":/g)).toHaveLength(20);
+  expect(baseline).toContain(`"descriptionPreview":"${"d".repeat(240)}"`);
+  expect(baseline).toContain(`"statusPreview":"${"s".repeat(240)}"`);
+  expect(baseline).not.toContain('"title":"Task 20"');
+});
+
+it("documents caller-selected list sizes and the separate update-many cap", () => {
+  const help = registry.operationHelp("todos.list");
+  expect(help).toContain("List limit defaults to 20");
+  expect(help).toContain("positive safe integer page size");
+  expect(help).toContain("todos.update-many in batches of at most 50");
+  expect(help).not.toContain("(max 50)");
+});
+
 it("shares exact link and attention rules in mutation help", () => {
   for (const command of ["todos.create", "todos.update", "todos.update-many"]) {
     expect(registry.operationHelp(command)).toContain(PROJECT_TODO_LINK_GUIDANCE);

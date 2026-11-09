@@ -6,7 +6,27 @@ import {
   agentListPage,
 } from "../../../src/contracts/agent/agent-list-data";
 
+import { ProjectTodoListInput } from "../../../src/contracts/projects/project-todos";
+
 const decode = Schema.decodeUnknownSync(AgentListInput, { onExcessProperty: "error" });
+
+describe("to-do discovery page sizes", () => {
+  const decodeTodos = Schema.decodeUnknownSync(ProjectTodoListInput);
+
+  it.each([1, 51, 100, 1001, Number.MAX_SAFE_INTEGER])(
+    "accepts caller-selected limit %s",
+    (limit) => {
+      expect(decodeTodos({ limit })).toEqual({ limit });
+    },
+  );
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, -Infinity])(
+    "rejects invalid to-do limit %s",
+    (limit) => {
+      expect(() => decodeTodos({ limit })).toThrow();
+    },
+  );
+});
 
 describe("agent discovery pages", () => {
   const items = Array.from({ length: 61 }, (_, index) => ({ id: `item-${index}` }));
@@ -53,6 +73,7 @@ describe("agent discovery pages", () => {
   it.each([
     { limit: 0 },
     { limit: 51 },
+    { limit: 100 },
     { limit: 1.5 },
     { offset: -1 },
     { offset: 0.5 },

@@ -287,6 +287,7 @@ export type ProjectTodoUserMutation = typeof ProjectTodoUserMutation.Type;
 
 export const ProjectTodoListInput = Schema.Struct({
   ...AgentListInput.fields,
+  limit: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
   state: Schema.optionalKey(ProjectTodo.fields.state),
   category: Schema.optionalKey(Schema.Literals(["attention", "active", "snoozed", "done"])),
   view: Schema.optionalKey(Schema.Literals(["summary", "reconciliation"])),

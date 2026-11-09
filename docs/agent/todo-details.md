@@ -17,9 +17,9 @@ Agents close session-linked items via resolution, not manual done. Human Mark do
 
 Read current state and supply expectedRevision; preserve explicit user decisions on conflicts.
 state:done on already-done is a state no-op; other edits may still commit when automatic completion was the only intervening change. The receipt note explains; other changes still conflict.
-For reconciliation make one todos.list {state:"open",view:"reconciliation"}, joining canonical session IDs/effective resolved facts (null with reason when unknown), then one atomic update-many.
+For reconciliation make one todos.list {state:"open",view:"reconciliation"}, joining canonical session IDs/effective resolved facts (null with reason when unknown), then atomic update-many batches of at most 50.
 Any batch conflict commits nothing and names identity/current revision. Receipts follow input order, with new revisions, canonical attention and unexpected changes. detail:true opts into content; read gives exact detail.
-Default list is bounded title/id/state/revision/attention/reason/snooze metadata, offset/limit 20 default/50 max. category:attention|active|snoozed|done filters visibility; state:open includes snoozed.
+Default list is bounded title/id/state/revision/attention/reason/snooze metadata, offset/limit pagination with a default page size of 20. Choose any positive safe integer limit; use nextOffset to continue. category:attention|active|snoozed|done filters visibility; state:open includes snoozed.
 
 ## Attention and dismissal
 
