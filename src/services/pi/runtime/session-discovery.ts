@@ -23,6 +23,7 @@ import { projectSessionContextMetadata } from "./session-context-metadata";
 import {
   findSessionFileMetadataById,
   findSessionFileById,
+  type SessionFileSnapshot,
   streamSessionFileIds,
   streamSessionFiles,
   workingDirectorySessionPath,
@@ -107,6 +108,7 @@ export async function loadWorkspacePiSessionSummary(
     workingDirectory: cwd,
     root: sessionDir,
     direct: options.direct,
+    fileSnapshot: options.fileSnapshot,
   });
   return item
     ? {
@@ -182,6 +184,7 @@ export async function suggestProjectFiles(options: {
 export interface StreamWorkspaceSessionsOptions {
   direct?: boolean;
   excludedSessionIds?: ReadonlyArray<string>;
+  fileSnapshot?: SessionFileSnapshot;
 }
 
 /** Streams active session IDs from filenames without reading transcript titles or file metadata. */

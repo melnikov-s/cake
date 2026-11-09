@@ -1,4 +1,5 @@
-import { opendir, readdir, stat } from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { lstat, opendir, readdir, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { Effect, Stream } from "effect";
 import {
@@ -207,12 +208,72 @@ async function findSessionFileAt(
   return matches[0] ? join(directory, matches[0].name) : undefined;
 }
 
+/** A single discovery generation, not live transcript authority. No bodies, stats,
+ * watchers or cross-generation cache. Namespace changes after the listing (including
+ * new collisions) are visible in the next generation; metadata hits are re-statted
+ * and stale failures propagate. Never pass this evidence to recovery or mutations. */
+export interface SessionFileSnapshot {
+  readonly directory: string;
+  readonly workingDirectory: string;
+  readonly shared: boolean;
+  readonly find: (sessionId: string) => string | undefined;
+}
+
+/** One listing and an exact suffix index, including Pi IDs containing underscores
+ * and malformed timestamp prefixes accepted by the historical exact lookup. */
+export async function snapshotSessionFiles(
+  input: { readonly workingDirectory: string; readonly root: string; readonly direct?: boolean },
+  signal: AbortSignal,
+): Promise<SessionFileSnapshot> {
+  signal.throwIfAborted();
+  const { directory, shared } = sessionRouting(input);
+  let entries: Dirent[];
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    entries = [];
+  }
+  signal.throwIfAborted();
+  const files = new Map<string, string | null>();
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    const path = join(directory, entry.name);
+    for (
+      let index = entry.name.indexOf("_");
+      index !== -1;
+      index = entry.name.indexOf("_", index + 1)
+    ) {
+      const id = entry.name.slice(index + 1, -6);
+      files.set(id, files.has(id) ? null : path);
+    }
+  }
+  // Keep collision evidence before cwd filtering, just like exact lookup.
+  const allowed =
+    shared && files.size > 0
+      ? await piSessionIdsForWorkingDirectory(input.workingDirectory, directory, signal)
+      : undefined;
+  signal.throwIfAborted();
+  return Object.freeze({
+    directory,
+    shared,
+    workingDirectory: resolve(input.workingDirectory),
+    find: (sessionId: string) => {
+      signal.throwIfAborted();
+      const path = files.get(sessionId);
+      if (path === null) throw new Error(`Session ID collision detected: ${sessionId}`);
+      return allowed && !allowed.has(sessionId) ? undefined : path;
+    },
+  });
+}
+
 /** Request-local filename discovery: one directory listing, no per-entry scans or stats. */
 export async function findSessionFilesByIds(
   sessionIds: ReadonlySet<string>,
   input: { readonly workingDirectory: string; readonly root: string; readonly direct?: boolean },
   signal: AbortSignal,
 ): Promise<ReadonlyMap<string, string>> {
+  signal.throwIfAborted();
   const { directory, shared } = sessionRouting(input);
   let entries;
   try {
@@ -221,6 +282,7 @@ export async function findSessionFilesByIds(
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return new Map();
     throw error;
   }
+  signal.throwIfAborted();
   const files = new Map<string, string>();
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
@@ -245,6 +307,7 @@ export async function findSessionFilesByIds(
     );
     for (const id of files.keys()) if (!allowed.has(id)) files.delete(id);
   }
+  signal.throwIfAborted();
   return files;
 }
 
@@ -255,10 +318,25 @@ export async function findSessionFileMetadataById(
     readonly workingDirectory: string;
     readonly root: string;
     readonly direct?: boolean;
+    readonly fileSnapshot?: SessionFileSnapshot;
   },
 ): Promise<SessionFileMetadata | undefined> {
   const routing = sessionRouting(input);
-  const path = await findSessionFileAt(sessionId, input.workingDirectory, routing);
+  const snapshot = input.fileSnapshot;
+  if (
+    snapshot &&
+    (snapshot.directory !== routing.directory ||
+      snapshot.shared !== routing.shared ||
+      snapshot.workingDirectory !== resolve(input.workingDirectory))
+  )
+    throw new Error("Session file snapshot routing mismatch");
+  const path = snapshot
+    ? snapshot.find(sessionId)
+    : await findSessionFileAt(sessionId, input.workingDirectory, routing);
   if (!path) return undefined;
-  return metadataFromFilename(routing.directory, basename(path), (await stat(path)).mtime);
+  // The generation owns filenames only. Never follow a replaced symlink or hide
+  // deletion/permission failures by retrying stale evidence as a missing history.
+  const info = await lstat(path);
+  if (!info.isFile()) throw new Error(`Session transcript requires a regular file: ${path}`);
+  return metadataFromFilename(routing.directory, basename(path), info.mtime);
 }

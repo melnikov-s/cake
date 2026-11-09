@@ -85,6 +85,40 @@ const adapter = (
 });
 
 describe("CakeSessionRuntimes", () => {
+  it.effect(
+    "acquires generation filename evidence through the service and threads it to exact catalog projections",
+    () =>
+      Effect.gen(function* () {
+        const directory = yield* Effect.acquireRelease(
+          Effect.sync(() => mkdtempSync(join(tmpdir(), "cake-catalog-snapshot-"))),
+          (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
+        );
+        const file = join(directory, "2026-01-01T00-00-00-000Z_session.jsonl");
+        yield* Effect.sync(() => writeFileSync(file, "fixture"));
+        const constructions = yield* Ref.make(0);
+        const finalizations = yield* Ref.make(0);
+        const catalogEntry = vi.fn<CakeSessionRuntimesAdapter["catalogEntry"]>(() =>
+          Effect.succeed(undefined),
+        );
+        const layer = makeCakeSessionRuntimesLayer({
+          ...adapter(constructions, finalizations),
+          catalogEntry,
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+        yield* Effect.gen(function* () {
+          const sessions = yield* CakeSessionRuntimes;
+          const query = { workingDirectory: directory, sessionDirectory: directory, direct: true };
+          const snapshot = yield* sessions.catalogSnapshot(query);
+          assert.strictEqual(snapshot.find("session"), file);
+          yield* sessions.catalogEntry(query, "session", snapshot);
+          assert.strictEqual(catalogEntry.mock.calls[0]?.[2], snapshot);
+          const durable = yield* sessions
+            .catalogSnapshot({ ...query, cakeChatSessionId: CAKE_CHAT_SESSION_ID })
+            .pipe(Effect.result);
+          assert.strictEqual(durable._tag, "Failure");
+          assert.strictEqual(yield* Ref.get(constructions), 0);
+        }).pipe(Effect.provide(layer));
+      }).pipe(Effect.scoped),
+  );
   it.effect("checks transcript authority without catalog titles or runtime construction", () =>
     Effect.gen(function* () {
       const directory = yield* Effect.acquireRelease(

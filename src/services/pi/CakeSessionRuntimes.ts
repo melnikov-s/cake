@@ -7,7 +7,11 @@ import {
   type RuntimeRecoveryInput,
 } from "../storage/RuntimeRecoveryStorage";
 import { stat } from "node:fs/promises";
-import { hasSessionFileById } from "../storage/session-files";
+import {
+  hasSessionFileById,
+  snapshotSessionFiles,
+  type SessionFileSnapshot,
+} from "../storage/session-files";
 import type { CakeOperationOptions } from "../../contracts/agent/cake-operation-options";
 import type { CakeOperationInvocation } from "../../contracts/agent/cake-operation";
 import type { Scope } from "effect";
@@ -318,6 +322,7 @@ export interface CakeSessionRuntimesAdapter {
   readonly catalogEntry: (
     query: PiSessionQuery,
     sessionId: string,
+    fileSnapshot?: SessionFileSnapshot,
   ) => Effect.Effect<PiSessionSummary | undefined, unknown>;
   readonly inspect: (
     target: PiSessionTarget,
@@ -340,9 +345,14 @@ export class CakeSessionRuntimes extends Context.Service<
   {
     readonly sessionIds: (query: PiSessionQuery) => Stream.Stream<string, PiSessionError>;
     readonly catalog: (query: PiSessionQuery) => Stream.Stream<PiSessionSummary, PiSessionError>;
+    /** Regular-Pi discovery evidence owned by one catalog generation, never recovery authority. */
+    readonly catalogSnapshot: (
+      query: PiSessionQuery,
+    ) => Effect.Effect<SessionFileSnapshot, PiSessionError>;
     readonly catalogEntry: (
       query: PiSessionQuery,
       sessionId: string,
+      fileSnapshot?: SessionFileSnapshot,
     ) => Effect.Effect<PiSessionSummary | undefined, PiSessionError>;
     /** Recovery authority only: exact filename/collision checks and shared-root cwd discovery,
      * without title/transcript projection. Permanent Cake Chat uses its Durable owner. */
@@ -551,14 +561,42 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         });
       });
 
+      const catalogSnapshot = Effect.fn("CakeSessionRuntimes.catalogSnapshot")(function* (
+        query: PiSessionQuery,
+      ) {
+        const decoded = yield* Schema.decodeUnknownEffect(PiSessionQuery)(query).pipe(
+          sessionError("catalogSnapshot"),
+        );
+        if (decoded.cakeChatSessionId)
+          return yield* new PiSessionError({
+            operation: "catalogSnapshot",
+            message: "Permanent Cake Chat does not use Pi session files",
+          });
+        return yield* Effect.tryPromise({
+          try: (signal) =>
+            snapshotSessionFiles(
+              {
+                workingDirectory: decoded.workingDirectory,
+                root: decoded.sessionDirectory,
+                direct: decoded.direct,
+              },
+              signal,
+            ),
+          catch: sessionErrorValue("catalogSnapshot"),
+        });
+      });
+
       const catalogEntry = Effect.fn("CakeSessionRuntimes.catalogEntry")(function* (
         query: PiSessionQuery,
         sessionId: string,
+        fileSnapshot?: SessionFileSnapshot,
       ) {
         const decoded = yield* Schema.decodeUnknownEffect(PiSessionQuery)(query).pipe(
           sessionError("catalogEntry"),
         );
-        return yield* adapter.catalogEntry(decoded, sessionId).pipe(sessionError("catalogEntry"));
+        return yield* adapter
+          .catalogEntry(decoded, sessionId, fileSnapshot)
+          .pipe(sessionError("catalogEntry"));
       });
 
       const acquire = Effect.fn("CakeSessionRuntimes.acquire")(function* (
@@ -831,6 +869,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         sessionIds,
         catalog,
         catalogEntry,
+        catalogSnapshot,
         hasTranscript,
         inspect,
         acquire,
@@ -880,7 +919,7 @@ export const makeCakeSessionRuntimesLive = (
                 direct: query.direct,
                 excludedSessionIds: query.excludedSessionIds,
               }),
-        catalogEntry: (query, sessionId) =>
+        catalogEntry: (query, sessionId, fileSnapshot) =>
           query.cakeChatSessionId
             ? coordinatorCatalog(query.sessionDirectory, query.cakeChatSessionId).pipe(
                 Effect.map((item) => (item?.id === sessionId ? item : undefined)),
@@ -893,6 +932,7 @@ export const makeCakeSessionRuntimesLive = (
                     query.sessionDirectory,
                     {
                       direct: query.direct,
+                      fileSnapshot,
                     },
                   ),
                 catch: (cause) => cause,
