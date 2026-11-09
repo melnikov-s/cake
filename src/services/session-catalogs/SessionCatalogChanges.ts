@@ -1,4 +1,4 @@
-import { Cache, Context, Effect, Equal, Hash, Layer, PubSub, Stream } from "effect";
+import { Cache, Context, Effect, Equal, Hash, Layer, PubSub, Ref, Stream } from "effect";
 import type { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
 import type {
   ProjectSessionError,
@@ -110,7 +110,9 @@ export class SessionCatalogChanges extends Context.Service<
   static readonly layer = Layer.effect(
     SessionCatalogChanges,
     Effect.gen(function* () {
+      const revision = yield* Ref.make(0);
       const changes = yield* PubSub.bounded<{
+        readonly revision: number;
         readonly change: SessionCatalogChange;
         readonly projections: Cache.Cache<
           ProjectionRequest,
@@ -127,7 +129,8 @@ export class SessionCatalogChanges extends Context.Service<
             capacity: 64,
             lookup: (request: ProjectionRequest) => request.compute,
           });
-          yield* PubSub.publish(changes, { change, projections });
+          const nextRevision = yield* Ref.updateAndGet(revision, (value) => value + 1);
+          yield* PubSub.publish(changes, { revision: nextRevision, change, projections });
         }),
         initialThenChanges: (initial) =>
           Stream.unwrap(
@@ -146,18 +149,27 @@ export class SessionCatalogChanges extends Context.Service<
             Effect.gen(function* () {
               const services = yield* Effect.context<Effect.Services<ReturnType<typeof project>>>();
               const subscription = yield* PubSub.subscribe(changes);
+              let initialRevision = 0;
               return initial.pipe(
+                Stream.tap(() =>
+                  Ref.get(revision).pipe(
+                    Effect.map((value) => {
+                      initialRevision = value;
+                    }),
+                  ),
+                ),
                 Stream.concat(
                   Stream.fromSubscription(subscription).pipe(
-                    Stream.mapEffect(({ change, projections }) =>
-                      Cache.get(
-                        projections,
-                        new ProjectionRequest(
-                          key,
-                          project(change).pipe(Effect.provideContext(services)),
-                        ),
-                      ),
-                    ),
+                    Stream.mapEffect(({ revision: changeRevision, change, projections }) => {
+                      const compute = project(change).pipe(Effect.provideContext(services));
+                      // Another subscriber may have cached this change before our
+                      // initial scan finished. Catch up freshly rather than replay an
+                      // older projection over a newer initial snapshot. Never drop it:
+                      // the initial scan may itself have read a row before that change.
+                      return changeRevision <= initialRevision
+                        ? compute
+                        : Cache.get(projections, new ProjectionRequest(key, compute));
+                    }),
                     Stream.flatMap(Stream.fromIterable),
                   ),
                 ),

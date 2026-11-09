@@ -101,6 +101,62 @@ describe("SessionCatalogChanges", () => {
     }).pipe(Effect.scoped, Effect.provide(SessionCatalogChanges.layer)),
   );
 
+  it.effect(
+    "never replays another window's older cached projection over a fresh initial snapshot",
+    () =>
+      Effect.gen(function* () {
+        const catalogs = yield* SessionCatalogChanges;
+        const release = yield* Deferred.make<void>();
+        const scanning = yield* Deferred.make<void>();
+        const fast = yield* Queue.unbounded<ProjectCatalogItem>();
+        const slow = yield* Queue.unbounded<ProjectCatalogItem>();
+        let value = 0;
+        let computations = 0;
+        const project = () =>
+          Effect.sync(() => {
+            computations++;
+            return [{ _tag: "Removed" as const, sessionId: String(value) }];
+          });
+        yield* catalogs
+          .initialThenProjectChanges(
+            Stream.succeed({ _tag: "InitialBatch", sessions: [] }),
+            "same",
+            project,
+          )
+          .pipe(
+            Stream.runForEach((item) => Queue.offer(fast, item)),
+            Effect.forkScoped,
+          );
+        yield* Queue.take(fast);
+        const initial = Stream.fromEffect(
+          Deferred.succeed(scanning, undefined).pipe(
+            Effect.andThen(Deferred.await(release)),
+            Effect.map(() => ({ _tag: "Removed" as const, sessionId: `initial-${value}` })),
+          ),
+        );
+        yield* catalogs.initialThenProjectChanges(initial, "same", project).pipe(
+          Stream.runForEach((item) => Queue.offer(slow, item)),
+          Effect.forkScoped,
+        );
+        yield* Deferred.await(scanning);
+        const change: SessionCatalogChange = {
+          _tag: "ProjectSessionRemoved",
+          sessionId: "one",
+          projectPath: "/project",
+        };
+        value = 1;
+        yield* catalogs.publish(change);
+        assert.deepEqual(yield* Queue.take(fast), { _tag: "Removed", sessionId: "1" });
+        value = 2;
+        yield* catalogs.publish(change);
+        assert.deepEqual(yield* Queue.take(fast), { _tag: "Removed", sessionId: "2" });
+        yield* Deferred.succeed(release, undefined);
+        for (const sessionId of ["initial-2", "2", "2"])
+          assert.deepEqual(yield* Queue.take(slow), { _tag: "Removed", sessionId });
+        assert.equal(computations, 4, "only initial catch-up bypasses the shared projection");
+      }).pipe(Effect.scoped, Effect.provide(SessionCatalogChanges.layer)),
+  );
+
   it.effect("releases a pending projection when its last consumer cancels", () =>
     Effect.gen(function* () {
       const catalogs = yield* SessionCatalogChanges;
