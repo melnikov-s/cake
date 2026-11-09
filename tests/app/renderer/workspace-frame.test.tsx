@@ -55,6 +55,15 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = 
     outcome: { view: "file" },
     locations: [],
   }));
+  const browserState = (sessionId: string) => ({
+    sessionId,
+    url: "about:blank",
+    title: "Browser",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    inspecting: false,
+  });
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: [
@@ -64,15 +73,9 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = 
       projectSessions: { open: async () => undefined },
       cakeChats: { open: async () => undefined },
       browser: {
-        updateBounds: async ({ sessionId }) => ({
-          sessionId,
-          url: "about:blank",
-          title: "Browser",
-          loading: false,
-          canGoBack: false,
-          canGoForward: false,
-          inspecting: false,
-        }),
+        open: async (sessionId) => browserState(sessionId),
+        state: async (sessionId) => browserState(sessionId),
+        updateBounds: async ({ sessionId }) => browserState(sessionId),
       },
       filesystem: {
         prepareFileLocation: async ({ location }) => ({ viewer: "vscode", location }),
@@ -409,6 +412,81 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
     },
   );
 
+  it.each(
+    (["browser", "vscode"] as const).flatMap((mode) =>
+      (["todos", "sessions"] as const).flatMap((tab) =>
+        (["toolbar", "programmatic"] as const).map((entry) => ({ mode, tab, entry })),
+      ),
+    ),
+  )("$entry entry into $mode defaults $tab to Chat only on entry", async ({ mode, tab, entry }) => {
+    using f = renderWorkspace(kind, mode, true);
+    const mainTab = () =>
+      within(screen.getByRole("group", { name: "Workspace content" })).getByRole("button", {
+        name: tab === "todos" ? /^To-dos/ : /^Sessions/,
+      });
+    const companionTab = (name: string) =>
+      within(screen.getByRole("group", { name: "Companion content" })).getByRole("button", {
+        name,
+      });
+    const tabName = tab === "todos" ? "Todos" : "Sessions";
+    const modeName = mode === "browser" ? "Browser" : "VS Code";
+    const programmaticEntry = async () => {
+      await act(async () => {
+        if (mode === "browser") {
+          f.root.projectWorkbenchStore.receive({
+            type: "browser-entered",
+            sessionId: f.session.sessionId,
+            workspacePath: "/project",
+          });
+        } else {
+          expect(
+            await f.root.applicationControlStore.invoke(
+              { name: "vscode.enter", arguments: {} },
+              {
+                kind: kind === "project" ? "project-session" : "cake-chat",
+                sessionId: f.session.sessionId,
+                projectPath: "/project",
+                workingDirectory: "/project",
+                title: "Invoking conversation",
+              },
+            ),
+          ).toMatchObject({ ok: true });
+        }
+      });
+    };
+
+    await f.user.click(mainTab());
+    expect(mainTab().getAttribute("aria-pressed")).toBe("true");
+    if (entry === "toolbar") await f.user.click(screen.getByRole("button", { name: modeName }));
+    else await programmaticEntry();
+    expect(companionTab("Chat").getAttribute("aria-pressed")).toBe("true");
+
+    // Manual selection, projection refresh, and repeated same-mode entry keep the chosen tab.
+    await f.user.click(companionTab(tabName));
+    act(() =>
+      applySnapshot(f.models.projects, {
+        projects: [projectRecord({ path: "/project", name: "Refreshed project" })],
+      }),
+    );
+    await programmaticEntry();
+    expect(companionTab(tabName).getAttribute("aria-pressed")).toBe("true");
+
+    await f.user.click(screen.getByRole("button", { name: "Main" }));
+    expect(mainTab().getAttribute("aria-pressed")).toBe("true");
+    expect(f.root.workspaceNavigatorStore.companionTab).toBe(tab);
+    await f.user.click(screen.getByRole("button", { name: modeName }));
+    expect(companionTab("Chat").getAttribute("aria-pressed")).toBe("true");
+
+    // Switching directly between the two tool modes is also a fresh entry.
+    await f.user.click(companionTab(tabName));
+    await f.user.click(
+      screen.getByRole("button", {
+        name: mode === "browser" ? "VS Code" : "Browser",
+      }),
+    );
+    expect(companionTab("Chat").getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("Main navigation preserves accessory tab and visibility", async () => {
     using f = renderWorkspace(kind, "browser", false, true);
     const navigator = f.root.workspaceNavigatorStore;
@@ -537,7 +615,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
   );
 
   it.each<Mode>(["browser", "vscode"])(
-    "%s collapse survives window snapshots and mode switches without hiding Main chat",
+    "%s collapse survives window snapshots and Main keeps its own visibility",
     async (mode) => {
       using f = renderWorkspace(kind, mode, false, true);
       await f.user.click(
@@ -597,10 +675,9 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
           name: mode === "browser" ? "VS Code" : "Browser",
         }),
       );
-      // Explicit VS Code entry reveals Chat; Browser entry preserves a manual
-      // close. Both existing policies must leave the shell restore action usable.
-      if (!navigator.paneVisible)
-        await f.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+      // Every fresh tool-mode entry reveals Chat, including after a manual close.
+      expect(navigator.paneVisible).toBe(true);
+      expect(navigator.companionTab).toBe("chat");
       expect(
         screen.getByRole("complementary", { name: "Current conversation companion" }),
       ).toBeDefined();
@@ -610,8 +687,8 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
           name: mode === "browser" ? "Browser" : "VS Code",
         }),
       );
-      if (!navigator.paneVisible)
-        await f.user.click(screen.getByRole("button", { name: "Open Workspace" }));
+      expect(navigator.paneVisible).toBe(true);
+      expect(navigator.companionTab).toBe("chat");
       expect(
         screen.getByRole("complementary", { name: "Current conversation companion" }),
       ).toBeDefined();

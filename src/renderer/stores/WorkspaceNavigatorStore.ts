@@ -1,4 +1,5 @@
 import { Store, snapshot } from "r-state-tree";
+import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 
@@ -12,6 +13,7 @@ export class WorkspaceNavigatorStore extends Store<{
   replyContext(name: string, text: string): void;
   companionSession():
     | {
+        presentationMode: ProjectSessionPresentationMode;
         workspaceChatSidebarVisible: boolean;
         showWorkspaceChatSidebar(): void;
         toggleWorkspaceChatSidebar(): void;
@@ -25,12 +27,20 @@ export class WorkspaceNavigatorStore extends Store<{
 
   constructor(props: WorkspaceNavigatorStore["props"]) {
     super(props);
-    // Follow navigation identity only: refreshes and manual pane/mode changes
-    // within the current session must not take Chat back from the user.
+    // Default to Chat on conversation or tool-mode entry, not on refreshes or tab changes.
     this.reaction(
-      () => this.props.activeSessionId(),
-      (sessionId) => {
-        if (sessionId && this.props.companionSession()) this.showChat();
+      () => ({
+        sessionId: this.props.activeSessionId(),
+        mode: this.props.companionSession()?.presentationMode,
+      }),
+      (current, previous) => {
+        if (
+          current.sessionId &&
+          current.mode &&
+          current.mode !== "normal" &&
+          (current.sessionId !== previous?.sessionId || current.mode !== previous?.mode)
+        )
+          this.showChat();
       },
     );
   }
