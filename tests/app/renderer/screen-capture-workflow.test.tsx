@@ -54,6 +54,7 @@ function renderCapture(startOverride?: Client["electron"]["startScreenCapture"],
                 screenCaptureState: async () => ({
                   routing,
                   image: "data:image/png;base64,fixture",
+                  automaticTopInset: 0,
                   width: 1200,
                   height: 800,
                   maxDimension: 1024,

@@ -100,12 +100,12 @@ export interface SelectedTextReaderOptions {
 export const ACCESSIBILITY_PERMISSION_MESSAGE =
   "Cake can't read the selected text. Allow Cake in System Settings → Privacy & Security → Accessibility, then restart Cake. You can also turn this off in Settings → Cake Chat.";
 
-export function runOsaScript(script: string, args: readonly string[]) {
+export function runOsaScript(script: string, args: readonly string[], signal?: AbortSignal) {
   return new Promise<string>((resolve, reject) => {
     execFile(
       "/usr/bin/osascript",
       ["-l", "JavaScript", "-e", script, ...args],
-      { timeout: 1_500, maxBuffer: 16 * 1024 * 1024 },
+      { timeout: 1_500, maxBuffer: 16 * 1024 * 1024, signal },
       (error, stdout) => (error ? reject(error) : resolve(stdout)),
     );
   });

@@ -23,6 +23,8 @@ import {
   type ScreenCaptureSnapshot,
 } from "../../contracts/desktop/screen-capture-data";
 
+import { automaticCaptureTopInset } from "./screen-capture-geometry";
+
 interface CaptureWindowOptions {
   readonly preloadPath: string;
   readonly rendererPath: string;
@@ -123,7 +125,16 @@ export class ScreenCaptureWindow {
       if (!source || source.thumbnail.isEmpty())
         throw new Error("Screen capture is unavailable. Check Cake's screen-recording permission.");
       const pixels = source.thumbnail.getSize();
+      const automaticTopInset = await automaticCaptureTopInset(
+        process.platform,
+        display,
+        pixels.height,
+        signal,
+      );
+      if (this.stopped || signal.aborted || owner.isDestroyed())
+        return { annotationColor: routing.annotationColor };
       this.snapshot = {
+        automaticTopInset,
         image: source.thumbnail.toDataURL(),
         routing,
         width: pixels.width,

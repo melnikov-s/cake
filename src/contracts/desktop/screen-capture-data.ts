@@ -98,6 +98,8 @@ export const CaptureImage = Schema.String.check(Schema.isMaxLength(48_000_000));
 export const ScreenCaptureSnapshot = Schema.Struct({
   image: CaptureImage,
   routing: CapturePreferences,
+  /** Screenshot-pixel menu-bar boundary; null means automatic geometry is unavailable. */
+  automaticTopInset: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   width: Schema.Int.check(Schema.isGreaterThan(0)),
   height: Schema.Int.check(Schema.isGreaterThan(0)),
   maxDimension: ScreenCaptureSettings.fields.maxDimension,

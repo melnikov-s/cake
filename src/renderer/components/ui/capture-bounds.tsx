@@ -20,11 +20,13 @@ export function CaptureBounds({
   rect,
   width,
   height,
+  topInset = 0,
   onChange,
 }: {
   rect: CaptureRect;
   width: number;
   height: number;
+  topInset?: number;
   onChange(rect: CaptureRect): void;
 }) {
   const surface = useRef<HTMLDivElement>(null);
@@ -54,6 +56,7 @@ export function CaptureBounds({
           },
           width,
           height,
+          topInset,
         ),
       );
     };
@@ -70,7 +73,7 @@ export function CaptureBounds({
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
     };
-  }, [width, height]);
+  }, [width, height, topInset]);
   const begin = (event: React.PointerEvent<HTMLButtonElement>, handle: CaptureBoundsHandle) => {
     if (event.button !== 0 || drag.current) return;
     event.preventDefault();

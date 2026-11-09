@@ -107,6 +107,10 @@ export class ScreenCaptureOverlayStore extends Store<{
       this.editingIndex !== undefined
     )
       return;
+    if (this.snapshot.automaticTopInset === null) {
+      this.error = "Menu-bar geometry is unavailable. Select a capture region manually.";
+      return;
+    }
     // Include a drawing still under the pointer, but never let its later release crop/draw again.
     const pending = this.pendingDrawing;
     if (pending) this.drawings.push(pending);
@@ -115,6 +119,7 @@ export class ScreenCaptureOverlayStore extends Store<{
       this.drawings,
       this.snapshot.width,
       this.snapshot.height,
+      this.snapshot.automaticTopInset,
     );
     this.copied = false;
   }

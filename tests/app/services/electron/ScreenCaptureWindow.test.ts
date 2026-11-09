@@ -63,6 +63,7 @@ vi.mock("electron", () => ({
     getDisplayNearestPoint: () => ({
       id: 2,
       bounds: { x: -1200, y: 0, width: 1200, height: 600 },
+      workArea: { x: -1200, y: 25, width: 1200, height: 535 },
       size: { width: 1200, height: 600 },
       scaleFactor: 2,
     }),
@@ -196,6 +197,7 @@ describe("Native screen capture lifetime", () => {
       width: 2400,
       height: 1200,
       maxDimension: 1024,
+      automaticTopInset: process.platform === "darwin" ? 50 : 0,
     });
     capture.finish(
       window.webContents.id,

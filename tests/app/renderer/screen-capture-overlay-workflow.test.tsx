@@ -12,6 +12,7 @@ afterEach(cleanup);
 const snapshot = {
   routing: captureRouting,
   image: "data:image/png;base64,fixture",
+  automaticTopInset: 0,
   width: 1200,
   height: 800,
   maxDimension: 1024,
@@ -309,6 +310,64 @@ describe("Screen capture overlay", () => {
     );
     await fixture.user.keyboard("{/Enter}");
     expect(fixture.finishScreenCapture).toHaveBeenCalledOnce();
+  });
+
+  it("uses the same menu-bar-safe bounds for Enter preview, raster export and annotation filtering", async () => {
+    const renderImage = vi.fn<ScreenCaptureOverlayStore["props"]["renderImage"]>(
+      async () => "data:image/png;base64,safe",
+    );
+    using fixture = await renderOverlay(renderImage);
+    act(() => {
+      fixture.store.snapshot = { ...fixture.store.snapshot!, automaticTopInset: 74 };
+      fixture.store.drawings.push(
+        { kind: "arrow", start: { x: 400, y: 20 }, end: { x: 500, y: 30 }, label: "Menu only" },
+        {
+          kind: "arrow",
+          start: { x: 400, y: 120 },
+          end: { x: 500, y: 200 },
+          label: "Window title",
+        },
+      );
+    });
+    await fixture.user.keyboard("{Enter>}");
+    expect(fixture.store.capturePreview).toEqual({ x: 100, y: 74, width: 700, height: 426 });
+    await fixture.user.keyboard("{/Enter}");
+    await waitFor(() => expect(fixture.finishScreenCapture).toHaveBeenCalledOnce());
+    expect(renderImage).toHaveBeenCalledWith(
+      snapshot.image,
+      fixture.store.drawings.slice(),
+      { x: 100, y: 74, width: 700, height: 426 },
+      1024,
+      "yellow",
+    );
+    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ annotationText: "2. Window title" }),
+      "yellow",
+      expect.anything(),
+    );
+    expect(fixture.store.drawings[1]!.kind === "arrow" && fixture.store.drawings[1]!.start.y).toBe(
+      120,
+    );
+  });
+
+  it("disables only automatic selection when menu-bar geometry is unavailable", async () => {
+    const renderImage = vi.fn<ScreenCaptureOverlayStore["props"]["renderImage"]>(
+      async () => "data:image/png;base64,manual",
+    );
+    using fixture = await renderOverlay(renderImage);
+    act(() => {
+      fixture.store.snapshot = { ...fixture.store.snapshot!, automaticTopInset: null };
+    });
+    await fixture.user.keyboard("{Enter}");
+    expect(fixture.store.capturePreview).toBeUndefined();
+    expect(renderImage).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Menu-bar geometry is unavailable/)).toBeDefined();
+    act(() => {
+      fixture.store.begin({ x: 0, y: 0 });
+      fixture.store.end({ x: 400, y: 200 });
+    });
+    await waitFor(() => expect(renderImage).toHaveBeenCalledOnce());
+    expect(renderImage.mock.calls[0]![2]).toEqual({ x: 0, y: 0, width: 400, height: 200 });
   });
 
   it("recovers after a render error", async () => {

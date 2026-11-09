@@ -34,6 +34,33 @@ describe("automatic capture bounds in screenshot pixels", () => {
       ),
     ).toEqual({ x: 100, y: 100, width: 1100, height: 900 });
   });
+  it("excludes the menu bar from an unannotated automatic display capture", () => {
+    expect(automaticCaptureBounds([], 2400, 1200, 74)).toEqual({
+      x: 0,
+      y: 74,
+      width: 2400,
+      height: 1126,
+    });
+  });
+  it.each([10, 200, 350])(
+    "does not let top-edge drawings at y=%i or their padding reintroduce menu pixels",
+    (y) => {
+      expect(
+        automaticCaptureBounds(
+          [{ kind: "arrow", start: { x: 400, y }, end: { x: 600, y: 400 }, label: "" }],
+          2400,
+          1200,
+          74,
+        ),
+      ).toEqual({ x: 100, y: 74, width: 800, height: 626 });
+    },
+  );
+  it("leaves automatic captures away from the menu bar unchanged", () => {
+    const drawings = [{ kind: "freehand" as const, points: [{ x: 900, y: 700 }], label: "" }];
+    expect(automaticCaptureBounds(drawings, 2400, 1200, 74)).toEqual(
+      automaticCaptureBounds(drawings, 2400, 1200),
+    );
+  });
   it("clamps padding at every display boundary", () => {
     expect(
       automaticCaptureBounds(
@@ -75,6 +102,18 @@ describe("capture rectangle adjustments", () => {
       y: 500,
       width: 400,
       height: 300,
+    });
+  });
+  it("keeps automatic movement and north resize below the menu bar without shifting other edges", () => {
+    expect(adjustCaptureBounds(rect, "move", { x: 0, y: -1000 }, 1200, 800, 74)).toEqual({
+      ...rect,
+      y: 74,
+    });
+    expect(adjustCaptureBounds(rect, "nw", { x: -1000, y: -1000 }, 1200, 800, 74)).toEqual({
+      x: 0,
+      y: 74,
+      width: 600,
+      height: 426,
     });
   });
   it("clamps resizing to the image and prevents inverted/empty bounds", () => {

@@ -100,6 +100,7 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
           rect={store.capturePreview}
           width={snapshot.width}
           height={snapshot.height}
+          topInset={snapshot.automaticTopInset ?? 0}
           onChange={(rect) => store.updateCapturePreview(rect)}
         />
       )}
