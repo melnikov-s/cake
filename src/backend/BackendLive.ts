@@ -89,6 +89,7 @@ import { WorktreeLandingCoordinatorLive } from "../services/worktrees/WorktreeLa
 import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runtime";
 import { BootstrapLive } from "../main/BootstrapLive";
 import { initializeBackend } from "./initializeBackend";
+import { makeBackendRecoveryLive } from "../services/startup/BackendRecovery";
 import * as localMcp from "../domain/mcp/localMcp";
 import { LocalMcpServer } from "../services/local-mcp/LocalMcpServer";
 import { makeLocalMcpSettingsLive } from "../services/storage/LocalMcpSettings";
@@ -307,6 +308,68 @@ export const makeBackendLive = <HostServices, HostError>(
     Layer.effectDiscard(startupDiagnostics.measure("backend-initialize", initializeBackend())),
     ArtifactRuntimeHostLive,
   ).pipe(Layer.provide(SessionWorkflowsLive));
+  const RecoveryLive = makeBackendRecoveryLive(
+    Effect.gen(function* () {
+      const recovery = yield* RuntimeRecoveryStorage;
+      const coordination = yield* SessionCoordination;
+      const workers = yield* SubagentStorage;
+      // Missing/corrupt recovery evidence must never be interpreted as no
+      // unfinished work. Keep the app usable, but start no automatic work or
+      // orphan-abort reconciliation until all recovery authorities can be read.
+      const ready = yield* startupDiagnostics
+        .measure(
+          "recovery-storage-check",
+          Effect.all([
+            coordination.checkStorage(),
+            recovery
+              .list()
+              .pipe((effect) => startupDiagnostics.measure("recovery-records-list", effect)),
+            workers.list(),
+          ]),
+        )
+        .pipe(Effect.result);
+      if (ready._tag === "Failure") {
+        yield* Effect.logWarning(
+          "Automatic restart recovery is paused. Repair the reported metadata file and restart; saved conversations remain available.",
+          ready.failure,
+        );
+        yield* startupDiagnostics.mark("backend-recovery-paused");
+        return;
+      }
+      const recoverable = (sessionId: string, turnId?: string) =>
+        recovery
+          .get(sessionId)
+          .pipe(
+            Effect.map(
+              (record) =>
+                record?.inputs.some((input) => turnId === undefined || input.turnId === turnId) ??
+                false,
+            ),
+          );
+      yield* startupDiagnostics.measure(
+        "session-families-initialize",
+        sessionFamilies
+          .initialize(paths.piSessions, paths.piResolvedSessions, recoverable)
+          .pipe(Effect.orDie),
+      );
+      const resumeWorkers = yield* startupDiagnostics.measure(
+        "subagent-recovery-initialize",
+        subagentRecovery.initialize().pipe(Effect.orDie),
+      );
+      yield* startupDiagnostics.measure(
+        "runtime-recovery-initialize",
+        runtimeRecovery.initialize().pipe(Effect.orDie),
+      );
+      yield* startupDiagnostics.measure("subagent-resume-workers", resumeWorkers);
+      yield* sessionFamilies.runWorker.pipe(Effect.forkScoped);
+      yield* autoMerge.runPass().pipe(
+        Effect.catch((error) => Effect.logError("Auto-merge pass failed", error)),
+        Effect.repeat(Schedule.spaced("1 second")),
+        Effect.forkScoped,
+      );
+      yield* startupDiagnostics.mark("backend-recovery-ready");
+    }),
+  ).pipe(Layer.provide(Layer.merge(SessionWorkflowsLive, InitializedLive)));
   const BackgroundWorkersLive = Layer.mergeAll(
     Layer.effectDiscard(
       Effect.gen(function* () {
@@ -347,74 +410,12 @@ export const makeBackendLive = <HostServices, HostError>(
         yield* scheduledMessages.runWorker.pipe(Effect.forkScoped);
       }),
     ),
-    Layer.effectDiscard(
-      Effect.gen(function* () {
-        const recovery = yield* RuntimeRecoveryStorage;
-        const coordination = yield* SessionCoordination;
-        const workers = yield* SubagentStorage;
-        // Missing/corrupt recovery evidence must never be interpreted as no
-        // unfinished work. Keep the app usable, but start no automatic work or
-        // orphan-abort reconciliation until all recovery authorities can be read.
-        const ready = yield* startupDiagnostics
-          .measure(
-            "recovery-storage-check",
-            Effect.all([
-              coordination.checkStorage(),
-              recovery
-                .list()
-                .pipe((effect) => startupDiagnostics.measure("recovery-records-list", effect)),
-              workers.list(),
-            ]),
-          )
-          .pipe(Effect.result);
-        if (ready._tag === "Failure") {
-          yield* Effect.logWarning(
-            "Automatic restart recovery is paused. Repair the reported metadata file and restart; saved conversations remain available.",
-            ready.failure,
-          );
-          yield* startupDiagnostics.mark("backend-recovery-paused");
-          return;
-        }
-        const recoverable = (sessionId: string, turnId?: string) =>
-          recovery
-            .get(sessionId)
-            .pipe(
-              Effect.map(
-                (record) =>
-                  record?.inputs.some((input) => turnId === undefined || input.turnId === turnId) ??
-                  false,
-              ),
-            );
-        yield* startupDiagnostics.measure(
-          "session-families-initialize",
-          sessionFamilies
-            .initialize(paths.piSessions, paths.piResolvedSessions, recoverable)
-            .pipe(Effect.orDie),
-        );
-        const resumeWorkers = yield* startupDiagnostics.measure(
-          "subagent-recovery-initialize",
-          subagentRecovery.initialize().pipe(Effect.orDie),
-        );
-        yield* startupDiagnostics.measure(
-          "runtime-recovery-initialize",
-          runtimeRecovery.initialize().pipe(Effect.orDie),
-        );
-        yield* startupDiagnostics.measure("subagent-resume-workers", resumeWorkers);
-        yield* sessionFamilies.runWorker.pipe(Effect.forkScoped);
-        yield* autoMerge.runPass().pipe(
-          Effect.catch((error) => Effect.logError("Auto-merge pass failed", error)),
-          Effect.repeat(Schedule.spaced("1 second")),
-          Effect.forkScoped,
-        );
-        yield* startupDiagnostics.mark("backend-recovery-ready");
-      }),
-    ),
-  ).pipe(Layer.provide(Layer.merge(SessionWorkflowsLive, InitializedLive)));
+  ).pipe(Layer.provide(Layer.mergeAll(SessionWorkflowsLive, InitializedLive, RecoveryLive)));
 
   return startupDiagnostics.layer(
     "backend-graph",
     Layer.suspend(() =>
-      Layer.mergeAll(SessionWorkflowsLive, InitializedLive, BackgroundWorkersLive),
+      Layer.mergeAll(SessionWorkflowsLive, InitializedLive, RecoveryLive, BackgroundWorkersLive),
     ),
   );
 };

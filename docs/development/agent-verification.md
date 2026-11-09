@@ -432,6 +432,38 @@ domain fixture verifies zero catalog/catalogEntry calls for background signals. 
 counts are not a launch-latency benchmark. The isolated startup Electron smoke captures
 `startup-todos.png` and `opened-sessions.png` in its Playwright result directory.
 
+### Recovery and optional imports
+
+The native shell no longer waits for family/subagent/runtime reconciliation. The
+process-scoped `BackendRecovery` gate admits backend RPC and local MCP commands only
+after reconciliation settles. Host discovery/build handshake, legacy draft import,
+native window-state load/save/flush and its surface stream bypass that gate so
+hydration and shutdown persistence remain available; draft activation stays gated.
+Unreadable recovery authorities retain the explicit paused-recovery policy; they
+are not treated as an empty ledger. Recovery is required startup work, not a lazy
+optional task. Backend graph completion is therefore **not recovery readiness**.
+
+For reproducible empty-profile desktop snapshots (never the user's running app):
+
+```sh
+pnpm build:slim
+pnpm validation:run -- node scripts/performance/desktop-startup.mjs /tmp/cake-startup-sample
+# Separate instrumented runs; do not compare profiler overhead with normal launches.
+pnpm validation:run -- node scripts/performance/desktop-startup.mjs /tmp/cake-startup-profile --profile-imports
+pnpm validation:run -- node scripts/performance/desktop-startup.mjs /tmp/cake-startup-imports --audit-imports
+# Inject a delay into the copied recovery program, not source or live application state.
+pnpm validation:run -- node scripts/performance/desktop-startup.mjs /tmp/cake-slow-recovery --slow-recovery-ms=2000
+```
+
+The harness captures shell/composer screenshots and operational receipts. An empty
+unconfigured profile has no live selected projection; a visible composer is not
+proof of conversation readiness. The isolated `lazy-imports.test.ts` fixture measures
+cold/warm listener and catalog demand, verifies real module loading, and opens/closes
+a real MCP socket. Optional Durable readers/engine, MCP listener and Google auth
+imports must stay behind their demand boundaries, not eager barrel/Layer dependencies.
+Repeated graph completion diagnostics alone do not establish duplicate acquisition;
+compare actual recovery/resource acquisition and cleanup counts.
+
 ### Shutdown diagnostics
 
 Electron's next quit attempt writes `Cake shutdown` records to the terminal and

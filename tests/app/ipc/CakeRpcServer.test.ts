@@ -1,6 +1,23 @@
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import {
+  BackendRecovery,
+  makeBackendRecoveryLive,
+} from "../../../src/services/startup/BackendRecovery";
+import { makeWindowStateStorageLive } from "../../../src/services/storage/WindowStateStorage";
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { it } from "@effect/vitest";
-import { Context, Deferred, Effect, Exit, Layer, Option, Queue, Scope, Stream } from "effect";
+import {
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  Option,
+  Queue,
+  Scope,
+  Stream,
+} from "effect";
 import { RpcServer, RpcSerialization } from "effect/rpc";
 import type { FromClientEncoded, FromServerEncoded } from "effect/rpc/RpcMessage";
 import { describe, expect } from "vitest";
@@ -241,6 +258,50 @@ const observeEvents = Effect.fn("RpcEndpoint.test.observeEvents")(function* (
 });
 
 describe("Cake RPC endpoint", () => {
+  it.effect(
+    "recovery gates actual backend requests but native hydration and flush persistence remain usable",
+    () =>
+      Effect.gen(function* () {
+        const backend = yield* makeBackend();
+        const fs = yield* FileSystem.FileSystem;
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "cake-gated-window-" });
+        const release = yield* Deferred.make<void>();
+        const gated = yield* Layer.build(
+          Layer.merge(
+            makeBackendRecoveryLive(Deferred.await(release)),
+            makeWindowStateStorageLive(directory).pipe(
+              Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+            ),
+          ),
+        );
+        const local = yield* openEndpoint(
+          { ...backend, context: Context.merge(backend.context, gated) },
+          11,
+        );
+        const backendId = yield* local.request("application.getState");
+        const saveId = yield* local.request("windowState.save", {
+          snapshot: { state: { draft: "retained" }, children: {} },
+        });
+        expect(yield* Queue.take(local.responses)).toMatchObject({
+          requestId: saveId,
+          exit: { _tag: "Success" },
+        });
+        const loadId = yield* local.request("windowState.load");
+        expect(yield* Queue.take(local.responses)).toMatchObject({
+          requestId: loadId,
+          exit: { _tag: "Success", value: { state: { draft: "retained" } } },
+        });
+        expect(yield* Queue.size(local.responses)).toBe(0);
+        yield* Deferred.succeed(release, undefined);
+        expect(yield* Queue.take(local.responses)).toMatchObject({
+          requestId: backendId,
+          exit: { _tag: "Success" },
+        });
+        yield* Context.get(gated, BackendRecovery).awaitReady();
+        yield* local.close();
+        yield* backend.close();
+      }).pipe(Effect.provide(NodeFileSystem.layer)),
+  );
   it("local and network backend operation parity; desktop-only groups absent remotely", () => {
     expect([...CakeRpc.requests.keys()].sort()).toEqual(
       [...BackendRpc.requests.keys(), ...DesktopRpc.requests.keys()].sort(),

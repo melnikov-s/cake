@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { RpcMiddleware } from "effect/rpc";
 import { Headers } from "effect/http";
+import { BackendRecovery } from "../../services/startup/BackendRecovery";
 
 export const rendererConnectionHeader = "x-cake-renderer-connection";
 export const correlationIdHeader = "x-cake-correlation-id";
@@ -45,7 +46,30 @@ const rendererConnectionMiddleware: RendererConnectionMiddleware["Service"] = (e
   );
 };
 
-export const RendererConnectionMiddlewareLive = Layer.succeed(
+export const RendererConnectionMiddlewareLive = Layer.effect(
   RendererConnectionMiddleware,
-  rendererConnectionMiddleware,
+  Effect.gen(function* () {
+    // Remote native hosts have no backend. Their native RPCs remain independent.
+    // Only host discovery/build handshake, native snapshot hydration/persistence,
+    // legacy draft import and the flush stream bypass reconciliation locally.
+    // These cannot execute a session. Draft activation stays gated.
+    const recovery = yield* Effect.serviceOption(BackendRecovery);
+    return RendererConnectionMiddleware.of((effect, options) =>
+      rendererConnectionMiddleware(
+        Option.isSome(recovery) &&
+          ![
+            "desktopHost.current",
+            "backendConnection.connect",
+            "savedDrafts.create",
+            "windowState.load",
+            "windowState.save",
+            "windowState.respondFlush",
+            "electron.observeSurfaceEvents",
+          ].includes(options.rpc._tag)
+          ? Effect.andThen(recovery.value.awaitReady(), effect)
+          : effect,
+        options,
+      ),
+    );
+  }),
 );

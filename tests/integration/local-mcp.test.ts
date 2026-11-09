@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Deferred, Effect, Layer, Schema } from "effect";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { mkdtemp, rm, lstat, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,7 +7,9 @@ import { join } from "node:path";
 import { request } from "node:http";
 import { McpClient, StreamableHttpTransport } from "@earendil-works/pi-mcp";
 import * as mcp from "../../src/domain/mcp/localMcp";
-import { LocalMcpServer, open } from "../../src/services/local-mcp/LocalMcpServer";
+import { LocalMcpServer } from "../../src/services/local-mcp/LocalMcpServer";
+import { open } from "../../src/services/local-mcp/LocalMcpListener";
+import { BackendRecovery } from "../../src/services/startup/BackendRecovery";
 import {
   LocalMcpSettings,
   makeLocalMcpSettingsLive,
@@ -25,7 +27,9 @@ afterEach(async () => {
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
-const fixture = Effect.fn("LocalMcp.test.fixture")(function* () {
+const fixture = Effect.fn("LocalMcp.test.fixture")(function* (
+  awaitReady: () => Effect.Effect<void> = () => Effect.void,
+) {
   const path = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "cake-mcp-")));
   directories.push(path);
   const f = yield* localMcpFixture();
@@ -37,7 +41,9 @@ const fixture = Effect.fn("LocalMcp.test.fixture")(function* () {
       ),
     ),
   );
-  const context = Context.merge(f.context, services);
+  const context = Context.merge(f.context, services).pipe(
+    Context.add(BackendRecovery, { awaitReady }),
+  );
   yield* mcp.initialize().pipe(Effect.provide(context));
   // Ask the OS for a free test port without persisting automatic-port configuration.
   const url = yield* Effect.scoped(
@@ -71,6 +77,33 @@ const emptyResult = (): CakeOperationInvocation => ({
   content: [{ type: "text", text: "{}" }],
   details: {},
   structuredContent: {},
+});
+
+it("a real authenticated MCP call cannot execute before restart recovery is ready", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const f = yield* fixture(() =>
+          Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))),
+        );
+        const snapshot = yield* mcp.configure(f.configuration).pipe(Effect.provide(f.context));
+        const document = yield* Context.get(f.context, LocalMcpSettings).load();
+        const c = client(
+          Schema.decodeUnknownSync(Schema.String)(snapshot.runtime.url),
+          document.token,
+        );
+        yield* Effect.addFinalizer(() => Effect.promise(() => c.client.close()));
+        yield* Effect.promise(() => c.client.connect(c.transport));
+        const pending = call(c.client, "projects.list");
+        yield* Deferred.await(entered);
+        expect(f.calls).toEqual([]);
+        yield* Deferred.succeed(release, undefined);
+        expect(content(yield* Effect.promise(() => pending))).toContain("/project");
+      }),
+    ),
+  );
 });
 
 it("exposes the existing Cake Chat registry unchanged through one authenticated cake tool", async () => {

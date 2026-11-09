@@ -12,6 +12,7 @@ import {
   ArtifactRuntime,
   type ArtifactRuntimeHost,
 } from "../../../src/services/artifact-runtime/ArtifactRuntime";
+import { makeArtifactRuntimeWorker } from "../../../src/services/pi/live/ArtifactRuntimeWorker";
 import { ArtifactRuntimeLive } from "../../../src/services/artifact-runtime/ArtifactRuntimeLive";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
@@ -134,11 +135,66 @@ function fixture(hostOverride?: ArtifactRuntimeHost) {
       if (event.type === "artifact-state-invalidated") invalidations += 1;
     },
   });
-  const layer = ArtifactRuntimeLive.pipe(Layer.provide(Layer.merge(storage, clients)));
-  return { layer, host, commands, invalidations: () => invalidations };
+  const dependencies = Layer.merge(storage, clients);
+  const layer = ArtifactRuntimeLive.pipe(Layer.provide(dependencies));
+  return { layer, dependencies, host, commands, invalidations: () => invalidations };
 }
 
 describe("Independent artifact runtime", () => {
+  it.effect(
+    "closing the acquisition scope terminates a real sandbox and rejects later sends",
+    () => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        const worker = yield* Effect.scoped(
+          makeArtifactRuntimeWorker(target, f.host).pipe(Effect.provide(f.dependencies)),
+        );
+        expect(worker.isRunning()).toBe(false);
+        const result = yield* worker
+          .send({ kind: "tool", name: "capabilities", input: {} })
+          .pipe(Effect.result);
+        expect(result._tag).toBe("Failure");
+      });
+    },
+  );
+  it.effect(
+    "concurrent first demand starts one real sandbox and explicit stop is idempotent",
+    () => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        yield* Effect.gen(function* () {
+          const service = yield* ArtifactRuntime;
+          yield* service.setHost(f.host);
+          expect(f.commands).toEqual([]);
+          expect((yield* service.status(lineageId)).running).toBe(false);
+          const values = yield* Effect.all(
+            [
+              service.call({ target, name: "capabilities", input: {} }),
+              service.call({ target, name: "capabilities", input: {} }),
+            ],
+            { concurrency: "unbounded" },
+          );
+          expect(values).toHaveLength(2);
+          expect(
+            f.commands.filter(
+              (command) =>
+                command.command === "test.lifecycle" &&
+                Schema.is(Schema.Struct({ event: Schema.Literal("start") }))(command.input),
+            ),
+          ).toHaveLength(1);
+          yield* service.stop(lineageId);
+          yield* service.stop(lineageId);
+        }).pipe(Effect.provide(f.layer));
+        expect(
+          f.commands.filter(
+            (command) =>
+              command.command === "test.lifecycle" &&
+              Schema.is(Schema.Struct({ event: Schema.Literal("stop") }))(command.input),
+          ),
+        ).toHaveLength(1);
+      });
+    },
+  );
   it.effect(
     "refreshes a PR dashboard while closed, answers readiness and sends to an explicit chat without a fake caller",
     () => {

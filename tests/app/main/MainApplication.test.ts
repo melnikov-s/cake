@@ -9,6 +9,7 @@ import {
 } from "../../../src/services/diagnostics/shutdown-diagnostics";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { DesktopSharing } from "../../../src/services/electron/DesktopSharing";
+import { makeBackendRecoveryLive } from "../../../src/services/startup/BackendRecovery";
 import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
@@ -120,6 +121,34 @@ const program = (application: TestApplication, layer = testLayer()) =>
   }).pipe(Effect.provide(layer));
 
 describe("MainApplication", () => {
+  it.effect("starts and shuts down the native shell while required recovery is still pending", () =>
+    Effect.gen(function* () {
+      const application = new TestApplication();
+      const started = yield* Deferred.make<void>();
+      const recovering = yield* Deferred.make<void>();
+      const stopped = yield* Deferred.make<void>();
+      const recovery = makeBackendRecoveryLive(
+        Deferred.succeed(recovering, undefined).pipe(
+          Effect.andThen(Effect.never),
+          Effect.ensuring(Deferred.succeed(stopped, undefined)),
+        ),
+      );
+      const native = testLayer({
+        start: () => {
+          Deferred.doneUnsafe(started, Effect.void);
+        },
+      });
+      const fiber = yield* program(application, Layer.merge(native, recovery)).pipe(
+        Effect.forkScoped,
+      );
+      yield* Deferred.await(recovering);
+      yield* Deferred.await(started);
+      expect(yield* Deferred.isDone(stopped)).toBe(false);
+      application.requestQuit();
+      yield* Fiber.join(fiber);
+      expect(yield* Deferred.isDone(stopped)).toBe(true);
+    }),
+  );
   it.effect(
     "remote native menus defer reword validation to the backend, not absent local state",
     () =>

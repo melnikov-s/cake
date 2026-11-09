@@ -3,10 +3,107 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
-import { store, windowStateChildren, windowStateDocument } from "../fixtures/window-state";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { measureDesktopStartup } from "../../scripts/performance/desktop-startup.mjs";
+import {
+  store,
+  windowStateChildren,
+  windowStateDocument,
+} from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+
+test("safe shell commits before slow required recovery; shutdown during recovery retains native persistence", async ({}, info) => {
+  for (const waitForRecovery of [true, false]) {
+    const output = info.outputPath(waitForRecovery ? "reconciled" : "interrupted");
+    const sessionId = "00000000-0000-4000-8000-000000000099";
+    const log = await measureDesktopStartup(output, {
+      recoveryDelay: 2000,
+      waitForRecovery,
+      seed: async ({ cakeHome, userData, temporary }) => {
+        const project = join(temporary, "project");
+        await Promise.all(
+          [userData, project, join(cakeHome, "state")].map((path) =>
+            mkdir(path, { recursive: true }),
+          ),
+        );
+        const timestamp = new Date(0).toISOString();
+        await writeFile(
+          join(cakeHome, "state/application.json"),
+          JSON.stringify({
+            schemaVersion: 1,
+            projects: [
+              { path: project, name: "fixture", addedAt: timestamp, lastOpenedAt: timestamp },
+            ],
+          }),
+        );
+        await writeFile(
+          join(userData, "window-state.json"),
+          windowStateDocument({
+            ...windowStateChildren({ project, sessionId }),
+            sessionRegistry: store(
+              { targets: [{ sessionId, workspacePath: project }] },
+              {
+                pendingSessions: store(
+                  { temporarySessionIds: [sessionId], conversationIds: [sessionId] },
+                  {
+                    conversations: [
+                      {
+                        key: sessionId,
+                        state: {
+                          name: "Legacy draft",
+                          draftPrompt: {
+                            text: "Preserve this draft",
+                            attachments: [],
+                            resolved: false,
+                          },
+                          fallbackTitle: "Legacy draft",
+                          createdAt: timestamp,
+                          modifiedAt: timestamp,
+                          messageCount: 0,
+                        },
+                        children: {},
+                      },
+                    ],
+                  },
+                ),
+              },
+            ),
+          }),
+        );
+      },
+    });
+    expect(JSON.parse(await readFile(join(output, "saved-drafts.json"), "utf8"))).toMatchObject({
+      records: [expect.objectContaining({ sessionId, text: "Preserve this draft" })],
+    });
+    expect(await readFile(join(output, "window-state.json"), "utf8")).not.toContain(
+      "Preserve this draft",
+    );
+    const records = log.split("\n").flatMap((line) => {
+      try {
+        const parsed = JSON.parse(line);
+        return parsed.message?.[0] === "Cake startup" ? [parsed.message[1]] : [];
+      } catch {
+        return [];
+      }
+    });
+    const firstCommit = records.find((record) => record.phase === "first-commit");
+    const ready = records.find((record) => record.phase === "backend-recovery-ready");
+    expect(firstCommit).toBeDefined();
+    if (waitForRecovery) {
+      expect(ready).toBeDefined();
+      expect(firstCommit.elapsedMs).toBeLessThan(ready.elapsedMs);
+      expect(
+        records.filter(
+          (record) => record.phase === "recovery-storage-check" && record.status === "started",
+        ),
+      ).toHaveLength(1);
+    } else {
+      expect(ready).toBeUndefined();
+      expect(log).toContain("Cake main application stopping");
+    }
+  }
+});
 
 test("cold launch opens global To-dos instead of restoring Sessions, then opens the current Sessions list", async ({}, testInfo) => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-startup-errors-"));

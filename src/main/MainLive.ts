@@ -5,6 +5,7 @@ import { safeStorage, type App } from "electron";
 import { ElevenLabsSpeechLive } from "../services/speech/ElevenLabsSpeechLive";
 import { makeSpeechOutputDiagnosticsLive } from "../services/speech/SpeechOutputDiagnosticsLive";
 import { makeSpeechOutputStorageLive } from "../services/speech/SpeechOutputStorageLive";
+import { speechKeyEncryption } from "./speech-key-encryption";
 import { BootstrapLive } from "./BootstrapLive";
 import { Layer } from "effect";
 import type { CakePaths } from "../config/CakePaths";
@@ -71,14 +72,10 @@ export const makeMainLive = (options: MainLiveOptions) => {
       ElevenLabsSpeechLive.pipe(
         Layer.provide(makeSpeechOutputDiagnosticsLive(join(options.userData, "speech-output"))),
         Layer.provide(
-          makeSpeechOutputStorageLive(join(options.userData, "speech-output"), {
-            available: () =>
-              safeStorage.isEncryptionAvailable() &&
-              (process.platform !== "linux" ||
-                safeStorage.getSelectedStorageBackend() !== "basic_text"),
-            encrypt: (key) => safeStorage.encryptString(key),
-            decrypt: (bytes) => safeStorage.decryptString(Buffer.from(bytes)),
-          }),
+          makeSpeechOutputStorageLive(
+            join(options.userData, "speech-output"),
+            speechKeyEncryption(safeStorage),
+          ),
         ),
         Layer.provide(BootstrapLive),
       ),

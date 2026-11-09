@@ -6,9 +6,9 @@ import { SpeechOutputStorage, StoredSpeechOutputSettings } from "./SpeechOutputS
  * available() is false for unavailable encryption or an insecure basic_text backend.
  */
 export interface SpeechKeyEncryption {
-  available(): boolean;
-  encrypt(plaintext: string): Uint8Array;
-  decrypt(ciphertext: Uint8Array): string;
+  available(): Promise<boolean>;
+  encrypt(plaintext: string): Promise<Uint8Array>;
+  decrypt(ciphertext: Uint8Array): Promise<string>;
 }
 
 const document = Schema.Struct({
@@ -63,9 +63,10 @@ export const makeSpeechOutputStorageLive = (
         const apiKey =
           ciphertext === undefined
             ? undefined
-            : yield* Effect.try({
-                try: () => {
-                  if (!encryption.available()) throw new Error("Secure encryption unavailable");
+            : yield* Effect.tryPromise({
+                try: async () => {
+                  if (!(await encryption.available()))
+                    throw new Error("Secure encryption unavailable");
                   const bytes = Buffer.from(ciphertext, "base64");
                   if (bytes.toString("base64") !== ciphertext)
                     throw new Error("Invalid ciphertext");
@@ -90,10 +91,11 @@ export const makeSpeechOutputStorageLive = (
         const encryptedApiKey =
           apiKey === undefined
             ? undefined
-            : yield* Effect.try({
-                try: () => {
-                  if (!encryption.available()) throw new Error("Secure encryption unavailable");
-                  const bytes = encryption.encrypt(apiKey);
+            : yield* Effect.tryPromise({
+                try: async () => {
+                  if (!(await encryption.available()))
+                    throw new Error("Secure encryption unavailable");
+                  const bytes = await encryption.encrypt(apiKey);
                   if (bytes.byteLength === 0) throw new Error("Empty ciphertext");
                   return Buffer.from(bytes).toString("base64");
                 },

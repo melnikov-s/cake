@@ -8,10 +8,9 @@ import {
 } from "../contracts/desktop/desktop-sharing-data";
 import { openNetworkListener, type NetworkListenerOptions } from "../server/NetworkListener";
 import { DesktopSharing } from "../services/electron/DesktopSharing";
-import {
-  makeGoogleRemoteAccess,
-  type GoogleRemoteAccess,
-  type GoogleAccountBinding,
+import type {
+  GoogleRemoteAccess,
+  GoogleAccountBinding,
 } from "../services/remote-access/GoogleRemoteAccess";
 import { loadRemoteAccessBindings } from "../services/storage/remote-access-bindings";
 import { bindGoogleAccount } from "../domain/remote-access/googleAccounts";
@@ -119,7 +118,15 @@ export const makeDesktopSharingLive = (
           yield* publish({ status: "starting", ...preferences, preferences });
           authentication =
             settings.google && settings.publicOrigin
-              ? makeGoogleRemoteAccess({
+              ? (yield* Effect.tryPromise({
+                  try: () => import("../services/remote-access/GoogleRemoteAccess"),
+                  catch: () =>
+                    new DesktopSharingError({ message: "Could not load Google remote access." }),
+                }).pipe(
+                  Effect.tapError((error) =>
+                    publish({ ...state, status: "failed", error: error.message }),
+                  ),
+                )).makeGoogleRemoteAccess({
                   clientId: settings.google.clientId,
                   origin: settings.publicOrigin,
                   allowedEmails: settings.google.allowedEmails,

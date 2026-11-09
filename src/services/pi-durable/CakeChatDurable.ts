@@ -3,7 +3,7 @@ import type { AssistantContext } from "../../contracts/cake-chats/assistant-cont
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { SessionInspectionQuery } from "../../contracts/conversations/session-query-data";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
-import { readDurableSideChatMessages } from "./durable-side-chat-messages";
+
 import { Context, Deferred, Effect, Layer } from "effect";
 import type { CakeSessionRuntimeSetup } from "../pi/CakeSessionRuntimes";
 import type {
@@ -21,7 +21,7 @@ import {
   cakeChatSideChatParentId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import type { RequestInspection } from "./request-inspection";
-import { readDurableChatPreview, readDurableChatSummary } from "./durable-chat-catalog";
+
 import { durableChatDatabase } from "./durable-chat-location";
 import { createRequestInspectionHistory } from "./request-inspection";
 import type {
@@ -226,7 +226,11 @@ export const makeCakeChatDurableLive = (
           const runtime = live.get(parent);
           return runtime?.sessionFile === durableChatDatabase(directory)
             ? runtime.sideChats.inspectMessages(sessionId, query)
-            : readDurableSideChatMessages(directory, sessionId, query);
+            : (await import("./durable-side-chat-messages")).readDurableSideChatMessages(
+                directory,
+                sessionId,
+                query,
+              );
         }),
       inspectSideChat: (sessionId) =>
         operation("inspectSideChat", async () => {
@@ -236,14 +240,14 @@ export const makeCakeChatDurableLive = (
       catalogEntry: (directory, sessionId = CAKE_CHAT_SESSION_ID) =>
         operation(
           "catalogEntry",
-          () =>
+          async () =>
             catalog(directory, sessionId)?.summary() ??
-            readDurableChatSummary(directory, sessionId),
+            (await import("./durable-chat-catalog")).readDurableChatSummary(directory, sessionId),
         ),
       inspect: (directory, sessionId) =>
         operation("inspect", async () => {
           const preview = await (catalog(directory, sessionId)?.preview() ??
-            readDurableChatPreview(directory, sessionId));
+            (await import("./durable-chat-catalog")).readDurableChatPreview(directory, sessionId));
           if (!preview) throw new Error("This chat has not started yet");
           return preview;
         }),

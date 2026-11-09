@@ -27,7 +27,7 @@ import {
   createCakeSessionRuntime,
   type CakeSessionRuntimeOptions,
 } from "../services/pi/runtime/cake-session-runtime";
-import { createDurableCakeChatRuntime } from "../services/pi-durable/durable-chat-runtime";
+
 import type { RequestInspection } from "../services/pi-durable/request-inspection";
 import type { CakeSessionRuntimeSetup } from "../services/pi/CakeSessionRuntimes";
 import {
@@ -281,10 +281,14 @@ export function coordinatorCakeOperations(
 export const createProjectSessionRuntime = (options: CakeSessionRuntimeSetup) =>
   createCakeSessionRuntime(configureCakeSessionRuntime(options));
 
-export const createCoordinatorRuntime = (
+export const createCoordinatorRuntime = async (
   options: CakeSessionRuntimeSetup,
   inspection?: RequestInspection,
-) => createDurableCakeChatRuntime(configureCakeSessionRuntime(options), inspection);
+) => {
+  const { createDurableCakeChatRuntime } =
+    await import("../services/pi-durable/durable-chat-runtime");
+  return createDurableCakeChatRuntime(configureCakeSessionRuntime(options), inspection);
+};
 
 /** Consume feature controls at composition, never forward their bundle into Pi. */
 export function configureCakeSessionRuntime(

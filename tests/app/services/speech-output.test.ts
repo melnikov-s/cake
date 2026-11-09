@@ -118,13 +118,13 @@ const makeEncryption = () => {
     decrypted: 0,
   };
   const encryption: SpeechKeyEncryption = {
-    available: () => controls.available,
-    encrypt: (plaintext) => {
+    available: async () => controls.available,
+    encrypt: async (plaintext) => {
       if (controls.failEncrypt) throw new Error(`unsafe encryption failure ${secret}`);
       controls.encrypted.push(plaintext);
       return Uint8Array.from(Buffer.from(`encrypted:${plaintext}`), (byte) => byte ^ 0x5a);
     },
-    decrypt: (bytes) => {
+    decrypt: async (bytes) => {
       if (controls.failDecrypt) throw new Error(`unsafe decryption failure ${secret}`);
       controls.decrypted++;
       return Buffer.from(Uint8Array.from(bytes, (byte) => byte ^ 0x5a))
@@ -247,6 +247,38 @@ const expectError = <A>(
     expect(JSON.stringify(result.failure)).not.toContain(secret);
   }
 };
+
+it.effect(
+  "async key encryption serializes saves; interruption cannot publish late ciphertext",
+  () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFileSystem();
+      const crypto = makeEncryption();
+      const entered = yield* Deferred.make<void>();
+      const pending = Promise.withResolvers<Uint8Array>();
+      const encryption: SpeechKeyEncryption = {
+        ...crypto.encryption,
+        encrypt: () => {
+          Deferred.doneUnsafe(entered, Effect.void);
+          return pending.promise;
+        },
+      };
+      yield* Effect.gen(function* () {
+        const storage = yield* SpeechOutputStorage;
+        const first = yield* storage.save({ apiKey: secret }).pipe(Effect.forkScoped);
+        yield* Deferred.await(entered);
+        const clear = yield* storage.save({ voiceId: "retained" }).pipe(Effect.forkScoped);
+        expect(fake.files.size).toBe(0);
+        yield* Fiber.interrupt(first);
+        yield* Fiber.join(clear);
+        pending.resolve(Buffer.from("late-ciphertext"));
+        yield* Effect.promise(() => pending.promise);
+        expect(yield* storage.load()).toEqual({ voiceId: "retained" });
+        expect(fake.files.get(target)).not.toContain(secret);
+        expect(fake.operations.filter((operation) => operation === "rename")).toHaveLength(1);
+      }).pipe(Effect.provide(storageLayer(fake, encryption)));
+    }),
+);
 
 // Exercise real policy and deterministic concrete HTTP/filesystem/encryption boundaries only.
 describe("ElevenLabs speech output contract", () => {

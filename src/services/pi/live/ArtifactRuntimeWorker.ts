@@ -1,4 +1,3 @@
-import { CodemodeSandbox } from "@earendil-works/pi-codemode";
 import { Cause, Deferred, Effect, Exit, Queue, Schema } from "effect";
 import {
   ArtifactRuntimeError,
@@ -65,6 +64,10 @@ export const makeArtifactRuntimeWorker = Effect.fn("ArtifactRuntime.makeWorker")
   callingSessionId?: string,
   windowConnectionId?: number,
 ) {
+  const { CodemodeSandbox } = yield* Effect.tryPromise({
+    try: () => import("@earendil-works/pi-codemode"),
+    catch: (cause) => failure("loadSandbox", cause),
+  });
   const storage = yield* ArtifactStorage;
   const clientEvents = yield* ClientEvents;
   const context = yield* Effect.context<never>();

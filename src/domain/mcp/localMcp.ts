@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { Effect, Schema, type Scope } from "effect";
+import { BackendRecovery } from "../../services/startup/BackendRecovery";
+import { Effect, Option, Schema, type Scope } from "effect";
 import { toDraft07JsonSchema, jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import { cakeToolDescription, cakeToolEnvelopeSchema } from "../../contracts/agent/cake-operation";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
@@ -28,6 +29,8 @@ const call = Effect.fn("LocalMcp.call")(function* (
 });
 
 const endpoint = Effect.fn("LocalMcp.endpoint")(function* () {
+  const recovery = yield* Effect.serviceOption(BackendRecovery);
+  const admit = Option.isSome(recovery) ? recovery.value.awaitReady() : Effect.void;
   const context =
     yield* Effect.context<Exclude<Effect.Services<ReturnType<typeof call>>, Scope.Scope>>();
   return {
@@ -44,7 +47,7 @@ const endpoint = Effect.fn("LocalMcp.endpoint")(function* () {
     call: async (_name, input, signal) => {
       // Enter the existing backend Context and its canonical Cake operation implementations.
       const result = await Effect.runPromiseWith(context)(
-        Effect.scoped(call(input)).pipe(Effect.result),
+        Effect.scoped(Effect.andThen(admit, call(input))).pipe(Effect.result),
         { signal },
       );
       if (result._tag === "Failure") throw result.failure;
