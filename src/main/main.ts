@@ -135,7 +135,15 @@ function startMain() {
       Effect.promise(() => app.whenReady()),
     )
     .pipe(
-      Effect.tap(() => Effect.sync(() => installDesktopSocketOrigin(selectedHost))),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          installDesktopSocketOrigin(selectedHost);
+          // Keep quit prevented through window destruction and runtime disposal.
+          // MainApplication releases its scoped listener before those finish;
+          // only app.exit after process-owned finalizers may terminate the host.
+          app.on("before-quit", (event: Event) => event.preventDefault());
+        }),
+      ),
       Effect.andThen(
         MainApplication({
           application: app,
@@ -161,10 +169,6 @@ function startMain() {
       ),
     )
     .then(async (exit) => {
-      // MainApplication has released its quit listener, but process-owned
-      // persistence/resources still need finalization. A repeated native quit
-      // during this interval must not bypass dispose; app.exit below owns exit.
-      app.on("before-quit", (event: Event) => event.preventDefault());
       let exitCode = Exit.isFailure(exit) ? 1 : 0;
       if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause))
         await reportMainFailure(Cause.pretty(exit.cause));

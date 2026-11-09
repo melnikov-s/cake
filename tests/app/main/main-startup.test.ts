@@ -176,6 +176,24 @@ describe("production Electron startup", () => {
     },
   );
 
+  it("keeps native quit prevented while the application scope releases its windows", async () => {
+    const preventDefault = vi.fn();
+    fixture.program = Effect.scoped(
+      Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          const listener = application.on.mock.calls.find(
+            ([event]) => event === "before-quit",
+          )?.[1];
+          expect(listener).toBeDefined();
+          listener?.({ preventDefault });
+          expect(preventDefault).toHaveBeenCalledOnce();
+          expect(application.exit).not.toHaveBeenCalled();
+        }),
+      ),
+    );
+    expect(await launch()).toBe(0);
+  });
+
   it("keeps native quit prevented while process-owned runtime resources finalize", async () => {
     const preventDefault = vi.fn();
     fixture.layer = Layer.effectDiscard(
