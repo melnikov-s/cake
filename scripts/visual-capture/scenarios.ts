@@ -2,6 +2,7 @@ import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
 import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
+import { createSidebarSurfacesScenario } from "./sidebar-surfaces.ts";
 import {
   createInterfaceIconsScenario,
   createAutoMergeIconsScenario,
@@ -7747,10 +7748,16 @@ const userMessageContentOrderScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript").first(),
 };
 
+const chatFirstNavigation = createChatFirstNavigationScenario(
+  assistantMarkdownCode.seed,
+  seedDurableChat,
+);
+
 export const visualCaptureScenarios: VisualCaptureScenario[] = [
   userMessageContentOrderScenario,
   projectSetupScenario,
-  createChatFirstNavigationScenario(assistantMarkdownCode.seed, seedDurableChat),
+  chatFirstNavigation,
+  createSidebarSurfacesScenario(chatFirstNavigation),
   createProjectThumbnailsScenario(
     createChatFirstNavigationScenario(assistantMarkdownCode.seed, seedDurableChat),
   ),

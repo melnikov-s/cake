@@ -114,7 +114,7 @@
   --warning: oklch(0.76 0.17 60);
   --destructive: oklch(0.69 0.18 28);
   --destructive-foreground: oklch(0.985 0.002 250);
-  --sidebar: oklch(0.168 0.005 255);
+  --sidebar: oklch(0.24 0.005 255);
   --sidebar-hover: oklch(0.22 0.008 255);
   --sidebar-active: oklch(0.275 0.012 252);
   --composer: oklch(0.248 0.008 255);
@@ -154,7 +154,7 @@
     --warning: oklch(0.76 0.17 60);
     --destructive: oklch(0.69 0.18 28);
     --destructive-foreground: oklch(0.985 0.002 250);
-    --sidebar: oklch(0.168 0.005 255);
+    --sidebar: oklch(0.24 0.005 255);
     --sidebar-hover: oklch(0.22 0.008 255);
     --sidebar-active: oklch(0.275 0.012 252);
     --composer: oklch(0.248 0.008 255);

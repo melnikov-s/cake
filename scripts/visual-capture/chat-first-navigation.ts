@@ -1108,7 +1108,9 @@ export function createChatFirstNavigationScenario(
         expect(colors.panel).toBe(colors.sidebar);
         expect(colors.rail).toBe(colors.sidebar);
         expect(colors.panel).not.toBe(colors.chat);
-        expect(colors.panelLuminance).toBeLessThan(colors.chatLuminance);
+        const dark = (await page.locator("html").getAttribute("data-theme")) === "dark";
+        if (dark) expect(colors.panelLuminance).toBeGreaterThan(colors.chatLuminance);
+        else expect(colors.panelLuminance).toBeLessThan(colors.chatLuminance);
         console.log("PANEL_BACKGROUND_EVIDENCE", JSON.stringify({ state, ...colors }));
       }
     },

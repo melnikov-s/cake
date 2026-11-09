@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { applyDocumentTheme } from "../../../src/renderer/lib/resolved-color-theme";
 import { bundledColorThemes } from "../../../src/utils/bundled-color-themes";
-import { parseVsCodeTheme } from "../../../src/utils/vscode-theme";
+import { cakeThemeTokens, parseVsCodeTheme } from "../../../src/utils/vscode-theme";
 
 afterEach(() => applyDocumentTheme("system"));
 
@@ -37,6 +37,9 @@ describe("document worktree status colors", () => {
       expect(root.dataset.theme).toBe(typeof theme === "string" ? theme : theme.type);
       expect(root.style.getPropertyValue("--background")).toBe(
         typeof theme === "string" ? "" : theme.colors["editor.background"],
+      );
+      expect(root.style.getPropertyValue("--sidebar")).toBe(
+        typeof theme === "string" ? "" : cakeThemeTokens(theme)["--sidebar"],
       );
     }
     applyDocumentTheme("system");

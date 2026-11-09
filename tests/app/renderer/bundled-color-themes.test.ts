@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Schema } from "effect";
 import { ImportedColorTheme, editorThemeSettings } from "../../../src/contracts/themes/color-theme";
 import { bundledColorThemes } from "../../../src/utils/bundled-color-themes";
-import { cakeThemeTokens, contrastRatio } from "../../../src/utils/vscode-theme";
+import { cakeThemeTokens, contrastRatio, opaqueColorOver } from "../../../src/utils/vscode-theme";
 import { cakeColorPalettes } from "../../../src/utils/cake-color-palettes";
 
 describe("bundled Cake theme collection", () => {
@@ -44,6 +44,32 @@ describe("bundled Cake theme collection", () => {
           contrastRatio(tokens["--accent"]!, tokens[surface]!),
           `${theme.id} ${surface}`,
         ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("separates source lists in the requested direction across every bundled palette", () => {
+    for (const { theme } of bundledColorThemes) {
+      if (typeof theme === "string") continue;
+      const tokens = cakeThemeTokens(theme);
+      const background = tokens["--background"]!;
+      const sidebar = opaqueColorOver(tokens["--sidebar"]!, background);
+      expect(contrastRatio(sidebar, background), theme.id).toBeGreaterThanOrEqual(1.06);
+      const brightness = contrastRatio(sidebar, "#ffffff");
+      const canvasBrightness = contrastRatio(background, "#ffffff");
+      if (theme.type === "light") expect(brightness, theme.id).toBeGreaterThan(canvasBrightness);
+      else expect(brightness, theme.id).toBeLessThan(canvasBrightness);
+      const foreground = tokens["--sidebar-foreground"]!;
+      const authoredSidebar = opaqueColorOver(
+        theme.colors["sideBar.background"] ?? background,
+        background,
+      );
+      // Preserve lower-contrast upstream palettes rather than silently recoloring their text.
+      const authoredForeground =
+        theme.colors["sideBar.foreground"] ?? theme.colors.foreground ?? tokens["--foreground"]!;
+      const authoredContrast = contrastRatio(authoredForeground, authoredSidebar);
+      expect(contrastRatio(foreground, sidebar), theme.id).toBeGreaterThanOrEqual(
+        Math.min(4.5, authoredContrast),
+      );
     }
   });
 
@@ -151,18 +177,21 @@ describe("bundled Cake theme collection", () => {
     ["twilight-steel", "#1c2430", "#141b24", "#252f3d"],
     ["warm-titanium", "#242321", "#1d1c1a", "#2e2d2a"],
   ])(
-    "preserves the supplied %s surface hierarchy and macOS blue accent",
+    "keeps the %s canvas, elevated surfaces and accent while lifting dark sidebars",
     (id, background, sidebar, card) => {
       const theme = bundledColorThemes.find((theme) => theme.choice === `bundled:${id}`)?.theme;
       if (!theme || typeof theme === "string") throw new Error(`Missing custom palette: ${id}`);
       expect(cakeThemeTokens(theme)).toMatchObject({
         "--background": background,
-        "--sidebar": sidebar,
         "--card": card,
         "--popover": card,
         "--composer": card,
         "--accent": "#0a84ff",
       });
+      const resolved = cakeThemeTokens(theme)["--sidebar"]!;
+      expect(contrastRatio(resolved, background)).toBeGreaterThanOrEqual(1.06);
+      if (id === "macos-vibrancy") expect(resolved).toBe(sidebar);
+      else expect(resolved).not.toBe(sidebar);
     },
   );
 });

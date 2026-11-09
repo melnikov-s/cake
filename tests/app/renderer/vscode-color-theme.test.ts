@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { cakeThemeTokens, parseVsCodeTheme } from "../../../src/utils/vscode-theme";
+import {
+  cakeThemeTokens,
+  contrastRatio,
+  opaqueColorOver,
+  parseVsCodeTheme,
+} from "../../../src/utils/vscode-theme";
 import { editorThemeSettings } from "../../../src/contracts/themes/color-theme";
 
 const parse = (source: string) =>
@@ -68,13 +73,14 @@ describe("VS Code color data import", () => {
     (type) => {
       const background = type === "light" ? "#faf4e8" : "#102030";
       const foreground = type === "light" ? "#302010" : "#e8f0ff";
+      const sidebar = type === "light" ? "#123456" : "#304050";
       const theme = parse(
         JSON.stringify({
           type,
           colors: {
             "editor.background": background,
             "editor.foreground": foreground,
-            "sideBar.background": "#123456",
+            "sideBar.background": sidebar,
             "button.background": "#203040",
             "button.foreground": "#ffffff",
             focusBorder: "#aabbcc",
@@ -84,7 +90,7 @@ describe("VS Code color data import", () => {
       expect(cakeThemeTokens(theme)).toMatchObject({
         "--background": background,
         "--foreground": foreground,
-        "--sidebar": "#123456",
+        "--sidebar": sidebar,
         "--primary": "#203040",
         "--primary-foreground": "#ffffff",
         "--ring": "#aabbcc",
@@ -120,6 +126,53 @@ describe("VS Code color data import", () => {
       expect(editorThemeSettings(theme)["workbench.colorCustomizations"]).toEqual(theme.colors);
     },
   );
+
+  it.each(["light", "dark"] as const)(
+    "restores %s sidebar contrast for missing, flat, reversed and translucent surfaces",
+    (type) => {
+      const background = type === "light" ? "#faf4ed" : "#191724";
+      const foreground = type === "light" ? "#575279" : "#e0def4";
+      for (const sidebar of [
+        undefined,
+        background,
+        type === "light" ? "#ffffff" : "#101018",
+        `${background}80`,
+      ]) {
+        const theme = parse(
+          JSON.stringify({
+            type,
+            colors: {
+              "editor.background": background,
+              "editor.foreground": foreground,
+              ...(sidebar ? { "sideBar.background": sidebar } : {}),
+              "list.hoverBackground": "#907aa920",
+              "list.activeSelectionBackground": "#907aa940",
+            },
+          }),
+        );
+        const original = structuredClone(theme.colors);
+        const tokens = cakeThemeTokens(theme);
+        const visible = opaqueColorOver(tokens["--sidebar"]!, background);
+        expect(contrastRatio(visible, background)).toBeGreaterThanOrEqual(1.06);
+        const brightness = contrastRatio(visible, "#ffffff");
+        const canvasBrightness = contrastRatio(background, "#ffffff");
+        if (type === "light") expect(brightness).toBeGreaterThan(canvasBrightness);
+        else expect(brightness).toBeLessThan(canvasBrightness);
+        if (sidebar?.length === 9) expect(tokens["--sidebar"]!.slice(-2)).toBe("80");
+        expect(tokens["--background"]).toBe(background);
+        expect(tokens["--sidebar-hover"]).toBe("#907aa920");
+        expect(tokens["--sidebar-active"]).toBe("#907aa940");
+        expect(theme.colors).toEqual(original);
+      }
+    },
+  );
+
+  it("preserves an explicitly transparent sidebar", () => {
+    const theme = parse(
+      '{"colors":{"editor.background":"#faf4ed","sideBar.background":"#ffffff00"}}',
+    );
+    expect(cakeThemeTokens(theme)["--sidebar"]).toBe("#ffffff00");
+  });
 
   it("keeps an imported translucent input background for the composer", () => {
     const theme = parse(

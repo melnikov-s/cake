@@ -112,6 +112,48 @@ export function contrastRatio(color: string, surface: string) {
   return (light! + 0.05) / (dark! + 0.05);
 }
 
+function mixHex(color: string, target: string, amount: number) {
+  const channels = hexChannels(color);
+  const destination = hexChannels(target);
+  return `#${channels
+    .map((channel, index) =>
+      Math.round((index === 3 ? channel : channel + (destination[index]! - channel) * amount) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .slice(0, channels[3] < 1 ? 4 : 3)
+    .join("")}`;
+}
+
+/** Keep the source-list surface distinct without replacing a theme's palette or alpha.
+ * Some editor themes deliberately use the same canvas for editor and sidebar;
+ * Cake's conversation hierarchy needs a small tonal step in either appearance. */
+function sidebarSurface(
+  color: string,
+  background: string,
+  foreground: string,
+  type: "light" | "dark",
+) {
+  const channels = hexChannels(color);
+  const alpha = channels[3];
+  if (alpha === 0) return color;
+  const distinct = (candidate: string) => {
+    const visible = opaqueColorOver(candidate, background);
+    return (
+      (type === "light"
+        ? colorLightness(visible) < colorLightness(background)
+        : colorLightness(visible) > colorLightness(background)) &&
+      contrastRatio(visible, background) >= 1.06
+    );
+  };
+  if (distinct(color)) return color;
+  for (let step = 1; step <= 100; step++) {
+    const candidate = mixHex(color, foreground, step / 100);
+    if (distinct(candidate)) return candidate;
+  }
+  return color;
+}
+
 /** Missing roles use the existing light/dark CSS defaults; derived roles follow imported surfaces. */
 type CakeThemeTokens = Record<`--${string}`, string>;
 
@@ -160,8 +202,22 @@ export function cakeThemeTokens(theme: ImportedColorTheme) {
   tokens["--card-foreground"] ??= fg;
   tokens["--popover"] ??= bg;
   tokens["--popover-foreground"] ??= fg;
-  tokens["--sidebar"] ??= bg;
+  const authoredSidebar = tokens["--sidebar"] ?? bg;
+  tokens["--sidebar"] = sidebarSurface(authoredSidebar, bg, fg, theme.type);
   tokens["--sidebar-foreground"] ??= fg;
+  if (tokens["--sidebar"] !== authoredSidebar) {
+    const sidebarText = tokens["--sidebar-foreground"];
+    const surface = opaqueColorOver(tokens["--sidebar"], bg);
+    const minimum = Math.min(4.5, contrastRatio(sidebarText, opaqueColorOver(authoredSidebar, bg)));
+    // A tonal correction must not make an upstream theme's source-list text harder to read.
+    for (let step = 0; step <= 100; step++) {
+      const candidate = mixHex(sidebarText, theme.type === "light" ? "#000" : "#fff", step / 100);
+      if (contrastRatio(candidate, surface) >= minimum) {
+        tokens["--sidebar-foreground"] = candidate;
+        break;
+      }
+    }
+  }
   tokens["--composer"] ??= bg;
   tokens["--composer-foreground"] ??= fg;
   tokens["--primary"] ??= fg;
