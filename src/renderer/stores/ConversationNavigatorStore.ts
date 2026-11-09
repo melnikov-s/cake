@@ -249,9 +249,7 @@ export class ConversationNavigatorStore extends Store<{
           projectPath === undefined &&
             !chats.some((chat) => chat.sessionId === CAKE_CHAT_SESSION_ID),
         ),
-      running: [...sessions, ...chats].filter(
-        (session) => session.running || live.get(session.sessionId),
-      ).length,
+      running: sessions.filter((session) => session.running || live.get(session.sessionId)).length,
       unread:
         sessions.filter(
           (session) =>

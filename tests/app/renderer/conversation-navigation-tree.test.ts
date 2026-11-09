@@ -73,6 +73,44 @@ describe("conversation navigation projection", () => {
     },
   );
 
+  it.each([
+    [true, 0],
+    [true, 1],
+    [false, 1],
+    [true, 3],
+  ])("excludes home running=%s while counting %s work sessions once", (homeRunning, count) => {
+    using fixture = treeFixture(navigatorProjectPath);
+    const home = fixture.models.cakeChatCatalog.find(navigatorHomeId)!;
+    home.running = homeRunning;
+    home.unread = true;
+    const sessions = ["layout", "keyboard", "deep-child"].slice(0, count).map((sessionId) =>
+      sessionSummary({
+        sessionId,
+        projectPath: navigatorProjectPath,
+        familyParentSessionId: sessionId === "layout" ? undefined : "layout",
+        running: true,
+        unread: true,
+      }),
+    );
+    const tree = buildConversationNavigationTree({
+      projectPath: navigatorProjectPath,
+      sessions: [...sessions, ...sessions],
+      cakeChats: fixture.models.cakeChatCatalog.sessions,
+      conversations: [],
+    });
+    expect(tree.running).toBe(count);
+    expect(tree.total).toBe(count + 1);
+    expect(tree.unread).toBe(count > 0 ? 2 : 1);
+    expect(tree.roots[0]).toMatchObject({
+      relationship: "home",
+      running: homeRunning,
+      activity: homeRunning ? "running" : "unread",
+    });
+    expect(tree.roots[0]!.children.map((node) => node.target.sessionId)).toEqual(
+      count > 0 ? ["layout"] : [],
+    );
+  });
+
   it("excludes descendant unread without marking its parent or Project Chat unread", () => {
     using fixture = treeFixture(navigatorProjectPath);
     fixture.models.sessionCatalog.find("deep-child")!.unread = true;
@@ -152,7 +190,8 @@ describe("conversation navigation projection", () => {
       projectPath: navigatorProjectPath,
     });
     expect(project.unread).toBe(0);
-    expect(project.running).toBe(1); // Unread filtering must not change existing running behavior.
+    expect(project.running).toBe(0);
+    expect(project.roots[0]).toMatchObject({ running: true, activity: "running" });
     expect(project.byKey.has(conversationNavigationKey(navigatorHomeId))).toBe(true);
     const global = buildConversationNavigationTree({ ...input, projectPath: undefined });
     expect(global.unread).toBe(1);

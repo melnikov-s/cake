@@ -2,6 +2,9 @@
 import { StrictMode } from "react";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { StoreProvider } from "r-state-tree/react";
+import { CakeChatSummary } from "../../../src/renderer/models/CakeChatSummary";
+import { applySessionSignalsUpdate } from "../../../src/renderer/reducers/SessionSignalsReducer";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
@@ -73,6 +76,109 @@ function expectCounts(running: number, unread: number) {
     expect(unreadBadge?.className).toContain("text-success");
   } else expect(unreadBadge).toBeNull();
 }
+
+describe("Workspace Sessions running count", () => {
+  it.each([
+    { signalsLoaded: false, liveHome: false },
+    { signalsLoaded: true, liveHome: false },
+    { signalsLoaded: false, liveHome: true },
+    { signalsLoaded: true, liveHome: true },
+  ])(
+    "excludes permanent chats but preserves own and grouped activity ($signalsLoaded / $liveHome)",
+    async ({ signalsLoaded, liveHome }) => {
+      using fixture = renderWorkspace();
+      const { models, root } = fixture;
+      const home = models.cakeChatCatalog.find(navigatorHomeId)!;
+      const global = models.cakeChatCatalog.find(CAKE_CHAT_SESSION_ID)!;
+      const otherHomeId = `project-chat:${"b".repeat(64)}`;
+      const publishSignals = () => {
+        if (signalsLoaded)
+          applySessionSignalsUpdate(models.sessionCatalog, {
+            _tag: "Snapshot",
+            sessions: models.sessionCatalog.sessions
+              .filter((session) => !session.resolved)
+              .map((session) => ({
+                sessionId: session.sessionId,
+                projectPath: session.projectPath,
+                workingDirectory: session.workingDirectory,
+                running: session.running,
+                unread: session.unread,
+                familyParentSessionId: session.familyParentSessionId,
+              })),
+          });
+      };
+      const setHomeRunning = (running: boolean) => {
+        home.running = !liveHome && running;
+        models.cakeChatConversation(navigatorHomeId).streaming = liveHome && running;
+      };
+      act(() => {
+        models.cakeChatCatalog.sessions.push(
+          CakeChatSummary.create({
+            sessionId: otherHomeId,
+            projectPath: "/other",
+            title: "other / Project Chat",
+            running: true,
+            unread: true,
+          }),
+        );
+        setHomeRunning(true);
+        global.running = true;
+        global.unread = true;
+        models.sessionCatalog.find("elsewhere")!.running = false;
+        publishSignals();
+      });
+      expectCounts(0, 0);
+      expect(within(tab()).getByRole("img", { name: "0 running" }).textContent).toBe("0");
+      expect(tab().getAttribute("title")).toBe("0 running · 0 unread · 5 total in this project");
+      await userEvent.setup().click(tab());
+      const homeRow = () =>
+        document.querySelector<HTMLElement>(
+          `[data-slot="conversation-navigator-row"][data-session-id="${navigatorHomeId}"]`,
+        )!;
+      expect(homeRow().dataset.working).toBe("true");
+      expect(within(homeRow()).getByRole("img", { name: "Running" })).toBeTruthy();
+
+      act(() => {
+        models.sessionCatalog.find("layout")!.running = true;
+        models.sessionCatalog.find("layout")!.unread = true;
+        // Catalog and live activity for one identity must not double-count.
+        root.sessionRegistry.load("layout", navigatorProjectPath);
+        models.projectConversation("layout", navigatorProjectPath).streaming = true;
+        publishSignals();
+      });
+      expectCounts(1, 1);
+      act(() => {
+        setHomeRunning(false);
+        home.unread = true;
+      });
+      expectCounts(1, 2);
+      expect(homeRow().dataset.working).toBe("true");
+      expect(within(homeRow()).getByRole("img", { name: "Ready, unread" })).toBeTruthy();
+      act(() => {
+        for (const id of ["keyboard", "deep-child"]) models.sessionCatalog.find(id)!.running = true;
+        publishSignals();
+      });
+      expectCounts(3, 2);
+
+      act(() => {
+        setHomeRunning(true);
+        root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+      });
+      expectCounts(3, 4);
+      expect(tab().getAttribute("title")).toBe("3 running · 4 unread · 8 total in all projects");
+      act(() => {
+        models.sessionCatalog.find("elsewhere")!.running = true;
+        publishSignals();
+      });
+      expectCounts(4, 4);
+      // Ordinary work-session badges still show their own status.
+      const workRow = document.querySelector<HTMLElement>(
+        '[data-slot="conversation-navigator-row"][data-session-id="layout"]',
+      )!;
+      expect(within(workRow).getByRole("img", { name: "Running" })).toBeTruthy();
+    },
+  );
+});
 
 describe("Workspace Sessions unread count", () => {
   it.each([

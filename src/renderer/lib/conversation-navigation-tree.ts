@@ -49,6 +49,7 @@ export interface ConversationNavigationTree {
   readonly roots: readonly ConversationNavigationNode[];
   readonly byKey: ReadonlyMap<string, ConversationNavigationNode>;
   readonly total: number;
+  /** Working sessions only; permanent home chats retain their own activity. */
   readonly running: number;
   /** Own-unread home chat and family roots only, regardless of disclosure or search. */
   readonly unread: number;
@@ -201,7 +202,10 @@ export function buildConversationNavigationTree(
             ? -1
             : b.modifiedAt.localeCompare(a.modifiedAt) || a.key.localeCompare(b.key),
     );
-    return node.children.reduce((sum, child) => sum + count(child), Number(node.running));
+    return node.children.reduce(
+      (sum, child) => sum + count(child),
+      Number(node.relationship !== "home" && node.running),
+    );
   };
   const running = roots.reduce((sum, node) => sum + count(node), 0);
   return { roots, byKey, total: byKey.size, running, unread };
