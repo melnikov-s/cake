@@ -270,6 +270,30 @@ export class SidebarSessionListStore extends Store<{
     );
   }
 
+  /** Like unread, settled failure attention belongs to Project Chat and family roots. */
+  projectHasError(projectPath: string) {
+    if (
+      this.props.catalog
+        .projectSessions(projectPath, false)
+        .some(
+          (session) =>
+            (!session.familyParentSessionId ||
+              session.familyParentSessionId === session.sessionId) &&
+            this.metadata.sessionActivity(session.sessionId) === "error",
+        )
+    )
+      return true;
+    const chats = this.props.cakeChat();
+    const home = chats.projectChat(projectPath);
+    // Never open an unobserved chat just to calculate a rail dot.
+    return Boolean(
+      home &&
+      !home.resolved &&
+      chats.registry.find(home.sessionId) &&
+      chats.ownActivityFor(home.sessionId) === "error",
+    );
+  }
+
   projectActivityForDisplay(projectPath: string) {
     const projectChat = this.props.cakeChat().projectChat(projectPath);
     const own = projectChat

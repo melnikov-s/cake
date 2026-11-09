@@ -191,7 +191,10 @@ export class SessionMetadataStore extends Store<{
     if (session?.running || activity === "running") return "running";
     if (session && "latestTurnOutcome" in session && !session.running) {
       if (session.latestTurnOutcome === "failed") return "error";
-      if (session.latestTurnOutcome === "aborted") return "stopped";
+      // The journal records both deliberate cancellation and unexpected aborts.
+      // Preserve a projected request failure instead of relabeling its error card as a stop.
+      if (session.latestTurnOutcome === "aborted")
+        return activity === "error" ? "error" : "stopped";
       if (session.latestTurnOutcome === "complete" && !this.activeSessionIds.has(sessionId))
         return session.unread ? "unread" : undefined;
     }

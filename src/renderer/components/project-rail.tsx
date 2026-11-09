@@ -58,6 +58,11 @@ export const ProjectRail = observer(function ProjectRail({
       root.conversationNavigatorStore.projectUnread(path),
     ),
   );
+  const errorProjects = new Set(
+    projects.orderedProjectPaths.filter((path) =>
+      root.sidebarStore.sessionListStore.projectHasError(path),
+    ),
+  );
   const setOverlayRight = useCallback(
     (right: number) => root.projectRailStore.setOverlayRight(right),
     [root],
@@ -214,16 +219,17 @@ export const ProjectRail = observer(function ProjectRail({
                       title={projects.nameForPath(path)}
                       aria-hidden="true"
                     />
-                    {!runningProjects.has(path) && unreadProjects.has(path) && (
-                      <StatusDot
-                        status="success"
-                        size="sm"
-                        role="img"
-                        aria-hidden={false}
-                        aria-label={`Unread sessions in ${projects.nameForPath(path)}`}
-                        className="absolute bottom-0.5 left-0.5 ring-2 ring-sidebar"
-                      />
-                    )}
+                    {!runningProjects.has(path) &&
+                      (errorProjects.has(path) || unreadProjects.has(path)) && (
+                        <StatusDot
+                          status={errorProjects.has(path) ? "error" : "success"}
+                          size="sm"
+                          role="img"
+                          aria-hidden={false}
+                          aria-label={`${errorProjects.has(path) ? "Error" : "Unread sessions"} in ${projects.nameForPath(path)}`}
+                          className="absolute bottom-0.5 left-0.5 ring-2 ring-sidebar"
+                        />
+                      )}
                     {runningProjects.has(path) && (
                       <StatusDot
                         status="running"

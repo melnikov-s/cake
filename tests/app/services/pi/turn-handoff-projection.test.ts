@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
+import { settledSessionActivity } from "../../../../src/renderer/lib/session-activity";
 import { createLiveMessageProjector } from "../../../../src/services/pi/runtime/message-projection";
 import {
   projectSessionEntries,
@@ -70,9 +71,12 @@ describe("Intentional send-now handoff presentation", () => {
     expect(projectSessionEntries(entries("Partial work", true))).toEqual([
       expect.objectContaining({ text: "Partial work", status: "complete" }),
     ]);
-    expect(projectSessionEntries(entries("", false))).toEqual([
+    const failedParts = projectSessionEntries(entries("", false));
+    expect(failedParts).toEqual([
       expect.objectContaining({ title: "Model request failed", detail: "Request was aborted" }),
     ]);
+    expect(settledSessionActivity("aborted", failedParts)).toBe("error");
+    expect(settledSessionActivity(undefined, failedParts)).toBe("error");
   });
   it("hides the error stop an abort during a tool surfaces, only for a handoff", () => {
     const abortedRequest = { ...assistant(), stopReason: "error" as const };
@@ -130,6 +134,8 @@ describe("Deliberate stop presentation", () => {
       expect.objectContaining({ kind: "notice", tone: "info", detail: "Stopped by you" }),
     ]);
     expect(parts.some((part) => part.kind === "notice" && part.tone === "error")).toBe(false);
+    expect(settledSessionActivity("aborted", parts)).toBe("stopped");
+    expect(settledSessionActivity(undefined, parts)).toBe("stopped");
   });
 
   it("keeps an unexpected interruption or provider error as a failure", () => {

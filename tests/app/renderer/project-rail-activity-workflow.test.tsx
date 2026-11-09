@@ -14,7 +14,7 @@ import { Profiler } from "react";
 import { StoreProvider } from "r-state-tree/react";
 import { ProjectRail } from "../../../src/renderer/components/project-rail";
 import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
-import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { createRendererStoreFixture as createStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
 import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
@@ -22,6 +22,18 @@ import { AutoMergeToggle } from "../../../src/renderer/components/auto-merge-tog
 import { ToastHost } from "../../../src/renderer/components/toast-host";
 
 afterEach(cleanup);
+
+function createRendererStoreFixture(options: Parameters<typeof createStoreFixture>[0]) {
+  const fixture = createStoreFixture(options);
+  return {
+    ...fixture,
+    [Symbol.dispose]() {
+      // React must stop observing before the Store tree loses its contexts.
+      cleanup();
+      fixture[Symbol.dispose]();
+    },
+  };
+}
 
 it("has no global rail toggle; explicit project controls stay independent across view switches", async () => {
   const setAutoMerge = vi.fn(async (projectPath: string, enabled: boolean) => {
@@ -230,6 +242,47 @@ it.each([
     expect(fixture.models.projectConversations).toHaveLength(0);
     expect([...fixture.models.discussionCatalogs]).toEqual(discussionCatalogs);
     expect([...fixture.models.subagentCatalogs]).toEqual(subagentCatalogs);
+  },
+);
+
+it.each([false, true])(
+  "shows a closed failed session as red with unread=%s, without loading it",
+  (unread) => {
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/cake", name: "Cake" })],
+      sessions: [
+        sessionSummary({
+          sessionId: "failed",
+          projectPath: "/cake",
+          unread,
+          latestTurnOutcome: "failed",
+        }),
+      ],
+    });
+    render(
+      <StoreProvider store={fixture.root}>
+        <ProjectRail />
+      </StoreProvider>,
+    );
+    expect(screen.getByRole("img", { name: "Error in Cake" }).className).toContain(
+      "bg-destructive",
+    );
+    expect(screen.queryByRole("img", { name: "Unread sessions in Cake" })).toBeNull();
+    expect(fixture.models.projectConversations).toHaveLength(0);
+    // Other ongoing project work keeps the existing running precedence.
+    act(() => {
+      fixture.models.projects.runningProjectPaths.push("/cake");
+    });
+    expect(screen.getByRole("img", { name: "Work running in Cake" })).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "Error in Cake" })).toBeNull();
+    act(() => {
+      fixture.models.projects.runningProjectPaths.splice(0);
+    });
+    expect(screen.getByRole("img", { name: "Error in Cake" })).toBeTruthy();
+    act(() => {
+      fixture.models.sessionCatalog.find("failed")!.resolved = true;
+    });
+    expect(screen.queryByRole("img", { name: "Error in Cake" })).toBeNull();
   },
 );
 
