@@ -1,6 +1,6 @@
 import { sessionNotificationEntries } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Layer, Stream, SubscriptionRef } from "effect";
+import { Deferred, Effect, Fiber, Layer, Stream, SubscriptionRef } from "effect";
 import { expect } from "vitest";
 import * as digest from "../../../src/domain/cake-chats/cakeChatDigest";
 import { snapshot } from "../helpers/piRuntimeFixture";
@@ -9,7 +9,7 @@ import { makeTurnLifecycle } from "../../../src/domain/project-sessions/projectS
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCoordination } from "../../../src/services/session-catalogs/SessionCoordination";
-import { cancel, start, inspect, retry, mergeAndResolve } from "../../../src/domain/worktrees/worktreeLandings";
+import { cancel, acknowledge, start, inspect, retry, mergeAndResolve } from "../../../src/domain/worktrees/worktreeLandings";
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
@@ -22,6 +22,7 @@ import {
 } from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import {
@@ -73,6 +74,8 @@ function fixture(
     manual?: boolean;
     noRecipient?: boolean;
     onLandedWait?: Effect.Effect<void>;
+    cancelWait?: Effect.Effect<void>;
+    statusWait?: Effect.Effect<void>;
   } = {},
 ) {
   const events: string[] = [];
@@ -88,39 +91,40 @@ function fixture(
   let currentRecord: WorktreeRecord = options.recovery
     ? { ...record, state: "landed", resolveAfterLanding: true, landedSourceCommit: commit }
     : record;
-  const layer = Layer.mergeAll(
-    familyStorageHarness(
-      new Map([
-        [
-          "state/session-families.json",
-          JSON.stringify({
-            version: DOCUMENT_VERSION,
-            data: {
-              families: [],
-              turns: [],
-              spawnedSessions:
-                options.requester === null
-                  ? []
-                  : [
-                      {
-                        sessionId: "owner",
-                        title: "Fix the merge toast",
-                        projectPath: "/project",
-                        workingDirectory: "/tree",
-                        requester: {
-                          sessionId: options.requester ?? projectChatSessionId("/project"),
-                          kind: "cake-chat",
-                          title: "Project Chat",
-                        },
-                        reportDelivered: true,
-                        handoffSettled: true,
+  const family = familyStorageHarness(
+    new Map([
+      [
+        "state/session-families.json",
+        JSON.stringify({
+          version: DOCUMENT_VERSION,
+          data: {
+            families: [],
+            turns: [],
+            spawnedSessions:
+              options.requester === null
+                ? []
+                : [
+                    {
+                      sessionId: "owner",
+                      title: "Fix the merge toast",
+                      projectPath: "/project",
+                      workingDirectory: "/tree",
+                      requester: {
+                        sessionId: options.requester ?? projectChatSessionId("/project"),
+                        kind: "cake-chat",
+                        title: "Project Chat",
                       },
-                    ],
-            },
-          }),
-        ],
-      ]),
-    ).layer,
+                      reportDelivered: true,
+                      handoffSettled: true,
+                    },
+                  ],
+          },
+        }),
+      ],
+    ]),
+  );
+  const layer = Layer.mergeAll(
+    family.layer,
     WorktreeLandingCoordinatorLive,
     Layer.mock(ClientEvents, {
       broadcast: () => {
@@ -186,7 +190,7 @@ function fixture(
           merging: false,
           rebasing: false,
           squashMessageReady: false,
-        }),
+        }).pipe(Effect.tap(() => options.statusWait ?? Effect.void)),
       records: () =>
         Effect.sync(() => [
           currentRecord,
@@ -195,7 +199,7 @@ function fixture(
         ]),
       prepareLanding: () => Effect.void,
       releaseLanding: () => Effect.void,
-      cancelLanding: () => Effect.void,
+      cancelLanding: () => options.cancelWait ?? Effect.void,
       setResolveAfterLanding: (_path, value) =>
         Effect.sync(() => {
           events.push(`intent:${value}`);
@@ -248,6 +252,7 @@ function fixture(
   );
   return {
     layer,
+    files: family.files,
     events,
     notices,
     recipients,

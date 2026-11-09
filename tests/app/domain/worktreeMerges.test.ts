@@ -80,6 +80,7 @@ const layer = (harness: Harness) => {
   };
   return Layer.mergeAll(
     WorktreeLandingCoordinatorLive,
+    Layer.mock(SessionFamilyStorage, { invalidateAutoMerge: () => Effect.void }),
     Layer.mock(ApplicationState, { snapshot: () => state }),
     Layer.mock(ManagedWorktrees, {
       records: () => Effect.sync(() => [harness.record ?? record]),

@@ -5,6 +5,7 @@ import type {
   WorktreeStatus,
 } from "../../contracts/worktrees/worktree-contract";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { renderCakePrompt } from "../application/cake-prompts";
 import * as worktreeLifecycle from "./worktreeLifecycle";
 import { resolveCakePrompts } from "../../contracts/application/cake-prompt-defaults";
@@ -791,18 +792,36 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
   return operation;
 });
 
+/** Called only after claiming the matching operation under the coordinator lock.
+ * Storage's atomic update makes revocation sticky against toggle reauthorization,
+ * including an epoch/attempt change published before retirement finishes. */
+const revokeRetiredReadiness = Effect.fn("WorktreeLandings.revokeRetiredReadiness")(function* (
+  operation: WorktreeLandingOperation,
+) {
+  if (!operation.automatic || !operation.autoMergeRequestId) return;
+  yield* (yield* SessionFamilyStorage)
+    .invalidateAutoMerge(operation.workspacePath, operation.autoMergeRequestId)
+    .pipe(asError("retireReadiness"));
+});
+
 export const acknowledge = Effect.fn("WorktreeLandings.acknowledge")(function* (
   workspacePath: string,
   operationId: string,
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
-  yield* SubscriptionRef.update(coordinator.state, (state) => {
-    const current = state.operations.get(workspacePath);
-    if (!current || current.operationId !== operationId || !isTerminal(current)) return state;
-    const operations = new Map(state.operations);
-    operations.delete(workspacePath);
-    return { ...state, operations };
-  });
+  yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+    Effect.gen(function* () {
+      const current = state.operations.get(workspacePath);
+      if (!current || current.operationId !== operationId || !isTerminal(current))
+        return [undefined, state] as const;
+      // Successful acknowledgment must retain the scheduler's confirmed outcome.
+      // Dismissing a failed attempt must not leave its declaration reusable.
+      if (current.phase === "failed") yield* revokeRetiredReadiness(current);
+      const operations = new Map(state.operations);
+      operations.delete(workspacePath);
+      return [undefined, { ...state, operations }] as const;
+    }),
+  );
 });
 
 export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
@@ -827,6 +846,7 @@ export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
         yield* worktrees
           .cancelLanding(workspacePath, current.operationId, true)
           .pipe(asError("cancel"));
+      yield* revokeRetiredReadiness(current);
       yield* FiberMap.remove(coordinator.fibers, workspacePath);
       // Retire durable intent only after preparation/worker finalizers have settled.
       if (current.kind === "landing")
