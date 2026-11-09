@@ -267,21 +267,7 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
                 : undefined;
               const live = Stream.unwrap(
                 acquireTarget(location, target.sessionId, allowCreate && !persisted).pipe(
-                  Effect.map((handle) =>
-                    observeConversationUpdates(handle).pipe(
-                      Stream.tap((update) =>
-                        update._tag === "Event" && update.event._tag === "TurnSettled"
-                          ? catalogs.publish({
-                              _tag: "ProjectSessionChanged",
-                              sessionId: target.sessionId,
-                              projectPath: location.projectPath,
-                              workingDirectory: location.workingDirectory,
-                              resolved: false,
-                            })
-                          : Effect.void,
-                      ),
-                    ),
-                  ),
+                  Effect.map(observeConversationUpdates),
                 ),
               );
               const sessions = yield* CakeSessionRuntimes;

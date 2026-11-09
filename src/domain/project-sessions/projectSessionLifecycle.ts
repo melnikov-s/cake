@@ -513,7 +513,7 @@ export const deleteResolved = Effect.fn("ProjectSessions.deleteResolved")(functi
     yield* (yield* ProjectAccess).forgetSessionLocation(sessionId).pipe(asError(operation));
     yield* forgetProjectSessions([sessionId]).pipe(asError(operation));
     yield* (yield* SessionCatalogChanges)
-      .publish({ _tag: "ProjectSessionRemoved", sessionId })
+      .publish({ _tag: "ProjectSessionRemoved", sessionId, projectPath: entry.projectPath })
       .pipe(asError(operation));
   }).pipe(Effect.ensuring(garbageCollector.request()));
 });
@@ -548,7 +548,9 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
     yield* artifacts.deleteSession(workingDirectory, sessionId).pipe(asError(operation));
     yield* reviews.deleteSession(workingDirectory, sessionId).pipe(asError(operation));
     forgotten.add(sessionId);
-    yield* catalogs.publish({ _tag: "ProjectSessionRemoved", sessionId }).pipe(asError(operation));
+    yield* catalogs
+      .publish({ _tag: "ProjectSessionRemoved", sessionId, projectPath })
+      .pipe(asError(operation));
   });
   for (const workingDirectory of workingDirectories) {
     yield* sessions

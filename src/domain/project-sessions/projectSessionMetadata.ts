@@ -37,15 +37,11 @@ import {
 import {
   SessionCatalogChanges,
   type SessionCatalogChange,
+  type ProjectCatalogItem,
 } from "../../services/session-catalogs/SessionCatalogChanges";
 
 type ProjectSessionCatalogEvent = Extract<SessionCatalogUpdate, { _tag: "Event" }>["event"];
-type InitialCatalogItem = {
-  readonly _tag: "InitialBatch";
-  readonly sessions: ProjectSessionSummary[];
-  readonly hasMore?: boolean;
-};
-type CatalogStreamItem = InitialCatalogItem | ProjectSessionCatalogEvent;
+type CatalogStreamItem = ProjectCatalogItem;
 
 export const asError = (operation: string) =>
   Effect.mapError(
@@ -60,13 +56,6 @@ export const asError = (operation: string) =>
               : String(error),
       }),
   );
-
-/** Cake Chat launch records keyed by session, for active catalog summaries. */
-const spawnedSessions = Effect.fn("ProjectSessions.spawnedSessions")(function* () {
-  const storage = yield* SessionFamilyStorage;
-  const state = yield* storage.state().pipe(asError("catalog"));
-  return new Map(state.spawnedSessions.map((spawn) => [spawn.sessionId, spawn] as const));
-});
 
 const archivedStorageLocation = (entry: ProjectSessionArchiveMetadata) => ({
   cwd: entry.workingDirectory,
@@ -185,18 +174,24 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
   state: ApplicationState,
   metadata: CatalogMetadata,
   resolvedFilter?: boolean,
+  known?: {
+    readonly entries: ReadonlyMap<string, ProjectSessionArchiveMetadata>;
+    readonly titles: ReadonlyMap<string, string>;
+  },
 ) {
   const configuration = yield* ProjectSessionConfiguration;
   const archive = yield* SessionArchiveStorage;
   // The supplied family already identifies the lifecycle authority. Do not reload
   // the complete family state to rediscover that authority for every root.
-  const namespace = yield* archive
-    .locate(family.parentSessionId, {
-      cwd: family.workingDirectory,
-      activeRoot: configuration.sessionDirectory,
-      resolvedRoot: configuration.resolvedSessionDirectory,
-    })
-    .pipe(asError("catalog"));
+  const namespace = known?.entries.has(family.parentSessionId)
+    ? "resolved"
+    : yield* archive
+        .locate(family.parentSessionId, {
+          cwd: family.workingDirectory,
+          activeRoot: configuration.sessionDirectory,
+          resolvedRoot: configuration.resolvedSessionDirectory,
+        })
+        .pipe(asError("catalog"));
   const resolved = namespace === "resolved";
   if (resolvedFilter !== undefined && resolved !== resolvedFilter)
     return { resolved, sessions: [] };
@@ -209,12 +204,16 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
       Effect.gen(function* () {
         const member = familyMember(family, sessionId);
         if (!member) return undefined;
-        const entry = yield* archive.resolvedProjectEntry(sessionId).pipe(asError("catalog"));
+        const entry = known
+          ? known.entries.get(sessionId)
+          : yield* archive.resolvedProjectEntry(sessionId).pipe(asError("catalog"));
         if (entry) {
-          const item = yield* archive
-            .resolvedEntry(sessionId, archivedStorageLocation(entry))
-            .pipe(asError("catalog"));
-          return { ...archivedSummary(entry, item?.title ?? sessionId, unread, family), resolved };
+          const title = known
+            ? known.titles.get(sessionId)
+            : (yield* archive
+                .resolvedEntry(sessionId, archivedStorageLocation(entry))
+                .pipe(asError("catalog")))?.title;
+          return { ...archivedSummary(entry, title ?? sessionId, unread, family), resolved };
         }
         // Family membership retains routing even after an isolated checkout is retired.
         const location: ProjectSessionLocation = locations.find(
@@ -269,9 +268,10 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
 const resolvedCatalogPage = Effect.fn("ProjectSessions.resolvedCatalogPage")(function* (
   query: ProjectSessionCatalogQuery,
   state: ApplicationState,
+  suppliedMetadata?: CatalogMetadata,
 ) {
   const archive = yield* SessionArchiveStorage;
-  const metadata = yield* catalogMetadata();
+  const metadata = suppliedMetadata ?? (yield* catalogMetadata());
   const migrationComplete = yield* archive
     .projectMigrationComplete(query.projectPath)
     .pipe(asError("list"));
@@ -355,7 +355,10 @@ const resolvedCatalogPage = Effect.fn("ProjectSessions.resolvedCatalogPage")(fun
     const ids = root.family ? familyMemberIds(root.family) : [root.sessionId];
     if (root.family && ids.some((id) => !byId.has(id))) {
       // Preserve legacy members/routing when their per-session archive index is absent.
-      const catalog = yield* familyCatalog(root.family, state, metadata, true);
+      const catalog = yield* familyCatalog(root.family, state, metadata, true, {
+        entries: byId,
+        titles,
+      });
       sessions.push(...catalog.sessions);
     } else {
       for (const id of ids) {
@@ -462,16 +465,27 @@ type ProjectSessionChanged = Extract<SessionCatalogChange, { _tag: "ProjectSessi
 const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(function* (
   location: ProjectSessionLocation,
   sessionId: string,
+  evidence?: {
+    readonly state: ApplicationState;
+    readonly metadata: CatalogMetadata;
+    readonly entry: ProjectSessionArchiveMetadata | undefined;
+  },
 ) {
-  const state = yield* getState();
+  const state = evidence?.state ?? (yield* getState());
+  const metadata = evidence?.metadata ?? (yield* catalogMetadata());
   const archive = yield* SessionArchiveStorage;
-  const family = yield* (yield* SessionFamilyStorage)
-    .familyForMember(sessionId)
+  const family = metadata.families.find((family) => familyMember(family, sessionId));
+  const namespace = yield* archive
+    .locate(
+      family?.parentSessionId ?? sessionId,
+      family
+        ? { ...archiveLocation(location), cwd: family.workingDirectory }
+        : archiveLocation(location),
+    )
     .pipe(asError("catalog"));
-  const namespace = yield* resolutionNamespace(sessionId, archiveLocation(location)).pipe(
-    asError("catalog"),
-  );
-  const entry = yield* archive.resolvedProjectEntry(sessionId).pipe(asError("catalog"));
+  const entry = evidence
+    ? evidence.entry
+    : yield* archive.resolvedProjectEntry(sessionId).pipe(asError("catalog"));
   if (entry) {
     const item = yield* archive
       .resolvedEntry(sessionId, archivedStorageLocation(entry))
@@ -497,7 +511,7 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
     new Set(state.unreadSessionIds),
     status?.streaming ?? false,
     family,
-    (yield* spawnedSessions()).get(sessionId),
+    metadata.spawns.get(sessionId),
     status?.recoveryIssue,
     status?.latestTurnOutcome,
     status?.workingStartedAt,
@@ -740,17 +754,26 @@ export const lookup = Effect.fn("ProjectSessions.lookup")(function* (target: Pro
 });
 
 const catalogEventForSessionChange = Effect.fn("ProjectSessions.catalogEventForSessionChange")(
-  function* (query: ProjectSessionCatalogQuery, change: ProjectSessionChanged) {
+  function* (
+    query: ProjectSessionCatalogQuery,
+    change: ProjectSessionChanged,
+    metadata: CatalogMetadata,
+    state: ApplicationState,
+  ) {
     if (change.projectPath !== query.projectPath) return undefined;
     const archive = yield* SessionArchiveStorage;
     const entry = yield* archive.resolvedProjectEntry(change.sessionId).pipe(asError("catalog"));
     const location = entry
       ? archivedLocation(entry)
-      : (yield* projectSessionLocations.locations().pipe(asError("catalog"))).find(
+      : (yield* metadata.locations).find(
           (candidate) => candidate.workingDirectory === change.workingDirectory,
         );
     if (!location || location.projectPath !== query.projectPath) return undefined;
-    const session = yield* discoverSessionAt(location, change.sessionId);
+    const session = yield* discoverSessionAt(location, change.sessionId, {
+      metadata,
+      state,
+      entry,
+    });
     return session && session.resolved === query.resolved
       ? ({ _tag: "Upserted", session } as const)
       : ({ _tag: "Removed", sessionId: change.sessionId } as const);
@@ -761,6 +784,7 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
   query: ProjectSessionCatalogQuery,
   change: SessionCatalogChange,
 ) {
+  if ("projectPath" in change && change.projectPath !== query.projectPath) return undefined;
   if (change._tag === "ProjectSessionActivityChanged") {
     if (change.projectPath !== query.projectPath || query.resolved) return undefined;
     const sessions = yield* CakeSessionRuntimes;
@@ -789,32 +813,29 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
     change.projectPath === query.projectPath
   ) {
     const metadata = yield* catalogMetadata();
+    const state = yield* getState();
     const family = metadata.families.find((family) => familyMember(family, change.sessionId));
     if (family) {
-      const catalog = yield* familyCatalog(family, yield* getState(), metadata, query.resolved);
+      const catalog = yield* familyCatalog(family, state, metadata, query.resolved);
       return catalog.resolved === query.resolved
         ? ({ _tag: "UpsertedBatch", sessions: catalog.sessions } as const)
         : ({ _tag: "RemovedBatch", sessionIds: familyMemberIds(family) } as const);
     }
-  }
-  if (change._tag === "ProjectSessionStatusChanged") {
-    if (change.projectPath !== query.projectPath) return undefined;
-    if (change.resolved !== query.resolved)
+    if (change._tag === "ProjectSessionStatusChanged" && change.resolved !== query.resolved)
       return {
         _tag: "StatusChanged" as const,
         sessionId: change.sessionId,
         resolved: change.resolved,
         unread: change.unread,
       };
-    // A restored row may never have been hydrated, or its old archive page
-    // may already have been replaced. Reintroduce it independently of that lane.
-    return yield* catalogEventForSessionChange(query, {
-      ...change,
-      _tag: "ProjectSessionChanged",
-    });
+    return yield* catalogEventForSessionChange(
+      query,
+      { ...change, _tag: "ProjectSessionChanged" },
+      metadata,
+      state,
+    );
   }
-  if (change._tag !== "ProjectSessionChanged") return undefined;
-  return yield* catalogEventForSessionChange(query, change);
+  return undefined;
 });
 
 const catalogEventsForTransition = Effect.fn("ProjectSessions.catalogEventsForTransition")(
@@ -843,13 +864,18 @@ const catalogEventsForTransition = Effect.fn("ProjectSessions.catalogEventsForTr
     }
     for (const { sessionId, workingDirectory } of change.sessions) {
       if (affectedFamilies.some((family) => familyMember(family, sessionId))) continue;
-      const event = yield* catalogEventForSessionChange(query, {
-        _tag: "ProjectSessionChanged",
-        sessionId,
-        workingDirectory,
-        projectPath: change.projectPath,
-        resolved: change.resolved,
-      });
+      const event = yield* catalogEventForSessionChange(
+        query,
+        {
+          _tag: "ProjectSessionChanged",
+          sessionId,
+          workingDirectory,
+          projectPath: change.projectPath,
+          resolved: change.resolved,
+        },
+        metadata,
+        state,
+      );
       if (event?._tag === "Upserted") summaries.push(event.session);
       else if (event?._tag === "Removed") removedIds.push(event.sessionId);
     }
@@ -864,70 +890,96 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
   query: ProjectSessionCatalogQuery,
 ) {
   const catalogs = yield* SessionCatalogChanges;
-  const state = yield* getState();
-  const catalog = Stream.unwrap(catalogForState(query, state));
+  // Read state only after subscribing, not when the returned stream is constructed.
   const initial = Stream.fromEffect(
-    query.resolved
-      ? resolvedCatalogPage(query, state)
-      : catalog.pipe(
-          Stream.runCollect,
-          Effect.map((sessions) => ({
-            _tag: "InitialBatch" as const,
-            sessions: Array.from(sessions),
-          })),
-        ),
+    Effect.gen(function* () {
+      const state = yield* getState();
+      if (query.resolved) return yield* resolvedCatalogPage(query, state);
+      const catalog = yield* catalogForState(query, state);
+      const sessions = yield* Stream.runCollect(catalog);
+      return { _tag: "InitialBatch" as const, sessions: Array.from(sessions) };
+    }),
   );
-  return catalogs.initialThenChanges(initial).pipe(
-    Stream.mapEffect((item) =>
-      item._tag === "InitialBatch"
-        ? Effect.succeed<ReadonlyArray<CatalogStreamItem>>([item])
-        : query.resolved &&
-            (item._tag === "ProjectSessionRemoved" ||
-              ("projectPath" in item &&
-                item.projectPath === query.projectPath &&
-                (item._tag === "ProjectSessionChanged" ||
-                  item._tag === "ProjectSessionStatusChanged" ||
-                  item._tag === "ProjectSessionsTransitioned")))
-          ? Effect.flatMap(getState(), (state) => resolvedCatalogPage(query, state)).pipe(
-              Effect.map((page): ReadonlyArray<CatalogStreamItem> => [page]),
-            )
-          : item._tag === "ProjectSessionsTransitioned"
-            ? catalogEventsForTransition(query, item)
-            : catalogEventForChange(query, item).pipe(
-                Effect.map((event) => (event ? [event] : [])),
-              ),
-    ),
-    Stream.flatMap(Stream.fromIterable),
-    Stream.mapAccum<
-      { revision: number; initialized: boolean },
-      CatalogStreamItem,
-      SessionCatalogUpdate
-    >(
-      () => ({ revision: 0, initialized: false }),
-      (state, item) => {
-        const revision = state.revision + 1;
-        if (item._tag === "InitialBatch") {
-          const update: SessionCatalogUpdate =
-            state.initialized && !query.resolved
-              ? {
-                  _tag: "Event",
-                  revision,
-                  event: { _tag: "UpsertedBatch", sessions: item.sessions },
-                }
-              : item.hasMore === undefined
-                ? { _tag: "Snapshot", revision, sessions: item.sessions }
-                : {
-                    _tag: "Snapshot",
-                    revision,
-                    sessions: item.sessions,
-                    hasMore: item.hasMore,
-                  };
-          return [{ revision, initialized: true }, [update]];
+  return catalogs
+    .initialThenProjectChanges(
+      initial,
+      JSON.stringify([
+        query.projectPath,
+        query.resolved,
+        query.resolved ? (query.limit ?? 10) : null,
+      ]),
+      Effect.fn("ProjectSessions.projectCatalogChange")(function* (item: SessionCatalogChange) {
+        if ("projectPath" in item && item.projectPath !== query.projectPath) return [];
+        // Payload resolution is only a hint: a late runtime notification can arrive
+        // after resolve. Skip the archive page only after checking current authority.
+        if (query.resolved && item._tag === "ProjectSessionChanged" && !item.resolved) {
+          const archive = yield* SessionArchiveStorage;
+          const entry = yield* archive
+            .resolvedProjectEntry(item.sessionId)
+            .pipe(asError("catalog"));
+          const metadata = yield* catalogMetadata();
+          if (!entry) {
+            const family = metadata.families.find((family) => familyMember(family, item.sessionId));
+            if (!family) return [];
+            const configuration = yield* ProjectSessionConfiguration;
+            const namespace = yield* archive
+              .locate(family.parentSessionId, {
+                cwd: family.workingDirectory,
+                activeRoot: configuration.sessionDirectory,
+                resolvedRoot: configuration.resolvedSessionDirectory,
+              })
+              .pipe(asError("catalog"));
+            if (namespace !== "resolved") return [];
+          }
+          return [yield* resolvedCatalogPage(query, yield* getState(), metadata)];
         }
-        return [{ revision, initialized: true }, [{ _tag: "Event", revision, event: item }]];
-      },
-    ),
-  );
+        // Lifecycle transitions and removal still refill the entire bounded page,
+        // including hasMore, even when the affected ID was outside the visible page.
+        if (
+          query.resolved &&
+          (item._tag === "ProjectSessionRemoved" ||
+            item._tag === "ProjectSessionChanged" ||
+            item._tag === "ProjectSessionStatusChanged" ||
+            item._tag === "ProjectSessionsTransitioned")
+        )
+          return [yield* resolvedCatalogPage(query, yield* getState())];
+        if (item._tag === "ProjectSessionsTransitioned")
+          return yield* catalogEventsForTransition(query, item);
+        const event = yield* catalogEventForChange(query, item);
+        return event ? [event] : [];
+      }),
+    )
+    .pipe(
+      Stream.mapAccum<
+        { revision: number; initialized: boolean },
+        CatalogStreamItem,
+        SessionCatalogUpdate
+      >(
+        () => ({ revision: 0, initialized: false }),
+        (state, item) => {
+          const revision = state.revision + 1;
+          if (item._tag === "InitialBatch") {
+            const update: SessionCatalogUpdate =
+              state.initialized && !query.resolved
+                ? {
+                    _tag: "Event",
+                    revision,
+                    event: { _tag: "UpsertedBatch", sessions: item.sessions },
+                  }
+                : item.hasMore === undefined
+                  ? { _tag: "Snapshot", revision, sessions: item.sessions }
+                  : {
+                      _tag: "Snapshot",
+                      revision,
+                      sessions: item.sessions,
+                      hasMore: item.hasMore,
+                    };
+            return [{ revision, initialized: true }, [update]];
+          }
+          return [{ revision, initialized: true }, [{ _tag: "Event", revision, event: item }]];
+        },
+      ),
+    );
 });
 
 export const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (

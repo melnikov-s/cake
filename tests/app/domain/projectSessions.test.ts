@@ -5,6 +5,7 @@ import {
 } from "../helpers/subagentStorageFixture";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import assert from "node:assert/strict";
+import { performance } from "node:perf_hooks";
 import { toJsonValue } from "../../../src/utils/to-json-value";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { coordinationStorageHarness } from "../helpers/coordinationStorageHarness";
@@ -461,6 +462,7 @@ const makeLayer = (
         SessionCatalogChanges.of({
           publish: (change) => Effect.sync(() => hooks.onCatalogChange?.(change)),
           initialThenChanges: (initial) => initial,
+          initialThenProjectChanges: (initial) => initial,
         }),
       )
     : SessionCatalogChanges.layer;
@@ -3188,12 +3190,20 @@ describe("Project Sessions domain", () => {
         family = { ...family, children: [...family.children, child("added")] };
         yield* catalogs.publish({ _tag: "ProjectSessionChanged", ...change, sessionId: "added" });
         yield* expectBatch(active, ["parent", "child", "added"]);
-        yield* expectBatch(archived, ["parent", "child", "added"], true);
+        assert.equal(
+          yield* Queue.size(archived),
+          0,
+          "active membership edits do not rebuild the resolved page",
+        );
         family = {
           ...family,
           children: family.children.filter((member) => member.sessionId !== "child"),
         };
-        yield* catalogs.publish({ _tag: "ProjectSessionRemoved", sessionId: "child" });
+        yield* catalogs.publish({
+          _tag: "ProjectSessionRemoved",
+          sessionId: "child",
+          projectPath: "/project",
+        });
         for (const queue of [active, archived]) {
           const removed = yield* Queue.take(queue);
           if (queue === archived) {
@@ -3209,7 +3219,11 @@ describe("Project Sessions domain", () => {
         }
         yield* catalogs.publish({ _tag: "ProjectSessionChanged", ...change, sessionId: "parent" });
         yield* expectBatch(active, ["parent", "added"]);
-        yield* expectBatch(archived, ["parent", "added"], true);
+        assert.equal(
+          yield* Queue.size(archived),
+          0,
+          "active edits do not rebuild the resolved page",
+        );
 
         const application = yield* ApplicationState;
         yield* application.transact((state) =>
@@ -3245,7 +3259,8 @@ describe("Project Sessions domain", () => {
         const before = reads;
         title = "After close";
         yield* catalogs.publish({ _tag: "ProjectSessionChanged", ...change, sessionId: "added" });
-        yield* expectBatch(archived, ["parent", "added"], true);
+        yield* TestClock.adjust(0);
+        assert.equal(yield* Queue.size(archived), 0);
         assert.equal(reads, before, "closing the active observer must stop its member reads");
         const fresh = (yield* (yield* projectSessionMetadata.observeCatalog({
           projectPath: "/project",
@@ -3836,6 +3851,364 @@ describe("Project Sessions domain", () => {
     },
   );
 
+  // Also runnable against the named base with CAKE_CATALOG_BASELINE=1; the
+  // assertions describe the old publication count, not an assumed multiplier.
+  it.live.each([1, 2, 8])("measures send/settle fan-out across %i windows", (windows) => {
+    const started = Promise.withResolvers<void>();
+    const finished = Promise.withResolvers<void>();
+    return Effect.gen(function* () {
+      const runtimes = yield* CakeSessionRuntimes;
+      const families = yield* SessionFamilyStorage;
+      const archive = yield* SessionArchiveStorage;
+      const changes = yield* SessionCatalogChanges;
+      const counts = {
+        discovery: 0,
+        status: 0,
+        family: 0,
+        familyMember: 0,
+        archiveEntry: 0,
+        locate: 0,
+        pages: 0,
+        titles: 0,
+        publications: 0,
+      };
+      const count = <A, E, R>(key: keyof typeof counts, effect: Effect.Effect<A, E, R>) =>
+        Effect.sync(() => counts[key]++).pipe(Effect.andThen(effect));
+      yield* Effect.gen(function* () {
+        const active = yield* Effect.forEach(Array.from({ length: windows }), () =>
+          Queue.unbounded<SessionCatalogUpdate>(),
+        );
+        const resolved = yield* Effect.forEach(Array.from({ length: windows }), () =>
+          Queue.unbounded<SessionCatalogUpdate>(),
+        );
+        for (let i = 0; i < windows; i++) {
+          for (const [lane, queue] of [
+            [false, active[i]!],
+            [true, resolved[i]!],
+          ] as const) {
+            yield* (yield* projectSessionMetadata.observeCatalog({
+              projectPath: "/project",
+              resolved: lane,
+            })).pipe(
+              Stream.runForEach((update) => Queue.offer(queue, update)),
+              Effect.forkScoped,
+            );
+            yield* Queue.take(queue);
+          }
+          const conversation = yield* Queue.unbounded<unknown>();
+          yield* (yield* projectSessionOperations.observeConversation({
+            sessionId: "session-1",
+          })).pipe(
+            Stream.runForEach((update) => Queue.offer(conversation, update)),
+            Effect.forkScoped,
+          );
+          yield* Queue.take(conversation);
+        }
+        for (const key of Object.keys(counts) as Array<keyof typeof counts>) counts[key] = 0;
+        const start = performance.now();
+        const loop = performance.eventLoopUtilization();
+        const takeUpsert = Effect.fn("CatalogFanoutTest.takeUpsert")(function* (
+          queue: Queue.Queue<SessionCatalogUpdate>,
+        ) {
+          while (true) {
+            const update = yield* Queue.take(queue);
+            if (
+              update._tag === "Event" &&
+              (update.event._tag === "Upserted" || update.event._tag === "UpsertedBatch")
+            )
+              return update;
+          }
+        });
+        yield* projectSessionOperations.sendAutomatically({
+          sessionId: "session-1",
+          text: "Measure",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        });
+        yield* Effect.promise(() => started.promise);
+        for (const queue of active) yield* takeUpsert(queue);
+        finished.resolve();
+        const baseline = process.env.CAKE_CATALOG_BASELINE === "1";
+        for (let i = 0; i < (baseline ? windows : 1); i++)
+          for (const queue of active) yield* takeUpsert(queue);
+        const elapsedMs = performance.now() - start;
+        const eventLoop = performance.eventLoopUtilization(loop);
+        console.log(
+          "catalog-fanout",
+          JSON.stringify({
+            windows,
+            baseline,
+            ...counts,
+            elapsedMs: +elapsedMs.toFixed(3),
+            eventLoopActiveMs: +eventLoop.active.toFixed(3),
+          }),
+        );
+        assert.equal(counts.publications, 1 + (baseline ? windows : 1));
+        if (!baseline) {
+          assert.equal(counts.discovery, 2);
+          // Includes fixed command/admission/settlement reads, not just projection reads.
+          assert.equal(counts.archiveEntry, 7);
+          assert.equal(counts.family, 7);
+          assert.equal(counts.familyMember, 7);
+          assert.equal(counts.status, 6);
+          assert.equal(counts.pages, 0);
+          assert.equal(counts.titles, 0);
+          for (const queue of resolved) assert.equal(yield* Queue.size(queue), 0);
+        }
+      }).pipe(
+        Effect.provideService(CakeSessionRuntimes, {
+          ...runtimes,
+          catalogEntry: (query, id) => count("discovery", runtimes.catalogEntry(query, id)),
+          currentStatus: (target) => count("status", runtimes.currentStatus(target)),
+        }),
+        Effect.provideService(SessionFamilyStorage, {
+          ...families,
+          state: () => count("family", families.state()),
+          familyForMember: (id) => count("familyMember", families.familyForMember(id)),
+        }),
+        Effect.provideService(SessionArchiveStorage, {
+          ...archive,
+          resolvedProjectEntry: (id) => count("archiveEntry", archive.resolvedProjectEntry(id)),
+          locate: (id, location) => count("locate", archive.locate(id, location)),
+          resolvedProjects: (path) =>
+            Stream.fromEffect(count("pages", Effect.void)).pipe(
+              Stream.flatMap(() => archive.resolvedProjects(path)),
+            ),
+          projectTitles: (entries) => count("titles", archive.projectTitles(entries)),
+        }),
+        Effect.provideService(SessionCatalogChanges, {
+          ...changes,
+          publish: (change) =>
+            change._tag === "ProjectSessionChanged"
+              ? count("publications", changes.publish(change))
+              : changes.publish(change),
+        }),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        makeLayer(undefined, {
+          prompt: () => {
+            started.resolve();
+            return finished.promise;
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("shares a bounded archive page only with equal limits", () => {
+    let pages = 0;
+    const entries = [1, 2, 3].map((index) => ({
+      sessionId: `session-${index}`,
+      modifiedAt: `2026-01-0${index}`,
+    }));
+    return Effect.gen(function* () {
+      const changes = yield* SessionCatalogChanges;
+      const queues = yield* Effect.forEach([1, 1, 2], (limit) =>
+        Effect.gen(function* () {
+          const queue = yield* Queue.unbounded<SessionCatalogUpdate>();
+          yield* (yield* projectSessionMetadata.observeCatalog({
+            projectPath: "/project",
+            resolved: true,
+            limit,
+          })).pipe(
+            Stream.runForEach((update) => Queue.offer(queue, update)),
+            Effect.forkScoped,
+          );
+          yield* Queue.take(queue);
+          return queue;
+        }),
+      );
+      pages = 0;
+      entries.push({ sessionId: "session-4", modifiedAt: "2026-01-04" });
+      yield* changes.publish({
+        _tag: "ProjectSessionChanged",
+        projectPath: "/project",
+        sessionId: "session-4",
+        workingDirectory: "/project",
+        resolved: true,
+      });
+      const received = yield* Effect.forEach(queues, Queue.take);
+      assert.equal(pages, 2);
+      assert.deepEqual(received[0], received[1]);
+      assert.deepEqual(
+        received.map(
+          (update) => update._tag === "Snapshot" && update.sessions.map((row) => row.sessionId),
+        ),
+        [["session-4"], ["session-4"], ["session-4", "session-3"]],
+      );
+      assert.ok(received.every((update) => update._tag === "Snapshot" && update.hasMore));
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        makeLayer(undefined, {
+          resolvedOnDisk: true,
+          resolvedProjectEntries: entries,
+          onResolvedCatalog: () => pages++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("shares one family snapshot and one member discovery across active windows", () =>
+    Effect.gen(function* () {
+      const changes = yield* SessionCatalogChanges;
+      const families = yield* SessionFamilyStorage;
+      const runtimes = yield* CakeSessionRuntimes;
+      const archive = yield* SessionArchiveStorage;
+      let familyReads = 0;
+      let memberReads = 0;
+      let archiveReads = 0;
+      yield* Effect.gen(function* () {
+        const queues = yield* Effect.forEach([1, 2, 3], () =>
+          Effect.gen(function* () {
+            const queue = yield* Queue.unbounded<SessionCatalogUpdate>();
+            yield* (yield* projectSessionMetadata.observeCatalog({
+              projectPath: "/project",
+              resolved: false,
+            })).pipe(
+              Stream.runForEach((update) => Queue.offer(queue, update)),
+              Effect.forkScoped,
+            );
+            yield* Queue.take(queue);
+            return queue;
+          }),
+        );
+        familyReads = memberReads = archiveReads = 0;
+        yield* changes.publish({
+          _tag: "ProjectSessionChanged",
+          projectPath: "/project",
+          sessionId: "child",
+          workingDirectory: "/child-tree",
+          resolved: false,
+        });
+        for (const queue of queues) {
+          const update = yield* Queue.take(queue);
+          assert.deepEqual(
+            update._tag === "Event" &&
+              update.event._tag === "UpsertedBatch" &&
+              update.event.sessions.map((row) => row.sessionId),
+            nestedFamilyIds,
+          );
+        }
+        assert.equal(familyReads, 1);
+        assert.equal(memberReads, nestedFamilyIds.length);
+        assert.equal(archiveReads, nestedFamilyIds.length);
+      }).pipe(
+        Effect.provideService(SessionFamilyStorage, {
+          ...families,
+          state: () => Effect.sync(() => familyReads++).pipe(Effect.andThen(families.state())),
+        }),
+        Effect.provideService(CakeSessionRuntimes, {
+          ...runtimes,
+          catalogEntry: (query, id) =>
+            Effect.sync(() => memberReads++).pipe(Effect.andThen(runtimes.catalogEntry(query, id))),
+        }),
+        Effect.provideService(SessionArchiveStorage, {
+          ...archive,
+          resolvedProjectEntry: (id) =>
+            Effect.sync(() => archiveReads++).pipe(
+              Effect.andThen(archive.resolvedProjectEntry(id)),
+            ),
+        }),
+      );
+    }).pipe(Effect.scoped, Effect.provide(makeLayer(undefined, { family: nestedFamily }))),
+  );
+
+  it.effect("reads initial state when subscribed, not when a stream is constructed", () =>
+    Effect.gen(function* () {
+      const updates = yield* projectSessionMetadata.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      yield* (yield* ApplicationState).transact((state) =>
+        Effect.succeed({ ...state, unreadSessionIds: ["session-1"] }),
+      );
+      const [snapshot] = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+      assert.ok(snapshot?._tag === "Snapshot" && snapshot.sessions[0]?.unread);
+    }).pipe(Effect.provide(makeLayer())),
+  );
+
+  it.effect(
+    "skips foreign project changes, including removal, before storage or status reads",
+    () =>
+      Effect.gen(function* () {
+        const changes = yield* SessionCatalogChanges;
+        const families = yield* SessionFamilyStorage;
+        const runtimes = yield* CakeSessionRuntimes;
+        const archive = yield* SessionArchiveStorage;
+        let reads = 0;
+        const track = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+          Effect.sync(() => reads++).pipe(Effect.andThen(effect));
+        yield* Effect.gen(function* () {
+          const active = yield* Queue.unbounded<SessionCatalogUpdate>();
+          const resolved = yield* Queue.unbounded<SessionCatalogUpdate>();
+          for (const [lane, queue] of [
+            [false, active],
+            [true, resolved],
+          ] as const) {
+            yield* (yield* projectSessionMetadata.observeCatalog({
+              projectPath: "/project",
+              resolved: lane,
+            })).pipe(
+              Stream.runForEach((update) => Queue.offer(queue, update)),
+              Effect.forkScoped,
+            );
+            yield* Queue.take(queue);
+          }
+          reads = 0;
+          const target = {
+            projectPath: "/foreign",
+            sessionId: "foreign",
+            workingDirectory: "/foreign",
+            resolved: true,
+          };
+          const events: SessionCatalogChange[] = [
+            { ...target, _tag: "ProjectSessionChanged" },
+            { ...target, _tag: "ProjectSessionStatusChanged", unread: true },
+            { ...target, _tag: "ProjectSessionActivityChanged", sessionDirectory: "/sessions" },
+            { ...target, _tag: "ProjectSessionTitleChanged", title: "Foreign" },
+            { ...target, _tag: "ProjectSessionRemoved" },
+            {
+              ...target,
+              _tag: "ProjectSessionsTransitioned",
+              sessions: [{ sessionId: "foreign", workingDirectory: "/foreign" }],
+            },
+          ];
+          for (const event of events) yield* changes.publish(event);
+          yield* changes.publish({
+            _tag: "ProjectSessionTitleChanged",
+            projectPath: "/project",
+            sessionId: "session-1",
+            title: "Barrier",
+          });
+          const barrier = yield* Queue.take(active);
+          assert.ok(barrier._tag === "Event" && barrier.event._tag === "TitleChanged");
+          yield* TestClock.adjust(0);
+          assert.equal(yield* Queue.size(resolved), 0);
+          assert.equal(reads, 0);
+        }).pipe(
+          Effect.provideService(SessionFamilyStorage, {
+            ...families,
+            state: () => track(families.state()),
+          }),
+          Effect.provideService(CakeSessionRuntimes, {
+            ...runtimes,
+            currentStatus: (target) => track(runtimes.currentStatus(target)),
+          }),
+          Effect.provideService(SessionArchiveStorage, {
+            ...archive,
+            resolvedProjects: (path) =>
+              Stream.fromEffect(track(Effect.void)).pipe(
+                Stream.flatMap(() => archive.resolvedProjects(path)),
+              ),
+            resolvedProjectEntry: (id) => track(archive.resolvedProjectEntry(id)),
+          }),
+        );
+      }).pipe(Effect.scoped, Effect.provide(makeLayer())),
+  );
+
   it.effect("updates one catalog entry without restarting its initial scan", () => {
     let catalogScans = 0;
     return Effect.gen(function* () {
@@ -4130,7 +4503,7 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("announces a prompted tool compaction once", () => {
+  it.effect("announces prompted tool compaction and its settled turn once each", () => {
     const changes: SessionCatalogChange[] = [];
     return Effect.gen(function* () {
       yield* projectSessionContinuations.toolCompact({
@@ -4143,7 +4516,7 @@ describe("Project Sessions domain", () => {
         changes.filter(
           (change) => change._tag === "ProjectSessionChanged" && change.sessionId === "session-1",
         ).length,
-        1,
+        2,
       );
     }).pipe(
       Effect.provide(

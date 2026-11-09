@@ -120,7 +120,14 @@ it.effect.each([
       });
       const state = yield* (yield* ApplicationState).current();
       expect(state.unreadSessionIds).toEqual(scenario.unread ? ["session"] : []);
-      expect(test.publish).toHaveBeenCalledTimes(scenario.unread ? 1 : 0);
+      expect(test.publish).toHaveBeenCalledTimes(scenario.unread ? 2 : 1);
+      expect(test.publish).toHaveBeenCalledWith({
+        _tag: "ProjectSessionChanged",
+        sessionId: "session",
+        projectPath: "/project",
+        workingDirectory: "/project",
+        resolved: false,
+      });
       if (scenario.unread)
         expect(test.publish).toHaveBeenCalledWith({
           _tag: "ProjectSessionActivityChanged",
@@ -164,7 +171,14 @@ it.effect.each(["archive", "persistence"] as const)(
         const hooks = yield* makeTurnLifecycle({ sessionId: "session", location });
         yield* hooks.onTurnSettled({ sessionId: "session", turnId: "turn", outcome: "complete" });
         expect(test.settle).toHaveBeenCalledOnce();
-        expect(test.publish).not.toHaveBeenCalled();
+        expect(test.publish).toHaveBeenCalledOnce();
+        expect(test.publish).toHaveBeenCalledWith({
+          _tag: "ProjectSessionChanged",
+          sessionId: "session",
+          projectPath: "/project",
+          workingDirectory: "/project",
+          resolved: false,
+        });
         expect((yield* (yield* ApplicationState).current()).unreadSessionIds).toEqual([]);
       }).pipe(Effect.provide(test.dependencies));
     }),

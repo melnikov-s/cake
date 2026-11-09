@@ -1,4 +1,32 @@
-import { Context, Effect, Layer, PubSub, Stream } from "effect";
+import { Cache, Context, Effect, Equal, Hash, Layer, PubSub, Stream } from "effect";
+import type { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
+import type {
+  ProjectSessionError,
+  ProjectSessionSummary,
+} from "../../contracts/project-sessions/project-session-data";
+
+export type ProjectCatalogItem =
+  | {
+      readonly _tag: "InitialBatch";
+      readonly sessions: ProjectSessionSummary[];
+      readonly hasMore?: boolean;
+    }
+  | Extract<SessionCatalogUpdate, { _tag: "Event" }>["event"];
+
+/** Equality deliberately excludes the caller's effect: equal queries share one computation. */
+class ProjectionRequest implements Equal.Equal {
+  constructor(
+    readonly key: string,
+    readonly compute: Effect.Effect<ReadonlyArray<ProjectCatalogItem>, ProjectSessionError>,
+  ) {}
+  [Hash.symbol]() {
+    return Hash.string(this.key);
+  }
+  [Equal.symbol](other: Equal.Equal): boolean {
+    return other instanceof ProjectionRequest && other.key === this.key;
+  }
+}
+
 export type SessionCatalogChange =
   | {
       readonly _tag: "ProjectSessionChanged";
@@ -27,7 +55,11 @@ export type SessionCatalogChange =
       readonly workingDirectory: string;
       readonly sessionDirectory: string;
     }
-  | { readonly _tag: "ProjectSessionRemoved"; readonly sessionId: string }
+  | {
+      readonly _tag: "ProjectSessionRemoved";
+      readonly sessionId: string;
+      readonly projectPath: string;
+    }
   | {
       readonly _tag: "ProjectSessionsTransitioned";
       readonly sessions: ReadonlyArray<{
@@ -65,23 +97,72 @@ export class SessionCatalogChanges extends Context.Service<
     readonly initialThenChanges: <A, E, R>(
       initial: Stream.Stream<A, E, R>,
     ) => Stream.Stream<A | SessionCatalogChange, E, R>;
+    /** Per-publication, bounded memoization, never a cross-change status cache. */
+    readonly initialThenProjectChanges: <R>(
+      initial: Stream.Stream<ProjectCatalogItem, ProjectSessionError, R>,
+      key: string,
+      project: (
+        change: SessionCatalogChange,
+      ) => Effect.Effect<ReadonlyArray<ProjectCatalogItem>, ProjectSessionError, R>,
+    ) => Stream.Stream<ProjectCatalogItem, ProjectSessionError, R>;
   }
 >()("cake/services/session-catalogs/SessionCatalogChanges") {
   static readonly layer = Layer.effect(
     SessionCatalogChanges,
     Effect.gen(function* () {
-      const changes = yield* PubSub.bounded<SessionCatalogChange>({ capacity: 1_024 });
+      const changes = yield* PubSub.bounded<{
+        readonly change: SessionCatalogChange;
+        readonly projections: Cache.Cache<
+          ProjectionRequest,
+          ReadonlyArray<ProjectCatalogItem>,
+          ProjectSessionError
+        >;
+      }>({ capacity: 1_024 });
+      yield* Effect.addFinalizer(() => PubSub.shutdown(changes));
       return SessionCatalogChanges.of({
-        publish: Effect.fn("SessionCatalogChanges.publish")((change) =>
-          PubSub.publish(changes, change).pipe(Effect.asVoid),
-        ),
+        publish: Effect.fn("SessionCatalogChanges.publish")(function* (change) {
+          // An envelope lives only as long as its subscribers' pending change.
+          // Distinct page limits are bounded too; eviction may repeat work, never reuse stale data.
+          const projections = yield* Cache.make({
+            capacity: 64,
+            lookup: (request: ProjectionRequest) => request.compute,
+          });
+          yield* PubSub.publish(changes, { change, projections });
+        }),
         initialThenChanges: (initial) =>
           Stream.unwrap(
             PubSub.subscribe(changes).pipe(
               Effect.map((subscription) =>
-                initial.pipe(Stream.concat(Stream.fromSubscription(subscription))),
+                initial.pipe(
+                  Stream.concat(
+                    Stream.fromSubscription(subscription).pipe(Stream.map(({ change }) => change)),
+                  ),
+                ),
               ),
             ),
+          ),
+        initialThenProjectChanges: (initial, key, project) =>
+          Stream.unwrap(
+            Effect.gen(function* () {
+              const services = yield* Effect.context<Effect.Services<ReturnType<typeof project>>>();
+              const subscription = yield* PubSub.subscribe(changes);
+              return initial.pipe(
+                Stream.concat(
+                  Stream.fromSubscription(subscription).pipe(
+                    Stream.mapEffect(({ change, projections }) =>
+                      Cache.get(
+                        projections,
+                        new ProjectionRequest(
+                          key,
+                          project(change).pipe(Effect.provideContext(services)),
+                        ),
+                      ),
+                    ),
+                    Stream.flatMap(Stream.fromIterable),
+                  ),
+                ),
+              );
+            }),
           ),
       });
     }),

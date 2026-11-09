@@ -279,7 +279,7 @@ async function sessionCases() {
         records: () => measured("worktreeReads", Effect.succeed(records)),
       }),
       Layer.mock(SavedDraftStorage, { list: () => Effect.succeed([]) }),
-      Layer.mock(SessionCatalogChanges, { initialThenChanges: (initial) => initial }),
+      Layer.mock(SessionCatalogChanges, { initialThenProjectChanges: (initial) => initial }),
       Layer.mock(CakeSessionRuntimes, {
         sessionIds: (query) =>
           Stream.fromEffect(measured("idDirectories", Effect.void)).pipe(

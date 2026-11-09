@@ -176,6 +176,15 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
           yield* families.setBoardDeliveryPaused(sessionId, true);
         yield* coordination.settleTurn(event.turnId, event.outcome);
         if (event.outcome !== "aborted") yield* markFinishedTurnUnread;
+        // The runtime owns settlement, not each observing window. Publish once,
+        // including headless/failed/aborted turns, after the recovery journal and unread flag.
+        yield* catalogs.publish({
+          _tag: "ProjectSessionChanged",
+          sessionId,
+          projectPath: location.projectPath,
+          workingDirectory: location.workingDirectory,
+          resolved: false,
+        });
         const familyTurn = (yield* families.state()).turns.find(
           (turn) => turn.turnId === event.turnId,
         );
