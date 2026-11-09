@@ -81,6 +81,11 @@ export interface ManagedWorktreesService {
     worktreePath: string,
     operationId: string,
   ) => Effect.Effect<void, ManagedWorktreeError>;
+  /** Drops admission only; retains Git work, proposals and durable recovery intent. */
+  readonly releaseLanding: (
+    worktreePath: string,
+    operationId: string,
+  ) => Effect.Effect<void, ManagedWorktreeError>;
   readonly setResolveAfterLanding: (
     worktreePath: string,
     enabled: boolean,

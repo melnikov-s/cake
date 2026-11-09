@@ -667,9 +667,9 @@ describe("ManagedWorktrees Effect service", () => {
       ).pipe(Effect.provide(BootstrapLive)),
   );
 
-  it.effect(
-    "releases a removed worktree's landing reservations and promotes the next worktree",
-    () =>
+  it.effect.each(["discard", "missing"] as const)(
+    "releases a %s worktree's landing reservations and promotes the next worktree",
+    (removal) =>
       Effect.scoped(
         Effect.gen(function* () {
           const fileSystem = yield* FileSystem.FileSystem;
@@ -694,7 +694,11 @@ describe("ManagedWorktrees Effect service", () => {
             const worktrees = yield* ManagedWorktrees;
             yield* worktrees.prepareLanding(firstPath, "first");
             yield* worktrees.prepareLanding(secondPath, "second");
-            yield* worktrees.discard(firstPath, false, builtIn);
+            if (removal === "discard") yield* worktrees.discard(firstPath, false, builtIn);
+            else {
+              yield* fileSystem.remove(firstPath, { recursive: true });
+              expect(yield* worktrees.status(firstPath)).toBeUndefined();
+            }
             expect(yield* worktrees.status(secondPath)).toMatchObject({
               landingState: "running",
               landingOperationId: "second",
@@ -833,6 +837,16 @@ describe("ManagedWorktrees Effect service", () => {
             yield* worktrees.prepareLanding(worktreePath, "current");
             yield* worktrees.cancelLanding(worktreePath, "older");
             expect((yield* worktrees.records())[0]?.pendingStrategy).toBe("squash");
+            expect(yield* worktrees.land(worktreePath, "current", { strategy: "squash" })).toEqual({
+              outcome: "proposal",
+            });
+            expect((yield* worktrees.status(worktreePath))?.landingState).toBeUndefined();
+            // Even with no admission, a delayed cancellation cannot dismiss a newer pause.
+            yield* worktrees.cancelLanding(worktreePath, "older");
+            expect((yield* worktrees.records())[0]).toMatchObject({
+              pendingStrategy: "squash",
+              pendingLandingOperationId: "current",
+            });
             yield* worktrees.cancelLanding(worktreePath, "current");
             expect((yield* worktrees.records())[0]?.pendingStrategy).toBeUndefined();
             expect((yield* worktrees.status(worktreePath))?.landingState).toBeUndefined();
@@ -1256,7 +1270,7 @@ describe("ManagedWorktrees Effect service", () => {
   );
 
   it.effect(
-    "prepares independently, refreshes at the front and retains FIFO through new conflicts",
+    "releases a conflicted owner, admits queued work and reacquires FIFO after repair",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -1276,7 +1290,6 @@ describe("ManagedWorktrees Effect service", () => {
           const finishMerge = yield* Deferred.make<void>();
           let target = "original";
           let firstRepaired = false;
-          let secondRepaired = false;
           let activeMerges = 0;
           let maxMerges = 0;
           const merges: string[] = [];
@@ -1301,10 +1314,7 @@ describe("ManagedWorktrees Effect service", () => {
                     if (args[0] === "rebase")
                       return Effect.gen(function* () {
                         rebases.push({ cwd, target: args.at(-1) ?? "" });
-                        if (
-                          (cwd === firstPath && !firstRepaired) ||
-                          (cwd === secondPath && target === "agent/first" && !secondRepaired)
-                        ) {
+                        if (cwd === firstPath && !firstRepaired) {
                           yield* fs
                             .makeDirectory(`${cwd}/rebase-merge`, { recursive: true })
                             .pipe(Effect.orDie);
@@ -1322,7 +1332,7 @@ describe("ManagedWorktrees Effect service", () => {
                         maxMerges = Math.max(maxMerges, activeMerges);
                         const branch = args.at(-1) ?? "";
                         merges.push(branch);
-                        if (branch === "agent/first") {
+                        if (branch === "agent/second") {
                           yield* Deferred.succeed(mergeStarted, undefined);
                           yield* Deferred.await(finishMerge);
                         }
@@ -1365,46 +1375,32 @@ describe("ManagedWorktrees Effect service", () => {
             expect(
               yield* worktrees.land(firstPath, "first", { strategy: "preserve" }),
             ).toMatchObject({ outcome: "resolving" });
-            expect(yield* worktrees.status(secondPath)).toMatchObject({
-              landingState: "queued",
-              landingQueuePosition: 1,
-            });
-            expect(yield* worktrees.status(thirdPath)).toMatchObject({
-              landingState: "queued",
-              landingQueuePosition: 2,
-            });
+            yield* Deferred.await(mergeStarted);
+            expect((yield* worktrees.status(firstPath))?.landingState).toBeUndefined();
+            expect(
+              (yield* worktrees.records()).find((item) => item.worktreePath === firstPath)
+                ?.pendingStrategy,
+            ).toBe("preserve");
+            expect(yield* fs.exists(`${firstPath}/rebase-merge`)).toBe(true);
             firstRepaired = true;
             yield* fs.remove(`${firstPath}/rebase-merge`, { recursive: true });
             const first = yield* worktrees
-              .land(firstPath, "first", { strategy: "preserve" })
+              .land(firstPath, "first", { strategy: "preserve" }, progress("first"))
               .pipe(Effect.forkScoped);
-            yield* Deferred.await(mergeStarted);
+            expect(yield* Queue.take(waiting)).toBe("first");
             // A standalone rebase can prepare even while another target mutation runs.
             expect(yield* worktrees.rebase(thirdPath)).toEqual({ outcome: "rebased" });
-            expect(merges).toEqual(["agent/first"]);
+            expect(merges).toEqual(["agent/second"]);
             yield* Deferred.succeed(finishMerge, undefined);
-            expect(yield* Fiber.join(first)).toMatchObject({ outcome: "landed" });
-            // The second was ready against original, but final refresh sees first and conflicts.
-            expect(yield* Fiber.join(second)).toMatchObject({ outcome: "resolving" });
-            expect(rebases).toContainEqual({ cwd: secondPath, target: "agent/first" });
-            expect(yield* worktrees.status(secondPath)).toMatchObject({
-              landingState: "running",
-              landingOperationId: "second",
-            });
-            expect(yield* worktrees.status(thirdPath)).toMatchObject({
-              landingState: "queued",
-              landingQueuePosition: 1,
-            });
-            expect(merges).toEqual(["agent/first"]);
-            expect(yield* worktrees.rebase(thirdPath)).toEqual({ outcome: "rebased" });
-            secondRepaired = true;
-            yield* fs.remove(`${secondPath}/rebase-merge`, { recursive: true });
-            expect(
-              yield* worktrees.land(secondPath, "second", { strategy: "preserve" }),
-            ).toMatchObject({ outcome: "landed" });
+            expect(yield* Fiber.join(second)).toMatchObject({ outcome: "landed" });
             expect(yield* Fiber.join(third)).toMatchObject({ outcome: "landed" });
-            expect(rebases).toContainEqual({ cwd: thirdPath, target: "agent/second" });
-            expect(merges).toEqual(["agent/first", "agent/second", "agent/third"]);
+            expect(yield* Fiber.join(first)).toMatchObject({ outcome: "landed" });
+            expect(rebases).toContainEqual({ cwd: firstPath, target: "agent/third" });
+            expect(merges).toEqual(["agent/second", "agent/third", "agent/first"]);
+            expect((yield* worktrees.status(firstPath))?.landingState).toBeUndefined();
+            // Late/repeated release must not affect another owner or recreate admission.
+            yield* worktrees.releaseLanding(firstPath, "first");
+            yield* worktrees.releaseLanding(firstPath, "first");
             expect(maxMerges).toBe(1);
           }).pipe(Effect.provide(layer));
         }),
@@ -1468,10 +1464,8 @@ describe("ManagedWorktrees Effect service", () => {
           yield* worktrees.cancelLanding(firstPath, "first");
           expect(yield* Fiber.join(second)).toEqual({ outcome: "proposal" });
           expect(targetMutations).toEqual([]);
-          expect(yield* worktrees.status(secondPath)).toMatchObject({
-            landingState: "running",
-            squashMessageReady: false,
-          });
+          expect((yield* worktrees.status(secondPath))?.landingState).toBeUndefined();
+          expect((yield* worktrees.status(secondPath))?.squashMessageReady).toBe(false);
           yield* worktrees.proposeSquashMessage({
             workspacePath: secondPath,
             subject: "Refreshed",

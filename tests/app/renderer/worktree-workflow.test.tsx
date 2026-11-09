@@ -684,6 +684,35 @@ describe("Worktree operation workflows", () => {
     expect(await screen.findByRole("button", { name: "Merge" })).toBeDefined();
   });
 
+  it.each([false, true])(
+    "shows a truthful paused state after Git repair (automatic=%s)",
+    async (automatic) => {
+      const paused = operation("stalled", {
+        pauseReason: "conflict",
+        automatic: automatic || undefined,
+      });
+      using fixture = renderWorktree({
+        operation: paused,
+        status: status({ dirtyCount: 1, rebasing: true }),
+      });
+      const label = automatic
+        ? "Paused — conflict repair and fresh validation required."
+        : "Paused — conflict repair required.";
+      expect(await screen.findByText(label)).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Resolving conflicts…" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Retry" }) === null).toBe(automatic);
+      await fixture.publish({ ...paused }, status());
+      const store = fixture.root.sessionRegistry.load("session-1", "/worktree").worktreeStore;
+      await act(async () => store.refresh());
+      expect(
+        await screen.findByText(automatic ? "Paused — fresh validation required." : label),
+      ).toBeDefined();
+      expect(store.isBusy).toBe(false);
+      expect(store.phase).toBe("paused");
+      expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", true);
+    },
+  );
+
   it("retries and dismisses a stalled operation through main-process commands", async () => {
     const retryLanding = vi.fn<Client["managedWorktrees"]["retryLanding"]>(async () =>
       operation("resolving", { operationId: "retry-operation" }),
@@ -730,7 +759,8 @@ describe("Worktree operation workflows", () => {
     await fixture.publish(
       operation("stalled", { pauseReason: "commit", resolveAfterLanding: true }),
     );
-    expect(await screen.findByRole("button", { name: "Committing…" })).toBeDefined();
+    expect(await screen.findByText("Paused — commit required.")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Committing…" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Retry" }));
     expect(retryLanding).toHaveBeenCalledOnce();
     await fixture.publish(operation("landed", { resolveAfterLanding: true }), null);

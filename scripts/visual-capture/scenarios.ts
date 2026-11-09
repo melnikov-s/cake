@@ -5734,6 +5734,65 @@ const activityWorktreeScenario: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="composer-dock"]'),
 };
 
+const pausedWorktreeScenario: VisualCaptureScenario = {
+  name: "paused-worktree",
+  description: "Real conflicted managed worktree, parked without active resolving presentation",
+  states: ["default"],
+  async seed(paths, theme) {
+    const cleanup = await activityWorktreeScenario.seed(paths, theme);
+    const worktreePath = resolve(paths.project, "../worktree");
+    const git = (cwd: string, args: string[]) => promisify(execFile)("git", args, { cwd });
+    await writeFile(join(worktreePath, "README.md"), "source change\n");
+    await git(worktreePath, ["add", "README.md"]);
+    await git(worktreePath, ["commit", "-m", "source change"]);
+    await writeFile(join(paths.project, "README.md"), "target change\n");
+    await git(paths.project, ["add", "README.md"]);
+    await git(paths.project, ["commit", "-m", "target change"]);
+    await git(worktreePath, ["rebase", "main"]).catch(() => undefined);
+    if (
+      (await git(worktreePath, ["diff", "--name-only", "--diff-filter=U"])).stdout.trim() !==
+      "README.md"
+    )
+      throw new Error("Paused worktree fixture did not produce the intended README conflict");
+    const storagePath = join(paths.cakeHome, "state", "worktrees.json");
+    const storage = JSON.parse(await readFile(storagePath, "utf8"));
+    storage.records[0].pendingStrategy = "preserve";
+    storage.records[0].pendingAutomaticLanding = true;
+    await writeFile(storagePath, JSON.stringify(storage));
+    const transcript = join(
+      workspaceSessionDirectory(worktreePath, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    await writeFile(
+      transcript,
+      `${await readFile(transcript, "utf8")}${JSON.stringify({
+        type: "session_info",
+        id: "paused-title",
+        parentId: "assistant-1",
+        timestamp: new Date(0).toISOString(),
+        name: "Paused queue recovery",
+      })}\n`,
+    );
+    return cleanup;
+  },
+  async prepare(page) {
+    await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+    const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
+    await search
+      .getByRole("combobox", { name: "Search session titles" })
+      .fill("Paused queue recovery");
+    await search.getByRole("option").filter({ hasText: "Paused queue recovery" }).click();
+    const cap = page.getByTestId("worktree-pill");
+    await expect(
+      cap.getByText("Paused — conflict repair and fresh validation required."),
+    ).toBeVisible();
+    await expect(cap.getByRole("button", { name: "Resolving conflicts…" })).toHaveCount(0);
+    await expect(cap.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="composer-dock"]'),
+};
+
 const existingWorktreeTitles = [
   [
     "quick-run-route-guards-523811",
@@ -7785,6 +7844,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionUpdateSpacingScenario,
   cakeChatSessionUpdatesScenario,
   activityWorktreeScenario,
+  pausedWorktreeScenario,
   existingWorktreePickerScenario,
   conversationEntryScenario,
   modelPickerScenario,

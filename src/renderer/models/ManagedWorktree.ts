@@ -17,5 +17,7 @@ export class ManagedWorktree extends Model {
   resolvedFrom: WorktreeRecord["resolvedFrom"];
   createdAt = "";
   pendingStrategy: WorktreeRecord["pendingStrategy"];
+  pendingAutomaticLanding: WorktreeRecord["pendingAutomaticLanding"];
+  pendingLandingOperationId: WorktreeRecord["pendingLandingOperationId"];
   resolveAfterLanding: WorktreeRecord["resolveAfterLanding"];
 }

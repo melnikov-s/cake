@@ -9,7 +9,7 @@ import { makeTurnLifecycle } from "../../../src/domain/project-sessions/projectS
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCoordination } from "../../../src/services/session-catalogs/SessionCoordination";
-import { cancel, start } from "../../../src/domain/worktrees/worktreeLandings";
+import { cancel, start, inspect, retry, mergeAndResolve } from "../../../src/domain/worktrees/worktreeLandings";
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
@@ -72,6 +72,7 @@ function fixture(
     savedAutoMerge?: boolean;
     manual?: boolean;
     noRecipient?: boolean;
+    onLandedWait?: Effect.Effect<void>;
   } = {},
 ) {
   const events: string[] = [];
@@ -135,7 +136,7 @@ function fixture(
         Effect.sync(() => {
           recipients.push(sessionId);
           return options.noRecipient ? undefined : 42;
-        }),
+        }).pipe(Effect.tap(() => options.onLandedWait ?? Effect.void)),
     }),
     Layer.mock(SessionCatalogChanges, { publish: () => Effect.void }),
     Layer.succeed(ProjectSessionConfiguration, {
@@ -193,6 +194,7 @@ function fixture(
           ...(options.externalSecond ? [externalRecord] : []),
         ]),
       prepareLanding: () => Effect.void,
+      releaseLanding: () => Effect.void,
       cancelLanding: () => Effect.void,
       setResolveAfterLanding: (_path, value) =>
         Effect.sync(() => {
@@ -652,7 +654,8 @@ const completedRepair = Effect.fn("test.completedRepair")(function* (
 it.effect(
   "repairs, revalidates and retries only a fresh immutable commit with resolution intent",
   () => {
-    const test = fixture({ conflict: true });
+    const options = { conflict: true, executingTurns: ["turn"] };
+    const test = fixture(options);
     return Effect.gen(function* () {
       yield* ready;
       test.setRepair(yield* completedRepair(test));
@@ -955,6 +958,33 @@ it.effect.each([{ executingTurns: [] }])(
   },
 );
 
+it.effect.each(["/project", "/other"])(
+  "does not serialize automatic admission behind unrelated work in %s",
+  (projectPath) => {
+    const test = fixture({
+      extraRecords: [{ ...record, projectPath, worktreePath: "/busy-tree" }],
+    });
+    return Effect.gen(function* () {
+      yield* ready;
+      yield* SubscriptionRef.update((yield* WorktreeLandingCoordinator).state, (state) => ({
+        ...state,
+        operations: new Map(state.operations).set("/busy-tree", {
+          operationId: "busy",
+          workspacePath: "/busy-tree",
+          sessionId: "busy",
+          kind: "landing",
+          phase: "landing",
+          allowDirtyTarget: false,
+        }),
+      }));
+      yield* runPass();
+      yield* terminal;
+      expect(test.events).toContain("land");
+      expect(test.events).toContain("resolve");
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
 it.effect.each(["revoked", "previous-run", "different-commit"] as const)(
   "explains ineligible %s readiness without replacing the stored declaration",
   (change) => {
@@ -1129,6 +1159,34 @@ it.effect.each(["off", "new-input", "re-enabled"] as const)(
         yield* runPass();
         expect(test.events).not.toContain("land");
         expect(test.events).not.toContain("resolve");
+      }).pipe(Effect.provide(test.layer));
+    }),
+);
+
+it.effect(
+  "rechecks automatic authorization after Git success before committing resolution intent",
+  () =>
+    Effect.gen(function* () {
+      const landed = yield* Deferred.make<void>();
+      const continueResolution = yield* Deferred.make<void>();
+      const test = fixture({
+        onLandedWait: Deferred.succeed(landed, undefined).pipe(
+          Effect.andThen(Deferred.await(continueResolution)),
+        ),
+      });
+      yield* Effect.gen(function* () {
+        yield* ready;
+        yield* runPass();
+        yield* Deferred.await(landed);
+        yield* setEnabled("/project", false);
+        yield* Deferred.succeed(continueResolution, undefined);
+        yield* terminal;
+        yield* runPass();
+        expect(test.events).toEqual(["land"]);
+        expect((yield* requests)[0]?.outcome).toMatchObject({
+          merged: true,
+          resolutionSucceeded: false,
+        });
       }).pipe(Effect.provide(test.layer));
     }),
 );
@@ -1461,42 +1519,48 @@ it.effect(
   },
 );
 
-it.effect("serializes concurrent ready sessions without stealing a running operation", () =>
-  Effect.gen(function* () {
-    const gate = yield* Deferred.make<void>();
-    const test = fixture({
-      wait: Deferred.await(gate),
-      extraRecords: [{ ...record, worktreePath: "/second" }],
-    });
-    yield* Effect.gen(function* () {
-      yield* ready;
-      const storage = yield* SessionFamilyStorage;
-      const first = (yield* requests)[0];
-      expect(first).toBeDefined();
-      if (!first) return;
-      yield* storage.registerSpawn({
-        sessionId: "second",
-        projectPath: "/project",
-        workingDirectory: "/second",
-        requester: {
-          sessionId: projectChatSessionId("/project"),
-          kind: "cake-chat",
-          title: "Project Chat",
-        },
-        reportDelivered: true,
-        handoffSettled: true,
+it.effect(
+  "admits concurrent ready sessions to repository scheduling without stealing a running operation",
+  () =>
+    Effect.gen(function* () {
+      const gate = yield* Deferred.make<void>();
+      const test = fixture({
+        wait: Deferred.await(gate),
+        extraRecords: [{ ...record, worktreePath: "/second" }],
       });
-      yield* storage.recordAutoMerge({
-        ...first,
-        id: "second",
-        sessionId: "second",
-        workspacePath: "/second",
-      });
-      yield* runPass();
-      yield* runPass();
-      expect((yield* requests).map((item) => item.state)).toEqual(["landing", "ready"]);
-      yield* Deferred.succeed(gate, undefined);
-      yield* terminal;
-    }).pipe(Effect.provide(test.layer));
-  }),
+      yield* Effect.gen(function* () {
+        yield* ready;
+        const storage = yield* SessionFamilyStorage;
+        const first = (yield* requests)[0];
+        expect(first).toBeDefined();
+        if (!first) return;
+        yield* storage.registerSpawn({
+          sessionId: "second",
+          projectPath: "/project",
+          workingDirectory: "/second",
+          requester: {
+            sessionId: projectChatSessionId("/project"),
+            kind: "cake-chat",
+            title: "Project Chat",
+          },
+          reportDelivered: true,
+          handoffSettled: true,
+        });
+        yield* storage.recordAutoMerge({
+          ...first,
+          id: "second",
+          sessionId: "second",
+          workspacePath: "/second",
+        });
+        yield* runPass();
+        yield* runPass();
+        expect((yield* requests).map((item) => item.state)).toEqual(["landing", "landing"]);
+        const operations = (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state))
+          .operations;
+        expect(operations.get("/tree")?.operationId).toBe("turn");
+        expect(operations.get("/second")?.operationId).toBe("second");
+        yield* Deferred.succeed(gate, undefined);
+        yield* terminal;
+      }).pipe(Effect.provide(test.layer));
+    }),
 );

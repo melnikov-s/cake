@@ -98,7 +98,7 @@ export const WorktreePill = observer(function WorktreePill({
   // Session-start choices are the only surface that needs the full worktree candidate list.
   const candidates = configurationMode ? creation.candidates(projectPath) : [];
   const status = actions.status;
-  const busy = actions.isBusy || creation.isPreparing(sessionId);
+  const busy = actions.isBusy || actions.stalled || creation.isPreparing(sessionId);
 
   const choose = (next: Parameters<WorktreeCreationStore["select"]>[1]) => {
     creation.select(sessionId, next);
@@ -422,7 +422,7 @@ export const WorktreePill = observer(function WorktreePill({
           )}
           {actions.stalled && (
             <>
-              {(merges || actions.isRebaseOperation) && (
+              {actions.canRetryLanding && (merges || actions.isRebaseOperation) && (
                 <WorktreePillAction
                   icon={<RestoreIcon />}
                   aria-label="Retry"
@@ -509,6 +509,11 @@ export const WorktreePill = observer(function WorktreePill({
       )}
       {actions.isQueued && (
         <p className="px-2 text-xs text-muted-foreground">{actions.queuedStatus}</p>
+      )}
+      {actions.stalled && (
+        <p role="status" className="px-2 text-xs text-warning">
+          {actions.pausedStatus}
+        </p>
       )}
       {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
     </ComposerCap>

@@ -104,6 +104,7 @@ const layer = (harness: Harness) => {
         ),
       prepareLanding: () => harness.prepare ?? Effect.void,
       land: () => harness.land(),
+      releaseLanding: () => Effect.void,
       cancelLanding: () => Effect.void,
       setResolveAfterLanding: (_, enabled) =>
         Effect.sync(() => {
@@ -430,21 +431,25 @@ describe("WorktreeMerges.mergeAndResolve", () => {
     }).pipe(Effect.scoped, Effect.provide(layer(harness)));
   });
 
-  it.effect("landing failure leaves the session open and clears resolve intent", () => {
-    const harness = resolvingHarness();
-    harness.land = () =>
-      Effect.fail(new ManagedWorktreeError({ operation: "land", message: "target dirty" }));
-    return Effect.gen(function* () {
-      const report = yield* mergeAndResolve();
-      expect(report).toMatchObject({
-        outcome: "failed",
-        landed: false,
-        resolved: false,
-        error: "target dirty",
-      });
-      expect(harness.events).toEqual(["intent:true", "intent:false"]);
-    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
-  });
+  it.effect(
+    "landing failure leaves the session open and preserves authorized resolve intent",
+    () => {
+      const harness = resolvingHarness();
+      harness.land = () =>
+        Effect.fail(new ManagedWorktreeError({ operation: "land", message: "target dirty" }));
+      return Effect.gen(function* () {
+        const report = yield* mergeAndResolve();
+        expect(report).toMatchObject({
+          outcome: "failed",
+          landed: false,
+          resolved: false,
+          error: "target dirty",
+        });
+        expect(harness.events).toEqual(["intent:true"]);
+        expect(harness.record?.resolveAfterLanding).toBe(true);
+      }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+    },
+  );
 
   it.effect("already-landed retired checkout resolves without calling Git again", () => {
     const harness = resolvingHarness();

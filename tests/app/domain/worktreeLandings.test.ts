@@ -8,6 +8,7 @@ import { describe, expect } from "vitest";
 import {
   type WorktreeLandingError,
   type WorktreeLandingPhase,
+  type WorktreeLandingOperation,
   WorktreeLandingSnapshot,
 } from "../../../src/contracts/worktrees/worktree-landing-data";
 import { WorktreeOperationCatalogUpdate } from "../../../src/contracts/worktrees/worktree-operation-data";
@@ -65,6 +66,7 @@ const failure = (operation: string) =>
 
 function services(options: {
   status: () => WorktreeStatus | undefined;
+  statusWait?: Effect.Effect<void>;
   landing?: () => "merge" | "pull-request";
   records?: () => ReadonlyArray<WorktreeRecord>;
   events: string[];
@@ -74,6 +76,7 @@ function services(options: {
   prompts?: Partial<CakePrompts>;
   prepare?: Effect.Effect<void, ManagedWorktreeError>;
   queued?: boolean;
+  release?: Effect.Effect<void>;
   setResolveIntent?: (enabled: boolean) => Effect.Effect<void, ManagedWorktreeError>;
   cancel?: (onlyIfQueued: boolean | undefined) => Effect.Effect<void, ManagedWorktreeError>;
   resolve?: (
@@ -81,12 +84,13 @@ function services(options: {
   ) => Effect.Effect<WorkingDirectoryResolutionResult, WorktreeLandingError>;
 }) {
   const managed = ManagedWorktrees.of({
-    records: () => Effect.succeed(options.records?.() ?? [record]),
+    records: () => Effect.sync(() => options.records?.() ?? [options.status()?.record ?? record]),
     observe: () => Stream.never,
     observeLandingQueue: () => Stream.succeed([]),
     createCheckout: () => Effect.fail(failure("createCheckout")),
     awaitSetup: () => Effect.void,
-    status: () => Effect.sync(options.status),
+    status: () =>
+      Effect.sync(options.status).pipe(Effect.tap(() => options.statusWait ?? Effect.void)),
     setResolveAfterLanding: (_worktreePath, enabled) =>
       Effect.sync(() => options.events.push(`resolve-intent:${enabled}`)).pipe(
         Effect.andThen(options.setResolveIntent?.(enabled) ?? Effect.void),
@@ -106,6 +110,7 @@ function services(options: {
         options.events.push("land");
         return options.land?.() ?? ({ outcome: "landed" } as const);
       }),
+    releaseLanding: () => options.release ?? Effect.void,
     cancelLanding: (_workspacePath, _operationId, onlyIfQueued) =>
       options.cancel?.(onlyIfQueued) ?? Effect.sync(() => void options.events.push("cancel")),
     rebase: () => Effect.fail(failure("rebase")),
@@ -272,7 +277,7 @@ describe("WorktreeLandings", () => {
           landing = "pull-request";
           yield* Deferred.succeed(release, undefined);
           yield* awaitPhase("failed");
-          expect(events).toEqual(["prepare", "cancel"]);
+          expect(events).toEqual(["prepare"]);
         }).pipe(
           Effect.provide(
             services({
@@ -899,6 +904,199 @@ describe("WorktreeLandings", () => {
     );
   });
 
+  it.effect.each(["landing", "rebase"] as const)(
+    "reconciles a repaired manual %s once without granting rebase merge authority",
+    (kind) => {
+      const events: string[] = [];
+      const layer = services({
+        status: baseStatus,
+        events,
+        resolve: (workingDirectory) =>
+          Effect.sync(() => {
+            events.push("resolve");
+            return {
+              projectPath: "/project",
+              workingDirectory,
+              resolvedSessionIds: ["session-1"],
+              failures: [],
+              cleanupFailures: [],
+            };
+          }),
+      });
+      return Effect.gen(function* () {
+        const coordinator = yield* WorktreeLandingCoordinator;
+        yield* SubscriptionRef.update(coordinator.state, (state) => ({
+          ...state,
+          operations: new Map<string, WorktreeLandingOperation>([
+            [
+              workspacePath,
+              {
+                operationId: "repaired",
+                workspacePath,
+                sessionId: "session-1",
+                kind,
+                phase: "stalled",
+                pauseReason: kind === "landing" ? "conflict" : "rebase-conflict",
+                strategy: "preserve",
+                allowDirtyTarget: false,
+                resolveAfterLanding: kind === "landing",
+              },
+            ],
+          ]),
+        }));
+        yield* Effect.all(
+          [
+            worktreeLandings.inspect({ workspacePath, sessionId: "session-1" }),
+            worktreeLandings.inspect({ workspacePath, sessionId: "session-1" }),
+          ],
+          { concurrency: "unbounded" },
+        );
+        yield* awaitPhase(kind === "landing" ? "landed" : "complete");
+        yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
+        expect(events.filter((event) => event === "land")).toHaveLength(kind === "landing" ? 1 : 0);
+        expect(events.filter((event) => event === "resolve")).toHaveLength(
+          kind === "landing" ? 1 : 0,
+        );
+      }).pipe(Effect.provide(layer));
+    },
+  );
+
+  it.effect.each([true, false])(
+    "keeps recovered automatic intent paused even after Git repair (clean=%s)",
+    (clean) => {
+      const events: string[] = [];
+      return Effect.gen(function* () {
+        yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
+        yield* awaitPhase("stalled");
+        yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
+        const operation = (yield* SubscriptionRef.get(
+          (yield* WorktreeLandingCoordinator).state,
+        )).operations.get(workspacePath);
+        expect(operation).toMatchObject({
+          phase: "stalled",
+          automatic: true,
+          resolveAfterLanding: true,
+        });
+        expect(
+          (yield* worktreeLandings
+            .retry({ workspacePath, sessionId: "session-1" })
+            .pipe(Effect.result))._tag,
+        ).toBe("Failure");
+        expect(events).not.toContain("land");
+      }).pipe(
+        Effect.provide(
+          services({
+            status: () => ({
+              ...baseStatus(),
+              dirtyCount: clean ? 0 : 1,
+              rebasing: !clean,
+              record: { ...record, pendingStrategy: "preserve", pendingAutomaticLanding: true },
+            }),
+            events,
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect.each(["resolved", "missing"] as const)(
+    "retires a stale paused operation for a %s worktree without replay",
+    (state) => {
+      const events: string[] = [];
+      let releases = 0;
+      return Effect.gen(function* () {
+        yield* SubscriptionRef.update((yield* WorktreeLandingCoordinator).state, (current) => ({
+          ...current,
+          operations: new Map<string, WorktreeLandingOperation>([
+            [
+              workspacePath,
+              {
+                operationId: "stale",
+                workspacePath,
+                sessionId: "session-1",
+                kind: "landing",
+                phase: "stalled",
+                allowDirtyTarget: false,
+                resolveAfterLanding: true,
+              },
+            ],
+          ]),
+        }));
+        const result = yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
+        expect(result.operation?.phase).toBe("failed");
+        expect(releases).toBe(1);
+        expect(events).toEqual([]);
+      }).pipe(
+        Effect.provide(
+          services({
+            status: () => undefined,
+            records: () => [{ ...record, state }],
+            events,
+            release: Effect.sync(() => {
+              releases += 1;
+            }),
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect(
+    "does not revive canceled intent from an inspection that read Git before cancellation",
+    () =>
+      Effect.gen(function* () {
+        const read = yield* Deferred.make<void>();
+        const returnStatus = yield* Deferred.make<void>();
+        const events: string[] = [];
+        let durable: WorktreeRecord = {
+          ...record,
+          pendingStrategy: "preserve",
+          pendingLandingOperationId: "paused",
+        };
+        const layer = services({
+          events,
+          records: () => [durable],
+          status: () => ({ ...baseStatus(), record: durable }),
+          statusWait: Deferred.succeed(read, undefined).pipe(
+            Effect.andThen(Deferred.await(returnStatus)),
+          ),
+          cancel: () =>
+            Effect.sync(() => {
+              durable = record;
+            }),
+        });
+        yield* Effect.gen(function* () {
+          const coordinator = yield* WorktreeLandingCoordinator;
+          yield* SubscriptionRef.update(coordinator.state, (state) => ({
+            ...state,
+            operations: new Map<string, WorktreeLandingOperation>([
+              [
+                workspacePath,
+                {
+                  operationId: "paused",
+                  workspacePath,
+                  sessionId: "session-1",
+                  kind: "landing",
+                  phase: "stalled",
+                  pauseReason: "conflict",
+                  allowDirtyTarget: false,
+                },
+              ],
+            ]),
+          }));
+          const inspecting = yield* worktreeLandings
+            .inspect({ workspacePath, sessionId: "session-1" })
+            .pipe(Effect.forkScoped);
+          yield* Deferred.await(read);
+          yield* worktreeLandings.cancel(workspacePath, "paused");
+          yield* Deferred.succeed(returnStatus, undefined);
+          expect((yield* Fiber.join(inspecting)).operation).toBeUndefined();
+          expect((yield* SubscriptionRef.get(coordinator.state)).operations.size).toBe(0);
+          expect(events).toEqual([]);
+        }).pipe(Effect.provide(layer));
+      }),
+  );
+
   it.effect("atomically claims a paused operation before retrying", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1017,7 +1215,7 @@ describe("WorktreeLandings", () => {
             workspacePath,
             sessionId: "session-1",
           });
-          expect(events).toEqual(["prepare", "cancel"]);
+          expect(events).toEqual(["prepare", "cancel", "cancel"]);
           expect(snapshot.operation).toBeUndefined();
         }).pipe(Effect.provide(layer));
       }),

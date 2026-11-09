@@ -119,6 +119,71 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(await readFile(join(repo, "second.txt"), "utf8")).toBe("second\n");
     await worktrees.discard(second.worktreePath, false);
   });
+  it("parks automatic conflicts without blocking either repository and requires a freshly validated repair HEAD", async () => {
+    const repo = await repository();
+    const otherRepo = await repository();
+    const worktrees = service();
+    const first = await worktrees.create(repo, undefined, "conflicted");
+    const second = await worktrees.create(repo, undefined, "following");
+    const independent = await worktrees.create(otherRepo, undefined, "independent");
+    await writeFile(join(first.worktreePath, "README.md"), "source change\n");
+    await commitAll(first.worktreePath, "source change");
+    const validated = (await git(first.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    await writeFile(join(repo, "README.md"), "target change\n");
+    await commitAll(repo, "target change");
+    await writeFile(join(second.worktreePath, "second.txt"), "second\n");
+    await commitAll(second.worktreePath, "second");
+    await writeFile(join(independent.worktreePath, "independent.txt"), "independent\n");
+    await commitAll(independent.worktreePath, "independent");
+    expect(
+      await worktrees.land(first.worktreePath, {
+        operationId: "automatic-a",
+        request: { strategy: "preserve", expectedSourceCommit: validated },
+      }),
+    ).toMatchObject({ outcome: "resolving" });
+    expect((await worktrees.status(first.worktreePath))?.landingState).toBeUndefined();
+    expect(
+      (await worktrees.records()).find((item) => item.worktreePath === first.worktreePath),
+    ).toMatchObject({
+      pendingStrategy: "preserve",
+      pendingAutomaticLanding: true,
+    });
+    const conflictedContent = await readFile(join(first.worktreePath, "README.md"), "utf8");
+    expect(conflictedContent).toContain("<<<<<<<");
+    const results = await Promise.all(
+      [second, independent].map((item) =>
+        worktrees.land(item.worktreePath, { request: { strategy: "preserve" } }),
+      ),
+    );
+    expect(results.map((item) => item.outcome)).toEqual(["landed", "landed"]);
+    expect(await readFile(join(first.worktreePath, "README.md"), "utf8")).toBe(conflictedContent);
+    await writeFile(join(first.worktreePath, "README.md"), "source and target repaired\n");
+    await git(first.worktreePath, "add", "README.md");
+    await git(first.worktreePath, "-c", "core.editor=true", "rebase", "--continue");
+    await expect(
+      worktrees.land(first.worktreePath, { request: { strategy: "preserve" } }),
+    ).rejects.toThrow(/fresh validated readiness/);
+    await expect(
+      worktrees.land(first.worktreePath, {
+        request: { strategy: "preserve", expectedSourceCommit: validated },
+      }),
+    ).rejects.toThrow(/HEAD changed/);
+    expect((await worktrees.status(first.worktreePath))?.landingState).toBeUndefined();
+    const repairedHead = (await git(first.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    expect(
+      await worktrees.land(first.worktreePath, {
+        operationId: "fresh-a",
+        request: { strategy: "preserve", expectedSourceCommit: repairedHead },
+      }),
+    ).toMatchObject({ outcome: "landed" });
+    expect(await readFile(join(repo, "README.md"), "utf8")).toBe("source and target repaired\n");
+    expect(await readFile(join(repo, "second.txt"), "utf8")).toBe("second\n");
+    expect(
+      (await worktrees.records()).find((item) => item.worktreePath === first.worktreePath)
+        ?.pendingAutomaticLanding,
+    ).toBeUndefined();
+  });
+
   it("creates a managed worktree outside the repository on an agent branch", async () => {
     const repo = await repository();
     const record = await service().create(repo);

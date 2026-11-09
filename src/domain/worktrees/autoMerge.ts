@@ -123,6 +123,8 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
               : "Merged, but session resolution was not confirmed",
           );
         } else if (operation.phase === "failed" || operation.phase === "stalled") {
+          if (operation.phase === "stalled")
+            yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
           yield* finish(
             request,
             "failed",
@@ -203,7 +205,11 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
     );
     if (
       !request.projectPath ||
-      owner?.projectPath !== request.projectPath ||
+      !owner ||
+      owner.projectPath !== request.projectPath ||
+      owner.state === "resolved" ||
+      owner.state === "missing" ||
+      owner.state === "discarded" ||
       !application.snapshot().projects.some((item) => item.path === request.projectPath)
     ) {
       yield* finish(request, "canceled", "Owning project is unavailable; fresh readiness required");
@@ -238,17 +244,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
               ? "Auto-merge is off; ready for manual landing"
               : (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)
                 ? "Waiting for session to become idle"
-                : [...current.operations.values()].some(
-                      (item) =>
-                        !["landed", "complete", "failed", "stalled"].includes(item.phase) &&
-                        !(
-                          item.automatic &&
-                          item.phase === "resolving" &&
-                          item.workspacePath !== request.workspacePath
-                        ),
-                    )
-                  ? "Waiting for another landing"
-                  : undefined;
+                : undefined;
     if (reason) {
       yield* storage.updateAutoMerge(request.id, request.state, reason);
       continue;
@@ -274,7 +270,11 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       if (
         !authorizedProject?.enabled ||
         authorizedProject.epoch !== request.epoch ||
-        owner?.projectPath !== request.projectPath ||
+        !owner ||
+        owner.projectPath !== request.projectPath ||
+        owner.state === "resolved" ||
+        owner.state === "missing" ||
+        owner.state === "discarded" ||
         !isDirectProjectChatDelegation(
           document.spawnedSessions,
           request,
@@ -283,6 +283,8 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         !application.snapshot().projects.some((item) => item.path === request.projectPath) ||
         latest?.state !== "landing" ||
         latest.runId !== authorization.autoMergeRunId ||
+        latest.runId !== request.runId ||
+        latest.epoch !== request.epoch ||
         !latest.readyToMerge ||
         latest.commit !== request.commit ||
         document.turns.some((turn) => turn.sessionId === request.sessionId && !turn.reported) ||
@@ -300,9 +302,17 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         (error) => new WorktreeLandingError({ operation: "autoMerge", message: error.message }),
       ),
     );
-    if (operation?.phase === "stalled" && !operation.automatic) {
-      yield* finish(request, "failed", "A manual landing is stalled; finish or cancel it first");
-      continue;
+    // Reconcile the source operation before scheduling. Unrelated operations are
+    // admitted by the engine's repository-keyed FIFO, not an app-wide scheduler gate.
+    if (operation && !["landed", "complete", "failed"].includes(operation.phase)) {
+      if (operation.phase !== "stalled") continue;
+      if (!operation.automatic) {
+        yield* finish(request, "failed", "A manual landing is stalled; finish or cancel it first");
+        continue;
+      }
+      // start atomically replaces only a parked automatic attempt. Do not cancel:
+      // its Git recovery metadata must survive the fresh authorized attempt.
+      yield* worktrees.releaseLanding(request.workspacePath, operation.operationId);
     }
     yield* storage.updateAutoMerge(request.id, "landing");
     yield* landings

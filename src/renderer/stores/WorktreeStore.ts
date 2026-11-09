@@ -45,6 +45,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   status: WorktreeStatus | undefined;
   phase:
     | "idle"
+    | "paused"
     | "committing"
     | "waiting"
     | "landing"
@@ -92,7 +93,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   get isBusy() {
-    return this.phase !== "idle";
+    return this.phase !== "idle" && this.phase !== "paused";
   }
 
   /** True only when main has authoritatively placed this operation behind another landing. */
@@ -125,6 +126,22 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
                 ? "preparing or running Git"
                 : "waiting for owner progress";
     return `Queued #${queue.position} behind landing ${queue.blockingOperationId.slice(0, 8)}${queue.blockingSessionId ? ` (session ${queue.blockingSessionId.slice(0, 8)})` : ""} — ${reason}.`;
+  }
+
+  get canRetryLanding() {
+    return this.stalled && !this.props.operation()?.automatic;
+  }
+
+  get pausedStatus() {
+    if (!this.stalled) return undefined;
+    const operation = this.props.operation();
+    if (operation?.automatic)
+      return this.status && !this.status.dirtyCount && !this.status.merging && !this.status.rebasing
+        ? "Paused — fresh validation required."
+        : "Paused — conflict repair and fresh validation required.";
+    if (operation?.pauseReason === "commit") return "Paused — commit required.";
+    if (operation?.pauseReason === "squash-message") return "Paused — squash message required.";
+    return "Paused — conflict repair required.";
   }
 
   get isRebaseOperation() {
@@ -267,7 +284,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   async retryLanding() {
-    if (!this.stalled) return;
+    if (!this.canRetryLanding) return;
     const workspacePath = this.requiredWorkspacePath();
     const sessionId = this.requiredSessionId();
     this.stalled = false;
@@ -311,7 +328,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   async resolve() {
     const workspacePath = this.requiredWorkspacePath();
     const initiatingSessionId = this.requiredSessionId();
-    if (this.isBusy) throw new Error("A worktree operation is already in progress.");
+    if (this.isBusy || this.stalled)
+      throw new Error("A worktree operation is already in progress.");
     this.phase = "resolving-session";
     this.error = undefined;
     try {
@@ -325,7 +343,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
 
   async discard(keepUnmergedBranch: boolean, resolve = false) {
     const workspacePath = this.requiredWorkspacePath();
-    if (this.isBusy) throw new Error("A worktree operation is already in progress.");
+    if (this.isBusy || this.stalled)
+      throw new Error("A worktree operation is already in progress.");
     const record = this.status?.record;
     this.phase = "discarding";
     this.error = undefined;
@@ -431,14 +450,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       return;
     }
     if (operation.phase === "stalled") {
-      this.phase =
-        operation.pauseReason === "commit"
-          ? "committing"
-          : operation.pauseReason === "squash-message"
-            ? "proposing"
-            : operation.pauseReason === "rebase-conflict"
-              ? "resolving-rebase"
-              : "resolving";
+      this.phase = "paused";
       return;
     }
     if (operation.phase === "landed" || operation.phase === "complete") {
@@ -466,6 +478,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (currentStatus) {
       const record = { ...currentStatus.record, state: "landed" as const };
       Reflect.deleteProperty(record, "pendingStrategy");
+      Reflect.deleteProperty(record, "pendingAutomaticLanding");
+      Reflect.deleteProperty(record, "pendingLandingOperationId");
       this.status = { ...currentStatus, merged: true, record };
       await this.props.onLanded(record, result);
     }
@@ -478,7 +492,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   private assertCanStart() {
-    if (this.isBusy) throw new Error("A worktree operation is already in progress.");
+    if (this.isBusy || this.stalled)
+      throw new Error("A worktree operation is already in progress.");
     if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
   }
 

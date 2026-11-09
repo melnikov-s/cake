@@ -130,6 +130,7 @@ export const ManagedWorktreesLive: Layer.Layer<
         if (landedSourceCommit) closed.landedSourceCommit = landedSourceCommit;
         Reflect.deleteProperty(closed, "pendingStrategy");
         Reflect.deleteProperty(closed, "pendingAutomaticLanding");
+        Reflect.deleteProperty(closed, "pendingLandingOperationId");
         if (state === "landed") Reflect.deleteProperty(closed, "pendingLandedSourceCommit");
         return closed;
       });
@@ -153,7 +154,7 @@ export const ManagedWorktreesLive: Layer.Layer<
     const { factsOf, removeCheckout, runSetup, createRecord } = checkout;
 
     const landingQueue = yield* makeWorktreeLandingQueue(repositoryIdentity);
-    const { landingState, acquireLanding, releaseLanding, cancelLandingInternal } = landingQueue;
+    const { landingState, acquireLanding, cancelLandingInternal } = landingQueue;
 
     const landing = yield* makeWorktreeLanding(repository, recordsRef, updateRecord, closeRecord);
     const {
@@ -218,9 +219,14 @@ export const ManagedWorktreesLive: Layer.Layer<
       let record = (yield* Ref.get(recordsRef)).find(
         (entry) => resolveNormalized(entry.worktreePath) === normalized,
       );
-      if (!record || !["active", "landed"].includes(record.state ?? "active")) return undefined;
+      if (!record) return undefined;
+      if (!["active", "landed"].includes(record.state ?? "active")) {
+        yield* landingQueue.remove(record);
+        return undefined;
+      }
       if (!(yield* exists(record.worktreePath))) {
         yield* closeRecord(record, "missing");
+        yield* landingQueue.remove(record);
         return undefined;
       }
       const targetPath = record.parentWorktreePath ?? record.projectPath;
@@ -274,7 +280,9 @@ export const ManagedWorktreesLive: Layer.Layer<
             }
           : landing
             ? { landingState: landing.state, landingOperationId: landing.operationId }
-            : {}),
+            : record.pendingLandingOperationId
+              ? { landingOperationId: record.pendingLandingOperationId }
+              : {}),
       });
     });
 
@@ -398,6 +406,17 @@ export const ManagedWorktreesLive: Layer.Layer<
           }),
         ),
       ),
+      releaseLanding: Effect.fn("ManagedWorktrees.releaseLanding")((worktreePath, operationId) =>
+        mapError(
+          "ManagedWorktrees.releaseLanding",
+          Effect.gen(function* () {
+            const record = (yield* Ref.get(recordsRef)).find(
+              (entry) => resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
+            );
+            if (record) yield* cancelLandingInternal(record, operationId, false);
+          }),
+        ),
+      ),
       setResolveAfterLanding: (worktreePath, enabled) =>
         mapError(
           "ManagedWorktrees.setResolveAfterLanding",
@@ -425,64 +444,77 @@ export const ManagedWorktreesLive: Layer.Layer<
                 resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
             );
             if (!record) return yield* internalError("Cake could not find that worktree");
-            yield* acquireLanding(record, operationId, undefined, false);
-            return yield* Effect.gen(function* () {
-              // Waiting entries may replay and request owner repairs without taking the
-              // repository lock or waiting for the head's commit/conflict turn.
-              if (
-                (yield* landingState(record))?.state === "queued" &&
-                !(request.strategy === "preserve" && request.expectedSourceCommit)
-              ) {
-                const prepared = yield* withWorktreeLock(
-                  record.worktreePath,
-                  (authorize ?? Effect.void).pipe(
-                    Effect.andThen(
-                      measureLanding(
-                        operationId,
-                        "git-preparation",
-                        landRecord(record, request, true),
-                      ),
-                    ),
-                  ),
-                );
-                if (prepared.outcome !== "ready") {
-                  yield* publish(worktreePath);
-                  return prepared;
-                }
-              }
-              // Never hold a worktree lock while waiting for FIFO promotion.
-              yield* acquireLanding(record, operationId, onProgress?.("queued"));
-              yield* onProgress?.("landing") ?? Effect.void;
-              const outcome = yield* measureLanding(
-                operationId,
-                "git-locks-and-execution",
-                withWorktreeLock(
-                  record.worktreePath,
-                  withWorktreeLock(
-                    record.parentWorktreePath ?? record.projectPath,
-                    withRepositoryLock(
-                      record.projectPath,
+            return yield* Effect.acquireUseRelease(
+              acquireLanding(record, operationId, undefined, false),
+              () =>
+                Effect.gen(function* () {
+                  // Waiting entries may replay and request owner repairs without taking the
+                  // repository lock or waiting for the head's commit/conflict turn.
+                  if (
+                    (yield* landingState(record))?.state === "queued" &&
+                    !(request.strategy === "preserve" && request.expectedSourceCommit)
+                  ) {
+                    const prepared = yield* withWorktreeLock(
+                      record.worktreePath,
                       (authorize ?? Effect.void).pipe(
                         Effect.andThen(
-                          measureLanding(operationId, "git-execution", landRecord(record, request)),
+                          measureLanding(
+                            operationId,
+                            "git-preparation",
+                            landRecord(record, request, true),
+                          ),
+                        ),
+                      ),
+                    );
+                    if (prepared.outcome !== "ready") {
+                      yield* updateRecord(record, (current) => ({
+                        ...current,
+                        pendingLandingOperationId: operationId,
+                      }));
+                      yield* publish(worktreePath);
+                      return prepared;
+                    }
+                  }
+                  // Never hold a worktree lock while waiting for FIFO promotion.
+                  yield* acquireLanding(record, operationId, onProgress?.("queued"));
+                  yield* onProgress?.("landing") ?? Effect.void;
+                  const outcome = yield* measureLanding(
+                    operationId,
+                    "git-locks-and-execution",
+                    withWorktreeLock(
+                      record.worktreePath,
+                      withWorktreeLock(
+                        record.parentWorktreePath ?? record.projectPath,
+                        withRepositoryLock(
+                          record.projectPath,
+                          (authorize ?? Effect.void).pipe(
+                            Effect.andThen(
+                              measureLanding(
+                                operationId,
+                                "git-execution",
+                                landRecord(record, request),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-              );
-              // landRecord refreshes source, checkpoint and target under the final locks.
-              // Automatic repair is a new validated turn, never an owner of this FIFO slot.
-              if (
-                outcome.outcome === "landed" ||
-                (request.strategy === "preserve" && request.expectedSourceCommit)
-              )
-                yield* releaseLanding(record, operationId);
-              yield* publish(worktreePath);
-              if (outcome.outcome === "ready")
-                return yield* internalError("Landing unexpectedly stopped after preparation");
-              return outcome;
-            }).pipe(Effect.tapCause(() => cancelLandingInternal(record, operationId, false)));
+                  );
+                  // landRecord refreshes source, checkpoint and target under the final locks.
+                  if (outcome.outcome !== "landed" && outcome.outcome !== "ready")
+                    yield* updateRecord(record, (current) => ({
+                      ...current,
+                      pendingLandingOperationId: operationId,
+                    }));
+                  yield* publish(worktreePath);
+                  if (outcome.outcome === "ready")
+                    return yield* internalError("Landing unexpectedly stopped after preparation");
+                  return outcome;
+                }),
+              // Admission lasts for one attempt, never for an owner repair turn. This
+              // finalizer also removes queued preparation pauses and interrupted attempts.
+              () => cancelLandingInternal(record, operationId, false).pipe(Effect.asVoid),
+            );
           }),
         ),
       cancelLanding: Effect.fn("ManagedWorktrees.cancelLanding")(
@@ -495,13 +527,16 @@ export const ManagedWorktreesLive: Layer.Layer<
                   resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
               );
               if (record) {
-                const canceled = yield* cancelLandingInternal(record, operationId, onlyIfQueued);
-                if (canceled && !onlyIfQueued) {
+                const owner =
+                  (yield* landingState(record))?.operationId ?? record.pendingLandingOperationId;
+                yield* cancelLandingInternal(record, operationId, onlyIfQueued);
+                if (!onlyIfQueued && (!owner || owner === operationId)) {
                   // Dismissal must abandon the durable pause too, or inspect will adopt it again.
                   yield* updateRecord(record, (current) => {
                     const next = { ...current };
                     Reflect.deleteProperty(next, "pendingStrategy");
                     Reflect.deleteProperty(next, "pendingAutomaticLanding");
+                    Reflect.deleteProperty(next, "pendingLandingOperationId");
                     return next;
                   });
                   yield* landing.clearProposal(record);

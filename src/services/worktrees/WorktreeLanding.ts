@@ -263,9 +263,33 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
     prepareOnly = false,
   ): Effect.fn.Return<WorktreeLandOutcome | { readonly outcome: "ready" }, unknown, never> {
     // Queue waiters must use the checkpoint committed by the preceding landing.
-    record =
-      (yield* Ref.get(recordsRef)).find((entry) => entry.worktreePath === record.worktreePath) ??
-      record;
+    const current = (yield* Ref.get(recordsRef)).find(
+      (entry) => entry.worktreePath === record.worktreePath,
+    );
+    if (!current || !["active", "landed"].includes(current.state ?? "active"))
+      return yield* internalError(
+        "The worktree is unavailable or already resolved; no landing was replayed",
+      );
+    record = current;
+    if (
+      request.strategy === "preserve" &&
+      request.expectedSourceCommit &&
+      !record.pendingAutomaticLanding
+    ) {
+      yield* updateRecord(record, (current) => ({
+        ...current,
+        pendingAutomaticLanding: true,
+        pendingStrategy: request.strategy,
+      }));
+      record = { ...record, pendingAutomaticLanding: true, pendingStrategy: request.strategy };
+    }
+    if (
+      record.pendingAutomaticLanding &&
+      !(request.strategy === "preserve" && request.expectedSourceCommit)
+    )
+      return yield* internalError(
+        "Auto-merge requires fresh validated readiness before continuing",
+      );
     if (
       request.strategy === "preserve" &&
       request.expectedSourceCommit &&

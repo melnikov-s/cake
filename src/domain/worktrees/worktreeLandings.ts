@@ -86,13 +86,21 @@ const update = Effect.fn("WorktreeLandings.update")(function* (
   change: (operation: WorktreeLandingOperation) => WorktreeLandingOperation,
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
-  yield* SubscriptionRef.update(coordinator.state, (state) => {
-    const current = state.operations.get(workspacePath);
-    if (!current || current.operationId !== operationId) return state;
-    const operations = new Map(state.operations);
-    operations.set(workspacePath, normalizeOperation(change(current)));
-    return { ...state, operations };
-  });
+  const worktrees = yield* ManagedWorktrees;
+  yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+    Effect.gen(function* () {
+      const current = state.operations.get(workspacePath);
+      if (!current || current.operationId !== operationId) return [undefined, state] as const;
+      const next = normalizeOperation(change(current));
+      // Release before publishing a pause, so a concurrent repair cannot reclaim
+      // admission only to have the old attempt release it afterwards.
+      if (next.phase === "stalled" && next.kind === "landing")
+        yield* worktrees.releaseLanding(workspacePath, operationId).pipe(asError("pause"));
+      const operations = new Map(state.operations);
+      operations.set(workspacePath, next);
+      return [undefined, { ...state, operations }] as const;
+    }),
+  );
 });
 
 const requireStatus = Effect.fn("WorktreeLandings.requireStatus")(function* (
@@ -130,6 +138,7 @@ const landingBlocked = (status: WorktreeStatus, strategy: WorktreeLandRequest["s
 const completeLanding = Effect.fn("WorktreeLandings.completeLanding")(function* (
   operation: WorktreeLandingOperation,
   landedCommit?: string,
+  automatic?: AutomaticLanding,
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
   const worktrees = yield* ManagedWorktrees;
@@ -148,6 +157,14 @@ const completeLanding = Effect.fn("WorktreeLandings.completeLanding")(function* 
         resolutionError: undefined,
       };
       if (current.resolveAfterLanding) {
+        // Serialize the final automatic authorization with project epoch publication.
+        // An off/new epoch cannot slip between this check and resolution admission.
+        if (automatic) {
+          yield* automatic.authorize;
+          yield* worktrees
+            .setResolveAfterLanding(operation.workspacePath, true)
+            .pipe(asError("resolveWorkingDirectory"));
+        }
         const result = yield* measureLanding(
           operation.operationId,
           "resolution-cleanup",
@@ -247,7 +264,11 @@ const performLanding: (
         update(operation.workspacePath, operation.operationId, (current) => ({
           ...current,
           phase,
-        })).pipe(Effect.provideService(WorktreeLandingCoordinator, coordinator)),
+        })).pipe(
+          Effect.provideService(WorktreeLandingCoordinator, coordinator),
+          Effect.provideService(ManagedWorktrees, worktrees),
+          Effect.orDie,
+        ),
       authorize,
     )
     .pipe(asError("land"));
@@ -260,13 +281,8 @@ const performLanding: (
           landedCommit: outcome.commit,
         }));
       yield* automatic.onLanded;
-      yield* automatic.authorize;
-      if (operation.resolveAfterLanding)
-        yield* worktrees
-          .setResolveAfterLanding(operation.workspacePath, true)
-          .pipe(asError("resolveWorkingDirectory"));
     }
-    return yield* completeLanding(operation, outcome.commit);
+    return yield* completeLanding(operation, outcome.commit, automatic);
   }
   const status = yield* requireStatus(operation.workspacePath);
   const reason = outcome.outcome === "proposal" ? "squash-message" : "conflict";
@@ -449,20 +465,8 @@ const run = Effect.fn("WorktreeLandings.run")(function* (
         if (operation.kind === "landing") {
           const worktrees = yield* ManagedWorktrees;
           yield* worktrees
-            .cancelLanding(operation.workspacePath, operation.operationId)
+            .releaseLanding(operation.workspacePath, operation.operationId)
             .pipe(Effect.ignore);
-          const record = (yield* worktrees
-            .records()
-            .pipe(Effect.catch(() => Effect.succeed([])))).find(
-            (candidate) => candidate.worktreePath === operation.workspacePath,
-          );
-          const current = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
-            operation.workspacePath,
-          );
-          if (current?.resolveAfterLanding && record?.state !== "landed")
-            yield* worktrees
-              .setResolveAfterLanding(operation.workspacePath, false)
-              .pipe(Effect.ignore);
         }
         yield* update(operation.workspacePath, operation.operationId, (current) => ({
           ...current,
@@ -471,34 +475,66 @@ const run = Effect.fn("WorktreeLandings.run")(function* (
         }));
       }),
     ),
+    Effect.onInterrupt(() =>
+      operation.kind === "landing"
+        ? Effect.gen(function* () {
+            yield* (yield* ManagedWorktrees)
+              .releaseLanding(operation.workspacePath, operation.operationId)
+              .pipe(Effect.orDie);
+          })
+        : Effect.void,
+    ),
     Effect.tapCause((cause) =>
       Effect.logError("Managed Worktree landing workflow failed", Cause.pretty(cause)),
     ),
   );
+  // Wait for the old attempt's interruption finalizers before reacquiring with
+  // the same operation ID; FiberMap.run alone only signals replacement.
+  yield* FiberMap.remove(coordinator.fibers, operation.workspacePath);
   yield* FiberMap.run(coordinator.fibers, operation.workspacePath, supervised);
 });
 
 const insert = Effect.fn("WorktreeLandings.insert")(function* (
   operation: WorktreeLandingOperation,
+  recovery?: WorktreeStatus["record"],
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
-  const inserted = yield* SubscriptionRef.modify(coordinator.state, (state) => {
-    const current = state.operations.get(operation.workspacePath);
-    if (
-      current &&
-      !isTerminal(current) &&
-      !(operation.automatic && current.automatic && current.phase === "stalled")
-    )
-      return [false, state] as const;
-    const operations = new Map(state.operations);
-    operations.set(operation.workspacePath, normalizeOperation(operation));
-    return [true, { ...state, operations }] as const;
-  });
-  if (!inserted)
+  const worktrees = yield* ManagedWorktrees;
+  const inserted = yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+    Effect.gen(function* () {
+      const current = state.operations.get(operation.workspacePath);
+      if (
+        current &&
+        !isTerminal(current) &&
+        !(current.phase === "stalled" && current.automatic && operation.automatic)
+      )
+        return [false, state] as const;
+      if (recovery) {
+        const latest = (yield* worktrees.records().pipe(asError("inspect"))).find(
+          (record) => record.worktreePath === operation.workspacePath,
+        );
+        // A Git snapshot can predate cancellation/retirement. Check durable intent
+        // under the cancellation lock before giving that snapshot a new worker.
+        if (
+          !latest ||
+          !["active", "landed"].includes(latest.state ?? "active") ||
+          latest.pendingStrategy !== recovery.pendingStrategy ||
+          latest.pendingLandingOperationId !== recovery.pendingLandingOperationId ||
+          latest.pendingAutomaticLanding !== recovery.pendingAutomaticLanding
+        )
+          return [false, state] as const;
+      }
+      const operations = new Map(state.operations);
+      operations.set(operation.workspacePath, normalizeOperation(operation));
+      return [true, { ...state, operations }] as const;
+    }),
+  );
+  if (!inserted && !recovery)
     return yield* new WorktreeLandingError({
       operation: "start",
       message: "A worktree operation is already in progress.",
     });
+  return inserted;
 });
 
 export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
@@ -513,6 +549,14 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
 }) {
   const status = yield* requireStatus(input.workspacePath);
   yield* worktreeLifecycle.requireDirectMerge(status.record.projectPath);
+  if (
+    (status.record.pendingAutomaticLanding && !input.automatic) ||
+    (input.automatic && input.commitBeforeLanding)
+  )
+    return yield* new WorktreeLandingError({
+      operation: "start",
+      message: "Auto-merge requires fresh validated readiness; ordinary retry is unavailable.",
+    });
   const operation = normalizeOperation({
     operationId: input.operationId,
     workspacePath: input.workspacePath,
@@ -552,6 +596,11 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
   const claimed = yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
     Effect.gen(function* () {
       const current = state.operations.get(input.workspacePath);
+      if (current?.automatic && !isTerminal(current))
+        return yield* new WorktreeLandingError({
+          operation: "mergeAndResolve",
+          message: "Auto-merge requires fresh validated readiness; ordinary retry is unavailable.",
+        });
       if (current && !isTerminal(current) && current.kind !== "landing")
         return yield* new WorktreeLandingError({
           operation: "mergeAndResolve",
@@ -566,6 +615,11 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
           (record?.state === "resolved" && record.resolvedFrom === "landed")) &&
         (!status || (!gitBlocked(status) && status.aheadCount === 0));
       if (record) yield* worktreeLifecycle.requireDirectMerge(record.projectPath);
+      if (record?.pendingAutomaticLanding)
+        return yield* new WorktreeLandingError({
+          operation: "mergeAndResolve",
+          message: "Auto-merge requires fresh validated readiness; ordinary retry is unavailable.",
+        });
       if (
         alreadyLanded &&
         current?.phase === "landed" &&
@@ -653,7 +707,8 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
     });
   const operation = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.operations.get(input.workspacePath);
-    if (!current || current.phase !== "stalled") return [undefined, state] as const;
+    if (!current || current.phase !== "stalled" || current.automatic)
+      return [undefined, state] as const;
     const retryPhase =
       current.pauseReason === "rebase-conflict"
         ? "rebasing"
@@ -675,7 +730,9 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
   if (!operation)
     return yield* new WorktreeLandingError({
       operation: "retry",
-      message: "No paused worktree operation is waiting to retry.",
+      message: current?.automatic
+        ? "Auto-merge requires fresh validated readiness; ordinary retry is unavailable."
+        : "No paused worktree operation is waiting to retry.",
     });
   const worker =
     operation.pauseReason === "rebase-conflict"
@@ -753,36 +810,34 @@ export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
   operationId: string,
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
-  const current = (yield* SubscriptionRef.get(coordinator.state)).operations.get(workspacePath);
-  // A delayed renderer request must never cancel a newer operation for the same worktree.
-  if (!current || current.operationId !== operationId) return;
-  if (current.phase !== "waiting" && current.phase !== "queued" && current.phase !== "stalled")
-    return yield* new WorktreeLandingError({
-      operation: "cancel",
-      message: "This merge has already started and can no longer be canceled.",
-    });
   const worktrees = yield* ManagedWorktrees;
-  if (current.kind === "landing" && (current.phase === "waiting" || current.phase === "queued")) {
-    // The engine owns the FIFO and must atomically prove that this entry is
-    // still pending. A status check here would race with queue promotion.
-    yield* worktrees
-      .cancelLanding(workspacePath, current.operationId, true)
-      .pipe(asError("cancel"));
-    yield* FiberMap.remove(coordinator.fibers, workspacePath);
-  } else {
-    yield* FiberMap.remove(coordinator.fibers, workspacePath);
-    if (current.kind === "landing")
-      yield* worktrees.cancelLanding(workspacePath, current.operationId).pipe(asError("cancel"));
-  }
-  if (current.resolveAfterLanding)
-    yield* worktrees.setResolveAfterLanding(workspacePath, false).pipe(asError("cancel"));
-  yield* SubscriptionRef.update(coordinator.state, (state) => {
-    const latest = state.operations.get(workspacePath);
-    if (!latest || latest.operationId !== operationId) return state;
-    const operations = new Map(state.operations);
-    operations.delete(workspacePath);
-    return { ...state, operations };
-  });
+  yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+    Effect.gen(function* () {
+      const current = state.operations.get(workspacePath);
+      // Claim against Retry/reconciliation before interrupting a worker. A delayed
+      // renderer request must never cancel a newer or already-started attempt.
+      if (!current || current.operationId !== operationId) return [undefined, state] as const;
+      if (current.phase !== "waiting" && current.phase !== "queued" && current.phase !== "stalled")
+        return yield* new WorktreeLandingError({
+          operation: "cancel",
+          message: "This merge has already started and can no longer be canceled.",
+        });
+      if (current.kind === "landing" && (current.phase === "waiting" || current.phase === "queued"))
+        // The engine atomically proves that FIFO promotion has not won.
+        yield* worktrees
+          .cancelLanding(workspacePath, current.operationId, true)
+          .pipe(asError("cancel"));
+      yield* FiberMap.remove(coordinator.fibers, workspacePath);
+      // Retire durable intent only after preparation/worker finalizers have settled.
+      if (current.kind === "landing")
+        yield* worktrees.cancelLanding(workspacePath, current.operationId).pipe(asError("cancel"));
+      if (current.resolveAfterLanding)
+        yield* worktrees.setResolveAfterLanding(workspacePath, false).pipe(asError("cancel"));
+      const operations = new Map(state.operations);
+      operations.delete(workspacePath);
+      return [undefined, { ...state, operations }] as const;
+    }),
+  );
 });
 
 export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
@@ -848,7 +903,8 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
   ) {
     const strategy = status.record.pendingStrategy;
     const proposing = strategy === "squash" && !status.merging && !status.rebasing;
-    const ready = strategy !== undefined && !landingBlocked(status, strategy);
+    const automatic = status.record.pendingAutomaticLanding || undefined;
+    const ready = !automatic && strategy !== undefined && !landingBlocked(status, strategy);
     operation = normalizeOperation({
       operationId: status.landingOperationId ?? crypto.randomUUID(),
       workspacePath: input.workspacePath,
@@ -864,7 +920,8 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
       automatic: status.record.pendingAutomaticLanding ? true : undefined,
       strategy,
       allowDirtyTarget: false,
-      resolveAfterLanding: status.record.resolveAfterLanding,
+      resolveAfterLanding: automatic || status.record.resolveAfterLanding,
+      automatic,
       pauseReason: ready
         ? undefined
         : strategy
@@ -873,8 +930,52 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
             : "conflict"
           : "rebase-conflict",
     });
-    yield* insert(operation);
-    if (strategy && !operation.automatic) yield* run(operation, adoptLanding(operation, ready));
+    if (yield* insert(operation, status.record)) {
+      if (strategy && !operation.automatic) yield* run(operation, adoptLanding(operation, ready));
+    } else
+      operation = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
+        input.workspacePath,
+      );
+  }
+  if (operation?.phase === "stalled") {
+    if (!status || durableRecord?.state === "resolved" || durableRecord?.state === "missing") {
+      yield* update(input.workspacePath, operation.operationId, (current) => ({
+        ...current,
+        phase: "failed",
+        error: "The worktree is unavailable or already resolved; no landing was replayed.",
+      }));
+      if (operation.kind === "landing")
+        yield* worktrees
+          .releaseLanding(input.workspacePath, operation.operationId)
+          .pipe(asError("inspect"));
+    } else if (
+      !operation.automatic &&
+      !landingBlocked(status, operation.strategy ?? "preserve") &&
+      (operation.kind === "landing" || status.behindCount === 0)
+    ) {
+      // Claim once under the same lock as Retry/cancel. Inspection is reconciliation,
+      // not new merge authority: only the existing manual intent can continue.
+      const pausedId = operation.operationId;
+      const claimed = yield* SubscriptionRef.modify(coordinator.state, (state) => {
+        const current = state.operations.get(input.workspacePath);
+        if (current?.operationId !== pausedId || current.phase !== "stalled" || current.automatic)
+          return [undefined, state] as const;
+        const resumed = normalizeOperation({ ...current, phase: "waiting", error: undefined });
+        const operations = new Map(state.operations).set(input.workspacePath, resumed);
+        return [resumed, { ...state, operations }] as const;
+      });
+      if (claimed)
+        yield* run(
+          claimed,
+          claimed.kind === "rebase"
+            ? update(input.workspacePath, claimed.operationId, (current) => ({
+                ...current,
+                phase: "complete",
+              }))
+            : prepareAndLand(claimed),
+        );
+    }
+    operation = (yield* SubscriptionRef.get(coordinator.state)).operations.get(input.workspacePath);
   }
   const snapshot: WorktreeLandingSnapshot = {};
   if (status) Object.assign(snapshot, { status });
