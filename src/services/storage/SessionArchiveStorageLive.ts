@@ -547,17 +547,17 @@ export const makeSessionArchiveStorageLive = (
         ).pipe(
           Stream.mapEffect(
             (item) =>
-              Effect.try({
-                try: () => ({
+              sessionTitleFromFile(item.path, location.cwd).pipe(
+                Effect.map((title) => ({
                   id: item.id,
-                  title: sessionTitleFromFile(item.path, location.cwd),
+                  title,
                   created: item.createdAt,
                   modified: item.modifiedAt,
                   messageCount: 0,
                   resolved: true,
-                }),
-                catch: (cause) => archiveError("resolved", item.id, cause),
-              }),
+                })),
+                Effect.mapError((cause) => archiveError("resolved", item.id, cause)),
+              ),
             { concurrency: 16 },
           ),
           Stream.mapError((cause) => archiveError("resolved", "", cause)),
@@ -572,10 +572,9 @@ export const makeSessionArchiveStorageLive = (
           Effect.mapError((cause) => archiveError("resolvedEntry", sessionId, cause)),
         );
         if (!item) return undefined;
-        const title = yield* Effect.try({
-          try: () => sessionTitleFromFile(item.path, location.cwd),
-          catch: (cause) => archiveError("resolvedEntry", sessionId, cause),
-        });
+        const title = yield* sessionTitleFromFile(item.path, location.cwd).pipe(
+          Effect.mapError((cause) => archiveError("resolvedEntry", sessionId, cause)),
+        );
         return {
           id: item.id,
           title,
@@ -629,10 +628,11 @@ export const makeSessionArchiveStorageLive = (
                         new Error(`Cake could not find session ${sessionId}`),
                       );
                     const title = yield* restore(
-                      Effect.try({
-                        try: () => sessionTitleFromFile(item.path, location.cwd),
-                        catch: (cause) => archiveError("resolveProject", sessionId, cause),
-                      }),
+                      sessionTitleFromFile(item.path, location.cwd).pipe(
+                        Effect.mapError((cause) =>
+                          archiveError("resolveProject", sessionId, cause),
+                        ),
+                      ),
                     );
                     const changed = yield* setResolution(sessionId, location, true);
                     const entryBase = {
@@ -863,10 +863,9 @@ export const makeSessionArchiveStorageLive = (
           for (const entry of group) {
             const file = files.get(entry.sessionId);
             if (!file) continue; // Missing legacy transcripts retain the honest ID fallback.
-            const title = yield* Effect.try({
-              try: () => sessionTitleFromFile(file, entry.workingDirectory),
-              catch: (cause) => archiveError("projectTitles", entry.sessionId, cause),
-            });
+            const title = yield* sessionTitleFromFile(file, entry.workingDirectory).pipe(
+              Effect.mapError((cause) => archiveError("projectTitles", entry.sessionId, cause)),
+            );
             titles.set(entry.sessionId, title);
           }
         }

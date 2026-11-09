@@ -10,11 +10,25 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Effect } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../src/contracts/conversations/session-contract";
-import { sessionTitleFromFile } from "../../../src/services/pi/runtime/session-title";
+import { addPresentationModeReminder } from "../../../src/contracts/conversations/presentation-mode-reminders";
+import { addResponseModeReminder } from "../../../src/contracts/conversations/response-mode-reminders";
+import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import {
+  makeSessionTitleReader,
+  sessionTitleFromFile,
+  type SessionTitleReadMetrics,
+} from "../../../src/services/pi/runtime/session-title";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, open: vi.fn(actual.open) };
+});
 
 let root: string;
 beforeEach(() => {
@@ -39,181 +53,307 @@ function fixture(name = "session", title = "Explicit title", user = "Fallback ti
 function appendTitle(path: string, name: string) {
   appendFileSync(
     path,
-    `${JSON.stringify({ type: "session_info", id: "title", parentId: null, timestamp: new Date().toISOString(), name })}\n`,
+    `\n${JSON.stringify({ type: "session_info", id: "title", parentId: null, timestamp: new Date().toISOString(), name })}\n`,
   );
 }
 
-const lookup = (path: string) => sessionTitleFromFile(path, root);
+const lookup = (path: string) => Effect.runPromise(sessionTitleFromFile(path, root));
+async function measuredReader(capacity = 1_024) {
+  const reads: SessionTitleReadMetrics[] = [];
+  const read = await Effect.runPromise(
+    makeSessionTitleReader({ capacity, measured: (metrics) => reads.push(metrics) }),
+  );
+  return { reads, read, lookup: (path: string) => Effect.runPromise(read(path, root)) };
+}
 
-describe("sessionTitleFromFile metadata cache", () => {
-  it("opens/projects an unchanged transcript once, retaining the truncated fallback title", () => {
+// Raw legacy fixtures deliberately avoid SessionManager migrations and repair.
+function legacy(entries: unknown[], name = "legacy") {
+  const path = join(root, `${name}.jsonl`);
+  writeFileSync(
+    path,
+    [{ type: "session", version: 1, id: name, cwd: root }, ...entries]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n"),
+  );
+  return path;
+}
+const user = (content: unknown) => ({ type: "message", message: { role: "user", content } });
+
+describe("read-only asynchronous Pi title metadata", () => {
+  it("shares unchanged and concurrent misses without opening or projecting a SessionManager", async () => {
     const path = fixture("fallback", "", "x".repeat(SESSION_TITLE_MAX_LENGTH + 10));
     const open = vi.spyOn(SessionManager, "open");
     const entries = vi.spyOn(SessionManager.prototype, "getEntries");
-    for (let index = 0; index < 20; index++) {
-      expect(lookup(path)).toBe("x".repeat(SESSION_TITLE_MAX_LENGTH));
-    }
-    expect(open).toHaveBeenCalledTimes(1);
-    expect(entries).toHaveBeenCalledTimes(1);
+    const reader = await measuredReader();
+    const values = await Promise.all(Array.from({ length: 20 }, () => reader.lookup(path)));
+    expect(values).toEqual(Array(20).fill("x".repeat(SESSION_TITLE_MAX_LENGTH)));
+    await reader.lookup(path);
+    expect(reader.reads).toHaveLength(1);
+    expect(open).not.toHaveBeenCalled();
+    expect(entries).not.toHaveBeenCalled();
   });
 
-  it("shares canonical-path entries across relative paths, symlinks and cwd overrides", () => {
+  it("is lazy until executed and limits explicit names too", async () => {
+    const path = fixture("long-name", "  " + "é".repeat(SESSION_TITLE_MAX_LENGTH + 10) + "  ");
+    const reader = await measuredReader();
+    const effect = reader.read(path, root);
+    expect(reader.reads).toHaveLength(0);
+    expect(await Effect.runPromise(effect)).toBe("é".repeat(SESSION_TITLE_MAX_LENGTH));
+  });
+
+  it("shares canonical entries across relative routes, symlinks and cwd overrides", async () => {
     const path = fixture();
     const alias = join(root, "alias.jsonl");
     symlinkSync(path, alias);
-    const open = vi.spyOn(SessionManager, "open");
-    expect(lookup(path)).toBe("Explicit title");
-    expect(lookup(relative(process.cwd(), path))).toBe("Explicit title");
-    expect(sessionTitleFromFile(alias, join(root, "other-cwd"))).toBe("Explicit title");
-    expect(open).toHaveBeenCalledTimes(1);
+    const reader = await measuredReader();
+    expect(await reader.lookup(path)).toBe("Explicit title");
+    expect(await reader.lookup(relative(process.cwd(), path))).toBe("Explicit title");
+    expect(await Effect.runPromise(reader.read(alias, join(root, "other-cwd")))).toBe(
+      "Explicit title",
+    );
+    expect(reader.reads).toHaveLength(1);
   });
 
-  it("refreshes appends, explicit title updates and cleared titles", () => {
-    const path = fixture();
-    const open = vi.spyOn(SessionManager, "open");
-    expect(lookup(path)).toBe("Explicit title");
-    appendTitle(path, "Renamed");
-    expect(lookup(path)).toBe("Renamed");
+  it("uses the latest physical rename across legacy branches, including explicit clears", async () => {
+    const path = legacy([
+      user("First branch fallback"),
+      { type: "session_info", name: "Old name", id: "old", parentId: null },
+      user("Other branch fallback"),
+      { type: "session_info", name: "Latest branch name", id: "latest", parentId: null },
+    ]);
+    const before = readFileSync(path);
+    expect(await lookup(path)).toBe("Latest branch name");
+    expect(readFileSync(path)).toEqual(before);
     appendTitle(path, "");
-    expect(lookup(path)).toBe("Fallback title");
-    expect(lookup(path)).toBe("Fallback title");
-    expect(open).toHaveBeenCalledTimes(3);
+    expect(await lookup(path)).toBe("First branch fallback");
+    appendTitle(path, "Renamed again");
+    expect(await lookup(path)).toBe("Renamed again");
+    appendFileSync(path, JSON.stringify(user("A later turn")) + "\n");
+    expect(await lookup(path)).toBe("Renamed again");
   });
 
-  it("detects same-size rewrites with restored mtime via ctime", () => {
+  it("retains first meaningful visible user text and strips transport, attachments and both reminders", async () => {
+    const id = "fc9e491a-d5d5-4dc4-a17c-c538a84a08a2";
+    const envelope = (text: string) =>
+      encodeCrossSessionMessage(text, {
+        version: 1,
+        messageId: id,
+        threadId: id,
+        sequence: 1,
+        expectsResponse: false,
+        sender: { sessionId: "sender", title: "Not the title", kind: "project-session" },
+      });
+    const decorate = (text: string) =>
+      addResponseModeReminder(addPresentationModeReminder(text, "normal", "browser"), "voice");
+    const attachment =
+      '<cake-file-attachment>{"kind":"file","name":"notes.txt","path":"/tmp/notes.txt"}</cake-file-attachment>';
+    const path = legacy([
+      { type: "message", message: { role: "assistant", content: "Not user text" } },
+      user("   "),
+      user(decorate(envelope(attachment))),
+      user([
+        { type: "image", data: "not text" },
+        { type: "text", text: decorate(envelope("  Visible request  \n" + attachment)) },
+      ]),
+      user("Later request"),
+    ]);
+    expect(await lookup(path)).toBe("Visible request");
+  });
+
+  it("preserves reordered/escaped JSON keys, text blocks and ID fallback", async () => {
+    const path = legacy([{ name: "Reordered", type: "session_info" }]);
+    expect(await lookup(path)).toBe("Reordered");
+    appendFileSync(path, '\n{"t\\u0079pe":"session_info","name":"Escaped"}');
+    expect(await lookup(path)).toBe("Escaped");
+    expect(
+      await lookup(
+        legacy(
+          [
+            user([
+              { type: "text", text: "One" },
+              { type: "text", text: "Two" },
+            ]),
+          ],
+          "blocks",
+        ),
+      ),
+    ).toBe("One\nTwo");
+    expect(await lookup(legacy([user("")], "id-only"))).toBe("id-only");
+  });
+
+  it("skips malformed/truncated lines and never repairs a missing final newline or old format", async () => {
+    const path = legacy([user("Meaningful"), { type: "session_info", name: "Latest" }]);
+    appendFileSync(path, '\nnot json\n{"type":"session_info","name":"unfinished');
+    const before = readFileSync(path);
+    const stats = statSync(path, { bigint: true });
+    expect(await lookup(path)).toBe("Latest");
+    expect(readFileSync(path)).toEqual(before);
+    expect(statSync(path, { bigint: true }).mtimeNs).toBe(stats.mtimeNs);
+  });
+
+  it("detects same-size rewrites even with restored mtime", async () => {
     const path = fixture("rewrite", "Old title");
-    utimesSync(path, new Date("2020-01-01"), new Date("2020-01-01"));
+    const timestamp = new Date("2020-01-01");
+    utimesSync(path, timestamp, timestamp);
     const before = statSync(path, { bigint: true });
-    expect(lookup(path)).toBe("Old title");
+    expect(await lookup(path)).toBe("Old title");
     writeFileSync(path, readFileSync(path, "utf8").replace("Old title", "New title"));
-    utimesSync(path, new Date("2020-01-01"), new Date("2020-01-01"));
-    const after = statSync(path, { bigint: true });
-    expect(after.size).toBe(before.size);
-    expect(after.mtimeNs).toBe(before.mtimeNs);
-    expect(after.ctimeNs).not.toBe(before.ctimeNs);
-    expect(lookup(path)).toBe("New title");
+    utimesSync(path, timestamp, timestamp);
+    expect(statSync(path, { bigint: true }).size).toBe(before.size);
+    expect(await lookup(path)).toBe("New title");
   });
 
-  it("detects atomic replacements even with matching size and mtime", () => {
+  it("detects atomic replacements and rewrite-plus-growth, not just pure appends", async () => {
     const path = fixture("original", "Old title");
     const replacement = join(root, "replacement.jsonl");
     writeFileSync(replacement, readFileSync(path, "utf8").replace("Old title", "New title"));
     const timestamp = new Date("2020-01-01");
     utimesSync(path, timestamp, timestamp);
     utimesSync(replacement, timestamp, timestamp);
-    const before = statSync(path, { bigint: true });
-    expect(lookup(path)).toBe("Old title");
+    expect(await lookup(path)).toBe("Old title");
     renameSync(replacement, path);
-    const after = statSync(path, { bigint: true });
-    expect(after.size).toBe(before.size);
-    expect(after.mtimeNs).toBe(before.mtimeNs);
-    expect(after.ino).not.toBe(before.ino);
-    expect(lookup(path)).toBe("New title");
+    expect(await lookup(path)).toBe("New title");
+    writeFileSync(
+      path,
+      readFileSync(path, "utf8").replace("New title", "Grown title") +
+        JSON.stringify(user("Appended")) +
+        "\n",
+    );
+    expect(await lookup(path)).toBe("Grown title");
   });
 
-  it("does not return a cached or generated title for deleted paths; recreation refreshes", () => {
+  it("never creates missing history or returns stale titles for deleted, empty or corrupt files", async () => {
     const path = fixture();
-    expect(lookup(path)).toBe("Explicit title");
+    expect(await lookup(path)).toBe("Explicit title");
     rmSync(path);
-    const open = vi.spyOn(SessionManager, "open");
-    expect(() => lookup(path)).toThrow();
-    expect(open).not.toHaveBeenCalled();
+    await expect(lookup(path)).rejects.toThrow();
     expect(() => statSync(path)).toThrow();
-    fixture("session", "Recreated");
-    expect(lookup(path)).toBe("Recreated");
+    writeFileSync(path, "");
+    await expect(lookup(path)).rejects.toThrow();
+    expect(statSync(path).size).toBe(0);
+    await expect(lookup(root)).rejects.toThrow();
+    for (const corrupt of ["not a Pi session\n", JSON.stringify(user("No header"))]) {
+      writeFileSync(path, corrupt);
+      await expect(lookup(path)).rejects.toThrow();
+      expect(readFileSync(path, "utf8")).toBe(corrupt);
+    }
+    fixture("session", "Recovered");
+    expect(await lookup(path)).toBe("Recovered");
   });
 
-  it("refreshes when a symlink is retargeted", () => {
+  it("refreshes symlink retargets and title reads at restored/moved paths", async () => {
     const first = fixture("first", "First");
     const second = fixture("second", "Second");
     const alias = join(root, "alias.jsonl");
     symlinkSync(first, alias);
-    expect(lookup(alias)).toBe("First");
+    expect(await lookup(alias)).toBe("First");
     rmSync(alias);
     symlinkSync(second, alias);
-    expect(lookup(alias)).toBe("Second");
+    expect(await lookup(alias)).toBe("Second");
+    const restored = join(root, "restored.jsonl");
+    renameSync(second, restored);
+    expect(await lookup(restored)).toBe("Second");
   });
 
-  it("rejects empty, nonregular and corrupt files without keeping the old title", () => {
+  it("does not negative-cache read failures", async () => {
     const path = fixture();
-    expect(lookup(path)).toBe("Explicit title");
-    writeFileSync(path, "");
-    expect(() => lookup(path)).toThrow("nonempty regular file");
-    expect(statSync(path).size).toBe(0);
-    expect(() => lookup(root)).toThrow("nonempty regular file");
-    writeFileSync(path, "not a Pi session\n");
-    expect(() => lookup(path)).toThrow();
-    fixture("session", "Recovered");
-    expect(lookup(path)).toBe("Recovered");
+    const reader = await measuredReader();
+    vi.mocked(fsPromises.open).mockRejectedValueOnce(new Error("read failed"));
+    await expect(reader.lookup(path)).rejects.toThrow();
+    expect(await reader.lookup(path)).toBe("Explicit title");
+    expect(reader.reads).toHaveLength(1);
   });
 
-  it("propagates open failures without negative caching or falling back to a stale title", () => {
+  it("retries changed reads, but bounds retries for persistently changing files", async () => {
     const path = fixture();
-    expect(lookup(path)).toBe("Explicit title");
-    appendTitle(path, "Updated");
-    const open = vi.spyOn(SessionManager, "open");
-    open.mockImplementationOnce(() => {
-      throw new Error("read failed");
+    let count = 0;
+    const read = await Effect.runPromise(
+      makeSessionTitleReader({
+        measured: () => {
+          if (count++ === 0) appendTitle(path, "Appended during lookup");
+        },
+      }),
+    );
+    expect(await Effect.runPromise(read(path, root))).toBe("Appended during lookup");
+    expect(count).toBe(2);
+    const unstable = await Effect.runPromise(
+      makeSessionTitleReader({
+        measured: () => {
+          appendTitle(path, "Still changing");
+        },
+      }),
+    );
+    await expect(Effect.runPromise(unstable(path, root))).rejects.toThrow();
+    expect(await lookup(path)).toBe("Still changing");
+  });
+
+  it("uses Effect capacity eviction without retaining history or handles", async () => {
+    const reader = await measuredReader(2);
+    const paths = [fixture("one"), fixture("two"), fixture("three")];
+    for (const path of paths) await reader.lookup(path);
+    expect(reader.reads).toHaveLength(3);
+    await reader.lookup(paths[2] ?? "missing");
+    expect(reader.reads).toHaveLength(3);
+    await reader.lookup(paths[0] ?? "missing");
+    expect(reader.reads).toHaveLength(4);
+  });
+
+  it("does not read for an already interrupted caller", async () => {
+    const path = fixture();
+    const reader = await measuredReader();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      Effect.runPromise(reader.read(path, root), { signal: controller.signal }),
+    ).rejects.toThrow();
+    expect(reader.reads).toHaveLength(0);
+    expect(await reader.lookup(path)).toBe("Explicit title");
+  });
+
+  it("closes the read-only handle after interruption and permits a fresh lookup", async () => {
+    const path = fixture();
+    const reader = await measuredReader();
+    const controller = new AbortController();
+    const closed = Promise.withResolvers<void>();
+    const originalOpen = vi.mocked(fsPromises.open).getMockImplementation();
+    if (!originalOpen) throw new Error("Missing filesystem implementation");
+    vi.mocked(fsPromises.open).mockImplementationOnce(async (...args) => {
+      const file = await originalOpen(...args);
+      const originalClose = file.close.bind(file);
+      const close = vi.spyOn(file, "close").mockImplementation(async () => {
+        await originalClose();
+        closed.resolve();
+      });
+      const originalRead = file.read.bind(file);
+      vi.spyOn(file, "read").mockImplementationOnce((...readArgs: Parameters<typeof file.read>) => {
+        controller.abort();
+        return originalRead(...readArgs);
+      });
+      expect(close).not.toHaveBeenCalled();
+      return file;
     });
-    expect(() => lookup(path)).toThrow("read failed");
-    expect(lookup(path)).toBe("Updated");
-    expect(lookup(path)).toBe("Updated");
-    expect(open).toHaveBeenCalledTimes(2);
+    await expect(
+      Effect.runPromise(reader.read(path, root), { signal: controller.signal }),
+    ).rejects.toThrow();
+    await closed.promise;
+    expect(await reader.lookup(path)).toBe("Explicit title");
   });
 
-  it("retries a changed read and caches only the stable title", () => {
-    const path = fixture();
-    const originalOpen = SessionManager.open;
-    const open = vi.spyOn(SessionManager, "open");
-    open.mockImplementationOnce((...args) => {
-      const manager = originalOpen(...args);
-      appendTitle(path, "Appended during read");
-      return manager;
-    });
-    expect(lookup(path)).toBe("Appended during read");
-    expect(lookup(path)).toBe("Appended during read");
-    expect(open).toHaveBeenCalledTimes(2);
-  });
-
-  it("bounds retries and never caches a persistently changing read", () => {
-    const path = fixture();
-    const originalOpen = SessionManager.open;
-    const open = vi.spyOn(SessionManager, "open").mockImplementation((...args) => {
-      const manager = originalOpen(...args);
-      appendTitle(path, "Still changing");
-      return manager;
-    });
-    expect(() => lookup(path)).toThrow("changed while reading");
-    expect(open).toHaveBeenCalledTimes(2);
-    open.mockRestore();
-    const stableOpen = vi.spyOn(SessionManager, "open");
-    expect(lookup(path)).toBe("Still changing");
-    expect(lookup(path)).toBe("Still changing");
-    expect(stableOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it("allows Pi's newline repair before caching a stable title", () => {
-    const path = fixture();
-    writeFileSync(path, readFileSync(path, "utf8").trimEnd());
-    const open = vi.spyOn(SessionManager, "open");
-    expect(lookup(path)).toBe("Explicit title");
-    expect(lookup(path)).toBe("Explicit title");
-    expect(open).toHaveBeenCalledTimes(2);
-  });
-
-  it("bounds growth to 1024 titles and evicts the least recently used entry", () => {
-    const first = fixture("lru-first");
-    const second = fixture("lru-second");
-    const rest = Array.from({ length: 1_022 }, (_, index) => fixture(`lru-${index}`));
-    const newest = fixture("lru-newest");
-    const open = vi.spyOn(SessionManager, "open");
-    for (const path of [first, second, ...rest]) lookup(path);
-    expect(lookup(first)).toBe("Explicit title");
-    expect(lookup(newest)).toBe("Explicit title");
-    expect(open).toHaveBeenCalledTimes(1_025);
-    expect(lookup(first)).toBe("Explicit title");
-    expect(open).toHaveBeenCalledTimes(1_025);
-    expect(lookup(second)).toBe("Explicit title");
-    expect(open).toHaveBeenCalledTimes(1_026);
+  it("skips giant irrelevant records with bounded buffers; refuses oversized title candidates honestly", async () => {
+    const path = legacy([user("Fallback")]);
+    appendFileSync(
+      path,
+      "\n" +
+        JSON.stringify({
+          type: "message",
+          message: { role: "toolResult", content: "x".repeat(9 * 1024 * 1024) },
+        }) +
+        "\n",
+    );
+    expect(await lookup(path)).toBe("Fallback");
+    appendTitle(path, "Latest");
+    expect(await lookup(path)).toBe("Latest");
+    const oversized = legacy([user("x".repeat(9 * 1024 * 1024))], "oversized");
+    await expect(lookup(oversized)).rejects.toThrow();
   });
 });

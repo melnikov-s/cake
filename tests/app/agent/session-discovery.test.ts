@@ -59,7 +59,7 @@ describe("loadWorkspacePiSessionPreview", () => {
     expect(entries).not.toHaveBeenCalled();
     manager.appendSessionInfo("");
     expect((await catalog())[0]?.title).toBe("Fallback title");
-    expect(entries).toHaveBeenCalledTimes(1);
+    expect(entries).not.toHaveBeenCalled();
   });
 
   it("filters resolved IDs before opening transcripts for catalog titles", async () => {
@@ -79,8 +79,7 @@ describe("loadWorkspacePiSessionPreview", () => {
       }).pipe(Stream.runCollect),
     );
     expect(catalog.map((item) => item.id)).toEqual([active.getSessionId()]);
-    expect(open).toHaveBeenCalledTimes(1);
-    expect(open.mock.calls[0]?.[0]).toBe(active.getSessionFile());
+    expect(open).not.toHaveBeenCalled();
   });
   it("enriches a catalog entry from its known file without rediscovering directories or display parts", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-session-known-file-"));

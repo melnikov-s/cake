@@ -114,7 +114,7 @@ export async function loadWorkspacePiSessionSummary(
     ? {
         id: item.id,
         sessionFile: item.path,
-        title: sessionTitleFromFile(item.path, cwd),
+        title: await Effect.runPromise(sessionTitleFromFile(item.path, cwd)),
         created: item.createdAt,
         modified: item.modifiedAt,
         messageCount: 0,
@@ -216,18 +216,16 @@ export function streamWorkspaceSessions(
   }).pipe(
     Stream.mapEffect(
       (item) =>
-        Effect.try({
-          try: (): PiSessionSummary => ({
+        sessionTitleFromFile(item.path, cwd).pipe(
+          Effect.map((title): PiSessionSummary => ({
             id: item.id,
             sessionFile: item.path,
-            title: sessionTitleFromFile(item.path, cwd),
+            title,
             created: item.createdAt,
             modified: item.modifiedAt,
             messageCount: 0,
             resolved: false,
-          }),
-          catch: (cause) => cause,
-        }).pipe(
+          })),
           // One unreadable transcript must not hide the rest of the directory.
           Effect.catch((cause) =>
             Effect.logWarning("Skipping unreadable Pi session file", item.path, cause).pipe(
