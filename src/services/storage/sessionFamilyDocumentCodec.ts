@@ -62,6 +62,12 @@ export const storageError = (operation: string, cause: unknown) =>
   new SessionFamilyStorageError({ operation, message: messageOf(cause) });
 
 export const validateDocument = (document: SessionFamilyDocument): SessionFamilyDocument => {
+  const parents = new Set<string>();
+  for (const parent of document.sessionParents ?? []) {
+    if (parent.sessionId === parent.parentSessionId || parents.has(parent.sessionId))
+      throw new Error("Session parent provenance cannot change or reference itself");
+    parents.add(parent.sessionId);
+  }
   const familyIds = new Set<string>();
   const memberIds = new Set<string>();
   const requestIds = new Set<string>();

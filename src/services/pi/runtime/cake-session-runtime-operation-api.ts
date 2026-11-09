@@ -181,7 +181,10 @@ export function createCakeSessionRuntimeOperationApi(input: {
         );
         input = { ...rest, text };
       }
-      if (typeof input.sessionId === "string")
+      if (
+        typeof input.sessionId === "string" &&
+        !(command === "sessions.send" && input.sessionId === "parent")
+      )
         input = { ...input, sessionId: await resolveTarget(input.sessionId, signal) };
       const familyResult =
         command === "sessions.send" || command === "sessions.reply"

@@ -2220,49 +2220,55 @@ describe("automatic spawned-session reporting", () => {
     }),
   );
 
-  it.effect("a Project Session send without sessionId reaches Cake Chat", () =>
-    Effect.gen(function* () {
-      const f = yield* fixture();
-      yield* f.run(
-        Effect.gen(function* () {
-          yield* assembleCoordinator();
-          const options = yield* projectOptions({
-            location,
-            sessionId: parentId,
-            newSession: false,
-          });
-          const receipt = yield* Effect.promise(() =>
-            options.runtime.currentSessionControl!.routeFamilyMessage!(
-              "sessions.send",
-              { text: "Should I drop the legacy column?", resultDelivery: "reply" },
-              new AbortController().signal,
-            ),
-          );
-          const decoded = yield* Schema.decodeUnknownEffect(
-            Schema.Struct({
-              ok: Schema.Literal(true),
-              command: Schema.Literal("sessions.send"),
-              target: Schema.Struct({ kind: Schema.Literal("cake-chat") }),
-              targetTitle: Schema.Literal("Cake Chat"),
-              delivery: Schema.Literal("prompt"),
-              expectsResponse: Schema.Literal(true),
-              threadId: Schema.String,
-            }),
-          )(receipt);
-          // Cake Chat is addressed by omission, so the receipt never advertises a session ID.
-          assert.ok(!JSON.stringify(decoded.target).includes("sessionId"));
-          assert.ok(!JSON.stringify(receipt).includes(CAKE_CHAT_SESSION_ID));
-          yield* Deferred.await(f.received);
-          assert.deepEqual(f.deliveries, ["prompt"]);
-          const message = parseCrossSessionMessage(f.transcript[0] ?? "");
-          assert.equal(message?.text, "Should I drop the legacy column?");
-          assert.equal(message?.metadata.expectsResponse, true);
-          assert.equal(message?.metadata.threadId, decoded.threadId);
-          assert.equal(message?.metadata.sender.sessionId, parentId);
-          assert.equal(message?.metadata.sender.kind, "project-session");
-        }),
-      );
-    }),
+  it.effect(
+    "a Global-created Project Session send without sessionId reaches its recorded owner",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* assembleCoordinator();
+            yield* f.storage.registerParent({
+              sessionId: parentId,
+              parentSessionId: CAKE_CHAT_SESSION_ID,
+            });
+            const options = yield* projectOptions({
+              location,
+              sessionId: parentId,
+              newSession: false,
+            });
+            const receipt = yield* Effect.promise(() =>
+              options.runtime.currentSessionControl!.routeFamilyMessage!(
+                "sessions.send",
+                { text: "Should I drop the legacy column?", resultDelivery: "reply" },
+                new AbortController().signal,
+              ),
+            );
+            const decoded = yield* Schema.decodeUnknownEffect(
+              Schema.Struct({
+                ok: Schema.Literal(true),
+                command: Schema.Literal("sessions.send"),
+                target: Schema.Struct({ kind: Schema.Literal("cake-chat") }),
+                targetTitle: Schema.Literal("Cake Chat"),
+                delivery: Schema.Literal("prompt"),
+                expectsResponse: Schema.Literal(true),
+                threadId: Schema.String,
+              }),
+            )(receipt);
+            // The coordinator receipt retains its existing global-chat address shape.
+            assert.ok(!JSON.stringify(decoded.target).includes("sessionId"));
+            assert.ok(!JSON.stringify(receipt).includes(CAKE_CHAT_SESSION_ID));
+            yield* Deferred.await(f.received);
+            assert.deepEqual(f.deliveries, ["prompt"]);
+            const message = parseCrossSessionMessage(f.transcript[0] ?? "");
+            assert.equal(message?.text, "Should I drop the legacy column?");
+            assert.equal(message?.metadata.expectsResponse, true);
+            assert.equal(message?.metadata.threadId, decoded.threadId);
+            assert.equal(message?.metadata.sender.sessionId, parentId);
+            assert.equal(message?.metadata.sender.kind, "project-session");
+          }),
+        );
+      }),
   );
 
   it.effect(
@@ -2309,27 +2315,37 @@ describe("automatic spawned-session reporting", () => {
   );
 
   it.effect.each([{ sessionId: undefined }, { sessionId: "cake-chat" }] as const)(
-    "Cake Chat calling sessions.send with sessionId $sessionId gets an explicit self-message error",
+    "Cake Chat calling sessions.send with sessionId $sessionId fails without forwarding",
     ({ sessionId }) =>
       Effect.gen(function* () {
         const f = yield* fixture();
         yield* f.run(
           Effect.gen(function* () {
             const options = yield* assembleCoordinator();
-            const result = yield* Effect.promise(() =>
-              options.runtime.globalControl!.invoke(
-                {
-                  name: "sessions.send",
-                  arguments: { text: "Hello", ...(sessionId ? { sessionId } : null) },
-                },
-                new AbortController().signal,
-              ),
-            );
-            const decoded = yield* Schema.decodeUnknownEffect(
-              Schema.Struct({ ok: Schema.Literal(false), error: Schema.String }),
-            )(result);
-            assert.match(decoded.error, /Cake Chat cannot message itself/);
-            assert.match(decoded.error, /pass the target Project Session's sessionId/);
+            const result = yield* Effect.tryPromise({
+              try: () =>
+                options.runtime.globalControl!.invoke(
+                  {
+                    name: "sessions.send",
+                    arguments: { text: "Hello", ...(sessionId ? { sessionId } : null) },
+                  },
+                  new AbortController().signal,
+                ),
+              catch: (error) => String(error),
+            }).pipe(Effect.result);
+            if (sessionId === undefined) {
+              assert.equal(result._tag, "Failure");
+              if (result._tag === "Failure")
+                assert.match(result.failure, /no parent.*explicit sessionId/);
+            } else {
+              assert.equal(result._tag, "Success");
+              if (result._tag === "Success") {
+                const decoded = yield* Schema.decodeUnknownEffect(
+                  Schema.Struct({ ok: Schema.Literal(false), error: Schema.String }),
+                )(result.success);
+                assert.match(decoded.error, /two different sessions.*explicit sessionId/);
+              }
+            }
             assert.deepEqual(f.deliveries, []);
           }),
         );

@@ -7,10 +7,10 @@ import {
 } from "../cake-chats/cake-chat-identity";
 
 export const sessionParentGuidance =
-  'Explicit sessionId: "parent" resolves once at tool admission: side chat → originating conversation; Companion → viewed session/chat (requires invoking context); child Project Session → actual parent; top-level Project Session → owning Project Chat; Project Chat → Cake Chat; Cake Chat → itself. Creator/source links are not ancestry. This alias never changes an operation\'s omitted-target default or permission checks.';
+  'sessionId: "parent" resolves recorded provenance at admission: Side Chat → originating conversation; Companion → invoking context; family child → immediate parent; independent task → recorded creator. Permanent chats and legacy sessions without provenance require an explicit target. sessions.send omission means parent; other operations retain their own defaults and permission checks.';
 
 export const sessionTargetDescription =
-  "Project Session ID or suffix, native Side Chat ID, cake-chat, project-chat:<hash>, or parent (the caller's hierarchy target).";
+  "Project Session ID or suffix, native Side Chat ID, cake-chat, project-chat:<hash>, or parent (the caller's recorded parent).";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const shortReference = /^([0-9a-f]{8,64})$/i;

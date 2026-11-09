@@ -166,7 +166,17 @@ export const UpdateBatch = Schema.Struct({
   turnId: Schema.optionalKey(BoundedId),
 });
 export interface UpdateBatch extends Schema.Schema.Type<typeof UpdateBatch> {}
+/** Creation provenance only; independent sessions do not become family members. */
+export const SessionParent = Schema.Struct({
+  sessionId: BoundedId,
+  parentSessionId: BoundedId,
+  kind: Schema.optionalKey(Schema.Literal("side-chat")),
+  projectPath: Schema.optionalKey(BoundedPath),
+});
+export interface SessionParent extends Schema.Schema.Type<typeof SessionParent> {}
+
 export const SessionFamilyDocument = Schema.Struct({
+  sessionParents: Schema.optionalKey(Schema.Array(SessionParent)),
   families: Schema.Array(SessionFamily),
   turns: Schema.Array(FamilyTurn),
   spawnedSessions: Schema.Array(SpawnedSession),

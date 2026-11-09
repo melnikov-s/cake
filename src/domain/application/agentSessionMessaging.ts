@@ -168,7 +168,7 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
   let targetSessionId: string;
   let replyToMessageId = args.replyToMessageId;
   if (invocation.name === "sessions.send") {
-    targetSessionId = yield* sessionReferences.resolve(
+    targetSessionId = yield* sessionReferences.messageTarget(
       invocation.arguments.sessionId,
       caller.sessionId,
     );
@@ -178,6 +178,8 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
       invocation.arguments.maxMessages !== thread.maxMessages
     )
       return fail("The existing thread has a different message limit.");
+    if (targetSessionId === caller.sessionId)
+      return fail("A session thread requires two different sessions.");
     if (!thread)
       thread = yield* coordination.create(
         caller.sessionId,

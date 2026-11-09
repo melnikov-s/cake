@@ -121,6 +121,9 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     const resultDelivery = input.resultDelivery ?? "notification";
     const expectsResponse = resultDelivery !== "ignore";
     const storage = yield* SessionFamilyStorage;
+    const parentSessionId = input.source?.sessionId ?? requester?.sessionId;
+    if (parentSessionId)
+      yield* storage.registerParent({ sessionId, parentSessionId, projectPath: input.projectPath });
     if (requester)
       yield* storage.registerSpawn({
         sessionId,

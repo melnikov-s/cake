@@ -10,6 +10,24 @@ import { createSessionFamilyOperations } from "../../../src/domain/session-famil
 import { createProjectSessionOperations } from "../../../src/domain/project-sessions/cake-session-operations";
 import { resultDeliveryGuidance } from "../../../src/contracts/conversations/result-delivery";
 import { backendAgentTools } from "../../../src/contracts/application/backend-agent-tools";
+it("documents parent defaults consistently in both generated tool catalogs", () => {
+  const operations = createSessionFamilyOperations(() => {
+    throw Error("help must not invoke runtime");
+  });
+  expect(
+    backendAgentTools().find((operation) => operation.command === "sessions.send")?.parameters
+      .required,
+  ).not.toContain("sessionId");
+  for (const catalog of [operations, backendAgentTools()]) {
+    const send = catalog.find((operation) => operation.command === "sessions.send");
+    expect(send?.summary).toContain("recorded parent");
+    expect(send?.guidance?.join("\n")).toContain("recorded parent");
+    expect(send?.guidance?.join("\n")).toContain("explicit");
+    expect(send?.guidance?.join("\n")).not.toMatch(
+      /omitting sessionId|Omit sessionId to reach Cake Chat/,
+    );
+  }
+});
 it("keeps family authority and startup self-contained", () => {
   for (const rule of [
     "Family coordination defaults to Workboard, including descendants",

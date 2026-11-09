@@ -1,8 +1,7 @@
 /** Stable identity of the global conversation, never a task Project Session. */
 export const CAKE_CHAT_SESSION_ID = "ca4ec4a7-0000-4000-8000-000000000001";
 
-/** Agent-facing shorthand for global Cake Chat. An omitted message target also means
- * global Cake Chat; Project Chats have their own explicit session addresses. */
+/** Explicit agent-facing shorthand for global Cake Chat, independent of sender provenance. */
 export const CAKE_CHAT_REFERENCE = "cake-chat";
 
 /** One app-wide companion, backed by its own permanent Durable conversation. */

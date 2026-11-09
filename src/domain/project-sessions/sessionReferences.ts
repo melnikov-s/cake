@@ -1,10 +1,12 @@
 import { Effect, Option, Stream } from "effect";
 import {
-  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatConversationId,
   SESSION_ASSISTANT_ID,
   isCakeChatSessionId,
+  isProjectChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
+import { DiscussionSessionEnvironment } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
 import {
   projectSessionReferences,
   resolveSessionReference,
@@ -24,6 +26,7 @@ import {
 import type { ProjectSessionArchiveMetadata } from "../../services/storage/SessionArchiveStorage";
 import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
+import * as discussionReferences from "../discussion-sessions/discussionSessionReferences";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as metadata from "./projectSessionMetadata";
 
@@ -151,7 +154,7 @@ export const catalog = Effect.fn("SessionReferences.catalog")(function* () {
   return (yield* discover()).roster;
 });
 
-/** Explicit hierarchy, never a creator link or an omitted-target default. Resolve at admission. */
+/** Resolve recorded provenance, never infer an owner from the working directory. */
 const parentTarget = Effect.fn("SessionReferences.parentTarget")(function* (
   callerSessionId?: string,
 ) {
@@ -171,14 +174,79 @@ const parentTarget = Effect.fn("SessionReferences.parentTarget")(function* (
       return yield* fail("Companion invoking context has no valid session identity");
     return canonical.sessionId;
   }
-  if (isCakeChatSessionId(callerSessionId)) return CAKE_CHAT_SESSION_ID;
-  const family = yield* (yield* SessionFamilyStorage).familyForMember(callerSessionId);
+  if (isCakeChatSessionId(callerSessionId))
+    return yield* fail("This permanent chat has no parent; provide an explicit sessionId.");
+  const storage = yield* SessionFamilyStorage;
+  const family = yield* storage.familyForMember(callerSessionId);
   const member = family && familyMember(family, callerSessionId);
-  if (member?.parentSessionId) return member.parentSessionId;
-  const projectPath =
-    family?.projectPath ??
-    (yield* metadata.findLocation({ sessionId: callerSessionId })).projectPath;
-  return projectChatSessionId(projectPath);
+  const state = yield* storage.state();
+  const target =
+    member?.parentSessionId ??
+    state.sessionParents?.find((item) => item.sessionId === callerSessionId)?.parentSessionId ??
+    state.spawnedSessions.find((item) => item.sessionId === callerSessionId)?.requester.sessionId ??
+    (cakeChatSideChatConversationId(callerSessionId) !== undefined
+      ? (yield* discussionReferences.lookup(callerSessionId)).record.parentSessionId
+      : undefined);
+  if (!target || target === callerSessionId)
+    return yield* fail("No recorded parent is available; provide an explicit sessionId.");
+  return target;
+});
+
+/** Omitted sends and explicit parent agree. Do not restore a resolved parent as a side effect. */
+export const messageTarget = Effect.fn("SessionReferences.messageTarget")(function* (
+  reference: string | undefined,
+  callerSessionId: string,
+) {
+  if (reference !== undefined && reference !== "parent")
+    return yield* resolve(reference, callerSessionId);
+  const target = yield* parentTarget(callerSessionId);
+  if (target === callerSessionId)
+    return yield* new ProjectSessionError({
+      operation: "resolveSessionReference",
+      message: "A session thread requires two different sessions.",
+    });
+  if (
+    isProjectChatSessionId(target) &&
+    !(yield* ApplicationState)
+      .snapshot()
+      .projects.some((project) => projectChatSessionId(project.path) === target)
+  )
+    return yield* new ProjectSessionError({
+      operation: "resolveSessionReference",
+      message: "The recorded parent Project Chat is unavailable; provide an explicit sessionId.",
+    });
+  const sideChat = (yield* (yield* SessionFamilyStorage).state()).sessionParents?.find(
+    (item) => item.sessionId === target && item.kind === "side-chat",
+  );
+  let resolved = false;
+  if (cakeChatSideChatConversationId(target) !== undefined)
+    resolved = (yield* discussionReferences.lookup(target)).reference.resolved;
+  else if (sideChat) {
+    const environment = yield* Effect.serviceOption(DiscussionSessionEnvironment);
+    if (Option.isNone(environment))
+      return yield* new ProjectSessionError({
+        operation: "resolveSessionReference",
+        message: "Parent Side Chat metadata is unavailable; provide an explicit sessionId.",
+      });
+    const location = yield* metadata.findLocation({ sessionId: sideChat.parentSessionId });
+    const record = (yield* environment.value.list(
+      location.workingDirectory,
+      sideChat.parentSessionId,
+    )).find((record) => record.sidecarSessionId === target);
+    if (!record)
+      return yield* new ProjectSessionError({
+        operation: "resolveSessionReference",
+        message: "The recorded parent Side Chat is unavailable; provide an explicit sessionId.",
+      });
+    resolved = record.status === "resolved";
+  } else if (!isCakeChatSessionId(target))
+    resolved = (yield* metadata.lookup({ sessionId: target })).resolved;
+  if (resolved)
+    return yield* new ProjectSessionError({
+      operation: "resolveSessionReference",
+      message: "The recorded parent is resolved; provide an explicit sessionId.",
+    });
+  return target;
 });
 
 export const resolve = Effect.fn("SessionReferences.resolve")(function* (

@@ -508,6 +508,7 @@ const makeLayer = (
       withCreationLock: (_key, effect) => effect,
       recordTurn: () => Effect.void,
       registerSpawn: () => Effect.void,
+      registerParent: () => Effect.void,
       recordReport: () => Effect.void,
       settleTurn: () => Effect.void,
       pendingResponseRequest: () => Effect.succeed(undefined),

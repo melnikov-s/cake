@@ -497,7 +497,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             Effect.scoped(
               projectSessionCreation.createPrompted({
                 ...input,
-                source: { sessionId, kind: "project-session", title: "Project Session" },
+                source: {
+                  sessionId: sideChatSessionId ?? sessionId,
+                  kind: "project-session",
+                  title: "Project Session",
+                },
                 senderWorkingDirectory: location.workingDirectory,
                 projectPath: location.projectPath,
               }),
@@ -519,6 +523,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 configuration: input.model,
               })
               .pipe(Effect.provideService(SavedDraftStorage, savedDraftStorage.value)),
+            { signal },
+          );
+          await run(
+            families.registerParent({
+              sessionId: record.sessionId,
+              parentSessionId: sideChatSessionId ?? sessionId,
+              projectPath: location.projectPath,
+            }),
             { signal },
           );
           await run(inheritTaskInputProtection(sessionId, record.sessionId), { signal });
@@ -809,7 +821,20 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 { signal },
               ),
         invokeAppControl: async (command, input, signal, sourceEntryId) => {
-          if (
+          if (command === "sessions.send")
+            input = {
+              ...input,
+              sessionId: await run(
+                sessionReferences.messageTarget(
+                  Schema.decodeUnknownSync(
+                    Schema.Struct({ sessionId: Schema.optionalKey(Schema.String) }),
+                  )(input).sessionId,
+                  sideChatSessionId ?? sessionId,
+                ),
+                { signal },
+              ),
+            };
+          else if (
             command !== "sessions.compact" &&
             command !== "sessions.tool-compact" &&
             (backendAgentControl.handles(command) || command === "sessions.open") &&

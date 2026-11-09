@@ -48,6 +48,7 @@ import {
   familyMemberIds,
   type FamilyTurn,
   type SpawnedSession,
+  type SessionParent,
   type CoordinatorDigestItem,
   type UpdateBatch,
 } from "../../contracts/session-families/session-family-document";
@@ -117,6 +118,9 @@ export class SessionFamilyStorage extends Context.Service<
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | SessionFamilyStorageError, R>;
     readonly recordTurn: (turn: FamilyTurn) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly registerParent: (
+      parent: SessionParent,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly registerSpawn: (
       session: SpawnedSession,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
@@ -726,6 +730,20 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             : [...document.turns, turn],
         })),
       );
+      const registerParent = Effect.fn("SessionFamilyStorage.registerParent")(
+        (parent: SessionParent) =>
+          update((document) => {
+            const existing = document.sessionParents?.find(
+              (item) => item.sessionId === parent.sessionId,
+            );
+            return existing?.parentSessionId === parent.parentSessionId
+              ? document
+              : {
+                  ...document,
+                  sessionParents: [...(document.sessionParents ?? []), parent],
+                };
+          }),
+      );
       const registerSpawn = Effect.fn("SessionFamilyStorage.registerSpawn")(
         (session: SpawnedSession) =>
           update((document) => ({
@@ -1274,6 +1292,13 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                   ),
                 }
               : null),
+            ...(document.sessionParents
+              ? {
+                  sessionParents: document.sessionParents.filter(
+                    (parent) => parent.projectPath !== projectPath,
+                  ),
+                }
+              : null),
             spawnedSessions: document.spawnedSessions.filter(
               (spawn) => spawn.projectPath !== projectPath,
             ),
@@ -1304,6 +1329,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         withCreationLock: (key, effect) => withKeyLock(`creation:${key}`, effect),
         recordTurn,
         registerSpawn,
+        registerParent,
         recordReport,
         settleTurn,
         pendingResponseRequest,

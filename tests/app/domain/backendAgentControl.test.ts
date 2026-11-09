@@ -45,6 +45,7 @@ import {
   cakeChatSideChatSessionId,
 } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { CakeChatDurable } from "../../../src/services/pi-durable/CakeChatDurable";
+import { DiscussionSessionEnvironment } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
 import {
   messageReference,
   parseSessionLink,
@@ -422,6 +423,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer()));
   let companionContextSessionId: string | undefined;
   let storedSchedules: readonly ScheduledMessage[] = [];
+  const familyHarness = familyStorageHarness();
   const dependencies = Layer.mergeAll(
     modelPresetPromptsTestLayer,
     AgentControlTestLive,
@@ -499,7 +501,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     }),
     runtimes,
     renderers,
-    familyStorageHarness().layer,
+    familyHarness.layer,
     SessionCatalogChanges.layer,
     ApplicationState.layer.pipe(Layer.provide(storage)),
     Layer.mock(ManagedWorktrees, {
@@ -613,6 +615,18 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   assert.ok(invoke);
   return {
     context,
+    familyFiles: familyHarness.files,
+    createSession: options.runtime.currentSessionControl?.createSession,
+    familyCall: (
+      command: "sessions.send" | "sessions.reply",
+      input: JsonObject,
+      sourceEntryId?: string,
+    ) =>
+      Effect.promise(async () => {
+        const route = options.runtime.currentSessionControl?.routeFamilyMessage;
+        assert.ok(route);
+        return route(command, input, signal(), undefined, sourceEntryId);
+      }),
     storedSchedules: () => storedSchedules,
     compactions,
     toolCompactions,
@@ -2573,6 +2587,10 @@ it.effect(
       const projectChat = projectChatSessionId("/project");
       for (const parent of [source, projectChat, CAKE_CHAT_SESSION_ID]) {
         const sideChatSessionId = parent === source ? third : cakeChatSideChatSessionId(7, parent);
+        yield* Context.get(f.context, SessionFamilyStorage).registerParent({
+          sessionId: sideChatSessionId,
+          parentSessionId: parent,
+        });
         const options =
           parent === source
             ? yield* acquireOptions({
@@ -2627,10 +2645,17 @@ it.effect(
           sessionId: sideChatSessionId,
           text: "User follow-up",
         });
-        for (const text of ["Parent, please review", "Follow-up evidence"]) {
+        expect(
+          yield* Effect.promise(() =>
+            invoke("sessions.send", { sessionId: 7, text: "Invalid target" }),
+          ).pipe(Effect.exit),
+        ).toMatchObject({ _tag: "Failure" });
+        expect(yield* Queue.size(f.prompts)).toBe(0);
+        for (const sessionId of [undefined, "parent"]) {
+          const text = sessionId ? "Follow-up evidence" : "Parent, please review";
           const receipt = yield* Effect.promise(() =>
             invoke("sessions.send", {
-              sessionId: "parent",
+              ...(sessionId ? { sessionId } : {}),
               text,
               delivery: "prompt",
               resultDelivery: "ignore",
@@ -4421,90 +4446,392 @@ it.effect("Cake Chat keeps report policy and protected-task redaction without a 
 );
 
 it.effect(
-  "parent schedules follow actual hierarchy, not creator links, while omitted targets stay self",
+  "omitted sends reach each launch's recorded parent through both runtime routing boundaries",
+  () =>
+    Effect.gen(function* () {
+      for (const parentSessionId of [projectChatSessionId("/project"), CAKE_CHAT_SESSION_ID]) {
+        const f = yield* fixture(true);
+        yield* Context.get(f.context, SessionFamilyStorage).registerSpawn({
+          sessionId: source,
+          projectPath: "/project",
+          workingDirectory: "/project",
+          requester: { kind: "cake-chat", sessionId: parentSessionId, title: "Owner" },
+          reportDelivered: true,
+          handoffSettled: true,
+        });
+        for (const sessionId of [undefined, "parent"]) {
+          const input = {
+            ...(sessionId ? { sessionId } : {}),
+            text: "Owner question",
+            resultDelivery: "reply",
+          };
+          const special = yield* f.familyCall("sessions.send", input, "46866");
+          expect(special).toMatchObject({
+            ok: true,
+            target:
+              parentSessionId === CAKE_CHAT_SESSION_ID
+                ? { kind: "cake-chat" }
+                : { sessionId: parentSessionId },
+          });
+          const envelope = parseCrossSessionMessage((yield* Queue.take(f.prompts)).text);
+          expect(envelope).toMatchObject({
+            text: "Owner question",
+            metadata: {
+              sourceMessageRef: messageReference(source, "46866"),
+              sender: { sessionId: source },
+              resultDelivery: "reply",
+            },
+          });
+          expect(yield* f.call("sessions.send", input, "46867")).toMatchObject({
+            ok: true,
+            target: { sessionId: parentSessionId },
+          });
+          expect((yield* Queue.take(f.prompts)).sessionId).toBe(parentSessionId);
+        }
+        // A concrete destination is never replaced by owner routing.
+        expect(
+          yield* f.call("sessions.send", {
+            sessionId: third,
+            text: "Explicit",
+            resultDelivery: "ignore",
+          }),
+        ).toMatchObject({
+          ok: true,
+          target: { sessionId: third },
+        });
+        expect((yield* Queue.take(f.prompts)).sessionId).toBe(third);
+        expect(f.requestCalls).toEqual([]);
+      }
+    }),
+);
+
+it.effect("independent nested creation retains its owner even when no result is requested", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    const createSession = f.createSession;
+    assert.ok(createSession);
+    const created = yield* Effect.promise(() =>
+      createSession(
+        {
+          name: "Nested",
+          initialPrompt: "Work",
+          resultDelivery: "ignore",
+          model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
+        },
+        signal(),
+      ),
+    );
+    const value = Schema.decodeUnknownSync(Schema.Struct({ sessionId: Schema.String }))(created);
+    yield* Queue.take(f.prompts);
+    const state = yield* Context.get(f.context, SessionFamilyStorage).state();
+    expect(state.sessionParents).toContainEqual({
+      sessionId: value.sessionId,
+      parentSessionId: source,
+      projectPath: "/project",
+    });
+    expect(state.families).toEqual([]);
+    expect(state.spawnedSessions).toEqual([]);
+    const restarted = yield* Layer.build(familyStorageHarness(f.familyFiles).layer);
+    const restartedContext = Context.merge(f.context, restarted);
+    for (const sessionId of [undefined, "parent"]) {
+      expect(
+        yield* agentControl
+          .invoke(
+            "sessions.send",
+            {
+              ...(sessionId ? { sessionId } : {}),
+              text: "Nested question",
+              resultDelivery: "ignore",
+            },
+            { ...caller, sessionId: value.sessionId },
+          )
+          .pipe(Effect.provide(restartedContext)),
+      ).toMatchObject({
+        ok: true,
+        target: { sessionId: source },
+      });
+      expect((yield* Queue.take(f.prompts)).sessionId).toBe(source);
+    }
+  }),
+);
+
+it.effect(
+  "a Side Chat-created task returns to that Side Chat and never reopens a resolved one",
   () =>
     Effect.gen(function* () {
       const f = yield* fixture(true);
-      yield* scheduledMessages.initialize().pipe(Effect.provide(f.context));
-      const families = Context.get(f.context, SessionFamilyStorage);
-      expect(
-        yield* f.call("sessions.schedule", {
-          sessionId: "parent",
-          text: "Top level",
-          delaySeconds: 30,
-        }),
-      ).toMatchObject({ ok: true, target: { sessionId: projectChatSessionId("/project") } });
-      yield* families.registerSpawn({
-        sessionId: source,
-        projectPath: "/project",
-        workingDirectory: "/project",
-        requester: {
-          kind: "cake-chat",
-          sessionId: CAKE_CHAT_SESSION_ID,
-          title: "Unrelated creator",
-        },
-        reportDelivered: true,
-        handoffSettled: true,
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      yield* storage.registerParent({
+        sessionId: third,
+        parentSessionId: source,
+        kind: "side-chat",
       });
-      for (const [parentSessionId, childSessionId] of [
-        [source, target],
-        [target, third],
-      ] as const)
-        yield* families.addChild({
-          familyId: crypto.randomUUID(),
-          parentSessionId,
-          childSessionId,
-          parentWorkingDirectory: "/project",
-          childWorkingDirectory: "/project",
-          requestId: crypto.randomUUID(),
-          projectPath: "/project",
-          createdAt: "2026-01-01",
-        });
-      const projectChat = projectChatSessionId("/project");
-      for (const [sender, destination] of [
-        [{ ...caller, sessionId: third }, target],
-        [{ ...caller, sessionId: target }, source],
-        [caller, projectChat],
-        [
-          { kind: "cake-chat" as const, sessionId: projectChat, title: "Project Chat" },
-          CAKE_CHAT_SESSION_ID,
-        ],
-        [
-          { kind: "cake-chat" as const, sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
-          CAKE_CHAT_SESSION_ID,
-        ],
-      ] as const) {
-        expect(
-          yield* f.direct(
-            "sessions.schedule",
-            { sessionId: "parent", text: "Hierarchy", delaySeconds: 30 },
-            sender,
-          ),
-        ).toMatchObject({
-          ok: true,
-          target: { sessionId: destination },
-          scheduledMessage: { targetSessionId: destination },
-        });
-        expect(
-          yield* f.direct("sessions.schedule", { text: "Self", delaySeconds: 30 }, sender),
-        ).toMatchObject({ ok: true, target: { sessionId: sender.sessionId } });
-      }
-      // Explicit parent self-resolution at the root never forwards or starts a self-thread.
+      const options = yield* acquireOptions({
+        location,
+        sessionId: source,
+        newSession: false,
+        sideChatSessionId: third,
+      }).pipe(Effect.provide(f.context));
+      yield* Context.get(f.context, CakeSessionRuntimes).acquire({
+        ...options,
+        profile: { _tag: "DiscussionSession" },
+        runtime: {
+          ...options.runtime,
+          sessionId: third,
+          directSessionDir: true,
+          sessionDir: "/cake/discussions/third",
+        },
+      });
+      const create = options.runtime.currentSessionControl?.createSession;
+      assert.ok(create);
+      const created = yield* Effect.promise(() =>
+        create(
+          {
+            name: "Side Chat task",
+            initialPrompt: "Work",
+            resultDelivery: "ignore",
+            model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
+          },
+          signal(),
+        ),
+      );
+      const task = Schema.decodeUnknownSync(Schema.Struct({ sessionId: Schema.String }))(created);
+      yield* Queue.take(f.prompts);
+      let status: "open" | "resolved" = "open";
+      const environment = yield* Layer.build(
+        Layer.mock(DiscussionSessionEnvironment, {
+          list: () =>
+            Effect.succeed([
+              {
+                id: "thread",
+                workingDirectory: "/project",
+                parentSessionId: source,
+                sidecarSessionId: third,
+                pendingParts: [],
+                status,
+                createdAt: "2026-01-01",
+                updatedAt: "2026-01-01",
+                anchor: {
+                  path: "/project/file",
+                  start: { diffLine: 0 },
+                  end: { diffLine: 0 },
+                  selectedText: "",
+                  contextBefore: "",
+                  contextAfter: "",
+                  diff: "",
+                },
+              },
+            ]),
+        }),
+      );
+      const context = Context.merge(f.context, environment);
+      const send = () =>
+        agentControl
+          .invoke(
+            "sessions.send",
+            { text: "Side Chat owner", resultDelivery: "ignore" },
+            { ...caller, sessionId: task.sessionId },
+          )
+          .pipe(Effect.provide(context));
+      expect(yield* send()).toMatchObject({ ok: true, target: { sessionId: third } });
+      expect((yield* Queue.take(f.prompts)).sessionId).toBe(third);
+      status = "resolved";
+      expect(yield* send().pipe(Effect.result)).toMatchObject({
+        _tag: "Failure",
+        failure: { message: expect.stringContaining("parent is resolved") },
+      });
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+    }),
+);
+
+it.effect("omitted sends use immediate family parents, not a root launch's requester", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    const storage = Context.get(f.context, SessionFamilyStorage);
+    for (const [parentSessionId, childSessionId] of [
+      [source, target],
+      [target, third],
+    ] as const) {
+      yield* storage.addChild({
+        familyId: crypto.randomUUID(),
+        parentSessionId,
+        childSessionId,
+        parentWorkingDirectory: "/project",
+        childWorkingDirectory: "/project",
+        requestId: crypto.randomUUID(),
+        projectPath: "/project",
+        createdAt: "2026-01-01",
+      });
       expect(
         yield* f.direct(
           "sessions.send",
+          { text: "Immediate parent", resultDelivery: "ignore" },
+          { ...caller, sessionId: childSessionId },
+        ),
+      ).toMatchObject({
+        ok: true,
+        target: { sessionId: parentSessionId },
+      });
+      expect((yield* Queue.take(f.prompts)).sessionId).toBe(parentSessionId);
+    }
+  }),
+);
+
+it.effect(
+  "missing, permanent-root, resolved and unavailable parents never fall back or restore",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      const send = (input: JsonValue, sender = caller) =>
+        f
+          .direct("sessions.send", input, sender)
+          .pipe(Effect.catch((error) => Effect.succeed({ ok: false, error: error.message })));
+      expect(yield* send({ text: "Legacy" })).toMatchObject({
+        ok: false,
+        error: expect.stringContaining("No recorded parent"),
+      });
+      for (const sessionId of [CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")]) {
+        for (const target of [undefined, "parent"]) {
+          expect(
+            yield* f
+              .direct(
+                "sessions.send",
+                { ...(target ? { sessionId: target } : {}), text: "Root" },
+                { ...caller, kind: "cake-chat", sessionId },
+              )
+              .pipe(Effect.catch((error) => Effect.succeed({ ok: false, error: error.message }))),
+          ).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("no parent"),
+          });
+        }
+        expect(
+          yield* f.direct("sessions.send", { sessionId, text: "Self" }, { ...caller, sessionId }),
+        ).toMatchObject({ ok: false, error: "A session thread requires two different sessions." });
+      }
+      yield* storage.registerParent({ sessionId: source, parentSessionId: target });
+      f.resolve();
+      for (const sessionId of [undefined, "parent"])
+        expect(
+          yield* send({
+            ...(sessionId ? { sessionId } : {}),
+            text: "Resolved",
+          }),
+        ).toMatchObject({
+          ok: false,
+          error: expect.stringContaining("parent is resolved"),
+        });
+      expect(f.restored()).toBe(0);
+      const missing = "00000000-0000-4000-8000-000000000099";
+      yield* storage.registerParent({ sessionId: third, parentSessionId: missing });
+      expect(yield* send({ text: "Missing" }, { ...caller, sessionId: third })).toMatchObject({
+        ok: false,
+      });
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+      expect(f.runtimeCreates).not.toContain(missing);
+      const orphan = yield* fixture(true);
+      const removedProjectChat = projectChatSessionId("/unregistered");
+      yield* Context.get(orphan.context, SessionFamilyStorage).registerParent({
+        sessionId: source,
+        parentSessionId: removedProjectChat,
+      });
+      expect(
+        yield* orphan
+          .direct("sessions.send", { text: "Unavailable Project Chat" })
+          .pipe(Effect.result),
+      ).toMatchObject({
+        _tag: "Failure",
+        failure: { message: expect.stringContaining("parent Project Chat is unavailable") },
+      });
+      expect(yield* Queue.size(orphan.prompts)).toBe(0);
+      expect(orphan.runtimeCreates).not.toContain(removedProjectChat);
+    }),
+);
+
+it.effect("parent schedules follow recorded provenance while omitted schedules stay self", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    yield* scheduledMessages.initialize().pipe(Effect.provide(f.context));
+    const families = Context.get(f.context, SessionFamilyStorage);
+    expect(
+      yield* f.direct("sessions.schedule", {
+        sessionId: "parent",
+        text: "Top level",
+        delaySeconds: 30,
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("No recorded parent") });
+    yield* families.registerSpawn({
+      sessionId: source,
+      projectPath: "/project",
+      workingDirectory: "/project",
+      requester: {
+        kind: "cake-chat",
+        sessionId: CAKE_CHAT_SESSION_ID,
+        title: "Unrelated creator",
+      },
+      reportDelivered: true,
+      handoffSettled: true,
+    });
+    for (const [parentSessionId, childSessionId] of [
+      [source, target],
+      [target, third],
+    ] as const)
+      yield* families.addChild({
+        familyId: crypto.randomUUID(),
+        parentSessionId,
+        childSessionId,
+        parentWorkingDirectory: "/project",
+        childWorkingDirectory: "/project",
+        requestId: crypto.randomUUID(),
+        projectPath: "/project",
+        createdAt: "2026-01-01",
+      });
+    for (const [sender, destination] of [
+      [{ ...caller, sessionId: third }, target],
+      [{ ...caller, sessionId: target }, source],
+      [caller, CAKE_CHAT_SESSION_ID],
+    ] as const) {
+      expect(
+        yield* f.direct(
+          "sessions.schedule",
+          { sessionId: "parent", text: "Hierarchy", delaySeconds: 30 },
+          sender,
+        ),
+      ).toMatchObject({
+        ok: true,
+        target: { sessionId: destination },
+        scheduledMessage: { targetSessionId: destination },
+      });
+      expect(
+        yield* f.direct("sessions.schedule", { text: "Self", delaySeconds: 30 }, sender),
+      ).toMatchObject({ ok: true, target: { sessionId: sender.sessionId } });
+    }
+    // Permanent roots have no recorded parent; never create a self-thread or forward.
+    expect(
+      yield* f
+        .direct(
+          "sessions.send",
           { sessionId: "parent", text: "No loop" },
           { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
-        ),
-      ).toMatchObject({ ok: false, error: "A session thread requires two different sessions." });
-      expect(yield* Queue.size(f.prompts)).toBe(0);
-    }),
+        )
+        .pipe(Effect.result),
+    ).toMatchObject({
+      _tag: "Failure",
+      failure: { message: expect.stringContaining("no parent") },
+    });
+    expect(yield* Queue.size(f.prompts)).toBe(0);
+  }),
 );
 
 it.effect("parent navigation resolves before the existing window permission boundary", () =>
   Effect.gen(function* () {
     const f = yield* fixture(true);
     const projectChat = projectChatSessionId("/project");
+    yield* Context.get(f.context, SessionFamilyStorage).registerParent({
+      sessionId: source,
+      parentSessionId: projectChat,
+    });
     yield* f.requests.bind({ _tag: "ProjectSession", sessionId: source }, 11);
     const opening = yield* f.call("sessions.open", { sessionId: "parent" }).pipe(Effect.forkChild);
     const request = yield* Queue.take(f.deliveries);
@@ -4670,10 +4997,15 @@ it.effect(
         ),
       ).toMatchObject({ ok: true, target: { sessionId: target } });
       expect((yield* Queue.take(f.prompts)).sessionId).toBe(target);
-      // Required targets remain required; adding parent does not make other tools default to self.
+      // Sends default to the same invoking parent; unrelated tools still require targets.
       expect(
-        yield* f.direct("sessions.send", { text: "Missing target" }, sender).pipe(Effect.result),
-      ).toMatchObject({ _tag: "Failure" });
+        yield* f.direct(
+          "sessions.send",
+          { text: "Default parent", resultDelivery: "ignore" },
+          sender,
+        ),
+      ).toMatchObject({ ok: true, target: { sessionId: target } });
+      expect((yield* Queue.take(f.prompts)).sessionId).toBe(target);
       expect(yield* f.direct("sessions.info", {}, sender).pipe(Effect.result)).toMatchObject({
         _tag: "Failure",
       });

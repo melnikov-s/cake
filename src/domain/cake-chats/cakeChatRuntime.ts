@@ -904,7 +904,20 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               const argumentsObject = yield* Schema.decodeUnknownEffect(jsonObjectSchema)(
                 invocation.arguments,
               );
-              if (
+              if (invocation.name === "sessions.send")
+                invocation = {
+                  ...invocation,
+                  arguments: {
+                    ...argumentsObject,
+                    sessionId: yield* sessionReferences.messageTarget(
+                      (yield* Schema.decodeUnknownEffect(
+                        Schema.Struct({ sessionId: Schema.optionalKey(Schema.String) }),
+                      )(argumentsObject)).sessionId,
+                      senderSessionId,
+                    ),
+                  },
+                };
+              else if (
                 invocation.name !== "sessions.compact" &&
                 invocation.name !== "sessions.tool-compact" &&
                 Schema.is(Schema.String)(argumentsObject.sessionId)
@@ -925,18 +938,12 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               const args = yield* Schema.decodeUnknownEffect(
                 Schema.Struct({ sessionId: Schema.optionalKey(Schema.String) }),
               )(invocation.arguments);
-              // Project Sessions reach Cake Chat by omitting sessionId; Cake Chat cannot message itself.
-              if (
-                invocation.name === "sessions.send" &&
-                (sideChatSessionId
-                  ? (args.sessionId ?? CAKE_CHAT_SESSION_ID) === senderSessionId
-                  : args.sessionId === undefined || args.sessionId === target.sessionId)
-              )
+              if (invocation.name === "sessions.send" && args.sessionId === senderSessionId)
                 return {
                   ok: false,
                   command: "sessions.send",
                   error:
-                    "Cake Chat cannot message itself. Omitting sessionId addresses Cake Chat only when a Project Session sends; from Cake Chat, pass the target Project Session's sessionId (see sessions.list).",
+                    "A session thread requires two different sessions; provide an explicit sessionId.",
                 };
               yield* Effect.scoped(validateMessageReferenceControl(invocation));
               const forwarded = yield* forwardTaskInputControl(target.sessionId, invocation);
@@ -1007,7 +1014,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                             yield* projectSessionCreation.createPrompted({
                               ...input,
                               projectPath: input.workspacePath,
-                              source: { sessionId: target.sessionId, kind: "cake-chat", title },
+                              source: { sessionId: senderSessionId, kind: "cake-chat", title },
                               senderWorkingDirectory: project?.path,
                               attachments: selected.inputRefs.map((reference) => ({
                                 kind: "forwarded-input" as const,

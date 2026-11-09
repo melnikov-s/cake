@@ -33,6 +33,54 @@ const child = (requestId: string, childSessionId: string) => ({
 
 describe("SessionFamilyStorage", () => {
   it.effect(
+    "round-trips independent parent provenance across restart without inventing legacy owners",
+    () =>
+      Effect.gen(function* () {
+        const harness = familyStorageHarness(
+          new Map([
+            [
+              "state/session-families.json",
+              JSON.stringify({
+                version: 11,
+                data: { families: [], turns: [], spawnedSessions: [] },
+              }),
+            ],
+          ]),
+        );
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionFamilyStorage;
+          assert.equal((yield* storage.state()).sessionParents, undefined);
+          yield* storage.registerParent({
+            sessionId: "task",
+            parentSessionId: "creator",
+            projectPath: "/project",
+          });
+          yield* storage.registerParent({
+            sessionId: "task",
+            parentSessionId: "creator",
+            projectPath: "/project",
+          });
+          for (const parent of [
+            { sessionId: "self", parentSessionId: "self" },
+            { sessionId: "task", parentSessionId: "different" },
+          ])
+            assert.equal(
+              (yield* storage.registerParent(parent).pipe(Effect.result))._tag,
+              "Failure",
+            );
+        }).pipe(Effect.provide(harness.layer));
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionFamilyStorage;
+          assert.deepEqual((yield* storage.state()).sessionParents, [
+            { sessionId: "task", parentSessionId: "creator", projectPath: "/project" },
+          ]);
+          assert.deepEqual((yield* storage.state()).families, []);
+          yield* storage.removeProject("/project");
+          assert.deepEqual((yield* storage.state()).sessionParents, []);
+        }).pipe(Effect.provide(familyStorageHarness(harness.files).layer));
+      }),
+  );
+  it.effect(
     "migrates explicit v8 delivery pauses without carrying old budgets into default delivery",
     () => {
       const files = new Map([

@@ -238,11 +238,16 @@ projections needed by a surface. References do not transfer ownership.
   exits clear prior scope. Ordinary messages add no reminder and transitions never wake or
   interrupt an agent. Deeper session context and
   navigation use existing validated Cake tools, with unchanged trust and action safeguards.
-  Explicit session target `parent` resolves at admission: companion → current invoking
-  context, child → actual family parent, top-level Project Session → owning Project
-  Chat, Project Chat → Cake Chat, Cake Chat → itself. Creator/source links are not
-  ancestry; absent companion context fails rather than guessing. Schedules persist
-  the concrete destination, and omitted scheduling targets always mean caller/self.
+  Explicit session target `parent` resolves recorded provenance at admission:
+  companion → invoking context, Side Chat → originating conversation, family child →
+  immediate parent, independent task → recorded creator. Omitted `sessions.send`
+  targets use the same provenance; missing, resolved or unavailable parents fail
+  without guessing from the workspace, forwarding to Global Cake Chat, or restoring
+  a chat. Permanent chats have no parent and require an explicit destination.
+  Existing launch/family/Side Chat metadata remains authoritative; new independent
+  task provenance is saved separately from family membership, including ignored-result
+  launches. Legacy records without provenance require explicit addressing.
+  Schedules persist the concrete destination; omitted scheduling targets remain caller/self.
 - Agent discovery follows list → inspect → bounded read. Lists return exact routing
   identities, short labels and selection-relevant metadata, not content, transcripts,
   full settings, file manifests or reports. Apply domain filters and deterministic

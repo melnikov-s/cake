@@ -1,5 +1,6 @@
 import { DiscussionTitleRequests } from "../../services/discussion-sessions/DiscussionTitleRequests";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { inheritTaskInputProtection, prepareTaskInputs } from "../conversations/taskInputs";
 import { projectAttachments } from "../conversations/conversations";
 import * as cakeChatRuntime from "../cake-chats/cakeChatRuntime";
@@ -286,6 +287,13 @@ const prepare = Effect.fn("DiscussionSessions.prepare")(function* (
   record: DiscussionSessionRecord,
 ) {
   const sidecarSessionId = record.sidecarSessionId ?? crypto.randomUUID();
+  yield* (yield* SessionFamilyStorage)
+    .registerParent({
+      sessionId: sidecarSessionId,
+      parentSessionId: record.parentSessionId,
+      kind: "side-chat",
+    })
+    .pipe(asError("prepare"));
   const configuration = yield* sideChatConfiguration({ ...record, sidecarSessionId });
   return yield* acquireRecord(record, configuration, sidecarSessionId);
 });

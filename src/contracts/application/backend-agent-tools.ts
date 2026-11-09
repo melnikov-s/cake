@@ -317,12 +317,12 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "Message target; omission reaches Cake Chat",
+      summary: "Message target; omission reaches recorded parent",
       guidance: [
         "projects.list returns projectChatId; send directly. No checkout/hash/history lookup. Receipt proves admission/retention, not execution.",
-        "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach global Cake Chat by omitting sessionId.",
+        "Omit sessionId to message the sender's recorded parent. No parent, resolved or unavailable parent: fail without forwarding or restoring. Explicit cake-chat addresses Global Cake Chat.",
         sessionParentGuidance,
-        "A resolved self-target (including Cake Chat parent) cannot create a messaging thread; it does not auto-forward.",
+        "Self-targets cannot create a messaging thread; they do not auto-forward.",
         promptFilesGuidance,
         resultDeliveryGuidance,
         sessionMessageDeliveryGuidance,

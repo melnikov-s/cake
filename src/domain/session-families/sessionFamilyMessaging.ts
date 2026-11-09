@@ -1,4 +1,5 @@
 import * as coordinatorMessageRouting from "./coordinatorMessageRouting";
+import * as sessionReferences from "../project-sessions/sessionReferences";
 import {
   SessionMessageDelivery,
   SessionMessageDeliveryOptions,
@@ -95,6 +96,16 @@ export const route: (
   yield* Schema.decodeUnknownEffect(SessionMessageDeliveryOptions)(input).pipe(
     Effect.mapError(routingError),
   );
+  if (
+    command === "sessions.send" &&
+    (input.sessionId === undefined || input.sessionId === "parent")
+  )
+    input = {
+      ...input,
+      sessionId: yield* sessionReferences
+        .messageTarget(input.sessionId, sessionId)
+        .pipe(Effect.mapError(routingError)),
+    };
   const families = yield* SessionFamilyStorage;
   const sessions = yield* CakeSessionRuntimes;
   const configuration = yield* ProjectSessionConfiguration;

@@ -74,9 +74,8 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
           )
         : undefined;
     const requesterId = spawn?.requester.sessionId ?? owedCoordinator?.senderSessionId;
-    // Omitted send targets mean global Cake Chat; replies follow their originating chat.
-    const targetId =
-      command === "sessions.reply" ? requesterId : (input.sessionId ?? CAKE_CHAT_SESSION_ID);
+    // Sends arrive with their parent/explicit destination resolved; replies retain correlation.
+    const targetId = command === "sessions.reply" ? requesterId : input.sessionId;
     if (!targetId || !isCakeChatSessionId(targetId)) return undefined;
     const sessions = yield* CakeSessionRuntimes;
     const executingIds = yield* sessions.executingTurnIds({

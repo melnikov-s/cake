@@ -231,11 +231,11 @@ export function createSessionFamilyOperations(
       canonicalSessionIds: true,
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Message target; omission reaches Cake Chat",
+      summary: "Message target; omission reaches recorded parent",
       guidance: [
         promptFilesGuidance,
         "Send to projectChatId from projects.list directly; no repository/hash/history lookup. Receipt is intake/retention, not execution.",
-        "Omit sessionId to reach Cake Chat from a Project Session. Questions need resultDelivery: reply; blocking decisions use sessions.reply outcome: blocked. Delivery/thread fields keep ordinary meaning.",
+        "Omit sessionId (or use parent) to message the sender's recorded parent, never a guessed chat. Missing, resolved or unavailable parent fails; permanent chats require an explicit target. Use cake-chat for Global Cake Chat. Questions need resultDelivery: reply; blocking decisions use sessions.reply outcome: blocked.",
         "Family messaging defaults to Workboard, including descendants; explicit user exceptions apply. User replies, Cake Chat and independent sessions are unaffected.",
         "Outside the family, necessary immediate corrections steer active work by default; idle sessions start normally. Use delivery: fyi for passive batched updates, queue only for deliberately ordered future work.",
         resultDeliveryGuidance,
@@ -249,7 +249,7 @@ export function createSessionFamilyOperations(
         sessionId: Schema.optionalKey(
           Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
             description:
-              "Target Project Session ID or bare hexadecimal suffix. Omit to message Cake Chat, which has no session ID.",
+              "Target session ID/suffix, project-chat:<hash>, cake-chat, or parent. Omit to message the recorded parent; no available parent requires an explicit target.",
           }),
         ),
         inputRefs: Schema.optionalKey(inputRefsSchema),
@@ -286,7 +286,7 @@ export function createSessionFamilyOperations(
             text: "Should I drop the legacy column or keep it behind a flag?",
             resultDelivery: "reply",
           },
-          description: "No sessionId: ask Cake Chat (and through it, the user) a question.",
+          description: "No sessionId: ask the recorded parent a question.",
         },
       ],
       result:

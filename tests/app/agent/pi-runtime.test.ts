@@ -192,6 +192,54 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect((await info()).family?.childSessionIds).toEqual(["first-child", "second-child"]);
   });
 
+  it.each([undefined, "parent"])(
+    "preserves send target %s until parent-aware admission",
+    async (sessionId) => {
+      const directory = await createTemporaryDirectory();
+      const routed: JsonObject[] = [];
+      const resolved: string[] = [];
+      const runtime = await createCakeSessionRuntime({
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+        sessionReferences: {
+          resolve: async (reference) => {
+            resolved.push(reference);
+            return "prematurely-resolved";
+          },
+          project: async (value) => value,
+          ids: async () => [],
+        },
+        currentSessionControl: {
+          resolved: () => false,
+          setResolved: async () => undefined,
+          readPolicy: async () => ({ canFork: true, deferResolution: true }),
+          resolveDeferredStandalone: async () => undefined,
+          routeFamilyMessage: async (_command, input) => {
+            routed.push(input);
+            return { ok: true };
+          },
+          invokeAppControl: async () => {
+            throw new Error("Handled family routing must not fall through");
+          },
+        },
+      });
+      runtimes.push(runtime);
+      const call = runtime.callCakeOperation;
+      if (!call) throw new Error("Expected Cake controls");
+      await call(
+        "sessions.send",
+        { ...(sessionId ? { sessionId } : {}), text: "Question" },
+        new AbortController().signal,
+      );
+      expect(routed).toEqual([{ ...(sessionId ? { sessionId } : {}), text: "Question" }]);
+      expect(resolved).toEqual([]);
+    },
+  );
+
   it.each(["sessions.send", "sessions.reply"])(
     "%s captures once before family routing and passes content, not paths, through fallback",
     async (command) => {

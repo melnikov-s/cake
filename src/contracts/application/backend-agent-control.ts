@@ -133,7 +133,7 @@ export const BackendAgentInvocation = Schema.Union([
   operation(
     "sessions.send",
     Schema.Struct({
-      ...target,
+      sessionId: Schema.optionalKey(target.sessionId),
       ...message,
       inputRefs: Schema.optionalKey(inputRefsSchema),
       messageRefs: Schema.optionalKey(messageRefsSchema),
