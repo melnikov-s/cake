@@ -179,7 +179,7 @@ describe("nested rich capabilities across production hosts", () => {
     );
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(
-      within(screen.getByRole("dialog", { name: "Open side chats" })).getByRole("button"),
+      within(screen.getByRole("dialog", { name: "Open side chats" })).getAllByRole("button")[0]!,
     );
     const assertRichPanel = async () => {
       const panel = screen;

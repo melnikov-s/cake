@@ -149,7 +149,8 @@ async function openChanges(fixture: ReturnType<typeof renderChanges>, commits = 
   const toggle = await screen.findByRole("button", {
     name: `Review changes · ${commits} commits`,
   });
-  expect(toggle.textContent).toBe(String(commits));
+  // The bubble caps at 99+; the accessible name keeps the exact count.
+  expect(toggle.textContent).toBe(commits > 99 ? "99+" : String(commits));
   await fixture.user.click(toggle);
   return screen.findByRole("complementary", { name: "Changes" });
 }

@@ -113,7 +113,7 @@ it("inherits inline action roles but allows explicit navigation, leaving non-gly
   expect(view.getByTestId("status").className).toContain("bg-accent");
 });
 
-it("reserves the existing badge/target track independently of the navigation glyph", () => {
+it("keeps the shared target and navigation glyph while capping a large count", () => {
   const view = render(
     <NumberedIconButton count={1000} tooltip="Artifacts">
       <ArtifactIcon />
@@ -121,8 +121,8 @@ it("reserves the existing badge/target track independently of the navigation gly
   );
   const svg = view.container.querySelector("svg")!;
   expect(svg.getAttribute("width")).toBe("18");
-  expect(svg.parentElement!.classList.contains("size-6")).toBe(true);
-  expect(view.getByText("1000").classList.contains("min-w-3.5")).toBe(true);
+  expect(view.getByRole("button", { name: "Artifacts" }).classList.contains("size-7")).toBe(true);
+  expect(view.getByText("99+").classList.contains("min-w-3.5")).toBe(true);
 });
 
 it("only the three view controls are 24px, retaining pressed states and handlers", () => {

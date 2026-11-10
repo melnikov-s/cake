@@ -272,7 +272,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     this.openSideChat(threadId);
   }
 
-  private async createSideChat(prompt: string) {
+  /** Starts a side chat as `/sidechat` does; an empty prompt opens a draft side chat. */
+  async createSideChat(prompt: string) {
     const hasCompletedReply = this.model.uiParts.some(
       (part) =>
         part.kind === "text" &&

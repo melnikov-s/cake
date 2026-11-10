@@ -188,7 +188,7 @@ describe("child-scoped nested interaction routing", () => {
     using fixture = mountNested({ interviews: { respond } });
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(
-      within(screen.getByRole("dialog", { name: "Open side chats" })).getByRole("button"),
+      within(screen.getByRole("dialog", { name: "Open side chats" })).getAllByRole("button")[0]!,
     );
     await fixture.emit({
       type: "interview-requested",

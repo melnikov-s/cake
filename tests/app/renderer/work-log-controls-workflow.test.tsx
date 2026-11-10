@@ -64,7 +64,8 @@ it.each([
   expect(buttons[buttons.indexOf(trigger) - 1]).toBe(
     screen.getByRole("button", { name: "Terminal" }),
   );
-  expect(trigger.querySelectorAll("svg")).toHaveLength(2);
+  // One glyph, the same size as its neighbors; the popover shows the current choices.
+  expect(trigger.querySelectorAll("svg")).toHaveLength(1);
   await fixture.user.click(trigger);
   for (const name of [
     "Auto view mode",

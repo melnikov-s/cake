@@ -440,7 +440,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return true;
   }
 
-  private async createSideChat(prompt: string) {
+  /** Starts a side chat as `/sidechat` does; an empty prompt opens a draft side chat. */
+  async createSideChat(prompt: string) {
     if (this.pending.isTemporary(this.sessionId)) return false;
     if (!prompt) {
       this.messageCommentsStore.prepareSessionDraft();

@@ -33,7 +33,7 @@ Useful deterministic controls include:
 - `--theme light|dark`
 - `--width` and `--height` for the Electron renderer or Chromium browser viewport
 - `--capture region|window` for Electron's scenario-owned region or full app content (browser scenarios always capture the full viewport). Full-window Electron captures composite the real captures of visible native WebContentsViews at their actual bounds and paint order, so embedded VS Code and Browser Mode are included.
-- `--capture native` (macOS) shows the separate capture window without focus and records it with `screencapture`, at display scale, including the native traffic lights that page captures omit. `title-bar-alignment` uses it to measure the shared title-bar center line.
+- `--capture native` (macOS) shows the separate capture window without focus and records it with `screencapture`, at display scale, including the native traffic lights that page captures omit. `title-bar-alignment` uses it to measure the shared title-bar center line; every state also asserts the VS Code mode button is centered on the window (±1px) and every title-bar control is a 28px square on that line. `title-bar-side-chats` shows the always-present Side chats menu empty (`empty`) and with an open side chat (`items`).
 - `--output <file.png>` or `--output-dir <directory>`
 
 By default, PNGs are written beneath `.visual-captures/`, which is ignored by Git. Use a tracked location only when intentionally creating a reviewed fixture or baseline.

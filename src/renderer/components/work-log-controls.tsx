@@ -2,6 +2,7 @@ import { observer } from "r-state-tree/react";
 import { Popover, PopoverContent, PopoverIconTrigger } from "@/components/ui/popover";
 import {
   DiffIcon,
+  EyeIcon,
   LogIcon,
   SparkleIcon,
   WorkLogCollapsedIcon,
@@ -17,21 +18,8 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
 
   return (
     <Popover>
-      <PopoverIconTrigger
-        className="w-10"
-        data-cake-hint-key="w"
-        tooltip="Work log display options"
-      >
-        <span className="flex items-center gap-0.5">
-          {viewMode === "auto" ? <SparkleIcon /> : viewMode === "diff" ? <DiffIcon /> : <LogIcon />}
-          {expansion === "collapsed" ? (
-            <WorkLogCollapsedIcon />
-          ) : expansion === "expanded" ? (
-            <WorkLogSemiExpandedIcon />
-          ) : (
-            <WorkLogFullyExpandedIcon />
-          )}
-        </span>
+      <PopoverIconTrigger data-cake-hint-key="w" tooltip="Work log display options">
+        <EyeIcon />
       </PopoverIconTrigger>
 
       <PopoverContent

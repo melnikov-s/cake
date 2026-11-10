@@ -1,7 +1,10 @@
 /** @vitest-environment jsdom */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { WorkspaceHeader } from "../../../src/renderer/components/ui/workspace-header";
+import {
+  ShellHeaderContext,
+  WorkspaceHeader,
+} from "../../../src/renderer/components/ui/workspace-header";
 import { WorkspaceModeControls } from "../../../src/renderer/components/workspace-mode-controls";
 
 afterEach(cleanup);
@@ -58,4 +61,29 @@ it("keeps the compact drop-down title and actions inline without a mode slot", (
       .getAllByRole("button")
       .map((button) => button.textContent),
   ).toEqual(["Destination", "Close"]);
+});
+
+it("centers the shell header's mode group on the window, not between title and actions", () => {
+  const target = document.createElement("div");
+  document.body.append(target);
+  try {
+    render(
+      <ShellHeaderContext value={target}>
+        <WorkspaceHeader title="Conversation">
+          <button>Artifacts</button>
+        </WorkspaceHeader>
+      </ShellHeaderContext>,
+    );
+    const header = target.querySelector('[data-slot="workspace-header"]')!;
+    // The first track ends at the window's center line; the mode group overflows a
+    // zero-width track there evenly, so VS Code (the middle mode) sits under the notch.
+    expect(header.className).toContain(
+      "grid-cols-[minmax(0,calc(50vw-var(--project-rail-width,0px)-var(--workspace-header-start)))_0px_minmax(0,1fr)]",
+    );
+    expect(header.querySelector('[data-slot="workspace-mode"]')!.className).toContain(
+      "justify-center",
+    );
+  } finally {
+    target.remove();
+  }
 });

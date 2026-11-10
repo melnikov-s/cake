@@ -190,11 +190,11 @@ it.each(["project", "cake-chat"] as const)(
     using view = renderActivity(kind);
     for (const status of ["queued", "running", "complete"] as const) {
       view.publishWorker(status);
-      expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Side chats, / })).toBeNull();
       expect(screen.queryByRole("dialog", { name: "Open side chats" })).toBeNull();
     }
     view.publishWorker("complete", true);
-    expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Side chats, / })).toBeNull();
   },
 );
 

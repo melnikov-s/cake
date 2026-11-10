@@ -291,7 +291,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
         trigger(),
         document.querySelector('[data-slot="shell-workspace-toggle"]'),
       ]);
-      expect(trigger().querySelectorAll("svg")).toHaveLength(2);
+      expect(trigger().querySelectorAll("svg")).toHaveLength(1);
     };
     expectShellPlacement();
     const presentation = f.session.conversationSessionStore.chatStore.workLogPresentation;

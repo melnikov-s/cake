@@ -91,7 +91,8 @@ export const AppShellLayout = observer(function AppShellLayout({
           className={cn(
             "col-start-2 col-end-5 row-start-1 min-w-0",
             workspaceControls &&
-              "[&_[data-slot=workspace-actions]]:mr-11 [&_[data-slot=workspace-actions]]:max-w-[calc(100%-2.75rem)]",
+              // One more 28px control and 4px gap beside the shell's sidebar toggle.
+              "[&_[data-slot=workspace-actions]]:mr-8 [&_[data-slot=workspace-actions]]:max-w-[calc(100%-var(--workspace-mode-clearance)-2rem)]",
           )}
         />
         <section

@@ -316,6 +316,7 @@ describe("Workspace mode navigation", () => {
       const utilities = [...actions.querySelectorAll("button")];
       expect(utilities.map((button) => button.getAttribute("aria-label"))).toEqual([
         "0 artifacts",
+        "Side chats",
         "Review changes",
         "Terminal",
         "Work log display options",
@@ -326,7 +327,10 @@ describe("Workspace mode navigation", () => {
       expect(separator.getAttribute("aria-hidden")).toBe("true");
       expect(separator.classList.contains("w-px")).toBe(true);
       expect(actions.classList.contains("overflow-x-auto")).toBe(true);
-      expect(actions.classList.contains("max-w-full")).toBe(true);
+      // Actions stop short of the window-centered mode group.
+      expect(actions.classList.contains("max-w-[calc(100%-var(--workspace-mode-clearance))]")).toBe(
+        true,
+      );
       expect(actions.classList.contains("justify-self-end")).toBe(true);
       expect(header.classList.contains("h-title-bar")).toBe(true);
       expect(header.classList.contains("flex-col")).toBe(false);

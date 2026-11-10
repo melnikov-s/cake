@@ -481,6 +481,12 @@ export const TreeIcon = () => (
     <path d="M8 19h4a2 2 0 0 0 2-2v-3.5" />
   </Icon>
 );
+export const EyeIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12" />
+    <circle cx="12" cy="12" r="3" />
+  </Icon>
+);
 export const SparkleIcon = () => (
   <Icon size={14}>
     <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />

@@ -120,6 +120,17 @@ const assistantMarkdown = [
   "> Named scenarios keep setup and interaction deterministic.",
 ].join("\n");
 
+/** Launch always starts in global Cake Chat; open the seeded Project Session explicitly. */
+async function openSeededSession(page: Page, project: string, title: string) {
+  await page.getByRole("button", { name: `Open Project Chat for ${project}`, exact: true }).click();
+  await page.getByRole("button", { name: "Search sessions", exact: true }).first().click();
+  await page.keyboard.type(title);
+  await page
+    .getByRole("option", { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .first()
+    .click();
+}
+
 const assistantMarkdownCode: VisualCaptureScenario = {
   name: "assistant-markdown-code",
   description: "Assistant Markdown with a highlighted TypeScript code block",
@@ -212,6 +223,11 @@ const assistantMarkdownCode: VisualCaptureScenario = {
   },
   async prepare(page, state) {
     const code = page.locator('[data-streamdown="code-block-body"] code');
+    await openSeededSession(
+      page,
+      "visual-capture-project",
+      "How should agents capture Cake UI changes?",
+    );
     await code.waitFor({ state: "visible", timeout: 20_000 });
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.waitForFunction(() =>
@@ -3618,8 +3634,31 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
           titleCenter: title.getBoundingClientRect().y + title.getBoundingClientRect().height / 2,
           actionsCenter:
             actions.getBoundingClientRect().y + actions.getBoundingClientRect().height / 2,
-          navigatorBottom: navigator?.getBoundingClientRect().bottom,
+          // Only a navigator header sharing the title row must share its bottom rule.
+          navigatorBottom:
+            navigator && navigator.getBoundingClientRect().top < box.bottom
+              ? navigator.getBoundingClientRect().bottom
+              : undefined,
           headerBottom: box.bottom,
+          windowCenter: window.innerWidth / 2,
+          vsCodeCenter: (() => {
+            const b = header.querySelector('[aria-label="VS Code"]')?.getBoundingClientRect();
+            return b && b.x + b.width / 2;
+          })(),
+          // Every title-bar control shares one hit-target size and centerline.
+          controls: [
+            ...actions.querySelectorAll("button"),
+            ...document.querySelectorAll('[data-slot="shell-workspace-controls"] button'),
+          ].map((button) => {
+            const b = button.getBoundingClientRect();
+            return {
+              name: button.getAttribute("aria-label"),
+              x: b.x,
+              width: b.width,
+              height: b.height,
+              center: b.y + b.height / 2,
+            };
+          }),
           buttonsContained: [...actions.querySelectorAll("button")].every((button) => {
             const b = button.getBoundingClientRect();
             return b.top >= box.top && b.bottom <= box.bottom;
@@ -3631,6 +3670,13 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
       expect(geometry.titleCenter).toBe(geometry.titleBarHeight / 2);
       expect(geometry.actionsCenter).toBe(geometry.titleBarHeight / 2);
       expect(geometry.buttonsContained).toBe(true);
+      if (geometry.vsCodeCenter !== undefined)
+        expect(Math.abs(geometry.vsCodeCenter - geometry.windowCenter)).toBeLessThanOrEqual(1);
+      for (const control of geometry.controls) {
+        expect(control.width, control.name ?? "").toBe(28);
+        expect(control.height, control.name ?? "").toBe(28);
+        expect(control.center, control.name ?? "").toBe(geometry.titleBarHeight / 2);
+      }
       if (geometry.navigatorBottom !== undefined)
         expect(geometry.navigatorBottom).toBe(geometry.headerBottom);
       let nativeCenter: number | undefined;
@@ -3648,6 +3694,37 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
       );
       console.log("TITLE_BAR_GEOMETRY", JSON.stringify({ ...geometry, nativeCenter }));
     }
+  },
+  region: (page) => page.locator("body"),
+};
+
+/** The always-present title-bar Side chats menu, with and without open side chats. */
+const titleBarSideChatsScenario: VisualCaptureScenario = {
+  name: "title-bar-side-chats",
+  description:
+    "Title-bar Side chats popover: empty Project Chat, and Cake Chat with one side chat; both offer New side chat",
+  states: ["empty", "items"],
+  seed: (paths, theme) => sideChatActions.seed(paths, theme),
+  async prepare(page, state) {
+    await page
+      .getByRole("button", {
+        name: state === "empty" ? "Open Project Chat for visual-capture-project" : "Open Cake Chat",
+        exact: true,
+      })
+      .click();
+    const header = page.locator('[data-slot="workspace-header"]');
+    const trigger = header.getByRole("button", {
+      name: state === "empty" ? "Side chats" : "Side chats, 1 open",
+      exact: true,
+    });
+    await expect(trigger).toBeVisible({ timeout: 20_000 });
+    await trigger.click();
+    const menu = page.getByRole("dialog", { name: "Open side chats" });
+    await expect(menu.getByRole("button", { name: "New side chat", exact: true })).toBeVisible();
+    if (state === "empty") await expect(menu).toContainText("No side chats yet.");
+    else await expect(menu.getByRole("button", { name: "Quick greeting" })).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(700, 600);
   },
   region: (page) => page.locator("body"),
 };
@@ -4431,12 +4508,14 @@ function numberedIconButtonsScenario(count: number): VisualCaptureScenario {
       const artifact = header.getByRole("button", { name: `${count} artifacts`, exact: true });
       const chats = header.getByRole("button", { name: "Side chats, 1 open", exact: true });
       await expect(artifact).toBeVisible({ timeout: 20_000 });
-      await expect(artifact.getByText(String(count), { exact: true })).toBeVisible();
+      await expect(
+        artifact.getByText(count > 99 ? "99+" : String(count), { exact: true }),
+      ).toBeVisible();
       await expect(chats).toBeVisible();
       // Check actual CSS and geometry, not only the intended utility strings.
       for (const trigger of [artifact, chats]) {
         const geometry = await trigger.evaluate((button) => {
-          const badge = button.querySelector(".col-start-2")!;
+          const badge = button.querySelector('[data-slot="count-badge"]')!;
           const b = badge.getBoundingClientRect();
           const t = button.getBoundingClientRect();
           const icon = button.querySelector("svg")!.getBoundingClientRect();
@@ -4471,16 +4550,30 @@ function numberedIconButtonsScenario(count: number): VisualCaptureScenario {
             }),
             width: t.width,
             height: t.height,
+            // The bubble may extend past the target's corner into the gap, but stays
+            // inside the title bar and clear of every neighboring glyph.
             contained:
-              b.left >= t.left && b.right <= t.right && b.top >= t.top && b.bottom <= t.bottom,
+              b.left >= t.left &&
+              b.right <= t.right + 4 &&
+              b.top >=
+                button.closest('[data-slot="workspace-header"]')!.getBoundingClientRect().top &&
+              Array.from(neighbors).every((neighbor) => {
+                const glyph = neighbor === button ? null : neighbor.querySelector("svg");
+                if (!glyph) return true;
+                const g = glyph.getBoundingClientRect();
+                return (
+                  g.right <= b.left || g.left >= b.right || g.bottom <= b.top || g.top >= b.bottom
+                );
+              }),
           };
         });
         expect(geometry.fontSize).toBe("10px");
         expect(geometry.fontWeight).toBe("600");
         expect(geometry.badgeHeight).toBe(14);
         expect(geometry.background).not.toMatch(/\/|rgba|transparent/);
-        expect(geometry.width).toBeGreaterThanOrEqual(32);
-        expect(geometry.height).toBeGreaterThanOrEqual(32);
+        // Counted triggers keep the shared 28px title-bar target.
+        expect(geometry.width).toBe(28);
+        expect(geometry.height).toBe(28);
         expect(geometry.contained).toBe(true);
         expect(geometry.textFits).toBe(true);
         expect(geometry.separated).toBe(true);
@@ -7928,6 +8021,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionSearchScenario,
   cakeChatScenario,
   titleBarAlignmentScenario,
+  titleBarSideChatsScenario,
   cakeChatConversationScenario,
   cakeChatOverlayScenario,
   subagentReportsScenario,

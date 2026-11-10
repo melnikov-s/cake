@@ -124,7 +124,7 @@ describe("IDE conversation workflows", () => {
     });
     await fixture.user.click(screen.getByRole("button", { name: "VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
-    expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Side chats, / })).toBeNull();
     await fixture.user.click((await screen.findByText("Work log")).closest("summary")!);
     // jsdom cannot settle the list's bottom placement. Set the reader preference before mounting it.
     act(() => {

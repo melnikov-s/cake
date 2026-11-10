@@ -454,7 +454,7 @@ it("merges an idle side chat explicitly and closes only after successful resolut
   expect(fixture.models.discussionCatalog(CAKE_CHAT_SESSION_ID).threads[0]?.status).toBe(
     "resolved",
   );
-  expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Side chats, / })).toBeNull();
   expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
   expect(fixture.chat.conversationSessionStore.sideChatStore.target).toBeUndefined();
   expect(
@@ -502,7 +502,7 @@ it("closes and resolves from the action area without merging or losing the sourc
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   );
   expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
-  expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Side chats, / })).toBeNull();
   expect(fixture.side.parts).toMatchObject([
     { id: "merge-side:side-question", role: "user", text: "Side question" },
     { id: "merge-side:side-answer", role: "assistant", text: "Side answer" },
@@ -606,7 +606,7 @@ it("appends collapsed attributed history with attachments and reopens its preser
   expect(fixture.models.discussionCatalog(CAKE_CHAT_SESSION_ID).threads[0]?.status).toBe(
     "resolved",
   );
-  expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Side chats, / })).toBeNull();
   expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
   expect(screen.getByRole("button", { name: "Merge into main chat" })).toBeDefined();
   view.unmount();
@@ -869,7 +869,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
     );
     expect(chat.conversationSessionStore.sideChatStore.target).toBeUndefined();
     expect(screen.getByRole("combobox", { name: parentInputName })).toBeDefined();
-    expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Side chats, / })).toBeNull();
     expect(chat.sideChats.chatStore(thread.id)?.parts.map((part) => part.id)).toEqual([
       "anchor:thread-1",
       "q",
