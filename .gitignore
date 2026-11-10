@@ -10,6 +10,7 @@ test-results/
 .workflow-node-test-*/
 .performance-captures/
 .visual-captures/
+scripts/visual-capture/.compiled-cli-*
 *.log
 .DS_Store
 native/dictation/.build/

@@ -24,7 +24,13 @@ try {
   });
   await import(pathToFileURL(output).href);
 } finally {
-  await unlink(output).catch((error) => {
-    if (error?.code !== "ENOENT") throw error;
-  });
+  // esbuild emits a sibling stylesheet when the bundle imports CSS.
+  const stylesheet = output.replace(/\.mjs$/, ".css");
+  await Promise.all(
+    [output, stylesheet].map((path) =>
+      unlink(path).catch((error) => {
+        if (error?.code !== "ENOENT") throw error;
+      }),
+    ),
+  );
 }
