@@ -1,5 +1,6 @@
 import { observer } from "r-state-tree/react";
 import { useLayoutEffect, useRef } from "react";
+import { projectTodoAttentionDetail } from "../../contracts/projects/project-todos";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
@@ -62,33 +63,39 @@ export const ConversationAttention = observer(function ConversationAttention({
         aria-label="Needs attention items"
         className="-m-1 flex max-h-[30vh] min-h-0 flex-col gap-1.5 overflow-y-auto overscroll-y-contain p-1"
       >
-        {items.map((item) => (
-          <div
-            key={item.id}
-            role="listitem"
-            className="group/attention flex min-w-0 shrink-0 items-center rounded-full border border-border/85 bg-background"
-          >
-            <Button
-              variant="ghost"
-              disabled={todos.busy}
-              aria-label={`Open attention: ${item.title}`}
-              title={item.title}
-              className="h-auto min-h-9 min-w-0 flex-1 justify-start rounded-full px-3 py-2 text-left text-sm font-normal text-foreground"
-              onClick={() => void activate(item)}
+        {items.map((item) => {
+          const detail = projectTodoAttentionDetail(item);
+          return (
+            <div
+              key={item.id}
+              role="listitem"
+              className="group/attention flex min-w-0 shrink-0 items-center rounded-full border border-border/85 bg-background"
             >
-              <span className="min-w-0 whitespace-normal break-words">{item.attentionReason}</span>
-            </Button>
-            <IconButton
-              iconSize="inline"
-              tooltip={`Clear attention: ${item.title}`}
-              disabled={todos.busy}
-              className="mr-1 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground [@media(hover:hover)_and_(not_(any-pointer:coarse))]:opacity-0 [@media(hover:hover)_and_(not_(any-pointer:coarse))]:group-hover/attention:opacity-100 group-focus-within/attention:opacity-100"
-              onClick={() => void todos.dismissAttention(item)}
-            >
-              <CloseIcon size={12} />
-            </IconButton>
-          </div>
-        ))}
+              <Button
+                variant="ghost"
+                disabled={todos.busy}
+                aria-label={`Open attention: ${item.title}`}
+                title={item.title}
+                className="h-auto min-h-9 min-w-0 flex-1 justify-start rounded-full px-3 py-2 text-left text-sm font-normal text-foreground"
+                onClick={() => void activate(item)}
+              >
+                <span className="flex min-w-0 flex-col whitespace-normal break-words">
+                  <span>{item.title}</span>
+                  {detail && <span className="text-xs text-muted-foreground">{detail}</span>}
+                </span>
+              </Button>
+              <IconButton
+                iconSize="inline"
+                tooltip={`Clear attention: ${item.title}`}
+                disabled={todos.busy}
+                className="mr-1 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground [@media(hover:hover)_and_(not_(any-pointer:coarse))]:opacity-0 [@media(hover:hover)_and_(not_(any-pointer:coarse))]:group-hover/attention:opacity-100 group-focus-within/attention:opacity-100"
+                onClick={() => void todos.dismissAttention(item)}
+              >
+                <CloseIcon size={12} />
+              </IconButton>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

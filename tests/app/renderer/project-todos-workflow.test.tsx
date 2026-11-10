@@ -900,7 +900,10 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
     sessions: [],
   });
   const attention = () => screen.getByRole("list", { name: "Needs attention to-dos" });
-  expect(within(attention()).getByRole("button", { name: item.title }).textContent).toContain(
+  expect(within(attention()).getByRole("button", { name: item.title }).textContent).toBe(
+    item.title,
+  );
+  expect(attention().querySelector(`[data-todo-id="${item.id}"]`)?.textContent).toContain(
     item.attentionReason,
   );
   expect(within(attention()).getByRole("link", { name: "Findings" })).toBeDefined();
@@ -967,6 +970,31 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
   expect(
     within(screen.getByRole("list", { name: "Focus to-dos" })).getByText(item.attentionReason),
   ).toBeDefined();
+});
+
+it("labels Needs attention rows by title and shows only informative reasons beneath", () => {
+  const items = [
+    { ...todo(100), title: "Clean up title-bar icons", attentionReason: "Open linked result" },
+    {
+      ...todo(101),
+      title: "Queued attention items",
+      attentionReason: "Open result: Queued attention items",
+    },
+    { ...todo(102), title: "Pick a sidebar layout", attentionReason: "Choose sidebar or tabs" },
+  ].map((item) => ({ ...item, needsAttention: true }));
+  using _fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items },
+    sessions: [],
+  });
+  const list = screen.getByRole("list", { name: "Needs attention to-dos" });
+  const [generic, named, custom] = items.map((item) => {
+    const row = list.querySelector<HTMLElement>(`[data-todo-id="${item.id}"]`)!;
+    expect(within(row).getByRole("button", { name: item.title }).textContent).toBe(item.title);
+    return row.textContent;
+  });
+  expect(generic).not.toContain("Open linked result");
+  expect(named).not.toContain("Open result");
+  expect(custom).toContain("Choose sidebar or tabs");
 });
 
 it("places Focus above the other four sections without duplicating focused rows", async () => {

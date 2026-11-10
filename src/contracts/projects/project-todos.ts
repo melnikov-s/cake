@@ -108,6 +108,44 @@ const ProjectTodoAttentionReason = Schema.String.check(
   Schema.isMaxLength(512),
 );
 
+const RESULT_ATTENTION_PREFIX = "Open result: ";
+/** Short enough for a one-line pill, matching the input title limit. */
+const RESULT_ATTENTION_LIMIT = 80;
+
+/** Held linked results name their to-do. Long (legacy) titles are shortened, never omitted. */
+export const projectTodoResultAttentionReason = (title: string) => {
+  const characters = Array.from(title.trim());
+  const room = RESULT_ATTENTION_LIMIT - RESULT_ATTENTION_PREFIX.length;
+  return (
+    RESULT_ATTENTION_PREFIX +
+    (characters.length <= room
+      ? characters.join("")
+      : `${characters
+          .slice(0, room - 1)
+          .join("")
+          .trimEnd()}…`)
+  );
+};
+
+/**
+ * The reason worth showing beneath a to-do's title. Automatic "open result" reasons only
+ * restate the title (older saves even say just "Open linked result"), so they add nothing.
+ */
+export const projectTodoAttentionDetail = (
+  item: Pick<ProjectTodo, "title" | "attentionReason">,
+) => {
+  const reason = item.attentionReason?.trim();
+  if (!reason) return undefined;
+  if (/^open (?:linked )?results?\.?$/i.test(reason)) return undefined;
+  const named = /^open (?:linked )?results?:\s*(.*?)(…|\.\.\.)?$/i.exec(reason);
+  if (!named) return reason;
+  const [, subject = "", shortened] = named;
+  const title = item.title.trim();
+  return !subject || subject === title || (shortened && title.startsWith(subject.trimEnd()))
+    ? undefined
+    : reason;
+};
+
 /** Latest open→done transition. Lets a stale `state: "done"` edit that raced only this
  * completion still apply its other fields, while any later edit remains a conflict. */
 export const ProjectTodoCompletion = Schema.Struct({

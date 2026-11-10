@@ -2,6 +2,7 @@ import { useId } from "react";
 import { observer } from "r-state-tree/react";
 import {
   projectTodoAssociationKey,
+  projectTodoAttentionDetail,
   projectTodoCategory,
 } from "../../contracts/projects/project-todos";
 import { NavItem } from "@/components/ui/nav-item";
@@ -31,6 +32,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   const selected = store.isFocused(item.id);
   const inspected = store.visible && store.inspectedItemId === item.id;
   const attention = projectTodoCategory(item) === "attention";
+  const attentionDetail = attention ? projectTodoAttentionDetail(item) : undefined;
   const description = item.description !== item.title ? item.description : "";
   const sessionIds = new Set<string>();
   const associations = item.associations.filter((association) => {
@@ -124,7 +126,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
                   item.state === "done" ? "text-muted-foreground" : "text-foreground",
                 )}
               >
-                {attention ? item.attentionReason : item.title}
+                {item.title}
               </span>
             }
             trailing={
@@ -172,9 +174,9 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
                 </IconButton>
               )}
             </div>
-            {attention && (
+            {attentionDetail && (
               <p className="col-span-full mt-1 min-w-0 break-words text-xs text-muted-foreground">
-                {item.title}
+                {attentionDetail}
               </p>
             )}
             {item.snoozedUntil && item.state === "open" && (

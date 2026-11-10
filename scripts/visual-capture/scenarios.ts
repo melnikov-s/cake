@@ -3159,6 +3159,48 @@ const projectChatAttention: VisualCaptureScenario = {
       : page.locator('[data-slot="side-chat-layout"]'),
 };
 
+const projectChatAttentionResults: VisualCaptureScenario = {
+  name: "project-chat-attention-results",
+  description:
+    "Needs attention rows titled by to-do, hiding generic held-result reasons and keeping custom ones",
+  states: ["panel", "pills"],
+  async seed(paths, theme) {
+    await projectChatAttention.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const application = JSON.parse(await readFile(file, "utf8"));
+    const items = application.data.projects[0].todos.items;
+    for (const [suffix, title, attentionReason] of [
+      ["21", "Clean up title-bar icons", "Open linked result"],
+      ["22", "Queued attention items", "Open result: Queued attention items"],
+      ["23", "Give the sidebar visual hierarchy", "Open linked result"],
+    ])
+      items.push({
+        id: `00000000-0000-4000-8000-0000000000${suffix}`,
+        title,
+        description: "A linked session result is ready.",
+        status: "",
+        state: "open",
+        needsAttention: true,
+        attentionReason,
+        revision: 0,
+        associations: [],
+      });
+    await writeFile(file, JSON.stringify(application));
+  },
+  async prepare(page) {
+    await projectChatTodos.prepare(page, "open");
+    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+    await expect(
+      workspace.getByRole("list", { name: "Needs attention to-dos" }).locator("[data-todo-id]"),
+    ).toHaveCount(4);
+    await page.mouse.move(1, 1);
+  },
+  region: (page, state) =>
+    state === "panel"
+      ? page.getByRole("complementary", { name: "Workspace", exact: true })
+      : page.locator('[data-slot="side-chat-layout"]'),
+};
+
 const projectChatTaskRails: VisualCaptureScenario = {
   name: "project-chat-task-rails",
   description:
@@ -8111,6 +8153,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   createInterfaceIconsScenario(projectChatTodos, seedDurableChat),
   createAutoMergeIconsScenario(activityWorktreeScenario, startActivityFixtureSession),
   projectChatAttention,
+  projectChatAttentionResults,
   projectChatTaskRails,
   adjacentTaskHeadings,
   pendingTaskTurn,

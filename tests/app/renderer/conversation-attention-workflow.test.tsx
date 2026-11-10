@@ -284,6 +284,40 @@ it.each([1, 3, 10])("keeps all %i attention items in the inner list and in order
   );
 });
 
+it("labels attention pills by title and shows only informative reasons beneath", () => {
+  const items = [
+    { ...item, title: "Clean up title-bar icons", attentionReason: "Open linked result" },
+    {
+      ...item,
+      id: "00000000-0000-4000-8000-000000000012",
+      title: "Queued attention items",
+      attentionReason: "Open result: Queued attention items",
+    },
+    { ...item, id: "00000000-0000-4000-8000-000000000013" },
+  ];
+  using fixture = createRendererStoreFixture({
+    projects: [{ ...projectRecord({ path: "/cake" }), todos: { ...emptyProjectTodos(), items } }],
+  });
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [{ sessionId: chat, title: "Project Chat", projectPath: "/cake" }],
+  });
+  render(
+    <StoreProvider store={fixture.root}>
+      <CakeChatComposerHeader session={fixture.root.cakeChatCollectionStore.registry.load(chat)} />
+    </StoreProvider>,
+  );
+  expect(
+    items.map(
+      (todo) => screen.getByRole("button", { name: `Open attention: ${todo.title}` }).textContent,
+    ),
+  ).toEqual([
+    "Clean up title-bar icons",
+    "Queued attention items",
+    `${item.title}${item.attentionReason}`,
+  ]);
+});
+
 it("queues authoritative attention occurrences FIFO, not task creation or edit activity", async () => {
   const runtime = ManagedRuntime.make(projectTodoLayer());
   const scope = "/project";

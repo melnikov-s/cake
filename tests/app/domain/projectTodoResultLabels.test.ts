@@ -4,6 +4,7 @@ import { expect } from "vitest";
 import {
   CAKE_CHAT_TODO_SCOPE,
   emptyProjectTodos,
+  projectTodoAttentionDetail,
   type ProjectTodo,
 } from "../../../src/contracts/projects/project-todos";
 import * as attention from "../../../src/domain/projects/projectTodoAttention";
@@ -57,9 +58,12 @@ it.effect.each(
     ).toBe(true);
     const held = yield* todos.read(CAKE_CHAT_TODO_SCOPE, item.id);
     expect(held.attentionReason).toBe(
-      title.length <= 67 ? `Open result: ${title}` : "Open linked result",
+      title.length <= 67 ? `Open result: ${title}` : `Open result: ${title.slice(0, 66)}…`,
     );
+    expect(held.attentionReason).not.toBe("Open linked result");
     expect(held.attentionReason?.length).toBeLessThanOrEqual(80);
+    // The reason only restates the title, so rows show the title alone.
+    expect(projectTodoAttentionDetail(held)).toBeUndefined();
     expect(held.title).toBe(title);
     expect(held.description).toBe(item.description);
     expect(held.associations).toEqual(item.associations);
