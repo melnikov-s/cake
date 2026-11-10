@@ -25,6 +25,7 @@ export const SessionMessage = observer(function SessionMessage({
   sources = [],
   originals = [],
   open: controlledOpen,
+  defaultOpen = true,
   onToggle,
   todo,
   messageActions,
@@ -44,6 +45,8 @@ export const SessionMessage = observer(function SessionMessage({
   /** Exact originals behind a message that has its own text, each behind a nested disclosure. */
   originals?: readonly MessageReferencePreviewStore[];
   open?: boolean;
+  /** Initial disclosure for inline content; subsequent renders preserve the user's choice. */
+  defaultOpen?: boolean;
   onToggle?(): void;
   todo?: ResultTodoLink;
   messageActions?: ReactNode;
@@ -54,7 +57,7 @@ export const SessionMessage = observer(function SessionMessage({
 }) {
   const actions = useMarkdownLinkActions();
   const contentId = useId();
-  const [localOpen, setLocalOpen] = useState(true);
+  const [localOpen, setLocalOpen] = useState(defaultOpen);
   const [fullscreen, setFullscreen] = useState(false);
   const id = source?.sessionId?.trim();
   // Catalog identity can recover a title omitted by an older report and follows renames.

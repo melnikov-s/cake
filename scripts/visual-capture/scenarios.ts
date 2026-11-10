@@ -3983,6 +3983,7 @@ const subagentReportsScenario: VisualCaptureScenario = {
     "Cake Chat failed start and attributed safe Markdown research report from durable originals",
   states: [
     "failed-start",
+    "collapsed-report",
     "completed-report",
     "assignment-details",
     "failed-report",
@@ -4177,9 +4178,24 @@ const subagentReportsScenario: VisualCaptureScenario = {
           ? "Subagent aborted"
           : "Subagent complete";
     const report = page.getByRole("article", { name: heading, exact: true });
-    await expect(
-      report.getByRole("button", { name: "Planner workflow update", exact: true }),
-    ).toBeVisible();
+    const disclosure = report.getByRole("button", {
+      name: "Planner workflow update",
+      exact: true,
+    });
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await expect(report.locator('[data-slot="message-content"]')).toHaveCount(0);
+    await expect(report.getByRole("link", { name: "Open source", exact: true })).toBeVisible();
+    if (state === "collapsed-report") {
+      await report.scrollIntoViewIfNeeded();
+      // Release the navigation rail's focus/hover without opening the card.
+      await disclosure.focus();
+      await disclosure.blur();
+      await page.waitForFunction(() => document.fonts.status === "loaded");
+      await page.mouse.move(1, 1);
+      return;
+    }
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
     const assignment = report.getByRole("button", { name: "Assignment details" });
     await expect(assignment).toHaveAttribute("aria-expanded", "false");
     await assignment.focus();

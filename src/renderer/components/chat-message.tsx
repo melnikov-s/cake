@@ -254,6 +254,7 @@ export const ChatTextMessage = forwardRef<
           relation={crossSession?.relation}
           badges={report ? [subagentReportBadge(report)] : crossSession?.badges}
           preview={text}
+          defaultOpen={!report && !worker}
           sources={content ? undefined : sources}
           originals={content ? sources : undefined}
           todo={todo}

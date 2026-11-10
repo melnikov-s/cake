@@ -340,10 +340,14 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await composer.click();
     await composer.pressSequentially("Research Godot and Three.js without a project");
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    const report = page
-      .locator('[data-slot="subagent-report"]')
-      .filter({ has: page.getByRole("heading", { name: "Game-development workflow comparison" }) });
+    const report = page.locator('[data-slot="subagent-report"]');
     await expect(report.getByText("Completed", { exact: true })).toBeVisible({ timeout: 20_000 });
+    const disclosure = report.locator('[data-slot="response-disclosure"]');
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await expect(report.locator('[data-slot="message-content"]')).toHaveCount(0);
+    await expect(report.getByRole("link", { name: "Open source", exact: true })).toBeVisible();
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
     const assignment = report.getByRole("button", { name: "Assignment details" });
     await expect(assignment).toHaveAttribute("aria-expanded", "false");
     const details = report
@@ -370,9 +374,12 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     expect(JSON.stringify(researchRequests)).toContain("web/search access is not guaranteed");
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     await page.reload();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false", { timeout: 20_000 });
+    await expect(report.locator('[data-slot="message-content"]')).toHaveCount(0);
+    await disclosure.click();
     await expect(
       report.getByRole("heading", { name: "Game-development workflow comparison" }),
-    ).toBeVisible({ timeout: 20_000 });
+    ).toBeVisible();
     await expect(report).toHaveCount(1);
     await expect(assignment).toHaveAttribute("aria-expanded", "false");
     await expect(report.locator('[data-slot="message-content"]')).toHaveText(

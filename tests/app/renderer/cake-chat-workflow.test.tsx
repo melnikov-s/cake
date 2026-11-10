@@ -114,17 +114,20 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
       />
     </>,
   );
-  const assertReport = async () => {
+  const assertReport = async (alreadyExpanded = false) => {
     expect(chat.model.parts).toHaveLength(2);
     expect(chat.conversationSessionStore.chatStore.parts).toHaveLength(2);
     const response = view.container.querySelector('[data-slot="subagent-report"]')!;
     expect(response).not.toBeNull();
     expect(response.getAttribute("aria-label")).toBe("Subagent complete");
     const header = response.querySelector<HTMLElement>('[data-slot="response-header"]')!;
-    expect(within(header).getByRole("button", { name: researchOrigin.task })).toHaveProperty(
-      "ariaExpanded",
-      "true",
-    );
+    const disclosure = within(header).getByRole("button", { name: researchOrigin.task });
+    expect(disclosure.getAttribute("aria-expanded")).toBe(String(alreadyExpanded));
+    if (!alreadyExpanded) {
+      expect(response.querySelector('[data-slot="message-content"]')).toBeNull();
+      await userEvent.setup().click(disclosure);
+    }
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(within(header).getByText(researchOrigin.task)).toBeDefined();
     expect(within(header).getByText("Completed")).toBeDefined();
     const details = within(response as HTMLElement).getByRole("button", {
@@ -171,7 +174,7 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
       status: "complete",
     },
   ]);
-  await assertReport();
+  await assertReport(true);
   expect(view.container.querySelectorAll('[data-slot="subagent-report"]')).toHaveLength(1);
   expect(chat.model.parts.find((part) => part.partKey === "report")?.value).toMatchObject({
     text: report.text,
