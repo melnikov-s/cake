@@ -1,4 +1,5 @@
 import { createIncomingMessageProposalsScenario } from "./incoming-message-proposals";
+import { verifyStackedAttentionPrototype } from "./stacked-attention-prototype";
 import { createSessionOutcomesScenario } from "./session-outcomes";
 import { createWorkspacePanelGeometryScenario } from "./workspace-panel-geometry";
 import { createTodoResponseFocusScenario } from "./todo-response-focus";
@@ -2194,6 +2195,106 @@ const automationApprovedWalkthrough: VisualCaptureScenario = {
   region: (page) =>
     page
       .getByRole("dialog", { name: "Approved automation walkthrough", exact: true })
+      .locator("iframe"),
+};
+
+const stackedAttentionPrototype: VisualCaptureScenario = {
+  name: "stacked-attention-prototype",
+  description:
+    "Exact stacked-accordion artifact @r2; isolated prototype, not production attention UI",
+  states: ["default", "attention", "narrow", "checks"],
+  async seed(paths, theme) {
+    const path = process.env.CAKE_STACKED_ATTENTION_SOURCE;
+    if (!path)
+      throw new Error("Set CAKE_STACKED_ATTENTION_SOURCE to the linked @r2 source.html.txt");
+    const source = await readFile(path, "utf8");
+    if (sha256(source) !== "791d985e4e165cc9ec4c3f47b24ccec1c021f6da9669af708c50adccca9e467a")
+      throw new Error("The source is not stacked-attention-accordions@r2");
+    await seedArtifactScenario(
+      paths,
+      theme,
+      {
+        protocol: "cake.artifact/v1",
+        id: "stacked-attention-prototype",
+        sessionId: "stacked-attention-prototype",
+        revision: 1,
+        kind: "widget",
+        title: "Stacked accordion prototype",
+        payload: {
+          language: "html",
+          source,
+          brief: "Exact artifact source; no production attention implementation",
+          generationSessionId: "stacked-attention-prototype-capture",
+          browser: await retainArtifactBrowser(paths, "html", source),
+        },
+        fallback: { markdown: "Five compact stacked accordion variations" },
+        interaction: { mode: "present" },
+      },
+      true,
+    );
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        version: 11,
+        data: {
+          ...defaultApplicationState(),
+          projects: [
+            {
+              path: paths.project,
+              name: "Prototype fixture",
+              addedAt: timestamp,
+              lastOpenedAt: timestamp,
+            },
+          ],
+        },
+      }),
+    );
+  },
+  async prepare(page, state) {
+    // Navigation is intentionally not restored from the old window fixture's workspace field.
+    await page
+      .getByRole("button", { name: "Open Project Chat for Prototype fixture", exact: true })
+      .click();
+    await page
+      .getByRole("complementary", { name: "Workspace", exact: true })
+      .getByRole("button", { name: /^Sessions / })
+      .click();
+    await page
+      .locator('.session-item[data-session-id="stacked-attention-prototype"] .session-row')
+      .click();
+    const host = page.locator('[data-slot="artifact-disclosure"]').first();
+    try {
+      await expect(host.locator("iframe").contentFrame().locator(".review")).toBeVisible();
+    } catch (error) {
+      await mkdir(resolve(".visual-captures"), { recursive: true });
+      await page.screenshot({
+        path: resolve(".visual-captures/stacked-prototype-setup-failure.png"),
+      });
+      console.error((await page.locator("body").innerText()).slice(0, 6000));
+      throw error;
+    }
+    await host.getByRole("button", { name: "View Stacked accordion prototype fullscreen" }).click();
+    const frame = page
+      .getByRole("dialog", { name: "Stacked accordion prototype", exact: true })
+      .locator("iframe")
+      .contentFrame();
+    await expect(frame.locator(".review")).toBeVisible();
+    if (state === "checks") {
+      await verifyStackedAttentionPrototype(
+        page
+          .getByRole("dialog", { name: "Stacked accordion prototype", exact: true })
+          .locator("iframe"),
+      );
+    } else if (state !== "default") {
+      await frame.getByRole("button", { name: "Conversation", exact: true }).click();
+      if (state === "narrow") await frame.getByRole("button", { name: "Narrow · 360" }).click();
+      await frame.locator('[data-section="attention"]').click();
+    }
+  },
+  region: (page) =>
+    page
+      .getByRole("dialog", { name: "Stacked accordion prototype", exact: true })
       .locator("iframe"),
 };
 
@@ -8593,6 +8694,7 @@ const chatFirstNavigation = createChatFirstNavigationScenario(
 );
 
 export const visualCaptureScenarios: VisualCaptureScenario[] = [
+  stackedAttentionPrototype,
   userMessageContentOrderScenario,
   projectSetupScenario,
   chatFirstNavigation,
