@@ -59,7 +59,6 @@ export interface CakeChatSessionStoreProps {
 export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   @snapshot presentationMode: ProjectSessionPresentationMode = "normal";
   @snapshot workspaceChatSidebarVisible = true;
-  @snapshot workspaceChatSidebarWidth = 420;
 
   showPresentation(mode: ProjectSessionPresentationMode) {
     this.presentationMode = mode;
@@ -69,9 +68,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   }
   showWorkspaceChatSidebar() {
     this.workspaceChatSidebarVisible = true;
-  }
-  setWorkspaceChatSidebarWidth(width: number) {
-    this.workspaceChatSidebarWidth = width;
   }
 
   @child

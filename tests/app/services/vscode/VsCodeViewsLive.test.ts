@@ -6,11 +6,7 @@ import {
   ClientConnectionsLive,
 } from "../../../../src/services/clients/ClientConnections";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
-import {
-  CAKE_TITLE_BAR_HEIGHT,
-  Electron,
-  VSCODE_TITLE_BAR_HEIGHT,
-} from "../../../../src/services/electron/Electron";
+import { CAKE_TITLE_BAR_HEIGHT, Electron } from "../../../../src/services/electron/Electron";
 import { VsCodeViewsLive } from "../../../../src/services/vscode/VsCodeViewsLive";
 import { VsCodeViews } from "../../../../src/services/vscode/VsCodeViews";
 
@@ -103,7 +99,7 @@ it.effect("closes the native view after its logical connection has already been 
   }),
 );
 
-it.effect("centers the traffic lights on VS Code's title bar while its view is shown", () =>
+it.effect("keeps traffic lights aligned across view visibility and placement", () =>
   Effect.gen(function* () {
     native.windows.clear();
     native.windows.set(49, {
@@ -136,17 +132,16 @@ it.effect("centers the traffic lights on VS Code's title bar while its view is s
       const views = yield* VsCodeViews;
       const connection = (yield* ClientConnections).desktop(49);
       const editor = { x: 0, y: 0, width: 900, height: 700, projectSidebarWidth: 0 };
-      // Cake's title bars match VS Code's whenever its view is shown, wherever it sits:
-      // at the window's corner, below the top terminal, or beside the project sidebar.
+      // All modes keep the same center line regardless of view placement or visibility.
       yield* views.updateBounds(connection, { ...editor, visible: true });
       yield* views.updateBounds(connection, { ...editor, visible: true, y: 365, height: 335 });
       yield* views.updateBounds(connection, { ...editor, visible: true, x: 280 });
       yield* views.updateBounds(connection, { ...editor, visible: false });
     }).pipe(Effect.scoped, Effect.provide(layer));
     expect(heights).toEqual([
-      VSCODE_TITLE_BAR_HEIGHT,
-      VSCODE_TITLE_BAR_HEIGHT,
-      VSCODE_TITLE_BAR_HEIGHT,
+      CAKE_TITLE_BAR_HEIGHT,
+      CAKE_TITLE_BAR_HEIGHT,
+      CAKE_TITLE_BAR_HEIGHT,
       CAKE_TITLE_BAR_HEIGHT,
     ]);
   }),

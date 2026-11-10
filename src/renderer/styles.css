@@ -171,13 +171,9 @@
 
 /* One window title bar: the native traffic lights and every title-bar control center on
    half of this height (Electron positions the lights from the same values). A bar's bottom
-   rule sits outside it (box-content), so the rule never shifts that center line. Embedded
-   VS Code fixes its own title bar, so Cake matches it while that view is shown. */
+   rule sits outside it (box-content), so the rule never shifts that center line.
+   Match VS Code's fixed title bar in every mode so switching never changes the geometry. */
 :root {
-  --title-bar-height: 44px;
-}
-
-:root[data-title-bar="vscode"] {
   --title-bar-height: 34px;
 }
 

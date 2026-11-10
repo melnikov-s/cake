@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { CommandPane } from "@/components/command-pane";
@@ -14,6 +14,10 @@ import { FullscreenViewportContext } from "./fullscreen-viewport-context";
 import { SessionChatHomeButton } from "./session-chat-home-button";
 import { ShellHeaderContext } from "./ui/workspace-header";
 import { isMacPlatform } from "../lib/platform";
+import {
+  MIN_WORKSPACE_PANEL_WIDTH,
+  mainWorkspacePanelMaxWidth,
+} from "../lib/workspace-panel-geometry";
 
 export const AppShellLayout = observer(function AppShellLayout({
   children,
@@ -47,11 +51,26 @@ export const AppShellLayout = observer(function AppShellLayout({
   const [headerTarget, setHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [fullscreenViewport, setFullscreenViewport] = useState<HTMLDivElement | null>(null);
   const commandVisible = Boolean(store.commandPaneStore.pane) && !shell.applicationSurface;
-  const accessoryWidth = Math.min(navigator.width, Math.max(240, window.innerWidth - 414));
-  const commandMax = Math.max(
-    320,
-    window.innerWidth - (navigatorVisible ? accessoryWidth : 0) - 414,
-  );
+  // This row spans the center and accessory, excluding the actual rail width.
+  // Protect readable chat with full/slim/hidden rails without changing the saved preference.
+  const [workspaceWidth, setWorkspaceWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!headerTarget) return;
+    const measure = () => setWorkspaceWidth(headerTarget.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(headerTarget);
+    return () => observer.disconnect();
+  }, [headerTarget]);
+  const commandReserve = commandVisible
+    ? Math.min(
+        commandPaneWidth,
+        Math.max(320, workspaceWidth - (navigatorVisible ? MIN_WORKSPACE_PANEL_WIDTH : 0) - 360),
+      )
+    : 0;
+  const accessoryMax = mainWorkspacePanelMaxWidth(workspaceWidth - commandReserve);
+  const accessoryWidth = Math.min(navigator.width, accessoryMax);
+  const commandMax = Math.max(320, workspaceWidth - (navigatorVisible ? accessoryWidth : 0) - 360);
   const shellStyle: CSSProperties & Record<"--navigator-width" | "--command-width", string> = {
     "--navigator-width": navigatorVisible ? `${accessoryWidth}px` : "0px",
     "--command-width": commandVisible ? `${Math.min(commandPaneWidth, commandMax)}px` : "0px",
@@ -131,8 +150,8 @@ export const AppShellLayout = observer(function AppShellLayout({
             )}
             label="Resize Workspace"
             value={accessoryWidth}
-            min={240}
-            max={Math.min(520, Math.max(240, window.innerWidth - 414))}
+            min={Math.min(MIN_WORKSPACE_PANEL_WIDTH, accessoryMax)}
+            max={accessoryMax}
             edge="right"
             onChange={(width) => navigator.setWidth(width)}
             onDrag={(width) =>

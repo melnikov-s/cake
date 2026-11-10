@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "../lib/utils";
+import { MIN_WORKSPACE_PANEL_WIDTH } from "../lib/workspace-panel-geometry";
 import { ResizeHandle } from "./ui/resize-handle";
 import { WorkspaceCompanion } from "./workspace-companion";
 import { PopoverBoundaryContext } from "./ui/popover";
@@ -42,7 +43,9 @@ export function WorkspaceChatLayout({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const chatSidebarMax = Math.max(320, width - 360);
+  // No tool-side reading-width cap; keep only 5px so the splitter stays inside the workspace.
+  // Clamp only the rendered width, retaining the preference when the window narrows.
+  const chatSidebarMax = Math.max(0, width - 5);
   const visibleChatSidebarWidth = Math.min(chatSidebarWidth, chatSidebarMax);
   const workspaceStyle: CSSProperties & Record<"--workspace-chat-sidebar-width", string> = {
     "--workspace-chat-sidebar-width": `${visibleChatSidebarWidth}px`,
@@ -74,7 +77,7 @@ export function WorkspaceChatLayout({
                 className="right-[calc(var(--workspace-chat-sidebar-width)-5px)]"
                 label="Resize current session sidebar"
                 value={visibleChatSidebarWidth}
-                min={320}
+                min={Math.min(MIN_WORKSPACE_PANEL_WIDTH, chatSidebarMax)}
                 max={chatSidebarMax}
                 edge="right"
                 onChange={onChatSidebarWidthChange}

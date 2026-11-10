@@ -71,7 +71,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   /** Stable visual key while an optimistic fork becomes its Pi identity. */
   transcriptContinuityKey: string | undefined;
   @snapshot workspaceChatSidebarVisible = true;
-  @snapshot workspaceChatSidebarWidth = 420;
   private readSettledTurnRevision = 0;
   private pendingSideChatThreadId: string | undefined;
   private pendingSideChatTarget: SideChatTarget | undefined;
@@ -161,10 +160,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   showWorkspaceChatSidebar() {
     this.workspaceChatSidebarVisible = true;
-  }
-
-  setWorkspaceChatSidebarWidth(width: number) {
-    this.workspaceChatSidebarWidth = width;
   }
 
   get model() {

@@ -110,7 +110,7 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = 
   }
   session.showPresentation(startInChat ? "normal" : mode);
   if (startInChat) session.toggleWorkspaceChatSidebar();
-  session.setWorkspaceChatSidebarWidth(440);
+  root.workspaceNavigatorStore.setWidth(440);
   applyConversationSnapshot(session.model, {
     sessionId: session.sessionId,
     sessionFile: `/sessions/${session.sessionId}`,
@@ -698,13 +698,13 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
 
   it("sizes the companion against the available center, not the desktop width", () => {
     vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue(
-      new DOMRect(64, 0, 700, 900),
+      new DOMRect(64, 0, 400, 900),
     );
     using f = renderWorkspace(kind, "browser");
     expect(screen.getByRole("main").style.getPropertyValue("--workspace-chat-sidebar-width")).toBe(
-      "340px",
+      "395px",
     );
-    expect(f.session.workspaceChatSidebarWidth).toBe(440);
+    expect(f.root.workspaceNavigatorStore.width).toBe(440);
   });
   it.each<Mode>(["browser", "vscode"])(
     "%s companion retains the same conversation and draft when closed and reopened",

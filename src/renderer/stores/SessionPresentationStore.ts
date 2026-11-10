@@ -1,5 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
 import { ClientContext } from "./context/ClientContext";
+import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
 import {
   workingDirectoryEditorLocation,
   type EditorLocation,
@@ -22,10 +23,8 @@ export type PresentationSession = Pick<
   | "presentationMode"
   | "showPresentation"
   | "workspaceChatSidebarVisible"
-  | "workspaceChatSidebarWidth"
   | "toggleWorkspaceChatSidebar"
   | "showWorkspaceChatSidebar"
-  | "setWorkspaceChatSidebarWidth"
   | "editorSelectionsStore"
   | "conversationSessionStore"
 >;
@@ -74,8 +73,8 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
       chatSidebarVisible: () => this.session?.workspaceChatSidebarVisible ?? true,
       toggleChatSidebar: () => this.session?.toggleWorkspaceChatSidebar(),
       showChatSidebar: () => this.session?.showWorkspaceChatSidebar(),
-      chatSidebarWidth: () => this.session?.workspaceChatSidebarWidth ?? 420,
-      setChatSidebarWidth: (width) => this.session?.setWorkspaceChatSidebarWidth(width),
+      chatSidebarWidth: () => WorkspaceNavigatorContext.consume(this)!.width,
+      setChatSidebarWidth: (width) => WorkspaceNavigatorContext.consume(this)!.setWidth(width),
       selectionHighlights: () => ({
         locations:
           this.session?.editorSelectionsStore.selections.map((selection) => selection.location) ??
@@ -105,8 +104,8 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
       presentationMode: () => this.session?.presentationMode ?? "normal",
       setPresentationMode: (mode) => this.session?.showPresentation(mode),
       chatSidebarVisible: () => this.session?.workspaceChatSidebarVisible ?? true,
-      chatSidebarWidth: () => this.session?.workspaceChatSidebarWidth ?? 420,
-      setChatSidebarWidth: (width) => this.session?.setWorkspaceChatSidebarWidth(width),
+      chatSidebarWidth: () => WorkspaceNavigatorContext.consume(this)!.width,
+      setChatSidebarWidth: (width) => WorkspaceNavigatorContext.consume(this)!.setWidth(width),
       appendAttachment: (attachment) =>
         this.session?.conversationSessionStore.composerStore.draftStore.appendAttachments([
           attachment,

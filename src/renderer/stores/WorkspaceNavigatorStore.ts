@@ -1,4 +1,5 @@
 import { Store, snapshot } from "r-state-tree";
+import { MIN_WORKSPACE_PANEL_WIDTH } from "../lib/workspace-panel-geometry";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
@@ -23,6 +24,7 @@ export class WorkspaceNavigatorStore extends Store<{
   @snapshot accessoryVisible = true;
   @snapshot companionTab: "chat" | WorkspaceNavigatorMode = "chat";
   @snapshot mode: WorkspaceNavigatorMode = "todos";
+  /** Preferred width across modes; layout clamps never overwrite it. */
   @snapshot width = 320;
 
   constructor(props: WorkspaceNavigatorStore["props"]) {
@@ -106,7 +108,7 @@ export class WorkspaceNavigatorStore extends Store<{
   }
 
   setWidth(width: number) {
-    this.width = Math.max(240, Math.min(520, width));
+    this.width = Math.max(MIN_WORKSPACE_PANEL_WIDTH, width);
   }
 
   replyContext(name: string, text: string) {

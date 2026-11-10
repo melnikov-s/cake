@@ -85,7 +85,6 @@ async function fixture(additionalChild = false) {
       {
         presentationMode: "normal",
         workspaceChatSidebarVisible: true,
-        workspaceChatSidebarWidth: 420,
       },
       {
         ...Object.fromEntries(

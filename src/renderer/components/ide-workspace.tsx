@@ -59,8 +59,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   terminalDock?: ReactNode;
   transcriptBehavior: ChatTranscriptBehavior;
 }) {
-  // While VS Code's view is shown, its fixed title bar sets the window's center line;
-  // main positions the traffic lights from the same visibility (VsCodeViewsLive).
+  // Mark native title-bar visibility for inspection; all modes share its geometry.
   const vsCodeTitleBar = editor.nativeViewBounds.visible;
   useEffect(() => {
     if (!vsCodeTitleBar) return;

@@ -38,6 +38,7 @@ export async function createPerformanceFixture(origin: string, samples: number) 
     })),
     sessionHistoryCursor: fixture.navigationHistoryCount - 1,
   });
+  children.workspaceNavigatorStore = store({ width: fixture.sidebarWidth });
   // Restored renderer identities and pane preferences, but no loaded transcript/runtime.
   children.sessionRegistry = store(
     { targets },
@@ -45,7 +46,7 @@ export async function createPerformanceFixture(origin: string, samples: number) 
       sessions: targets.map(({ sessionId }) => ({
         key: sessionId,
         ...store(
-          { workspaceChatSidebarVisible: true, workspaceChatSidebarWidth: fixture.sidebarWidth },
+          { workspaceChatSidebarVisible: true },
           {
             conversationSessionStore: store(
               {},
