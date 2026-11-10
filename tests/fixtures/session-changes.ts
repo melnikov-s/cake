@@ -156,6 +156,12 @@ export async function seedSessionChanges(
                       sessionId: changesSessionId,
                       title: "Review changes",
                     },
+                    {
+                      kind: "session",
+                      sessionId: "session-changes-long-title",
+                      title:
+                        "Queued attention items show their timestamps and full titles in the panel",
+                    },
                   ],
                 },
               ],

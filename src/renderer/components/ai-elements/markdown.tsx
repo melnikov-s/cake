@@ -298,7 +298,14 @@ function linkLabelText(label: ReactNode): string {
     .join("");
 }
 
-function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
+/** `text` renders a session link as plain row text instead of an inline prose chip. */
+type LinkPresentation = "chip" | "text";
+
+function linkAnchor(
+  allProps: AnchorProps,
+  actions?: MarkdownLinkActions,
+  presentation: LinkPresentation = "chip",
+) {
   const props = { showIcon: true, ...allProps };
   delete props.node;
   const href = props.href;
@@ -350,6 +357,7 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
     const label = children.length === 1 ? displayLabel(children[0]) : props.children;
     const reference = sessionLink(sessionId, session.messageId, session.attachmentId);
     const labelText = linkLabelText(label);
+    const chip = presentation === "chip";
     return (
       <Link
         {...props}
@@ -360,8 +368,12 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
         showIcon={false}
         data-slot="session-reference"
         className={cn(
-          modelReferenceChipClassName,
-          "mx-0.5 gap-1 align-[-0.125em] no-underline hover:bg-accent/20",
+          chip
+            ? [
+                modelReferenceChipClassName,
+                "mx-0.5 gap-1 align-[-0.125em] no-underline hover:bg-accent/20",
+              ]
+            : "block min-w-0 font-normal no-underline hover:underline",
           props.className,
         )}
         onClick={(event) => {
@@ -372,8 +384,10 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
           else actions?.openSession(sessionId);
         }}
       >
-        <LinkIcon className="size-3 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate">{label}</span>
+        {chip && <LinkIcon className="size-3 shrink-0 text-muted-foreground" />}
+        <span className={chip ? "min-w-0 truncate" : "line-clamp-2 [overflow-wrap:anywhere]"}>
+          {label}
+        </span>
       </Link>
     );
   }
@@ -400,9 +414,11 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
 /** Structured links reuse exactly the same destination handling as conversation Markdown. */
 export const MarkdownLink = observer(function MarkdownLink({
   onOpenSourceLocation,
+  presentation,
   ...allProps
 }: AnchorProps & {
   onOpenSourceLocation?(location: SourceLocation): void;
+  presentation?: LinkPresentation;
 }) {
   const actions = useMarkdownLinkActions();
   const phone = usePhoneLayout();
@@ -415,7 +431,7 @@ export const MarkdownLink = observer(function MarkdownLink({
     !location ||
     (nonPathHref.test(href) && !href.startsWith(workspacePathPrefix))
   )
-    return linkAnchor(allProps, actions);
+    return linkAnchor(allProps, actions, presentation);
   // Keep source references readable, without an editor entry point on phones.
   if (phone) return <span>{allProps.children}</span>;
   const props = { showIcon: true, ...allProps, href: reference };

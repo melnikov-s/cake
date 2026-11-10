@@ -99,7 +99,7 @@ describe("session row metadata", () => {
     expect(
       Array.from(description.children).filter((child) => child.textContent === "·"),
     ).toHaveLength(2);
-    expect(description.textContent).toBe("1 day ago·3+120 −35·long-branch-for-narrow-pane");
+    expect(description.textContent).toBe("1 day ago·3+120−35·long-branch-for-narrow-pane");
     expect(screen.getByTitle("long-branch-for-narrow-pane")).toBeTruthy();
     expect(screen.getByRole("img", { name: "3 commits, +120 −35" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "Ready, unread" })).toBeTruthy();

@@ -298,7 +298,7 @@ export const SessionListItem = observer(function SessionListItem({
                 {hasStats && (
                   <>
                     {hasActivityTime && <span aria-hidden="true">·</span>}
-                    <CommitChangeStatsText stats={commitStats} />
+                    <CommitChangeStatsText compact stats={commitStats} />
                   </>
                 )}
                 {branch && (

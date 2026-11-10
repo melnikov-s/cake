@@ -188,13 +188,10 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
             {associations.length > 0 && (
               <ul
                 aria-label={`Work for ${item.title}`}
-                className="col-span-full mt-2 flex w-full flex-wrap items-center gap-1.5"
+                className="col-span-full mt-2 flex w-full flex-col gap-1"
               >
                 {associations.map((association) => (
-                  <li
-                    key={projectTodoAssociationKey(association)}
-                    className="flex max-w-full min-w-0 items-center"
-                  >
+                  <li key={projectTodoAssociationKey(association)} className="flex min-w-0">
                     <ProjectTodoWorkLink association={association} />
                   </li>
                 ))}

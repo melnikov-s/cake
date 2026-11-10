@@ -78,6 +78,18 @@ it("shares live stats across session lists and distinct to-do session links, hid
   expect(within(todo).getAllByRole("img", { name: "3 commits, +120 −35" })).toHaveLength(1);
   expect(within(todo).getByRole("img", { name: "1 commit, +4 −2" })).toBeDefined();
   expect(todo.querySelectorAll('[data-slot="commit-change-stats"]')).toHaveLength(2);
+  // One shared component: same green/red deltas in both places; to-dos spell out the count.
+  const todoStats = within(todo).getByRole("img", { name: "3 commits, +120 −35" });
+  for (const stats of [within(row).getByRole("img", { name: "3 commits, +120 −35" }), todoStats]) {
+    expect(within(stats).getByText("+120").classList.contains("text-success")).toBe(true);
+    expect(within(stats).getByText("−35").classList.contains("text-destructive")).toBe(true);
+  }
+  expect(within(todoStats).getByText("3 commits")).toBeDefined();
+  // Plain session title (no prose chip) with the stats on their own line beneath it.
+  const committedLink = within(todo).getByRole("link", { name: "committed" });
+  expect(todoStats.previousElementSibling).toBe(committedLink);
+  expect(committedLink.parentElement!.classList.contains("flex-col")).toBe(true);
+  expect(committedLink.className).not.toMatch(/max-w-64|bg-accent/);
   expect(within(todo).getAllByRole("link", { name: "committed" })).toHaveLength(1);
   for (const id of ids) expect(within(todo).getByRole("link", { name: id })).toBeDefined();
   expect(within(todo).getByRole("button", { name: "Mark done: Review" })).toBeDefined();

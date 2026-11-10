@@ -8,7 +8,7 @@ import { MarkdownLink } from "./ai-elements/markdown";
 import { SessionActivityIndicator } from "./session-activity-indicator";
 import { CommitChangeStatsText } from "./ui/commit-change-stats";
 
-/** Typed work and reference chips keep public identity separate from private Pi session IDs. */
+/** Typed work and reference rows keep public identity separate from private Pi session IDs. */
 export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
   association,
 }: {
@@ -35,50 +35,53 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-normal leading-4 [&>a]:min-w-0 [&>a]:truncate [&>a]:font-normal [&>a]:leading-4 [&>a]:no-underline [&>a:hover]:text-foreground [&>a:hover]:underline [&_a>svg]:hidden",
-        mergeStatus && "flex-wrap gap-y-0.5",
-        isSource
-          ? "bg-muted/75 text-muted-foreground"
-          : "border border-border/80 bg-background/80 text-foreground/90 shadow-2xs",
+        "flex w-full min-w-0 items-start gap-1.5 px-2 py-0.5 text-xs font-normal leading-4 [&_a>svg]:hidden",
+        isSource ? "text-muted-foreground" : "text-foreground/90",
       )}
     >
-      {association.kind === "session" && (
-        <SessionActivityIndicator
-          activity={root.sessionMetadataStore.sessionWorkActivity(association.sessionId)}
-        />
-      )}
-      <span className="shrink-0 text-muted-foreground [&>svg]:size-3">
-        <Icon />
-      </span>
-      <MarkdownLink
-        href={href}
-        onOpenSourceLocation={
-          isSource
-            ? (location) =>
-                void root.projectWorkbenchStore.presentationStore.openFile(
-                  editorLocationFromPath(location),
-                )
-            : undefined
-        }
-      >
-        {association.title}
-      </MarkdownLink>
-      {association.kind === "session" && (
-        <CommitChangeStatsText
-          stats={root.sessionMetadataStore.sessionCommitStats(association.sessionId)}
-        />
-      )}
-      {mergeStatus && (
-        <span
-          aria-label={`Merge status for ${association.title}`}
-          className={cn(
-            "basis-full whitespace-pre-wrap break-words",
-            readiness?.state === "failed" ? "text-destructive" : "text-muted-foreground",
-          )}
-        >
-          {mergeStatus}
+      <span className="flex h-4 shrink-0 items-center gap-1.5">
+        {association.kind === "session" && (
+          <SessionActivityIndicator
+            activity={root.sessionMetadataStore.sessionWorkActivity(association.sessionId)}
+          />
+        )}
+        <span className="text-muted-foreground [&>svg]:size-3">
+          <Icon />
         </span>
-      )}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 [&>a]:max-w-full [&>a]:min-w-0 [&>a]:[overflow-wrap:anywhere] [&>a]:font-normal [&>a]:leading-4 [&>a]:no-underline [&>a:hover]:text-foreground [&>a:hover]:underline">
+        <MarkdownLink
+          href={href}
+          presentation="text"
+          onOpenSourceLocation={
+            isSource
+              ? (location) =>
+                  void root.projectWorkbenchStore.presentationStore.openFile(
+                    editorLocationFromPath(location),
+                  )
+              : undefined
+          }
+        >
+          {association.title}
+        </MarkdownLink>
+        {association.kind === "session" && (
+          <CommitChangeStatsText
+            className="text-muted-foreground"
+            stats={root.sessionMetadataStore.sessionCommitStats(association.sessionId)}
+          />
+        )}
+        {mergeStatus && (
+          <span
+            aria-label={`Merge status for ${association.title}`}
+            className={cn(
+              "whitespace-pre-wrap break-words",
+              readiness?.state === "failed" ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {mergeStatus}
+          </span>
+        )}
+      </span>
     </span>
   );
 });
