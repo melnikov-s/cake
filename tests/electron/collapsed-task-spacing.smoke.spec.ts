@@ -55,7 +55,7 @@ for (const theme of ["dark", "light"] as const)
           for (const label of await labels.all()) {
             const bounds = (await label.boundingBox())!;
             const row = (await label
-              .locator('xpath=ancestor::*[@data-slot="transcript-item"]')
+              .locator('xpath=ancestor::*[@data-slot="task-section-header"]')
               .boundingBox())!;
             expect(row.height - bounds.height).toBeLessThanOrEqual(8);
             for (const button of await label.getByRole("button").all()) {
@@ -90,7 +90,7 @@ for (const theme of ["dark", "light"] as const)
           exact: true,
         })
         .click();
-      const pane = page.getByRole("complementary", { name: "To-do" });
+      const pane = page.getByRole("complementary", { name: "Workspace" });
       await expect(pane).toBeVisible();
       await expect(
         pane.getByRole("button", { name: "Normalize default-branch worktree labels", exact: true }),

@@ -37,6 +37,11 @@ import { transcriptItemParts, type TranscriptContentPart } from "./chat-transcri
 import { ChatTranscriptItem, transcriptAnchorId } from "./chat-transcript-item";
 import { transcriptItemKeys } from "./chat-transcript-items";
 import { transcriptTaskSections } from "../lib/transcript-task-sections";
+import {
+  transcriptPresentationRows,
+  type TranscriptPresentationRow,
+} from "../lib/transcript-presentation-rows";
+import { TaskSectionRail } from "./task-section-rail";
 import { todoMessageMatches } from "../lib/todo-message-matches";
 import { resultTodoOrigin, referenceTodoOrigin } from "../lib/result-todo-origin";
 import {
@@ -60,18 +65,31 @@ export interface TranscriptBottomNavigation {
 
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
 const selectionRevealMargin = 16;
-const scrollerClassName =
-  "transcript @container/transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]";
 
-interface TranscriptRow {
-  key: string;
-  item: TranscriptItem;
+function revealMargin(list: LegendListRef, key: string) {
+  const state = list.getState();
+  const index = state.indexByKey(key);
+  if (index === undefined) return selectionRevealMargin;
+  // Only explicit navigation needs this scan; scrolling itself stays list-owned.
+  for (let i = index - 1; i >= 0; i--) {
+    // SAFETY: this ref belongs exclusively to LegendList<TranscriptRow> below.
+    const row = state.data[i] as TranscriptRow;
+    if (row.kind === "section-end") break;
+    if (row.kind === "task-heading") return selectionRevealMargin + state.sizeAtIndex(i);
+  }
+  return selectionRevealMargin;
 }
+// LegendList paint containment would clip the heading’s existing narrow-pane
+// outdent and keyboard rings. Relax it only for header containers; isolate their z-order.
+const scrollerClassName =
+  "transcript isolate @container/transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none] [&_:has(>[data-slot=task-section-header])]:[contain:layout_style]!";
+
+type TranscriptRow = TranscriptPresentationRow<TranscriptItem>;
 
 /** Records where the reader is, for reopening this conversation; never moves anything. */
 function captureScrollPosition(
   list: LegendListRef,
-  anchorIds: ReadonlyMap<string, string | undefined>,
+  anchorIds: ReadonlyMap<string, { messageId: string | undefined; key: string }>,
 ): TranscriptScrollPosition | undefined {
   // Undefined until the list finished its initial placement: that is not a reading position.
   const anchor = list.anchorVisibleContent({ hold: false });
@@ -79,8 +97,11 @@ function captureScrollPosition(
   if (!anchor || state.scrollLength <= 0) return undefined;
   if (state.distanceFromEnd <= 1) return { kind: "bottom" };
   if (state.scroll <= 1) return { kind: "top" };
-  const messageId = anchorIds.get(anchor.key);
-  return messageId ? { kind: "message", messageId, offset: -anchor.offset } : undefined;
+  const target = anchorIds.get(anchor.key);
+  const position = target && list.anchorVisibleContent({ key: target.key, hold: false });
+  return target?.messageId && position
+    ? { kind: "message", messageId: target.messageId, offset: -position.offset }
+    : undefined;
 }
 
 export const ChatTranscript = observer(function ChatTranscript({
@@ -327,6 +348,11 @@ export const ChatTranscript = observer(function ChatTranscript({
       start: previous === undefined || sectionViews?.[previous]?.key !== section.key,
     };
   });
+  const { rows, stickyIndices, messageIndices } = transcriptPresentationRows(
+    items,
+    itemKeys,
+    visibleSectionViews,
+  );
   const resultItemIndex = resultPartId
     ? items.findIndex((item) => transcriptItemParts(item).some((part) => part.id === resultPartId))
     : -1;
@@ -399,11 +425,19 @@ export const ChatTranscript = observer(function ChatTranscript({
         : -1;
     opening.current =
       navigationItemIndex >= 0
-        ? { atEnd: false, index: navigationItemIndex, viewOffset: selectionRevealMargin }
+        ? {
+            atEnd: false,
+            index: messageIndices[navigationItemIndex]!,
+            viewOffset: selectionRevealMargin,
+          }
         : restoredScrollPosition?.kind === "top"
           ? { atEnd: false, index: 0, viewOffset: 0 }
           : restoredScrollPosition?.kind === "message" && restoredIndex >= 0
-            ? { atEnd: false, index: restoredIndex, viewOffset: restoredScrollPosition.offset }
+            ? {
+                atEnd: false,
+                index: messageIndices[restoredIndex]!,
+                viewOffset: restoredScrollPosition.offset,
+              }
             : { atEnd: true };
   }
   // Sending, the jump-to-bottom control and arrowing past the newest message
@@ -441,11 +475,13 @@ export const ChatTranscript = observer(function ChatTranscript({
     stopFollowing();
     if (resultItemKey === undefined) return;
     // Reader input ends the reveal (`onUserScroll`); until then a re-keyed result is shown again.
-    void listRef.current?.scrollToKey({
-      key: resultItemKey,
-      animated: false,
-      viewOffset: selectionRevealMargin,
-    });
+    const list = listRef.current;
+    if (list)
+      void list.scrollToKey({
+        key: resultItemKey,
+        animated: false,
+        viewOffset: revealMargin(list, resultItemKey),
+      });
   }, [resultReveal, resultItemKey, stopFollowing]);
   // Earlier pages load only when the reader scrolls toward the start, one page
   // per approach; layout, streaming and short transcripts never page by themselves.
@@ -484,7 +520,10 @@ export const ChatTranscript = observer(function ChatTranscript({
     void list.scrollIndexIntoView({
       index,
       animated: false,
-      viewportMargin: { start: selectionRevealMargin, end: dock + selectionRevealMargin },
+      viewportMargin: {
+        start: revealMargin(list, selectedItemKey),
+        end: dock + selectionRevealMargin,
+      },
     });
   }, [messageSelection, scroller, selectedItemKey, stopFollowing]);
   // Clicking anywhere outside the selected message ends the selection; clicks
@@ -506,7 +545,10 @@ export const ChatTranscript = observer(function ChatTranscript({
   }, [scroller, selectedMessageId, store]);
   // Persist the reading position for session switches. This only records.
   const anchorIds = new Map(
-    items.map((item, index) => [itemKeys[index]!, transcriptAnchorId(item)]),
+    rows.map((row) => [
+      row.key,
+      { messageId: transcriptAnchorId(row.item), key: itemKeys[row.index]! },
+    ]),
   );
   const currentAnchorIds = useRef(anchorIds);
   currentAnchorIds.current = anchorIds;
@@ -585,23 +627,55 @@ export const ChatTranscript = observer(function ChatTranscript({
       )}
     </>
   );
-  const rows: TranscriptRow[] = items.map((item, index) => ({ key: itemKeys[index]!, item }));
-  const renderItem = ({ item: { key, item }, index }: { item: TranscriptRow; index: number }) => (
-    <FullscreenTranscriptContext value={fullscreenTranscript}>
-      <ChatTranscriptItem
-        itemKey={key}
-        item={item}
-        index={index}
-        arriving={isArriving(key)}
-        errorFollowsUser={errorNoticeFollowsUser(items, index)}
-        selected={index === selectedItemIndex}
-        behavior={item.id === latestMessageId ? latestMessageBehavior : transcriptBehavior}
-        loadingStartedAt={loadingStartedAt}
-        loadingLabel={loadingLabel}
-        taskSection={visibleSectionViews[index]}
-      />
-    </FullscreenTranscriptContext>
-  );
+  const renderItem = ({ item: row }: { item: TranscriptRow }) => {
+    const { key, item, index, section } = row;
+    if (row.kind === "section-space")
+      return (
+        <div
+          aria-hidden
+          className={section?.expanded ? "h-8" : "h-1"}
+          data-slot="task-section-space"
+        />
+      );
+    if (row.kind === "section-end")
+      return <div aria-hidden className="h-px" data-slot="task-section-end" />;
+    if (row.kind === "task-heading" && section?.todoId && behavior.todos)
+      return (
+        <div
+          data-slot="task-section-header"
+          data-transcript-item-index={index}
+          data-transcript-section-anchor-id={transcriptAnchorId(item)}
+          className="bg-background pb-3 has-[[aria-expanded=false]]:pb-0"
+        >
+          <div className="mx-auto w-full max-w-3xl min-w-0 [&_[data-slot=task-section-label]]:mb-0 [&_[data-slot=task-section-label]]:bg-background">
+            <TaskSectionRail
+              todoId={section.todoId}
+              start
+              headingOnly
+              todos={behavior.todos}
+              expanded={section.expanded}
+              onToggle={() => behavior.todos?.toggleTranscriptSection(section.key, section.todoId!)}
+            />
+          </div>
+        </div>
+      );
+    return (
+      <FullscreenTranscriptContext value={fullscreenTranscript}>
+        <ChatTranscriptItem
+          itemKey={key}
+          item={item}
+          index={index}
+          arriving={isArriving(key)}
+          errorFollowsUser={errorNoticeFollowsUser(items, index)}
+          selected={index === selectedItemIndex}
+          behavior={item.id === latestMessageId ? latestMessageBehavior : transcriptBehavior}
+          loadingStartedAt={loadingStartedAt}
+          loadingLabel={loadingLabel}
+          taskSection={section}
+        />
+      </FullscreenTranscriptContext>
+    );
+  };
   const historyHeader = store.history?.hasMore && (
     <div className="grid min-h-10 justify-items-center gap-2 px-6 py-2">
       <span role="status" className="text-xs text-muted-foreground" aria-live="polite">
@@ -641,10 +715,19 @@ export const ChatTranscript = observer(function ChatTranscript({
           className={scrollerClassName}
           contentContainerClassName="transcript-content mx-auto w-full max-w-[75rem] min-w-0 px-6 max-[620px]:px-4 in-[.chat-layout-compact]:px-3"
           data={rows}
+          // The list retains the actual header node, not a second overlay. Its
+          // sticky origin is the transcript scrollport, below the workspace chrome.
+          stickyHeaderIndices={stickyIndices}
           // Row inputs beyond the item (selection, behaviors, sections) change per render.
           extraData={renderItem}
           keyExtractor={(row) => row.key}
-          getItemType={(row) => (row.item.kind === "text" ? row.item.role : row.item.kind)}
+          getItemType={(row) =>
+            row.kind === "message"
+              ? row.item.kind === "text"
+                ? row.item.role
+                : row.item.kind
+              : row.kind
+          }
           renderItem={renderItem}
           recycleItems={false}
           estimatedItemSize={120}

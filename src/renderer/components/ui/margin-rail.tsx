@@ -14,6 +14,7 @@ export function MarginRail({
   focused,
   expanded,
   onToggle,
+  showRail = true,
 }: {
   title: string;
   done: boolean;
@@ -23,10 +24,11 @@ export function MarginRail({
   focused: boolean;
   expanded: boolean;
   onToggle(): void;
+  showRail?: boolean;
 }) {
   return (
     <>
-      {expanded && (
+      {expanded && showRail && (
         <div
           data-slot="margin-rail"
           aria-hidden="true"

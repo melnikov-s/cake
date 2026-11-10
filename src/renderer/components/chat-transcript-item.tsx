@@ -23,7 +23,7 @@ interface ChatTranscriptItemProps {
   behavior: CanonicalTranscriptBehavior;
   loadingStartedAt: number | undefined;
   loadingLabel: string | undefined;
-  taskSection?: { todoId: string | undefined; start: boolean; key: string; expanded: boolean };
+  taskSection?: { todoId: string | undefined; key: string; expanded: boolean };
 }
 
 function sameParts(left: readonly UiPart[], right: readonly UiPart[]) {
@@ -79,11 +79,9 @@ export const ChatTranscriptItem = memo(
         data-transcript-anchor-id={transcriptAnchorId(item)}
         aria-current={selected ? "true" : undefined}
         className={cn(
-          "relative mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=task-section-label]]:grid has-[[data-slot=task-section-label]]:grid-cols-[minmax(0,1fr)] has-[[data-slot=task-section-label]]:pt-8 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5 [&:has([data-slot=artifact-disclosure])_[data-slot=margin-rail]]:hidden [&:has([data-widget-view-id])_[data-slot=margin-rail]]:hidden",
+          "relative mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5 [&:has([data-slot=artifact-disclosure])_[data-slot=margin-rail]]:hidden [&:has([data-widget-view-id])_[data-slot=margin-rail]]:hidden",
           // Folded task headings are compact list rows, not full message sections.
-          taskSection &&
-            !taskSection.expanded &&
-            "pb-1 has-[[data-slot=task-section-label]]:pt-1 in-[.chat-layout-compact]:pb-1 [&_[data-slot=task-section-label]]:mb-0",
+          taskSection && !taskSection.expanded && "pb-1 in-[.chat-layout-compact]:pb-1",
           errorFollowsUser && "pt-3",
           arriving && "motion-safe:animate-arrive",
           // The selection ring outlines only the message bubble, not its label or
@@ -95,7 +93,7 @@ export const ChatTranscriptItem = memo(
         {taskSection?.todoId && behavior.todos && (
           <TaskSectionRail
             todoId={taskSection.todoId}
-            start={taskSection.start}
+            start={false}
             todos={behavior.todos}
             expanded={taskSection.expanded}
             onToggle={() =>
@@ -140,7 +138,6 @@ export const ChatTranscriptItem = memo(
   // entrance, and a later re-render dropping the class must not cut the animation short.
   (previous, next) =>
     previous.taskSection?.todoId === next.taskSection?.todoId &&
-    previous.taskSection?.start === next.taskSection?.start &&
     previous.taskSection?.key === next.taskSection?.key &&
     previous.taskSection?.expanded === next.taskSection?.expanded &&
     previous.itemKey === next.itemKey &&

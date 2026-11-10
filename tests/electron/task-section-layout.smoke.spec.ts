@@ -49,7 +49,9 @@ for (const theme of ["dark", "light"] as const)
         exact: true,
       });
       const label = title.locator('xpath=ancestor::*[@data-slot="task-section-label"]');
-      const row = title.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
+      const row = transcript
+        .getByText("Separately, improve project navigation.", { exact: true })
+        .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
       // Resize in both directions without remounting; long headings
       // must stay above, never alongside, the message rule.
       for (const width of [1800, 900, 1500, 1560, 1800]) {
@@ -58,9 +60,20 @@ for (const theme of ["dark", "light"] as const)
             BrowserWindow.getAllWindows()[0]?.setContentSize(width, 1100),
           width,
         );
-        await title.scrollIntoViewIfNeeded();
         await expect(title).toBeVisible();
         await expect(async () => {
+          // Resize measurement/anchoring can settle after setContentSize returns.
+          // Re-align the section start using its current wrapped heading height;
+          // a sticky title alone may be visible with its first message above it.
+          const headingHeight = (await label.boundingBox())!.height;
+          await row.evaluate((element, headingHeight) => {
+            const scroller = element.closest(".transcript")!;
+            scroller.scrollTop +=
+              element.getBoundingClientRect().top -
+              scroller.getBoundingClientRect().top -
+              headingHeight -
+              44;
+          }, headingHeight);
           const paneBounds = (await transcript.boundingBox())!;
           const labelBounds = (await label.boundingBox())!;
           const rowBounds = (await row.boundingBox())!;
@@ -84,7 +97,11 @@ for (const theme of ["dark", "light"] as const)
           expect(rowBounds.x - labelBounds.x).toBeLessThanOrEqual(96);
           if (width === 1800) expect(rowBounds.x - labelBounds.x).toBe(96);
           expect(labelBounds.x).toBeLessThanOrEqual(railBounds.x);
-          expect(labelBounds.y - rowBounds.y).toBe(32);
+          // The virtualizer rounds each standalone header's measured height
+          // to a device pixel; preserve the 12px gap within that rounding.
+          const headingGap = rowBounds.y - labelBounds.y - labelBounds.height;
+          expect(headingGap).toBeGreaterThanOrEqual(12);
+          expect(headingGap).toBeLessThan(13);
           expect(railBounds.y).toBeGreaterThanOrEqual(labelBounds.y + labelBounds.height + 12);
           expect(railBounds.y).toBeLessThanOrEqual(messageBounds.y);
           expect(

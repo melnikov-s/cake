@@ -3271,7 +3271,8 @@ const projectChatTaskRails: VisualCaptureScenario = {
     await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
     const transcript = page.locator(".transcript").last();
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    await transcript.hover({ position: { x: 10, y: 100 } });
+    const viewport = (await transcript.boundingBox())!;
+    await page.mouse.move(viewport.x + viewport.width / 2, viewport.y + 100);
     await page.mouse.wheel(0, -10000);
     await expect
       .poll(async () => {
@@ -3283,7 +3284,9 @@ const projectChatTaskRails: VisualCaptureScenario = {
     const row = page
       .getByText("Investigate slow project startup.", { exact: true })
       .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
-    const first = row.getByRole("button", { name: `Show in To-do: ${taskTitle}`, exact: true });
+    const first = transcript
+      .getByRole("button", { name: `Show in To-do: ${taskTitle}`, exact: true })
+      .first();
     await expect(first).toBeVisible();
     // Headings stay above the rule at every pane width, including wrapping
     // titles and narrower accessory layouts.
@@ -3299,7 +3302,7 @@ const projectChatTaskRails: VisualCaptureScenario = {
     expect(labelBounds!.x + labelBounds!.width).toBeLessThanOrEqual(
       rowBounds!.x + rowBounds!.width + 1,
     );
-    expect(labelBounds!.y - rowBounds!.y).toBe(32);
+    expect(rowBounds!.y - labelBounds!.y - labelBounds!.height).toBe(12);
     expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(messageBounds!.y);
     const railBounds = (await row.locator('[data-slot="margin-rail"]').boundingBox())!;
     expect(railBounds.y).toBeGreaterThanOrEqual(labelBounds!.y + labelBounds!.height + 12);
@@ -3325,7 +3328,7 @@ const projectChatTaskRails: VisualCaptureScenario = {
       ).toBeHidden();
     }
     if (state === "return") {
-      await transcript.hover({ position: { x: 10, y: 100 } });
+      await page.mouse.move(viewport.x + viewport.width / 2, viewport.y + 100);
       await page.mouse.wheel(0, 10000);
       await page
         .getByText("Back to startup—compare a cold launch too.", { exact: true })
@@ -3334,8 +3337,12 @@ const projectChatTaskRails: VisualCaptureScenario = {
         .getByRole("button", { name: `Show in To-do: ${taskTitle}`, exact: true })
         .last();
       await expect(returned).toBeVisible();
-      const returnedRow = returned.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
-      const previousRow = returnedRow.locator("xpath=../preceding-sibling::*[1]");
+      const returnedRow = page
+        .getByText("Back to startup—compare a cold launch too.", { exact: true })
+        .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
+      const previousRow = page
+        .getByText("I’ll keep the sidebar compact and preserve the shortcuts.", { exact: true })
+        .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
       const previousRail = previousRow.locator('[data-slot="margin-rail"]');
       const nextRail = returnedRow.locator('[data-slot="margin-rail"]');
       const previousBounds = (await previousRail.boundingBox())!;
@@ -3368,6 +3375,65 @@ const projectChatTaskRails: VisualCaptureScenario = {
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="session-pane"]'),
+};
+
+const stickyTaskHeadings: VisualCaptureScenario = {
+  name: "project-chat-sticky-task-headings",
+  description:
+    "Virtualized task headings stick through long sections and clear for unlabelled turns",
+  states: ["default"],
+  async seed(paths, theme) {
+    await projectChatTodos.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const application = JSON.parse(await readFile(file, "utf8"));
+    const todos = application.data.projects[0].todos.items;
+    todos[0].title = "Investigate slow project startup";
+    todos[1].title =
+      "Improve project navigation and preserve very-long-unbroken-workspace-identifiers-without-clipping-the-transcript";
+    await writeFile(file, JSON.stringify(application));
+    const texts: string[] = [];
+    const taskIds: (string | null)[] = [];
+    for (const [name, count, todoId] of [
+      ["Startup", 12, todos[0].id],
+      ["Navigation", 8, todos[1].id],
+      ["General", 4, null],
+      ["Startup return", 2, todos[0].id],
+    ] as const) {
+      for (let i = 1; i <= count; i++) {
+        texts.push(`${name} checkpoint ${i}.`);
+        texts.push(
+          Array.from(
+            { length: 4 },
+            (_, paragraph) =>
+              `${name} finding ${i}.${paragraph + 1}. The transcript keeps its existing message identity and task context while the reader reviews this section. Navigation and keyboard actions remain available.`,
+          ).join("\n\n"),
+        );
+        taskIds.push(todoId);
+      }
+    }
+    const hash = createHash("sha256").update(paths.project).digest("hex");
+    await seedDurableChat(join(paths.cakeHome, "pi", "project-chats", hash), texts, taskIds);
+  },
+  async prepare(page) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+    const transcript = page.locator(".transcript").last();
+    const viewport = (await transcript.boundingBox())!;
+    await page.mouse.move(viewport.x + viewport.width / 2, viewport.y + 100);
+    await expect
+      .poll(async () => {
+        await page.mouse.wheel(0, -100000);
+        return transcript.evaluate((element) => element.scrollTop);
+      })
+      .toBeLessThan(1);
+    await expect(transcript.getByText("Startup checkpoint 1.", { exact: true })).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
   },
   region: (page) => page.locator('[data-slot="session-pane"]'),
 };
@@ -8162,6 +8228,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectChatAttention,
   projectChatAttentionResults,
   projectChatTaskRails,
+  stickyTaskHeadings,
   adjacentTaskHeadings,
   pendingTaskTurn,
   pdfTaskSwitch,

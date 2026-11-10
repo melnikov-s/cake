@@ -447,6 +447,8 @@ it("interrupts source rows without changing the discussion or borrowing pane sel
     const row = (id: string) =>
       view.container.querySelector(`[data-transcript-anchor-id="${id}"]`)!;
     const rail = (id: string) => row(id).querySelector('[data-slot="margin-rail"]');
+    const heading = (id: string) =>
+      view.container.querySelector(`[data-transcript-section-anchor-id="${id}"]`)!;
     // Rows are absolutely placed; read them in their laid-out order.
     const headings = () =>
       screen
@@ -468,12 +470,12 @@ it("interrupts source rows without changing the discussion or borrowing pane sel
       "Task A",
     ]);
     expect(rail("b-report")).not.toBeNull();
-    expect(row("b-report").textContent).toContain("Task B");
-    expect(row("b-report").textContent).not.toContain("Task A");
+    expect(heading("b-report").textContent).toContain("Task B");
+    expect(heading("b-report").textContent).not.toContain("Task A");
     expect(rail("b-card")).not.toBeNull();
     expect(rail("unknown-report")).toBeNull();
     expect(rail("a-continuation")).not.toBeNull();
-    expect(row("a-continuation").textContent).toContain("Task A");
+    expect(heading("a-continuation").textContent).toContain("Task A");
     expect(rail("matching-report")).not.toBeNull();
     expect(rail("a-after-matching")).not.toBeNull();
 
@@ -483,7 +485,7 @@ it("interrupts source rows without changing the discussion or borrowing pane sel
     expect(view.container.querySelector('[data-transcript-anchor-id="b-card"]')).toBeNull();
     expect(screen.getByText("a-continuation")).toBeDefined();
     expect(rail("a-continuation")).not.toBeNull();
-    await u.click(screen.getAllByRole("button", { name: "Task A" })[0]!);
+    await u.click(headings().find((heading) => heading.getAttribute("aria-label") === "Task A")!);
     expect(screen.queryByText("a-answer")).toBeNull();
     expect(screen.getByText("a-after-matching")).toBeDefined();
     expect(screen.getByText("Unknown source")).toBeDefined();
