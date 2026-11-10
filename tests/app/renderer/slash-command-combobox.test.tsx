@@ -4,7 +4,10 @@
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
+import {
+  builtinSlashCommands,
+  type ConversationSnapshot,
+} from "../../../src/contracts/conversations/session-contract";
 import {
   findFileMention,
   SlashCommandCombobox,
@@ -88,7 +91,7 @@ describe("SlashCommandCombobox", () => {
 
   it.each([
     ["matches text anywhere in a command name", "/desktop", "skill:desktop-fixture"],
-    ["fuzzy matches characters in order", "/tlcp", "toolcompact"],
+    ["fuzzy matches characters in order", "/tlpr", "toolprune"],
   ])("%s", (_description, value, expectedCommand) => {
     act(() =>
       root.render(
@@ -104,6 +107,29 @@ describe("SlashCommandCombobox", () => {
 
     expect(container.querySelectorAll('[role="option"]')).toHaveLength(1);
     expect(container.querySelector('[role="option"]')?.textContent).toContain(expectedCommand);
+  });
+
+  it("offers tool prune with no-model copy, distinct from compact, and selects the new command", () => {
+    const onSubmit = vi.fn();
+    act(() =>
+      root.render(
+        <SlashCommandCombobox
+          aria-label="Message"
+          commands={builtinSlashCommands}
+          value="/toolpr"
+          onValueChange={vi.fn()}
+          onSubmit={onSubmit}
+        />,
+      ),
+    );
+    const options = [...container.querySelectorAll('[role="option"]')];
+    expect(options).toHaveLength(1);
+    expect(options[0]?.textContent).toContain("toolprune");
+    expect(options[0]?.textContent).toContain("no model call");
+    expect(container.textContent).not.toMatch(/tool[ -]?compact/i);
+    const input = container.querySelector<HTMLTextAreaElement>('[role="combobox"]')!;
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(onSubmit).toHaveBeenCalledWith("/toolprune");
   });
 
   it("ranks stronger command matches ahead of fuzzy matches", () => {

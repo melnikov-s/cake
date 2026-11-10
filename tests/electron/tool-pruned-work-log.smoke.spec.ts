@@ -147,6 +147,7 @@ test("shows compacted historical work in place, muted and expandable", async () 
       timestamp,
       customType: "cake.tool-compact/v1",
       data: {
+        // Historical persisted metadata remains readable; not a public command alias.
         summary: "Earlier work was tool compacted.",
         systemCheckpointEntryId: "canonical-checkpoint",
       },

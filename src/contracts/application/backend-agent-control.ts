@@ -5,7 +5,7 @@ import {
 import {
   SessionCompactInput,
   SessionCompactBatchInput,
-  SessionToolCompactInput,
+  SessionToolPruneInput,
 } from "../project-sessions/session-compaction";
 import { PendingReportAcknowledge, PendingReportRead } from "../conversations/pending-report";
 import { CompletionInboxUpdate } from "../conversations/completion-inbox";
@@ -106,7 +106,7 @@ export const BackendAgentInvocation = Schema.Union([
   operation("sessions.info", Schema.Struct(target)),
   operation("sessions.abort", AgentSessionAbortInput),
   operation("sessions.compact", SessionCompactInput),
-  operation("sessions.tool-compact", SessionToolCompactInput),
+  operation("sessions.tool-prune", SessionToolPruneInput),
   operation("sessions.compact-batch", SessionCompactBatchInput),
   operation("sessions.list-family", AgentListInput),
   operation(
@@ -179,7 +179,7 @@ export const backendAgentCommands: ReadonlySet<string> = new Set([
   "sessions.info",
   "sessions.abort",
   "sessions.compact",
-  "sessions.tool-compact",
+  "sessions.tool-prune",
   "sessions.compact-batch",
   "sessions.history",
   "sessions.compactions",

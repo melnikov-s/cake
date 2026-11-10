@@ -18,7 +18,7 @@ import {
   subagentCompletionType,
 } from "./internal-input-projection";
 import { createSystemContextProjector } from "./system-context-projection";
-import { toolCompactEntryType, toolCompactMarkerSchema } from "./tool-compaction-provenance";
+import { toolPruneEntryType, toolPruneMarkerSchema } from "./tool-prune-provenance";
 import { partsFromMessage, type AbortPresentation } from "./message-projection";
 import { boundedProjectionKey, formatUnknown, textFromContent } from "./tool-projection";
 import { visibleUserMessageText } from "./user-message-transport";
@@ -108,13 +108,13 @@ export function projectSessionEntries(
       userMessagePresentations.set(presentation.value.targetId, presentation.value.renderAs);
   }
 
-  // Tool Compact carries Pi's canonical baseline without injecting new instructions.
+  // Tool Prune carries Pi's canonical baseline without injecting new instructions.
   // Identify that exact checkpoint from display metadata, including in ordinary
   // forks whose replay prefix ends before the full compaction provenance entry.
   const systemCheckpoints = new Set<string>();
   for (const entry of entries) {
-    if (entry.type !== "custom" || entry.customType !== toolCompactEntryType) continue;
-    const marker = Schema.decodeUnknownOption(toolCompactMarkerSchema)(entry.data);
+    if (entry.type !== "custom" || entry.customType !== toolPruneEntryType) continue;
+    const marker = Schema.decodeUnknownOption(toolPruneMarkerSchema)(entry.data);
     if (Option.isSome(marker) && marker.value.systemCheckpointEntryId)
       systemCheckpoints.add(marker.value.systemCheckpointEntryId);
   }

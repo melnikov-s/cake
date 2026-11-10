@@ -9,11 +9,11 @@ import { stripPresentationModeReminder } from "../../../contracts/conversations/
 import { jsonValueSchema } from "../../../contracts/serialization/json-contract";
 import { textFromContent } from "./tool-projection";
 import {
-  toolCompactEntryType,
-  toolCompactMarkerSchema,
-  toolCompactProvenanceEntryType,
-  toolCompactProvenanceSchema,
-} from "./tool-compaction-provenance";
+  toolPruneEntryType,
+  toolPruneMarkerSchema,
+  toolPruneProvenanceEntryType,
+  toolPruneProvenanceSchema,
+} from "./tool-prune-provenance";
 
 type MutableHistoryEntry = {
   -readonly [Key in keyof SessionHistoryEntry]: SessionHistoryEntry[Key];
@@ -66,15 +66,15 @@ function projectEntry(entry: SessionEntry, active: boolean): MutableHistoryEntry
   } else if (entry.type === "custom_message") {
     base.customType = entry.customType;
     base.text = textFromContent(entry.content);
-    if (entry.customType === toolCompactEntryType) base.type = "tool-compaction";
+    if (entry.customType === toolPruneEntryType) base.type = "tool-prune";
   } else if (entry.type === "custom") {
     base.customType = entry.customType;
     // Do not expose arbitrary hidden extension state as transcript content.
     base.text = entry.customType;
-    if (entry.customType === toolCompactEntryType) {
-      const marker = Schema.decodeUnknownOption(toolCompactMarkerSchema)(entry.data);
+    if (entry.customType === toolPruneEntryType) {
+      const marker = Schema.decodeUnknownOption(toolPruneMarkerSchema)(entry.data);
       if (Option.isSome(marker)) {
-        base.type = "tool-compaction";
+        base.type = "tool-prune";
         base.text = marker.value.summary;
       }
     }
@@ -110,8 +110,8 @@ export function inspectSessionHistory(session: SessionManager, query: SessionHis
   const entries = query.branch === "all" ? session.getEntries() : session.getBranch(query.leafId);
   const provenance = new Map<string, { sourceLeafId: string; replayedMessages: number }>();
   for (const entry of session.getEntries()) {
-    if (entry.type !== "custom" || entry.customType !== toolCompactProvenanceEntryType) continue;
-    const decoded = Schema.decodeUnknownOption(toolCompactProvenanceSchema)(entry.data);
+    if (entry.type !== "custom" || entry.customType !== toolPruneProvenanceEntryType) continue;
+    const decoded = Schema.decodeUnknownOption(toolPruneProvenanceSchema)(entry.data);
     if (Option.isSome(decoded))
       provenance.set(decoded.value.markerEntryId, {
         sourceLeafId: decoded.value.sourceLeafId,

@@ -662,14 +662,14 @@ export const invoke: (
           });
         case "sessions.compact":
         case "sessions.compact-batch":
-        case "sessions.tool-compact": {
+        case "sessions.tool-prune": {
           if (!caller) return fail("Compaction requires an actual calling Session.");
           const input = invocation.arguments;
           const results = yield* sessionCompaction.compact(
             "sessionIds" in input ? input.sessionIds : [input.sessionId],
             "instructions" in input ? input.instructions : undefined,
             caller,
-            command === "sessions.tool-compact" ? "tools" : "normal",
+            command === "sessions.tool-prune" ? "tools" : "normal",
           );
           return toJsonValue({
             ok: results.every(

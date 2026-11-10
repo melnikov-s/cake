@@ -75,6 +75,14 @@ describe("core coordinator calling reference", () => {
     expect(reference).not.toContain("session.resolve ");
   });
 
+  it("assembles tool prune as deterministic maintenance, never model compaction", () => {
+    expect(line("sessions.tool-prune")).toBe("sessions.tool-prune {sessionId}");
+    expect(prompt).toContain("tool prune deterministically strips tool calls/results");
+    expect(prompt).toContain("makes no model call");
+    expect(prompt).toContain("never substitute them for tool prune");
+    expect(prompt).not.toMatch(/tool[ -]?compact/i);
+  });
+
   it("provides a directly executable action-bar recipe with owner-message and lifecycle semantics", async () => {
     const recipe = line("plugins.present");
     expect(recipe).toBeDefined();

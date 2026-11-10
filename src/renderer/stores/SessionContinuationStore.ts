@@ -46,7 +46,7 @@ export interface SessionContinuationPrompt {
   resolveParent: boolean;
 }
 
-/** Owns detached full-context forks and in-place tool compaction. */
+/** Owns detached full-context forks and in-place tool pruning. */
 export class SessionContinuationStore extends Store<SessionContinuationStoreProps> {
   prompt: SessionContinuationPrompt | undefined;
   private activeOperationId: string | undefined;
@@ -69,17 +69,17 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
     return this.requestContinuation(entryId);
   }
 
-  async toolCompactAt(entryId: string) {
+  async toolPruneAt(entryId: string) {
     const context = this.props.sessionContext();
     if (!context) {
-      this.props.reportError("There is no active session to compact");
+      this.props.reportError("There is no active session to tool prune");
       return false;
     }
     if (this.signal.aborted || this.prompt || this.activeOperationId) return false;
     this.props.closeCommandPane();
     this.activeOperationId = this.props.operations.start("project-workbench");
     try {
-      await this.client.projectSessions.toolCompact(
+      await this.client.projectSessions.toolPrune(
         {
           sessionId: context.sessionId,
           workingDirectory: context.workspacePath,

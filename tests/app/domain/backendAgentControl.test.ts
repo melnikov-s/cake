@@ -168,7 +168,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   const clock = yield* Clock.Clock;
   const consumedInputs = new Map<string, number>();
   const compactions: Array<{ sessionId: string; instructions?: string }> = [];
-  const toolCompactions: string[] = [];
+  const toolPrunings: string[] = [];
   const compactFailures = new Set<string>();
   const compacted = new Set<string>();
   const compactStarted = yield* Deferred.make<void>();
@@ -387,12 +387,11 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             if (pauseMessage) await Effect.runPromise(Deferred.await(messageRelease));
             if (failedTurns.has(sessionId)) throw new Error("Model failed after admission");
           },
-          toolCompactIfIdle: async () => {
-            toolCompactions.push(sessionId);
+          toolPruneIfIdle: async () => {
+            toolPrunings.push(sessionId);
             Deferred.doneUnsafe(compactStarted, Effect.void);
             if (pauseCompaction) await Effect.runPromise(Deferred.await(compactRelease));
-            if (compactFailures.has(sessionId))
-              throw new Error("Tool compaction navigation failed");
+            if (compactFailures.has(sessionId)) throw new Error("Tool pruning navigation failed");
             return { status: "compacted" };
           },
           compactIfIdle: async (instructions) => {
@@ -649,7 +648,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
       }),
     storedSchedules: () => storedSchedules,
     compactions,
-    toolCompactions,
+    toolPrunings,
     compactFailures,
     compactStarted,
     compactRelease,
@@ -1009,25 +1008,25 @@ it.effect(
     }),
 );
 
-it.effect("tool compaction routes from Project Session controls and awaits actual completion", () =>
+it.effect("tool pruning routes from Project Session controls and awaits actual completion", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
     f.pauseCompaction();
     const operation = yield* f
-      .call("sessions.tool-compact", { sessionId: "00000022" })
+      .call("sessions.tool-prune", { sessionId: "00000022" })
       .pipe(Effect.forkScoped);
     yield* Deferred.await(f.compactStarted);
     expect(operation.pollUnsafe()).toBeUndefined();
-    expect(f.toolCompactions).toEqual([target]);
-    expect((yield* f.direct("sessions.tool-compact", {}).pipe(Effect.result))._tag).toBe("Failure");
+    expect(f.toolPrunings).toEqual([target]);
+    expect((yield* f.direct("sessions.tool-prune", {}).pipe(Effect.result))._tag).toBe("Failure");
     expect(f.compactions).toEqual([]);
     yield* Deferred.succeed(f.compactRelease, undefined);
     expect(yield* Fiber.join(operation)).toMatchObject({
       ok: true,
-      command: "sessions.tool-compact",
+      command: "sessions.tool-prune",
       results: [{ reference: "00000022", sessionId: target, status: "compacted" }],
     });
-    expect(yield* f.call("sessions.tool-compact", { sessionId: "missing" })).toMatchObject({
+    expect(yield* f.call("sessions.tool-prune", { sessionId: "missing" })).toMatchObject({
       ok: false,
       results: [{ status: "invalid" }],
     });
@@ -1037,31 +1036,31 @@ it.effect("tool compaction routes from Project Session controls and awaits actua
   }),
 );
 
-it.effect("unattended artifacts tool-compact explicit targets without impersonation or turns", () =>
+it.effect("unattended artifacts tool-prune explicit targets without impersonation or turns", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
     f.pauseCompaction();
     const operation = yield* f
-      .artifact("sessions.tool-compact", { sessionId: target })
+      .artifact("sessions.tool-prune", { sessionId: target })
       .pipe(Effect.forkScoped);
     yield* Deferred.await(f.compactStarted);
     expect(operation.pollUnsafe()).toBeUndefined();
-    expect(f.toolCompactions).toEqual([target]);
+    expect(f.toolPrunings).toEqual([target]);
     yield* Deferred.succeed(f.compactRelease, undefined);
     expect(yield* Fiber.join(operation)).toMatchObject({
       ok: true,
-      command: "sessions.tool-compact",
+      command: "sessions.tool-prune",
       results: [{ reference: target, sessionId: target, status: "compacted" }],
     });
-    // Resolved history stays resolved. Tool compaction deliberately repeats branch creation;
+    // Resolved history stays resolved. Tool pruning deliberately repeats branch creation;
     // it is not a durable request-id replay.
     f.resolve();
-    expect(yield* f.artifact("sessions.tool-compact", { sessionId: "00000022" })).toMatchObject({
+    expect(yield* f.artifact("sessions.tool-prune", { sessionId: "00000022" })).toMatchObject({
       ok: true,
       results: [{ sessionId: target, status: "compacted" }],
     });
-    expect(f.toolCompactions).toEqual([target, target]);
-    expect(yield* f.background("sessions.tool-compact", { sessionId: target })).toMatchObject({
+    expect(f.toolPrunings).toEqual([target, target]);
+    expect(yield* f.background("sessions.tool-prune", { sessionId: target })).toMatchObject({
       ok: false,
     });
     for (const command of ["sessions.compact", "sessions.compact-batch"])
@@ -1098,19 +1097,17 @@ it.effect(
       f.sessionsByDirectory.set("/project", [source, target]);
       f.sessionsByDirectory.set("/other", [third]);
       // A genuine session caller keeps its own project scope, even through the artifact bridge.
-      expect(
-        yield* f.artifact("sessions.tool-compact", { sessionId: third }, source),
-      ).toMatchObject({
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: third }, source)).toMatchObject({
         ok: false,
         results: [{ status: "unauthorized" }],
       });
       f.deny("/other");
-      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: third })).toMatchObject({
         ok: false,
         results: [{ status: "unauthorized" }],
       });
-      expect(f.toolCompactions).toEqual([]);
-      expect(yield* f.artifact("sessions.tool-compact", { sessionId: target })).toMatchObject({
+      expect(f.toolPrunings).toEqual([]);
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: target })).toMatchObject({
         ok: true,
       });
       // Removing a project removes host routing authority too, even when its identity is known elsewhere.
@@ -1120,11 +1117,11 @@ it.effect(
           projects: state.projects.filter((item) => item.path !== "/other"),
         }),
       );
-      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: third })).toMatchObject({
         ok: false,
         results: [{ status: "invalid" }],
       });
-      expect(f.toolCompactions).toEqual([target]);
+      expect(f.toolPrunings).toEqual([target]);
       // A separate registered and accessible project needs no creator/session identity.
       yield* Context.get(f.context, ApplicationState).transact((state) =>
         Effect.succeed({
@@ -1133,68 +1130,64 @@ it.effect(
         }),
       );
       f.sessionsByDirectory.set("/accessible", [third]);
-      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: third })).toMatchObject({
         ok: true,
       });
-      expect(f.toolCompactions).toEqual([target, third]);
+      expect(f.toolPrunings).toEqual([target, third]);
       expect(f.gatewayCalls).toEqual([]);
       expect(f.restored()).toBe(0);
     }),
 );
 
-it.effect(
-  "artifact tool compaction rejects malformed, ambiguous and session-relative targets",
-  () =>
-    Effect.gen(function* () {
-      const f = yield* fixture();
-      const collision = "11111111-1111-4111-8111-000000000022";
-      f.sessionsByDirectory.set("/project", [source, target, third, collision]);
-      for (const sessionId of [
-        "parent",
-        "Same title",
-        "00000022",
-        "00000000-0000-4000-8000-00000000ffff",
-      ]) {
-        expect(yield* f.artifact("sessions.tool-compact", { sessionId })).toMatchObject({
-          ok: false,
-          results: [{ status: "invalid" }],
-        });
-      }
-      const invalidInputs: JsonValue[] = [
-        {},
-        { sessionId: "" },
-        { sessionId: null },
-        { sessionId: target, callingSessionId: source },
-        { sessionId: target, projectPath: "/project" },
-      ];
-      for (const input of invalidInputs) {
-        expect(yield* f.artifact("sessions.tool-compact", input).pipe(Effect.result)).toMatchObject(
-          {
-            _tag: "Failure",
-            failure: { _tag: "ArtifactCommandError" },
-          },
-        );
-      }
-      expect(f.toolCompactions).toEqual([]);
-      expect(f.runtimeCreates).toEqual([source]);
-      expect(f.restored()).toBe(0);
-    }),
+it.effect("artifact tool pruning rejects malformed, ambiguous and session-relative targets", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const collision = "11111111-1111-4111-8111-000000000022";
+    f.sessionsByDirectory.set("/project", [source, target, third, collision]);
+    for (const sessionId of [
+      "parent",
+      "Same title",
+      "00000022",
+      "00000000-0000-4000-8000-00000000ffff",
+    ]) {
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId })).toMatchObject({
+        ok: false,
+        results: [{ status: "invalid" }],
+      });
+    }
+    const invalidInputs: JsonValue[] = [
+      {},
+      { sessionId: "" },
+      { sessionId: null },
+      { sessionId: target, callingSessionId: source },
+      { sessionId: target, projectPath: "/project" },
+    ];
+    for (const input of invalidInputs) {
+      expect(yield* f.artifact("sessions.tool-prune", input).pipe(Effect.result)).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ArtifactCommandError" },
+      });
+    }
+    expect(f.toolPrunings).toEqual([]);
+    expect(f.runtimeCreates).toEqual([source]);
+    expect(f.restored()).toBe(0);
+  }),
 );
 
 it.effect(
-  "artifact tool compaction leaves streaming, queued and recovery-blocked targets untouched",
+  "artifact tool pruning leaves streaming, queued and recovery-blocked targets untouched",
   () =>
     Effect.gen(function* () {
       const f = yield* fixture();
       yield* f.direct("sessions.context", { sessionId: target });
       const recovery = Context.get(f.context, RuntimeRecoveryStorage);
       f.active.add(target);
-      expect(yield* f.artifact("sessions.tool-compact", { sessionId: target })).toMatchObject({
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: target })).toMatchObject({
         results: [{ status: "busy" }],
       });
       f.active.delete(target);
       f.pending.add(target);
-      expect(yield* f.artifact("sessions.tool-compact", { sessionId: target })).toMatchObject({
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: target })).toMatchObject({
         results: [{ status: "busy" }],
       });
       expect(f.pending.has(target)).toBe(true);
@@ -1209,7 +1202,7 @@ it.effect(
         issue: "Requires review",
       };
       yield* recovery.update(blocked);
-      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: third })).toMatchObject({
         results: [{ status: "busy" }],
       });
       expect(yield* recovery.get(third)).toEqual(blocked);
@@ -1221,11 +1214,11 @@ it.effect(
         ],
       });
       const before = yield* recovery.get(third);
-      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: third })).toMatchObject({
         results: [{ status: "busy" }],
       });
       expect(yield* recovery.get(third)).toEqual(before);
-      expect(f.toolCompactions).toEqual([]);
+      expect(f.toolPrunings).toEqual([]);
       expect(f.runtimeCreates).toEqual([source, target]);
       expect(yield* Queue.size(f.prompts)).toBe(0);
       expect(f.restored()).toBe(0);
@@ -1237,7 +1230,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const directory = yield* Effect.acquireRelease(
-        Effect.promise(() => mkdtemp(join(tmpdir(), "cake-artifact-tool-compact-"))),
+        Effect.promise(() => mkdtemp(join(tmpdir(), "cake-artifact-tool-prune-"))),
         (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
       );
       // Pi's SDK reads its credential root globally; keep it aligned with this isolated fixture.
@@ -1321,15 +1314,15 @@ it.effect(
       yield* Layer.build(ArtifactRuntimeHostLive).pipe(Effect.provide(context));
       const runtime = Context.get(context, ArtifactRuntime);
       const targetArtifact = {
-        lineageId: decodeArtifactLineageId("unattended-compaction"),
+        lineageId: decodeArtifactLineageId("unattended-tool-prune"),
         revision: 1,
         runtime: Schema.decodeUnknownSync(ArtifactRuntimeDescriptor)({
           source:
-            'return { tools: { compact: ({ sessionId }) => cake("sessions.tool-compact", { sessionId }) } };',
+            'return { tools: { prune: ({ sessionId }) => cake("sessions.tool-prune", { sessionId }) } };',
           tools: [
             {
-              name: "compact",
-              description: "Compact an explicit idle target",
+              name: "prune",
+              description: "Prune tools from an explicit idle target without a model call",
               inputSchema: {
                 type: "object",
                 properties: { sessionId: { type: "string" } },
@@ -1343,7 +1336,7 @@ it.effect(
       };
       for (let index = 0; index < 2; index++)
         expect(
-          yield* runtime.call({ target: targetArtifact, name: "compact", input: { sessionId } }),
+          yield* runtime.call({ target: targetArtifact, name: "prune", input: { sessionId } }),
         ).toMatchObject({
           ok: true,
           results: [{ sessionId, status: "compacted" }],
@@ -1363,7 +1356,7 @@ it.effect(
       expect(JSON.stringify(messages)).not.toContain("Large tool output");
       expect(JSON.stringify(messages)).not.toContain("toolCall");
       expect(JSON.stringify(messages)).toContain("Inspection complete");
-      expect(f.toolCompactions).toEqual([]);
+      expect(f.toolPrunings).toEqual([]);
       expect(f.runtimeCreates).toEqual([source, sessionId, sessionId]);
       expect(f.gatewayCalls).toEqual([]);
       expect(yield* Queue.size(f.prompts)).toBe(0);
@@ -1573,25 +1566,25 @@ it.effect(
         results: [{ status: "unavailable" }, { status: "unavailable" }, { status: "invalid" }],
       });
       for (const sessionId of [target, "0000abcd"]) {
-        expect(yield* f.artifact("sessions.tool-compact", { sessionId })).toMatchObject({
+        expect(yield* f.artifact("sessions.tool-prune", { sessionId })).toMatchObject({
           ok: false,
           results: [{ status: "unavailable" }],
         });
       }
       f.worktreeRecords.splice(0);
       f.sessionsByDirectory.delete("/retired");
-      expect(yield* f.artifact("sessions.tool-compact", { sessionId: target })).toMatchObject({
+      expect(yield* f.artifact("sessions.tool-prune", { sessionId: target })).toMatchObject({
         ok: false,
         results: [{ status: "unavailable" }],
       });
       for (const sessionId of [CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")]) {
-        expect(yield* f.artifact("sessions.tool-compact", { sessionId })).toMatchObject({
+        expect(yield* f.artifact("sessions.tool-prune", { sessionId })).toMatchObject({
           ok: false,
         });
       }
       expect(f.runtimeCreates).toEqual([source]);
       expect(f.compactions).toEqual([]);
-      expect(f.toolCompactions).toEqual([]);
+      expect(f.toolPrunings).toEqual([]);
       expect(f.restored()).toBe(0);
       expect(f.saveCount()).toBe(0);
     }),
@@ -2595,7 +2588,7 @@ it.effect(
     }),
 );
 
-it.effect("permanent Project Chat and global Cake Chat discover and execute tool compaction", () =>
+it.effect("permanent Project Chat and global Cake Chat discover and execute tool pruning", () =>
   Effect.gen(function* () {
     const f = yield* fixture(true);
     for (const sessionId of [projectChatSessionId("/project"), CAKE_CHAT_SESSION_ID]) {
@@ -2612,7 +2605,7 @@ it.effect("permanent Project Chat and global Cake Chat discover and execute tool
       const control = options.runtime.globalControl;
       assert.ok(control);
       const allowed = options.runtime.allowedCakeOperations;
-      expect(allowed).toContain("sessions.tool-compact");
+      expect(allowed).toContain("sessions.tool-prune");
       const registry = new CakeOperationRegistry(
         coordinatorCakeOperations(options.runtime)({
           sessionId,
@@ -2629,23 +2622,25 @@ it.effect("permanent Project Chat and global Cake Chat discover and execute tool
           compact: async () => ({}),
         }),
       );
-      expect(registry.topicHelp("sessions")).toContain("sessions.tool-compact");
-      expect(registry.operationHelp("sessions.tool-compact")).toContain("sessionId");
+      expect(registry.topicHelp("sessions")).toContain("sessions.tool-prune");
+      expect(registry.operationHelp("sessions.tool-prune")).toContain("sessionId");
+      expect(registry.operationHelp("sessions.tool-prune")).toContain("no model call");
+      expect(registry.topicHelp("sessions")).not.toContain("sessions.tool-compact");
       const call = (sessionId: string) =>
         Effect.promise(() =>
           registry.invoke(
-            { command: "sessions.tool-compact", input: { sessionId } },
+            { command: "sessions.tool-prune", input: { sessionId } },
             { signal: signal(), toolCallId: "compact", runtime: {} },
           ),
         );
       const help = yield* Effect.promise(() =>
         registry.invoke(
-          { command: "sessions.tool-compact.help" },
+          { command: "sessions.tool-prune.help" },
           { signal: signal(), toolCallId: "help", runtime: {} },
         ),
       );
       expect(JSON.stringify(help)).toContain("sessionId");
-      expect(f.toolCompactions).toHaveLength(sessionId === CAKE_CHAT_SESSION_ID ? 2 : 0);
+      expect(f.toolPrunings).toHaveLength(sessionId === CAKE_CHAT_SESSION_ID ? 2 : 0);
       expect((yield* call("00000022")).details).toMatchObject({
         result: { ok: true, results: [{ sessionId: target, status: "compacted" }] },
       });
@@ -2655,7 +2650,7 @@ it.effect("permanent Project Chat and global Cake Chat discover and execute tool
       f.protect();
       expect((yield* call(target)).details).toMatchObject({ result: { ok: true } });
     }
-    expect(f.toolCompactions).toEqual([target, target, target, target]);
+    expect(f.toolPrunings).toEqual([target, target, target, target]);
     expect(f.compactions).toEqual([]);
     expect(f.requestCalls).toEqual([]);
   }),
@@ -2809,84 +2804,80 @@ it.effect("Project Chat reads and patches only its own Project's settings, icon 
   }),
 );
 
-it.effect(
-  "tool compaction shares project authorization and skips busy targets without queuing",
-  () =>
-    Effect.gen(function* () {
-      const f = yield* fixture(true);
-      const project = f.state().projects[0];
-      assert.ok(project);
-      yield* Context.get(f.context, ApplicationState).transact((state) =>
-        Effect.succeed({
-          ...state,
-          projects: [...state.projects, { ...project, path: "/other", name: "Other" }],
-        }),
-      );
-      f.sessionsByDirectory.set("/other", [third]);
-      f.sessionsByDirectory.set("/project", [source, target]);
-      const projectChat = {
-        kind: "cake-chat" as const,
-        sessionId: projectChatSessionId("/project"),
-        title: "Project Chat",
-      };
-      for (const sender of [caller, projectChat]) {
-        expect(
-          yield* f.direct("sessions.tool-compact", { sessionId: third }, sender),
-        ).toMatchObject({
-          ok: false,
-          results: [{ status: "unauthorized" }],
-        });
-      }
-      const global = {
-        kind: "cake-chat" as const,
-        sessionId: CAKE_CHAT_SESSION_ID,
-        title: "Cake Chat",
-      };
-      f.deny("/other");
-      expect(yield* f.direct("sessions.tool-compact", { sessionId: third }, global)).toMatchObject({
+it.effect("tool pruning shares project authorization and skips busy targets without queuing", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    const project = f.state().projects[0];
+    assert.ok(project);
+    yield* Context.get(f.context, ApplicationState).transact((state) =>
+      Effect.succeed({
+        ...state,
+        projects: [...state.projects, { ...project, path: "/other", name: "Other" }],
+      }),
+    );
+    f.sessionsByDirectory.set("/other", [third]);
+    f.sessionsByDirectory.set("/project", [source, target]);
+    const projectChat = {
+      kind: "cake-chat" as const,
+      sessionId: projectChatSessionId("/project"),
+      title: "Project Chat",
+    };
+    for (const sender of [caller, projectChat]) {
+      expect(yield* f.direct("sessions.tool-prune", { sessionId: third }, sender)).toMatchObject({
         ok: false,
         results: [{ status: "unauthorized" }],
       });
-      yield* f.direct("sessions.context", { sessionId: target });
-      f.active.add(target);
-      expect(
-        yield* f.direct("sessions.tool-compact", { sessionId: target }, projectChat),
-      ).toMatchObject({
-        ok: false,
-        results: [{ status: "busy" }],
-      });
-      expect(f.toolCompactions).toEqual([]);
-      f.active.delete(target);
-      f.resolve();
-      expect(
-        yield* f.direct("sessions.tool-compact", { sessionId: target }, projectChat),
-      ).toMatchObject({
-        ok: true,
-        results: [{ status: "compacted" }],
-      });
-      f.compactFailures.add(target);
-      expect(
-        yield* f.direct("sessions.tool-compact", { sessionId: target }, projectChat),
-      ).toMatchObject({
-        ok: false,
-        results: [{ status: "failed", message: "Tool compaction navigation failed" }],
-      });
-      f.sessionsByDirectory.delete("/other");
-      f.sessionsByDirectory.set("/allowed", [third]);
-      yield* Context.get(f.context, ApplicationState).transact((state) =>
-        Effect.succeed({
-          ...state,
-          projects: [...state.projects, { ...project, path: "/allowed", name: "Allowed" }],
-        }),
-      );
-      expect(yield* f.direct("sessions.tool-compact", { sessionId: third }, global)).toMatchObject({
-        ok: true,
-        results: [{ sessionId: third, status: "compacted" }],
-      });
-      expect(f.compactions).toEqual([]);
-      expect(f.requestCalls).toEqual([]);
-      expect(f.restored()).toBe(0);
-    }),
+    }
+    const global = {
+      kind: "cake-chat" as const,
+      sessionId: CAKE_CHAT_SESSION_ID,
+      title: "Cake Chat",
+    };
+    f.deny("/other");
+    expect(yield* f.direct("sessions.tool-prune", { sessionId: third }, global)).toMatchObject({
+      ok: false,
+      results: [{ status: "unauthorized" }],
+    });
+    yield* f.direct("sessions.context", { sessionId: target });
+    f.active.add(target);
+    expect(
+      yield* f.direct("sessions.tool-prune", { sessionId: target }, projectChat),
+    ).toMatchObject({
+      ok: false,
+      results: [{ status: "busy" }],
+    });
+    expect(f.toolPrunings).toEqual([]);
+    f.active.delete(target);
+    f.resolve();
+    expect(
+      yield* f.direct("sessions.tool-prune", { sessionId: target }, projectChat),
+    ).toMatchObject({
+      ok: true,
+      results: [{ status: "compacted" }],
+    });
+    f.compactFailures.add(target);
+    expect(
+      yield* f.direct("sessions.tool-prune", { sessionId: target }, projectChat),
+    ).toMatchObject({
+      ok: false,
+      results: [{ status: "failed", message: "Tool pruning navigation failed" }],
+    });
+    f.sessionsByDirectory.delete("/other");
+    f.sessionsByDirectory.set("/allowed", [third]);
+    yield* Context.get(f.context, ApplicationState).transact((state) =>
+      Effect.succeed({
+        ...state,
+        projects: [...state.projects, { ...project, path: "/allowed", name: "Allowed" }],
+      }),
+    );
+    expect(yield* f.direct("sessions.tool-prune", { sessionId: third }, global)).toMatchObject({
+      ok: true,
+      results: [{ sessionId: third, status: "compacted" }],
+    });
+    expect(f.compactions).toEqual([]);
+    expect(f.requestCalls).toEqual([]);
+    expect(f.restored()).toBe(0);
+  }),
 );
 
 const batchRegistry = Effect.fn("BackendAgentControlTest.batchRegistry")(function* (

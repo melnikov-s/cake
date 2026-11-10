@@ -1,6 +1,6 @@
 # Explicit session compaction
 
-Only on user request. Use sessions.compact for one target, sessions.compact-batch for up to 100; instructions is optional.
+Only on user request. sessions.compact generates a model summary for one target, sessions.compact-batch for up to 100; instructions is optional. For tool prune use sessions.tool-prune instead; never substitute model compaction.
 Project Chat/Project Sessions stay in their project; authorized global Cake Chat may span projects. context.compact still applies to the invoking conversation.
 
 ## Outcomes and lifetime
@@ -11,9 +11,9 @@ Busy targets are not aborted or queued. Resolved history can work if its checkou
 Started compaction retains runtime ownership until Pi settles even after caller disconnect. No durable request replay/automatic retry. New history can be compacted on another explicit request.
 sessions.queue-command is a separate window-scoped queued workflow, unavailable in permanent chats; admission is not compaction completion.
 
-## Tool-only continuation
+## Tool prune (no model call)
 
-sessions.tool-compact uses /toolcompact without generating a summary. It replays human input and assistant text through the latest completed assistant response on the current branch.
+sessions.tool-prune is deterministic: no model call or summary. The UI command is /toolprune; an optional first instruction starts a normal turn after pruning. Queued /toolprune takes no arguments. It replays human input and assistant text through the latest completed assistant response on the current branch.
 Tool calls/results, reasoning, injected reminders and coordination are omitted from the continuation. Session identity and original inspectable tree/history remain intact (sessions.history/tree/compactions).
 compacted means persistence, Pi navigation and snapshot publication completed, not queue intake. Missing completed responses/navigation errors fail.
 Same scope/checkout/busy rules apply. Repeated explicit calls create another branch; no automatic retry/compaction.

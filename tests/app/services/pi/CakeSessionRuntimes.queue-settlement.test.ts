@@ -146,8 +146,8 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
               response,
               internal,
             ),
-          toolCompact: () =>
-            controller.withToolCompaction(async () => ({
+          toolPrune: () =>
+            controller.withToolPruning(async () => ({
               sessionId: "session-1",
               sessionFile: "/project/session.jsonl",
             })),
@@ -287,7 +287,7 @@ describe("CakeSessionRuntimes queue settlement", () => {
         yield* f.handle.abort({ by: "user" });
         yield* f.settled("active", "aborted");
         yield* f.cleanupSettled;
-        if (compactFirst) yield* f.handle.toolCompact("assistant-entry");
+        if (compactFirst) yield* f.handle.toolPrune("assistant-entry");
         assert.deepEqual((yield* f.handle.pendingMessages()).items, before);
         assert.deepEqual(
           f.outcomes.map((event) => event.turnId),

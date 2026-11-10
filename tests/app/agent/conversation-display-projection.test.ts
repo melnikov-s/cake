@@ -19,13 +19,13 @@ import type { Attachment } from "../../../src/contracts/conversations/session-co
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { forkDisplayProvenanceEntryType } from "../../../src/services/pi/runtime/fork-display-provenance";
 import {
-  appendToolCompactedBranch,
-  toolCompactDialogueMessage,
-} from "../../../src/services/pi/runtime/session-tool-compaction";
+  appendToolPrunedBranch,
+  toolPruneDialogueMessage,
+} from "../../../src/services/pi/runtime/session-tool-prune";
 import {
-  toolCompactEntryType,
-  toolCompactProvenanceEntryType,
-} from "../../../src/services/pi/runtime/tool-compaction-provenance";
+  toolPruneEntryType,
+  toolPruneProvenanceEntryType,
+} from "../../../src/services/pi/runtime/tool-prune-provenance";
 
 it("projects the exact family bootstrap as application context on live input and replay, without rewriting Pi's original", () => {
   const messageId = "738bcdfd-5f22-4f2f-bf94-bd6d661aaf0f";
@@ -188,7 +188,7 @@ function summarized(parts: ReturnType<typeof projectConversationDisplay>) {
   }));
 }
 
-describe("Conversation display projection after tool compaction", () => {
+describe("Conversation display projection after tool pruning", () => {
   it("keeps worker progress attributed in live/replay and excludes it from user-only compaction", () => {
     const update = {
       id: "progress-1",
@@ -230,7 +230,7 @@ describe("Conversation display projection after tool compaction", () => {
     const entries = session.getEntries();
     const automatic = entries.find((entry) => entry.type === "message");
     expect(automatic).toBeDefined();
-    if (automatic) expect(toolCompactDialogueMessage(automatic, origin)).toBeUndefined();
+    if (automatic) expect(toolPruneDialogueMessage(automatic, origin)).toBeUndefined();
   });
   it.each(["UserWithReminders", "UpdateBatch"] as const)(
     "projects each passive sender once with stable provenance in live and replay (%s)",
@@ -305,7 +305,7 @@ describe("Conversation display projection after tool compaction", () => {
       );
     },
   );
-  it("preserves actual user input and typed passive context across persistence and tool compaction", () => {
+  it("preserves actual user input and typed passive context across persistence and tool pruning", () => {
     const id = "cd06817e-b37a-44f6-84bb-76c380a42e79";
     const notice = {
       id,
@@ -348,7 +348,7 @@ describe("Conversation display projection after tool compaction", () => {
       expect.objectContaining({ text: origin.text }),
     ]);
     expect(JSON.stringify(parts)).not.toContain("Cake passive updates (agent-authored data");
-    appendToolCompactedBranch(session, leaf);
+    appendToolPrunedBranch(session, leaf);
     expect(
       projectConversationDisplay(session).filter(
         (part) => part.kind === "text" && part.role === "user",
@@ -363,7 +363,7 @@ describe("Conversation display projection after tool compaction", () => {
     expect(replayed).toHaveLength(1);
     expect(JSON.stringify(replayed)).not.toContain(notice.text);
   });
-  it("keeps internal provenance one-use even for identical timestamps/text and strips only internal transport during tool compaction", () => {
+  it("keeps internal provenance one-use even for identical timestamps/text and strips only internal transport during tool pruning", () => {
     const session = SessionManager.inMemory("/project");
     const text =
       "<system-reminder>\nWorkboard delivery (family-board-private): entries #3.\n</system-reminder>";
@@ -383,7 +383,7 @@ describe("Conversation display projection after tool compaction", () => {
     expect(parts.filter((part) => part.kind === "context")).toEqual([
       expect.objectContaining({ title: "Workboard" }),
     ]);
-    appendToolCompactedBranch(session, leaf);
+    appendToolPrunedBranch(session, leaf);
     const compacted = projectConversationDisplay(session);
     expect(compacted.filter((part) => part.kind === "text" && part.role === "user")).toEqual([
       expect.objectContaining({ text }),
@@ -440,7 +440,7 @@ describe("Conversation display projection after tool compaction", () => {
   });
   it("restores work at its original positions and substitutes explicitly mapped active dialogue", () => {
     const { session, leafId } = sessionWithWork();
-    appendToolCompactedBranch(session, leafId);
+    appendToolPrunedBranch(session, leafId);
     session.appendMessage({ role: "user", content: "new turn", timestamp: 5 });
     session.appendMessage(
       assistant([
@@ -487,7 +487,7 @@ describe("Conversation display projection after tool compaction", () => {
 
   it("follows repeated compaction provenance without matching duplicate text", () => {
     const { session, leafId } = sessionWithWork();
-    appendToolCompactedBranch(session, leafId);
+    appendToolPrunedBranch(session, leafId);
     session.appendMessage({ role: "user", content: "same text", timestamp: 7 });
     session.appendMessage(
       assistant([
@@ -505,7 +505,7 @@ describe("Conversation display projection after tool compaction", () => {
       timestamp: 8,
     });
     const secondLeaf = session.appendMessage(assistant([{ type: "text", text: "Settled." }]));
-    appendToolCompactedBranch(session, secondLeaf);
+    appendToolPrunedBranch(session, secondLeaf);
 
     const parts = projectConversationDisplay(session);
     expect(parts.filter((part) => part.kind === "text" && part.text === "same text")).toHaveLength(
@@ -524,14 +524,14 @@ describe("Conversation display projection after tool compaction", () => {
 
   it("projects active dialogue when compaction provenance is missing or malformed", () => {
     const missing = SessionManager.inMemory("/project");
-    missing.appendCustomEntry(toolCompactEntryType, { summary: "Compact" });
+    missing.appendCustomEntry(toolPruneEntryType, { summary: "Compact" });
     missing.appendMessage({ role: "user", content: "visible", timestamp: 1 });
     expect(projectConversationDisplay(missing).map((part) => part.kind)).toEqual(["text"]);
 
     const malformed = SessionManager.inMemory("/project");
-    malformed.appendCustomEntry(toolCompactEntryType, { summary: "Malformed compact" });
+    malformed.appendCustomEntry(toolPruneEntryType, { summary: "Malformed compact" });
     malformed.appendMessage({ role: "user", content: "active only", timestamp: 1 });
-    malformed.appendCustomEntry(toolCompactProvenanceEntryType, { version: 1, sourceLeafId: 42 });
+    malformed.appendCustomEntry(toolPruneProvenanceEntryType, { version: 1, sourceLeafId: 42 });
     expect(projectConversationDisplay(malformed).map((part) => part.kind)).toEqual(["text"]);
   });
 
@@ -583,7 +583,7 @@ describe("Conversation display projection after tool compaction", () => {
       id: "marker",
       parentId: null,
       timestamp: header.timestamp,
-      customType: toolCompactEntryType,
+      customType: toolPruneEntryType,
       data: { summary: "compact" },
     };
     const replay = {
@@ -598,7 +598,7 @@ describe("Conversation display projection after tool compaction", () => {
       id: "provenance",
       parentId: "replay",
       timestamp: header.timestamp,
-      customType: toolCompactProvenanceEntryType,
+      customType: toolPruneProvenanceEntryType,
       data: {
         version: 1,
         sourceLeafId: "provenance",

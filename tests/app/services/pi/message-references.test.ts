@@ -16,7 +16,7 @@ import {
   listMessageReferences,
   readMessageReference,
 } from "../../../../src/services/pi/runtime/message-references";
-import { appendToolCompactedBranch } from "../../../../src/services/pi/runtime/session-tool-compaction";
+import { appendToolPrunedBranch } from "../../../../src/services/pi/runtime/session-tool-prune";
 
 function assistant(text: string): AssistantMessage {
   return {
@@ -134,14 +134,14 @@ describe("exact message references", () => {
     });
   });
 
-  it("preserves original references across normal compaction, Tool Compact, and branch changes", () => {
+  it("preserves original references across normal compaction, Tool Prune, and branch changes", () => {
     const { session, firstId, lastId } = fixture();
     const ref = messageReference(session.getSessionId(), firstId);
     session.appendCompaction("Summary, not the original", lastId, 10_000);
     expect(readMessageReference(session, { entryId: firstId }).text).toContain(
       "Private user content",
     );
-    appendToolCompactedBranch(session, lastId);
+    appendToolPrunedBranch(session, lastId);
     const original = listMessageReferences(session, { branch: "all" }).messages.find(
       (message) => message.entryId === firstId,
     );

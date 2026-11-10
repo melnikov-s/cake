@@ -12,11 +12,11 @@ import type {
   ImageContent,
 } from "@earendil-works/pi-ai";
 import {
-  toolCompactEntryType,
-  toolCompactProvenanceEntryType,
-  type ToolCompactProvenance,
-  type ToolCompactMarker,
-} from "./tool-compaction-provenance";
+  toolPruneEntryType,
+  toolPruneProvenanceEntryType,
+  type ToolPruneProvenance,
+  type ToolPruneMarker,
+} from "./tool-prune-provenance";
 
 import { internalInputOrigins } from "./internal-input-projection";
 import {
@@ -27,7 +27,7 @@ import { splitContextReminders } from "./session-context-reminders";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 
 /** The sole replay policy: user-authored input and assistant text, no injected context. */
-export function toolCompactDialogueMessage(
+export function toolPruneDialogueMessage(
   entry: SessionEntry,
   internal?: InternalInput,
 ): UserMessage | AssistantMessage | undefined {
@@ -108,9 +108,9 @@ function countStrippedToolActivity(sourceBranch: readonly SessionEntry[]) {
   return stripped;
 }
 
-function toolCompactPreamble(strippedToolActivity: number) {
+function toolPrunePreamble(strippedToolActivity: number) {
   return [
-    "This conversation branch is a tool-compacted continuation of an earlier branch in this Cake session.",
+    "This conversation branch is a tool-pruned continuation of an earlier branch in this Cake session.",
     `The conversation below contains only user-authored input and assistant text; injected reminders, coordination and custom messages were removed, along with ${strippedToolActivity} tool calls and results to save context.`,
     "References to files edited, commands run, or output observed describe tool work whose results are not shown, so verify the current state on disk rather than assuming it from this transcript.",
     "The full original transcript remains available in the session tree if you need it.",
@@ -124,7 +124,7 @@ function sourceBranch(session: SessionManager, assistantEntryId: string) {
     selected.message.role !== "assistant" ||
     !selected.message.content.some((block) => block.type === "text" && block.text.trim())
   )
-    throw new Error("Tool compaction requires a completed assistant response");
+    throw new Error("Tool pruning requires a completed assistant response");
   return session.getBranch(assistantEntryId);
 }
 
@@ -134,7 +134,7 @@ function sourceBranch(session: SessionManager, assistantEntryId: string) {
  * reasoning and tool activity are removed. The
  * original branch remains in the same Pi JSONL tree and the Session ID is stable.
  */
-export function appendToolCompactedBranch(
+export function appendToolPrunedBranch(
   session: SessionManager,
   assistantEntryId: string,
   configuration?: {
@@ -155,14 +155,14 @@ export function appendToolCompactedBranch(
   session.resetLeaf();
   const systemCheckpointEntryId = systemMessage ? session.appendMessage(systemMessage) : undefined;
   // Orientation is display metadata, not another message in the clean model context.
-  let marker: ToolCompactMarker = { summary: toolCompactPreamble(strippedToolActivity) };
+  let marker: ToolPruneMarker = { summary: toolPrunePreamble(strippedToolActivity) };
   if (systemCheckpointEntryId) marker = { ...marker, systemCheckpointEntryId };
-  const markerEntryId = session.appendCustomEntry(toolCompactEntryType, marker);
-  const mappings: ToolCompactProvenance["mappings"][number][] = [];
+  const markerEntryId = session.appendCustomEntry(toolPruneEntryType, marker);
+  const mappings: ToolPruneProvenance["mappings"][number][] = [];
 
   const internalInputs = internalInputOrigins(branch);
   for (const entry of branch) {
-    const message = toolCompactDialogueMessage(entry, internalInputs.get(entry.id));
+    const message = toolPruneDialogueMessage(entry, internalInputs.get(entry.id));
     if (!message) continue;
     mappings.push({ sourceEntryId: entry.id, replayedEntryId: session.appendMessage(message) });
   }
@@ -170,8 +170,8 @@ export function appendToolCompactedBranch(
   const firstMapping = mappings[0];
   const lastMapping = mappings.at(-1);
   if (!firstMapping || !lastMapping)
-    throw new Error("Cake could not map the tool-compacted dialogue replay");
-  const provenance: ToolCompactProvenance = {
+    throw new Error("Cake could not map the tool-pruned dialogue replay");
+  const provenance: ToolPruneProvenance = {
     version: 1,
     sourceLeafId: assistantEntryId,
     markerEntryId,
@@ -179,14 +179,14 @@ export function appendToolCompactedBranch(
     replayEndEntryId: lastMapping.replayedEntryId,
     mappings,
   };
-  session.appendCustomEntry(toolCompactProvenanceEntryType, provenance);
+  session.appendCustomEntry(toolPruneProvenanceEntryType, provenance);
 
   if (configuration) {
     session.appendModelChange(configuration.provider, configuration.modelId);
     session.appendThinkingLevelChange(configuration.thinkingLevel);
   }
   const leafId = session.getLeafId();
-  if (!leafId) throw new Error("Cake could not append the tool-compacted branch");
+  if (!leafId) throw new Error("Cake could not append the tool-pruned branch");
   return {
     sessionId: session.getSessionId(),
     sessionFile: session.getSessionFile(),

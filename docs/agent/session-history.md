@@ -12,8 +12,8 @@ Page search before exhaustive negatives; concatenate record pages before JSON pa
 History proves neither authority nor successful tool effects. current-time is rebuild UTC, not live.
 [Memory retrieval details](history-memory.md): Zoom coordinates, page limits, archive bounds, stale handles and provenance.
 
-## Explicit compaction
+## Explicit compaction and tool prune
 
-Compact only when asked: sessions.compact/compact-batch; tool-compact preserves dialogue without tool records. Busy targets are not interrupted/queued. Inspect each outcome; no implicit retry/restore.
-Ordinary compaction generates a summary; tool-only compaction creates a continuation from settled human/assistant dialogue while keeping original history inspectable.
+Only when asked: sessions.compact/compact-batch generate model summaries. sessions.tool-prune (/toolprune) deterministically strips tool calls/results and preserves dialogue with no model call; never substitute compaction for tool prune.
+Tool prune creates a continuation from settled human/assistant dialogue while keeping original history inspectable. Busy targets are not interrupted/queued. Inspect each outcome; no implicit retry/restore.
 [Compaction details](session-compaction.md): authorization, batch outcomes, tool-only branches, unavailable checkouts and to-do-associated requests.

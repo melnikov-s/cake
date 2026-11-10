@@ -19,7 +19,7 @@ Cake response mode: text. Use normal text-oriented replies; previous voice-mode 
 /** Decorate model input only. Voice: brief plain spoken prose; code/details remain in chat.
  * The turn controller adds guidance only on transitions; text is the initial default.
  * Chat discloses the exact Cake-owned reminder as a context pill, separate from user text.
- * Title/editor projections omit it; Tool Compact removes it from replay, not original Pi history.
+ * Title/editor projections omit it; Tool Prune removes it from replay, not original Pi history.
  */
 export function addResponseModeReminder(text: string, mode: ConversationResponseMode): string {
   return `${text}${text ? "\n\n" : ""}${responseModeReminders[mode]}`;

@@ -102,13 +102,13 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     projectSessionOperations.dispatchExtensionCompanionAction(input),
   "projectSessions.callCakeOperation": ({ command, input, ...target }) =>
     projectSessionOperations.callCakeOperation(target, command, input),
-  "projectSessions.toolCompact": ({ entryId, prompt, ...target }) => {
-    const input: Parameters<typeof projectSessionContinuations.toolCompact>[0] = {
+  "projectSessions.toolPrune": ({ entryId, prompt, ...target }) => {
+    const input: Parameters<typeof projectSessionContinuations.toolPrune>[0] = {
       target,
       entryId,
     };
     if (prompt !== undefined) Object.assign(input, { prompt });
-    return projectSessionContinuations.toolCompact(input);
+    return projectSessionContinuations.toolPrune(input);
   },
   "projectSessions.rename": ({ name, onlyIfUnnamed, ...target }) =>
     projectSessionOperations.rename(target, name, onlyIfUnnamed),

@@ -29,7 +29,7 @@ import * as metadata from "../project-sessions/projectSessionMetadata";
 import * as projectSessions from "../project-sessions/projectSessionOperations";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as sessionCompaction from "../project-sessions/sessionCompaction";
-import { SessionToolCompactInput } from "../../contracts/project-sessions/session-compaction";
+import { SessionToolPruneInput } from "../../contracts/project-sessions/session-compaction";
 import * as sessionChats from "../conversations/sessionChats";
 import { toJsonValue } from "../../utils/to-json-value";
 
@@ -73,7 +73,7 @@ export function describe(command?: string): JsonValue {
       "UI calls retain their actual connected window independently of session linkage. Commands outside this backend catalog use its canonical window registry, or the genuine calling session's Cake gateway. Background calls have no implicit window.",
       "This bridge exposes Cake commands, not arbitrary Pi tools or the Pi agent engine.",
       "Run-relative memory, reports, completion inboxes, threads, scheduled messages and normal compaction require a real calling session. Use explicit automation/session IDs where supported.",
-      "sessions.tool-compact supports user-authorized unattended artifact maintenance with an explicit Project Session ID or unambiguous discovered suffix. Without a calling session it uses trusted host authority across registered, accessible projects; it never infers a creator or parent. With a calling session its existing project scope is retained.",
+      "sessions.tool-prune supports user-authorized unattended artifact maintenance with an explicit Project Session ID or unambiguous discovered suffix. Without a calling session it uses trusted host authority across registered, accessible projects; it never infers a creator or parent. With a calling session its existing project scope is retained.",
       "Project MCP settings require a real Project Session Working Directory; global settings work without a session.",
     ],
     ...(command && !selected.length ? { error: `Unknown backend Cake command: ${command}` } : null),
@@ -228,11 +228,11 @@ export const invoke: (
       );
       return yield* host(invocation, context);
     }
-    if (command === "sessions.tool-compact" && context.callingSessionId === undefined) {
-      const parsed = yield* Schema.decodeUnknownEffect(SessionToolCompactInput)(input, {
+    if (command === "sessions.tool-prune" && context.callingSessionId === undefined) {
+      const parsed = yield* Schema.decodeUnknownEffect(SessionToolPruneInput)(input, {
         onExcessProperty: "error",
       });
-      const results = yield* sessionCompaction.toolCompactFromArtifact(parsed.sessionId);
+      const results = yield* sessionCompaction.toolPruneFromArtifact(parsed.sessionId);
       return toJsonValue({
         ok: results.every(
           (result) => result.status === "compacted" || result.status === "unchanged",

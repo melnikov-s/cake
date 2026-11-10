@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
+import { appendToolPrunedBranch } from "../../../src/services/pi/runtime/session-tool-prune";
 import {
-  toolCompactProvenanceEntryType,
-  toolCompactProvenanceSchema,
-} from "../../../src/services/pi/runtime/tool-compaction-provenance";
+  toolPruneProvenanceEntryType,
+  toolPruneProvenanceSchema,
+} from "../../../src/services/pi/runtime/tool-prune-provenance";
 import { Schema } from "effect";
 import { addResponseModeReminder } from "../../../src/contracts/conversations/response-mode-reminders";
 import { addPresentationModeReminder } from "../../../src/contracts/conversations/presentation-mode-reminders";
@@ -41,9 +41,9 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
 });
 
-describe("tool compaction", () => {
+describe("tool pruning", () => {
   it("adds a clean root branch while preserving the Session ID and original tree", async () => {
-    const sessionDir = await mkdtemp(join(tmpdir(), "cake-tool-compact-"));
+    const sessionDir = await mkdtemp(join(tmpdir(), "cake-tool-prune-"));
     temporaryDirectories.push(sessionDir);
     const session = SessionManager.create("/project", sessionDir);
     const originalUserId = session.appendMessage({
@@ -72,7 +72,7 @@ describe("tool compaction", () => {
     const originalSessionId = session.getSessionId();
     const originalSessionFile = session.getSessionFile();
 
-    const result = appendToolCompactedBranch(session, selectedId, {
+    const result = appendToolPrunedBranch(session, selectedId, {
       provider: "openai",
       modelId: "gpt-test",
       thinkingLevel: "high",
@@ -91,10 +91,10 @@ describe("tool compaction", () => {
       parentId: null,
     });
     const provenanceEntry = activeBranch.find(
-      (entry) => entry.type === "custom" && entry.customType === toolCompactProvenanceEntryType,
+      (entry) => entry.type === "custom" && entry.customType === toolPruneProvenanceEntryType,
     );
     expect(provenanceEntry?.type).toBe("custom");
-    const provenance = Schema.decodeUnknownSync(toolCompactProvenanceSchema)(
+    const provenance = Schema.decodeUnknownSync(toolPruneProvenanceSchema)(
       provenanceEntry?.type === "custom" ? provenanceEntry.data : undefined,
     );
     expect(provenance).toMatchObject({
@@ -111,7 +111,7 @@ describe("tool compaction", () => {
     expect(new Set(provenance.mappings.map((mapping) => mapping.replayedEntryId)).size).toBe(3);
 
     const context = session.buildSessionContext();
-    expect(JSON.stringify(context.messages)).not.toContain(toolCompactProvenanceEntryType);
+    expect(JSON.stringify(context.messages)).not.toContain(toolPruneProvenanceEntryType);
     expect(JSON.stringify(context.messages)).not.toContain("sourceLeafId");
     expect(JSON.stringify(context.messages)).not.toContain("toolCall");
     expect(JSON.stringify(context.messages)).not.toContain("large result");
@@ -158,7 +158,7 @@ describe("tool compaction", () => {
         { type: "text", text: "Answer" },
       ]),
     );
-    appendToolCompactedBranch(session, leaf);
+    appendToolPrunedBranch(session, leaf);
     const messages = session.buildSessionContext().messages;
     expect(messages.map((message) => message.role)).toEqual([
       "system",
@@ -179,7 +179,7 @@ describe("tool compaction", () => {
     expect(JSON.stringify(messages)).not.toContain("entered Browser Mode");
     expect(JSON.stringify(messages)).not.toContain("injected context");
     expect(JSON.stringify(messages)).toContain("Required canonical instructions");
-    expect(JSON.stringify(messages)).not.toContain("tool-compacted continuation");
+    expect(JSON.stringify(messages)).not.toContain("tool-pruned continuation");
     expect(projectConversationDisplay(session)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "text", role: "assistant", text: "Answer" }),
@@ -187,7 +187,7 @@ describe("tool compaction", () => {
     );
     session.appendMessage({ role: "user", content: "Continue", timestamp: 4 });
     const nextLeaf = session.appendMessage(assistant([{ type: "text", text: "Next answer" }]));
-    appendToolCompactedBranch(session, nextLeaf);
+    appendToolPrunedBranch(session, nextLeaf);
     expect(session.buildSessionContext().messages.map((message) => message.role)).toEqual([
       "system",
       "user",
@@ -230,7 +230,7 @@ describe("tool compaction", () => {
       timestamp: 3,
     });
 
-    appendToolCompactedBranch(session, selectedId);
+    appendToolPrunedBranch(session, selectedId);
     const checkpoint = session.buildSessionContext().messages[0];
     expect(checkpoint).toMatchObject({
       role: "system",
@@ -246,7 +246,7 @@ describe("tool compaction", () => {
     expect(parts.filter((part) => part.kind === "context")).toHaveLength(0);
 
     const nextId = session.appendMessage(assistant([{ type: "text", text: "Next answer" }]));
-    appendToolCompactedBranch(session, nextId);
+    appendToolPrunedBranch(session, nextId);
     expect(
       session.buildSessionContext().messages.filter((message) => message.role === "system"),
     ).toEqual([checkpoint]);
@@ -272,13 +272,13 @@ describe("tool compaction", () => {
   });
 
   it("rejects non-assistant targets", async () => {
-    const sessionDir = await mkdtemp(join(tmpdir(), "cake-tool-compact-"));
+    const sessionDir = await mkdtemp(join(tmpdir(), "cake-tool-prune-"));
     temporaryDirectories.push(sessionDir);
     const session = SessionManager.create("/project", sessionDir);
     const userId = session.appendMessage({ role: "user", content: "Question", timestamp: 1 });
 
-    expect(() => appendToolCompactedBranch(session, userId)).toThrow(
-      "Tool compaction requires a completed assistant response",
+    expect(() => appendToolPrunedBranch(session, userId)).toThrow(
+      "Tool pruning requires a completed assistant response",
     );
   });
 });

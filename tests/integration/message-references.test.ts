@@ -11,7 +11,7 @@ import {
   readMessageReference,
   listMessageReferences,
 } from "../../src/services/pi/runtime/message-references";
-import { appendToolCompactedBranch } from "../../src/services/pi/runtime/session-tool-compaction";
+import { appendToolPrunedBranch } from "../../src/services/pi/runtime/session-tool-prune";
 
 it("reads the same exact Pi message after persisting, compacting, and reopening the transcript", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cake-message-references-"));
@@ -40,7 +40,7 @@ it("reads the same exact Pi message after persisting, compacting, and reopening 
       },
     });
     const ref = messageReference(session.getSessionId(), entryId);
-    appendToolCompactedBranch(session, finalId);
+    appendToolPrunedBranch(session, finalId);
     session.appendCompaction("Only a summary", session.getLeafId()!, 10_000);
     const reopened = SessionManager.open(session.getSessionFile()!, directory, directory);
     const target = messageNavigationTarget(ref);

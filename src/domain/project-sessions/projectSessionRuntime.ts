@@ -836,7 +836,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             };
           else if (
             command !== "sessions.compact" &&
-            command !== "sessions.tool-compact" &&
+            command !== "sessions.tool-prune" &&
             (backendAgentControl.handles(command) || command === "sessions.open") &&
             Schema.is(Schema.String)(input.sessionId)
           )

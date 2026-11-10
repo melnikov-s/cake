@@ -46,8 +46,8 @@ describe("parseBuiltinCommand", () => {
       args: "Keep the API details",
     });
     expect(parseBuiltinCommand(" /MODEL")).toEqual({ name: "model", args: "" });
-    expect(parseBuiltinCommand("/toolcompact Implement the plan")).toEqual({
-      name: "toolcompact",
+    expect(parseBuiltinCommand("/toolprune Implement the plan")).toEqual({
+      name: "toolprune",
       args: "Implement the plan",
     });
     expect(parseBuiltinCommand("/sidechat")).toEqual({ name: "sidechat", args: "" });
@@ -70,7 +70,7 @@ describe("parseBuiltinCommand", () => {
       ["name", "Pi CLI"],
       ["sidechat", "Cake"],
       ["schedule", "Cake"],
-      ["toolcompact", "Cake"],
+      ["toolprune", "Cake"],
     ]);
     expect(cakeChatBuiltinSlashCommands.map((command) => command.name)).toEqual([
       "compact",
@@ -85,6 +85,17 @@ describe("parseBuiltinCommand", () => {
       sourceInfo: { path: "builtin:cake", source: "Cake" },
       argumentHint: "<10s|5m|2h|1d|ISO time> <message>",
     });
+  });
+
+  it("names deterministic tool pruning separately from model compaction, without old aliases", () => {
+    expect(builtinSlashCommands.find((command) => command.name === "toolprune")).toMatchObject({
+      description: "Prune tool calls/results, preserve dialogue; no model call",
+      argumentHint: "[first instruction]",
+    });
+    expect(
+      builtinSlashCommands.find((command) => command.name === "compact")?.description,
+    ).toContain("with a model");
+    expect(parseBuiltinCommand("/toolcompact")).toBeUndefined();
   });
 
   it("ignores non-commands and unknown commands", () => {

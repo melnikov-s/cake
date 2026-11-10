@@ -107,12 +107,12 @@ second transcript is persisted.
   navigation permission. The identical link remains manually usable when agents
   cannot navigate. Markdown preserves the `message` query through sanitization.
 - Message links are agent- and Markdown-facing; the transcript has no per-message copy
-  action. Navigation marks the exact visible message. If the source is on an inactive or Tool Compact
+  action. Navigation marks the exact visible message. If the source is on an inactive or Tool Prune
   branch, a bounded read-only original preview opens without changing the Pi
   branch or model context. Preview pages are transient, never Conversation entries
   or window snapshot data.
 
-Pi remains the authority through restart, ordinary compaction and Tool Compact.
+Pi remains the authority through restart, ordinary compaction and Tool Prune.
 Deleting the source transcript removes its evidence; references do not promise
 an independent retained copy. These operations address Project Sessions and permanent
 Cake Chat originals, not private side-chat transcripts. Subagent navigation uses

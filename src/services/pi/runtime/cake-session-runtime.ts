@@ -295,7 +295,7 @@ export interface CakeSessionRuntime {
   compact(instructions?: string): Promise<void>;
   compactMemory?(): Promise<void>;
   compactIfIdle?(instructions?: string): Promise<IdleCompactionResult>;
-  toolCompactIfIdle?(): Promise<IdleCompactionResult>;
+  toolPruneIfIdle?(): Promise<IdleCompactionResult>;
   queueCommand(command: string, onSettled?: () => void): Promise<QueuedSessionCommandReceipt>;
   inspectSession(query: SessionInspectionQuery): Promise<JsonValue>;
   /** `stop` attributes a deliberate stop; omitted, the abort reads as an interruption. */
@@ -325,7 +325,7 @@ export interface CakeSessionRuntime {
     sessionFile: string;
     artifactPointers: ReadonlyArray<ArtifactPointer>;
   }>;
-  toolCompact(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
+  toolPrune(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   navigate(
     entryId: string,
     options: { summarize: boolean; customInstructions?: string },
@@ -651,8 +651,8 @@ export async function createCakeSessionRuntime(
       const name = command.slice(1).split(/\s/, 1)[0];
       if (name === "compact") {
         await turnController.compact(command.slice("/compact".length).trim() || undefined);
-      } else if (name === "toolcompact") {
-        await toolCompactLatest();
+      } else if (name === "toolprune") {
+        await toolPruneLatest();
       } else {
         if (!resources.commandCatalog().some((item) => item.name === name))
           throw new Error(`Command /${name} is no longer available`);
@@ -678,7 +678,7 @@ export async function createCakeSessionRuntime(
     reportAgentAction: capabilities.reportAgentAction,
   });
 
-  const toolCompactLatest = async () => {
+  const toolPruneLatest = async () => {
     const entry = session.sessionManager
       .getBranch()
       .findLast(
@@ -688,8 +688,8 @@ export async function createCakeSessionRuntime(
           entry.message.stopReason === "stop" &&
           entry.message.content.some((block) => block.type === "text" && block.text.trim()),
       );
-    if (!entry) throw new Error("Tool compaction requires a completed assistant response");
-    await continuations.toolCompact(entry.id);
+    if (!entry) throw new Error("Tool pruning requires a completed assistant response");
+    await continuations.toolPrune(entry.id);
   };
 
   const subscription = createCakeSessionRuntimeSubscription({
@@ -742,7 +742,7 @@ export async function createCakeSessionRuntime(
         (session.isStreaming ||
           session.isCompacting ||
           turnController.idleCompactionActive() ||
-          turnController.toolCompactionActive())
+          turnController.toolPruningActive())
       );
     },
     getReviewParentContext() {
@@ -771,7 +771,7 @@ export async function createCakeSessionRuntime(
         session.isStreaming ||
         session.isCompacting ||
         turnController.idleCompactionActive() ||
-        turnController.toolCompactionActive() ||
+        turnController.toolPruningActive() ||
         session.getSteeringMessages().length ||
         session.getFollowUpMessages().length ||
         turnController.pendingRecoveryInputs().length
@@ -822,19 +822,19 @@ export async function createCakeSessionRuntime(
     },
     compact: turnController.compact,
     compactIfIdle: turnController.compactIfIdle,
-    toolCompactIfIdle: () => turnController.toolCompactIfIdle(toolCompactLatest),
+    toolPruneIfIdle: () => turnController.toolPruneIfIdle(toolPruneLatest),
     async queueCommand(command, onSettled) {
       const name = command.slice(1).split(/\s/, 1)[0];
       if (
         name !== "compact" &&
-        name !== "toolcompact" &&
+        name !== "toolprune" &&
         !resources.commandCatalog().some((item) => item.name === name)
       )
         throw new Error(
           `Command /${name} cannot be queued. Inspect sessions.commands for available commands.`,
         );
-      if (name === "toolcompact" && command.trim() !== "/toolcompact")
-        throw new Error("Queued /toolcompact takes no arguments");
+      if (name === "toolprune" && command.trim() !== "/toolprune")
+        throw new Error("Queued /toolprune takes no arguments");
       return turnController.queueCommand(command, onSettled);
     },
     async inspectSession(query) {
@@ -878,7 +878,7 @@ export async function createCakeSessionRuntime(
             source: command.source,
             queueable:
               command.name === "compact" ||
-              command.name === "toolcompact" ||
+              command.name === "toolprune" ||
               command.source !== "builtin",
           })),
         });
@@ -888,7 +888,7 @@ export async function createCakeSessionRuntime(
           ? {
               ...query,
               branch: query.branch ?? (query.leafId ? "active" : "all"),
-              types: ["compaction", "tool-compaction"],
+              types: ["compaction", "tool-prune"],
             }
           : query.kind === "tree"
             ? {
@@ -993,8 +993,7 @@ export async function createCakeSessionRuntime(
       await continuations.rename(name, false, onlyIfUnnamed);
     },
     fork: continuations.fork,
-    toolCompact: (entryId) =>
-      turnController.withToolCompaction(() => continuations.toolCompact(entryId)),
+    toolPrune: (entryId) => turnController.withToolPruning(() => continuations.toolPrune(entryId)),
     async navigate(entryId, options) {
       const result = await session.navigateTree(entryId, options);
       if (result.cancelled) throw new Error("Session tree navigation was cancelled");

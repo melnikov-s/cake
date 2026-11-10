@@ -16,7 +16,7 @@ import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTu
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/queued-message-projection";
 import { projectConversationDisplay } from "../../../../src/services/pi/runtime/conversation-display-projection";
-import { appendToolCompactedBranch } from "../../../../src/services/pi/runtime/session-tool-compaction";
+import { appendToolPrunedBranch } from "../../../../src/services/pi/runtime/session-tool-prune";
 import {
   addResponseModeReminder,
   stripResponseModeReminder,
@@ -225,7 +225,7 @@ describe("CakeSessionRuntime turn controller", () => {
         model: { ...durableModel, input: ["text", "image"] },
         prompt,
       });
-      const compact = controller.withToolCompaction(async () => {
+      const compact = controller.withToolPruning(async () => {
         // navigateTree sets isCompacting, but emits no normal compaction_end.
         Object.assign(session, { isCompacting: true });
         await navigation.promise;
@@ -235,7 +235,7 @@ describe("CakeSessionRuntime turn controller", () => {
       const compacted = compact.catch((error: Error) => error.message);
       const accepted = controller.prompt("Review both", "prompt", attachedInputs, true, "turn-1");
       await Promise.resolve();
-      expect(controller.toolCompactionActive()).toBe(true);
+      expect(controller.toolPruningActive()).toBe(true);
       const [queued] = controller.queuedParts();
       expect(queued).toMatchObject({
         text: "Review both",
@@ -254,7 +254,7 @@ describe("CakeSessionRuntime turn controller", () => {
       );
       expect(prompt.mock.calls[0]?.[0]).toContain("Review both");
       expect(prompt.mock.calls[0]?.[0]).toContain("/inputs/log.txt");
-      expect(controller.toolCompactionActive()).toBe(false);
+      expect(controller.toolPruningActive()).toBe(false);
       controller.dispose();
     },
   );
@@ -267,8 +267,8 @@ describe("CakeSessionRuntime turn controller", () => {
     });
     const accepted = controller.prompt("Review both", "prompt", attachedInputs);
     const navigate = vi.fn(async () => undefined);
-    await expect(controller.withToolCompaction(navigate)).rejects.toThrow(
-      "Wait for the current operation before tool compaction",
+    await expect(controller.withToolPruning(navigate)).rejects.toThrow(
+      "Wait for the current operation before tool pruning",
     );
     expect(navigate).not.toHaveBeenCalled();
     delivery.resolve();
@@ -287,7 +287,7 @@ describe("CakeSessionRuntime turn controller", () => {
     const { controller, session, abortSettled } = createFixture({
       model: { ...durableModel, input: ["text", "image"] },
     });
-    const compact = controller.withToolCompaction(() => navigation.promise);
+    const compact = controller.withToolPruning(() => navigation.promise);
     const accepted = controller.prompt("Review both", "prompt", attachedInputs, false, "turn-1");
     const canceled = accepted.catch((error: Error) => error.message);
     await Promise.resolve();
@@ -404,13 +404,13 @@ describe("CakeSessionRuntime turn controller", () => {
     controller.dispose();
   });
 
-  it("idle tool compaction holds new input until completion, never invoking normal Pi compaction", async () => {
+  it("idle tool pruning holds new input until completion, never invoking normal Pi compaction", async () => {
     const gate = deferred();
     const { controller, session } = createFixture();
     const compact = vi.fn(async () => gate.promise);
-    const operation = controller.toolCompactIfIdle(compact);
+    const operation = controller.toolPruneIfIdle(compact);
     expect(controller.idleCompactionActive()).toBe(true);
-    expect(await controller.toolCompactIfIdle(compact)).toEqual({ status: "busy" });
+    expect(await controller.toolPruneIfIdle(compact)).toEqual({ status: "busy" });
     const prompt = controller.prompt("Next", "prompt", []);
     await Promise.resolve();
     expect(session.prompt).not.toHaveBeenCalled();
@@ -423,7 +423,7 @@ describe("CakeSessionRuntime turn controller", () => {
     expect(session.prompt).toHaveBeenCalledOnce();
     expect(controller.idleCompactionActive()).toBe(false);
     await expect(
-      controller.toolCompactIfIdle(async () => {
+      controller.toolPruneIfIdle(async () => {
         throw new Error("Navigation cancelled");
       }),
     ).rejects.toThrow("Navigation cancelled");
@@ -442,7 +442,7 @@ describe("CakeSessionRuntime turn controller", () => {
       const { controller, session } = createFixture(overrides);
       expect(await controller.compactIfIdle()).toEqual({ status: "busy" });
       const compact = vi.fn(async () => undefined);
-      expect(await controller.toolCompactIfIdle(compact)).toEqual({ status: "busy" });
+      expect(await controller.toolPruneIfIdle(compact)).toEqual({ status: "busy" });
       expect(compact).not.toHaveBeenCalled();
       expect(session.compact).not.toHaveBeenCalled();
       expect(session.abort).not.toHaveBeenCalled();
@@ -458,7 +458,7 @@ describe("CakeSessionRuntime turn controller", () => {
     const prompt = controller.prompt("Preparing", "prompt", []);
     expect(await controller.compactIfIdle()).toEqual({ status: "busy" });
     const compact = vi.fn(async () => undefined);
-    expect(await controller.toolCompactIfIdle(compact)).toEqual({ status: "busy" });
+    expect(await controller.toolPruneIfIdle(compact)).toEqual({ status: "busy" });
     expect(compact).not.toHaveBeenCalled();
     expect(session.compact).not.toHaveBeenCalled();
     gate.resolve();
@@ -618,7 +618,7 @@ describe("CakeSessionRuntime turn controller", () => {
     controller.dispose();
   });
 
-  it("discloses only mode transitions and Tool Compact removes them from replay and display, resetting the default", async () => {
+  it("discloses only mode transitions and Tool Prune removes them from replay and display, resetting the default", async () => {
     const { controller, session } = createFixture();
     await controller.prompt("Initial text", "prompt", []);
     await controller.prompt("Start voice", "prompt", [], false, undefined, undefined, "voice");
@@ -652,7 +652,7 @@ describe("CakeSessionRuntime turn controller", () => {
       stopReason: "stop",
       timestamp: 0,
     });
-    appendToolCompactedBranch(session.sessionManager, leaf);
+    appendToolPrunedBranch(session.sessionManager, leaf);
     expect(
       session.sessionManager
         .buildSessionContext()
@@ -1053,8 +1053,8 @@ describe("CakeSessionRuntime turn controller", () => {
           await navigation.promise;
           if (outcome === "failure") throw new Error("Navigation failed");
         });
-        await expect(controller.withToolCompaction(navigate)).rejects.toThrow(
-          "Wait for the current operation before tool compaction",
+        await expect(controller.withToolPruning(navigate)).rejects.toThrow(
+          "Wait for the current operation before tool pruning",
         );
         expect(navigate).not.toHaveBeenCalled();
         expect(controller.cancellationPending()).toBe(true);
@@ -1063,15 +1063,15 @@ describe("CakeSessionRuntime turn controller", () => {
         await abortSettled.promise;
         expect(controller.queuedParts()).toEqual(before);
         const compacted = controller
-          .withToolCompaction(navigate)
+          .withToolPruning(navigate)
           .catch((error: Error) => error.message);
-        await expect(controller.withToolCompaction(navigate)).rejects.toThrow(
-          "Wait for the current operation before tool compaction",
+        await expect(controller.withToolPruning(navigate)).rejects.toThrow(
+          "Wait for the current operation before tool pruning",
         );
-        expect(controller.toolCompactionActive()).toBe(true);
+        expect(controller.toolPruningActive()).toBe(true);
         navigation.resolve();
         expect(await compacted).toBe(outcome === "failure" ? "Navigation failed" : undefined);
-        expect(controller.toolCompactionActive()).toBe(false);
+        expect(controller.toolPruningActive()).toBe(false);
         expect(controller.queuedParts()).toEqual(before);
         expect(session.prompt).toHaveBeenCalledTimes(2);
         expect(controller.executingTurnIds()).toEqual([]);

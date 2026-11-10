@@ -77,7 +77,7 @@ export const ProjectSessionRpc = RpcGroup.make(
     success: jsonValueSchema,
     error: ProjectSessionError,
   }),
-  Rpc.make("projectSessions.toolCompact", {
+  Rpc.make("projectSessions.toolPrune", {
     payload: {
       ...ProjectSessionTarget.fields,
       entryId: Schema.String,

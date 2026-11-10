@@ -182,8 +182,8 @@ bridge does not replace the response envelope with the server's JSON payload. Th
 promise that every Pi tool is a Cake command. Agent-originated calls carry their
 real calling session; background calls do not invent a current/creating session.
 Session-relative operations need a real caller. For user-authorized unattended
-maintenance, `cake("sessions.tool-compact", {sessionId})` (or UI
-`cake.call("sessions.tool-compact", {sessionId})`) accepts an explicit Project
+maintenance, `cake("sessions.tool-prune", {sessionId})` (or UI
+`cake.call("sessions.tool-prune", {sessionId})`) accepts an explicit Project
 Session ID or unambiguous discovered suffix without an agent caller. It uses
 trusted host authority across registered, accessible projects; actual session
 callers retain their project scope. Check `ok` and each `results[].status`: busy,

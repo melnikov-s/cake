@@ -30,7 +30,7 @@ const compactOne = Effect.fn("SessionCompaction.compactOne")(function* (
   if (isCakeChatSessionId(sessionId))
     return {
       status: "unavailable" as const,
-      message: "Target a Project Session; use context.compact for this permanent chat.",
+      message: "Target a Project Session; this operation is unavailable for permanent chats.",
     };
   const { session, location } = yield* metadata.lookupWithLocation({ sessionId });
   if (
@@ -57,7 +57,7 @@ const compactOne = Effect.fn("SessionCompaction.compactOne")(function* (
     return {
       status: "unavailable" as const,
       message:
-        "The target worktree is retired or missing; restore it explicitly before compaction.",
+        "The target worktree is retired or missing; restore it explicitly before maintenance.",
     };
   const runtimes = yield* CakeSessionRuntimes;
   const current = yield* runtimes.currentStatus({ ...location, sessionId });
@@ -67,7 +67,7 @@ const compactOne = Effect.fn("SessionCompaction.compactOne")(function* (
       message: "Target has active, pending or blocked work; nothing was aborted or queued.",
     };
   const handle = yield* acquireMaintenanceTarget(location, sessionId);
-  return yield* mode === "tools" ? handle.toolCompactIfIdle() : handle.compactIfIdle(instructions);
+  return yield* mode === "tools" ? handle.toolPruneIfIdle() : handle.compactIfIdle(instructions);
 });
 
 interface CompactionScope {
@@ -126,7 +126,7 @@ const compactInScope = Effect.fn("SessionCompaction.compactInScope")(function* (
         sessionId,
         status: authorized ? "unavailable" : "unauthorized",
         message: authorized
-          ? "A saved draft has no Project Session history to compact."
+          ? "A saved draft has no Project Session history to process."
           : "The target is outside the caller's authorized project scope.",
       });
       continue;
@@ -174,5 +174,5 @@ export const compact = Effect.fn("SessionCompaction.compact")(function* (
  * Explicit targets still require registered routing and ProjectAccess authorization.
  * No calling session means parent cannot resolve. Normal compaction is not exposed here.
  */
-export const toolCompactFromArtifact = (sessionId: string) =>
+export const toolPruneFromArtifact = (sessionId: string) =>
   compactInScope([sessionId], undefined, { global: true }, "tools");

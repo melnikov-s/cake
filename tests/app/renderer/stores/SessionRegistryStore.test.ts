@@ -183,7 +183,7 @@ describe("Session Registry identity and observation integration", () => {
     const sessionsGetter = vi.spyOn(registry, "sessions", "get");
     observe(fixture, parent.sessionId);
     observe(fixture, child.sessionId, true);
-    const names = ["compact", "model", "name", "sidechat", "schedule", "toolcompact"];
+    const names = ["compact", "model", "name", "sidechat", "schedule", "toolprune"];
     for (const session of [parent, child])
       expect(session.conversationSessionStore.chatStore.commands.map(({ name }) => name)).toEqual(
         names,

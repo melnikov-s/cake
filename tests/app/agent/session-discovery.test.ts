@@ -12,7 +12,7 @@ import {
   streamWorkspaceSessions,
 } from "../../../src/services/pi/runtime/session-discovery";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
-import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
+import { appendToolPrunedBranch } from "../../../src/services/pi/runtime/session-tool-prune";
 
 const usage: Usage = {
   input: 10,
@@ -172,7 +172,7 @@ describe("loadWorkspacePiSessionPreview", () => {
     const sourceLeafId = manager.appendMessage(
       assistant([{ type: "text", text: "Original answer." }]),
     );
-    appendToolCompactedBranch(manager, sourceLeafId);
+    appendToolPrunedBranch(manager, sourceLeafId);
 
     manager.appendMessage({ role: "user", content: "Check the current file", timestamp: 4 });
     manager.appendMessage(
@@ -275,7 +275,7 @@ describe("loadWorkspacePiSessionPreview", () => {
     const sourceLeafId = manager.appendMessage(
       assistant([{ type: "text", text: "Old inspection complete." }]),
     );
-    appendToolCompactedBranch(manager, sourceLeafId);
+    appendToolPrunedBranch(manager, sourceLeafId);
     manager.appendMessage({ role: "user", content: "Continue", timestamp: 3 });
     const forkLeafId = manager.appendMessage(
       assistant([{ type: "text", text: "Ready to continue." }]),

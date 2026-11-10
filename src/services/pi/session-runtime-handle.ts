@@ -808,18 +808,18 @@ export function createSessionRuntimeHandle(input: {
         return runtime.compactIfIdle(instructions);
       }).pipe(Effect.uninterruptible);
     }),
-    toolCompactIfIdle: Effect.fn("CakeSessionRuntimes.toolCompactIfIdle")(function* () {
+    toolPruneIfIdle: Effect.fn("CakeSessionRuntimes.toolPruneIfIdle")(function* () {
       if ((yield* Ref.get(shared.activeTurns)).size > 0) return { status: "busy" as const };
-      return yield* call("toolCompactIfIdle", (runtime) => {
-        if (!runtime.toolCompactIfIdle)
-          throw new Error("Idle-only tool compaction is unavailable for this runtime");
-        return runtime.toolCompactIfIdle();
+      return yield* call("toolPruneIfIdle", (runtime) => {
+        if (!runtime.toolPruneIfIdle)
+          throw new Error("Idle-only tool pruning is unavailable for this runtime");
+        return runtime.toolPruneIfIdle();
       }).pipe(Effect.uninterruptible);
     }),
     rename: (name, onlyIfUnnamed) =>
       call("rename", (runtime) => runtime.rename(name, onlyIfUnnamed)),
     fork: (entryId, title) => call("fork", (runtime) => runtime.fork(entryId, title)),
-    toolCompact: (entryId) => call("toolCompact", (runtime) => runtime.toolCompact(entryId)),
+    toolPrune: (entryId) => call("toolPrune", (runtime) => runtime.toolPrune(entryId)),
     reviewParentContext: () =>
       Effect.try({
         try: () => shared.runtime.getReviewParentContext?.(),

@@ -113,8 +113,8 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
         renameSession: async () => {
           throw new Error("Side chats cannot be renamed");
         },
-        toolCompactSession: async () => {
-          throw new Error("Side chats do not support /toolcompact");
+        toolPruneSession: async () => {
+          throw new Error("Side chats do not support /toolprune");
         },
         editorText: (entryId) =>
           this.model.tree.find((entry) => entry.piId === entryId)?.editorText,

@@ -177,6 +177,10 @@ it("keeps specialist detail behind discoverable task-specific doors", async () =
       "unrecoverable",
     ],
     "session-compaction": [
+      "sessions.tool-prune",
+      "/toolprune",
+      "no model call or summary",
+      "never substitute model compaction",
       "duplicateOf",
       "not aborted or queued",
       "inspectable tree/history",

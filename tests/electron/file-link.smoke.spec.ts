@@ -457,7 +457,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     );
     // Compact composers retain the assistant inside the input's reserved gutter.
     await expect(composerAvatar).toBeVisible();
-    await composer.fill("/toolcompact");
+    await composer.fill("/toolprune");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(composer).toHaveValue("");
     await expect.poll(vscodeIsVisible).toBe(true);

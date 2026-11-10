@@ -66,7 +66,7 @@ exact-revision projection; they are not copied into the pointer or automatically
 injected into Pi context.
 
 The header's linked-artifact list is session-scoped rather than branch-scoped. Selecting another Pi
-session-tree branch, restoring an earlier branch, or running tool compaction does
+session-tree branch, restoring an earlier branch, or running tool pruning does
 not move, clone, or re-create artifacts. These operations may change which transcript pointers are visible, but effective
 session/family links and stable lineage identities remain unchanged.
 
@@ -170,8 +170,8 @@ real renderer connection separately from a conversation link, including semantic
 handlers called by an unlinked global view. Later background calls inherit neither
 a prior window nor a creator session. Session-relative operations need a real
 caller, and native/window operations still require their actual host.
-`sessions.tool-compact` is explicit-target maintenance, not session-relative: a
-user-authorized unattended artifact may tool-compact idle Project Sessions across
+`sessions.tool-prune` is explicit-target maintenance, not session-relative: a
+user-authorized unattended artifact may tool-prune idle Project Sessions across
 registered projects permitted by `ProjectAccess`, using its trusted host authority.
 It never impersonates a creator or infers a parent; genuine session callers retain
 their existing project scope. Busy/pending/recovery-blocked targets are skipped;
@@ -235,7 +235,7 @@ The existing library shows a distinct type/icon and recent descriptions, and the
 
 ## Branches, forks, families, and revision selection
 
-Changing Pi branches or compacting tools does not alter artifact links or create
+Changing Pi branches or pruning tools does not alter artifact links or create
 revisions. A family-linked lineage is effectively linked to every family member,
 and any such session may publish its next revision; there are no owners,
 permissions, or private mode. A follow-latest link advances as the lineage does.
@@ -250,7 +250,7 @@ atomically records explicit links.
 
 ## Deletion and garbage collection
 
-Resolving, restoring, changing branches, compacting tools, or merely unloading a
+Resolving, restoring, changing branches, pruning tools, or merely unloading a
 renderer projection never deletes artifact data. Permanently deleting a Cake Session or Session Family removes only links targeting
 it. It does not mutate a lineage or revision.
 

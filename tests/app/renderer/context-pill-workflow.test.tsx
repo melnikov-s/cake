@@ -12,7 +12,7 @@ import {
 import { createLiveMessageProjector } from "../../../src/services/pi/runtime/message-projection";
 import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
-import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
+import { appendToolPrunedBranch } from "../../../src/services/pi/runtime/session-tool-prune";
 import {
   formatSessionDigestReminder,
   addSessionDigestReminder,
@@ -304,7 +304,7 @@ describe("Context visibility through the authoritative projection and shared Cha
     reloaded.unmount();
   });
 
-  it("discloses current context and hides it after Tool Compact while retaining dialogue", async () => {
+  it("discloses current context and hides it after Tool Prune while retaining dialogue", async () => {
     const pi = SessionManager.inMemory("/project");
     pi.appendMessage({
       role: "user",
@@ -399,7 +399,7 @@ describe("Context visibility through the authoritative projection and shared Cha
       await user.click(screen.getByRole("button", { name: "Cake · response mode" }));
       expect(screen.getByText(/Cake response mode: text/)).toBeTruthy();
       act(() => {
-        appendToolCompactedBranch(pi, leaf);
+        appendToolPrunedBranch(pi, leaf);
         publish();
       });
       expect(view.container.querySelectorAll('[data-slot="context-pill"]')).toHaveLength(0);

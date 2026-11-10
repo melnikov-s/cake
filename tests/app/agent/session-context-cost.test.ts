@@ -3,7 +3,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { SessionContextMetadata } from "../../../src/contracts/conversations/session-context-metadata";
 import { projectSessionContextMetadata } from "../../../src/services/pi/runtime/session-context-metadata";
-import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
+import { appendToolPrunedBranch } from "../../../src/services/pi/runtime/session-tool-prune";
 import { modelActivityMetadata, sessionContextCost } from "../../../src/utils/session-context-cost";
 
 const at = Date.parse("2026-01-01T00:00:00Z");
@@ -115,7 +115,7 @@ describe("regular Pi active-context size", () => {
     expect(sessionContextCost(compacted, at + 1000).cache).toBe("unknown");
   });
 
-  it("excludes tool-compacted originals and cannot reuse replayed response cache evidence", () => {
+  it("excludes tool-pruned originals and cannot reuse replayed response cache evidence", () => {
     const manager = SessionManager.inMemory("/project");
     manager.appendMessage({ role: "user", content: "Inspect", timestamp: at - 2 });
     manager.appendMessage(
@@ -136,7 +136,7 @@ describe("regular Pi active-context size", () => {
       response({ content: [{ type: "text", text: "Found the cause" }] }),
     );
     expect(projectSessionContextMetadata(manager).estimatedTokens).toBeGreaterThan(100_000);
-    appendToolCompactedBranch(manager, final);
+    appendToolPrunedBranch(manager, final);
     const metadata = projectSessionContextMetadata(manager);
     expect(metadata.estimatedTokens).toBeLessThan(200);
     expect(sessionContextCost(metadata, at + 1000).cache).toBe("unknown");

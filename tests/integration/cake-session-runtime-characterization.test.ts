@@ -660,7 +660,7 @@ describe("CakeSessionRuntime characterization", () => {
     expect(JSON.stringify(help)).not.toContain("sessions");
     expect(runtime.sessionFile).toBe("");
   });
-  it("delivers text, image pixels and input refs once when a send overlaps real Pi tool-compaction navigation", async () => {
+  it("delivers text, image pixels and input refs once when a send overlaps real Pi tool-prune navigation", async () => {
     const directory = await createTemporaryDirectory();
     const bodies: Array<Record<string, unknown>> = [];
     await registerFixtureProvider(
@@ -689,7 +689,7 @@ describe("CakeSessionRuntime characterization", () => {
     const selectedId = SessionManager.open(runtime.sessionFile)
       .getBranch()
       .findLast((entry) => entry.type === "message" && entry.message.role === "assistant")!.id;
-    const compact = runtime.toolCompact(selectedId);
+    const compact = runtime.toolPrune(selectedId);
     await navigating.promise;
     const reference = {
       kind: "input" as const,
@@ -743,7 +743,7 @@ describe("CakeSessionRuntime characterization", () => {
     expect(JSON.stringify(users[0])).toContain(reference.id);
   });
 
-  it("retains required system instructions across Tool Compact without re-emitting an unchanged system message", async () => {
+  it("retains required system instructions across Tool Prune without re-emitting an unchanged system message", async () => {
     const directory = await createTemporaryDirectory();
     const bodies: Array<Record<string, unknown>> = [];
     await registerFixtureProvider(
@@ -794,7 +794,7 @@ describe("CakeSessionRuntime characterization", () => {
       .findLast((entry) => entry.type === "message" && entry.message.role === "assistant")!.id;
     expect(systemEntries()).toHaveLength(1);
     events.length = 0;
-    await runtime.toolCompact(selectedId);
+    await runtime.toolPrune(selectedId);
     const compacted = await runtime.snapshot();
     expect(
       before.parts.filter((part) => part.kind === "context" && part.title === "System"),

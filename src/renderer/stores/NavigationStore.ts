@@ -138,7 +138,7 @@ export class NavigationStore extends Store<{
       session.conversationSessionStore.chatStore.parts,
       messageId,
     );
-    // Original entries hidden by a branch change or Tool Compact remain in Pi.
+    // Original entries hidden by a branch change or Tool Prune remain in Pi.
     // Inspect them without changing the branch or injecting old text into the conversation.
     if (!message) return this.messageReferencePreview.open(sessionId, messageId);
     session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(message.id);

@@ -25,7 +25,7 @@ export function createMessageOperations(
         "Use a discovered Project Session ID or the permanent Cake Chat ID. Defaults to the active branch, chronological order, 25 messages; nextOffset continues the page.",
         "Each ref is an exact Pi entry reference and a clickable link. Forward it unchanged through messageRefs without reading it first.",
         "inputRefs contains only attachment identity, name, MIME type and byte length. It does not read attachment contents.",
-        "Use branch: all to discover original messages on inactive or tool-compacted branches. References never follow a newer or summarized message.",
+        "Use branch: all to discover original messages on inactive or tool-pruned branches. References never follow a newer or summarized message.",
         compactDiscoveryGuidance,
       ],
       inputSchema: MessageListInput,

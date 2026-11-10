@@ -395,7 +395,7 @@ const makeLayer = (
           artifactPointers: [],
         };
       },
-      toolCompact: async () => ({ sessionId: "toolCompact", sessionFile: "/toolCompact.jsonl" }),
+      toolPrune: async () => ({ sessionId: "toolPrune", sessionFile: "/toolPrune.jsonl" }),
       navigate: async () => undefined,
       dispose: () => undefined,
     };

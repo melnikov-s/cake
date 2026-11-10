@@ -3,8 +3,8 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { inspectSessionHistory } from "../../../../src/services/pi/runtime/session-inspection";
-import { appendToolCompactedBranch } from "../../../../src/services/pi/runtime/session-tool-compaction";
-import { toolCompactEntryType } from "../../../../src/services/pi/runtime/tool-compaction-provenance";
+import { appendToolPrunedBranch } from "../../../../src/services/pi/runtime/session-tool-prune";
+import { toolPruneEntryType } from "../../../../src/services/pi/runtime/tool-prune-provenance";
 import {
   SessionHistoryQuery,
   QueuedSessionCommand,
@@ -106,19 +106,20 @@ describe("session inspection", () => {
     });
   });
 
-  it("distinguishes current tool-compacted branches from past compaction elsewhere and retrieves original tools", () => {
+  it("distinguishes current tool-pruned branches from past compaction elsewhere and retrieves original tools", () => {
     const { session, reportId } = history();
-    expect(
-      inspectSessionHistory(session, { branch: "all", types: ["tool-compaction"] }),
-    ).toMatchObject({ total: 0 });
-    const compacted = appendToolCompactedBranch(session, reportId);
-    expect(inspectSessionHistory(session, { types: ["tool-compaction"] })).toMatchObject({
+    expect(inspectSessionHistory(session, { branch: "all", types: ["tool-prune"] })).toMatchObject({
+      total: 0,
+    });
+    const compacted = appendToolPrunedBranch(session, reportId);
+    expect(inspectSessionHistory(session, { types: ["tool-prune"] })).toMatchObject({
       total: 1,
       entries: [
         {
           active: true,
-          customType: toolCompactEntryType,
-          text: expect.stringContaining("tool-compacted continuation"),
+          type: "tool-prune",
+          customType: toolPruneEntryType,
+          text: expect.stringContaining("tool-pruned continuation"),
           sourceLeafId: reportId,
           replayedMessages: 2,
         },
@@ -130,14 +131,15 @@ describe("session inspection", () => {
       entries: [{ active: false }, { active: false }],
     });
     session.branch(reportId);
-    expect(inspectSessionHistory(session, { types: ["tool-compaction"] })).toMatchObject({
+    expect(inspectSessionHistory(session, { types: ["tool-prune"] })).toMatchObject({
       total: 0,
     });
+    expect(inspectSessionHistory(session, { branch: "all", types: ["tool-prune"] })).toMatchObject({
+      total: 1,
+      entries: [{ active: false, sourceLeafId: reportId }],
+    });
     expect(
-      inspectSessionHistory(session, { branch: "all", types: ["tool-compaction"] }),
-    ).toMatchObject({ total: 1, entries: [{ active: false, sourceLeafId: reportId }] });
-    expect(
-      inspectSessionHistory(session, { leafId: compacted.leafId, types: ["tool-compaction"] }),
+      inspectSessionHistory(session, { leafId: compacted.leafId, types: ["tool-prune"] }),
     ).toMatchObject({ total: 1 });
   });
 
@@ -167,7 +169,7 @@ describe("session inspection", () => {
       total: 1,
       entries: [{ customType: "extension.private", text: "extension.private" }],
     });
-    expect(inspectSessionHistory(session, { types: ["tool-compaction"] })).toMatchObject({
+    expect(inspectSessionHistory(session, { types: ["tool-prune"] })).toMatchObject({
       total: 0,
     });
   });
@@ -179,10 +181,10 @@ describe("session inspection", () => {
       name: "invalid checkpoint ID",
       data: { summary: "hidden marker payload", systemCheckpointEntryId: "" },
     },
-  ])("keeps a malformed Tool Compact marker hidden ($name)", ({ data }) => {
+  ])("keeps a malformed Tool Prune marker hidden ($name)", ({ data }) => {
     const { session } = history();
-    session.appendCustomEntry(toolCompactEntryType, data);
-    expect(inspectSessionHistory(session, { types: ["tool-compaction"] })).toMatchObject({
+    session.appendCustomEntry(toolPruneEntryType, data);
+    expect(inspectSessionHistory(session, { types: ["tool-prune"] })).toMatchObject({
       total: 0,
     });
     expect(inspectSessionHistory(session, { query: "hidden marker payload" })).toMatchObject({
@@ -190,7 +192,7 @@ describe("session inspection", () => {
     });
     expect(inspectSessionHistory(session, { types: ["custom"] })).toMatchObject({
       total: 1,
-      entries: [{ customType: toolCompactEntryType, text: toolCompactEntryType }],
+      entries: [{ customType: toolPruneEntryType, text: toolPruneEntryType }],
     });
   });
 

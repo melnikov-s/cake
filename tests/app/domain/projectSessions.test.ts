@@ -158,7 +158,7 @@ const snapshot: ConversationSnapshot = {
 const fakeRuntime = (
   options: CakeSessionRuntimeOptions,
   prompt: () => Promise<void> = async () => undefined,
-  onToolCompact?: () => void,
+  onToolPrune?: () => void,
   onForkTitle?: (title: string) => void,
   onRename?: (name: string) => void,
   onOperation?: (operation: string) => void,
@@ -232,8 +232,8 @@ const fakeRuntime = (
       artifactPointers: forkArtifactPointers,
     };
   },
-  toolCompact: async () => {
-    onToolCompact?.();
+  toolPrune: async () => {
+    onToolPrune?.();
     return { sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile };
   },
   navigate: async () => undefined,
@@ -284,7 +284,7 @@ const makeLayer = (
     runtime?(options: CakeSessionRuntimeOptions): CakeSessionRuntime;
     createRuntime?: CakeSessionRuntimesAdapter["createRuntime"];
     prompt?(): Promise<void>;
-    onToolCompact?(): void;
+    onToolPrune?(): void;
     onForkTitle?(title: string): void;
     forkArtifactPointers?: ReadonlyArray<ArtifactPointer>;
     onInheritFork?(
@@ -446,7 +446,7 @@ const makeLayer = (
         return fakeRuntime(
           options,
           hooks.prompt,
-          hooks.onToolCompact,
+          hooks.onToolPrune,
           hooks.onForkTitle,
           hooks.onRename,
           hooks.onOperation,
@@ -4471,11 +4471,11 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer())),
   );
 
-  it.effect("tool-compacts without changing session identity or Fast mode", () => {
+  it.effect("tool-prunes without changing session identity or Fast mode", () => {
     let runtimeConstructions = 0;
     let compacted = false;
     return Effect.gen(function* () {
-      const result = yield* projectSessionContinuations.toolCompact({
+      const result = yield* projectSessionContinuations.toolPrune({
         target: { sessionId: "session-1", workingDirectory: "/project" },
         entryId: "assistant-entry",
       });
@@ -4501,7 +4501,7 @@ describe("Project Sessions domain", () => {
           },
           {
             onCreateRuntime: () => runtimeConstructions++,
-            onToolCompact: () => {
+            onToolPrune: () => {
               compacted = true;
             },
           },
@@ -4510,10 +4510,10 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("announces prompted tool compaction and its settled turn once each", () => {
+  it.effect("announces prompted tool pruning and its settled turn once each", () => {
     const changes: SessionCatalogChange[] = [];
     return Effect.gen(function* () {
-      yield* projectSessionContinuations.toolCompact({
+      yield* projectSessionContinuations.toolPrune({
         target: { sessionId: "session-1", workingDirectory: "/project" },
         entryId: "assistant-entry",
         prompt: "Continue",
@@ -5216,12 +5216,12 @@ describe("Project Sessions domain", () => {
     },
   );
 
-  it.effect("restores a resolved session before tool compaction", () => {
+  it.effect("restores a resolved session before tool pruning", () => {
     let runtimeConstructions = 0;
     let restores = 0;
     return Effect.gen(function* () {
       const target = { sessionId: "session-1", workingDirectory: "/project" };
-      const result = yield* projectSessionContinuations.toolCompact({
+      const result = yield* projectSessionContinuations.toolPrune({
         target,
         entryId: "assistant-entry",
       });

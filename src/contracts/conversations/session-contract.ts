@@ -616,7 +616,7 @@ const cakeBuiltinSourceInfo = {
   origin: "top-level",
 } as const;
 const piBuiltinSlashCommands = [
-  { name: "compact", description: "Manually compact the session context" },
+  { name: "compact", description: "Summarize session context with a model" },
   { name: "model", description: "Switch model", argumentHint: "<provider/model>" },
   { name: "name", description: "Rename the current session" },
 ].map((command) =>
@@ -639,8 +639,8 @@ const cakeBuiltinSlashCommands = [
     argumentHint: "<10s|5m|2h|1d|ISO time> <message>",
   },
   {
-    name: "toolcompact",
-    description: "Compact tool activity while preserving the visible conversation",
+    name: "toolprune",
+    description: "Prune tool calls/results, preserve dialogue; no model call",
     argumentHint: "[first instruction]",
   },
 ].map((command) =>

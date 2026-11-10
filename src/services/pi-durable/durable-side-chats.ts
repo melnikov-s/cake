@@ -551,7 +551,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       },
       rename: unsupported,
       fork: unsupported,
-      toolCompact: unsupported,
+      toolPrune: unsupported,
       navigate: unsupported,
       async dispose() {
         disposed = true;

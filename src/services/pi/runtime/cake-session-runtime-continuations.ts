@@ -17,7 +17,7 @@ import {
   appendForkDisplayProvenance,
   captureForkDisplayProvenance,
 } from "./fork-display-provenance";
-import { appendToolCompactedBranch } from "./session-tool-compaction";
+import { appendToolPrunedBranch } from "./session-tool-prune";
 import { projectArtifactPointers } from "./session-projection";
 import { textFromContent } from "./tool-projection";
 import { stripPresentationModeReminder } from "../../../contracts/conversations/presentation-mode-reminders";
@@ -47,7 +47,7 @@ export interface CakeSessionRuntimeContinuations {
     sessionFile: string;
     artifactPointers: ReadonlyArray<ArtifactPointer>;
   }>;
-  toolCompact(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
+  toolPrune(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   scheduleFork(input: PendingSessionFork): Promise<JsonValue>;
   setResolved(resolved: boolean): Promise<JsonValue>;
   finishSettledTurn(): Promise<void>;
@@ -203,7 +203,7 @@ export function createCakeSessionRuntimeContinuations(input: {
         artifactPointers: projectArtifactPointers(forked),
       };
     },
-    async toolCompact(entryId) {
+    async toolPrune(entryId) {
       const configuration = session.model
         ? {
             provider: session.model.provider,
@@ -212,12 +212,12 @@ export function createCakeSessionRuntimeContinuations(input: {
           }
         : undefined;
       const previousLeafId = session.sessionManager.getLeafId();
-      const result = appendToolCompactedBranch(session.sessionManager, entryId, configuration);
+      const result = appendToolPrunedBranch(session.sessionManager, entryId, configuration);
       if (!result.sessionFile) throw new Error("The current session is not persisted");
       if (previousLeafId) session.sessionManager.branch(previousLeafId);
       else session.sessionManager.resetLeaf();
       const navigation = await session.navigateTree(result.leafId, { summarize: false });
-      if (navigation.cancelled) throw new Error("Tool compaction navigation was cancelled");
+      if (navigation.cancelled) throw new Error("Tool pruning navigation was cancelled");
       await emitSnapshot();
       return { sessionId: result.sessionId, sessionFile: result.sessionFile };
     },

@@ -485,8 +485,8 @@ describe("Session continuation workflow", () => {
     ).toContain("Source conversation");
   });
 
-  it("tool-compacts the active session through the composer without a fork dialog", async () => {
-    const toolCompact = vi.fn<Client["projectSessions"]["toolCompact"]>(async () => ({
+  it("tool-prunes the active session through the composer without a fork dialog", async () => {
+    const toolPrune = vi.fn<Client["projectSessions"]["toolPrune"]>(async () => ({
       sessionId: "source",
     }));
     const fork = vi.fn<Client["projectSessions"]["fork"]>();
@@ -494,16 +494,16 @@ describe("Session continuation workflow", () => {
       TurnId.make("10000000-0000-4000-8000-000000000003"),
     );
     using fixture = renderContinuation({
-      projectSessions: { toolCompact, fork },
+      projectSessions: { toolPrune, fork },
       sessionChats: { prompt },
     });
     await fixture.user.type(
       screen.getByRole("combobox", { name: "Message" }),
-      "/toolcompact Continue cleanly",
+      "/toolprune Continue cleanly",
     );
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() =>
-      expect(toolCompact).toHaveBeenCalledWith(
+      expect(toolPrune).toHaveBeenCalledWith(
         {
           sessionId: "source",
           workingDirectory: "/current-worktree",

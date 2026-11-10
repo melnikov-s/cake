@@ -197,7 +197,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
   return { sessionId: continuation.result.sessionId };
 });
 
-export const toolCompact = Effect.fn("ProjectSessions.toolCompact")(function* (input: {
+export const toolPrune = Effect.fn("ProjectSessions.toolPrune")(function* (input: {
   readonly target: ProjectSessionTarget;
   readonly entryId: string;
   readonly prompt?: string;
@@ -206,14 +206,14 @@ export const toolCompact = Effect.fn("ProjectSessions.toolCompact")(function* (i
   const namespace = yield* resolutionNamespace(
     input.target.sessionId,
     archiveLocation(source),
-  ).pipe(asError("toolCompact"));
+  ).pipe(asError("toolPrune"));
   if (namespace === "resolved") {
     yield* restore(input.target);
     source = yield* findLocation(input.target);
   }
 
   const handle = yield* acquireTarget(source, input.target.sessionId, false);
-  const result = yield* handle.toolCompact(input.entryId).pipe(asError("toolCompact"));
+  const result = yield* handle.toolPrune(input.entryId).pipe(asError("toolPrune"));
   const continuationPrompt = input.prompt?.trim();
   if (continuationPrompt)
     yield* sessionChats
@@ -226,7 +226,7 @@ export const toolCompact = Effect.fn("ProjectSessions.toolCompact")(function* (i
         },
         "prompt",
       )
-      .pipe(asError("toolCompact"));
+      .pipe(asError("toolPrune"));
   else yield* publishCatalogChange(result.sessionId, source, false);
   return { sessionId: result.sessionId };
 });

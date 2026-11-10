@@ -36,10 +36,10 @@ export interface CakeSessionRuntimeTurnController {
   readonly queuedParts: () => UiPart[];
   readonly handoffActive: () => boolean;
   readonly idleCompactionActive: () => boolean;
-  readonly toolCompactionActive: () => boolean;
+  readonly toolPruningActive: () => boolean;
   readonly cancellationPending: () => boolean;
   readonly bashParts: () => UiPart[];
-  readonly withToolCompaction: <T>(compact: () => Promise<T>) => Promise<T>;
+  readonly withToolPruning: <T>(compact: () => Promise<T>) => Promise<T>;
   readonly pendingRecoveryInputs: () => ReadonlyArray<{
     turnId: string;
     delivery: "steer" | "follow-up";
@@ -67,7 +67,7 @@ export interface CakeSessionRuntimeTurnController {
   ) => Promise<void>;
   readonly compact: (instructions?: string) => Promise<void>;
   readonly compactIfIdle: (instructions?: string) => Promise<IdleCompactionResult>;
-  readonly toolCompactIfIdle: (compact: () => Promise<void>) => Promise<IdleCompactionResult>;
+  readonly toolPruneIfIdle: (compact: () => Promise<void>) => Promise<IdleCompactionResult>;
   readonly queueCommand: (
     command: string,
     onSettled?: () => void,
@@ -180,8 +180,8 @@ export function createCakeSessionRuntimeTurnController(input: {
   let commandRunning = false;
   let promptOperations = 0;
   let idleCompactionActive = false;
-  let toolCompactionActive = false;
-  const isCompacting = () => session.isCompacting || toolCompactionActive;
+  let toolPruningActive = false;
+  const isCompacting = () => session.isCompacting || toolPruningActive;
   let rebuildingQueue = false;
   let handingOff = false;
   let abortGeneration = 0;
@@ -800,10 +800,10 @@ export function createCakeSessionRuntimeTurnController(input: {
     compactionQueuedMessages: () => compactionQueue.map((item) => item.text),
     handoffActive: () => handingOff,
     idleCompactionActive: () => idleCompactionActive,
-    toolCompactionActive: () => toolCompactionActive,
+    toolPruningActive: () => toolPruningActive,
     cancellationPending: () => abortCleanup !== undefined,
     bashParts: () => (bashPart?.state === "running" ? [bashPart] : []),
-    async withToolCompaction(compact) {
+    async withToolPruning(compact) {
       assertActive();
       if (
         abortCleanup ||
@@ -817,15 +817,15 @@ export function createCakeSessionRuntimeTurnController(input: {
         handingOff ||
         flushingHeldQueue
       )
-        throw new Error("Wait for the current operation before tool compaction");
+        throw new Error("Wait for the current operation before tool pruning");
       // Tree navigation sets Pi's compaction flag only during navigateTree and
       // emits no compaction_end. Reserve through snapshot publication and always
       // wake the held-input lane, including failed/cancelled navigation.
-      toolCompactionActive = true;
+      toolPruningActive = true;
       try {
         return await compact();
       } finally {
-        toolCompactionActive = false;
+        toolPruningActive = false;
         void flushCompactionQueue();
       }
     },
@@ -868,7 +868,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           throw error;
         }
       }),
-    toolCompactIfIdle: (compact) =>
+    toolPruneIfIdle: (compact) =>
       runIdleCompaction(async () => {
         await compact();
         return { status: "compacted" };

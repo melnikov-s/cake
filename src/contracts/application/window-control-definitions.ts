@@ -163,7 +163,7 @@ export const windowControlDefinitions = {
       topic: "sessions",
       summary: "Queue command between responses",
       guidance: [
-        "Inspect sessions.commands for queueable commands. /compact accepts instructions; /toolcompact takes no arguments and uses the latest completed assistant response when executed.",
+        "Inspect sessions.commands for queueable commands. /compact generates a model summary and accepts instructions; /toolprune makes no model call, takes no arguments and uses the latest completed assistant response when executed.",
         "Commands share the follow-up queue with messages and preserve its order. Use sessions.pending, sessions.reorder, or sessions.cancel-queued to inspect, reorder or cancel pending work.",
         "The receipt confirms acceptance, not completion. Commands cannot be steered into a running response. Pending commands are process-lifetime state, not durable scheduling.",
       ],
@@ -171,7 +171,7 @@ export const windowControlDefinitions = {
         {
           input: {
             sessionId: "parent-session-id",
-            command: "/toolcompact",
+            command: "/toolprune",
           },
         },
       ],

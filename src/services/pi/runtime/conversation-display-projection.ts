@@ -8,13 +8,13 @@ import {
   forkDisplayProvenanceEntryType,
 } from "./fork-display-provenance";
 import { projectSessionEntries } from "./session-projection";
-import { toolCompactDialogueMessage } from "./session-tool-compaction";
+import { toolPruneDialogueMessage } from "./session-tool-prune";
 import {
-  toolCompactEntryType,
-  toolCompactProvenanceEntryType,
-  toolCompactProvenanceSchema,
-  type ToolCompactProvenance,
-} from "./tool-compaction-provenance";
+  toolPruneEntryType,
+  toolPruneProvenanceEntryType,
+  toolPruneProvenanceSchema,
+  type ToolPruneProvenance,
+} from "./tool-prune-provenance";
 
 const maximumProvenanceDepth = 16;
 
@@ -78,11 +78,11 @@ function projectBranch(branch: readonly SessionEntry[], live: boolean): Projecti
 
 function locateProvenance(branch: readonly SessionEntry[]) {
   const markerIndexes = branch.flatMap((entry, index) =>
-    entry.type === "custom" && entry.customType === toolCompactEntryType ? [index] : [],
+    entry.type === "custom" && entry.customType === toolPruneEntryType ? [index] : [],
   );
   const candidates = branch.flatMap((entry, index) => {
-    if (entry.type !== "custom" || entry.customType !== toolCompactProvenanceEntryType) return [];
-    const parsed = Schema.decodeUnknownOption(toolCompactProvenanceSchema)(entry.data);
+    if (entry.type !== "custom" || entry.customType !== toolPruneProvenanceEntryType) return [];
+    const parsed = Schema.decodeUnknownOption(toolPruneProvenanceSchema)(entry.data);
     return Option.isSome(parsed) ? [{ entry, index, provenance: parsed.value }] : [];
   });
   if (markerIndexes.length === 0 || candidates.length === 0) return undefined;
@@ -93,7 +93,7 @@ function validateReplay(
   session: SessionManager,
   branch: readonly SessionEntry[],
   provenanceIndex: number,
-  provenance: ToolCompactProvenance,
+  provenance: ToolPruneProvenance,
 ) {
   const markerIndex = branch.findIndex((entry) => entry.id === provenance.markerEntryId);
   const replayStartIndex = branch.findIndex((entry) => entry.id === provenance.replayStartEntryId);
@@ -110,7 +110,7 @@ function validateReplay(
   const sourceBranch = session.getBranch(provenance.sourceLeafId);
   const internalInputs = internalInputOrigins(sourceBranch);
   const replayableSourceIds = sourceBranch.flatMap((entry) => {
-    return toolCompactDialogueMessage(entry, internalInputs.get(entry.id)) ? [entry.id] : [];
+    return toolPruneDialogueMessage(entry, internalInputs.get(entry.id)) ? [entry.id] : [];
   });
   if (
     replayRange.length !== provenance.mappings.length ||
@@ -213,8 +213,8 @@ function reconstructForkPrefix(
     provenanceIndex -= 1
   ) {
     const entry = contextBranch[provenanceIndex];
-    if (entry?.type !== "custom" || entry.customType !== toolCompactProvenanceEntryType) continue;
-    const parsed = Schema.decodeUnknownOption(toolCompactProvenanceSchema)(entry.data);
+    if (entry?.type !== "custom" || entry.customType !== toolPruneProvenanceEntryType) continue;
+    const parsed = Schema.decodeUnknownOption(toolPruneProvenanceSchema)(entry.data);
     if (Option.isNone(parsed)) continue;
     const mappingIndex = parsed.value.mappings.findIndex(
       (mapping) => mapping.replayedEntryId === targetEntryId,

@@ -186,7 +186,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   };
 }
 
-test("Stop preserves queued input through tool compaction and returns a working composer", async () => {
+test("Stop preserves queued input through tool pruning and returns a working composer", async () => {
   const fixture = await queuedMessagesFixture();
   try {
     const page = await fixture.app.firstWindow();
@@ -213,7 +213,7 @@ test("Stop preserves queued input through tool compaction and returns a working 
     await page.getByRole("button", { name: "Stop", exact: true }).click();
     await expect(page.getByText("Cancellation requested", { exact: true })).toHaveCount(0);
     await expect.poll(labels).toEqual(expected);
-    await send("/toolcompact");
+    await send("/toolprune");
     await expect.poll(labels).toEqual(expected);
     expect(fixture.requests).toHaveLength(1);
     await send("Human input after compaction");

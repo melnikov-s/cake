@@ -293,7 +293,7 @@ describe("Prompt queue workflow", () => {
 
   it("reorders and cancels authority-projected commands without offering message-only actions", async () => {
     const next = queuePart(1, "Next task");
-    const command = queuePart(2, "/toolcompact", { command: "/toolcompact" });
+    const command = queuePart(2, "/toolprune", { command: "/toolprune" });
     const reorder = vi.fn<Client["sessionChats"]["reorderQueuedMessage"]>(async () =>
       fixture.publish([command, next]),
     );
@@ -305,16 +305,16 @@ describe("Prompt queue workflow", () => {
     });
     expect(screen.getByRole("button", { name: "Send now as steering: Next task" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Edit queued prompt: Next task" })).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Send now as steering: /toolcompact" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Edit queued prompt: /toolcompact" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Move up: /toolcompact" }));
-    expect(queuedTexts()).toEqual(["/toolcompact", "Next task"]);
+    expect(screen.queryByRole("button", { name: "Send now as steering: /toolprune" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit queued prompt: /toolprune" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Move up: /toolprune" }));
+    expect(queuedTexts()).toEqual(["/toolprune", "Next task"]);
     expect(reorder).toHaveBeenCalledExactlyOnceWith(
       { sessionId: queueSessionId, itemId: command.queuedInput!.itemId, position: 1 },
       commandOptions,
     );
     await fixture.user.click(
-      screen.getByRole("button", { name: "Cancel queued message: /toolcompact" }),
+      screen.getByRole("button", { name: "Cancel queued message: /toolprune" }),
     );
     expect(queuedTexts()).toEqual(["Next task"]);
     expect(remove).toHaveBeenCalledExactlyOnceWith(

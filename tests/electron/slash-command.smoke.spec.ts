@@ -177,7 +177,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await composer.pressSequentially("/");
     await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
     await expect(page.getByRole("option", { name: /compact/ })).toHaveCount(0);
-    await expect(page.getByRole("option", { name: /toolcompact/ })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: /toolprune/ })).toHaveCount(0);
     await composer.press("Tab");
     await expect(composer).toHaveValue("/model existing prompt");
     await expect(composer).toBeFocused();
@@ -200,7 +200,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await expect(page.locator(".session-item.active")).toHaveCount(1, { timeout: 20_000 });
     await expect(composer).toHaveValue("");
 
-    // Tool Compact must send the continuation through ordinary attachment admission,
+    // Tool Prune must send the continuation through ordinary attachment admission,
     // not the text-only continuation parameter. Exercise the real native composer.
     await expect(
       page
@@ -223,8 +223,8 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     }, log);
     const removeAttachment = page.getByRole("button", { name: /^Remove Pasted text/ });
     await expect(removeAttachment).toHaveCount(1);
-    await composer.pressSequentially("/toolcompact Review attached log");
-    await expect(composer).toHaveValue("/toolcompact Review attached log");
+    await composer.pressSequentially("/toolprune Review attached log");
+    await expect(composer).toHaveValue("/toolprune Review attached log");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     const continuationRequests = () =>
       requests.filter((request) =>

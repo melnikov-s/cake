@@ -465,11 +465,11 @@ describe("Application controls over the real Root host", () => {
     expect(
       await fixture.invoke("sessions.queue-command", {
         sessionId: "target",
-        command: "/toolcompact",
+        command: "/toolprune",
       }),
     ).toMatchObject({ ok: true, status: "queued" });
     expect(queue).toHaveBeenCalledExactlyOnceWith(
-      { sessionId: "target", command: "/toolcompact" },
+      { sessionId: "target", command: "/toolprune" },
       { signal: expect.any(AbortSignal) },
     );
     expect(

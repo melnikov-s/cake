@@ -45,7 +45,7 @@ import { promptText } from "../../../src/services/pi/runtime/user-message-transp
 import { projectQueuedMessages } from "../../../src/services/pi/runtime/queued-message-projection";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { loadReviewSessionProjection } from "../../../src/services/pi/runtime/sidecar-runtime";
-import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
+import { appendToolPrunedBranch } from "../../../src/services/pi/runtime/session-tool-prune";
 import { SessionManager, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   conversationSnapshotSchema,
@@ -3030,7 +3030,7 @@ describe("S1 Pi runtime", () => {
       stopReason: "stop",
       timestamp: Date.now(),
     });
-    appendToolCompactedBranch(source, compactedLeafId);
+    appendToolPrunedBranch(source, compactedLeafId);
     source.appendMessage({ role: "user", content: "Continue", timestamp: Date.now() });
     const forkPointId = source.appendMessage({
       role: "assistant",
@@ -3113,7 +3113,7 @@ describe("S1 Pi runtime", () => {
   });
 
   it.each(["selected", "idle"] as const)(
-    "tool-compacts (%s) onto a clean branch while keeping the live Pi Session identity",
+    "tool-prunes (%s) onto a clean branch while keeping the live Pi Session identity",
     async (mode) => {
       const directory = await createTemporaryDirectory();
       const agentDir = join(directory, "agent");
@@ -3177,12 +3177,12 @@ describe("S1 Pi runtime", () => {
       runtimes.push(runtime);
 
       if (mode === "selected") {
-        expect(await runtime.toolCompact(assistantEntryId)).toMatchObject({
+        expect(await runtime.toolPrune(assistantEntryId)).toMatchObject({
           sessionId: source.getSessionId(),
           sessionFile: source.getSessionFile(),
         });
       } else {
-        expect(await runtime.toolCompactIfIdle?.()).toEqual({ status: "compacted" });
+        expect(await runtime.toolPruneIfIdle?.()).toEqual({ status: "compacted" });
       }
       const snapshot = await runtime.snapshot();
       const persisted = SessionManager.open(
@@ -3218,7 +3218,7 @@ describe("S1 Pi runtime", () => {
     },
   );
 
-  it("idle tool compaction fails without a completed assistant response and leaves history alone", async () => {
+  it("idle tool pruning fails without a completed assistant response and leaves history alone", async () => {
     const directory = await createTemporaryDirectory();
     const sessionDir = join(directory, "sessions");
     const source = SessionManager.create(
@@ -3240,7 +3240,7 @@ describe("S1 Pi runtime", () => {
       cakeWorkspaceSessionDirectory(directory, sessionDir),
       directory,
     ).getEntries();
-    await expect(runtime.toolCompactIfIdle?.()).rejects.toThrow(
+    await expect(runtime.toolPruneIfIdle?.()).rejects.toThrow(
       "requires a completed assistant response",
     );
     const persisted = SessionManager.open(

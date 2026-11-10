@@ -385,9 +385,9 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
         sessionFile: "/sessions/fork.jsonl",
         artifactPointers: [],
       }),
-      toolCompact: async () => ({
-        sessionId: "toolCompact",
-        sessionFile: "/sessions/toolCompact.jsonl",
+      toolPrune: async () => ({
+        sessionId: "toolPrune",
+        sessionFile: "/sessions/toolPrune.jsonl",
       }),
       navigate: async () => undefined,
       dispose: () => undefined,

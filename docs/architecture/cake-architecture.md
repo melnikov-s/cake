@@ -139,12 +139,12 @@ projections needed by a surface. References do not transfer ownership.
   The exact model payload remains in Pi and Browse context. Never infer internal
   provenance from `<system-reminder>` text: genuine user quotations remain dialogue.
   Presentation does not create another transcript authority.
-- Project Session Tool Compact replays only user-authored input and assistant text as dialogue.
+- Project Session Tool Prune replays only user-authored input and assistant text as dialogue.
   Preserve Pi's canonical system prompt/tool baseline as a folded checkpoint, not
   a new instruction injection. Strip injected reminders (including embedded ones),
   reasoning, tools, custom messages, and cross-session coordination. Keep
   orientation/provenance in non-context Pi metadata and the original transcript
-  tree inspectable. Do not show Tool Compact notices or removed historical context
+  tree inspectable. Do not show Tool Prune notices or removed historical context
   pills in the continuation; preserve literal user-authored reminder tags as user
   content. The checkpoint does not add a new context pill; genuine later
   instruction changes do.

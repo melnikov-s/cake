@@ -1019,7 +1019,7 @@ export async function createDurableCakeChatRuntime(
     async fork(entryId) {
       return { sessionId: await sideChats.fork(entryId), sessionFile, artifactPointers: [] };
     },
-    toolCompact: unsupported,
+    toolPrune: unsupported,
     navigate: unsupported,
     async dispose() {
       disposed = true;

@@ -13,7 +13,7 @@ export const SessionHistoryQuery = Schema.Struct({
       Schema.Literals([
         "message",
         "compaction",
-        "tool-compaction",
+        "tool-prune",
         "branch_summary",
         "model_change",
         "thinking_level_change",

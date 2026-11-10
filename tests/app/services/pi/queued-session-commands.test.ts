@@ -114,8 +114,8 @@ describe("queued session commands", () => {
       executed.resolve();
     });
     const { controller, settle } = fixture(execute);
-    const first = await controller.queueCommand("/toolcompact", settledFirst);
-    const second = await controller.queueCommand("/toolcompact", settledSecond);
+    const first = await controller.queueCommand("/toolprune", settledFirst);
+    const second = await controller.queueCommand("/toolprune", settledSecond);
     const items = (await controller.pendingMessages()).items;
     await expect(controller.steerQueuedMessage(items[1]!.partId!)).rejects.toThrow(
       "cannot be steered",
@@ -141,7 +141,7 @@ describe("queued session commands", () => {
     });
     const { controller, settle, emitPart } = fixture(execute);
     await controller.queueCommand("/compact");
-    await controller.queueCommand("/toolcompact");
+    await controller.queueCommand("/toolprune");
     settle();
     await finished.promise;
     expect(emitPart).toHaveBeenCalledWith(
@@ -159,7 +159,7 @@ describe("queued session commands", () => {
     const completed = deferred();
     const execute = vi.fn(async () => undefined);
     const { controller, session } = fixture(execute, { isStreaming: false });
-    await controller.queueCommand("/toolcompact", completed.resolve);
+    await controller.queueCommand("/toolprune", completed.resolve);
     await completed.promise;
     expect(execute).toHaveBeenCalledTimes(1);
     expect(session.prompt).not.toHaveBeenCalled();
@@ -171,7 +171,7 @@ describe("queued session commands", () => {
     const canceled = deferred();
     const execute = vi.fn(async () => undefined);
     const { controller, settle } = fixture(execute);
-    await controller.queueCommand("/toolcompact", canceled.resolve);
+    await controller.queueCommand("/toolprune", canceled.resolve);
     await controller.abort();
     expect((await controller.pendingMessages()).items).toHaveLength(1);
     expect(execute).not.toHaveBeenCalled();
@@ -196,7 +196,7 @@ describe("queued session commands", () => {
       settled();
       complete.resolve();
     });
-    await controller.queueCommand("/toolcompact");
+    await controller.queueCommand("/toolprune");
     settle();
     await started.promise;
     await controller.clearQueue();
@@ -243,7 +243,7 @@ describe("queued session commands", () => {
     });
     const { controller, settle, session } = fixture(execute);
     await controller.queueCommand("/compact", settled.resolve);
-    await controller.queueCommand("/toolcompact");
+    await controller.queueCommand("/toolprune");
     settle();
     await started.promise;
     vi.mocked(session.abort).mockImplementation(async () => {
@@ -253,7 +253,7 @@ describe("queued session commands", () => {
     await settled.promise;
     expect(execute).toHaveBeenCalledTimes(1);
     expect((await controller.pendingMessages()).items.map(({ text }) => text)).toEqual([
-      "/toolcompact",
+      "/toolprune",
     ]);
     controller.dispose();
   });

@@ -115,9 +115,9 @@ export function fakeRuntime(
       sessionFile: "/sessions/fork.jsonl",
       artifactPointers: [],
     }),
-    toolCompact: async () => ({
-      sessionId: "toolCompact",
-      sessionFile: "/sessions/toolCompact.jsonl",
+    toolPrune: async () => ({
+      sessionId: "toolPrune",
+      sessionFile: "/sessions/toolPrune.jsonl",
     }),
     navigate: async () => undefined,
     dispose: onDispose,

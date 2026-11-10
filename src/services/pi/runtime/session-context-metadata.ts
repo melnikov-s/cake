@@ -2,7 +2,7 @@ import { convertToLlm, estimateTokens, type SessionManager } from "@earendil-wor
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import type { SessionContextMetadata } from "../../../contracts/conversations/session-context-metadata";
 import { modelActivityMetadata } from "../../../utils/session-context-cost";
-import { toolCompactProvenanceEntryType } from "./tool-compaction-provenance";
+import { toolPruneProvenanceEntryType } from "./tool-prune-provenance";
 
 export function projectSessionContextMetadata(manager: SessionManager): SessionContextMetadata {
   const projection = manager.buildSessionProjection();
@@ -19,7 +19,7 @@ export function projectSessionContextMetadata(manager: SessionManager): SessionC
       entry.type === "context_edit" ||
       entry.type === "branch_summary" ||
       entry.type === "model_change" ||
-      (entry.type === "custom" && entry.customType === toolCompactProvenanceEntryType),
+      (entry.type === "custom" && entry.customType === toolPruneProvenanceEntryType),
   );
   const lastAssistant = branch.findLastIndex(
     (entry) => entry.type === "message" && entry.message.role === "assistant",

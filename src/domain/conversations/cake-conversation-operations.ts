@@ -128,7 +128,7 @@ export function createConversationOperations(
           kind === "history"
             ? "Read or search authoritative session history with combined text, type, role, tool, time and branch filters."
             : kind === "compactions"
-              ? "Inspect normal and tool compactions across all branches; active identifies current-branch compactions."
+              ? "Inspect model compactions and tool prunes across all branches; active identifies current-branch entries."
               : kind === "tree"
                 ? "Inspect paginated session-tree entries and branch relationships."
                 : kind === "commands"
@@ -163,11 +163,11 @@ export function createConversationOperations(
         ...QueuedSessionCommand.fields,
       }),
       guidance: [
-        "Inspect sessions.commands for queueable commands. /compact accepts instructions; /toolcompact takes no arguments and uses the latest completed assistant response when executed.",
+        "Inspect sessions.commands for queueable commands. /compact generates a model summary and accepts instructions; /toolprune makes no model call, takes no arguments and uses the latest completed assistant response when executed.",
         "Commands preserve follow-up queue order. Inspect, reorder or cancel through sessions.pending, sessions.reorder and sessions.cancel-queued. Commands cannot be steered.",
         "Acceptance is not completion. Pending commands live only for the runtime's lifetime.",
       ],
-      examples: [{ input: { sessionId: "target-session-id", command: "/toolcompact" } }],
+      examples: [{ input: { sessionId: "target-session-id", command: "/toolprune" } }],
       result: "A queued receipt with a stable itemId.",
       execute: invokeAppControl("sessions.queue-command"),
     },
@@ -425,7 +425,7 @@ export function createConversationOperations(
     {
       command: "context.compact",
       topic: "context",
-      summary: "Compact caller",
+      summary: "Summarize caller context with a model",
       inputSchema: Schema.Struct({
         instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(262_144))),
       }),

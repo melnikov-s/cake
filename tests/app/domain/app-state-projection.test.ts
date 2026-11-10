@@ -9,11 +9,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const sessionId = "11111111-1111-4111-8111-111111111111";
-      for (const command of [
-        "sessions.compact",
-        "sessions.compact-batch",
-        "sessions.tool-compact",
-      ]) {
+      for (const command of ["sessions.compact", "sessions.compact-batch", "sessions.tool-prune"]) {
         const outcome = { reference: sessionId, sessionId, status: "compacted" };
         expect(
           yield* safeCoordinatorProjection({

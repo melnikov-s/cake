@@ -184,7 +184,7 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.info",
   "sessions.compact",
   "sessions.compact-batch",
-  "sessions.tool-compact",
+  "sessions.tool-prune",
   "sessions.open",
   "sessions.create",
   "sessions.fork",
@@ -919,7 +919,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                 };
               else if (
                 invocation.name !== "sessions.compact" &&
-                invocation.name !== "sessions.tool-compact" &&
+                invocation.name !== "sessions.tool-prune" &&
                 Schema.is(Schema.String)(argumentsObject.sessionId)
               )
                 invocation = {
@@ -958,7 +958,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                   "sessions.abort",
                   "sessions.compact",
                   "sessions.compact-batch",
-                  "sessions.tool-compact",
+                  "sessions.tool-prune",
                   "sessions.rename",
                   "sessions.resolve",
                   "sessions.set-labels",

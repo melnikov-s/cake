@@ -150,7 +150,7 @@ describe("Project Session operation capabilities", () => {
       "sessions.list",
       "sessions.compact",
       "sessions.compact-batch",
-      "sessions.tool-compact",
+      "sessions.tool-prune",
       "sessions.open",
       "sessions.history",
       "sessions.cancel-queued",
@@ -164,6 +164,31 @@ describe("Project Session operation capabilities", () => {
       );
       expect(withoutGateway).not.toContain(command);
     }
+  });
+
+  it("advertises and decodes tool prune without public tool-compact aliases", () => {
+    const registry = new CakeOperationRegistry(
+      operations({ currentSessionControl: control({ invokeAppControl: async () => null }) }),
+    );
+    const help = registry.operationHelp("sessions.tool-prune");
+    expect(registry.topicHelp("sessions")).toContain("sessions.tool-prune");
+    expect(help).toContain("no model call");
+    expect(help).toContain("never substitute");
+    expect(registry.operationHelp("sessions.compact")).toContain("generates a model summary");
+    expect(registry.operationHelp("sessions.queue-command")).toContain("/toolprune");
+    expect(registry.operationHelp("sessions.history")).toContain("tool-prune");
+    expect(help).not.toMatch(/tool[ -]?compact/i);
+    expect(
+      commands({ currentSessionControl: control({ invokeAppControl: async () => null }) }),
+    ).not.toContain("sessions.tool-compact");
+    const decode = Schema.decodeUnknownSync(BackendAgentInvocation);
+    expect(decode({ name: "sessions.tool-prune", arguments: { sessionId: "target" } })).toEqual({
+      name: "sessions.tool-prune",
+      arguments: { sessionId: "target" },
+    });
+    expect(() =>
+      decode({ name: "sessions.tool-compact", arguments: { sessionId: "target" } }),
+    ).toThrow();
   });
 
   it("accepts a Project icon only as a local file path", async () => {

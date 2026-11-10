@@ -268,7 +268,7 @@ export interface CakeSessionHandle {
   readonly compactIfIdle: (
     instructions?: string,
   ) => Effect.Effect<IdleCompactionResult, PiSessionError>;
-  readonly toolCompactIfIdle: () => Effect.Effect<IdleCompactionResult, PiSessionError>;
+  readonly toolPruneIfIdle: () => Effect.Effect<IdleCompactionResult, PiSessionError>;
   readonly rename: (name: string, onlyIfUnnamed?: boolean) => Effect.Effect<void, PiSessionError>;
   readonly fork: (
     entryId: string,
@@ -281,7 +281,7 @@ export interface CakeSessionHandle {
     },
     PiSessionError
   >;
-  readonly toolCompact: (
+  readonly toolPrune: (
     entryId: string,
   ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;
   readonly reviewParentContext: () => Effect.Effect<ReviewParentContext, PiSessionError>;
