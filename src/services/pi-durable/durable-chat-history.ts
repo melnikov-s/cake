@@ -168,8 +168,10 @@ export async function readDurableOriginalPage(
                 })
               : [],
       );
-    // Pi places model inputs only at generation boundaries. Attribute replies from
-    // originals, not neighboring UI rows (which may be source cards or hidden inputs).
+    // Only original pi.user entries establish response boundaries (including automatic
+    // inputs, which clear human attribution). Resets contain summary/copy user blocks,
+    // not new inputs; their entry IDs cannot address the original attribution document.
+    // Attribute replies from originals, not neighboring UI rows or model-context copies.
     // Look beyond a page edge without projecting or retaining the preceding history.
     const identityForInput = (message: UserMessage, entryId: string) => {
       const input = durableInputPresentation(
@@ -197,10 +199,13 @@ export async function readDurableOriginalPage(
       "taskTodoId" | "taskAttributionPending"
     > = {};
     const chronological = page.items.slice().reverse();
-    const firstInputOrReply = chronological.find((entry) =>
-      entry.model?.some((message) => message.role === "user" || message.role === "assistant"),
+    const firstInputOrReply = chronological.find(
+      (entry) =>
+        (entry.kind === "pi.user" && entry.model?.some((message) => message.role === "user")) ||
+        (entry.kind === "pi.assistant" &&
+          entry.model?.some((message) => message.role === "assistant")),
     );
-    if (firstInputOrReply?.model?.[0]?.role !== "user") {
+    if (firstInputOrReply?.kind !== "pi.user" && (firstInputOrReply || liveResponse)) {
       let before = page.next;
       const visited = new Set<string>();
       while (before !== undefined) {
@@ -211,8 +216,9 @@ export async function readDurableOriginalPage(
           );
         visited.add(key);
         const earlier = await root.entries({}, 200, before, BACKGROUND_CONTEXT);
-        const input = earlier.items.find((entry) =>
-          entry.model?.some((message) => message.role === "user"),
+        const input = earlier.items.find(
+          (entry) =>
+            entry.kind === "pi.user" && entry.model?.some((message) => message.role === "user"),
         );
         const message = input?.model?.findLast((message) => message.role === "user");
         if (input && message) {
@@ -225,7 +231,8 @@ export async function readDurableOriginalPage(
     const identities = new Map<string, typeof responseIdentity>();
     for (const entry of chronological) {
       for (const message of entry.model ?? []) {
-        if (message.role === "user") responseIdentity = identityForInput(message, String(entry.id));
+        if (entry.kind === "pi.user" && message.role === "user")
+          responseIdentity = identityForInput(message, String(entry.id));
         if (entry.kind === "pi.user" || entry.kind === "pi.assistant")
           identities.set(String(entry.id), responseIdentity);
       }

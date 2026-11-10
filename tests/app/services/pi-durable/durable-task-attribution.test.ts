@@ -15,6 +15,7 @@ import {
   LiveDoc,
   UserEntry,
   AssistantEntry,
+  ResetEntry,
 } from "@earendil-works/pi-durable";
 import {
   Type,
@@ -70,6 +71,7 @@ async function fixture(database?: string) {
   let decision: string | null | undefined = A;
   let response: ((request: Context, index: number) => AssistantMessage) | undefined;
   let items = [todo(A), todo(B)];
+  let contextLimit = 300_000;
   const f = durableModels(
     (request, index) =>
       response?.(request, index) ??
@@ -101,6 +103,7 @@ async function fixture(database?: string) {
       instructions: TASK_ATTRIBUTION_INSTRUCTIONS,
     },
     memory: { budget: () => 4000, summarize: async () => "memory" },
+    contextLimitTokens: () => contextLimit,
     todos: () => items,
     onChanged: vi.fn(),
     onReport: vi.fn(),
@@ -185,6 +188,9 @@ async function fixture(database?: string) {
     page,
     hold,
     close,
+    setContextLimit: (limit: number) => {
+      contextLimit = limit;
+    },
     setDecision: (id: string | null | undefined) => {
       decision = id;
     },
@@ -829,6 +835,8 @@ it.each([false, true])(
     cleanup.push(() => rm(directory, { recursive: true, force: true }));
     const database = join(directory, "chat.sqlite");
     const f = await fixture(database);
+    await f.send("Historical detail ".repeat(2000));
+    f.setContextLimit(6000);
     const held = f.hold();
     const s = await f.submit("Startup");
     const request = await held.started;
@@ -858,7 +866,7 @@ it.each([false, true])(
         stopReason: "aborted",
       },
     });
-    const entry = Object.keys((await f.doc())?.inputs ?? {})[0];
+    const entry = Object.keys((await f.doc())?.inputs ?? {}).at(-1);
     if (!entry) throw new Error("Missing original input");
     await s.wait(context);
     await f.close();
@@ -920,6 +928,151 @@ it("rejects a late result after its run was stopped", async () => {
   });
 });
 
+it.each([A, null])(
+  "keeps original-turn identity through an engine memory reset, streaming and SQLite reopen (%s)",
+  async (decision) => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-reset-attribution-"));
+    cleanup.push(() => rm(directory, { recursive: true, force: true }));
+    const database = join(directory, "chat.sqlite");
+    const f = await fixture(database);
+    f.setDecision(B);
+    await f.send("Historical detail ".repeat(2000));
+    f.setContextLimit(6000);
+    const held = f.hold();
+    const submission = await f.submit("Current human question");
+    const request = await held.started;
+    const originals = (await f.engine.root.entries({}, 200, undefined, context)).items;
+    const reset = originals.find((entry) => entry.kind === "pi.reset");
+    // This record is produced by the engine, not a synthetic ordinary-input fixture.
+    expect(reset?.model?.filter((message) => message.role === "user")).toHaveLength(2);
+    expect(JSON.stringify(reset?.model)).toContain("<current-time>");
+    expect(JSON.stringify(reset?.model)).toContain("Current human question");
+    expect(JSON.stringify(reset?.model)).toContain("cake-input-presentation");
+    const readLive = async () =>
+      readDurableOriginalPage(
+        f.engine.root,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        (await f.doc())?.inputs,
+        undefined,
+        { id: "live-reset-answer", message: durableAnswer("Streaming reset answer") },
+      );
+    expect((await readLive()).parts.at(-1)).toMatchObject({
+      taskAttributionPending: true,
+      status: "streaming",
+    });
+    const project = await prepareTaskAttribution({
+      conversation: f.engine.root,
+      harness: f.engine.harness,
+      storage: f.engine.storage,
+      signal: new AbortController().signal,
+      todos: () => [todo(A), todo(B)],
+    });
+    const text = metadata(turnIds(request).at(-1)!, decision) + "Streaming reset answer";
+    await project({
+      type: "text_delta",
+      contentIndex: 0,
+      delta: text,
+      partial: durableAnswer(text),
+    });
+    const live = (await readLive()).parts.at(-1);
+    // Capture while the run is active, then settle before asserting so failure closes cleanly.
+    held.finish(request, decision);
+    await submission.wait(context);
+    expect(live).toMatchObject({ taskTodoId: decision, status: "streaming" });
+    expect(live).not.toHaveProperty("taskAttributionPending");
+    expect((await f.page()).parts.findLast((part) => part.kind === "text")).toMatchObject({
+      text: "Held answer",
+      taskTodoId: decision,
+    });
+    await f.engine.root.commit(async (tx) => {
+      for (let i = 0; i < 205; i += 1)
+        await tx.appendEntry(f.engine.root.id, { kind: "cake.context", data: {} });
+      await tx.appendEntry(AssistantEntry, f.engine.root.id, {
+        model: [durableAnswer("Later original final")],
+      });
+    }, context);
+    await f.close();
+    const reopened = await fixture(database);
+    const newest = await reopened.page();
+    expect(newest.parts.find((part) => part.kind === "text")).toMatchObject({
+      text: "Later original final",
+      taskTodoId: decision,
+    });
+    expect(newest.cursor).toBeDefined();
+    const earlier = await readDurableOriginalPage(
+      reopened.engine.root,
+      newest.cursor,
+      undefined,
+      undefined,
+      undefined,
+      (await reopened.doc())?.inputs,
+    );
+    const parts = earlier.parts;
+    for (const text of ["Current human question", "Held answer"]) {
+      const part = parts.find((part) => part.kind === "text" && part.text === text);
+      expect(part).toMatchObject({ taskTodoId: decision });
+      expect(part).not.toHaveProperty("taskAttributionPending");
+    }
+    expect(reopened.requests).toHaveLength(0);
+  },
+);
+
+it.each([
+  { pending: false, todoId: A },
+  { pending: false, todoId: null },
+  { pending: true, todoId: null },
+])(
+  "scans past reset/control model inputs across history pages without crossing original inputs (%j)",
+  async (identity) => {
+    const f = await fixture();
+    const sent = await f.send("Original human");
+    await f.engine.root.commit(async (tx) => {
+      (await tx.doc(TaskAttributionDoc, f.engine.root.id)).inputs[String(sent.entry)] = identity;
+      const original = await tx.entry(sent.entry);
+      // Engine-shaped reset: summary user input followed by the copied current input.
+      // Both carry model inputs, but neither is a new original human turn.
+      for (let i = 0; i < 205; i += 1)
+        await tx.appendEntry(ResetEntry, f.engine.root.id, {
+          head: "self",
+          model: [
+            { role: "user", content: "Summary <current-time>now</current-time>", timestamp: 2000 },
+            ...(original?.model ?? []),
+          ],
+        });
+      await tx.appendEntry(f.engine.root.id, {
+        kind: "cake.control",
+        model: [{ role: "user", content: "Control-only model input", timestamp: 2000 }],
+      });
+      await tx.appendEntry(AssistantEntry, f.engine.root.id, {
+        model: [durableAnswer("Answer after reset-only page")],
+      });
+    }, context);
+    const expected = identity.pending
+      ? { taskAttributionPending: true }
+      : { taskTodoId: identity.todoId };
+    const newest = await f.page();
+    expect(newest.parts.find((part) => part.kind === "text")).toMatchObject({
+      text: "Answer after reset-only page",
+      ...expected,
+    });
+    const earlier = await readDurableOriginalPage(
+      f.engine.root,
+      newest.cursor,
+      undefined,
+      undefined,
+      undefined,
+      (await f.doc())?.inputs,
+    );
+    expect(
+      earlier.parts.find((part) => part.kind === "text" && part.role === "assistant"),
+    ).toMatchObject(expected);
+    expect(f.requests).toHaveLength(1);
+  },
+);
+
 it("includes every reply across an original-history page edge without replay or manual source links", async () => {
   const f = await fixture();
   const sent = await f.send("Startup");
@@ -967,6 +1120,7 @@ it("bounds reply identity at new human, incoming report, automatic, pending and 
   const f = await fixture();
   await f.send("Startup");
   await f.engine.root.commit(async (tx) => {
+    let currentInput = "Startup";
     const appendInput = async (
       text: string,
       attribution?: { pending: boolean; todoId: string | null },
@@ -976,11 +1130,23 @@ it("bounds reply identity at new human, incoming report, automatic, pending and 
       });
       if (attribution)
         (await tx.doc(TaskAttributionDoc, f.engine.root.id)).inputs[String(entry.id)] = attribution;
+      currentInput = text;
     };
-    const appendReply = (text: string) =>
-      tx.appendEntry(AssistantEntry, f.engine.root.id, {
+    const appendReply = async (text: string) => {
+      // More than one scan page of context copies must not hide the genuine
+      // automatic/report/human boundary from the backwards attribution lookup.
+      for (let i = 0; i < 205; i += 1)
+        await tx.appendEntry(ResetEntry, f.engine.root.id, {
+          head: "self",
+          model: [
+            { role: "user", content: "Summary", timestamp: 2000 },
+            { role: "user", content: currentInput, timestamp: 2000 },
+          ],
+        });
+      return tx.appendEntry(AssistantEntry, f.engine.root.id, {
         model: [durableAnswer(text)],
       });
+    };
     await appendReply("Second block in same answer");
     await tx.appendEntry(f.engine.root.id, {
       kind: "cake.source-card",
@@ -1034,7 +1200,20 @@ it("bounds reply identity at new human, incoming report, automatic, pending and 
     await appendInput("Legacy untagged human");
     await appendReply("Legacy untagged answer");
   }, context);
-  const parts = (await f.page()).parts;
+  const parts = [];
+  let cursor: string | undefined;
+  do {
+    const page = await readDurableOriginalPage(
+      f.engine.root,
+      cursor,
+      undefined,
+      undefined,
+      undefined,
+      (await f.doc())?.inputs,
+    );
+    parts.push(...page.parts);
+    cursor = page.cursor;
+  } while (cursor !== undefined);
   for (const text of ["Second block in same answer", "Answer after display-only source card"])
     expect(parts.find((part) => part.kind === "text" && part.text === text)).toMatchObject({
       taskTodoId: A,
@@ -1044,10 +1223,11 @@ it("bounds reply identity at new human, incoming report, automatic, pending and 
     "Reply to automatic input",
     "Reply to subagent report",
     "Legacy untagged answer",
-  ])
-    expect(parts.find((part) => part.kind === "text" && part.text === text)).not.toHaveProperty(
-      "taskTodoId",
-    );
+  ]) {
+    const part = parts.find((part) => part.kind === "text" && part.text === text);
+    expect(part).not.toHaveProperty("taskTodoId");
+    expect(part).not.toHaveProperty("taskAttributionPending");
+  }
   expect(
     parts.find((part) => part.kind === "text" && part.text === "Unmatched answer"),
   ).toMatchObject({ taskTodoId: null });

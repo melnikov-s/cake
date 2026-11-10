@@ -16,7 +16,7 @@ import { ConversationHistoryPage } from "../../../../src/contracts/conversations
 import { cakeChatSideChatSessionId } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { createDurableSideChats } from "../../../../src/services/pi-durable/durable-side-chats";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
-import { durableModels } from "../../../fixtures/durable-chat";
+import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -129,15 +129,17 @@ it("rejects repeated cursors while skipping invisible originals or looking up at
     }, context);
     const page = await root.entries({}, 200, undefined, context);
     expect(page.next).toBeDefined();
-    const entries = vi
-      .fn<Conversation["entries"]>()
-      .mockResolvedValue({ items: [], next: page.next });
+    const first = page.items[0];
+    if (!first) throw new Error("Missing original");
+    // Attribution lookback is needed for replies, not empty/invisible-only pages.
+    const entries = vi.fn<Conversation["entries"]>().mockResolvedValue({
+      items: [{ ...first, kind: "pi.assistant", model: [durableAnswer("Reply")] }],
+      next: page.next,
+    });
     await expect(readDurableOriginalPage({ entries })).rejects.toThrow(
       "attribution did not advance",
     );
     expect(entries).toHaveBeenCalledTimes(2);
-    const first = page.items[0];
-    if (!first) throw new Error("Missing original");
     entries.mockResolvedValue({
       items: [{ ...first, kind: "invisible.metadata" }],
       next: page.next,
