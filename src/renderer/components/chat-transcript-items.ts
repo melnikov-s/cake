@@ -13,7 +13,7 @@ export type TranscriptContentPart = UiPart & { userContent?: readonly UserConten
 
 export type TranscriptItem =
   | TranscriptContentPart
-  | { kind: "original-history"; id: string; parts: UiPart[] }
+  | { kind: "history-divider"; id: string }
   | { kind: "activity-group"; id: string; parts: UiPart[] }
   | {
       kind: "side-chat-import";
@@ -27,7 +27,7 @@ export type TranscriptItem =
 
 /** Include nested submitted parts when navigating, selecting or matching task focus. */
 export function transcriptItemParts(item: TranscriptItem): UiPart[] {
-  if (item.kind === "loading-state") return [];
+  if (item.kind === "loading-state" || item.kind === "history-divider") return [];
   const parts = "parts" in item ? item.parts : [item];
   return parts.flatMap((part: TranscriptContentPart) => [part, ...(part.userContent ?? [])]);
 }
@@ -112,11 +112,18 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
       Boolean(part.text.trim()),
   );
   const inherited = parts.filter((part) => part.originalHistory);
-  if (inherited.length)
+  if (inherited.length) {
+    const own = parts.filter((part) => !part.originalHistory);
     return [
-      { kind: "original-history", id: "original-history", parts: inherited },
-      ...groupTranscriptParts(parts.filter((part) => !part.originalHistory)),
+      ...groupTranscriptDialogue(inherited),
+      ...(own.length ? [{ kind: "history-divider" as const, id: "history-divider" }] : []),
+      ...groupTranscriptDialogue(own),
     ];
+  }
+  return groupTranscriptDialogue(parts);
+}
+
+function groupTranscriptDialogue(parts: UiPart[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   let imported: Extract<TranscriptItem, { kind: "side-chat-import" }> | undefined;
   const flushImported = () => {

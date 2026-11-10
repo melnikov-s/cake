@@ -69,6 +69,7 @@ function renderHistory(
   parentSessionId: string,
   history: Client["sessionChats"]["history"],
   paginated = true,
+  initialParts: UiPart[] = [recent],
 ) {
   const abort = vi.fn<Client["sessionChats"]["abort"]>();
   const fixture = createRendererStoreFixture({
@@ -149,7 +150,7 @@ function renderHistory(
         snapshot: { ...snapshot, parts, ...update },
       }),
     );
-  publish([recent]);
+  publish(initialParts);
   chat.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
     kind: "top",
   });
@@ -224,6 +225,101 @@ it.each(scopes)(
 );
 
 it.each(scopes)(
+  "preloads %s inherited originals inline above one plain divider",
+  (_scope, parentSessionId) => {
+    const parent = { ...older, originalHistory: true };
+    const history = vi.fn<Client["sessionChats"]["history"]>();
+    using fixture = renderHistory(parentSessionId, history, true, [parent, recent]);
+    expect(fixture.panel.getByText(parent.text)).toBeDefined();
+    expect(fixture.panel.getByText(recent.text)).toBeDefined();
+    expect(fixture.panel.queryByText("Original history")).toBeNull();
+    const divider = fixture.panel.getByRole("separator");
+    expect(divider.getAttribute("data-slot")).toBe("history-divider");
+    expect(
+      fixture.panel.getByText(parent.text).compareDocumentPosition(divider) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      divider.compareDocumentPosition(fixture.panel.getByText(recent.text)) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(history).not.toHaveBeenCalled();
+  },
+);
+
+it.each([{ parts: [] }, { parts: [{ ...older, originalHistory: true }] }, { parts: [recent] }])(
+  "has no orphan divider or paging affordance for an exhausted single-source transcript (%j)",
+  ({ parts }) => {
+    const history = vi.fn<Client["sessionChats"]["history"]>();
+    using fixture = renderHistory(CAKE_CHAT_SESSION_ID, history, false, parts);
+    expect(fixture.panel.queryByRole("separator")).toBeNull();
+    expect(fixture.panel.queryByText("Earlier messages")).toBeNull();
+    expect(fixture.panel.queryByText("Original history")).toBeNull();
+    expect(history).not.toHaveBeenCalled();
+  },
+);
+
+it.each(scopes)(
+  "crosses %s local and inherited page boundaries without duplicates or reordering",
+  async (_scope, parentSessionId) => {
+    const parent = {
+      ...older,
+      id: "entry-90-text",
+      text: "Parent original",
+      originalHistory: true,
+    };
+    const firstParent = { ...parent, id: "entry-1-text", text: "First parent original" };
+    const history = vi
+      .fn<Client["sessionChats"]["history"]>()
+      .mockResolvedValueOnce({ parts: [parent, older, older, recent], cursor: olderCursor })
+      .mockResolvedValueOnce({ parts: [firstParent, parent], cursor: undefined });
+    using fixture = renderHistory(parentSessionId, history);
+    scrollTranscriptEarlier(fixture.panel.getByText("Earlier messages"));
+    await fixture.panel.findByText(parent.text);
+    expect(fixture.model.uiParts.map((p) => p.id)).toEqual([parent.id, older.id, recent.id]);
+    scrollTranscriptEarlier(fixture.panel.getByText("Earlier messages"));
+    await fixture.panel.findByText(firstParent.text);
+    expect(fixture.model.uiParts.map((p) => p.id)).toEqual([
+      firstParent.id,
+      parent.id,
+      older.id,
+      recent.id,
+    ]);
+    expect(fixture.panel.getAllByRole("separator")).toHaveLength(1);
+    expect(fixture.panel.queryByText("Earlier messages")).toBeNull();
+    expect(fixture.panel.queryByText("Original history")).toBeNull();
+  },
+);
+
+it.each(scopes)(
+  "ends %s non-advancing loading with a visible retry and accepts empty advancing pages",
+  async (_scope, parentSessionId) => {
+    const history = vi
+      .fn<Client["sessionChats"]["history"]>()
+      .mockResolvedValueOnce({ parts: [older], cursor })
+      .mockResolvedValueOnce({ parts: [], cursor: olderCursor })
+      .mockResolvedValueOnce({ parts: [older], cursor })
+      .mockResolvedValueOnce({ parts: [], cursor: undefined });
+    using fixture = renderHistory(parentSessionId, history);
+    const user = userEvent.setup();
+    scrollTranscriptEarlier(fixture.panel.getByText("Earlier messages"));
+    await fixture.panel.findByText(
+      "Earlier history did not advance. Retry loading earlier messages.",
+    );
+    expect(fixture.panel.queryByText("Loading earlier messages…")).toBeNull();
+    expect(fixture.model.uiParts.map((p) => p.id)).toEqual([recent.id]);
+    await user.click(fixture.panel.getByRole("button", { name: "Retry loading earlier messages" }));
+    scrollTranscriptEarlier(fixture.panel.getByText("Earlier messages"));
+    await fixture.panel.findByText(
+      "Earlier history did not advance. Retry loading earlier messages.",
+    );
+    await user.click(fixture.panel.getByRole("button", { name: "Retry loading earlier messages" }));
+    expect(fixture.panel.queryByText("Earlier messages")).toBeNull();
+    expect(history).toHaveBeenCalledTimes(4);
+  },
+);
+
+it.each(scopes)(
   "pages %s side-chat originals in order, retries and keeps loaded history through live rollover",
   async (_scope, parentSessionId) => {
     const history = vi
@@ -287,8 +383,8 @@ it.each(scopes)(
     await user.click(screen.getByRole("button", { name: "Close and resolve" }));
     expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
     expect(fixture.abort).not.toHaveBeenCalled();
-    fixture.dispose();
     expect(signal?.aborted).toBe(true);
+    fixture.dispose();
     await act(async () => pending.resolve({ parts: [older], cursor: undefined }));
     expect(fixture.model.earlierParts).toHaveLength(0);
     expect(fixture.abort).not.toHaveBeenCalled();

@@ -108,13 +108,20 @@ it("switching/disposal cannot prepend a stale page to another conversation", asy
       revision: 1,
       snapshot: snapshot(session.sessionId, [part(session.sessionId)]),
     });
-  const read = first.history.load();
+  const view = render(<ChatTranscript store={first.conversationSessionStore.chatStore} />);
+  let read: Promise<void>;
+  act(() => {
+    read = first.history.load();
+  });
   expect(history).toHaveBeenCalledOnce();
-  expect(second.model.uiParts.map((p) => p.id)).toEqual(["second"]);
-  fixture[Symbol.dispose]();
+  view.rerender(<ChatTranscript store={second.conversationSessionStore.chatStore} />);
   expect(history.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
-  pending.resolve({ parts: [part("stale")], cursor: undefined });
-  await read;
+  await act(async () => {
+    pending.resolve({ parts: [part("stale")], cursor: undefined });
+    await read;
+  });
   expect(first.model.earlierParts).toHaveLength(0);
-  expect(second.model.earlierParts).toHaveLength(0);
+  expect(second.model.uiParts.map((p) => p.id)).toEqual(["second"]);
+  view.unmount();
+  fixture[Symbol.dispose]();
 });

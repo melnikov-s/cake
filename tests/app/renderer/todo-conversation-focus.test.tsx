@@ -354,7 +354,7 @@ it("filters exact message associations inside grouped history without session or
     expect(screen.getByText("tagged")).toBeDefined();
     expect(screen.queryByText("untagged-answer")).toBeNull();
     expect(screen.queryByText("Source")).toBeNull();
-    await userEvent.setup().click(screen.getByRole("button", { name: /Original history/ }));
+    expect(screen.queryByText("Original history")).toBeNull();
     expect(screen.getByText("exact")).toBeDefined();
     expect(screen.queryByText("untagged-history")).toBeNull();
     act(() => session.todos.clearFocus());

@@ -103,11 +103,11 @@ describe("shared human message content order", () => {
             }),
       }));
       using fixture = renderTranscriptRendering(input);
-      await fixture.user.click(
-        screen.getByRole("button", {
-          name: context === "original" ? "Original history" : "Merged from Notes 1 messages",
-        }),
-      );
+      if (context === "imported")
+        await fixture.user.click(
+          screen.getByRole("button", { name: "Merged from Notes 1 messages" }),
+        );
+      else expect(screen.queryByText("Original history")).toBeNull();
       assertOrder(fixture.container, true, true, "Read this content");
     },
   );

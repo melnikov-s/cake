@@ -3,7 +3,6 @@ import { TaskSectionRail } from "./task-section-rail";
 import { LoadingState } from "@/components/ui/loading-state";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import { cn } from "../lib/utils";
-import { OriginalHistoryGroup } from "./original-history-group";
 import { SideChatImportGroup } from "./side-chat-import-group";
 import { ActivityGroup } from "./work-log-activity-group";
 import { ReviewRunMessage } from "./chat-transcript-elements";
@@ -33,8 +32,6 @@ function sameParts(left: readonly UiPart[], right: readonly UiPart[]) {
 function sameItem(left: TranscriptItem, right: TranscriptItem) {
   if (left === right) return true;
   if (left.kind !== right.kind || left.id !== right.id) return false;
-  if (left.kind === "original-history" && right.kind === "original-history")
-    return sameParts(left.parts, right.parts);
   if (left.kind === "side-chat-import" && right.kind === "side-chat-import")
     return sameParts(left.parts, right.parts);
   if (left.kind === "activity-group" && right.kind === "activity-group")
@@ -43,13 +40,13 @@ function sameItem(left: TranscriptItem, right: TranscriptItem) {
     return sameParts(left.parts, right.parts);
   if (left.kind === "source-group" && right.kind === "source-group")
     return sameParts(left.parts, right.parts);
-  return left.kind === "loading-state";
+  return left.kind === "loading-state" || left.kind === "history-divider";
 }
 
 /** The message id that identifies a row in a saved reading position. */
 export function transcriptAnchorId(item: TranscriptItem) {
-  return item.kind === "original-history" ||
-    item.kind === "side-chat-import" ||
+  if (item.kind === "history-divider") return undefined;
+  return item.kind === "side-chat-import" ||
     item.kind === "activity-group" ||
     item.kind === "source-group" ||
     item.kind === "context-group"
@@ -105,8 +102,12 @@ export const ChatTranscriptItem = memo(
           hidden={taskSection && !taskSection.expanded}
           className="col-start-1 row-start-2 min-w-0"
         >
-          {taskSection && !taskSection.expanded ? null : item.kind === "original-history" ? (
-            <OriginalHistoryGroup parts={item.parts} behavior={behavior} />
+          {taskSection && !taskSection.expanded ? null : item.kind === "history-divider" ? (
+            <div
+              data-slot="history-divider"
+              role="separator"
+              className="border-t border-border/65"
+            />
           ) : item.kind === "side-chat-import" ? (
             <SideChatImportGroup group={item} behavior={behavior} />
           ) : item.kind === "activity-group" ? (

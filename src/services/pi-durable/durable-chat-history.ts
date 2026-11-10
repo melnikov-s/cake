@@ -71,9 +71,11 @@ export async function readDurableOriginalPage(
   attributions: Readonly<Record<string, { pending: boolean; todoId: string | null }>> = {},
   originalHistoryThrough?: number,
   liveResponse?: { id: string; message: AssistantMessage },
-) {
+): Promise<{ parts: UiPart[]; cursor?: string }> {
   let next = cursor;
+  const visited = new Set<string>();
   do {
+    if (next !== undefined) visited.add(next);
     const decoded =
       next === undefined
         ? undefined
@@ -81,6 +83,9 @@ export async function readDurableOriginalPage(
             Schema.fromJsonString(Schema.Record(Schema.String, Schema.MutableJson)),
           )(next);
     const page = await root.entries({}, 200, decoded, BACKGROUND_CONTEXT);
+    next = page.next === undefined ? undefined : JSON.stringify(page.next);
+    if (next !== undefined && visited.has(next))
+      throw new Error("Earlier history did not advance. Retry loading earlier messages.");
     const entries: SessionEntry[] = page.items
       .slice()
       .reverse()
@@ -197,7 +202,14 @@ export async function readDurableOriginalPage(
     );
     if (firstInputOrReply?.model?.[0]?.role !== "user") {
       let before = page.next;
+      const visited = new Set<string>();
       while (before !== undefined) {
+        const key = JSON.stringify(before);
+        if (visited.has(key))
+          throw new Error(
+            "Earlier history attribution did not advance. Retry loading earlier messages.",
+          );
+        visited.add(key);
         const earlier = await root.entries({}, 200, before, BACKGROUND_CONTEXT);
         const input = earlier.items.find((entry) =>
           entry.model?.some((message) => message.role === "user"),
@@ -316,8 +328,12 @@ export async function readDurableOriginalPage(
             : part,
         ),
       );
-    next = page.next === undefined ? undefined : JSON.stringify(page.next);
-    if (parts.length || next === undefined) return { parts, cursor: next };
+    // optionalKey(String) requires absence at exhaustion, not an own undefined key.
+    // Returning cursor: undefined fails RPC encoding instead of delivering the last page.
+    if (parts.length || next === undefined) {
+      if (next === undefined) return { parts };
+      return { parts, cursor: next };
+    }
   } while (next !== undefined);
-  return { parts: [], cursor: undefined };
+  return { parts: [] };
 }

@@ -122,6 +122,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   onBottomNavigationChange?(navigation: TranscriptBottomNavigation | undefined): void;
 }) {
   useEffect(() => store.retainTranscript(), [store]);
+  useEffect(() => store.history?.retain?.(), [store]);
   useEffect(() => () => store.transcriptInteraction.cancelResultReveal(), [store]);
   useEffect(
     () => behavior.inlineArtifactPreviews?.observeConversation(store.id, () => store.parts),
@@ -191,7 +192,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const visibleGroupedParts = store.hideThinking
     ? groupedParts.flatMap((item): TranscriptItem[] => {
         if (item.kind === "reasoning") return [];
-        if (item.kind !== "activity-group" && item.kind !== "original-history") return [item];
+        if (item.kind !== "activity-group") return [item];
         const visibleGroupParts = item.parts.filter((part) => part.kind !== "reasoning");
         return visibleGroupParts.length > 0 ? [{ ...item, parts: visibleGroupParts }] : [];
       })
@@ -320,8 +321,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         ...item,
         userContent: item.userContent?.filter((part) => matchedPartIds.has(part.id)),
       };
-    if (!focused || (item.kind !== "original-history" && item.kind !== "side-chat-import"))
-      return item;
+    if (!focused || item.kind !== "side-chat-import") return item;
     // Group containers must not leak their untagged siblings into focused chat.
     return {
       ...item,

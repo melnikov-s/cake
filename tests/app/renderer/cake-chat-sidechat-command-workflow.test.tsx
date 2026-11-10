@@ -282,10 +282,9 @@ describe.each([
       screen.queryByRole("button", { name: "Send to side chat: Waiting question" }),
     ).toBeNull();
     const panel = await screen.findByRole("complementary", { name: "Side chat" });
-    const history = await within(panel).findByRole("button", { name: "Original history" });
-    expect(within(panel).queryByText("The main question")).toBeNull();
+    expect(within(panel).queryByRole("button", { name: "Original history" })).toBeNull();
+    expect(within(panel).getByText("The main question")).toBeDefined();
     expect(within(panel).getByText("A separate question")).toBeDefined();
-    await fixture.user.click(history);
     expect(within(panel).getByText("The main question")).toBeDefined();
     expect(within(panel).getByText("The main answer")).toBeDefined();
     const sideInput = within(panel).getByRole("combobox");
@@ -360,7 +359,7 @@ describe.each([
     ).toEqual(["inherited-question", "inherited-answer", "side-question"]);
     expect(within(panel).queryByText("Completed reply")).toBeNull();
     expect(within(panel).getByText("A separate question")).toBeDefined();
-    await fixture.user.click(within(panel).getByRole("button", { name: "Original history" }));
+    expect(within(panel).queryByText("Original history")).toBeNull();
     expect(within(panel).getByText("The main answer")).toBeDefined();
     await fixture.user.click(within(panel).getByRole("button", { name: "Close and resolve" }));
     expect(screen.getByRole("combobox")).toBe(main);
