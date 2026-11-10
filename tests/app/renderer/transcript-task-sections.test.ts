@@ -265,6 +265,43 @@ it("starts a pending follow-up ungrouped, then honors settled continuation, swit
   expect(sections().map((section) => section.todoId)).toEqual(["A", "A", undefined, undefined]);
 });
 
+it("never substitutes source/focus links for human decisions across missing, pending, null and returning topics", () => {
+  const queued = { ...user("queued"), deliveryState: "queued" as const };
+  const pending = { ...user("pending"), taskAttributionPending: true };
+  const parts: UiPart[] = [
+    user("a", "A"),
+    answer("a-answer"),
+    user("new-topic-without-metadata"),
+    answer("new-topic-answer"),
+    user("b", "B"),
+    pending,
+    answer("pending-answer"),
+    queued,
+    user("explicit-none", null),
+    answer("none-answer"),
+    user("return-to-a", "A"),
+    answer("return-answer"),
+  ];
+  // Even an exact link to the old task is not a human-turn attribution decision.
+  const result = transcriptTaskSections(groupTranscriptParts(parts), (item) =>
+    item.kind === "text" && item.role === "user" ? "A" : undefined,
+  );
+  expect(result.sections.map((section) => section.todoId)).toEqual([
+    "A",
+    "A",
+    undefined,
+    undefined,
+    "B",
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    "A",
+    "A",
+  ]);
+});
+
 it("does not guess missing attribution belongs to the previous task; activity and wide widgets retain their section identity", () => {
   const parts: UiPart[] = [
     user("a", "A"),

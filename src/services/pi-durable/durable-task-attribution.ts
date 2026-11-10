@@ -31,7 +31,7 @@ export const TaskAttributionDoc = defineDoc<{
 });
 
 export const TASK_ATTRIBUTION_INSTRUCTIONS =
-  'For each current human <cake-turn id="…"/>, prefix your first meaningful response text with exactly one hidden <cake-todo>{"turnId":"exact cake-turn id","todoId":"open to-do UUID or null"}</cake-todo>. Match topic to existing open items: continue related follow-ups; switch/return to matching IDs. Selection is evidence, not assignment. Use JSON null if unmatched. Only durable work warrants creation with normal tools before metadata/prose. Never use completed/invented IDs, repeat old decisions or expose metadata in prose/fences. Never emit metadata-only commentary or extra calls/turns just for attribution.';
+  '## Per-turn to-do attribution\nFor EVERY current human <cake-turn id="…"/>, independently choose an existing matching open to-do or JSON null. Never carry forward the previous choice: reassess follow-ups, new topics and returns. Prefix the FIRST meaningful response text (including commentary) with exactly one hidden <cake-todo>{"turnId":"exact cake-turn id","todoId":"open to-do UUID or null"}</cake-todo>. Updating a to-do or launching a session does not replace this prefix. Selection is evidence, not assignment. Only durable work warrants creation with normal tools before metadata/prose; do not create an item just to label a message. Never use completed/invented IDs, decide for historical turns or cross-session reports, or expose metadata in prose/fences. Never emit metadata-only commentary or extra calls/turns just for attribution.';
 
 const Decision = Schema.Struct({
   turnId: Schema.String.check(Schema.isUUID(4)),
@@ -137,7 +137,15 @@ export async function prepareTaskAttribution(options: {
                   .some((todo) => todo.id === decision.todoId && todo.state === "open"))
             )
               doc.inputs[String(entry)] = { pending: false, todoId: decision.todoId, turnId };
-            else if (responseStarted) current.responseStarted = true;
+            else if (responseStarted)
+              // Omission is a final ungrouped display decision, not a continuation
+              // or a pending choice that a later tool round can retroactively fill.
+              doc.inputs[String(entry)] = {
+                pending: false,
+                todoId: null,
+                turnId,
+                responseStarted: true,
+              };
           }
         }, BACKGROUND_CONTEXT);
     }

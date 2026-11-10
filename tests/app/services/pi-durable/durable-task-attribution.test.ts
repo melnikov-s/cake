@@ -238,6 +238,65 @@ it("uses only the normal conversation request for continuation, switch, explicit
   );
 });
 
+it("independently attributes repeated topic changes after omitted prefixes", async () => {
+  const f = await fixture();
+  const choices = [A, undefined, B, undefined, null, A];
+  const expected = [A, null, B, null, null, A];
+  for (const [index, choice] of choices.entries()) {
+    f.setDecision(choice);
+    const sent = await f.send(
+      ["Startup", "Unmatched topic", "Navigation", "Another topic", "No task", "Return to startup"][
+        index
+      ]!,
+    );
+    expect((await f.doc())?.inputs[String(sent.entry)]).toMatchObject({
+      pending: false,
+      todoId: expected[index],
+    });
+  }
+  expect(
+    (await f.page()).parts.flatMap((part) =>
+      part.kind === "text" && part.role === "user" ? [part.taskTodoId] : [],
+    ),
+  ).toEqual(expected);
+  expect(f.requests).toHaveLength(choices.length);
+  expect(JSON.stringify(f.requests[0])).toContain("For EVERY current human");
+  expect(JSON.stringify(f.requests[0])).toContain("Updating a to-do or launching a session");
+});
+
+it("does not let cross-session reports decide for themselves or revise the preceding human turn", async () => {
+  const f = await fixture();
+  const human = await f.send("Startup");
+  const before = await f.doc();
+  f.setResponse((request) =>
+    durableAnswer(
+      turnIds(request)
+        .flatMap((id) => (id ? [metadata(id, B)] : []))
+        .join("") + "Report received",
+    ),
+  );
+  const report = await f.send(
+    `<cake-session-message>${JSON.stringify({
+      version: 1,
+      messageId: A,
+      threadId: A,
+      sequence: 1,
+      expectsResponse: true,
+      sender: { sessionId: "worker", title: "Navigation", kind: "project-session" },
+    })}</cake-session-message>\nNavigation report`,
+  );
+  // The fixture deliberately gives the report a token: provenance still excludes it.
+  expect((await f.doc())?.inputs[String(report.entry)]).toBeUndefined();
+  expect((await f.doc())?.inputs[String(human.entry)]).toEqual(before?.inputs[String(human.entry)]);
+  f.setResponse(undefined);
+  f.setDecision(null);
+  const next = await f.send("An unrelated human question");
+  expect((await f.doc())?.inputs[String(next.entry)]).toMatchObject({
+    pending: false,
+    todoId: null,
+  });
+});
+
 it("publishes follow-up, switch, none and return associations from the live stream before prose or completion", async () => {
   const f = await fixture();
   const decisions = [A, A, B, null, A];
@@ -318,7 +377,7 @@ it("supports a new to-do created mid-response without an attribution-only model/
 });
 
 it.each(["invalid", "unknown", "completed", "missing", "duplicate"])(
-  "keeps %s decisions unresolved rather than inheriting or claiming explicit none",
+  "settles %s decisions ungrouped before prose rather than inheriting a previous task",
   async (mode) => {
     const f = await fixture();
     await f.send("Startup");
@@ -341,8 +400,14 @@ it.each(["invalid", "unknown", "completed", "missing", "duplicate"])(
     const user = (await f.page()).parts.findLast(
       (part) => part.kind === "text" && part.role === "user",
     );
-    expect(user).toMatchObject({ taskAttributionPending: true });
-    expect(user).not.toHaveProperty("taskTodoId");
+    expect(user).toMatchObject({ taskTodoId: null });
+    expect(user).not.toHaveProperty("taskAttributionPending");
+    const doc = await f.doc();
+    expect(Object.values(doc?.inputs ?? {}).at(-1)).toMatchObject({
+      pending: false,
+      todoId: null,
+      responseStarted: true,
+    });
     expect(JSON.stringify((await f.page()).parts)).not.toContain("cake-todo");
   },
 );
@@ -367,7 +432,11 @@ it("never applies an earlier decision to a queued or later input, and ignores re
   ).toEqual([A, B]);
   f.setResponse(() => durableAnswer("Stale" + metadata(oldId, B)));
   const last = await f.send("Unassigned new input");
-  expect((await f.doc())?.inputs[String(last.entry)]).toMatchObject({ pending: true });
+  expect((await f.doc())?.inputs[String(last.entry)]).toMatchObject({
+    pending: false,
+    todoId: null,
+    responseStarted: true,
+  });
 });
 
 it("binds overlapping steered input decisions individually, never promoting an older result", async () => {
@@ -388,7 +457,7 @@ it("binds overlapping steered input decisions individually, never promoting an o
   expect(inputs[1]).toMatchObject({ todoId: B });
 });
 
-it("keeps unresolved and settled decisions and manual corrections across SQLite reopen without model replay", async () => {
+it("keeps omitted and explicit decisions and manual corrections across SQLite reopen without model replay", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cake-task-attribution-"));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const database = join(directory, "chat.sqlite");
@@ -409,7 +478,8 @@ it("keeps unresolved and settled decisions and manual corrections across SQLite 
       { signal: new AbortController().signal, toolCallId: "repair", runtime: {} },
     );
   await invoke(String(first.entry), B);
-  await expect(invoke(String(second.entry), A)).rejects.toThrow("settled human-turn");
+  // Once prose has started, omitted metadata is settled and explicitly repairable.
+  await invoke(String(second.entry), null);
   await expect(invoke("9007199254740992", A)).rejects.toThrow("Invalid original");
   await expect(invoke(String(first.entry), "00000000-0000-4000-8000-000000000099")).rejects.toThrow(
     "not in this chat",
@@ -425,7 +495,10 @@ it("keeps unresolved and settled decisions and manual corrections across SQLite 
     pending: false,
     todoId: B,
   });
-  expect((await reopened.doc())?.inputs[String(second.entry)]).toMatchObject({ pending: true });
+  expect((await reopened.doc())?.inputs[String(second.entry)]).toMatchObject({
+    pending: false,
+    todoId: null,
+  });
   expect(reopened.requests).toHaveLength(0);
   expect(reopened.classify).not.toHaveBeenCalled();
 });
@@ -659,6 +732,41 @@ it.each(["toolUse", "length"] as const)(
   },
 );
 
+it("settles missing metadata before forwarding streamed prose and rejects a later prefix", async () => {
+  const f = await fixture();
+  await f.send("Startup");
+  const held = f.hold();
+  const submission = await f.submit("An unrelated topic");
+  const request = await held.started;
+  const project = await prepareTaskAttribution({
+    conversation: f.engine.root,
+    harness: f.engine.harness,
+    storage: f.engine.storage,
+    signal: new AbortController().signal,
+    todos: () => [todo(A), todo(B)],
+  });
+  const event = await project({
+    type: "text_delta",
+    contentIndex: 0,
+    delta: "Answer without a prefix",
+    partial: durableAnswer("Answer without a prefix"),
+  });
+  expect(event.type === "text_delta" && event.delta).toBe("Answer without a prefix");
+  expect(
+    (await f.page()).parts.findLast((part) => part.kind === "text" && part.role === "user"),
+  ).toMatchObject({ taskTodoId: null });
+  const settled = await f.doc();
+  await project({
+    type: "done",
+    reason: "stop",
+    message: durableAnswer(metadata(turnIds(request).at(-1)!, B) + "Late replacement"),
+  });
+  expect(await f.doc()).toEqual(settled);
+  held.finish(request, B);
+  await submission.wait(context);
+  expect(await f.doc()).toEqual(settled);
+});
+
 it("streams missing attribution immediately and never applies a late trailer or a later tool-round decision", async () => {
   const f = await fixture();
   f.setResponse((request, index) =>
@@ -671,7 +779,8 @@ it("streams missing attribution immediately and never applies a late trailer or 
   );
   const sent = await f.send("Navigation");
   expect((await f.doc())?.inputs[String(sent.entry)]).toMatchObject({
-    pending: true,
+    pending: false,
+    todoId: null,
     responseStarted: true,
   });
   expect(JSON.stringify((await f.page()).parts)).toContain("Starting without metadata");
@@ -681,7 +790,11 @@ it("streams missing attribution immediately and never applies a late trailer or 
     durableAnswer("Unrelated answer" + metadata(turnIds(request).at(-1)!, A)),
   );
   const trailer = await f.send("Other topic");
-  expect((await f.doc())?.inputs[String(trailer.entry)]).toMatchObject({ pending: true });
+  expect((await f.doc())?.inputs[String(trailer.entry)]).toMatchObject({
+    pending: false,
+    todoId: null,
+    responseStarted: true,
+  });
 });
 
 it.each([false, true])(
@@ -761,5 +874,9 @@ it("rejects a late result after its run was stopped", async () => {
     reason: "stop",
     message: durableAnswer(metadata(turnIds(request).at(-1)!, A)),
   });
-  expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({ pending: true });
+  expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({
+    pending: false,
+    todoId: null,
+    responseStarted: true,
+  });
 });

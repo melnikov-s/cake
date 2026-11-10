@@ -16,13 +16,12 @@ export function transcriptTaskSections(
       (item.kind === "tool" && Boolean(item.messageReference));
     const human = item.kind === "text" && item.role === "user" && !incoming;
     if (human) {
-      // Neither queued nor unresolved human input inherits the preceding task.
+      // Human turns require their own decision. Source links (including focus
+      // matches) are not attribution, even when per-turn metadata is absent.
       discussion =
         item.deliveryState || item.taskAttributionPending
           ? undefined
-          : item.taskTodoId === undefined
-            ? linked
-            : (item.taskTodoId ?? undefined);
+          : (item.taskTodoId ?? undefined);
     }
     if (item.kind === "skill") discussion = undefined;
     // A source card owns only its row, not the next conversational response.
