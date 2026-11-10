@@ -239,14 +239,22 @@ it("updates conversation resources deliberately without inheriting another pane'
   expect(paneActions!).toBe(alphaActions);
   const signal = new AbortController().signal;
   await paneActions!.loadWorkspaceImage!("screen.png", signal);
-  expect(readImage).toHaveBeenLastCalledWith("/alpha-tree", "screen.png", { signal });
+  expect(readImage).toHaveBeenLastCalledWith(
+    { sessionId: "alpha", workspacePath: "/alpha-tree" },
+    "screen.png",
+    { signal },
+  );
   await paneActions!.loadAttachmentImage!("attachment", signal);
   expect(alphaAttachment).toHaveBeenCalledWith("attachment", signal);
 
   view.rerender(tree("beta", betaAttachment));
   expect(paneActions!).not.toBe(alphaActions);
   await paneActions!.loadWorkspaceImage!("screen.png", signal);
-  expect(readImage).toHaveBeenLastCalledWith("/beta-tree", "screen.png", { signal });
+  expect(readImage).toHaveBeenLastCalledWith(
+    { sessionId: "beta", workspacePath: "/beta-tree" },
+    "screen.png",
+    { signal },
+  );
   await paneActions!.loadAttachmentImage!("attachment", signal);
   expect(betaAttachment).toHaveBeenCalledWith("attachment", signal);
   const embed = paneActions!.renderArtifactEmbed!("cake://artifact/report@r1", "Report");

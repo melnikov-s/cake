@@ -188,12 +188,14 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
             client.filesystem["read-workspace-file"]({ workspacePath: workingDirectory, path }),
           options,
         ).then((response) => response.content),
-      readImage: (workingDirectory, path, options) =>
+      readImage: (source, path, options) =>
         execute(
           "filesystem.read-workspace-image",
           (client) =>
             client.filesystem["read-workspace-image"]({
-              ...(workingDirectory ? { workspacePath: workingDirectory } : null),
+              ...(source.sessionId ? { sessionId: source.sessionId } : null),
+              ...(source.workspacePath ? { workspacePath: source.workspacePath } : null),
+              ...(source.projectPath ? { projectPath: source.projectPath } : null),
               path,
             }),
           options,

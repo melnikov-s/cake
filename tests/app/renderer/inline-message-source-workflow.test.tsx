@@ -397,9 +397,12 @@ describe("exact response presentation", () => {
         { sessionId: source.getSessionId() },
         { signal: expect.any(AbortSignal) },
       );
-      expect(readImage.mock.calls.every(([directory]) => directory === "/producer-worktree")).toBe(
-        true,
-      );
+      expect(
+        readImage.mock.calls.every(
+          ([source]) =>
+            source.workspacePath === "/producer-worktree" && source.projectPath === "/project",
+        ),
+      ).toBe(true);
       expect(
         readAttachment.mock.calls.every(([request]) => request.sessionId === source.getSessionId()),
       ).toBe(true);

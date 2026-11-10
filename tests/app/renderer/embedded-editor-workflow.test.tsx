@@ -160,6 +160,8 @@ describe("Embedded editor workflow", () => {
           {
             workspacePath: editorWorkingDirectory,
             originatingDirectory: editorWorkingDirectory,
+            // Lets the backend resolve against a Cake Chat's scratch directory too.
+            sessionId: expect.any(String),
             location,
           },
           expect.objectContaining({ signal: expect.any(AbortSignal) }),

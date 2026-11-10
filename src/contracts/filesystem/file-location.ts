@@ -5,6 +5,8 @@ export const PrepareFileLocation = Schema.Struct({
   workspacePath: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4_096))),
   /** Omitted only for global Cake Chat, whose Working Directory is the host home. */
   originatingDirectory: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4_096))),
+  /** The linking conversation; a Cake Chat's scratch directory is tried first for relative paths. */
+  sessionId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(256))),
   location: editorLocationSchema,
 });
 export interface PrepareFileLocation extends Schema.Schema.Type<typeof PrepareFileLocation> {}

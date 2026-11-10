@@ -7,6 +7,10 @@ import {
   parseSessionLink,
   type MessageReadResult,
 } from "../../contracts/conversations/message-reference";
+import {
+  cakeChatSideChatParentId,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { ClientContext } from "./context/ClientContext";
 
 /** A transient exact-source preview, never added to the Conversation or a window snapshot. */
@@ -76,9 +80,16 @@ export class MessageReferencePreviewStore extends Store<{
     const sessionId = this.page?.message.sessionId;
     if (!sessionId) throw new Error("No original message is loaded");
     const client = ClientContext.consume(this)!;
+    // A Cake Chat (or its side chat) is no Project Session; the backend derives its scratch directory.
+    if (isCakeChatSessionId(sessionId) || cakeChatSideChatParentId(sessionId))
+      return client.filesystem.readImage({ sessionId }, path, { signal });
     const source = await client.projectSessions.lookup({ sessionId }, { signal });
     signal.throwIfAborted();
-    return client.filesystem.readImage(source.workingDirectory, path, { signal });
+    return client.filesystem.readImage(
+      { sessionId, workspacePath: source.workingDirectory, projectPath: source.projectPath },
+      path,
+      { signal },
+    );
   };
 
   loadAttachmentImage = async (reference: string, signal: AbortSignal) => {

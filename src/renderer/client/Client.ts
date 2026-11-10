@@ -262,12 +262,20 @@ interface FilesystemCommands {
     options?: ClientCommandOptions,
   ): Promise<ReadonlyArray<FileSuggestion>>;
   readFile(workingDirectory: string, path: string, options?: ClientCommandOptions): Promise<string>;
-  /** Reads any local image; relative paths resolve against `workingDirectory`, or home without one. */
+  /** Reads any local image; relative paths resolve against the source's directories. */
   readImage(
-    workingDirectory: string | undefined,
+    source: ImageSource,
     path: string,
     options?: ClientCommandOptions,
   ): Promise<{ readonly data: string; readonly mimeType: string }>;
+}
+
+/** Who referenced an image. Relative paths try a Cake Chat's scratch directory, the
+ * author's working directory, then the project root; home only when none is known. */
+export interface ImageSource {
+  readonly sessionId?: string;
+  readonly workspacePath?: string;
+  readonly projectPath?: string;
 }
 
 interface WorkspaceCommands {

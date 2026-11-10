@@ -89,11 +89,8 @@ import {
   loadAgentDirectoryExtensions,
   requireRegisteredModel,
 } from "../pi/runtime/extension-providers";
-import {
-  cakeChatScratchDirectory,
-  createCakeChatBashTool,
-  createCakeChatReadTool,
-} from "./cake-chat-local-tools";
+import { createCakeChatBashTool, createCakeChatReadTool } from "./cake-chat-local-tools";
+import { cakeChatScratchDirectory } from "./cake-chat-directories";
 import { sideSessionExecutionEnv } from "./durable-side-session";
 import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./cake-chat-mcp";

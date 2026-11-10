@@ -521,7 +521,10 @@ describe("Markdown rendering integration", () => {
     }));
     using fixture = renderMarkdown("![Visual capture](.visual-captures/example.png)", {
       props: { onOpenSourceLocation: () => undefined },
-      actions: { loadWorkspaceImage: (path, signal) => readImage("/work/cake", path, { signal }) },
+      actions: {
+        loadWorkspaceImage: (path, signal) =>
+          readImage({ workspacePath: "/work/cake" }, path, { signal }),
+      },
       client: { filesystem: { readImage } },
     });
     expect(
@@ -529,9 +532,26 @@ describe("Markdown rendering integration", () => {
         "src",
       ),
     ).toBe("data:image/png;base64,cG5n");
-    expect(readImage).toHaveBeenCalledWith("/work/cake", ".visual-captures/example.png", {
-      signal: expect.any(AbortSignal),
+    expect(readImage).toHaveBeenCalledWith(
+      { workspacePath: "/work/cake" },
+      ".visual-captures/example.png",
+      {
+        signal: expect.any(AbortSignal),
+      },
+    );
+  });
+
+  it("shows every absolute path tried when a relative image is missing", async () => {
+    const tried = "File not found. Tried:\n/scratch/pgj/shot.png\n/project/pgj/shot.png";
+    using _fixture = renderMarkdown("![Shot](pgj/shot.png)", {
+      props: { onOpenSourceLocation: () => undefined },
+      actions: { loadWorkspaceImage: async () => Promise.reject(new Error(tried)) },
     });
+    const placeholder = (await screen.findByText("Image not available: Shot")).closest(
+      '[role="note"]',
+    );
+    expect(placeholder?.textContent).toContain("pgj/shot.png");
+    expect(screen.getByText(/File not found\. Tried:/).textContent).toBe(tried);
   });
 
   it("shows image failures and cancels obsolete workspace reads", async () => {
@@ -546,7 +566,8 @@ describe("Markdown rendering integration", () => {
     using fixture = renderMarkdown("![Missing](missing.png)", {
       props: { onOpenSourceLocation: () => undefined },
       actions: {
-        loadWorkspaceImage: (path, abort) => readImage("/work/cake", path, { signal: abort }),
+        loadWorkspaceImage: (path, abort) =>
+          readImage({ workspacePath: "/work/cake" }, path, { signal: abort }),
       },
       client: { filesystem: { readImage } },
     });

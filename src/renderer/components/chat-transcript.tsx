@@ -689,6 +689,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   return (
     <ConversationMarkdownProvider
       workspacePath={behavior.workspacePath}
+      projectPath={behavior.projectPath}
       stateSessionId={behavior.messageReferenceSessionId}
     >
       {selectionOverlays}

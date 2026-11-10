@@ -22,6 +22,7 @@ export function projectTranscriptBehaviorFor(
       ? root.cakeChatCollectionStore.registry.load(projectChat.sessionId).todos
       : undefined,
     workspacePath: paneSession.workspacePath,
+    projectPath,
     messageReferenceSessionId: paneSession.sessionId,
     onFork: resolved
       ? undefined

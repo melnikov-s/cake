@@ -58,7 +58,8 @@ export function MarkdownImage({
           Image not available: {alt}
         </span>
         {caption && <span className="font-mono break-all">{caption}</span>}
-        <span>{error}</span>
+        {/* Misses name each absolute path tried, one per line. */}
+        <span className="whitespace-pre-line break-all">{error}</span>
       </span>
     );
   const displaySrc = resourcePath ? resolvedSrc : src;

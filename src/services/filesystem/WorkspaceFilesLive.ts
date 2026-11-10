@@ -4,11 +4,15 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { Effect, Layer } from "effect";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { suggestProjectFiles } from "../pi/runtime/session-discovery";
+import { cakeChatSideChatParentId } from "../../contracts/cake-chats/cake-chat-identity";
 import { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 import { WorkspaceFiles } from "./WorkspaceFiles";
 import { prepareFileLocation } from "./file-location";
-import { readLocalImage } from "./local-image";
-import { expandHomePath } from "./local-path";
+import { readReferencedImage } from "./local-image";
+import {
+  cakeChatScratchDirectory,
+  cakeChatSessionDirectory,
+} from "../pi-durable/cake-chat-directories";
 
 const workspaceFilesError = (operation: string, cause: unknown) =>
   new WorkspaceFileError({
@@ -16,7 +20,8 @@ const workspaceFilesError = (operation: string, cause: unknown) =>
     message: cause instanceof Error ? cause.message : String(cause),
   });
 
-export const makeWorkspaceFilesLive = (agentDirectory: string) =>
+/** `cakeChatDirectory` is global Cake Chat's session directory; other chats derive theirs from it. */
+export const makeWorkspaceFilesLive = (agentDirectory: string, cakeChatDirectory: string) =>
   Layer.effect(
     WorkspaceFiles,
     Effect.gen(function* () {
@@ -35,6 +40,14 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
                 ),
           ),
         );
+
+      /** Where a Cake Chat's commands start; its side chats start there too unless bound elsewhere. */
+      const chatScratchDirectory = (sessionId: string | undefined) => {
+        if (!sessionId) return undefined;
+        const chat = cakeChatSideChatParentId(sessionId) ?? sessionId;
+        const directory = cakeChatSessionDirectory(cakeChatDirectory, chat);
+        return directory && cakeChatScratchDirectory(directory);
+      };
 
       const suggestFiles = Effect.fn("WorkspaceFiles.suggestFiles")(function* (
         _connectionId: number,
@@ -85,17 +98,21 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
       });
 
       // Chat images may live anywhere on this host (for example /tmp screenshots).
-      // Relative paths resolve against the conversation's Working Directory, or
-      // home for global Cake Chat, which has none.
+      // Relative paths try the author's working directory first: a Cake Chat's scratch
+      // directory, where its commands start, or a Project Session's checkout. Then the
+      // project root, then home when nothing else is known (global Cake Chat).
       const readImage = Effect.fn("WorkspaceFiles.readImage")(function* (
         _connectionId: number,
         request: Parameters<WorkspaceFiles["Service"]["readImage"]>[1],
       ) {
+        const directories = [
+          chatScratchDirectory(request.sessionId),
+          request.workspacePath,
+          request.projectPath,
+        ];
+        if (!request.workspacePath && !request.projectPath) directories.push(homedir());
         return yield* Effect.tryPromise({
-          try: () =>
-            readLocalImage(
-              resolve(request.workspacePath ?? homedir(), expandHomePath(request.path)),
-            ),
+          try: () => readReferencedImage(request.path, directories),
           catch: (cause) => workspaceFilesError("readImage", cause),
         });
       });
@@ -109,8 +126,11 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
           if (request.workspacePath) yield* requireAllowed(request.workspacePath);
           const originatingDirectory = request.originatingDirectory ?? homedir();
           yield* requireAllowed(originatingDirectory);
+          const scratch = chatScratchDirectory(request.sessionId);
+          const authorDirectories = scratch ? [scratch] : [];
           return yield* Effect.tryPromise({
-            try: (signal) => prepareFileLocation({ ...request, originatingDirectory }, signal),
+            try: (signal) =>
+              prepareFileLocation({ ...request, originatingDirectory, authorDirectories }, signal),
             catch: (cause) => workspaceFilesError("prepareFileLocation", cause),
           });
         }),

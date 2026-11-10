@@ -37,6 +37,7 @@ export function nestedTranscriptBehaviorFor(
     // messageComments: secondary chats cannot create nested side chats.
     showSelectionContextMenu: parent.showSelectionContextMenu,
     workspacePath,
+    projectPath: parent.projectPath ?? parent.workspacePath,
     messageReferenceSessionId: discussion?.sessionId,
     inlineWidgets: root.inlineWidgetStore,
     inlineArtifactPreviews: root.inlineArtifactPreviewStore,

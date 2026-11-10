@@ -676,8 +676,12 @@ export const cakeRpcPayloadSchemas = {
     path: bounded(1, 8_192),
   }),
   "read-workspace-image": Schema.Struct({
-    /** Base for relative paths; omitted for global Cake Chat, which resolves against home. */
+    /** The author's working directory: a Project Session's checkout or worktree. */
     workspacePath: Schema.optionalKey(stringMax(4_096)),
+    /** Fallback base, such as the project root behind a worktree. */
+    projectPath: Schema.optionalKey(stringMax(4_096)),
+    /** The authoring conversation; a Cake Chat's scratch directory is tried first. */
+    sessionId: Schema.optionalKey(stringMax(256)),
     path: bounded(1, 8_192),
   }),
   "open-widget-browser": Schema.Struct({ browser: WidgetBrowserOutput }),

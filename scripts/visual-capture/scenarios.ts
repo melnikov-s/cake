@@ -4039,6 +4039,54 @@ const subagentReportsScenario: VisualCaptureScenario = {
         }),
 };
 
+// Agents save screenshots in their scratch directory and link them relatively.
+const relativeChatImagesScenario: VisualCaptureScenario = {
+  name: "relative-chat-images",
+  description:
+    "Project Chat image linked relative to its scratch directory, plus a missing image naming the paths tried",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const chat = join(
+      paths.cakeHome,
+      "pi",
+      "project-chats",
+      createHash("sha256").update(paths.project).digest("hex"),
+    );
+    await mkdir(join(chat, "scratch", "pgj"), { recursive: true });
+    await writeFile(
+      join(chat, "scratch", "pgj", "top-light.png"),
+      await readFile(resolve("src/assets/cake.png")),
+    );
+    await seedDurableChat(chat, [
+      "Show me the light-theme capture.",
+      [
+        "Saved it in my scratch directory:",
+        "",
+        "![Top bar, light theme](pgj/top-light.png)",
+        "",
+        "This one was never written:",
+        "",
+        "![Missing capture](pgj/missing.png)",
+      ].join("\n"),
+    ]);
+  },
+  async prepare(page) {
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    const transcript = page.locator(".transcript").last();
+    await expect(transcript.getByRole("img", { name: "Top bar, light theme" })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(transcript.getByText("Image not available: Missing capture")).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".transcript").last(),
+};
+
 const resultTodoActionsScenario: VisualCaptureScenario = {
   name: "result-todo-actions",
   description: "Two named to-dos with individual footer actions and no header completion controls",
@@ -7885,6 +7933,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   subagentReportsScenario,
   reportHeadersScenario,
   resultTodoActionsScenario,
+  relativeChatImagesScenario,
   incomingTaskSectionsScenario,
   cakeChatArtifactScenario,
   contextOutlineScenario,

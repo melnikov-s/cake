@@ -158,8 +158,8 @@ afterEach(() => {
 // Real RendererRoot -> production pane behavior -> ChatTranscript -> Markdown -> validated Client.
 // These assert authority/resource bindings, not native focus, layout, scrolling or iframe execution.
 it("loads relative resources from the focused conversation's working directory across navigation", async () => {
-  const readImage = vi.fn<Client["filesystem"]["readImage"]>(async (directory) => ({
-    data: directory === "/alpha-tree" ? "AQID" : "BAUG",
+  const readImage = vi.fn<Client["filesystem"]["readImage"]>(async (source) => ({
+    data: source.workspacePath === "/alpha-tree" ? "AQID" : "BAUG",
     mimeType: "image/png",
   }));
   using fixture = renderResources(
@@ -172,7 +172,7 @@ it("loads relative resources from the focused conversation's working directory a
   const alpha = await screen.findByRole("img", { name: "Alpha image" });
   expect(alpha.getAttribute("src")).toBe("data:image/png;base64,AQID");
   expect(beta.getAttribute("src")).toBe("data:image/png;base64,BAUG");
-  expect(new Set(readImage.mock.calls.map(([directory]) => directory))).toEqual(
+  expect(new Set(readImage.mock.calls.map(([source]) => source.workspacePath))).toEqual(
     new Set(["/alpha-tree", "/beta-tree"]),
   );
   await fixture.focus("alpha");
@@ -194,7 +194,12 @@ it("loads Project Chat images from its project without task-session catalog memb
   );
   expect(await screen.findByRole("img", { name: "Project image" })).toBeDefined();
   expect(fixture.root.sessionCatalogStore.find(projectChatId)).toBeUndefined();
-  expect(readImage).toHaveBeenCalledWith("/alpha", "screen.png", expect.anything());
+  // The backend tries the chat's scratch directory (where its commands start), then the project.
+  expect(readImage).toHaveBeenCalledWith(
+    { sessionId: projectChatId, workspacePath: "/alpha" },
+    "screen.png",
+    expect.anything(),
+  );
 });
 
 it("reads global Cake Chat images without a Working Directory rather than falling back to a task's directory", async () => {
@@ -209,8 +214,9 @@ it("reads global Cake Chat images without a Working Directory rather than fallin
   expect(await screen.findByRole("img", { name: "Global image" })).toBeDefined();
   expect(await screen.findByRole("img", { name: "Temporary image" })).toBeDefined();
   expect(fixture.root.sessionCatalogStore.find(CAKE_CHAT_SESSION_ID)).toBeUndefined();
-  expect(readImage).toHaveBeenCalledWith(undefined, "screen.png", expect.anything());
-  expect(readImage).toHaveBeenCalledWith(undefined, "/tmp/shot.png", expect.anything());
+  const source = { sessionId: CAKE_CHAT_SESSION_ID };
+  expect(readImage).toHaveBeenCalledWith(source, "screen.png", expect.anything());
+  expect(readImage).toHaveBeenCalledWith(source, "/tmp/shot.png", expect.anything());
 });
 
 it.each(["Markdown", "tool"] as const)(

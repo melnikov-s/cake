@@ -6,12 +6,21 @@ import { Effect, Layer } from "effect";
 import { makeWorkspaceFilesLive } from "../../../../src/services/filesystem/WorkspaceFilesLive";
 import { WorkspaceFiles } from "../../../../src/services/filesystem/WorkspaceFiles";
 import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
+import {
+  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatSessionId,
+} from "../../../../src/contracts/cake-chats/cake-chat-identity";
+import { projectChatSessionId } from "../../../../src/domain/cake-chats/cakeChatLocations";
+import {
+  cakeChatScratchDirectory,
+  cakeChatSessionDirectory,
+} from "../../../../src/services/pi-durable/cake-chat-directories";
 
-const workspaceFilesLayer = makeWorkspaceFilesLive("/tmp/cake-agent-test").pipe(
-  Layer.provide(
-    Layer.mergeAll(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
-  ),
-);
+const filesLayer = (cakeChatDirectory: string) =>
+  makeWorkspaceFilesLive("/tmp/cake-agent-test", cakeChatDirectory).pipe(
+    Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
+  );
+const workspaceFilesLayer = filesLayer("/tmp/cake-chat-test");
 
 describe("WorkspaceFilesLive", () => {
   it.effect("rejects unselected workspaces before suggesting or reading text content", () =>
@@ -28,7 +37,7 @@ describe("WorkspaceFilesLive", () => {
       }
     }).pipe(
       Effect.provide(
-        makeWorkspaceFilesLive("/agent").pipe(
+        makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(
           Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(false) })),
         ),
       ),
@@ -102,8 +111,11 @@ describe("WorkspaceFilesLive", () => {
             );
             yield* Effect.promise(() => mkdir(join(workspace, "folder.png")));
             for (const [path, message] of [
-              ["missing.png", "File not found"],
-              [join(root, "missing", "shot.png"), "File not found"],
+              ["missing.png", `File not found: ${join(workspace, "missing.png")}`],
+              [
+                join(root, "missing", "shot.png"),
+                `File not found: ${join(root, "missing", "shot.png")}`,
+              ],
               ["notes.txt", "Unsupported image type: .txt"],
               ["huge.png", "Image is larger than 8 MB"],
               ["folder.png", "Not a file"],
@@ -117,6 +129,103 @@ describe("WorkspaceFilesLive", () => {
           }).pipe(Effect.provide(workspaceFilesLayer)),
         (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
       ),
+  );
+  it.effect(
+    "resolves relative images against the authoring chat's scratch directory before its project",
+    () =>
+      Effect.acquireUseRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "cake-chat-image-"))),
+        (root) =>
+          Effect.gen(function* () {
+            const globalChat = join(root, "pi", "global-chat");
+            const project = join(root, "project");
+            const projectChatId = projectChatSessionId(project);
+            const projectScratch = cakeChatScratchDirectory(
+              cakeChatSessionDirectory(globalChat, projectChatId)!,
+            );
+            const globalScratch = cakeChatScratchDirectory(globalChat);
+            for (const directory of [join(projectScratch, "pgj"), globalScratch, project])
+              yield* Effect.promise(() => mkdir(directory, { recursive: true }));
+            yield* Effect.promise(() =>
+              writeFile(join(projectScratch, "pgj", "top-light.png"), Buffer.from([1])),
+            );
+            yield* Effect.promise(() => writeFile(join(project, "repo.png"), Buffer.from([2])));
+            yield* Effect.promise(() =>
+              writeFile(join(globalScratch, "shot.png"), Buffer.from([3])),
+            );
+            const files = yield* WorkspaceFiles;
+
+            // Project Chat: the renderer knows the project root; the scratch dir is derived.
+            const projectChat = { sessionId: projectChatId, workspacePath: project };
+            expect(
+              yield* files.readImage(1, { ...projectChat, path: "pgj/top-light.png" }),
+            ).toEqual({ data: "AQ==", mimeType: "image/png" });
+            expect(yield* files.readImage(1, { ...projectChat, path: "repo.png" })).toEqual({
+              data: "Ag==",
+              mimeType: "image/png",
+            });
+            // Its side chats start in the same scratch directory.
+            expect(
+              yield* files.readImage(1, {
+                sessionId: cakeChatSideChatSessionId(4, projectChatId),
+                workspacePath: project,
+                path: "pgj/top-light.png",
+              }),
+            ).toEqual({ data: "AQ==", mimeType: "image/png" });
+            // Global Cake Chat has no project; its scratch directory comes first.
+            expect(
+              yield* files.readImage(1, { sessionId: CAKE_CHAT_SESSION_ID, path: "shot.png" }),
+            ).toEqual({ data: "Aw==", mimeType: "image/png" });
+
+            // A miss names every absolute path tried, in order.
+            const failure = yield* Effect.result(
+              files.readImage(1, { ...projectChat, path: "pgj/missing.png" }),
+            );
+            expect(failure).toMatchObject({
+              _tag: "Failure",
+              failure: {
+                operation: "readImage",
+                message: `File not found. Tried:\n${join(projectScratch, "pgj", "missing.png")}\n${join(project, "pgj", "missing.png")}`,
+              },
+            });
+          }).pipe(Effect.provide(filesLayer(join(root, "pi", "global-chat")))),
+        (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
+      ),
+  );
+  it.effect("resolves Project Session images in its worktree, then the project root", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "cake-worktree-image-"))),
+      (root) =>
+        Effect.gen(function* () {
+          const project = join(root, "project");
+          const worktree = join(root, "worktrees", "task");
+          for (const directory of [join(project, "docs"), join(worktree, "docs")])
+            yield* Effect.promise(() => mkdir(directory, { recursive: true }));
+          yield* Effect.promise(() => writeFile(join(worktree, "docs", "a.png"), Buffer.from([1])));
+          yield* Effect.promise(() => writeFile(join(project, "docs", "a.png"), Buffer.from([2])));
+          yield* Effect.promise(() => writeFile(join(project, "docs", "b.png"), Buffer.from([3])));
+          const files = yield* WorkspaceFiles;
+          const source = {
+            sessionId: "0b5e6c1e-0000-4000-8000-000000000000",
+            workspacePath: worktree,
+            projectPath: project,
+          };
+          // The worktree wins; files only on the project root (merged, worktree gone) still load.
+          expect(yield* files.readImage(1, { ...source, path: "docs/a.png" })).toEqual({
+            data: "AQ==",
+            mimeType: "image/png",
+          });
+          expect(yield* files.readImage(1, { ...source, path: "docs/b.png" })).toEqual({
+            data: "Aw==",
+            mimeType: "image/png",
+          });
+          // Absolute paths ignore every base.
+          expect(
+            yield* files.readImage(1, { ...source, path: join(project, "docs", "a.png") }),
+          ).toEqual({ data: "Ag==", mimeType: "image/png" });
+        }).pipe(Effect.provide(workspaceFilesLayer)),
+      (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
+    ),
   );
   it.effect("expands ~ image paths against the home directory", () =>
     Effect.acquireUseRelease(

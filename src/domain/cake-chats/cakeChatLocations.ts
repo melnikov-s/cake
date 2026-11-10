@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { join, dirname } from "node:path";
 import { Effect } from "effect";
 import {
   CAKE_CHAT_SESSION_ID,
   SESSION_ASSISTANT_ID,
   PROJECT_CHAT_PREFIX,
 } from "../../contracts/cake-chats/cake-chat-identity";
+import { cakeChatSessionDirectory } from "../../services/pi-durable/cake-chat-directories";
 import { CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import type {
@@ -22,11 +22,10 @@ export const projectLocation = (
   projectPath: string,
 ): CakeChatLocation => ({
   workingDirectory: projectPath,
-  sessionDirectory: join(
-    dirname(global.sessionDirectory),
-    "project-chats",
-    projectChatSessionId(projectPath).slice(PROJECT_CHAT_PREFIX.length),
-  ),
+  sessionDirectory: cakeChatSessionDirectory(
+    global.sessionDirectory,
+    projectChatSessionId(projectPath),
+  )!,
 });
 
 /** Resolve only registered projects. Neither renderer input nor memory chooses storage paths. */
@@ -36,7 +35,10 @@ export const resolve = Effect.fn("CakeChats.resolveLocation")(function* (
 ) {
   if (sessionId === CAKE_CHAT_SESSION_ID) return global;
   if (sessionId === SESSION_ASSISTANT_ID)
-    return { ...global, sessionDirectory: join(dirname(global.sessionDirectory), "companion") };
+    return {
+      ...global,
+      sessionDirectory: cakeChatSessionDirectory(global.sessionDirectory, sessionId)!,
+    };
   const application = yield* ApplicationState;
   const project = application
     .snapshot()

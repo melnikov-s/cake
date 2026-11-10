@@ -8,6 +8,11 @@ import { makeWorkspaceFilesLive } from "../../../../src/services/filesystem/Work
 import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import type { WorkspaceFileError } from "../../../../src/contracts/filesystem/workspace-files-errors";
 import type { EditorLocation } from "../../../../src/contracts/editor/editor-location";
+import { projectChatSessionId } from "../../../../src/domain/cake-chats/cakeChatLocations";
+import {
+  cakeChatScratchDirectory,
+  cakeChatSessionDirectory,
+} from "../../../../src/services/pi-durable/cake-chat-directories";
 
 const withFiles = (test: (root: string) => Effect.Effect<void, WorkspaceFileError>) =>
   Effect.acquireUseRelease(
@@ -109,7 +114,7 @@ describe("file location routing", () => {
           });
         }).pipe(
           Effect.provide(
-            makeWorkspaceFilesLive("/agent").pipe(
+            makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(
               Layer.provide(
                 Layer.mock(ProjectAccess, {
                   isAllowed: () => Effect.succeed(true),
@@ -199,7 +204,7 @@ describe("file location routing", () => {
           }
         }).pipe(
           Effect.provide(
-            makeWorkspaceFilesLive("/agent").pipe(
+            makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(
               Layer.provide(
                 Layer.mock(ProjectAccess, {
                   isAllowed: (path) =>
@@ -208,6 +213,54 @@ describe("file location routing", () => {
                     ),
                 }),
               ),
+            ),
+          ),
+        ),
+      ),
+  );
+
+  it.effect(
+    "opens a Cake Chat's relative links from its scratch directory, then its project, naming misses",
+    () =>
+      withFiles((root) =>
+        Effect.gen(function* () {
+          const globalChat = join(root, "global-chat");
+          const project = join(root, "project");
+          const chatId = projectChatSessionId(project);
+          const scratch = cakeChatScratchDirectory(cakeChatSessionDirectory(globalChat, chatId)!);
+          for (const directory of [join(scratch, "pgj"), join(project, "src")])
+            yield* Effect.promise(() => mkdir(directory, { recursive: true }));
+          yield* Effect.promise(() => writeFile(join(scratch, "pgj", "notes.md"), "scratch notes"));
+          yield* Effect.promise(() => writeFile(join(project, "src", "app.ts"), "app"));
+          const files = yield* WorkspaceFiles;
+          const route = (path: string) =>
+            files.prepareFileLocation(1, {
+              workspacePath: project,
+              originatingDirectory: project,
+              sessionId: chatId,
+              location: { kind: "working-directory", path },
+            });
+          expect(yield* route("pgj/notes.md")).toMatchObject({
+            viewer: "text",
+            content: "scratch notes",
+          });
+          expect(yield* route("src/app.ts")).toMatchObject({
+            viewer: "vscode",
+            location: { path: "src/app.ts" },
+          });
+          // The origin is canonicalized first; the scratch candidate is tried as derived.
+          const canonicalProject = yield* Effect.promise(() => realpath(project));
+          const failure = yield* Effect.result(route("pgj/missing.md"));
+          expect(failure).toMatchObject({
+            _tag: "Failure",
+            failure: {
+              message: `File not found. Tried:\n${join(scratch, "pgj", "missing.md")}\n${join(canonicalProject, "pgj", "missing.md")}`,
+            },
+          });
+        }).pipe(
+          Effect.provide(
+            makeWorkspaceFilesLive("/agent", join(root, "global-chat")).pipe(
+              Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
             ),
           ),
         ),

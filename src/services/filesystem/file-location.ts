@@ -14,9 +14,30 @@ function containsFile(directory: string, target: string): boolean {
   return Boolean(path) && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 }
 
+/** Canonical target of the first existing candidate; a miss names every absolute path tried. */
+async function resolveExistingPath(path: string, directories: ReadonlyArray<string>) {
+  const candidates = [...new Set(directories.map((directory) => resolve(directory, path)))];
+  for (const candidate of candidates) {
+    try {
+      return await realpath(candidate);
+    } catch (cause) {
+      const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw cause;
+    }
+  }
+  throw new Error(
+    candidates.length === 1
+      ? `File not found: ${candidates[0]}`
+      : `File not found. Tried:\n${candidates.join("\n")}`,
+  );
+}
+
 /** Classify before starting VS Code; files outside the workspace open in Cake's read-only image or text viewer. */
 export async function prepareFileLocation(
-  request: PrepareFileLocation,
+  request: PrepareFileLocation & {
+    /** Where the linking agent's commands ran, tried before the origin for relative paths. */
+    readonly authorDirectories?: ReadonlyArray<string>;
+  },
   signal?: AbortSignal,
 ): Promise<PreparedFileLocation> {
   const workspace = request.workspacePath ? await realpath(request.workspacePath) : undefined;
@@ -27,7 +48,7 @@ export async function prepareFileLocation(
   if (request.location.kind === "absolute-file" && !isAbsolute(path))
     throw new Error("An absolute file path is required");
   if (!path) throw new Error("A file path is required");
-  const target = await realpath(resolve(origin, path));
+  const target = await resolveExistingPath(path, [...(request.authorDirectories ?? []), origin]);
   if (workspace && containsFile(workspace, target)) {
     return {
       viewer: "vscode",

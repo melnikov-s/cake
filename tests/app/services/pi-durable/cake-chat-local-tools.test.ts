@@ -6,10 +6,10 @@ import {
   CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS,
   CAKE_CHAT_TOOL_OUTPUT_MAX_BYTES,
   cakeChatBashTimeout,
-  cakeChatScratchDirectory,
   createCakeChatBashTool,
   createCakeChatReadTool,
 } from "../../../../src/services/pi-durable/cake-chat-local-tools";
+import { cakeChatScratchDirectory } from "../../../../src/services/pi-durable/cake-chat-directories";
 
 function fakeApi(task = false) {
   const calls: Array<{ command: unknown; cwd?: string; timeout?: number }> = [];

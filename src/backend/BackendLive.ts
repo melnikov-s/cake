@@ -219,7 +219,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       Layer.mergeAll(
         makeTerminalLive(),
         makeVsCodeServerLive({ root: join(paths.cache, "vscode-editor"), ...companionAssets }),
-        makeWorkspaceFilesLive(paths.piAgent).pipe(Layer.provide(FoundationLive)),
+        makeWorkspaceFilesLive(paths.piAgent, paths.cakeChat).pipe(Layer.provide(FoundationLive)),
         makeAttachmentUploadsLive(paths.cache, paths.state).pipe(Layer.provide(FoundationLive)),
         makeTaskInputStorageLive(paths.state),
         makeArtifactProjectionLive(paths.cache),

@@ -4,7 +4,7 @@
 
 app.user-selection reads highlighted Cake text.
 Use Markdown/GFM, Mermaid and $ math; no raw HTML/JSX. Use $...$ and $$...$$, not backslash-parenthesis/bracket math delimiters.
-Images: ![description](path), inline, including absolute/~/ paths. Do not copy images into the workspace merely to show them; native generated image blocks also display inline.
+Images: ![description](/absolute/path), inline; ~/ also works. Do not copy images into the workspace merely to show them; native generated image blocks also display inline.
 Other files: relative Markdown links; ranges use #L5-L10,L20-L25, diffs ?view=changes&side=before. Use absolute paths only outside the Working Directory; those open read-only.
 Requested file deliverables remain files, not decorative HTML. Ordinary plans/reports stay in chat.
 

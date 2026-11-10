@@ -236,6 +236,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
       {
         ...(projectPath ? { workspacePath: projectPath } : null),
         ...(originatingDirectory ? { originatingDirectory } : null),
+        sessionId,
         location,
       },
       { signal },

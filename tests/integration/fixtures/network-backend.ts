@@ -336,7 +336,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       ),
     ),
     access,
-    makeWorkspaceFilesLive("/agent").pipe(Layer.provide(access)),
+    makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(Layer.provide(access)),
     makeTaskInputStorageLive(join(tmpdir(), `cake-test-inputs-${randomUUID()}`)),
     makeAttachmentUploadsLive(
       join(tmpdir(), `cake-test-uploads-${randomUUID()}`),

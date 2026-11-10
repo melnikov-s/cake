@@ -367,6 +367,8 @@ export interface ChatTranscriptBehavior {
   onReplyToMessage?(entryId: string): void;
   /** Project root used to present workspace files without machine-specific prefixes. */
   workspacePath?: string;
+  /** Registered project behind `workspacePath` (e.g. a worktree's root); a fallback for relative images. */
+  projectPath?: string;
   onFork?(entryId: string): void;
   onTree?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;

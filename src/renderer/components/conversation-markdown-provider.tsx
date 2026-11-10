@@ -9,12 +9,16 @@ type MarkdownActions = ComponentProps<typeof MarkdownLinkProvider>["actions"];
 /** Resource reads follow the displayed conversation, never the window's focused pane. */
 export function ConversationMarkdownProvider({
   workspacePath,
+  projectPath,
   stateSessionId,
   loadWorkspaceImage: sourceWorkspaceImage,
   loadAttachmentImage,
   children,
 }: {
+  /** The author's working directory; relative image paths resolve here. */
   workspacePath?: string;
+  /** Fallback base for relative image paths, such as the project behind a worktree. */
+  projectPath?: string;
   /** Public, addressable session identity. A private worker's display ID is not a session ID. */
   stateSessionId?: string;
   loadWorkspaceImage?: MarkdownActions["loadWorkspaceImage"];
@@ -28,9 +32,17 @@ export function ConversationMarkdownProvider({
     (path: string, signal: AbortSignal) => {
       if (sourceWorkspaceImage) return sourceWorkspaceImage(path, signal);
       if (!filesystem) return Promise.reject(new Error("Images cannot be read here"));
-      return filesystem.readImage(workspacePath, path, { signal });
+      return filesystem.readImage(
+        {
+          ...(stateSessionId ? { sessionId: stateSessionId } : null),
+          ...(workspacePath ? { workspacePath } : null),
+          ...(projectPath ? { projectPath } : null),
+        },
+        path,
+        { signal },
+      );
     },
-    [filesystem, sourceWorkspaceImage, workspacePath],
+    [filesystem, projectPath, sourceWorkspaceImage, stateSessionId, workspacePath],
   );
   const actions = useMemo<MarkdownActions>(
     () => ({

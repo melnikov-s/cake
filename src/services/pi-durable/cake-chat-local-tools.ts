@@ -2,7 +2,6 @@ import { Type } from "@earendil-works/pi-durable-ai";
 import { defineTool } from "@earendil-works/pi-durable";
 import { SideSessionDoc } from "./durable-side-session";
 import { createBashTool, createReadTool } from "@earendil-works/pi-durable/tools";
-import { join } from "node:path";
 
 /**
  * Cake Chat's direct local tools: `read` and `bash` for quick checks (clipboard, PR lookups,
@@ -14,10 +13,6 @@ export const CAKE_CHAT_BASH_DEFAULT_TIMEOUT_SECONDS = 30;
 export const CAKE_CHAT_BASH_MAX_TIMEOUT_SECONDS = 120;
 export const CAKE_CHAT_TOOL_OUTPUT_MAX_BYTES = 16 * 1024;
 export const CAKE_CHAT_TOOL_OUTPUT_MAX_LINES = 400;
-
-/** A Cake-owned neutral directory, never a project root, where Cake Chat's commands start. */
-export const cakeChatScratchDirectory = (sessionDirectory: string) =>
-  join(sessionDirectory, "scratch");
 
 /** The timeout one call actually gets: a short default, and a ceiling that points at delegation. */
 export function cakeChatBashTimeout(requested: number | undefined): number {
