@@ -265,9 +265,8 @@ export const ChatTextMessage = forwardRef<
           {content}
           {crossSession?.sourceResponse && !sources.length && (
             <p className="text-sm text-muted-foreground">
-              Original response unavailable: no exact source reference was recorded. Open the source
-              conversation from this card’s title to inspect its history; no original has been
-              recovered.
+              Original response unavailable: no exact source reference was recorded. Use the session
+              link to inspect its history; no original has been recovered.
             </p>
           )}
         </SessionMessage>

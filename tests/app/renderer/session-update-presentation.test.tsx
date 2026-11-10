@@ -1,5 +1,12 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { createStore, mount } from "r-state-tree";
+import { SessionUpdateEntry } from "../../../src/renderer/components/session-update-entry";
+import { SessionUpdateEntryStore } from "../../../src/renderer/stores/SessionUpdateEntryStore";
+import { ProjectTodosStore } from "../../../src/renderer/stores/ProjectTodosStore";
+import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
+import { emptyProjectTodos, type ProjectTodo } from "../../../src/contracts/projects/project-todos";
 import { afterEach, expect, it, vi } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
@@ -72,7 +79,9 @@ it.each([
     expect(within(batch).getByText(title)).toBeTruthy();
     expect(within(batch).getByText(label)).toBeTruthy();
     expect(batch.querySelector('[data-slot="session-message"]')).toBeNull();
-    expect(within(batch).queryByRole("link", { name: title })).toBeNull();
+    expect(within(batch).getByRole("link", { name: title }).getAttribute("href")).toBe(
+      "cake://session/producer",
+    );
     expect(within(batch).getByRole("link", { name: "Open session" }).getAttribute("href")).toBe(
       "cake://session/producer",
     );
@@ -81,12 +90,12 @@ it.each([
     expect(batch.textContent).not.toContain("8d0e8bf3");
     if (!merged || !resolutionSucceeded)
       expect(within(batch).getByText(outcome.message)).toBeTruthy();
-    const toggle = within(batch).getByRole("button", { name: "System details" });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    await fixture.user.click(toggle);
-    expect(document.getElementById(toggle.getAttribute("aria-controls")!)?.textContent).toBe(
-      entry?.text,
-    );
+    expect(within(batch).queryByRole("button", { name: "System details" })).toBeNull();
+    expect(batch.querySelector('[data-slot="result-todo-done"]')).toBeNull();
+    const sessionLink = within(batch).getByRole("link", { name: "Open session" });
+    expect(sessionLink.textContent).toBe("");
+    expect(sessionLink.querySelector("svg")).not.toBeNull();
+    expect(batch.textContent).not.toMatch(/Open session|View to-do|To-do ·/);
     expect(projectSessionEntries(fixture.parent.getEntries())).toEqual(fixture.parts);
   },
 );
@@ -96,7 +105,7 @@ it.each([
   ["merged=true; resolutionSucceeded=false", "completed", true],
   ["Conflict requires manual recovery", "blocked", true],
 ] as const)(
-  "keeps legacy telemetry inspectable without claiming resolution: %s",
+  "keeps legacy failures visible without claiming resolution: %s",
   async (payload, status, needsReview) => {
     const text = reminder(undefined, `Auto-merge backend outcome: ${payload}`, status);
     const [entry] = sessionNotificationEntries(text);
@@ -104,11 +113,12 @@ it.each([
     expect(entry?.needsReview).toBe(needsReview);
     using fixture = show(text);
     const batch = screen.getByRole("status", { name: "Session results" });
-    expect(batch.textContent).not.toContain(payload);
     expect(batch.textContent).not.toContain("Merged and resolved");
-    if (needsReview) expect(within(batch).getByText("Auto-merge needs review")).toBeTruthy();
-    await fixture.user.click(within(batch).getByRole("button", { name: "System details" }));
-    expect(batch.textContent).toContain(payload);
+    if (needsReview) {
+      expect(within(batch).getByText("Auto-merge needs review")).toBeTruthy();
+      expect(batch.textContent).toContain(payload);
+    } else expect(batch.textContent).not.toContain(payload);
+    expect(within(batch).queryByRole("button", { name: "System details" })).toBeNull();
   },
 );
 
@@ -123,14 +133,93 @@ it("does not promote historical fallback IDs or unlinked telemetry into a title"
   expect(batch.textContent).not.toContain("Session producer");
 });
 
-it("keeps unlinked legacy backend diagnostics in raw system details", async () => {
+it("keeps successful unlinked telemetry quiet without a misleading navigation target", () => {
   const raw = "Auto-merge backend outcome: merged=true; resolutionSucceeded=true";
   using fixture = show(`<system-reminder>\nCake session updates\n${raw}\n</system-reminder>`);
   const batch = screen.getByRole("status", { name: "Session results" });
   expect(batch.textContent).not.toContain(raw);
   expect(within(batch).getByText("Session update")).toBeTruthy();
-  await fixture.user.click(within(batch).getByRole("button", { name: "System details" }));
-  expect(batch.textContent).toContain(raw);
+  expect(within(batch).queryByRole("link")).toBeNull();
+  expect(within(batch).queryByRole("button")).toBeNull();
+});
+
+it("opens the associated to-do from the compact title without selecting context or mutating completion", async () => {
+  const item: ProjectTodo = {
+    id: "linked-todo",
+    title: "Sticky transcript to-do labels",
+    description: "Review this task",
+    state: "done",
+    status: "Completed",
+    revision: 1,
+    associations: [{ kind: "session", sessionId: "producer", title }],
+  };
+  const pane = { visible: false, open: vi.fn(), close: vi.fn() };
+  const replyContext = vi.fn();
+  using todos = mount(
+    createStore(ProjectTodosStore, {
+      list: () => ({
+        scope: "/project",
+        chat: "Project Chat",
+        owner: { todos: { ...emptyProjectTodos(), items: [item] }, todoCreationRevision: 0 },
+      }),
+      pane: () => pane,
+      replyContext,
+    }),
+  );
+  using store = mount(
+    createStore(SessionUpdateEntryStore, {
+      partId: "update",
+      entry: sessionNotificationEntries(
+        reminder({ ...base, merged: true, resolutionSucceeded: true }),
+      )[0]!,
+    }),
+  );
+  render(<SessionUpdateEntry store={store} todos={todos} />);
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { name: `View linked to-do: ${item.title}` }));
+  expect(todos.inspectedItemId).toBe(item.id);
+  expect(todos.doneExpanded).toBe(true);
+  expect(pane.open).toHaveBeenCalledOnce();
+  expect(todos.focusedItemIds).toEqual([]);
+  expect(replyContext).not.toHaveBeenCalled();
+  expect(item.state).toBe("done");
+  expect(document.querySelector("footer")).toBeNull();
+  expect(document.body.textContent).not.toContain(item.title);
+});
+
+it("uses session navigation when no associated to-do exists", async () => {
+  const openSession = vi.fn();
+  using store = mount(
+    createStore(SessionUpdateEntryStore, {
+      partId: "update",
+      entry: sessionNotificationEntries(
+        reminder({ ...base, merged: true, resolutionSucceeded: true }),
+      )[0]!,
+    }),
+  );
+  render(
+    <MarkdownLinkProvider actions={{ openSession, openExternalUrl: vi.fn() }}>
+      <SessionUpdateEntry store={store} />
+    </MarkdownLinkProvider>,
+  );
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("link", { name: title }));
+  expect(openSession).toHaveBeenLastCalledWith("producer");
+  const link = screen.getByRole("link", { name: "Open session" });
+  expect(link.textContent).toBe("");
+  await user.click(link);
+  expect(openSession).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("button", { name: /to-do/ })).toBeNull();
+});
+
+it("keeps an interrupted report explanation visible without system details", () => {
+  const note =
+    "The user sent this message while you were handling a session report, so that turn was stopped. Answer the user first and fold in anything important from the report.";
+  using fixture = show(`<system-reminder>\nCake session updates\n${note}\n</system-reminder>`);
+  expect(screen.getByText("Report interrupted")).toBeTruthy();
+  expect(screen.getByText(note)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "System details" })).toBeNull();
 });
 
 it("falls back safely on malformed typed metadata", () => {

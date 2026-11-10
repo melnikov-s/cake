@@ -5668,92 +5668,284 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
+const compactUpdateFixtures = [
+  {
+    sessionId: "e37674d0-0000-4000-8000-000000000001",
+    title: "Sticky transcript to-do labels",
+    merged: true,
+    resolved: true,
+  },
+  {
+    sessionId: "8ac9f5fc-0000-4000-8000-000000000002",
+    title: "Header",
+    merged: true,
+    resolved: true,
+  },
+  {
+    sessionId: "1b1baa0d-0000-4000-8000-000000000003",
+    title:
+      "Protect unsent annotations from accidental dismissal when switching between long-running sessions",
+    merged: true,
+    resolved: false,
+  },
+  {
+    sessionId: "d792be41-0000-4000-8000-000000000004",
+    title: "Fix transcript links",
+    merged: false,
+    resolved: false,
+  },
+] as const;
+
 const sessionUpdateSpacingScenario: VisualCaptureScenario = {
   name: "session-update-spacing",
-  description: "Three compact auto-merge completion summaries with retained disclosure targets",
-  states: ["default", "expanded"],
+  description:
+    "Four mixed-length compact updates with aligned outcomes and verified to-do/session destinations",
+  states: ["default", "narrow"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
-    await mkdir(join(paths.cakeHome, "pi", "global-chat"), { recursive: true });
-    const reminder = formatSessionDigestReminder({
-      lines: (
+    const directory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const timestamp = new Date(0).toISOString();
+    for (const { sessionId, title } of compactUpdateFixtures) {
+      await writeFile(
+        join(directory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
         [
-          ["e37674d0", "Switch right pane to Chat when entering VS Code"],
-          ["8ac9f5fc", "Put user header before submitted content"],
-          ["1b1baa0d", "Protect unsent annotations from accidental dismissal"],
-        ] as const
-      ).map(([sessionId, title]) => ({
+          { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
+          { type: "session_info", id: "title", parentId: null, timestamp, name: title },
+          {
+            type: "message",
+            id: "result",
+            parentId: "title",
+            timestamp,
+            message: { role: "user", content: `Result for ${title}`, timestamp: 0 },
+          },
+        ]
+          .map((entry) => JSON.stringify(entry))
+          .join("\n") + "\n",
+      );
+    }
+    const reminder = formatSessionDigestReminder({
+      lines: compactUpdateFixtures.map(({ sessionId, title, merged, resolved }) => ({
         reference: sessionId,
         sessionId,
         title,
-        status: "completed" as const,
-        summary:
-          "Auto-merge backend outcome: merged. Scoped checks passed; changes committed and landed.",
+        status: "completed",
+        summary: "Auto-merge backend outcome",
+        autoMergeOutcome: {
+          merged,
+          resolutionSucceeded: resolved,
+          targetBranch: "main",
+          ...(merged ? { landedCommit: "a".repeat(40) } : {}),
+          message: resolved
+            ? "Auto-merged and resolved"
+            : merged
+              ? "Changes landed, but resolution failed. Review the session before retrying."
+              : "Merge conflict in transcript links. Resolve the conflict before continuing.",
+        },
       })),
-    });
-    const storage = await openNodeSqliteStorage(
-      join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
-    );
-    const harness = await Harness.open(
-      storage,
-      { models: createModels(), registry: createRegistry() },
-      BACKGROUND_CONTEXT,
-    );
-    try {
-      const root = await harness.root(BACKGROUND_CONTEXT);
-      await root.commit(async (tx) => {
-        await tx.appendEntry(UserEntry, root.id, {
-          model: [{ role: "user", content: reminder!, timestamp: 10 }],
-        });
-      }, BACKGROUND_CONTEXT);
-    } finally {
-      await harness.close(BACKGROUND_CONTEXT);
-      await storage.close(BACKGROUND_CONTEXT);
-    }
+    })!;
+    const hash = createHash("sha256").update(paths.project).digest("hex");
+    await seedDurableChat(join(paths.cakeHome, "pi", "project-chats", hash), [reminder]);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    state.data.projects[0].todos = {
+      selectedId: null,
+      sequence: 0,
+      deliveryToken: null,
+      pending: [],
+      items: compactUpdateFixtures.map(({ sessionId, title, resolved }, index) => ({
+        id: `00000000-0000-4000-8000-${String(index + 71).padStart(12, "0")}`,
+        title,
+        description: `Review ${title}`,
+        status: resolved ? "Completed" : "Needs review",
+        state: resolved ? "done" : "open",
+        revision: 0,
+        associations: [{ kind: "session", sessionId, title }],
+      })),
+    };
+    await writeFile(file, JSON.stringify(state));
   },
   async prepare(page, state) {
-    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
+    const openChat = async () => {
+      await page
+        .getByRole("button", { name: /^Open Project Chat for / })
+        .first()
+        .click();
+      await expect(page.getByRole("status", { name: "Session results" })).toBeVisible();
+      await page.getByRole("combobox", { name: "Message Project Chat", exact: true }).focus();
+      await page.mouse.move(1, 1);
+    };
+    await openChat();
     const batch = page.getByRole("status", { name: "Session results" });
-    const toggles = batch.getByRole("button", { name: "System details" });
-    await expect(toggles).toHaveCount(3);
-    await expect(batch.locator('[data-slot="session-message"]')).toHaveCount(0);
-    // Release the navigation rail's focus/hover expansion before clicking a
-    // narrow transcript, just as moving into the conversation does in the app.
-    await page.getByRole("combobox", { name: "Message Cake Chat", exact: true }).focus();
-    await page.mouse.move(1, 1);
-    const verifyCompactRows = async () => {
+    await expect(batch.locator('[data-slot="session-system-update"]')).toHaveCount(4);
+    await expect(batch.getByRole("button", { name: "System details" })).toHaveCount(0);
+    await expect(batch.locator('footer, [data-slot="result-todo-done"]')).toHaveCount(0);
+    await expect(batch).not.toContainText(/Open session|Open source|To-do ·|View to-do/);
+    await expect(batch.getByText("Merged and resolved", { exact: true })).toHaveCount(2);
+    await expect(batch.getByText("Merged · resolution failed", { exact: true })).toBeVisible();
+    await expect(batch.getByText("Merge blocked", { exact: true })).toBeVisible();
+    await expect(
+      batch.getByText("Changes landed, but resolution failed. Review the session before retrying."),
+    ).toBeVisible();
+    await expect(
+      batch.getByText(
+        "Merge conflict in transcript links. Resolve the conflict before continuing.",
+      ),
+    ).toBeVisible();
+    const verifyGeometry = async () => {
       const rows = await batch
         .locator('[data-slot="session-system-update"]')
         .evaluateAll((elements) =>
-          elements.map((element) => ({
-            height: element.getBoundingClientRect().height,
-            targetHeight: element.querySelector("button")!.getBoundingClientRect().height,
-            overflow: element.scrollWidth > element.clientWidth,
-          })),
+          elements.map((element) => {
+            const title = element.querySelector("button")!.getBoundingClientRect();
+            const outcome = element
+              .querySelector('[data-slot="session-update-outcome"]')!
+              .getBoundingClientRect();
+            const link = element.querySelector("a")!.getBoundingClientRect();
+            return {
+              targetHeight: title.height,
+              titleRight: title.right,
+              statusLeft: outcome.left,
+              statusRight: outcome.right,
+              actionLeft: link.left,
+              actionRight: link.right,
+              overflow: element.scrollWidth > element.clientWidth,
+            };
+          }),
         );
       for (const row of rows) {
-        expect(row.height).toBeLessThanOrEqual(84);
-        expect(row.targetHeight).toBeGreaterThanOrEqual(24);
+        expect(row.targetHeight).toBeCloseTo(28, 2);
         expect(row.overflow).toBe(false);
+        expect(row.titleRight).toBeLessThanOrEqual(row.statusLeft);
+        expect(row.statusRight).toBeLessThanOrEqual(row.actionLeft);
+        expect(Math.abs(row.statusRight - rows[0]!.statusRight)).toBeLessThanOrEqual(1);
+        expect(Math.abs(row.actionRight - rows[0]!.actionRight)).toBeLessThanOrEqual(1);
       }
-      const item = batch.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
-      expect((await item.boundingBox())!.height).toBeLessThanOrEqual(3 * 84 + 2 * 4 + 20);
     };
-    await verifyCompactRows();
-    await toggles.first().click();
-    await expect(toggles.first()).toHaveAttribute("aria-expanded", "true");
-    const bodyId = await toggles.first().getAttribute("aria-controls");
-    const body = batch.locator(`[id="${bodyId}"]`);
-    await expect(body).toBeVisible();
-    await expect(body).toContainText("Scoped checks passed; changes committed and landed.");
-    const source = batch.getByRole("link", { name: "Open session" }).first();
-    await expect(source).toHaveAttribute("href", "cake://session/e37674d0");
-    await expect(batch.getByText("Switch right pane to Chat when entering VS Code")).toBeVisible();
-    if (state !== "expanded") {
-      await toggles.first().click();
-      await expect(toggles.first()).toHaveAttribute("aria-expanded", "false");
-      await expect(body).toHaveCount(0);
-      await verifyCompactRows();
+    await verifyGeometry();
+    for (const [index, { title, sessionId }] of compactUpdateFixtures.entries()) {
+      await batch.getByRole("button", { name: `View linked to-do: ${title}`, exact: true }).click();
+      const todo = page.locator(
+        `[data-todo-id="00000000-0000-4000-8000-${String(index + 71).padStart(12, "0")}"]`,
+      );
+      await expect(todo).toBeVisible();
+      await expect(todo.getByRole("button", { name: title, exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
+      const link = batch.getByRole("link", { name: "Open session", exact: true }).nth(index);
+      await expect(link).toHaveText("");
+      await expect(link).toHaveAttribute("href", `cake://session/${sessionId}`);
+      await link.click();
+      await expect(
+        page.locator(".transcript").getByText(`Result for ${title}`, { exact: true }),
+      ).toBeVisible();
+      await openChat();
+    }
+    // Verify navigation at native window sizes first. Electron's window minimum
+    // is 760px; use a 480px renderer viewport for the final responsive proof.
+    if (state === "narrow") await page.setViewportSize({ width: 480, height: 700 });
+    await verifyGeometry();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".transcript"),
+};
+
+const compactSessionReportsScenario: VisualCaptureScenario = {
+  name: "compact-session-reports",
+  description:
+    "Aligned report badges and icon-only exact-source navigation with retained original content",
+  states: ["default", "narrow"],
+  async seed(paths, theme) {
+    await sessionUpdateSpacingScenario.seed(paths, theme);
+    const hash = createHash("sha256").update(paths.project).digest("hex");
+    const reports = [compactUpdateFixtures[0], compactUpdateFixtures[2]].map(
+      ({ sessionId, title }, index) => {
+        const threadId = randomUUID();
+        return encodeCrossSessionMessage(
+          appendMessageReferences(
+            formatCrossSessionReportText(
+              sessionId,
+              index ? "blocked" : "completed",
+              protectedResponseNotice,
+            ),
+            [`cake://session/${sessionId}?message=result`],
+          ),
+          {
+            version: 1,
+            messageId: randomUUID(),
+            threadId,
+            replyToMessageId: threadId,
+            sequence: 1,
+            expectsResponse: false,
+            sender: { sessionId, title, kind: "project-session" },
+          },
+        );
+      },
+    );
+    await seedDurableChat(join(paths.cakeHome, "pi", "project-chats", hash), [
+      reports[0]!,
+      "Reports received.",
+      reports[1]!,
+    ]);
+  },
+  async prepare(page, state) {
+    const openChat = async () => {
+      await page
+        .getByRole("button", { name: /^Open Project Chat for / })
+        .first()
+        .click();
+      await page.getByRole("combobox", { name: "Message Project Chat", exact: true }).focus();
+      await page.mouse.move(1, 1);
+    };
+    await openChat();
+    const cards = page.getByRole("region", { name: "Message from another session" });
+    await expect(cards).toHaveCount(2);
+    for (const { sessionId, title } of [compactUpdateFixtures[0], compactUpdateFixtures[2]]) {
+      const card = cards.filter({ has: page.getByRole("button", { name: title, exact: true }) });
+      await expect(card).not.toContainText(/Open source|Open session/);
+      const disclosure = card.getByRole("button", { name: title, exact: true });
+      await disclosure.click();
+      await expect(card.getByText(`Result for ${title}`, { exact: true })).toBeVisible();
+      const link = card.getByRole("link", { name: "Open source", exact: true });
+      await expect(link).toHaveText("");
+      await expect(link.locator("svg")).toHaveCount(1);
+      await expect(link).toHaveAttribute("href", `cake://session/${sessionId}?message=result`);
+      await link.click();
+      await expect(
+        page.locator('[data-slot="transcript-item"][aria-current="true"]'),
+      ).toContainText(`Result for ${title}`);
+      await openChat();
+    }
+    if (state === "narrow") await page.setViewportSize({ width: 480, height: 700 });
+    const geometry = await cards.evaluateAll((elements) =>
+      elements.map((element) => {
+        const title = element
+          .querySelector('[data-slot="response-header"]')!
+          .getBoundingClientRect();
+        const badge = element
+          .querySelector('[data-slot="session-message-badges"]')!
+          .getBoundingClientRect();
+        const link = element.querySelector('a[aria-label="Open source"]')!.getBoundingClientRect();
+        return {
+          titleRight: title.right,
+          badgeLeft: badge.left,
+          badgeRight: badge.right,
+          linkLeft: link.left,
+          overflow: element.scrollWidth > element.clientWidth,
+        };
+      }),
+    );
+    for (const row of geometry) {
+      expect(row.overflow).toBe(false);
+      expect(row.titleRight).toBeLessThanOrEqual(row.badgeLeft);
+      expect(row.linkLeft - row.badgeRight).toBeGreaterThanOrEqual(0);
+      expect(row.linkLeft - row.badgeRight).toBeLessThanOrEqual(5);
+      expect(Math.abs(row.badgeRight - geometry[0]!.badgeRight)).toBeLessThanOrEqual(1);
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
@@ -8181,6 +8373,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   incomingReportRecapScenario,
   sessionUpdateReportsScenario,
   sessionUpdateSpacingScenario,
+  compactSessionReportsScenario,
   createIncomingMessageProposalsScenario({
     seedArtifact: seedArtifactScenario,
     retainBrowser: retainArtifactBrowser,

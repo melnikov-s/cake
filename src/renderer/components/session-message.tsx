@@ -12,7 +12,7 @@ import { MessageSourceBody, MessageSourceCopy, OriginalResponse } from "./messag
 import { ResultTodoDone, type ResultTodoLink } from "./result-todo-done";
 import { badgeVariants } from "./ui/badge";
 import { Button } from "./ui/button";
-import { ChevronIcon } from "./ui/icons";
+import { ChevronIcon, LinkIcon } from "./ui/icons";
 import { FullscreenSurface } from "./fullscreen-surface";
 
 /** An assistant message with source navigation, disclosure and linked to-dos. */
@@ -165,15 +165,6 @@ export const SessionMessage = observer(function SessionMessage({
               <span className={cn("min-w-0 shrink text-sm font-medium", !open && "max-w-[45%]")}>
                 <span className="block truncate">{title}</span>
               </span>
-              {badges.map((badge) => (
-                <span
-                  key={badge.label}
-                  title={badge.description}
-                  className={cn(badgeVariants({ variant: badge.tone }), "shrink-0")}
-                >
-                  {badge.label}
-                </span>
-              ))}
               {!open && summary && (
                 <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
                   {summary}
@@ -181,9 +172,33 @@ export const SessionMessage = observer(function SessionMessage({
               )}
             </div>
           </div>
+          {badges.length > 0 && (
+            <div
+              data-slot="session-message-badges"
+              className="ml-auto flex max-w-[45%] shrink-0 flex-wrap justify-end gap-1"
+            >
+              {badges.map((badge) => (
+                <span
+                  key={badge.label}
+                  title={badge.description}
+                  className={cn(
+                    badgeVariants({ variant: badge.tone }),
+                    "min-w-0 whitespace-normal text-right",
+                  )}
+                >
+                  {badge.label}
+                </span>
+              ))}
+            </div>
+          )}
           {href && actions && (
-            <MarkdownLink href={href} className="shrink-0 text-xs">
-              {reference || source?.href ? "Open source" : "Open session"}
+            <MarkdownLink
+              href={href}
+              presentation="icon"
+              aria-label={reference || source?.href ? "Open source" : "Open session"}
+              title={reference || source?.href ? "Open source" : "Open session"}
+            >
+              <LinkIcon />
             </MarkdownLink>
           )}
           {compact && (

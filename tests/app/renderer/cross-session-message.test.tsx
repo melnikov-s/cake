@@ -173,6 +173,10 @@ describe("cross-session message presentation", () => {
       expect(screen.queryByRole("link", { name: "Investigation update" })).toBeNull();
       expect(document.querySelector('[data-slot="response-header"] a')).toBeNull();
       expect(link.getAttribute("href")).toBe(href);
+      expect(link.textContent).toBe("");
+      expect(link.querySelectorAll("svg")).toHaveLength(1);
+      expect(link.getAttribute("aria-description")).toBe("Open source");
+      expect(screen.queryByText("Open source")).toBeNull();
       await userEvent.setup().click(link);
       expect(openSession.mock.calls).toEqual([
         entryId ? ["source-session", entryId] : ["source-session"],
@@ -202,6 +206,10 @@ describe("cross-session message presentation", () => {
       </MarkdownLinkProvider>,
     );
     expect(screen.getByRole("button", { name: "Review worker" })).toBeTruthy();
+    const sourceLink = screen.getByRole("link", { name: "Open source" });
+    expect(sourceLink.textContent).toBe("");
+    expect(sourceLink.querySelectorAll("svg")).toHaveLength(1);
+    expect(sourceLink.getAttribute("aria-description")).toBe("Open source");
     await userEvent.setup().click(screen.getByRole("link", { name: "Open source" }));
     expect(openSubagent).toHaveBeenCalledExactlyOnceWith(
       "parent",
@@ -235,13 +243,18 @@ describe("cross-session message presentation", () => {
           resultDelivery ?? (expectsResponse ? "reply" : "ignore"),
         );
         const region = screen.getByRole("region", { name: "Message from another session" });
-        // One title, then the delivery badge; the title is never repeated in the body.
+        // The flexible title and right-aligned badges have independent columns.
         expect(region.querySelector('[data-slot="response-header"]')?.textContent).toBe(
+          "Cake Chat",
+        );
+        expect(
+          region.querySelector('[data-slot="session-message-badges"]')?.textContent ?? "",
+        ).toBe(
           expectsResponse
             ? resultDelivery === "notification"
-              ? "Cake ChatNotification expected"
-              : "Cake ChatReply expected"
-            : "Cake Chat",
+              ? "Notification expected"
+              : "Reply expected"
+            : "",
         );
         expect(region.textContent?.match(/Cake Chat/g)).toHaveLength(1);
         expect(screen.getByText("fix").getAttribute("data-streamdown")).toBe("strong");
@@ -258,9 +271,9 @@ describe("cross-session message presentation", () => {
       { ...metadata, replyToMessageId: metadata.threadId },
     );
     renderPersisted(content);
-    expect(screen.getByRole("button", { name: "API review" }).parentElement?.textContent).toBe(
-      "API reviewBlocked",
-    );
+    expect(
+      screen.getByRole("region").querySelector('[data-slot="session-message-badges"]')?.textContent,
+    ).toBe("Blocked");
     expect(screen.getByText("decision")).toBeTruthy();
     expect(screen.queryByText(/Session source-session/)).toBeNull();
     expect(screen.getByRole("region").textContent).not.toContain("cake-session-message");
@@ -278,8 +291,8 @@ describe("cross-session message presentation", () => {
       ),
     );
     const region = screen.getByRole("region", { name: "Notice about another session" });
-    expect(screen.getByRole("button", { name: "API review" }).parentElement?.textContent).toBe(
-      "API reviewFailed",
+    expect(region.querySelector('[data-slot="session-message-badges"]')?.textContent).toBe(
+      "Failed",
     );
     expect(screen.getByText("Stopped with an error while working on a message.")).toBeTruthy();
     expect(region.querySelector('[data-slot="message-content"]')?.textContent).not.toContain(

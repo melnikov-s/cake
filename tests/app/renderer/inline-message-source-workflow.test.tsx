@@ -781,7 +781,10 @@ describe("exact response presentation", () => {
             disclosure,
           );
           expect(message.queryByRole("button", { name: "Copy response" })).toBeNull();
-          expect(disclosure.parentElement?.textContent).toBe("Producer sessionCompleted");
+          expect(disclosure.parentElement?.textContent).toBe("Producer session");
+          expect(delivered.querySelector('[data-slot="session-message-badges"]')?.textContent).toBe(
+            "Completed",
+          );
         } else {
           expect(
             message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),

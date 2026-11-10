@@ -1,7 +1,7 @@
 import { autoMergeOutcomeLabel } from "../../contracts/worktrees/auto-merge";
 import { MarkdownLink } from "./ai-elements/markdown";
-import { ContextPill } from "./ui/context-pill";
-import { ResultTodoDone } from "./result-todo-done";
+import { Button } from "./ui/button";
+import { LinkIcon } from "./ui/icons";
 import { observer } from "r-state-tree/react";
 import type { SourceLocation } from "../../contracts/editor/source-location";
 import type { SessionUpdateEntryStore } from "../stores/SessionUpdateEntryStore";
@@ -40,31 +40,76 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
     const outcome = entry.autoMergeOutcome;
     const needsReview = outcome
       ? !outcome.merged || !outcome.resolutionSucceeded
-      : entry.needsReview;
+      : entry.needsReview || entry.title === "Interrupted report";
     const status = outcome
       ? autoMergeOutcomeLabel(outcome)
-      : needsReview
-        ? "Auto-merge needs review"
-        : undefined;
+      : entry.title === "Interrupted report"
+        ? "Report interrupted"
+        : needsReview
+          ? "Auto-merge needs review"
+          : undefined;
+    const item = todo.origin ? todos?.itemsForResult(todo.origin)[0] : undefined;
+    const sessionHref = entry.sessionId
+      ? `cake://session/${encodeURIComponent(entry.sessionId)}`
+      : undefined;
     return (
       <div
         data-slot="session-system-update"
         className="min-w-0 px-2 py-1 text-xs text-muted-foreground"
       >
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="min-w-0 break-words font-medium">{title}</span>
-          {status && <span className={needsReview ? "text-attention" : undefined}>{status}</span>}
-          {entry.sessionId && (
-            <MarkdownLink href={`cake://session/${encodeURIComponent(entry.sessionId)}`}>
-              Open session
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_fit-content(45%)_1.75rem] items-center gap-x-3">
+          {item && todos ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-w-0 justify-start px-0 text-left hover:bg-transparent hover:text-foreground"
+              aria-label={`View linked to-do: ${item.title}`}
+              title={title}
+              onClick={() => todos.reveal(item)}
+            >
+              <span className="truncate">{title}</span>
+            </Button>
+          ) : sessionHref ? (
+            <MarkdownLink
+              href={sessionHref}
+              presentation="text"
+              title={title}
+              className="truncate text-xs font-medium [&>span]:block [&>span]:truncate"
+            >
+              {title}
+            </MarkdownLink>
+          ) : (
+            <span className="min-w-0 truncate font-medium" title={title}>
+              {title}
+            </span>
+          )}
+          <span
+            data-slot="session-update-outcome"
+            className={`max-w-[12rem] text-right [overflow-wrap:anywhere] ${needsReview ? "text-attention" : ""}`}
+          >
+            {status}
+          </span>
+          {sessionHref && (
+            <MarkdownLink
+              href={sessionHref}
+              presentation="icon"
+              aria-label="Open session"
+              title="Open session"
+            >
+              <LinkIcon />
             </MarkdownLink>
           )}
-          <ContextPill title="System details" text={entry.text} plainText />
         </div>
-        {needsReview && outcome && (
-          <p className="mt-1 whitespace-pre-wrap break-words text-foreground">{outcome.message}</p>
+        {needsReview && (
+          <p className="mt-1 whitespace-pre-wrap break-words text-foreground">
+            {outcome?.message ?? entry.text}
+          </p>
         )}
-        <ResultTodoDone {...todo} readOnly />
+        {item && todos?.error && (
+          <p role="alert" className="text-destructive">
+            {todos.error}
+          </p>
+        )}
       </div>
     );
   }

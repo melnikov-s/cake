@@ -298,15 +298,23 @@ function linkLabelText(label: ReactNode): string {
     .join("");
 }
 
-/** `text` renders a session link as plain row text instead of an inline prose chip. */
-type LinkPresentation = "chip" | "text";
+/** Row text and icon navigation omit the inline prose chip. */
+type LinkPresentation = "chip" | "text" | "icon";
 
 function linkAnchor(
   allProps: AnchorProps,
   actions?: MarkdownLinkActions,
   presentation: LinkPresentation = "chip",
 ) {
-  const props = { showIcon: true, ...allProps };
+  const props = {
+    ...allProps,
+    showIcon: presentation === "icon" ? false : (allProps.showIcon ?? true),
+    className: cn(
+      presentation === "icon" &&
+        "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground no-underline hover:bg-muted/80 hover:text-foreground",
+      allProps.className,
+    ),
+  };
   delete props.node;
   const href = props.href;
   const artifactReference = href ? artifactReferenceFromHref(href) : undefined;
@@ -322,7 +330,7 @@ function linkAnchor(
       <Link
         {...props}
         href={reference}
-        title={reference}
+        title={presentation === "icon" ? (props.title ?? reference) : reference}
         onClick={(event) => {
           event.preventDefault();
           actions?.openSubagent?.(subagent.parentSessionId, subagent.handleId, subagent.messageId);
@@ -362,9 +370,10 @@ function linkAnchor(
       <Link
         {...props}
         href={reference}
-        title={[labelText, title !== labelText ? title : undefined, reference]
-          .filter(Boolean)
-          .join("\n")}
+        title={
+          (presentation === "icon" ? props.title : undefined) ??
+          [labelText, title !== labelText ? title : undefined, reference].filter(Boolean).join("\n")
+        }
         showIcon={false}
         data-slot="session-reference"
         className={cn(
@@ -373,7 +382,9 @@ function linkAnchor(
                 modelReferenceChipClassName,
                 "mx-0.5 gap-1 align-[-0.125em] no-underline hover:bg-accent/20",
               ]
-            : "block min-w-0 font-normal no-underline hover:underline",
+            : presentation === "icon"
+              ? undefined
+              : "block min-w-0 font-normal no-underline hover:underline",
           props.className,
         )}
         onClick={(event) => {
@@ -385,9 +396,13 @@ function linkAnchor(
         }}
       >
         {chip && <LinkIcon className="size-3 shrink-0 text-muted-foreground" />}
-        <span className={chip ? "min-w-0 truncate" : "line-clamp-2 [overflow-wrap:anywhere]"}>
-          {label}
-        </span>
+        {presentation === "icon" ? (
+          label
+        ) : (
+          <span className={chip ? "min-w-0 truncate" : "line-clamp-2 [overflow-wrap:anywhere]"}>
+            {label}
+          </span>
+        )}
       </Link>
     );
   }
@@ -396,7 +411,7 @@ function linkAnchor(
     <Link
       {...props}
       href={artifactReference ?? href}
-      title={artifactReference ?? href}
+      title={(presentation === "icon" ? props.title : undefined) ?? artifactReference ?? href}
       target="_blank"
       rel="noreferrer"
       onClick={
