@@ -51,7 +51,8 @@ for (const theme of ["light", "dark"] as const) {
       await expect
         .poll(() =>
           panel
-            .getByRole("list", { name: "Active to-dos" })
+            .locator('[data-todo-id][data-todo-section="Active"]')
+            .locator("..")
             .locator(":scope > li")
             .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-todo-id"))),
         )

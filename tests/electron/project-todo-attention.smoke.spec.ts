@@ -99,7 +99,7 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     const row = panel.locator(`[data-todo-id="${id}"]`);
     const action = row.getByRole("button", { name: title, exact: true });
     const category = (name: string) =>
-      panel.getByRole("list", { name: `${name} to-dos`, exact: true });
+      panel.locator(`[data-todo-id][data-todo-section="${name}"]`).locator("..");
     const editor = async (label: string, target = action) => {
       await expect(panel.locator('[aria-busy="true"]')).toHaveCount(0);
       await target.focus();

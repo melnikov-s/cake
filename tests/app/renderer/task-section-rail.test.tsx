@@ -79,7 +79,9 @@ it("updates a section's title and completion live and inspects it without select
     await userEvent
       .setup()
       .click(within(section).getByRole("button", { name: `Show in To-do: ${item.title}` }));
-    const doneItems = screen.getByRole("list", { name: "Done to-dos" });
+    const doneItems = screen
+      .getByRole("list", { name: "To-dos" })
+      .querySelector<HTMLElement>('[data-todo-id][data-todo-section="Done"]')!;
     expect(
       within(doneItems).getByRole("button", { name: item.title }).getAttribute("aria-pressed"),
     ).toBe("false");

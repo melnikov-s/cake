@@ -36,6 +36,42 @@ import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reduc
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
+// A virtual section spans non-contiguous mounted rows in the pane's one list.
+function todoSection(label: string) {
+  const title = label.replace(/ to-dos$/, "");
+  const pane = screen.getByRole("list", { name: "To-dos" });
+  const queries = within(pane);
+  expect(
+    pane.querySelectorAll(`[data-todo-id][data-todo-section="${title}"]`).length,
+  ).toBeGreaterThan(0);
+  const inSection = (element: Element) =>
+    element.closest("[data-todo-id]")?.getAttribute("data-todo-section") === title;
+  const one = (elements: HTMLElement[]) => {
+    expect(elements).toHaveLength(1);
+    return elements[0]!;
+  };
+  return {
+    getByRole: (...args: Parameters<typeof queries.getByRole>) =>
+      one(queries.queryAllByRole(...args).filter(inSection)),
+    queryByRole: (...args: Parameters<typeof queries.queryByRole>) => {
+      const elements = queries.queryAllByRole(...args).filter(inSection);
+      expect(elements.length).toBeLessThanOrEqual(1);
+      return elements[0] ?? null;
+    },
+    getByText: (...args: Parameters<typeof queries.getByText>) =>
+      one(queries.queryAllByText(...args).filter(inSection)),
+    getAllByRole: (...args: Parameters<typeof queries.getAllByRole>) => {
+      const elements = queries.queryAllByRole(...args).filter(inSection);
+      expect(elements.length).toBeGreaterThan(0);
+      return elements;
+    },
+    querySelector: <T extends Element = Element>(selector: string) =>
+      Array.from(pane.querySelectorAll<T>(selector)).find(inSection) ?? null,
+    querySelectorAll: (selector: string) =>
+      Array.from(pane.querySelectorAll(selector)).filter(inSection),
+  };
+}
+
 const projectChat = `project-chat:${"a".repeat(64)}`;
 const todoRegions = () =>
   within(screen.getByRole("complementary", { name: "Workspace" })).queryAllByRole("region");
@@ -349,7 +385,7 @@ it("external projects do not present retained readiness as merge-ready, but keep
     ],
     autoMergeRequests: [mergeRequest("ready")],
   });
-  expect(screen.getByRole("list", { name: "Ready to Merge to-dos" })).toBeDefined();
+  expect(todoSection("Ready to Merge to-dos")).toBeDefined();
   await fixture.updateLanding("pull-request");
   expect(screen.queryByRole("list", { name: "Ready to Merge to-dos" })).toBeNull();
   expect(screen.queryByLabelText("Merge status for ready")).toBeNull();
@@ -491,16 +527,16 @@ it("groups accepted structured declarations and retains them while auto-merge is
     sessions,
     autoMergeRequests: requests,
   });
-  const readyList = () => screen.getByRole("list", { name: "Ready to Merge to-dos" });
-  expect(within(readyList()).getByRole("button", { name: ready.title })).toBeDefined();
+  const readyList = () => todoSection("Ready to Merge to-dos");
+  expect(readyList().getByRole("button", { name: ready.title })).toBeDefined();
   expect(readyList().querySelectorAll("[data-todo-id]")).toHaveLength(2);
-  const active = screen.getByRole("list", { name: "Active to-dos" });
+  const active = todoSection("Active to-dos");
   for (const item of [finished, revoked])
-    expect(within(active).getByRole("button", { name: item.title })).toBeDefined();
+    expect(active.getByRole("button", { name: item.title })).toBeDefined();
   await fixture.updateSessions(sessions.map((session) => ({ ...session, unread: true })));
   await fixture.updateSessions(sessions);
   await fixture.updateMergeRequests(requests);
-  expect(within(readyList()).getByRole("button", { name: ready.title })).toBeDefined();
+  expect(readyList().getByRole("button", { name: ready.title })).toBeDefined();
   expect(screen.getByLabelText("Merge status for ready").textContent).toContain(
     "Auto-merge is off",
   );
@@ -509,7 +545,7 @@ it("groups accepted structured declarations and retains them while auto-merge is
       request.sessionId === "pending" ? { ...request, state: "ready" } : request,
     ),
   );
-  expect(within(readyList()).getByRole("button", { name: pending.title })).toBeDefined();
+  expect(readyList().getByRole("button", { name: pending.title })).toBeDefined();
   await fixture.updateMergeRequests(
     requests.map((request) =>
       request.sessionId === "ready" || request.sessionId === "pending"
@@ -519,7 +555,7 @@ it("groups accepted structured declarations and retains them while auto-merge is
   );
   expect(screen.queryByRole("region", { name: "Ready to Merge" })).toBeNull();
   expect(
-    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+    todoSection("Active to-dos").getByRole("button", {
       name: ready.title,
     }),
   ).toBeDefined();
@@ -616,7 +652,7 @@ it("Activity retains Auto-merge control without adding it to Ready to Merge or c
   expect(bar.getByRole("button", { name: "Auto-merge: off" }).getAttribute("aria-pressed")).toBe(
     "false",
   );
-  expect(screen.getByRole("list", { name: "Ready to Merge to-dos" })).toBeDefined();
+  expect(todoSection("Ready to Merge to-dos")).toBeDefined();
   expect(fixture.mutations).toEqual([]);
 });
 
@@ -656,9 +692,9 @@ it("keeps blocked and failed landings visible and reports partial resolution wit
     ],
   ] as const) {
     await fixture.updateMergeRequests([request]);
-    const list = screen.getByRole("list", { name: "Ready to Merge to-dos" });
-    expect(within(list).getByRole("button", { name: item.title })).toBeDefined();
-    expect(within(list).getByRole("link", { name: "ready" }).getAttribute("href")).toBe(
+    const list = todoSection("Ready to Merge to-dos");
+    expect(list.getByRole("button", { name: item.title })).toBeDefined();
+    expect(list.getByRole("link", { name: "ready" }).getAttribute("href")).toBe(
       "cake://session/ready",
     );
     expect(screen.getByLabelText("Merge status for ready").textContent).toContain(text);
@@ -670,7 +706,7 @@ it("keeps blocked and failed landings visible and reports partial resolution wit
     "Merged; resolution failed: Family resolution failed",
   );
   expect(
-    within(screen.getByRole("list", { name: "Ready to Merge to-dos" })).getByRole("button", {
+    todoSection("Ready to Merge to-dos").getByRole("button", {
       name: item.title,
     }),
   ).toBeDefined();
@@ -700,14 +736,14 @@ it("waits for every associated session and removes successful work only through 
   await fixture.updateMergeRequests([landed]);
   await fixture.updateSessions([{ ...sessions[0]!, resolved: true }, sessions[1]!]);
   expect(
-    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+    todoSection("Active to-dos").getByRole("button", {
       name: item.title,
     }),
   ).toBeDefined();
   expect(fixture.todos().items[0]!.state).toBe("open");
   await fixture.updateMergeRequests([landed, mergeRequest("second")]);
   expect(
-    within(screen.getByRole("list", { name: "Ready to Merge to-dos" })).getByRole("button", {
+    todoSection("Ready to Merge to-dos").getByRole("button", {
       name: item.title,
     }),
   ).toBeDefined();
@@ -721,7 +757,7 @@ it("waits for every associated session and removes successful work only through 
   expect(screen.queryByRole("region", { name: "Ready to Merge" })).toBeNull();
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
   expect(
-    within(screen.getByRole("list", { name: "Done to-dos" })).getByRole("button", {
+    todoSection("Done to-dos").getByRole("button", {
       name: item.title,
     }),
   ).toBeDefined();
@@ -757,11 +793,11 @@ it("preserves flags, snooze and focus without duplicate rows and shows every rea
   await fixture.user.click(
     screen.getByRole("button", { name: `Dismiss attention: ${attention.title}` }),
   );
-  const ready = () => screen.getByRole("list", { name: "Ready to Merge to-dos" });
-  expect(within(ready()).getByRole("button", { name: attention.title })).toBeDefined();
+  const ready = () => todoSection("Ready to Merge to-dos");
+  expect(ready().getByRole("button", { name: attention.title })).toBeDefined();
   await fixture.user.click(screen.getByRole("button", { name: attention.title }));
   expect(
-    within(screen.getByRole("list", { name: "Focus to-dos" })).getByRole("button", {
+    todoSection("Focus to-dos").getByRole("button", {
       name: attention.title,
     }),
   ).toBeDefined();
@@ -769,7 +805,7 @@ it("preserves flags, snooze and focus without duplicate rows and shows every rea
   await fixture.user.click(
     screen.getByRole("button", { name: `Unfocus to-do: ${attention.title}` }),
   );
-  expect(within(ready()).getByRole("button", { name: attention.title })).toBeDefined();
+  expect(ready().getByRole("button", { name: attention.title })).toBeDefined();
   for (const item of [attention, snoozed])
     expect(fixture.container.querySelectorAll(`[data-todo-id="${item.id}"]`)).toHaveLength(1);
   expect(fixture.mutations.map((mutation) => mutation._tag)).toEqual(["SetAttention"]);
@@ -862,7 +898,7 @@ it("presents workspace attention in occurrence FIFO order, including filtered re
   }));
   using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions: [] });
   const titles = () =>
-    within(screen.getByRole("list", { name: "Needs attention to-dos" }))
+    todoSection("Needs attention to-dos")
       .getAllByRole("listitem")
       .map((row) => row.getAttribute("data-todo-id"));
   expect(titles()).toEqual([items[1]!.id, items[3]!.id, items[0]!.id, items[2]!.id]);
@@ -899,14 +935,12 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
     },
     sessions: [],
   });
-  const attention = () => screen.getByRole("list", { name: "Needs attention to-dos" });
-  expect(within(attention()).getByRole("button", { name: item.title }).textContent).toBe(
-    item.title,
-  );
+  const attention = () => todoSection("Needs attention to-dos");
+  expect(attention().getByRole("button", { name: item.title }).textContent).toBe(item.title);
   expect(attention().querySelector(`[data-todo-id="${item.id}"]`)?.textContent).toContain(
     item.attentionReason,
   );
-  expect(within(attention()).getByRole("link", { name: "Findings" })).toBeDefined();
+  expect(attention().getByRole("link", { name: "Findings" })).toBeDefined();
   expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
     "Needs attention",
     "Active",
@@ -926,7 +960,7 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
     attentionReason: item.attentionReason,
   });
   expect(fixture.mutations).toEqual([]);
-  expect(within(attention()).getByRole("button", { name: item.title })).toBeDefined();
+  expect(attention().getByRole("button", { name: item.title })).toBeDefined();
   expect(
     screen.getAllByRole("button", { name: /^(Unfocus to-do|Dismiss attention):/ }),
   ).toHaveLength(1);
@@ -945,7 +979,7 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
   expect(fixture.mutations.map((mutation) => mutation._tag)).toEqual(["SetAttention"]);
   expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
   await fixture.user.click(screen.getByRole("button", { name: item.title }));
-  const row = within(screen.getByRole("list", { name: "Focus to-dos" })).getByRole("button", {
+  const row = todoSection("Focus to-dos").getByRole("button", {
     name: item.title,
   });
   expect(row.textContent).not.toContain(item.attentionReason);
@@ -958,18 +992,14 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
     keys: "[MouseRight]",
   });
   await fixture.user.click(screen.getByRole("menuitem", { name: "Restore needs attention" }));
-  expect(
-    within(screen.getByRole("list", { name: "Focus to-dos" })).getByText(item.attentionReason),
-  ).toBeDefined();
+  expect(todoSection("Focus to-dos").getByText(item.attentionReason)).toBeDefined();
   expect(fixture.todos().selectedId).toBe(selection);
   await fixture.user.click(screen.getByRole("button", { name: "Active (1)" }));
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
   expect(screen.getByRole("button", { name: "Snoozed (1)" }).getAttribute("aria-expanded")).toBe(
     "true",
   );
-  expect(
-    within(screen.getByRole("list", { name: "Focus to-dos" })).getByText(item.attentionReason),
-  ).toBeDefined();
+  expect(todoSection("Focus to-dos").getByText(item.attentionReason)).toBeDefined();
 });
 
 it("labels Needs attention rows by title and shows only informative reasons beneath", () => {
@@ -986,7 +1016,7 @@ it("labels Needs attention rows by title and shows only informative reasons bene
     todos: { ...emptyProjectTodos(), items },
     sessions: [],
   });
-  const list = screen.getByRole("list", { name: "Needs attention to-dos" });
+  const list = todoSection("Needs attention to-dos");
   const [generic, named, custom] = items.map((item) => {
     const row = list.querySelector<HTMLElement>(`[data-todo-id="${item.id}"]`)!;
     expect(within(row).getByRole("button", { name: item.title }).textContent).toBe(item.title);
@@ -1012,16 +1042,18 @@ it("places Focus above the other four sections without duplicating focused rows"
     sessions: [],
   });
   await fixture.user.click(screen.getByRole("button", { name: "Task 101" }));
-  expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
-    "Focus",
-    "Needs attention",
-    "Active",
-    "Snoozed",
-    "Done",
-  ]);
+  await waitFor(() =>
+    expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
+      "Focus",
+      "Needs attention",
+      "Active",
+      "Snoozed",
+      "Done",
+    ]),
+  );
   expect(fixture.container.querySelectorAll(`[data-todo-id="${todo(101).id}"]`)).toHaveLength(1);
   expect(
-    within(screen.getByRole("list", { name: "Focus to-dos" })).getByRole("button", {
+    todoSection("Focus to-dos").getByRole("button", {
       name: "Task 101",
     }),
   ).toBeDefined();
@@ -1036,7 +1068,7 @@ it("restores underlying sections on row toggle or explicit unfocus and preserves
   ];
   using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions: [] });
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
-  const focus = () => within(screen.getByRole("list", { name: "Focus to-dos" }));
+  const focus = () => todoSection("Focus to-dos");
   await fixture.user.click(screen.getByRole("button", { name: items[0]!.title }));
   expect(focus().getAllByRole("button", { name: /^Unfocus to-do:/ })).toHaveLength(1);
   expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
@@ -1065,7 +1097,7 @@ it("restores underlying sections on row toggle or explicit unfocus and preserves
       }),
     );
     expect(
-      within(screen.getByRole("list", { name: `${section} to-dos` }))
+      todoSection(`${section} to-dos`)
         .getByRole("button", { name: item.title })
         .getAttribute("aria-pressed"),
     ).toBe("false");
@@ -1125,7 +1157,7 @@ it("uses a manual reason editor for Mark/Edit, rejects blank, supports cancel, a
   await fixture.user.click(screen.getByRole("menuitem", { name: /^Snooze$/ }));
   await fixture.user.click(screen.getByRole("menuitem", { name: "15 minutes" }));
   expect(
-    within(screen.getByRole("list", { name: "Snoozed to-dos" })).getByRole("button", {
+    todoSection("Snoozed to-dos").getByRole("button", {
       name: item.title,
     }),
   ).toBeDefined();
@@ -1137,15 +1169,13 @@ it("uses a manual reason editor for Mark/Edit, rejects blank, supports cancel, a
   });
   await fixture.user.click(screen.getByRole("menuitem", { name: "Unsnooze" }));
   expect(
-    within(screen.getByRole("list", { name: "Needs attention to-dos" })).getByText(
-      "Review the change before merging",
-    ),
+    todoSection("Needs attention to-dos").getByText("Review the change before merging"),
   ).toBeDefined();
   await fixture.user.click(screen.getByRole("button", { name: `Mark done: ${item.title}` }));
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
   await fixture.user.click(screen.getByRole("button", { name: `Reopen: ${item.title}` }));
   expect(
-    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+    todoSection("Active to-dos").getByRole("button", {
       name: item.title,
     }),
   ).toBeDefined();
@@ -1164,11 +1194,51 @@ function todo(id: number, createdAt?: string, sessionIds: string[] = []): Projec
   };
 }
 
+it("virtualizes thousands of Done rows in the pane's one list and excludes collapsed sections", async () => {
+  const done = Array.from({ length: 5000 }, (_, index): ProjectTodo => ({
+    ...todo(index + 1000),
+    state: "done",
+  }));
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [todo(1), ...done] },
+    sessions: [],
+  });
+  const pane = screen.getByRole("list", { name: "To-dos" });
+  expect(pane.querySelectorAll('[data-todo-section="Done"]')).toHaveLength(0);
+  expect(pane.querySelector("[aria-setsize]")?.getAttribute("aria-setsize")).toBe("3");
+  await fixture.user.click(screen.getByRole("button", { name: "Active (1)" }));
+  expect(pane.querySelectorAll('[data-todo-section="Active"]')).toHaveLength(0);
+  expect(pane.querySelector("[aria-setsize]")?.getAttribute("aria-setsize")).toBe("2");
+  await fixture.user.click(screen.getByRole("button", { name: "Active (1)" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Done (5000)" }));
+  await waitFor(() => {
+    const mounted = pane.querySelectorAll("[data-todo-id]").length;
+    expect(mounted).toBeGreaterThan(1);
+    expect(mounted).toBeLessThan(150);
+  });
+  expect(pane.querySelector("[aria-setsize]")?.getAttribute("aria-setsize")).toBe("5003");
+  expect(fixture.container.querySelectorAll('[data-slot="todo-scroll-pane"]')).toHaveLength(1);
+  expect(pane.querySelectorAll('[role="list"]')).toHaveLength(0);
+  // Reveal must reach an unmounted row by key, not by querying the current DOM.
+  const last = done[0]!;
+  await act(async () => fixture.store.reveal(last));
+  await waitFor(() => expect(screen.getByRole("button", { name: last.title })).toBeDefined());
+  await fixture.updateTodos({
+    ...fixture.todos(),
+    items: [...fixture.todos().items, { ...todo(9000), state: "done" }],
+  });
+  expect(pane.querySelectorAll("[data-todo-id]").length).toBeLessThan(150);
+  // A background update must not replay the completed reveal.
+  expect(fixture.store.paneRequest).toBeUndefined();
+  await act(async () => fixture.store.toggleDone());
+  await waitFor(() => expect(pane.querySelectorAll('[data-todo-section="Done"]')).toHaveLength(0));
+  expect(pane.querySelector("[aria-setsize]")?.getAttribute("aria-setsize")).toBe("3");
+});
+
 const activityTime = (day: number) => `2026-02-${String(day).padStart(2, "0")}T00:00:00.000Z`;
 const openOrder = () =>
-  Array.from(
-    screen.getByRole("list", { name: "Active to-dos" }).querySelectorAll("[data-todo-id]"),
-    (row) => row.getAttribute("data-todo-id"),
+  Array.from(todoSection("Active to-dos").querySelectorAll("[data-todo-id]"), (row) =>
+    row.getAttribute("data-todo-id"),
   );
 
 it("keeps attention FIFO and other sections newest-created first through additions and search", async () => {
@@ -1191,9 +1261,8 @@ it("keeps attention FIFO and other sections newest-created first through additio
   });
   await fixture.user.click(screen.getByRole("button", { name: "Done (3)" }));
   const sectionOrder = (category: string) =>
-    Array.from(
-      screen.getByRole("list", { name: `${category} to-dos` }).querySelectorAll("[data-todo-id]"),
-      (row) => row.getAttribute("data-todo-id"),
+    Array.from(todoSection(`${category} to-dos`).querySelectorAll("[data-todo-id]"), (row) =>
+      row.getAttribute("data-todo-id"),
     );
   const checkOrder = (days: number[], attentionDays: number[]) => {
     expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual(categories);
@@ -1208,7 +1277,7 @@ it("keeps attention FIFO and other sections newest-created first through additio
     inSection(todo(section * 10 + 4, activityTime(4)), section),
   );
   await fixture.updateTodos({ ...fixture.todos(), items: [...items, ...additions] });
-  checkOrder([4, 3, 2, 1], [2, 1, 3, 4]);
+  await waitFor(() => checkOrder([4, 3, 2, 1], [2, 1, 3, 4]));
   expect(fixture.todos().items).toEqual([...items, ...additions]);
   // Search filters the sorted projection rather than falling back to storage order.
   await fixture.user.type(
@@ -1256,7 +1325,7 @@ it("keeps untimestamped saved items in reverse creation order, unaffected by lat
     ...fixture.todos(),
     items: [...fixture.todos().items, todo(1, activityTime(1))],
   });
-  expect(openOrder()).toEqual([todo(1).id, ...expected]);
+  await waitFor(() => expect(openOrder()).toEqual([todo(1).id, ...expected]));
 });
 
 it("keeps creation order and selection through description/status edits and linked-session activity changes", async () => {
@@ -1317,8 +1386,12 @@ it("filters titles and descriptions without changing selection or the authoritat
   const title = () => screen.getByRole("button", { name: "Investigate startup" });
   await fixture.user.click(title());
   await fixture.user.type(search, "FOLLOW");
+  expect(document.activeElement).toBe(search);
+  expect(fixture.store.query).toBe("FOLLOW");
   expect(screen.getByRole("button", { name: "Follow up" })).toBeDefined();
-  expect(screen.queryByRole("button", { name: "Investigate startup" })).toBeNull();
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Investigate startup" })).toBeNull(),
+  );
   expect(fixture.store.focusedItemIds).toEqual([fixture.todos().items[0]!.id]);
   expect(fixture.todos().items).toHaveLength(2);
   await fixture.user.clear(search);
@@ -1347,13 +1420,13 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   expect(done.getAttribute("aria-expanded")).toBe("false");
   await fixture.user.click(done);
   expect(
-    within(screen.getByRole("list", { name: "Done to-dos" })).getByRole("button", {
+    todoSection("Done to-dos").getByRole("button", {
       name: "Follow up",
     }),
   ).toBeDefined();
   await fixture.user.click(screen.getByRole("button", { name: "Reopen: Follow up" }));
   expect(
-    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+    todoSection("Active to-dos").getByRole("button", {
       name: "Follow up",
     }),
   ).toBeDefined();
@@ -1367,8 +1440,8 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   expect(screen.queryByRole("region", { name: "Done" })).toBeNull();
   expect(screen.getByRole("status").textContent).toBe("No matching to-dos.");
   await fixture.user.click(screen.getByRole("button", { name: "Clear search to-dos" }));
-  expect(screen.getByRole("list", { name: "Done to-dos" })).toBeDefined();
-  expect(screen.getByRole("list", { name: "Active to-dos" })).toBeDefined();
+  expect(todoSection("Done to-dos")).toBeDefined();
+  expect(todoSection("Active to-dos")).toBeDefined();
 });
 
 it("switches and toggles title focus, with independent done/reopen and explicit unfocus", async () => {
@@ -1394,7 +1467,7 @@ it("switches and toggles title focus, with independent done/reopen and explicit 
     screen.getByRole("button", { name: "Unfocus to-do: Investigate startup" }),
   );
   expect(
-    within(screen.getByRole("list", { name: "Active to-dos" }))
+    todoSection("Active to-dos")
       .getByRole("button", { name: "Investigate startup" })
       .getAttribute("aria-pressed"),
   ).toBe("false");
@@ -1513,18 +1586,14 @@ it("snoozes focused work independently, restores its section on unfocus and unsn
   expect(mutation.until).toBe(new Date(mutation.until).toISOString());
   expect(fixture.todos().selectedId).toBeNull();
   expect(
-    within(screen.getByRole("list", { name: "Focus to-dos" }))
-      .getByRole("button", { name: title })
-      .getAttribute("aria-pressed"),
+    todoSection("Focus to-dos").getByRole("button", { name: title }).getAttribute("aria-pressed"),
   ).toBe("true");
   await fixture.user.click(screen.getByRole("button", { name: `Unfocus to-do: ${title}` }));
-  const snoozed = screen.getByRole("list", { name: "Snoozed to-dos" });
-  expect(within(snoozed).getByRole("button", { name: title }).getAttribute("aria-disabled")).toBe(
-    "false",
-  );
-  expect(within(snoozed).getByRole("link", { name: "Report" })).toBeDefined();
+  const snoozed = todoSection("Snoozed to-dos");
+  expect(snoozed.getByRole("button", { name: title }).getAttribute("aria-disabled")).toBe("false");
+  expect(snoozed.getByRole("link", { name: "Report" })).toBeDefined();
   expect(
-    within(screen.getByRole("list", { name: "Active to-dos" })).queryByRole("button", {
+    todoSection("Active to-dos").queryByRole("button", {
       name: title,
     }),
   ).toBeNull();
@@ -1537,7 +1606,7 @@ it("snoozes focused work independently, restores its section on unfocus and unsn
   await fixture.user.click(screen.getByRole("menuitem", { name: "Unsnooze" }));
   expect(fixture.mutations.at(-1)).toMatchObject({ _tag: "Unsnooze", expectedRevision: 1 });
   expect(
-    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+    todoSection("Active to-dos").getByRole("button", {
       name: title,
     }),
   ).toBeDefined();
@@ -1601,16 +1670,14 @@ it("validates custom local time, changes an existing deadline, searches snoozed 
     until: new Date(later).toISOString(),
   });
   await fixture.user.type(screen.getByRole("searchbox", { name: "Search to-dos" }), "bottleneck");
-  expect(
-    screen.getByRole("list", { name: "Snoozed to-dos" }).querySelectorAll("[data-todo-id]"),
-  ).toHaveLength(1);
+  expect(todoSection("Snoozed to-dos").querySelectorAll("[data-todo-id]")).toHaveLength(1);
   expect(
     fixture.container.querySelectorAll(`[data-todo-id="${fixture.todos().items[0]!.id}"]`),
   ).toHaveLength(1);
   await fixture.user.click(screen.getByRole("button", { name: `Mark done: ${title}` }));
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
   expect(
-    within(screen.getByRole("list", { name: "Done to-dos" })).getByRole("button", {
+    todoSection("Done to-dos").getByRole("button", {
       name: title,
     }),
   ).toBeDefined();
@@ -1621,7 +1688,7 @@ it("validates custom local time, changes an existing deadline, searches snoozed 
   expect(screen.queryByRole("menu")).toBeNull();
   await fixture.user.click(screen.getByRole("button", { name: `Reopen: ${title}` }));
   expect(
-    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+    todoSection("Active to-dos").getByRole("button", {
       name: title,
     }),
   ).toBeDefined();

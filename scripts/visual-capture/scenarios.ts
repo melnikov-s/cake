@@ -3000,9 +3000,7 @@ const projectChatTodos: VisualCaptureScenario = {
     }
     if (state === "multi-focus") {
       await page.getByRole("button", { name: "Improve project navigation", exact: true }).click();
-      await expect(
-        page.getByRole("list", { name: "Focus to-dos", exact: true }).locator("[data-todo-id]"),
-      ).toHaveCount(2);
+      await expect(page.locator('[data-todo-id][data-todo-section="Focus"]')).toHaveCount(2);
     }
     if (state === "unselected" || state === "empty")
       await page
@@ -3194,7 +3192,7 @@ const projectChatAttentionResults: VisualCaptureScenario = {
     await projectChatTodos.prepare(page, "open");
     const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
     await expect(
-      workspace.getByRole("list", { name: "Needs attention to-dos" }).locator("[data-todo-id]"),
+      workspace.locator('[data-todo-id][data-todo-section="Needs attention"]'),
     ).toHaveCount(4);
     await page.mouse.move(1, 1);
   },

@@ -79,7 +79,7 @@ for (const reducedMotion of [false, true]) {
       const action = (index: number) =>
         panel.getByRole("button", { name: `Task ${index}`, exact: true });
       const category = (name: string) =>
-        panel.getByRole("list", { name: `${name} to-dos`, exact: true });
+        panel.locator(`[data-todo-id][data-todo-section="${name}"]`).locator("..");
       // Observe real native animation and scroll requests without replacing their implementations.
       await page.evaluate(() => {
         const animate = Element.prototype.animate;

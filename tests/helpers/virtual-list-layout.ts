@@ -6,7 +6,7 @@
  * Real geometry, scrolling and the follow rules are verified in Electron.
  */
 const scrollAreaSelector =
-  '.transcript, [data-slot="work-log-content"], [data-slot="work-log-scroll"]';
+  '.transcript, [data-slot="work-log-content"], [data-slot="work-log-scroll"], [data-slot="todo-scroll-pane"]';
 const viewportHeight = 8000;
 const viewportWidth = 800;
 const rowHeight = 100;

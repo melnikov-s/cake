@@ -24,9 +24,15 @@ const hoverActionClassName =
 export const ProjectTodoItem = observer(function ProjectTodoItem({
   item,
   store,
+  section,
+  position,
+  count,
 }: {
   item: ProjectTodo;
   store: ProjectTodosStore;
+  section?: string;
+  position?: number;
+  count?: number;
 }) {
   const descriptionId = useId();
   const selected = store.isFocused(item.id);
@@ -99,7 +105,14 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         ]
       : [];
   return (
-    <li data-todo-id={item.id} data-animated-list-key={item.id}>
+    <li
+      data-todo-id={item.id}
+      data-animated-list-key={item.id}
+      data-todo-section={section}
+      aria-label={section ? `${section} to-do` : undefined}
+      aria-posinset={position}
+      aria-setsize={count}
+    >
       <ContextMenu label={`Actions for ${item.title}`} items={menuItems}>
         <HoverCard description={description} descriptionId={descriptionId}>
           <NavItem

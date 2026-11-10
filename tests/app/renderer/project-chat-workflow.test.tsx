@@ -591,10 +591,13 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
     expect(toggle.textContent).toBe("To-dos 1");
     const panel = screen.getByRole("complementary", { name: "Workspace" });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(within(panel).getByText(item.description)).toBeTruthy();
+    expect(within(panel).queryByText(item.description)).toBeNull();
     expect(within(panel).queryByText("Earlier question")).toBeNull();
     const row = () => within(panel).getByRole("button", { name: item.title });
-    const focusList = () => within(panel).getByRole("list", { name: "Focus to-dos" });
+    await f.user.hover(row());
+    expect(await screen.findByText(item.description)).toBeTruthy();
+    const focusList = () =>
+      panel.querySelector<HTMLElement>('[data-todo-id][data-todo-section="Focus"]')!;
     await f.user.click(row());
     expect(within(focusList()).getByRole("button", { name: item.title })).toBeTruthy();
     expect(row().getAttribute("aria-pressed")).toBe("true");
@@ -607,14 +610,14 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
     expect(row().getAttribute("aria-pressed")).toBe("true");
     await f.user.click(within(panel).getByRole("button", { name: `Mark done: ${item.title}` }));
     await waitFor(() => expect(toggle.textContent).toBe("To-dos 0"));
-    expect(within(panel).queryByRole("list", { name: "Active to-dos" })).toBeNull();
+    expect(panel.querySelector('[data-todo-id][data-todo-section="Active"]')).toBeNull();
     // Completion keeps window-local focus; the row stays in Focus with its Reopen action.
     expect(row().getAttribute("aria-pressed")).toBe("true");
     await f.user.click(within(panel).getByRole("button", { name: `Reopen: ${item.title}` }));
     await waitFor(() => expect(toggle.textContent).toBe("To-dos 1"));
     await f.user.click(within(panel).getByRole("button", { name: `Unfocus to-do: ${item.title}` }));
     expect(
-      within(within(panel).getByRole("list", { name: "Active to-dos" }))
+      within(panel.querySelector<HTMLElement>('[data-todo-id][data-todo-section="Active"]')!)
         .getByRole("button", { name: item.title })
         .getAttribute("aria-pressed"),
     ).toBe("false");

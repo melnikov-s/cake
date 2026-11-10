@@ -137,9 +137,14 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await dialog.getByRole("button", { name: "Snooze", exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect(
-      panel.getByRole("list", { name: "Snoozed to-dos" }).locator(`[data-todo-id="${id}"]`),
+      panel
+        .locator('[data-todo-id][data-todo-section="Snoozed"]')
+        .locator("..")
+        .locator(`[data-todo-id="${id}"]`),
     ).toHaveCount(1);
-    await expect(panel.getByRole("list", { name: "Active to-dos" })).toHaveCount(0);
+    await expect(
+      panel.locator('[data-todo-id][data-todo-section="Active"]').locator(".."),
+    ).toHaveCount(0);
     await expect(action).toHaveAttribute("aria-pressed", "false");
     await expect(action).toHaveAttribute("aria-disabled", "true");
     await expect(row.locator("time")).toHaveAttribute("datetime", new Date(future).toISOString());
@@ -170,7 +175,10 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Unsnooze", exact: true }).click();
     await expect(
-      panel.getByRole("list", { name: "Active to-dos" }).locator(`[data-todo-id="${id}"]`),
+      panel
+        .locator('[data-todo-id][data-todo-section="Active"]')
+        .locator("..")
+        .locator(`[data-todo-id="${id}"]`),
     ).toHaveCount(1);
     await expect(toggle).toHaveText("1");
     await expect(action).toHaveAttribute("aria-disabled", "false");
@@ -187,13 +195,19 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await row.getByRole("button", { name: `Mark done: ${title}` }).click();
     await panel.getByRole("button", { name: "Done (1)" }).click();
     await expect(
-      panel.getByRole("list", { name: "Done to-dos" }).locator(`[data-todo-id="${id}"]`),
+      panel
+        .locator('[data-todo-id][data-todo-section="Done"]')
+        .locator("..")
+        .locator(`[data-todo-id="${id}"]`),
     ).toHaveCount(1);
     await action.press("Shift+F10");
     await expect(page.getByRole("menuitem", { name: "Snooze", exact: true })).toHaveCount(0);
     await row.getByRole("button", { name: `Reopen: ${title}` }).click();
     await expect(
-      panel.getByRole("list", { name: "Active to-dos" }).locator(`[data-todo-id="${id}"]`),
+      panel
+        .locator('[data-todo-id][data-todo-section="Active"]')
+        .locator("..")
+        .locator(`[data-todo-id="${id}"]`),
     ).toHaveCount(1);
     await expect(row.locator("time")).toHaveCount(0);
   } finally {
