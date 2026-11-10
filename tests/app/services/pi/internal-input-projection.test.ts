@@ -1,7 +1,10 @@
 import { expect, it } from "vitest";
+import { formatSessionDigestReminder } from "../../../../src/contracts/cake-chats/session-digest-reminder";
+import { partsFromMessage } from "../../../../src/services/pi/runtime/message-projection";
 import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
 import {
   passiveNoticeParts,
+  admittedIncomingParts,
   queuedAutomaticInputPart,
   type AutomaticInput,
 } from "../../../../src/services/pi/runtime/internal-input-projection";
@@ -51,4 +54,48 @@ it("keeps the genuine batch path: contents when present, the generic label only 
   expect(queued({ _tag: "UpdateBatch", notices: [], updates: [update("a")] })).toMatchObject({
     text: "Report a",
   });
+});
+
+it("shares exact identities across pending, queued user/timer admission and consumed digest/report entries", () => {
+  const digest = formatSessionDigestReminder({
+    lines: [
+      {
+        reference: "child",
+        sessionId: "child",
+        title: "Child",
+        status: "completed",
+        summary: "Ready",
+      },
+    ],
+    receiptIds: ["digest"],
+  })!;
+  const text = `${digest}\n\nReal question`;
+  const origin = {
+    _tag: "UserWithReminders" as const,
+    text,
+    userText: "Real question",
+    notices: [],
+    updates: [update("report")],
+  };
+  const queued = admittedIncomingParts(origin, text);
+  expect(queued.map((part) => part.id)).toEqual(["session-digest-digest", "agent-update-report"]);
+  const consumed = partsFromMessage(
+    { role: "user", content: text, timestamp: 1 },
+    "pi-entry",
+    false,
+    "entry",
+    false,
+    undefined,
+    undefined,
+    origin,
+  );
+  expect(consumed.filter((part) => queued.some((entry) => entry.id === part.id))).toEqual(queued);
+  expect(consumed.map((part) => part.id)).toEqual([
+    "session-digest-digest",
+    "agent-update-report",
+    "pi-entry-text",
+  ]);
+  const timer = { _tag: "UpdateBatch" as const, notices: [], updates: [update("report")] };
+  expect(admittedIncomingParts(timer, text)).toEqual(queued);
+  expect(admittedIncomingParts(undefined, text)).toEqual([]);
 });

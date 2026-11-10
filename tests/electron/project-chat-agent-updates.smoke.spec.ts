@@ -61,7 +61,11 @@ for (const timing of ["next-user", "timer"] as const)
         return;
       }
       requests.push(body);
-      if (body.includes("## Project investigation worker")) {
+      if (
+        input.tools?.some(
+          (tool: { function?: { name?: string } }) => tool.function?.name === "message_parent",
+        )
+      ) {
         workerRequests += 1;
         if (workerRequests === 1)
           reply(response, { name: "message_parent", arguments: { text: progress } });
@@ -156,7 +160,9 @@ for (const timing of ["next-user", "timer"] as const)
       await installLocalModelHttpGuard(app, origin);
       let page = await app.firstWindow();
       const openChat = () =>
-        page.getByRole("button", { name: "Open Project Chat for project", exact: true }).click();
+        page
+          .getByRole("button", { name: "Open Project Chat for Attribution project", exact: true })
+          .click();
       await openChat();
       const submit = async (text: string) => {
         const composer = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
@@ -180,16 +186,14 @@ for (const timing of ["next-user", "timer"] as const)
         await expect(update.locator('[data-streamdown="strong"]')).toHaveText("Source located");
         await expect(update.getByRole("listitem")).toHaveText("Checking transport.");
         await expect(
-          update.getByRole("link", { name: "Investigate attribution", exact: true }),
+          update.getByRole("link", { name: "Open source", exact: true }),
         ).toHaveAttribute("href", /^cake:\/\/subagent\//);
         await expect(update).not.toContainText("You");
         await expect(page.locator(".transcript")).not.toContainText("Reply through this subagent");
       };
       await submit("Investigate attribution");
       await verifyProgress();
-      expect(requests.some((request) => request.includes("Reply through this subagent"))).toBe(
-        true,
-      );
+      expect(workerRequests).toBeGreaterThan(0);
       finishWorker.resolve();
       const familyPath = join(cakeHome, "state", "session-families.json");
       await expect
@@ -201,7 +205,18 @@ for (const timing of ["next-user", "timer"] as const)
           }
         })
         .toBe(1);
-      await expect(card("Investigation findings")).toHaveCount(0);
+      await expect(card("Investigation findings")).toHaveCount(1);
+      const pendingReport = page
+        .locator('[data-pending-incoming="true"]')
+        .filter({ has: card("Investigation findings") });
+      await expect(pendingReport).toHaveCSS("opacity", "0.5");
+      const pendingRequests = requests.length;
+      await page.waitForTimeout(250);
+      expect(requests).toHaveLength(pendingRequests);
+      await mkdir(join(repository, ".visual-captures"), { recursive: true });
+      await page.screenshot({
+        path: join(repository, ".visual-captures", `pending-incoming-${timing}.png`),
+      });
       await app.close();
       if (timing === "timer") {
         const state = JSON.parse(await readFile(familyPath, "utf8"));
@@ -219,7 +234,15 @@ for (const timing of ["next-user", "timer"] as const)
       await installLocalModelHttpGuard(app, origin);
       page = await app.firstWindow();
       await openChat();
-      if (timing === "next-user") await submit("My actual next question");
+      if (timing === "next-user") {
+        await expect(card("Investigation findings")).toHaveCount(1);
+        await expect(
+          page
+            .locator('[data-pending-incoming="true"]')
+            .filter({ has: card("Investigation findings") }),
+        ).toHaveCSS("opacity", "0.5");
+        await submit("My actual next question");
+      }
       const verifyReport = async () => {
         await verifyProgress();
         const update = card("Investigation findings");
@@ -232,10 +255,10 @@ for (const timing of ["next-user", "timer"] as const)
         );
         await expect(update.locator("pre")).toContainText("const authoredBy = 'worker';");
         await expect(
-          update.getByRole("link", { name: "Investigate attribution", exact: true }),
+          update.getByRole("link", { name: "Open source", exact: true }),
         ).toHaveAttribute("href", /^cake:\/\/subagent\/.*\?message=/);
         await expect(update).not.toContainText("You");
-        await expect(page.locator(".transcript")).not.toContainText("Deferred reports/status refs");
+        await expect(page.locator(".transcript")).not.toContainText("Cake reference notifications");
         await expect(page.locator(".transcript")).not.toContainText("Cake batched updates");
         if (timing === "next-user")
           await expect(
@@ -246,9 +269,17 @@ for (const timing of ["next-user", "timer"] as const)
           ).toHaveText("You");
       };
       await verifyReport();
-      expect(requests.some((request) => request.includes("Deferred reports/status refs"))).toBe(
-        true,
-      );
+      await expect(
+        page
+          .locator('[data-pending-incoming="true"]')
+          .filter({ has: card("Investigation findings") }),
+      ).toHaveCount(0);
+      await page.screenshot({
+        path: join(repository, ".visual-captures", `admitted-incoming-${timing}.png`),
+      });
+      await expect
+        .poll(() => requests.some((request) => request.includes("Cake reference notifications")))
+        .toBe(true);
       await page.reload();
       await openChat();
       await verifyReport();

@@ -1,3 +1,8 @@
+import {
+  incomingPartAnchors,
+  orderIncomingParts,
+  type IncomingPartAnchor,
+} from "../lib/incoming-part-order";
 import type { PresetContext } from "../../contracts/model-presets/preset-context";
 import { Model, child, computed, id, modelRef, observable, transient } from "r-state-tree";
 import type {
@@ -27,6 +32,18 @@ export class Conversation extends Model {
   historyCursor: string | undefined;
   /** Originals explicitly paged by the user, never persisted in window snapshots. */
   @transient earlierParts: UiPart[] = observable([]);
+  @transient incomingAnchors: IncomingPartAnchor[] = observable([]);
+  /** Rebuilt from durable inbox state on observation/reconnect; never window-persisted. */
+  @transient incomingParts: UiPart[] = observable([]);
+
+  reconcileIncomingOrder(parts: readonly UiPart[]) {
+    const ids = new Set(parts.map((part) => part.id));
+    this.incomingParts = this.incomingParts.filter((part) => !ids.has(part.id));
+    this.incomingAnchors = incomingPartAnchors(
+      [...parts, ...this.incomingParts],
+      this.incomingAnchors,
+    );
+  }
   @modelRef(LlmModel) model: LlmModel | undefined;
   preset: PresetContext | undefined;
   fastMode = false;
@@ -61,9 +78,15 @@ export class Conversation extends Model {
   @computed
   get uiParts(): UiPart[] {
     const current = this.parts.map((part) => part.value);
-    if (!this.earlierParts.length) return current;
     const currentIds = new Set(current.map((part) => part.id));
-    return [...this.earlierParts.filter((part) => !currentIds.has(part.id)), ...current];
+    return orderIncomingParts(
+      [
+        ...this.earlierParts.filter((part) => !currentIds.has(part.id)),
+        ...current,
+        ...this.incomingParts.filter((part) => !currentIds.has(part.id)),
+      ],
+      this.incomingAnchors,
+    );
   }
 
   get compatibility(): ConversationSnapshot["compatibility"] {

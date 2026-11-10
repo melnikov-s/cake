@@ -1,4 +1,5 @@
 import { Option, Schema } from "effect";
+import type { UiPart } from "../conversations/session-contract";
 import { AutoMergeOutcome } from "../worktrees/auto-merge";
 import type { CompletionInboxItem } from "../conversations/completion-inbox";
 import type { CakeChatLaunchStatus } from "../project-sessions/session-reporting";
@@ -163,6 +164,22 @@ export function sessionNotificationEntries(text: string): readonly SessionNotifi
     });
   }
   return entries;
+}
+
+/** Receipt-backed digests use the same per-item identity before and after admission.
+ * Historical blocks without receipts keep their original presentation. */
+export function sessionDigestParts(text: string): UiPart[] {
+  const ids = sessionDigestReceiptIds(text);
+  const reminder = block.exec(text)?.[0];
+  if (!ids.length || !reminder) return [];
+  const lines = reminder.split("\n").filter((line) => line.startsWith("- "));
+  if (lines.length !== ids.length) return [];
+  return lines.map((line, index) => ({
+    id: `session-digest-${ids[index]}`,
+    kind: "context",
+    title: "Cake · session updates",
+    text: `${HEADER}\n${digestGuidance}\n${line}${FOOTER}`,
+  }));
 }
 
 /** Only removes the exact Cake-owned block at its injection boundary. */

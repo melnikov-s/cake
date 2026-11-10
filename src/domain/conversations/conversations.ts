@@ -1,8 +1,10 @@
-import { Effect, Stream } from "effect";
+import { Deferred, Effect, Option, Stream } from "effect";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { pendingIncomingParts } from "./pendingIncoming";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
+import { PiSessionError } from "../../services/pi/CakeSessionRuntimes";
 import type {
   CakeSessionRuntimeAcquireOptions,
-  PiSessionError,
   PiSessionEvent,
   CakeSessionHandle,
   CakeSessionRuntimes,
@@ -366,4 +368,55 @@ export const projectAttachments = (values: ReadonlyArray<Attachment>): ReadonlyA
     }
   });
 
-export const observe = (handle: CakeSessionHandle) => projectUpdates(handle.updates);
+export const observe = (handle: CakeSessionHandle) =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const storage = yield* Effect.serviceOption(SessionFamilyStorage);
+      if (Option.isNone(storage) || handle.profile === "SubagentSession")
+        return projectUpdates(handle.updates);
+      const inbox = storage.value;
+      const ready = yield* Deferred.make<void>();
+      const { sessionId } = yield* handle.snapshot();
+      const pending = () =>
+        inbox.state().pipe(
+          Effect.map((document) => pendingIncomingParts(document, sessionId)),
+          Effect.mapError(
+            (cause) => new PiSessionError({ operation: "observeIncoming", message: String(cause) }),
+          ),
+        );
+      // Inbox invalidations never replace Pi's runtime state or submit input. On admission,
+      // include Pi's own matching entries so transport/event ordering cannot create a gap.
+      const incoming = inbox.changes().pipe(
+        Stream.mapEffect(pending),
+        Stream.changesWith((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+        Stream.mapAccumEffect(
+          () => new Set<string>(),
+          (known, previews) =>
+            Effect.gen(function* () {
+              const ids = new Set([...known, ...previews.map((part) => part.id)]);
+              const snapshot = yield* handle.snapshot();
+              const admitted = snapshot.parts.filter((part) => ids.has(part.id));
+              const actual = new Set(admitted.map((part) => part.id));
+              const parts = [...admitted, ...previews.filter((part) => !actual.has(part.id))];
+              const next = new Set(parts.map((part) => part.id));
+              const update: ConversationUpdate = {
+                _tag: "Event",
+                revision: 0,
+                event: { _tag: "IncomingUpdated", sessionId, parts: parts.map(toJsonValue) },
+              };
+              return [next, [update]] as const;
+            }),
+        ),
+      );
+      const runtime = projectUpdates(handle.updates).pipe(
+        Stream.tap(() => Deferred.succeed(ready, undefined)),
+      );
+      const previews = Stream.unwrap(Deferred.await(ready).pipe(Effect.as(incoming)));
+      return Stream.merge(runtime, previews).pipe(
+        Stream.mapAccum(
+          () => 0,
+          (revision, update) => [revision + 1, [{ ...update, revision: revision + 1 }]] as const,
+        ),
+      );
+    }),
+  );

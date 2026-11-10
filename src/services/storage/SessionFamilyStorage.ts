@@ -34,6 +34,8 @@ import {
   Scope,
   Exit,
   Struct,
+  type Stream,
+  SubscriptionRef,
 } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 import { timedStorageRead } from "./internal/timedStorageRead";
@@ -68,6 +70,8 @@ export class SessionFamilyStorage extends Context.Service<
   SessionFamilyStorage,
   {
     readonly state: () => Effect.Effect<SessionFamilyDocument, SessionFamilyStorageError>;
+    /** Invalidations only; observing never admits or handles incoming content. */
+    readonly changes: () => Stream.Stream<number>;
     readonly authorizeAutoMerge: (
       runId: string,
       epoch: string,
@@ -286,6 +290,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       const path = yield* Path.Path;
       const lock = yield* Semaphore.make(1);
       const noticeDeliveryLock = yield* Semaphore.make(1);
+      const revision = yield* SubscriptionRef.make(0);
 
       // Pending delivery and other workflows share this document. Decode it again
       // only after the file changes; every atomic rewrite replaces the file's identity.
@@ -336,6 +341,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           `${JSON.stringify({ version: DOCUMENT_VERSION, data }, null, 2)}\n`,
           writeError,
         );
+        yield* SubscriptionRef.update(revision, (value) => value + 1);
       });
 
       const list = Effect.fn("SessionFamilyStorage.list")(() =>
@@ -1398,6 +1404,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         familyForMember,
         addChild,
         state,
+        changes: () => SubscriptionRef.changes(revision),
         withMemberLock,
         withCreationLock: (key, effect) => withKeyLock(`creation:${key}`, effect),
         recordTurn,

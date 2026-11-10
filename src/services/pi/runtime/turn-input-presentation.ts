@@ -20,7 +20,7 @@ import {
 import {
   internalInputOrigins,
   isAutomaticInput,
-  passiveNoticeParts,
+  admittedIncomingParts,
   queuedAutomaticInputPart,
 } from "./internal-input-projection";
 import { promptText } from "./user-message-transport";
@@ -163,7 +163,7 @@ export function projectPendingInputParts(
   return parts.flatMap((part) => {
     const item = payloads.get(part.id);
     const internal = item?.turnId ? internalInputById(item.turnId) : undefined;
-    const notices = isAutomaticInput(internal) ? [] : passiveNoticeParts(internal);
+    const notices = admittedIncomingParts(internal, item?.text ?? "");
     const row: UiPart =
       part.kind === "text" && item
         ? {

@@ -23,6 +23,7 @@ import {
   agentUpdatePart,
 } from "./internal-input-projection";
 import { splitContextReminders } from "./session-context-reminders";
+import { sessionDigestParts } from "../../../contracts/cake-chats/session-digest-reminder";
 import {
   createSystemContextProjector,
   withoutRuntimeSystemPrompt,
@@ -102,12 +103,20 @@ export function partsFromMessage(
               reminder.title === "Cake · batched updates")
           ),
       )
-      .map((reminder, index): UiPart => ({
-        id: `${baseId}-context-${index}`,
-        kind: "context",
-        title: reminder.title,
-        text: reminder.text,
-      }));
+      .flatMap((reminder, index): UiPart[] => {
+        const digest =
+          reminder.title === "Cake · session updates" ? sessionDigestParts(reminder.text) : [];
+        return digest.length
+          ? digest
+          : [
+              {
+                id: `${baseId}-context-${index}`,
+                kind: "context",
+                title: reminder.title,
+                text: reminder.text,
+              },
+            ];
+      });
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
     // Exact human prose excludes host-appended attachment envelopes. Read those

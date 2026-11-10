@@ -4,7 +4,7 @@ import { artifactTargetFromReminder } from "../../contracts/artifacts/artifact-p
 import { InternalInput, withoutPassiveNotices } from "../../contracts/conversations/internal-input";
 import {
   isAutomaticInput,
-  passiveNoticeParts,
+  admittedIncomingParts,
   queuedAutomaticInputPart,
 } from "../pi/runtime/internal-input-projection";
 import type { Message } from "@earendil-works/pi-durable-ai";
@@ -275,7 +275,7 @@ export function durableQueuedParts(
   id: string,
 ): UiPart[] {
   const internal = durableQueuedPresentation(item.content).internal;
-  const notices = isAutomaticInput(internal) ? [] : passiveNoticeParts(internal);
+  const notices = admittedIncomingParts(internal, durableQueuedPresentation(item.content).text);
   const display = queuedUserMessageDisplay(
     durableQueuedDisplayText(item.content),
     internal?._tag === "UserWithReminders" && internal.userText !== undefined,

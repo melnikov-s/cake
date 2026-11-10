@@ -249,6 +249,8 @@ export const attachmentSchema = Schema.Union([
 ]);
 
 const partBase = {
+  /** Display-only inbox preview. Never an admission or a report-handling receipt. */
+  pendingIncoming: Schema.optionalKey(Schema.Boolean),
   id: stringRange(1, 256),
   /** Inherited Pi originals, grouped separately from this fork's own dialogue. */
   originalHistory: Schema.optionalKey(Schema.Boolean),

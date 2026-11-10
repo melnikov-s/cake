@@ -476,6 +476,7 @@ const makeLayer = (
     hooks.applicationLayer ?? application,
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {
+      changes: () => Stream.empty,
       authorizeAutoMerge: () => Effect.void,
       markNoticeFailure: () => Effect.void,
       retryNoticeDelivery: () => Effect.void,

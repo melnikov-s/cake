@@ -445,7 +445,12 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
         behavior: props.behavior,
       }}
     >
-      <div className="contents" data-part-id={props.part.id}>
+      <div
+        className={props.part.pendingIncoming ? "opacity-50" : "contents"}
+        data-part-id={props.part.id}
+        data-pending-incoming={props.part.pendingIncoming || undefined}
+        aria-label={props.part.pendingIncoming ? "Pending incoming update" : undefined}
+      >
         <TranscriptPartContent {...props} />
         {props.part.kind === "text" &&
           !props.part.crossSession &&

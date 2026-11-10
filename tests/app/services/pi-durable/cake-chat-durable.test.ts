@@ -1350,8 +1350,9 @@ it.each(["UserWithReminders", "UpdateBatch"] as const)(
               queuedInput: expect.objectContaining({ text: origin.text }),
             }),
           ]
-        : // A held batch is one ordinary queue row; its FYIs join the transcript when consumed.
+        : // The transport stays queued; already-admitted FYIs remain visible with their stable IDs.
           [
+            expect.objectContaining(authored),
             expect.objectContaining({
               kind: "text",
               role: "user",

@@ -130,6 +130,15 @@ export function renderConversationSession(
     publish(changes: Partial<ConversationSnapshot>) {
       act(() => publish(changes));
     },
+    incoming(parts: UiPart[]) {
+      act(() =>
+        applyConversationUpdate(model, {
+          _tag: "Event",
+          revision: ++revision,
+          event: { _tag: "IncomingUpdated", sessionId, parts },
+        }),
+      );
+    },
     failObservation(message: string) {
       act(() => {
         model.historyOnly = true;

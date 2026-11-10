@@ -69,6 +69,8 @@ export function unloadConversationProjection(model: Conversation) {
     });
     model.historyCursor = undefined;
     model.earlierParts.splice(0);
+    model.incomingAnchors.splice(0);
+    model.incomingParts.splice(0);
     model.observedSnapshotRevision = 0;
     model.historyOnly = false;
     model.observationError = undefined;
@@ -141,6 +143,7 @@ export function applyConversationSnapshot(
             ),
         );
     }
+    model.reconcileIncomingOrder(parsed.parts);
     applyConversationCatalog(model, parsed, historyOnly);
     applySnapshot(model, {
       ...authoritative,
@@ -162,14 +165,19 @@ function applyConversationEvent(model: Conversation, event: ConversationEvent) {
     return;
   }
   batch(() => {
-    if (event._tag === "PartUpdated")
-      applyPartUpdate(
-        model.parts,
-        Schema.decodeUnknownSync(uiPartSchema)(event.part),
-        model.sessionId,
-      );
-    else if (event._tag === "PartRemoved") removePart(model.parts, event.partId);
-    else if (event._tag === "StreamingChanged") {
+    if (event._tag === "IncomingUpdated") {
+      model.incomingParts = event.parts.map((part) => Schema.decodeUnknownSync(uiPartSchema)(part));
+      model.reconcileIncomingOrder(model.parts.map((part) => part.value));
+    } else if (event._tag === "PartUpdated") {
+      const part = Schema.decodeUnknownSync(uiPartSchema)(event.part);
+      applyPartUpdate(model.parts, part, model.sessionId);
+      if (model.incomingParts.some((incoming) => incoming.id === part.id))
+        model.incomingParts = model.incomingParts.filter((incoming) => incoming.id !== part.id);
+    } else if (event._tag === "PartRemoved") {
+      removePart(model.parts, event.partId);
+      if (model.incomingParts.some((part) => part.id === event.partId))
+        model.incomingParts = model.incomingParts.filter((part) => part.id !== event.partId);
+    } else if (event._tag === "StreamingChanged") {
       model.streaming = event.streaming;
       // Pi's settled run ends activity even if correlation bookkeeping follows later.
       if (!event.streaming) model.activeTurnIds.splice(0);

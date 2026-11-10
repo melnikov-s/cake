@@ -1,4 +1,6 @@
 import { Option, Schema } from "effect";
+import { sessionDigestParts } from "../../../contracts/cake-chats/session-digest-reminder";
+import { splitContextReminders } from "./session-context-reminders";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { InternalInput } from "../../../contracts/conversations/internal-input";
 import type { UiPart } from "../../../contracts/conversations/session-contract";
@@ -60,6 +62,15 @@ export function passiveNoticeParts(origin?: InternalInput): UiPart[] {
   ];
 }
 
+/** Already-admitted quiet content remains visible even while its transport is queued. */
+export function admittedIncomingParts(origin: InternalInput | undefined, text: string): UiPart[] {
+  if (origin?._tag !== "UserWithReminders" && origin?._tag !== "UpdateBatch") return [];
+  const digest = splitContextReminders(text).reminders.find(
+    (item) => item.title === "Cake · session updates",
+  );
+  return [...(digest ? sessionDigestParts(digest.text) : []), ...passiveNoticeParts(origin)];
+}
+
 export function agentUpdatePart(update: AgentUpdate): UiPart {
   return {
     id: `agent-update-${update.id}`,
@@ -91,7 +102,8 @@ export function subagentCompletionPart(id: string, text: string): UiPart {
 
 /**
  * A held automatic input is an ordinary queue row: it can be steered, sent now, reordered or
- * removed exactly like a user message, and shows in the queue rather than the transcript.
+ * removed exactly like a user message. Its transport stays in the queue; already-admitted
+ * quiet batch contents are projected separately by admittedIncomingParts.
  */
 export function queuedAutomaticInputPart(
   origin: AutomaticInput,

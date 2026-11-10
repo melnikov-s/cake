@@ -28,6 +28,55 @@ const snapshot = (parts: ConversationSnapshot["parts"] = []): ConversationSnapsh
 // Retain authority identity rejection (unreachable through valid UI actions) and
 // preservation of renderer-local in-flight turns/diagnostics during resnapshots.
 describe("Conversation authority isolation", () => {
+  it("keeps inbox previews and ordering transient, yields to Pi deltas, and never resurrects a removed entry", () => {
+    using model = Conversation.create({ sessionId: "session" });
+    applyConversationSnapshot(model, snapshot());
+    const part = { id: "incoming", kind: "context" as const, title: "Update", text: "New result" };
+    applyConversationUpdate(model, {
+      _tag: "Event",
+      revision: 1,
+      event: {
+        _tag: "IncomingUpdated",
+        sessionId: "session",
+        parts: [{ ...part, pendingIncoming: true }],
+      },
+    });
+    expect(model.uiParts).toEqual([{ ...part, pendingIncoming: true }]);
+    expect(toSnapshot(model)).not.toHaveProperty("incomingParts");
+    expect(toSnapshot(model)).not.toHaveProperty("incomingAnchors");
+    expect(toSnapshot(model).parts).toEqual([]);
+    applyConversationUpdate(model, {
+      _tag: "Event",
+      revision: 2,
+      event: {
+        _tag: "IncomingUpdated",
+        sessionId: "session",
+        parts: [part],
+      },
+    });
+    applyConversationUpdate(model, {
+      _tag: "Event",
+      revision: 3,
+      event: {
+        _tag: "PartUpdated",
+        sessionId: "session",
+        part,
+      },
+    });
+    expect(model.uiParts).toEqual([part]);
+    expect(model.incomingParts).toEqual([]);
+    applyConversationUpdate(model, {
+      _tag: "Event",
+      revision: 4,
+      event: {
+        _tag: "PartRemoved",
+        sessionId: "session",
+        partId: part.id,
+      },
+    });
+    expect(model.uiParts).toEqual([]);
+  });
+
   it.each([true, false])(
     "preserves local diagnostics while preserveActiveTurns is %s",
     (preserveActiveTurns) => {

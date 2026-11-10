@@ -102,6 +102,8 @@ export interface ConversationSnapshot extends Schema.Schema.Type<typeof Conversa
 export const ConversationEvent = Schema.TaggedUnion({
   SnapshotUpdated: { snapshot: ConversationSnapshot },
   PartUpdated: { sessionId: boundedId, part: Schema.Json },
+  /** Transient display projection, never a Pi input or handling receipt. */
+  IncomingUpdated: { sessionId: boundedId, parts: Schema.Array(Schema.Json) },
   PartRemoved: { sessionId: boundedId, partId: boundedId },
   StreamingChanged: { sessionId: boundedId, streaming: Schema.Boolean },
   UsageUpdated: { sessionId: boundedId, usage: Schema.Json },
