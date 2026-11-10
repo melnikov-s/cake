@@ -38,7 +38,7 @@ function setup(addProjectPlacement?: AddProjectPlacement) {
 it("separates primary actions, the labelled project list and quieter utilities", () => {
   using f = setup();
   const rail = within(f.rail);
-  const order = (name: string) => rail.getByRole("button", { name });
+  const order = (name: string | RegExp) => rail.getByRole("button", { name });
   const position = (a: Element, b: Element) => a.compareDocumentPosition(b);
   // New session and Search stay at the top with Cake Chat; utilities stay at the bottom.
   expect(position(order("New session"), f.heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -58,13 +58,42 @@ it("separates primary actions, the labelled project list and quieter utilities",
   const sharing = rail.getByRole("button", { name: /^Browser sharing:/ });
   expect(sharing.querySelector('[data-slot="icon-button-label"]')).toBeNull();
   expect(sharing.querySelector(".rounded-full")).not.toBeNull();
+  // Only project artwork was reduced by the hierarchy change. Keep navigation glyphs
+  // at their existing 18px size, without undoing compact targets or label inheritance.
+  for (const name of [
+    "Open Cake Chat",
+    "New session",
+    "Search sessions",
+    "Artifacts",
+    "Automations",
+    "Settings",
+    /^Browser sharing:/,
+  ]) {
+    const button = order(name);
+    const glyph = button.querySelector("svg")!;
+    expect(glyph.getAttribute("width")).toBe("18");
+    expect(glyph.getAttribute("height")).toBe("18");
+    const label = button.querySelector('[data-slot="icon-button-label"]');
+    expect(label?.classList.contains("font-semibold")).not.toBe(true);
+    expect(label?.classList.contains("text-foreground")).not.toBe(true);
+  }
+  for (const name of ["Open Cake Chat", "New session", "Search sessions"])
+    expect(order(name).classList.contains("h-8")).toBe(true);
+  for (const name of ["Artifacts", "Automations", "Settings"])
+    expect(order(name).classList.contains("h-7")).toBe(true);
 });
 
 it("puts Add project on the Projects heading by default", async () => {
   using f = setup();
   const add = within(f.heading).getByRole("button", { name: "Add project" });
   expect(within(f.projects).queryByRole("button", { name: "Add project" })).toBeNull();
-  await userEvent.setup().click(add);
+  expect(add.querySelector("svg")!.getAttribute("width")).toBe("18");
+  const user = userEvent.setup();
+  await user.tab();
+  // Preserve the new compact + beside the heading when names are disclosed.
+  expect(f.rail.getAttribute("data-expanded")).toBe("true");
+  expect(add.querySelector("svg")!.getAttribute("width")).toBe("12");
+  await user.click(add);
   expect(f.chooseProject).toHaveBeenCalledTimes(1);
 });
 

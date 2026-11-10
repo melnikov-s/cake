@@ -92,8 +92,8 @@ export function createInterfaceIconsScenario(
       expect(cakeGeometry.inside).toBe(true);
       const project = rail.getByRole("button", { name: /^Open Project Chat for / }).first();
       const projectIcon = await project.locator('[data-slot="avatar"] img').boundingBox();
-      expect(projectIcon!.width).toBe(24);
-      expect(projectIcon!.height).toBe(24);
+      expect(projectIcon!.width).toBe(32.5);
+      expect(projectIcon!.height).toBe(32.5);
       expect((await project.boundingBox())!.height).toBe(32);
       const breadcrumbIcon = page
         .getByRole("navigation", { name: "Conversation breadcrumb" })
@@ -256,7 +256,7 @@ export function createProjectThumbnailsScenario(
   return {
     name: "project-thumbnails",
     description:
-      "32.5px custom/fallback project artwork, selected/running project and unchanged targets",
+      "32.5px custom/fallback project artwork, selected/running project and compact 32px rows",
     states: ["compact", "expanded"],
     seed: navigation.seed,
     async prepare(page, state, application) {
@@ -281,14 +281,16 @@ export function createProjectThumbnailsScenario(
         const artwork = button.locator('[data-slot="avatar"] img');
         await expect(artwork).toHaveCSS("width", "32.5px");
         await expect(artwork).toHaveCSS("height", "32.5px");
-        await expect(button).toHaveCSS("height", "36px");
+        await expect(button).toHaveCSS("height", "32px");
         const image = (await artwork.boundingBox())!;
         const target = (await button.boundingBox())!;
         const bounds = (await rail.boundingBox())!;
         expect(image.x).toBeGreaterThanOrEqual(target.x);
         expect(image.x + image.width).toBeLessThanOrEqual(bounds.x + bounds.width);
-        expect(image.y).toBeGreaterThanOrEqual(target.y);
-        expect(image.y + image.height).toBeLessThanOrEqual(target.y + target.height);
+        // Historical artwork is 0.5px taller than the retained compact row: center it,
+        // allowing only a quarter-pixel overhang above and below, not layout growth.
+        expect(image.y).toBe(target.y - 0.25);
+        expect(image.y + image.height).toBe(target.y + target.height + 0.25);
       }
       await expect(selected.locator("img")).toHaveCSS("object-fit", "contain");
       const dot = selected.getByRole("img", { name: "Work running in cake", exact: true });
@@ -302,7 +304,7 @@ export function createProjectThumbnailsScenario(
         "PROJECT_THUMBNAIL_GEOMETRY",
         JSON.stringify({
           artwork: ["32.5px", "32.5px"],
-          targetHeight: "36px",
+          targetHeight: "32px",
           status: ["6px", "6px"],
           state,
           railWidth: await rail.evaluate((element) => getComputedStyle(element).width),

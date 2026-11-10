@@ -247,11 +247,11 @@ export const ProjectRail = observer(function ProjectRail({
                     }
                   }}
                 >
-                  <span className="relative grid size-6 place-items-center">
+                  <span className="relative -my-0.5 grid size-9 place-items-center">
                     <Avatar
                       kind="project"
-                      // Project artwork is not a control glyph; size it to sit level with line icons.
-                      className="size-6"
+                      // Keep the historical artwork/wrapper; negative margins center it in 32px rows.
+                      className="size-[32.5px]"
                       seed={projects.nameForPath(path)}
                       customIcon={projects.find(path)?.settings?.icon}
                       title={projects.nameForPath(path)}
@@ -265,7 +265,7 @@ export const ProjectRail = observer(function ProjectRail({
                           role="img"
                           aria-hidden={false}
                           aria-label={`${errorProjects.has(path) ? "Error" : "Unread sessions"} in ${projects.nameForPath(path)}`}
-                          className="absolute -bottom-0.5 -left-0.5 ring-2 ring-sidebar"
+                          className="absolute bottom-0.5 left-0.5 ring-2 ring-sidebar"
                         />
                       )}
                     {runningProjects.has(path) && (
@@ -275,7 +275,7 @@ export const ProjectRail = observer(function ProjectRail({
                         role="img"
                         aria-hidden={false}
                         aria-label={`Work running in ${projects.nameForPath(path)}`}
-                        className="absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar"
+                        className="absolute bottom-0.5 right-0.5 ring-2 ring-sidebar"
                       />
                     )}
                   </span>
