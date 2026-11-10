@@ -237,6 +237,81 @@ function renderWorktree(
 }
 afterEach(cleanup);
 
+describe("manual worktree prompt confirmation", () => {
+  it.each([
+    ["Run", "run"],
+    ["Cancel", "cancel"],
+    ["Tool prune and run", "tool-prune"],
+  ] as const)("submits %s once for the exact pending request", async (label, decision) => {
+    const accepted = gate<void>();
+    const confirmAgentPrompt = vi.fn<Client["managedWorktrees"]["confirmAgentPrompt"]>(
+      () => accepted.promise,
+    );
+    using fixture = renderWorktree({
+      operation: operation("stalled", {
+        confirmAgentPrompts: true,
+        pauseReason: "commit",
+        promptConfirmation: { id: "confirm-1", estimatedTokens: 120_000 },
+      }),
+      client: { managedWorktrees: { confirmAgentPrompt } },
+    });
+    expect(await screen.findByText("Run this agent request?")).toBeTruthy();
+    expect(screen.getByText(/120K context tokens/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: label }));
+    expect(confirmAgentPrompt).toHaveBeenCalledExactlyOnceWith({
+      workspacePath: "/worktree",
+      operationId: "landing-operation",
+      confirmationId: "confirm-1",
+      decision,
+    });
+    expect(screen.getByRole("button", { name: label })).toHaveProperty("disabled", true);
+    await act(async () => {
+      await fixture.publish(
+        operation("stalled", {
+          confirmAgentPrompts: true,
+          pauseReason: "commit",
+          promptConfirmation: { id: "confirm-1", estimatedTokens: 120_000, decision },
+        }),
+      );
+      accepted.resolve();
+    });
+    expect(screen.queryByText("Run this agent request?")).toBeNull();
+    expect(confirmAgentPrompt).toHaveBeenCalledOnce();
+  });
+
+  it("hides a pending confirmation when navigating away from its recipient", async () => {
+    using fixture = renderWorktree({
+      operation: operation("stalled", {
+        confirmAgentPrompts: true,
+        promptConfirmation: { id: "confirm-navigation", estimatedTokens: 120_000 },
+      }),
+    });
+    expect(await screen.findByText("Run this agent request?")).toBeTruthy();
+    await act(async () =>
+      fixture.root.navigationStore.selectCakeChat(`project-chat:${"c".repeat(64)}`),
+    );
+    expect(screen.queryByText("Run this agent request?")).toBeNull();
+  });
+
+  it("does not show a sibling recipient's countdown in this session", async () => {
+    using fixture = renderWorktree({
+      operation: operation("stalled", {
+        confirmAgentPrompts: true,
+        sessionId: "sibling",
+        promptConfirmation: { id: "confirm-sibling", estimatedTokens: 120_000 },
+      }),
+    });
+    expect(screen.queryByText("Run this agent request?")).toBeNull();
+  });
+
+  it("does not show confirmation for tool operations", async () => {
+    using fixture = renderWorktree({ operation: operation("stalled", { pauseReason: "commit" }) });
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText("Run this agent request?")).toBeNull();
+  });
+});
+
 describe("Worktree operation workflows", () => {
   it("keeps manual Merge and Merge & resolve when project auto-merge is off", async () => {
     using fixture = renderWorktree();

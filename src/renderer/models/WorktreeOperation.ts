@@ -11,6 +11,8 @@ export class WorktreeOperation extends Model {
   sessionId = "";
   kind: WorktreeLandingOperation["kind"] = "landing";
   phase: WorktreeLandingPhase = "waiting";
+  confirmAgentPrompts: WorktreeLandingOperation["confirmAgentPrompts"];
+  promptConfirmation: WorktreeLandingOperation["promptConfirmation"];
   queue: WorktreeLandingOperation["queue"];
   strategy: WorktreeLandingOperation["strategy"];
   allowDirtyTarget = false;

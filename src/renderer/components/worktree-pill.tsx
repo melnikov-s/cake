@@ -34,6 +34,7 @@ import {
 import { LoadingState } from "./ui/loading-state";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 import { TooltipBubble, useTooltip } from "./ui/tooltip";
+import { WorktreePromptConfirmation } from "./worktree-prompt-confirmation";
 import { WorktreePillAction } from "./worktree-pill-action";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import { cn } from "@/lib/utils";
@@ -420,7 +421,7 @@ export const WorktreePill = observer(function WorktreePill({
               {actions.phase === "resolving-session" ? "Resolving…" : "Resolve"}
             </WorktreePillAction>
           )}
-          {actions.stalled && (
+          {actions.stalled && !actions.promptConfirmation && (
             <>
               {actions.canRetryLanding && (merges || actions.isRebaseOperation) && (
                 <WorktreePillAction
@@ -502,6 +503,9 @@ export const WorktreePill = observer(function WorktreePill({
           )}
         </div>
       </div>
+      {actions.promptConfirmation && (
+        <WorktreePromptConfirmation confirmation={actions.promptConfirmation} actions={actions} />
+      )}
       {hasNewCommitsSinceLanding && !actions.isQueued && (
         <p className="px-2 text-xs text-muted-foreground">
           {newCommitCount} new {newCommitCount === 1 ? "commit" : "commits"} since landing
@@ -510,7 +514,7 @@ export const WorktreePill = observer(function WorktreePill({
       {actions.isQueued && (
         <p className="px-2 text-xs text-muted-foreground">{actions.queuedStatus}</p>
       )}
-      {actions.stalled && (
+      {actions.stalled && !actions.promptConfirmation && (
         <p role="status" className="px-2 text-xs text-warning">
           {actions.pausedStatus}
         </p>

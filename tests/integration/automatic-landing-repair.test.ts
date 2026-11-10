@@ -163,6 +163,8 @@ it.each(["conflict", "clean-rebase"] as const)(
               Effect.Services<ReturnType<typeof report> | ReturnType<typeof makeTurnLifecycle>>
             >();
           const agent = WorktreeLandingAgent.of({
+            promptContext: () => Effect.succeed({ estimatedTokens: undefined, cacheWarm: false }),
+            toolPrune: () => Effect.succeed({ status: "compacted" }),
             promptAndWait: ({ text }) =>
               Effect.gen(function* () {
                 events.push("repair-handoff");

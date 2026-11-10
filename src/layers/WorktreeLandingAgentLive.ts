@@ -1,8 +1,10 @@
-import { Context, Effect, Layer, Scope } from "effect";
+import { Clock, Context, Effect, Layer, Scope } from "effect";
 import { cakeChatSideChatConversationId } from "../contracts/cake-chats/cake-chat-identity";
+import * as projectSessionMetadata from "../domain/project-sessions/projectSessionMetadata";
 import * as projectSessionOperations from "../domain/project-sessions/projectSessionOperations";
 import type { PiModels } from "../services/pi/PiModels";
-import type { CakeSessionRuntimes } from "../services/pi/CakeSessionRuntimes";
+import { promptCachePrediction } from "../utils/prompt-cache-prediction";
+import { CakeSessionRuntimes } from "../services/pi/CakeSessionRuntimes";
 import type { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import type { ProjectAccess } from "../services/projects/ProjectAccess";
 import type { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
@@ -52,6 +54,31 @@ export const WorktreeLandingAgentLive = Layer.effect(
     >();
     const dependencies = Context.omit(Scope.Scope)(context);
     return WorktreeLandingAgent.of({
+      promptContext: Effect.fn("WorktreeLandingAgent.promptContext")((sessionId) =>
+        Effect.gen(function* () {
+          const location = yield* projectSessionMetadata.findLocation({ sessionId });
+          const preview = yield* (yield* CakeSessionRuntimes).inspect({ ...location, sessionId });
+          const prediction = promptCachePrediction(
+            preview.parts,
+            preview.currentModel,
+            yield* Clock.currentTimeMillis,
+          );
+          return {
+            estimatedTokens: preview.contextMetadata?.estimatedTokens,
+            cacheWarm: prediction?.state === "likely-warm",
+          };
+        }).pipe(Effect.provide(dependencies), asError("promptContext")),
+      ),
+      toolPrune: Effect.fn("WorktreeLandingAgent.toolPrune")((sessionId) =>
+        Effect.gen(function* () {
+          const { location } = yield* projectSessionMetadata.lookupWithLocation({ sessionId });
+          const handle = yield* projectSessionOperations.acquireMaintenanceTarget(
+            location,
+            sessionId,
+          );
+          return yield* handle.toolCompactIfIdle();
+        }).pipe(Effect.provide(dependencies), Effect.scoped, asError("toolPrune")),
+      ),
       promptAndWait: Effect.fn("WorktreeLandingAgent.promptAndWait")(function* (input) {
         if (cakeChatSideChatConversationId(input.sessionId) !== undefined)
           return yield* new WorktreeLandingAgentError({

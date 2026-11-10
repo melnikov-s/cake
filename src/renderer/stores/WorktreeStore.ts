@@ -128,6 +128,43 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     return `Queued #${queue.position} behind landing ${queue.blockingOperationId.slice(0, 8)}${queue.blockingSessionId ? ` (session ${queue.blockingSessionId.slice(0, 8)})` : ""} — ${reason}.`;
   }
 
+  get promptConfirmation() {
+    const operation = this.props.operation();
+    const confirmation = operation?.promptConfirmation;
+    return this.props.enabled() &&
+      operation?.sessionId === this.props.sessionId() &&
+      operation?.confirmAgentPrompts &&
+      operation.phase === "stalled" &&
+      confirmation &&
+      !confirmation.decision
+      ? confirmation
+      : undefined;
+  }
+
+  confirmingPrompt = false;
+
+  async confirmAgentPrompt(decision: "run" | "cancel" | "tool-prune") {
+    const operation = this.props.operation();
+    const confirmation = this.promptConfirmation;
+    if (!operation || !confirmation || this.confirmingPrompt) return false;
+    this.confirmingPrompt = true;
+    this.error = undefined;
+    try {
+      await this.managedWorktrees.confirmAgentPrompt({
+        workspacePath: operation.workspacePath,
+        operationId: operation.operationId,
+        confirmationId: confirmation.id,
+        decision,
+      });
+      return true;
+    } catch (error) {
+      this.error = describeError(error).message;
+      return false;
+    } finally {
+      this.confirmingPrompt = false;
+    }
+  }
+
   get canRetryLanding() {
     return this.stalled && !this.props.operation()?.automatic;
   }
@@ -212,6 +249,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (resolveAfterLanding) this.props.onMergeAndResolveStarted(operationId);
     try {
       const operation = await this.managedWorktrees.startLanding({
+        confirmAgentPrompts: true,
         operationId,
         workspacePath,
         sessionId,
@@ -242,6 +280,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.startedResolveAfterLanding = false;
     try {
       const operation = await this.managedWorktrees.startLanding({
+        confirmAgentPrompts: true,
         operationId,
         workspacePath,
         sessionId,
@@ -268,6 +307,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.error = undefined;
     try {
       const operation = await this.managedWorktrees.startRebase({
+        confirmAgentPrompts: true,
         operationId: crypto.randomUUID(),
         workspacePath,
         sessionId,
@@ -291,6 +331,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.error = undefined;
     try {
       const operation = await this.managedWorktrees.retryLanding({
+        confirmAgentPrompts: true,
         operationId: crypto.randomUUID(),
         workspacePath,
         sessionId,

@@ -22,12 +22,24 @@ export const WorktreeLandingPhase = Schema.Literals([
 ]);
 export type WorktreeLandingPhase = typeof WorktreeLandingPhase.Type;
 
+export const WorktreePromptDecision = Schema.Literals(["run", "cancel", "tool-prune"]);
+export type WorktreePromptDecision = typeof WorktreePromptDecision.Type;
+
 export const WorktreeLandingOperation = Schema.Struct({
   operationId: bounded(1, 256),
   workspacePath: bounded(1, 4_096),
   sessionId: bounded(1, 256),
   kind: Schema.Literals(["landing", "rebase"]),
   phase: WorktreeLandingPhase,
+  /** Only renderer-originated actions may ask for interactive prompt confirmation. */
+  confirmAgentPrompts: Schema.optionalKey(Schema.Literal(true)),
+  promptConfirmation: Schema.optionalKey(
+    Schema.Struct({
+      id: bounded(1, 256),
+      estimatedTokens: Schema.Number,
+      decision: Schema.optionalKey(WorktreePromptDecision),
+    }),
+  ),
   queue: Schema.optionalKey(
     Schema.Struct({
       blockingOperationId: bounded(1, 256),

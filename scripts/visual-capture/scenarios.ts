@@ -6194,6 +6194,152 @@ const activityWorktreeScenario: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="composer-dock"]'),
 };
 
+const worktreePromptConfirmationScenario: VisualCaptureScenario = (() => {
+  let requests: string[] = [];
+  return {
+    name: "worktree-prompt-confirmation",
+    description:
+      "Manual commit request with a large cold context and deterministic tool-prune choice",
+    states: ["default", "cancel", "run", "tool-prune", "enter", "timeout"],
+    async seed(paths, theme) {
+      const cleanup = await activityWorktreeScenario.seed(paths, theme);
+      if (cleanup) await cleanup();
+      requests = [];
+      const worktreePath = resolve(paths.project, "../worktree");
+      await writeFile(join(worktreePath, "pending.txt"), "Uncommitted fixture change\n");
+      const transcript = join(
+        workspaceSessionDirectory(worktreePath, join(paths.cakeHome, "pi", "sessions")),
+        "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+      );
+      const original = await readFile(transcript, "utf8");
+      const entries = original
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      const timestamp = new Date(0).toISOString();
+      const assistant = entries.findLast(
+        (entry) => entry.type === "message" && entry.message.role === "assistant",
+      ).message;
+      const additions = [
+        {
+          type: "message",
+          id: "large-tool-call",
+          parentId: entries.at(-1).id,
+          timestamp,
+          message: {
+            ...assistant,
+            content: [
+              {
+                type: "toolCall",
+                id: "large-tool",
+                name: "read",
+                arguments: { path: "fixture.log" },
+              },
+            ],
+          },
+        },
+        {
+          type: "message",
+          id: "large-tool-result",
+          parentId: "large-tool-call",
+          timestamp,
+          message: {
+            role: "toolResult",
+            toolCallId: "large-tool",
+            toolName: "read",
+            content: [{ type: "text", text: "Fixture tool output. ".repeat(30_000) }],
+            isError: false,
+            timestamp: 0,
+          },
+        },
+        {
+          type: "message",
+          id: "ready-for-commit",
+          parentId: "large-tool-result",
+          timestamp,
+          message: {
+            ...assistant,
+            content: [{ type: "text", text: "The change is ready to commit." }],
+          },
+        },
+        {
+          type: "session_info",
+          id: "confirmation-title",
+          parentId: "ready-for-commit",
+          timestamp,
+          name: "Manual commit confirmation",
+        },
+      ];
+      await writeFile(
+        transcript,
+        original + additions.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+      );
+      return openRequestInspectorFixture(paths, {
+        holdResponse: true,
+        beforeResponse: async (body) => {
+          // Label classification is a separate utility request. Count only the
+          // actual automatic agent turn, identified by its exact final user input.
+          const parsed = JSON.parse(body);
+          if (
+            JSON.stringify(parsed.messages?.at(-1)?.content) ===
+            JSON.stringify([{ type: "text", text: "Commit this change." }])
+          )
+            requests.push(body);
+        },
+      });
+    },
+    async prepare(page, state) {
+      await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+      const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
+      await search
+        .getByRole("combobox", { name: "Search session titles" })
+        .fill("Manual commit confirmation");
+      await search.getByRole("option").filter({ hasText: "Manual commit confirmation" }).click();
+      await page.getByRole("button", { name: "Model configuration", exact: true }).click();
+      const changeModel = page.getByRole("button", { name: "Change model", exact: true });
+      const modelSearch = page.getByLabel("Search presets and models");
+      await expect(changeModel.or(modelSearch)).toBeVisible();
+      if (await changeModel.isVisible()) await changeModel.click();
+      await modelSearch.fill("Inspection fixture");
+      await page
+        .getByRole("button", { name: /Inspection fixture/ })
+        .first()
+        .click();
+      const cap = page.getByTestId("worktree-pill");
+      await cap.getByRole("button", { name: /^(?:Commit & merge|Merge)$/ }).click();
+      await expect(cap.getByText("Run this agent request?")).toBeVisible();
+      for (const name of ["Run", "Cancel", "Tool prune and run"])
+        await expect(cap.getByRole("button", { name, exact: true })).toBeEnabled();
+      if (state === "cancel") {
+        await cap.getByRole("button", { name: "Cancel", exact: true }).click();
+        await expect(cap.getByText("Run this agent request?")).toHaveCount(0);
+        await expect(cap.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+        expect(requests).toHaveLength(0);
+      } else if (state !== "default") {
+        if (state === "enter")
+          await cap.getByRole("group", { name: "Agent request confirmation" }).press("Enter");
+        else if (state !== "timeout")
+          await cap
+            .getByRole("button", {
+              name: state === "tool-prune" ? "Tool prune and run" : "Run",
+              exact: true,
+            })
+            .click();
+        await expect.poll(() => requests.length, { timeout: 20_000 }).toBe(1);
+        expect(requests[0]).toContain("Commit this change.");
+        expect(requests[0]).toContain("How should agents capture Cake UI changes?");
+        expect(requests[0]).toContain("The change is ready to commit.");
+        if (state === "tool-prune") expect(requests[0]).not.toContain("Fixture tool output.");
+        else expect(requests[0]).toContain("Fixture tool output.");
+        await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+        await expect(cap.getByText("Run this agent request?")).toHaveCount(0);
+      }
+      await page.mouse.move(1, 1);
+    },
+    region: (page) => page.locator('[data-slot="composer-dock"]'),
+  };
+})();
+
 const pausedWorktreeScenario: VisualCaptureScenario = {
   name: "paused-worktree",
   description: "Real conflicted managed worktree, parked without active resolving presentation",
@@ -8380,6 +8526,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   }),
   cakeChatSessionUpdatesScenario,
   activityWorktreeScenario,
+  worktreePromptConfirmationScenario,
   pausedWorktreeScenario,
   existingWorktreePickerScenario,
   conversationEntryScenario,

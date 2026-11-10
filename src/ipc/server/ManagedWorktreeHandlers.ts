@@ -17,6 +17,8 @@ export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
         (error) => new WorktreeLandingError({ operation: "setAutoMerge", message: error.message }),
       ),
     ),
+  "managedWorktrees.confirmAgentPrompt": (request) =>
+    Effect.flatMap(RendererConnection, () => worktreeLandings.confirmAgentPrompt(request)),
   "managedWorktrees.inspectChanges": ({ workspacePath, base }) =>
     Effect.flatMap(RendererConnection, () => worktreeChanges.inspect(workspacePath, { base })),
   "managedWorktrees.observeCatalog": () => worktreeCatalog.observe(),
@@ -42,12 +44,14 @@ export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
         strategy: request.strategy,
         allowDirtyTarget: request.allowDirtyTarget,
         commitBeforeLanding: request.commitBeforeLanding,
+        confirmAgentPrompts: request.confirmAgentPrompts === true,
         resolveAfterLanding: request.resolveAfterLanding,
       }),
     ).pipe(Effect.map((operation) => ({ requestId: request.requestId, operation }))),
   "managedWorktrees.retry-worktree-landing": (request) =>
     Effect.flatMap(RendererConnection, () =>
       worktreeLandings.retry({
+        confirmAgentPrompts: request.confirmAgentPrompts === true,
         workspacePath: request.workspacePath,
         sessionId: request.sessionId,
       }),
@@ -61,6 +65,7 @@ export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
   "managedWorktrees.start-worktree-rebase": (request) =>
     Effect.flatMap(RendererConnection, () =>
       worktreeLandings.startRebase({
+        confirmAgentPrompts: request.confirmAgentPrompts === true,
         operationId: request.requestId,
         workspacePath: request.workspacePath,
         sessionId: request.sessionId,

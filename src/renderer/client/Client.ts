@@ -353,6 +353,15 @@ interface WorkspaceCommands {
 }
 
 interface ManagedWorktreeCommands {
+  confirmAgentPrompt(
+    input: {
+      workspacePath: string;
+      operationId: string;
+      confirmationId: string;
+      decision: "run" | "cancel" | "tool-prune";
+    },
+    options?: ClientCommandOptions,
+  ): Promise<void>;
   setAutoMerge(
     projectPath: string,
     enabled: boolean,
@@ -386,12 +395,18 @@ interface ManagedWorktreeCommands {
       strategy: "preserve" | "squash";
       allowDirtyTarget: boolean;
       commitBeforeLanding: boolean;
+      confirmAgentPrompts?: boolean;
       resolveAfterLanding: boolean;
     },
     options?: ClientCommandOptions,
   ): Promise<WorktreeLandingOperation>;
   retryLanding(
-    input: { operationId: string; workspacePath: string; sessionId: string },
+    input: {
+      operationId: string;
+      workspacePath: string;
+      sessionId: string;
+      confirmAgentPrompts?: boolean;
+    },
     options?: ClientCommandOptions,
   ): Promise<WorktreeLandingOperation>;
   cancelLanding(
@@ -403,7 +418,12 @@ interface ManagedWorktreeCommands {
     options?: ClientCommandOptions,
   ): Promise<void>;
   startRebase(
-    input: { operationId: string; workspacePath: string; sessionId: string },
+    input: {
+      operationId: string;
+      workspacePath: string;
+      sessionId: string;
+      confirmAgentPrompts?: boolean;
+    },
     options?: ClientCommandOptions,
   ): Promise<WorktreeLandingOperation>;
   discard(

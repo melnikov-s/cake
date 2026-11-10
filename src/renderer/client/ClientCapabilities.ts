@@ -361,6 +361,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
             }),
           options,
         ).then((response) => response.record),
+      confirmAgentPrompt: (input, options) =>
+        execute(
+          "managedWorktrees.confirmAgentPrompt",
+          (client) => client.managedWorktrees.confirmAgentPrompt(input),
+          options,
+        ),
       landing: (input, options) =>
         execute(
           "managedWorktrees.get-worktree-landing",
@@ -378,6 +384,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
               strategy: input.strategy,
               allowDirtyTarget: input.allowDirtyTarget,
               commitBeforeLanding: input.commitBeforeLanding,
+              confirmAgentPrompts: input.confirmAgentPrompts === true,
               resolveAfterLanding: input.resolveAfterLanding,
             }),
           options,
@@ -387,6 +394,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           "managedWorktrees.retry-worktree-landing",
           (client) =>
             client.managedWorktrees["retry-worktree-landing"]({
+              confirmAgentPrompts: input.confirmAgentPrompts === true,
               requestId: input.operationId,
               workspacePath: input.workspacePath,
               sessionId: input.sessionId,
@@ -413,6 +421,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           "managedWorktrees.start-worktree-rebase",
           (client) =>
             client.managedWorktrees["start-worktree-rebase"]({
+              confirmAgentPrompts: input.confirmAgentPrompts === true,
               requestId: input.operationId,
               workspacePath: input.workspacePath,
               sessionId: input.sessionId,

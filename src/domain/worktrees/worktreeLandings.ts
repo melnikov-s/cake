@@ -1,5 +1,5 @@
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
-import { Cause, Effect, FiberMap, Stream, SubscriptionRef } from "effect";
+import { Cause, Effect, FiberMap, Option, Stream, SubscriptionRef } from "effect";
 import type {
   WorktreeLandRequest,
   WorktreeStatus,
@@ -17,6 +17,7 @@ import {
   WorktreeLandingError,
   type WorktreeLandingOperation,
   type WorktreeLandingSnapshot,
+  type WorktreePromptDecision,
 } from "../../contracts/worktrees/worktree-landing-data";
 
 import { measureLanding } from "../../services/diagnostics/responsiveness-diagnostics";
@@ -25,6 +26,8 @@ const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : 
 
 const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandingOperation => {
   const normalized = { ...operation };
+  if (normalized.confirmAgentPrompts === undefined) delete normalized.confirmAgentPrompts;
+  if (normalized.promptConfirmation === undefined) delete normalized.promptConfirmation;
   if (normalized.strategy === undefined) delete normalized.strategy;
   if (normalized.resolveAfterLanding === undefined) delete normalized.resolveAfterLanding;
   if (normalized.automatic === undefined) delete normalized.automatic;
@@ -123,10 +126,101 @@ const prompt = Effect.fn("WorktreeLandings.prompt")(function* (
   operation: WorktreeLandingOperation,
   text: string,
 ) {
-  yield* (yield* WorktreeLandingAgent)
-    .promptAndWait({ sessionId: operation.sessionId, text })
-    .pipe(asError("prompt"));
+  const agent = yield* WorktreeLandingAgent;
+  if (operation.confirmAgentPrompts) {
+    const context = yield* agent.promptContext(operation.sessionId).pipe(asError("context"));
+    if ((context.estimatedTokens ?? 0) > 50_000 && !context.cacheWarm) {
+      const coordinator = yield* WorktreeLandingCoordinator;
+      const current = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
+        operation.workspacePath,
+      );
+      const phase = current?.phase ?? operation.phase;
+      const confirmation = {
+        id: crypto.randomUUID(),
+        estimatedTokens: context.estimatedTokens ?? 0,
+      };
+      // Waiting on a person must not retain the target landing reservation.
+      yield* update(operation.workspacePath, operation.operationId, (item) => ({
+        ...item,
+        phase: "stalled",
+        promptConfirmation: confirmation,
+      }));
+      const observed = yield* SubscriptionRef.changes(coordinator.state).pipe(
+        Stream.map((state) => state.operations.get(operation.workspacePath)),
+        Stream.filter(
+          (item) =>
+            item?.operationId !== operation.operationId ||
+            item.promptConfirmation?.id !== confirmation.id ||
+            item.promptConfirmation.decision !== undefined,
+        ),
+        Stream.runHead,
+      );
+      const answered = Option.getOrUndefined(observed);
+      if (
+        answered?.operationId !== operation.operationId ||
+        answered.promptConfirmation?.id !== confirmation.id
+      )
+        return false;
+      const decision = answered.promptConfirmation.decision;
+      if (decision === "cancel") return false;
+      yield* update(operation.workspacePath, operation.operationId, (item) => ({ ...item, phase }));
+      if (decision === "tool-prune") {
+        const result = yield* agent.toolPrune(operation.sessionId).pipe(Effect.result);
+        if (result._tag === "Failure" || result.success.status !== "compacted") {
+          yield* update(operation.workspacePath, operation.operationId, (item) => ({
+            ...item,
+            phase: "stalled",
+            error:
+              result._tag === "Failure"
+                ? result.failure.message
+                : "Tool prune did not complete; no agent request was sent.",
+          }));
+          return false;
+        }
+      }
+      yield* update(operation.workspacePath, operation.operationId, (item) => ({
+        ...item,
+        promptConfirmation: undefined,
+      }));
+    }
+  }
+  yield* agent.promptAndWait({ sessionId: operation.sessionId, text }).pipe(asError("prompt"));
+  return true;
 });
+
+/** Renderer-only response, claimed once against the exact pending prompt. */
+export const confirmAgentPrompt = Effect.fn("WorktreeLandings.confirmAgentPrompt")(
+  function* (input: {
+    readonly workspacePath: string;
+    readonly operationId: string;
+    readonly confirmationId: string;
+    readonly decision: WorktreePromptDecision;
+  }) {
+    const coordinator = yield* WorktreeLandingCoordinator;
+    yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+      Effect.gen(function* () {
+        const current = state.operations.get(input.workspacePath);
+        const confirmation = current?.promptConfirmation;
+        if (
+          !current?.confirmAgentPrompts ||
+          current.operationId !== input.operationId ||
+          current.phase !== "stalled" ||
+          confirmation?.id !== input.confirmationId ||
+          confirmation.decision !== undefined
+        )
+          return yield* new WorktreeLandingError({
+            operation: "confirmAgentPrompt",
+            message: "This agent request is no longer waiting for confirmation.",
+          });
+        const operations = new Map(state.operations).set(input.workspacePath, {
+          ...current,
+          promptConfirmation: { ...confirmation, decision: input.decision },
+        });
+        return [undefined, { ...state, operations }] as const;
+      }),
+    );
+  },
+);
 
 const gitBlocked = (status: WorktreeStatus) =>
   status.dirtyCount > 0 || status.merging || status.rebasing;
@@ -308,19 +402,22 @@ const performLanding: (
     }));
     return;
   }
-  yield* prompt(
-    operation,
-    outcome.outcome === "proposal"
-      ? renderCakePrompt(configuredPrompts(application).worktreeSquashMessage, {
-          target: status.targetBranch,
-        })
-      : renderCakePrompt(
-          request.strategy === "squash"
-            ? configuredPrompts(application).worktreeSquashConflict
-            : configuredPrompts(application).worktreePreserveConflict,
-          { target: status.targetBranch, files: outcome.files },
-        ),
-  );
+  if (
+    !(yield* prompt(
+      operation,
+      outcome.outcome === "proposal"
+        ? renderCakePrompt(configuredPrompts(application).worktreeSquashMessage, {
+            target: status.targetBranch,
+          })
+        : renderCakePrompt(
+            request.strategy === "squash"
+              ? configuredPrompts(application).worktreeSquashConflict
+              : configuredPrompts(application).worktreePreserveConflict,
+            { target: status.targetBranch, files: outcome.files },
+          ),
+    ))
+  )
+    return;
   const refreshed = yield* requireStatus(operation.workspacePath);
   if (landingBlocked(refreshed, request.strategy)) {
     yield* update(operation.workspacePath, operation.operationId, (current) => ({
@@ -355,12 +452,15 @@ const prepareCommitAndLand = Effect.fn("WorktreeLandings.prepareCommitAndLand")(
     phase: "committing",
     pauseReason: "commit",
   }));
-  yield* prompt(
-    operation,
-    renderCakePrompt(configuredPrompts(application).worktreeCommit, {
-      target: status.targetBranch,
-    }),
-  );
+  if (
+    !(yield* prompt(
+      operation,
+      renderCakePrompt(configuredPrompts(application).worktreeCommit, {
+        target: status.targetBranch,
+      }),
+    ))
+  )
+    return;
   const refreshed = yield* requireStatus(operation.workspacePath);
   // Squash proposals are requested by land, not by the preceding commit step.
   if (gitBlocked(refreshed)) {
@@ -421,13 +521,16 @@ const performRebase = Effect.fn("WorktreeLandings.performRebase")(function* (
     pauseReason: "rebase-conflict",
     conflictFiles: outcome.files,
   }));
-  yield* prompt(
-    operation,
-    renderCakePrompt(configuredPrompts(application).worktreeRebaseConflict, {
-      target: status.targetBranch,
-      files: outcome.files,
-    }),
-  );
+  if (
+    !(yield* prompt(
+      operation,
+      renderCakePrompt(configuredPrompts(application).worktreeRebaseConflict, {
+        target: status.targetBranch,
+        files: outcome.files,
+      }),
+    ))
+  )
+    return;
   const refreshed = yield* requireStatus(operation.workspacePath);
   if (
     refreshed.dirtyCount > 0 ||
@@ -549,6 +652,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
   readonly commitBeforeLanding: boolean;
   readonly resolveAfterLanding?: boolean;
   readonly automatic?: AutomaticLanding;
+  readonly confirmAgentPrompts?: boolean;
 }) {
   const status = yield* requireStatus(input.workspacePath);
   yield* worktreeLifecycle.requireDirectMerge(status.record.projectPath);
@@ -571,6 +675,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
     resolveAfterLanding: input.resolveAfterLanding || undefined,
     automatic: input.automatic ? true : undefined,
     autoMergeRequestId: input.automatic?.requestId,
+    confirmAgentPrompts: input.confirmAgentPrompts && !input.automatic ? true : undefined,
   });
   yield* insert(operation);
   yield* run(
@@ -677,25 +782,28 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
 });
 
 export const startRebase = Effect.fn("WorktreeLandings.startRebase")(function* (input: {
+  readonly confirmAgentPrompts?: boolean;
   readonly operationId: string;
   readonly workspacePath: string;
   readonly sessionId: string;
 }) {
   yield* requireStatus(input.workspacePath);
-  const operation: WorktreeLandingOperation = {
+  const operation = normalizeOperation({
     operationId: input.operationId,
     workspacePath: input.workspacePath,
     sessionId: input.sessionId,
     kind: "rebase",
+    confirmAgentPrompts: input.confirmAgentPrompts ? true : undefined,
     phase: "rebasing",
     allowDirtyTarget: false,
-  };
+  });
   yield* insert(operation);
   yield* run(operation, performRebase(operation));
   return operation;
 });
 
 export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
+  readonly confirmAgentPrompts?: boolean;
   readonly workspacePath: string;
   readonly sessionId: string;
 }) {
@@ -733,6 +841,8 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
     const claimed = normalizeOperation({
       ...current,
       sessionId: input.sessionId,
+      confirmAgentPrompts: input.confirmAgentPrompts ? true : undefined,
+      promptConfirmation: undefined,
       phase: retryPhase,
       error: undefined,
     });
@@ -756,12 +866,15 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
               ...item,
               phase: "committing",
             }));
-            yield* prompt(
-              operation,
-              renderCakePrompt(configuredPrompts(application).worktreeCommit, {
-                target: status.targetBranch,
-              }),
-            );
+            if (
+              !(yield* prompt(
+                operation,
+                renderCakePrompt(configuredPrompts(application).worktreeCommit, {
+                  target: status.targetBranch,
+                }),
+              ))
+            )
+              return;
             const refreshed = yield* requireStatus(operation.workspacePath);
             if (gitBlocked(refreshed)) {
               yield* update(operation.workspacePath, operation.operationId, (item) => ({
@@ -784,12 +897,15 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
               ...item,
               phase: "proposing",
             }));
-            yield* prompt(
-              operation,
-              renderCakePrompt(configuredPrompts(application).worktreeSquashMessage, {
-                target: status.targetBranch,
-              }),
-            );
+            if (
+              !(yield* prompt(
+                operation,
+                renderCakePrompt(configuredPrompts(application).worktreeSquashMessage, {
+                  target: status.targetBranch,
+                }),
+              ))
+            )
+              return;
             const refreshed = yield* requireStatus(operation.workspacePath);
             if (landingBlocked(refreshed, operation.strategy ?? "preserve")) {
               yield* update(operation.workspacePath, operation.operationId, (item) => ({
@@ -1057,6 +1173,7 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
     } else if (
       !operation.automatic &&
       !operation.cancellationRequested &&
+      !operation.promptConfirmation &&
       !landingBlocked(status, operation.strategy ?? "preserve") &&
       (operation.kind === "landing" || status.behindCount === 0)
     ) {
@@ -1069,7 +1186,8 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
           current?.operationId !== pausedId ||
           current.phase !== "stalled" ||
           current.automatic ||
-          current.cancellationRequested
+          current.cancellationRequested ||
+          current.promptConfirmation
         )
           return [undefined, state] as const;
         const resumed = normalizeOperation({ ...current, phase: "waiting", error: undefined });

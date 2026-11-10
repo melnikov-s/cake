@@ -527,6 +527,8 @@ export class RootStore extends Store<{
       sessionId: operation.sessionId,
       kind: operation.kind,
       phase: operation.phase,
+      confirmAgentPrompts: operation.confirmAgentPrompts,
+      promptConfirmation: operation.promptConfirmation,
       queue: operation.queue,
       strategy: operation.strategy,
       allowDirtyTarget: operation.allowDirtyTarget,

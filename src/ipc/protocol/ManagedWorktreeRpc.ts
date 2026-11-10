@@ -5,7 +5,10 @@ import {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
 } from "../../contracts/worktrees/managed-worktree-cleanup-data";
-import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing-data";
+import {
+  WorktreePromptDecision,
+  WorktreeLandingError,
+} from "../../contracts/worktrees/worktree-landing-data";
 import { ManagedWorktreeCatalogUpdate } from "../../contracts/worktrees/managed-worktree-data";
 import { WorktreeOperationCatalogUpdate } from "../../contracts/worktrees/worktree-operation-data";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
@@ -37,6 +40,16 @@ const landingRpc = <Type extends LandingOperation>(type: Type) =>
   });
 
 export const ManagedWorktreeRpc = RpcGroup.make(
+  Rpc.make("managedWorktrees.confirmAgentPrompt", {
+    payload: {
+      workspacePath: Schema.NonEmptyString,
+      operationId: Schema.NonEmptyString,
+      confirmationId: Schema.NonEmptyString,
+      decision: WorktreePromptDecision,
+    },
+    success: Schema.Void,
+    error: WorktreeLandingError,
+  }),
   Rpc.make("managedWorktrees.setAutoMerge", {
     payload: { projectPath: Schema.NonEmptyString, enabled: Schema.Boolean },
     success: Schema.Void,

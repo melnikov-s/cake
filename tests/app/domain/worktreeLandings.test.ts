@@ -3,8 +3,19 @@ import {
   ResolutionCleanupFailed,
   type WorkingDirectoryResolutionResult,
 } from "../../../src/contracts/project-sessions/project-session-resolution";
-import { Deferred, Effect, Fiber, Layer, Schema, Stream, SubscriptionRef } from "effect";
+import {
+  Deferred,
+  Effect,
+  Fiber,
+  FiberMap,
+  Layer,
+  Option,
+  Schema,
+  Stream,
+  SubscriptionRef,
+} from "effect";
 import { describe, expect } from "vitest";
+import { TestClock } from "effect/testing";
 import {
   type WorktreeLandingError,
   type WorktreeLandingPhase,
@@ -67,6 +78,13 @@ const failure = (operation: string) =>
 
 function services(options: {
   status: () => WorktreeStatus | undefined;
+  cacheWarm?: boolean;
+  contextMetadata?: import("../../../src/contracts/conversations/session-context-metadata").SessionContextMetadata;
+  prune?: Effect.Effect<
+    import("../../../src/contracts/project-sessions/session-compaction").IdleCompactionResult,
+    WorktreeLandingAgentError
+  >;
+  rebase?: () => import("../../../src/contracts/worktrees/worktree-contract").WorktreeRebaseOutcome;
   statusWait?: Effect.Effect<void>;
   landing?: () => "merge" | "pull-request";
   records?: () => ReadonlyArray<WorktreeRecord>;
@@ -114,13 +132,22 @@ function services(options: {
     releaseLanding: () => options.release ?? Effect.void,
     cancelLanding: (_workspacePath, _operationId, onlyIfQueued) =>
       options.cancel?.(onlyIfQueued) ?? Effect.sync(() => void options.events.push("cancel")),
-    rebase: () => Effect.fail(failure("rebase")),
+    rebase: () => (options.rebase ? Effect.sync(options.rebase) : Effect.fail(failure("rebase"))),
     discard: () => Effect.fail(failure("discard")),
     cleanupResolved: () => Effect.fail(failure("cleanupResolved")),
     restoreResolved: () => Effect.fail(failure("restoreResolved")),
     proposeSquashMessage: () => Effect.fail(failure("proposeSquashMessage")),
   });
   const agent = WorktreeLandingAgent.of({
+    promptContext: () =>
+      Effect.succeed({
+        estimatedTokens: options.contextMetadata?.estimatedTokens,
+        cacheWarm: options.cacheWarm ?? false,
+      }),
+    toolPrune: () =>
+      Effect.sync(() => options.events.push("prune")).pipe(
+        Effect.andThen(options.prune ?? Effect.succeed({ status: "compacted" as const })),
+      ),
     promptAndWait: ({ text }) =>
       Effect.sync(() => {
         options.events.push("prompt");
@@ -190,6 +217,322 @@ const awaitPhase = (phase: WorktreeLandingPhase) =>
       Stream.runHead,
     );
   });
+
+describe("WorktreeLandings manual prompt confirmation", () => {
+  const paths = [
+    "commit",
+    "squash-message",
+    "preserve-conflict",
+    "squash-conflict",
+    "rebase-conflict",
+  ] as const;
+  const choices = ["run", "cancel", "tool-prune", "busy", "failed", "unchanged"] as const;
+  for (const path of paths) {
+    it.effect.each(choices)(path + " / %s gates dispatch once", (choice) => {
+      const events: string[] = [];
+      let repaired = false;
+      const blocked = () => ({
+        ...baseStatus(),
+        dirtyCount: repaired ? 0 : 1,
+        rebasing: path === "rebase-conflict" && !repaired,
+      });
+      const layer = services({
+        events,
+        status: blocked,
+        release: Effect.sync(() => {
+          events.push("release");
+        }),
+        contextMetadata: { estimatedTokens: 120_000 },
+        rebase: () =>
+          repaired ? { outcome: "rebased" } : { outcome: "resolving", files: ["shared.ts"] },
+        land: () =>
+          repaired
+            ? { outcome: "landed" }
+            : path === "squash-message"
+              ? { outcome: "proposal" }
+              : { outcome: "resolving", files: ["shared.ts"] },
+        prune:
+          choice === "failed"
+            ? Effect.fail(
+                new WorktreeLandingAgentError({ operation: "toolPrune", message: "Prune failed" }),
+              )
+            : Effect.succeed({
+                status:
+                  choice === "busy" ? "busy" : choice === "unchanged" ? "unchanged" : "compacted",
+              }),
+        prompt: () => {
+          repaired = true;
+        },
+      });
+      return Effect.gen(function* () {
+        const coordinator = yield* WorktreeLandingCoordinator;
+        if (path === "rebase-conflict")
+          yield* worktreeLandings.startRebase({
+            operationId: "manual",
+            workspacePath,
+            sessionId: "owner",
+            confirmAgentPrompts: true,
+          });
+        else
+          yield* worktreeLandings.start({
+            operationId: "manual",
+            workspacePath,
+            sessionId: "owner",
+            strategy: path.startsWith("squash") ? "squash" : "preserve",
+            allowDirtyTarget: false,
+            commitBeforeLanding: path === "commit",
+            confirmAgentPrompts: true,
+          });
+        const pending = Option.getOrThrow(
+          yield* SubscriptionRef.changes(coordinator.state).pipe(
+            Stream.map((state) => state.operations.get(workspacePath)?.promptConfirmation),
+            Stream.filter((confirmation) => confirmation !== undefined),
+            Stream.runHead,
+          ),
+        );
+        expect(events).not.toContain("prompt");
+        if (path !== "rebase-conflict") expect(events).toContain("release");
+        // Inspection cannot bypass a pending confirmation, even if Git is now clean.
+        yield* worktreeLandings.inspect({ workspacePath, sessionId: "owner" });
+        expect(events).not.toContain("prompt");
+        const answer = {
+          workspacePath,
+          operationId: "manual",
+          confirmationId: pending.id,
+          decision: choice === "run" || choice === "cancel" ? choice : ("tool-prune" as const),
+        };
+        yield* worktreeLandings.confirmAgentPrompt(answer);
+        yield* FiberMap.awaitEmpty(coordinator.fibers);
+        const dispatch = choice === "run" || choice === "tool-prune";
+        expect(events.filter((event) => event === "prompt")).toHaveLength(dispatch ? 1 : 0);
+        expect(events.filter((event) => event === "prune")).toHaveLength(
+          choice === "run" || choice === "cancel" ? 0 : 1,
+        );
+        if (choice === "tool-prune")
+          expect(events.indexOf("prune")).toBeLessThan(events.indexOf("prompt"));
+        const duplicate = yield* worktreeLandings.confirmAgentPrompt(answer).pipe(Effect.flip);
+        expect(duplicate.operation).toBe("confirmAgentPrompt");
+        if (!dispatch) {
+          const snapshot = yield* worktreeLandings.inspect({ workspacePath, sessionId: "owner" });
+          expect(snapshot.operation?.phase).toBe("stalled");
+        }
+      }).pipe(Effect.provide(layer), Effect.scoped);
+    });
+
+    it.effect(path + " tool-originated dispatch never waits for UI", () => {
+      const events: string[] = [];
+      let repaired = false;
+      const layer = services({
+        events,
+        status: () => ({ ...baseStatus(), dirtyCount: repaired ? 0 : 1 }),
+        contextMetadata: { estimatedTokens: 200_000 },
+        rebase: () => ({ outcome: "resolving", files: ["shared.ts"] }),
+        land: () =>
+          repaired
+            ? { outcome: "landed" }
+            : path === "squash-message"
+              ? { outcome: "proposal" }
+              : { outcome: "resolving", files: ["shared.ts"] },
+        prompt: () => {
+          repaired = true;
+        },
+      });
+      return Effect.gen(function* () {
+        if (path === "rebase-conflict")
+          yield* worktreeLandings.startRebase({
+            operationId: "tool",
+            workspacePath,
+            sessionId: "owner",
+          });
+        else
+          yield* worktreeLandings.start({
+            operationId: "tool",
+            workspacePath,
+            sessionId: "owner",
+            strategy: path.startsWith("squash") ? "squash" : "preserve",
+            allowDirtyTarget: false,
+            commitBeforeLanding: path === "commit",
+          });
+        const coordinator = yield* WorktreeLandingCoordinator;
+        yield* FiberMap.awaitEmpty(coordinator.fibers);
+        expect(events.filter((event) => event === "prompt")).toHaveLength(1);
+        expect(
+          (yield* SubscriptionRef.get(coordinator.state)).operations.get(workspacePath)
+            ?.promptConfirmation,
+        ).toBeUndefined();
+        expect(events).not.toContain("prune");
+      }).pipe(Effect.provide(layer), Effect.scoped);
+    });
+  }
+
+  it.effect(
+    "manual retry confirms again, while a tool retry cancels the UI wait and dispatches normally",
+    () => {
+      const events: string[] = [];
+      let dirty = true;
+      return Effect.gen(function* () {
+        const coordinator = yield* WorktreeLandingCoordinator;
+        const pending = () =>
+          SubscriptionRef.changes(coordinator.state).pipe(
+            Stream.map((state) => state.operations.get(workspacePath)?.promptConfirmation),
+            Stream.filter((confirmation) => confirmation !== undefined),
+            Stream.filter((confirmation) => confirmation.decision === undefined),
+            Stream.runHead,
+            Effect.map(Option.getOrThrow),
+          );
+        yield* worktreeLandings.start({
+          operationId: "retry",
+          workspacePath,
+          sessionId: "owner",
+          strategy: "preserve",
+          allowDirtyTarget: false,
+          commitBeforeLanding: true,
+          confirmAgentPrompts: true,
+        });
+        const first = yield* pending();
+        yield* worktreeLandings.confirmAgentPrompt({
+          workspacePath,
+          operationId: "retry",
+          confirmationId: first.id,
+          decision: "cancel",
+        });
+        yield* FiberMap.awaitEmpty(coordinator.fibers);
+        yield* worktreeLandings.retry({
+          workspacePath,
+          sessionId: "owner",
+          confirmAgentPrompts: true,
+        });
+        const second = yield* pending();
+        expect(second.id).not.toBe(first.id);
+        expect(events).not.toContain("prompt");
+        yield* worktreeLandings.retry({ workspacePath, sessionId: "owner" });
+        yield* FiberMap.awaitEmpty(coordinator.fibers);
+        expect(events.filter((event) => event === "prompt")).toHaveLength(1);
+        expect(
+          (yield* SubscriptionRef.get(coordinator.state)).operations.get(workspacePath)
+            ?.promptConfirmation,
+        ).toBeUndefined();
+        const stale = yield* worktreeLandings
+          .confirmAgentPrompt({
+            workspacePath,
+            operationId: "retry",
+            confirmationId: second.id,
+            decision: "run",
+          })
+          .pipe(Effect.flip);
+        expect(stale.operation).toBe("confirmAgentPrompt");
+      }).pipe(
+        Effect.provide(
+          services({
+            events,
+            status: () => ({ ...baseStatus(), dirtyCount: dirty ? 1 : 0 }),
+            contextMetadata: { estimatedTokens: 50_001 },
+            prompt: () => {
+              dirty = false;
+            },
+          }),
+        ),
+        Effect.scoped,
+      );
+    },
+  );
+
+  it.effect("confirms above the threshold when observed cache warmth has expired", () => {
+    const events: string[] = [];
+    return Effect.gen(function* () {
+      yield* TestClock.setTime(300_000);
+      yield* worktreeLandings.start({
+        operationId: "expired",
+        workspacePath,
+        sessionId: "owner",
+        strategy: "preserve",
+        allowDirtyTarget: false,
+        commitBeforeLanding: true,
+        confirmAgentPrompts: true,
+      });
+      const coordinator = yield* WorktreeLandingCoordinator;
+      const pending = Option.getOrThrow(
+        yield* SubscriptionRef.changes(coordinator.state).pipe(
+          Stream.map((state) => state.operations.get(workspacePath)?.promptConfirmation),
+          Stream.filter((confirmation) => confirmation !== undefined),
+          Stream.runHead,
+        ),
+      );
+      expect(events).not.toContain("prompt");
+      yield* worktreeLandings.confirmAgentPrompt({
+        workspacePath,
+        operationId: "expired",
+        confirmationId: pending.id,
+        decision: "cancel",
+      });
+      yield* FiberMap.awaitEmpty(coordinator.fibers);
+    }).pipe(
+      Effect.provide(
+        services({
+          events,
+          status: () => ({ ...baseStatus(), dirtyCount: 1 }),
+          contextMetadata: {
+            estimatedTokens: 50_001,
+            cacheObservation: {
+              provider: "anthropic",
+              observedAt: new Date(0).toISOString(),
+              readTokens: 0,
+              writeTokens: 1,
+              write1hTokens: 0,
+            },
+          },
+        }),
+      ),
+      Effect.scoped,
+    );
+  });
+
+  it.effect.each([
+    undefined,
+    { estimatedTokens: 49_999 },
+    { estimatedTokens: 50_000 },
+    {
+      estimatedTokens: 120_000,
+      cacheObservation: {
+        provider: "anthropic",
+        observedAt: new Date(0).toISOString(),
+        readTokens: 1,
+        writeTokens: 1,
+        write1hTokens: 0,
+      },
+    },
+  ])("does not confirm a small or warm context %#", (metadata) => {
+    const events: string[] = [];
+    let dirty = true;
+    return Effect.gen(function* () {
+      yield* TestClock.setTime(0);
+      yield* worktreeLandings.start({
+        operationId: "warm",
+        workspacePath,
+        sessionId: "owner",
+        strategy: "preserve",
+        allowDirtyTarget: false,
+        commitBeforeLanding: true,
+        confirmAgentPrompts: true,
+      });
+      yield* FiberMap.awaitEmpty((yield* WorktreeLandingCoordinator).fibers);
+      expect(events).toContain("prompt");
+    }).pipe(
+      Effect.provide(
+        services({
+          events,
+          contextMetadata: metadata,
+          cacheWarm: metadata?.cacheObservation !== undefined,
+          status: () => ({ ...baseStatus(), dirtyCount: dirty ? 1 : 0 }),
+          prompt: () => {
+            dirty = false;
+          },
+        }),
+      ),
+      Effect.scoped,
+    );
+  });
+});
 
 describe("WorktreeLandings", () => {
   it.effect.each([true, false])(
@@ -396,6 +739,8 @@ describe("WorktreeLandings", () => {
           });
           yield* Effect.gen(function* () {
             const agent = WorktreeLandingAgent.of({
+              promptContext: () => Effect.succeed({ estimatedTokens: undefined, cacheWarm: false }),
+              toolPrune: () => Effect.succeed({ status: "compacted" }),
               promptAndWait: ({ sessionId }) =>
                 Deferred.succeed(
                   sessionId === "first" ? firstPrompt : secondPrompt,

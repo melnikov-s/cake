@@ -774,6 +774,7 @@ export const cakeRpcPayloadSchemas = {
   }),
   "start-worktree-landing": Schema.Struct({
     ...requestBase,
+    confirmAgentPrompts: Schema.optionalKey(Schema.Boolean),
     workspacePath: stringMax(4_096),
     sessionId: bounded(1, 256),
     strategy: Schema.Literals(["preserve", "squash"]),
@@ -783,6 +784,7 @@ export const cakeRpcPayloadSchemas = {
   }),
   "retry-worktree-landing": Schema.Struct({
     ...requestBase,
+    confirmAgentPrompts: Schema.optionalKey(Schema.Boolean),
     workspacePath: stringMax(4_096),
     sessionId: bounded(1, 256),
   }),
@@ -794,6 +796,7 @@ export const cakeRpcPayloadSchemas = {
   }),
   "start-worktree-rebase": Schema.Struct({
     ...requestBase,
+    confirmAgentPrompts: Schema.optionalKey(Schema.Boolean),
     workspacePath: stringMax(4_096),
     sessionId: bounded(1, 256),
   }),
