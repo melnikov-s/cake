@@ -221,6 +221,20 @@ describe("subagent contract", () => {
       ),
     ).rejects.toThrow();
     expect(help.text).toContain("attachments.read");
+    const followUpHelp = await registry.invoke({ command: "subagents.follow-up.help" }, context);
+    for (const rule of [
+      "queued, running or idle",
+      "without interrupting active work",
+      "subagents.prompt is idle-only",
+      "no agent subagents.steer operation",
+      "inputRefs and messageRefs",
+      "separate from continuation/result delivery",
+      "without duplicate results",
+    ])
+      expect(followUpHelp.text).toContain(rule);
+    expect((await registry.invoke({ command: "subagents.steer.help" }, context)).text).toContain(
+      "Unknown Cake command",
+    );
   });
 
   it("uses the shared preset-or-explicit model selection schema", () => {

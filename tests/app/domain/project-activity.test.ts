@@ -7,6 +7,7 @@ import {
   Layer,
   Queue,
   Scope,
+  Semaphore,
   Stream,
   SubscriptionRef,
 } from "effect";
@@ -81,6 +82,7 @@ it.effect(
           },
           tools: [],
           scope: yield* Scope.make(),
+          inputAdmission: yield* Semaphore.make(1),
           completion: yield* Deferred.make<SubagentResult, SubagentError>(),
           runtimeOptions: options(),
           inputReferences: [],

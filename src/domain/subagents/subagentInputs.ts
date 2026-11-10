@@ -8,6 +8,7 @@ import {
   Schema,
   Scope,
   SubscriptionRef,
+  Stream,
 } from "effect";
 import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import {
@@ -19,6 +20,8 @@ import {
   SubagentCoordinator,
   queuedWorkerInputId,
   updateHandle,
+  type SubagentHandleState,
+  type SubagentCoordinatorState,
 } from "../../services/subagents/SubagentCoordinator";
 import type { RuntimeRecoveryInput } from "../../services/storage/RuntimeRecoveryStorage";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
@@ -41,6 +44,15 @@ import {
 } from "./subagentCompletion";
 import { observeTurn } from "./subagentExecution";
 
+type InputAdmission =
+  | { readonly kind: "closed" | "busy" | "draining" }
+  | {
+      readonly kind: "accepted";
+      readonly handle: SubagentHandleState;
+      readonly active: boolean;
+      readonly input: RuntimeRecoveryInput;
+    };
+
 export const prompt = Effect.fn("Subagents.prompt")(function* (
   parentSessionId: string,
   rawHandleId: string,
@@ -53,80 +65,168 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   author: "user" | "assistant" = "user",
   userInput?: { turnId: string; markdown: boolean },
 ) {
-  const handle = yield* requireHandle(parentSessionId, rawHandleId);
+  const owner = yield* requireHandle(parentSessionId, rawHandleId);
   const normalized = text.trim();
   if (!normalized)
     return yield* new SubagentError({ operation: delivery, message: "Prompt text is required" });
-  if (handle.status === "queued" || handle.status === "running")
-    return yield* new SubagentError({
-      operation: delivery,
-      message: "That subagent already has active work; steer or abort it instead",
-    });
-  const inputReferences = yield* forwardInputs(handle.attachmentAccess, inputRefs);
-  const messageReferences = yield* forwardMessages(handle.messageAccess, messageRefs);
   const coordinator = yield* SubagentCoordinator;
-  const completion = yield* Deferred.make<SubagentResult, SubagentError>();
-  const message = withMessageReferences(
-    withInputReferences(normalized, inputReferences),
-    messageReferences,
+  const { handle, active } = yield* owner.inputAdmission.withPermit(
+    Effect.gen(function* () {
+      const handle = yield* requireHandle(parentSessionId, rawHandleId);
+      if (
+        (handle.status === "queued" || handle.status === "running") &&
+        delivery === "prompt" &&
+        !userInput
+      )
+        return yield* new SubagentError({
+          operation: delivery,
+          message:
+            "That subagent already has active work; use subagents.follow-up to queue an update",
+        });
+      const inputReferences = yield* forwardInputs(handle.attachmentAccess, inputRefs);
+      const messageReferences = yield* forwardMessages(handle.messageAccess, messageRefs);
+      const completion = yield* Deferred.make<SubagentResult, SubagentError>();
+      const message = withMessageReferences(
+        withInputReferences(normalized, inputReferences),
+        messageReferences,
+      );
+      const input: RuntimeRecoveryInput = {
+        turnId: userInput?.turnId ?? crypto.randomUUID(),
+        text:
+          author === "assistant"
+            ? yield* delegatedMessage(
+                message,
+                parentSessionId,
+                handle.recovery.parentProfile,
+                handle.recovery.parentWorkingDirectory,
+                handle.recovery.parentSessionDirectory,
+              )
+            : message,
+        delivery,
+        attachments: [],
+        markdown: userInput?.markdown ?? false,
+      };
+      // Grants and provenance preparation can yield while the worker settles. Claim
+      // against the current accepted set, not the status from before those effects.
+      while (true) {
+        const admission = yield* SubscriptionRef.modify(
+          coordinator.state,
+          (state): readonly [InputAdmission, SubagentCoordinatorState] => {
+            const current = state.handles.get(handle.handleId);
+            if (!current || current.parentSessionId !== parentSessionId)
+              return [{ kind: "closed" } as const, state] as const;
+            const active = current.status === "queued" || current.status === "running";
+            if (active && delivery === "prompt" && !userInput)
+              return [{ kind: "busy" } as const, state] as const;
+            // The drained observer owns finalization. Appending now would let
+            // completeHandle erase the newly accepted input.
+            if (
+              (active && current.recovery.pendingInputs.length === 0) ||
+              current.completionDisposition === "notifying"
+            )
+              return [{ kind: "draining" } as const, state] as const;
+            const accepted = {
+              ...input,
+              delivery: userInput
+                ? active
+                  ? ("follow-up" as const)
+                  : ("prompt" as const)
+                : delivery,
+            };
+            return [
+              { kind: "accepted", handle: current, active, input: accepted } as const,
+              updateHandle(state, handle.handleId, (value) => ({
+                ...value,
+                status: active ? value.status : "queued",
+                error: active ? value.error : undefined,
+                result: active ? value.result : undefined,
+                completion: active ? value.completion : completion,
+                inputReferences: [
+                  ...new Map(
+                    [...value.inputReferences, ...inputReferences].map((ref) => [ref.id, ref]),
+                  ).values(),
+                ],
+                messageReferences: [...new Set([...value.messageReferences, ...messageReferences])],
+                recovery: {
+                  ...value.recovery,
+                  completionId: active ? value.recovery.completionId : crypto.randomUUID(),
+                  pendingInputs: active ? [...value.recovery.pendingInputs, accepted] : [accepted],
+                  notifyOnCompletion:
+                    background && !userInput ? true : value.recovery.notifyOnCompletion,
+                  continuation: continuation ?? value.recovery.continuation ?? "none",
+                },
+                completionDisposition: active
+                  ? value.completionDisposition
+                  : background && !userInput
+                    ? "pending"
+                    : "waited",
+                activityRevision: value.activityRevision + 1,
+              })),
+            ] as const;
+          },
+        );
+        if (admission.kind === "draining") {
+          yield* SubscriptionRef.changes(coordinator.state).pipe(
+            Stream.filter((state) => {
+              const current = state.handles.get(handle.handleId);
+              return (
+                !current ||
+                (current.status !== "queued" &&
+                  current.status !== "running" &&
+                  current.completionDisposition !== "notifying")
+              );
+            }),
+            Stream.runHead,
+          );
+          yield* requireHandle(parentSessionId, rawHandleId);
+          continue;
+        }
+        if (admission.kind !== "accepted")
+          return yield* new SubagentError({
+            operation: delivery,
+            message:
+              admission.kind === "busy"
+                ? "That subagent already has active work; use subagents.follow-up to queue an update"
+                : "That subagent is no longer available for input",
+          });
+        const runtime =
+          admission.active && admission.handle.status === "running"
+            ? admission.handle.piHandle
+            : undefined;
+        yield* checkpoint(handle.handleId);
+        if (runtime)
+          yield* runtime.submit(admission.input).pipe(
+            asError(delivery),
+            Effect.onError(() =>
+              mutateHandle(handle.handleId, (current) => ({
+                ...current,
+                recovery: {
+                  ...current.recovery,
+                  pendingInputs: current.recovery.pendingInputs.filter(
+                    (item) => item.turnId !== input.turnId,
+                  ),
+                },
+              })),
+            ),
+            Effect.catch((error) =>
+              checkpoint(handle.handleId).pipe(Effect.andThen(Effect.fail(error))),
+            ),
+          );
+        return { handle: admission.handle, active: admission.active };
+      }
+    }),
   );
-  const input: RuntimeRecoveryInput = {
-    turnId: userInput?.turnId ?? crypto.randomUUID(),
-    text:
-      author === "assistant"
-        ? yield* delegatedMessage(
-            message,
-            parentSessionId,
-            handle.recovery.parentProfile,
-            handle.recovery.parentWorkingDirectory,
-            handle.recovery.parentSessionDirectory,
-          )
-        : message,
-    delivery,
-    attachments: [],
-    markdown: userInput?.markdown ?? false,
-  };
-  const claimed = yield* SubscriptionRef.modify(coordinator.state, (state) => {
-    const current = state.handles.get(handle.handleId);
-    if (
-      !current ||
-      current.parentSessionId !== parentSessionId ||
-      current.status === "queued" ||
-      current.status === "running"
-    )
-      return [false, state] as const;
-    return [
-      true,
-      updateHandle(state, handle.handleId, (value) => ({
-        ...value,
-        status: "queued",
-        error: undefined,
-        result: undefined,
-        completion,
-        inputReferences: [
-          ...new Map(
-            [...value.inputReferences, ...inputReferences].map((ref) => [ref.id, ref]),
-          ).values(),
-        ],
-        messageReferences: [...new Set([...value.messageReferences, ...messageReferences])],
-        recovery: {
-          ...value.recovery,
-          completionId: crypto.randomUUID(),
-          pendingInputs: [input],
-          notifyOnCompletion: background && !userInput ? true : value.recovery.notifyOnCompletion,
-          continuation: continuation ?? value.recovery.continuation ?? "none",
-        },
-        completionDisposition: background && !userInput ? "pending" : "waited",
-        activityRevision: value.activityRevision + 1,
-      })),
-    ] as const;
-  });
-  if (!claimed)
-    return yield* new SubagentError({
-      operation: delivery,
-      message: "That subagent already has active work; steer or abort it instead",
+  const receipt = () =>
+    jsonValue({
+      continuation: continuation ?? handle.recovery.continuation ?? "none",
+      handleId: handle.handleId,
+      task: handle.task,
+      projectPath: handle.projectPath,
+      status: active ? handle.status : "queued",
+      fastMode: handle.fastMode,
+      resolvedModel: handle.resolvedModel,
     });
-  yield* checkpoint(handle.handleId);
+  if (active) return receipt();
   const slot = yield* RcMap.get(coordinator.slots, handle.workingDirectory).pipe(
     Effect.provideService(Scope.Scope, handle.scope),
   );
@@ -149,15 +249,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
         }),
       ),
     );
-    return jsonValue({
-      continuation: continuation ?? handle.recovery.continuation ?? "none",
-      handleId: handle.handleId,
-      task: handle.task,
-      projectPath: handle.projectPath,
-      status: "queued",
-      fastMode: handle.fastMode,
-      resolvedModel: handle.resolvedModel,
-    });
+    return receipt();
   }
   const result = yield* execute.pipe(
     Effect.onExit((exit) =>
@@ -194,74 +286,26 @@ export const readAttachment = Effect.fn("Subagents.readAttachment")(function* (
   return yield* storage.inspect(owner.privateSessionId, input).pipe(asError("readAttachment"));
 });
 
-/** Human UI admission is queue-first. Agent tool prompt/steer policy is deliberately separate. */
+/** Human and agent follow-ups share queue-first admission, retaining their own provenance. */
 export const submitUserInput = Effect.fn("Subagents.submitUserInput")(function* (input: {
   parentSessionId: string;
   handleId: string;
   text: string;
   renderUserMessageAsMarkdown: boolean;
 }) {
-  const handle = yield* requireHandle(input.parentSessionId, input.handleId);
-  const text = input.text.trim();
-  if (!text)
-    return yield* new SubagentError({ operation: "submit", message: "Prompt text is required" });
   const turnId = crypto.randomUUID();
-  if (handle.status !== "running" && handle.status !== "queued") {
-    yield* prompt(
-      input.parentSessionId,
-      input.handleId,
-      text,
-      "prompt",
-      true,
-      undefined,
-      undefined,
-      undefined,
-      "user",
-      { turnId, markdown: input.renderUserMessageAsMarkdown },
-    );
-  } else {
-    const accepted: RuntimeRecoveryInput = {
-      turnId,
-      text,
-      delivery: "follow-up",
-      attachments: [],
-      markdown: input.renderUserMessageAsMarkdown,
-    };
-    const coordinator = yield* SubagentCoordinator;
-    const runtime = yield* SubscriptionRef.modify(
-      coordinator.state,
-      (state) =>
-        [
-          state.handles.get(handle.handleId)?.status === "running"
-            ? state.handles.get(handle.handleId)?.piHandle
-            : undefined,
-          updateHandle(state, handle.handleId, (current) => ({
-            ...current,
-            activityRevision: current.activityRevision + 1,
-            recovery: {
-              ...current.recovery,
-              pendingInputs: [...current.recovery.pendingInputs, accepted],
-            },
-          })),
-        ] as const,
-    );
-    if (runtime)
-      yield* runtime.submit(accepted).pipe(
-        asError("submit"),
-        Effect.onError(() =>
-          mutateHandle(handle.handleId, (current) => ({
-            ...current,
-            recovery: {
-              ...current.recovery,
-              pendingInputs: current.recovery.pendingInputs.filter(
-                (item) => item.turnId !== turnId,
-              ),
-            },
-          })),
-        ),
-      );
-    yield* checkpoint(handle.handleId);
-  }
+  yield* prompt(
+    input.parentSessionId,
+    input.handleId,
+    input.text,
+    "follow-up",
+    true,
+    undefined,
+    undefined,
+    undefined,
+    "user",
+    { turnId, markdown: input.renderUserMessageAsMarkdown },
+  );
   return { turnId };
 });
 

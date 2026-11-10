@@ -27,7 +27,8 @@ A FYI becomes accepted when Pi admits the carrying input, not when a storage mar
 ## Private workers
 
 subagents.start continuation:resume (default) means reply; none means notification. Both owe results and follow-ups inherit unless overridden. message_parent questions/blockers remain immediate.
-Launch/follow-up asynchronously. Blocking run/parallel/wait requires an explicit user request, returns directly and needs no extra continuation.
+Launch/follow-up asynchronously. subagents.follow-up queues evidence or updates on queued, running or idle handles without interrupting or restarting work; subagents.prompt is idle-only. Pass exact messageRefs/inputRefs to grant only that worker access, without reading content. Active updates share the existing automatic completion after all accepted inputs settle; continuation controls the result, not outbound scheduling. No agent subagents.steer operation is exposed.
+Blocking run/parallel/wait requires an explicit user request, returns directly and needs no extra continuation.
 Retained report acknowledgment is a different workflow: [reports](reports.md).
 
 ## Requested scheduling recipe

@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Layer, Queue, Scope, Stream, SubscriptionRef } from "effect";
+import { Deferred, Effect, Layer, Queue, Scope, Semaphore, Stream, SubscriptionRef } from "effect";
 import { expect } from "vitest";
 import {
   CakeSessionRuntimes,
@@ -98,6 +98,7 @@ it.effect(
         tools: [],
         fastMode: false,
         scope: yield* Scope.make(),
+        inputAdmission: yield* Semaphore.make(1),
         completion: yield* Deferred.make<SubagentResult, SubagentError>(),
         get runtimeOptions(): CakeSessionRuntimeAcquireOptions {
           throw new Error("Metadata must not construct runtime options");

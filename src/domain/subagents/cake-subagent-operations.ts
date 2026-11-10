@@ -95,7 +95,9 @@ export function createAgentControlOperations(
       : definition.command === "subagents.prompt" || definition.command === "subagents.follow-up"
         ? [
             'Follow-ups are asynchronous on every caller surface and inherit the handle continuation choice. Override with "resume" (reply) when the user is waiting on the answer or "none" (notification) for background work; waiting requires an explicit user request and subagents.wait.',
-            ...guidance.slice(5, 8),
+            "Use subagents.follow-up for evidence or updates to queued, running or idle workers. Updates queue without interrupting active work, aborting, restarting or creating a human Side Chat. subagents.prompt is idle-only; no agent subagents.steer operation is exposed.",
+            "inputRefs and messageRefs grant only the intended worker access under the parent's existing authority; they do not read content. Outbound delivery is queued follow-up, separate from continuation/result delivery. The existing completion covers accepted active updates once the queue settles, without duplicate results.",
+            ...guidance.slice(5, 9),
           ]
         : guidance.slice(5, 6),
     inputSchema: definition.schema,

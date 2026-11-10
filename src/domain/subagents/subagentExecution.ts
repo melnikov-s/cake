@@ -8,6 +8,7 @@ import {
   RcMap,
   Ref,
   Schema,
+  Semaphore,
   Scope,
   Stream,
   SubscriptionRef,
@@ -198,29 +199,33 @@ export const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
   yield* checkpoint(handleId);
   // Handoff includes inputs accepted while waiting for a slot or assembling Pi.
   const coordinator = yield* SubagentCoordinator;
-  const inputs = yield* SubscriptionRef.modify(
-    coordinator.state,
-    (state) =>
-      [
-        state.handles.get(handleId)?.recovery.pendingInputs ?? [],
-        updateHandle(state, handleId, (current) => ({
-          ...current,
-          status: "running",
-          activityRevision: current.activityRevision + 1,
-        })),
-      ] as const,
+  yield* handle.inputAdmission.withPermit(
+    Effect.gen(function* () {
+      const inputs = yield* SubscriptionRef.modify(
+        coordinator.state,
+        (state) =>
+          [
+            state.handles.get(handleId)?.recovery.pendingInputs ?? [],
+            updateHandle(state, handleId, (current) => ({
+              ...current,
+              status: "running",
+              activityRevision: current.activityRevision + 1,
+            })),
+          ] as const,
+      );
+      const firstInput = inputs[0];
+      const turnId = inputs.at(-1)?.turnId;
+      if (!firstInput || !turnId)
+        return yield* new SubagentError({
+          operation: "recover",
+          message: "Worker has no accepted input to recover",
+        });
+      yield* (
+        recovering || inputs.length > 1 ? piHandle.recover(inputs) : piHandle.submit(firstInput)
+      ).pipe(asError(delivery));
+      yield* Ref.set(target, Option.some(turnId));
+    }),
   );
-  const firstInput = inputs[0];
-  const turnId = inputs.at(-1)?.turnId;
-  if (!firstInput || !turnId)
-    return yield* new SubagentError({
-      operation: "recover",
-      message: "Worker has no accepted input to recover",
-    });
-  yield* (
-    recovering || inputs.length > 1 ? piHandle.recover(inputs) : piHandle.submit(firstInput)
-  ).pipe(asError(delivery));
-  yield* Ref.set(target, Option.some(turnId));
   // Queue removal also changes the accepted set: do not wait forever for a
   // canceled follow-up after the preceding turn has already settled.
   const drained = SubscriptionRef.changes(coordinator.state).pipe(
@@ -546,6 +551,7 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       instructions: prepared.input.instructions,
       fastMode: prepared.input.fastMode,
       scope,
+      inputAdmission: yield* Semaphore.make(1),
       completion,
       runtimeOptions,
       parentPiHandle: parentHandle,

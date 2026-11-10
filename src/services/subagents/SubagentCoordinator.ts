@@ -42,6 +42,8 @@ export interface SubagentHandleState {
   readonly instructions?: string;
   readonly fastMode: boolean;
   readonly scope: Scope.Closeable;
+  /** Serializes input admission with the initial runtime queue handoff. */
+  readonly inputAdmission: Semaphore.Semaphore;
   readonly completion: Deferred.Deferred<SubagentResult, SubagentError>;
   readonly runtimeOptions: CakeSessionRuntimeAcquireOptions;
   readonly parentPiHandle?: CakeSessionHandle;

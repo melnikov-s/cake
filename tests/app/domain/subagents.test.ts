@@ -44,6 +44,7 @@ import {
   type MessageOperationControl,
 } from "../../../src/contracts/conversations/message-reference";
 import type { SubagentAttachmentFactory } from "../../../src/contracts/subagents/subagent-attachments";
+import { createAgentControlOperations } from "../../../src/domain/subagents/cake-subagent-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import type { SubagentControlRequirements } from "../../../src/domain/subagents/subagentControl";
@@ -612,6 +613,302 @@ const invokeWorker = (registry: CakeOperationRegistry, command: string, input: o
   );
 
 describe("subagent exact message references", () => {
+  it.effect.each(
+    (["running", "queued"] as const).flatMap((status) =>
+      (["none", "resume"] as const).map((continuation) => ({ status, continuation })),
+    ),
+  )(
+    "queues active $status evidence with $continuation results and worker-scoped grants",
+    ({ status, continuation }) =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture(false, [], "Evidence assessed");
+        const ref = "cake://session/source?message=exact";
+        const outside = "cake://session/outside?message=private";
+        const grants = new Map<string, readonly TaskInputReference[]>();
+        const authorizeForward = vi.fn<TaskInputStorage["Service"]["authorizeForward"]>(
+          (owner, refs, recipient) =>
+            owner === "parent-cake-chat" && refs.every((id) => id === imageReference.id)
+              ? Effect.succeed(refs.map((id) => `${recipient}:${id}`))
+              : Effect.fail(
+                  new AttachmentUploadError({
+                    operation: "forward",
+                    message: "Input is outside owner scope",
+                  }),
+                ),
+        );
+        const storage = Layer.mock(TaskInputStorage, {
+          authorizeForward,
+          grant: (recipient, tokens) =>
+            Effect.sync(() => {
+              assert.ok(tokens.every((token) => token === `${recipient}:${imageReference.id}`));
+              grants.set(recipient, [imageReference]);
+              return [imageReference];
+            }),
+          list: (recipient) =>
+            Effect.succeed({ references: grants.get(recipient) ?? [], nextAfter: null }),
+          inspect: (recipient, input) =>
+            grants.get(recipient)?.some((item) => item.id === input.reference)
+              ? Effect.succeed({
+                  kind: "image",
+                  reference: imageReference,
+                  mimeType: "image/png",
+                  data: tinyPng,
+                })
+              : Effect.fail(
+                  new AttachmentUploadError({ operation: "read", message: "No input grant" }),
+                ),
+        });
+        const read = vi.fn<MessageOperationControl["read"]>(async (input) => {
+          if (input.ref !== ref) throw new Error("Source is outside parent scope");
+          return {
+            message: {
+              ref,
+              link: ref,
+              sessionId: "source",
+              entryId: "exact",
+              parentId: null,
+              timestamp: "now",
+              role: "user",
+              active: true,
+              inputRefs: [],
+              hasImages: false,
+            },
+            text: "EXACT_EVIDENCE",
+            totalChars: 14,
+            offset: 0,
+            nextOffset: null,
+            truncated: false,
+          };
+        });
+        yield* Effect.gen(function* () {
+          const context = yield* Effect.context<SubagentControlRequirements>();
+          const caller = cakeChatParent(fixture);
+          const options = {
+            ...caller.options,
+            runtime: {
+              ...caller.options.runtime,
+              messageReferenceControl: {
+                read,
+                list: async () => {
+                  throw new Error("No listing");
+                },
+                open: async () => {
+                  throw new Error("No navigation");
+                },
+              },
+            },
+          };
+          const control = makeSubagentControl({
+            runEffect: (effect, signal) =>
+              Effect.runPromise(Effect.provide(effect, context), { signal }),
+          })(() => options, caller.workingDirectory);
+          const registry = new CakeOperationRegistry(
+            createAgentControlOperations(
+              control,
+              () => caller.parentSessionId,
+              () => ({ provider: "test", modelId: "model", thinkingLevel: "off", fastMode: false }),
+              true,
+            ),
+          );
+          const blockers =
+            status === "queued"
+              ? yield* Effect.forEach([1, 2, 3, 4], () =>
+                  subagents.start({ task: "Occupy slot", continuation: "none" }, caller),
+                )
+              : [];
+          const blockerTurns = yield* Effect.forEach(blockers, () =>
+            Queue.take(fixture.childTurns),
+          );
+          const signal = new AbortController().signal;
+          const start = (task: string) =>
+            Effect.promise(async () =>
+              Schema.decodeUnknownSync(subagentData.SubagentStartReceipt)(
+                await control.start({ task, continuation }, caller.parentSessionId, signal),
+              ),
+            );
+          const intended = yield* start("Intended investigator");
+          const sibling = yield* start("Independent investigator");
+          const initial = status === "running" ? yield* Queue.take(fixture.childTurns) : undefined;
+          const siblingTurn =
+            status === "running" ? yield* Queue.take(fixture.childTurns) : undefined;
+          const coordinator = yield* SubagentCoordinator;
+          const before = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
+            intended.handleId,
+          );
+          assert.ok(before);
+          const workerId = before.recovery.privateSessionId;
+          const completionId = before.recovery.completionId;
+          const followUp = (input: object) =>
+            Effect.promise(() =>
+              invokeWorker(registry, "subagents.follow-up", {
+                handleId: intended.handleId,
+                text: "Assess new evidence",
+                ...input,
+              }),
+            );
+          // Invalid refs and foreign handles never enqueue work or bypass attachment authorization.
+          yield* Effect.promise(() =>
+            assert.rejects(
+              invokeWorker(registry, "subagents.follow-up", {
+                handleId: intended.handleId,
+                text: "Bad source",
+                messageRefs: ["bad-ref"],
+              }),
+            ),
+          );
+          yield* Effect.promise(() =>
+            assert.rejects(
+              control.prompt(
+                {
+                  handleId: intended.handleId,
+                  text: "Wrong owner",
+                  delivery: "follow-up",
+                  inputRefs: [imageReference.id],
+                },
+                "another-parent",
+                signal,
+              ),
+              /does not belong/,
+            ),
+          );
+          yield* Effect.promise(() =>
+            assert.rejects(
+              invokeWorker(registry, "subagents.follow-up", {
+                handleId: intended.handleId,
+                text: "Unauthorized input",
+                inputRefs: [textReference.id],
+              }),
+              /outside owner scope/,
+            ),
+          );
+          assert.equal(
+            (yield* SubscriptionRef.get(coordinator.state)).handles.get(intended.handleId)?.recovery
+              .pendingInputs.length,
+            1,
+          );
+          yield* followUp({ inputRefs: [imageReference.id], messageRefs: [ref, outside] });
+          const accepted = (yield* coordinator.storage.list()).find(
+            (item) => item.handleId === intended.handleId,
+          );
+          assert.ok(accepted);
+          assert.equal(accepted.status, status);
+          assert.equal(accepted.completionId, completionId);
+          assert.equal(accepted.continuation, continuation);
+          assert.equal(accepted.pendingInputs.length, 2);
+          assert.equal(accepted.pendingInputs[1]?.delivery, "follow-up");
+          assert.deepEqual(accepted.inputReferences, [imageReference]);
+          assert.deepEqual(accepted.messageReferences, [ref, outside]);
+          assert.deepEqual(grants.get(workerId), [imageReference]);
+          assert.equal(grants.size, 1);
+          assert.equal(read.mock.calls.length, 0);
+          assert.deepEqual(authorizeForward.mock.calls.at(-1), [
+            caller.parentSessionId,
+            [imageReference.id],
+            workerId,
+          ]);
+          // Queued assignments retain ordering; running ones keep their original turn alive.
+          if (blockerTurns[0]) yield* Deferred.succeed(blockerTurns[0].gate, undefined);
+          const turns = initial
+            ? [initial, yield* Queue.take(fixture.childTurns)]
+            : [yield* Queue.take(fixture.childTurns), yield* Queue.take(fixture.childTurns)];
+          const [assignment, evidence] = turns;
+          assert.ok(assignment && evidence);
+          assert.ok(turns.every((turn) => turn.sessionId === workerId));
+          assert.ok(
+            parseCrossSessionMessage(assignment.text)?.text.includes("Intended investigator"),
+          );
+          assert.ok(turns[1]?.text.includes(ref));
+          assert.ok(turns[1]?.text.includes(imageReference.id));
+          assert.ok(!turns[1]?.text.includes("EXACT_EVIDENCE"));
+          const workerOptions = (yield* Ref.get(fixture.constructedOptions)).find(
+            (item) => item.sessionId === workerId,
+          );
+          assert.ok(workerOptions);
+          const worker = workerRegistry(workerOptions);
+          yield* Effect.promise(() => invokeWorker(worker, "messages.read", { ref }));
+          yield* Effect.promise(() =>
+            assert.rejects(
+              invokeWorker(worker, "messages.read", { ref: outside }),
+              /outside parent scope/,
+            ),
+          );
+          yield* Effect.promise(() =>
+            assert.rejects(
+              invokeWorker(worker, "messages.read", {
+                ref: "cake://session/source?message=unselected",
+              }),
+              /not forwarded/,
+            ),
+          );
+          const image = yield* Effect.promise(() =>
+            invokeWorker(worker, "attachments.read", { reference: imageReference.id }),
+          );
+          assert.deepEqual(image.content[1], {
+            type: "image",
+            data: tinyPng,
+            mimeType: "image/png",
+          });
+          yield* Deferred.succeed(assignment.gate, undefined);
+          while (
+            (yield* SubscriptionRef.get(coordinator.state)).handles.get(intended.handleId)?.recovery
+              .pendingInputs.length !== 1
+          )
+            yield* Effect.yieldNow;
+          assert.equal((yield* Ref.get(fixture.completions)).length, 0);
+          assert.ok(
+            !(yield* (yield* SessionFamilyStorage).state()).deferredReferences?.some(
+              (item) => item.id === completionId,
+            ),
+          );
+          yield* Deferred.succeed(evidence.gate, undefined);
+          while (
+            (yield* SubscriptionRef.get(coordinator.state)).handles.get(intended.handleId)
+              ?.completionDisposition !== "notified"
+          )
+            yield* Effect.yieldNow;
+          assert.equal(
+            (yield* Ref.get(fixture.completions)).length,
+            continuation === "resume" ? 1 : 0,
+          );
+          assert.equal(
+            ((yield* (yield* SessionFamilyStorage).state()).deferredReferences ?? []).filter(
+              (item) => item.id === completionId,
+            ).length,
+            continuation === "none" ? 1 : 0,
+          );
+          yield* subagents.wait(caller.parentSessionId, intended.handleId);
+          assert.equal(
+            (yield* Ref.get(fixture.completions)).length,
+            continuation === "resume" ? 1 : 0,
+          );
+          // Only the intended worker received the grant, including after a queued sibling starts.
+          if (!siblingTurn) {
+            const blocker = blockerTurns[1];
+            assert.ok(blocker);
+            yield* Deferred.succeed(blocker.gate, undefined);
+          }
+          const otherTurn = siblingTurn ?? (yield* Queue.take(fixture.childTurns));
+          const otherOptions = (yield* Ref.get(fixture.constructedOptions)).find(
+            (item) => item.sessionId === otherTurn.sessionId,
+          );
+          assert.ok(otherOptions);
+          const other = workerRegistry(otherOptions);
+          yield* Effect.promise(() =>
+            assert.rejects(invokeWorker(other, "messages.read", { ref }), /not forwarded/),
+          );
+          yield* Effect.promise(() =>
+            assert.rejects(
+              invokeWorker(other, "attachments.read", { reference: imageReference.id }),
+              /No input grant/,
+            ),
+          );
+          yield* Effect.forEach([intended, sibling, ...blockers], (item) =>
+            subagentLifetime.close(caller.parentSessionId, item.handleId),
+          );
+        }).pipe(Effect.provide(Layer.merge(fixture.layer, storage)));
+      }),
+  );
+
   it.effect(
     "forwards identities without reading and gates initial/follow-up reads to explicitly selected messages",
     () =>
@@ -2847,6 +3144,147 @@ describe("Subagents", () => {
       }),
   );
 
+  it.effect(
+    "does not let active updates overtake initial runtime handoff or disappear during finalization",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const started = yield* subagents.start(
+            { task: "Initial", continuation: "resume" },
+            parent(fixture),
+          );
+          const initial = yield* Queue.take(fixture.childTurns);
+          yield* Deferred.succeed(initial.gate, undefined);
+          yield* Queue.take(fixture.reports);
+          const coordinator = yield* SubagentCoordinator;
+          const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
+            started.handleId,
+          );
+          assert.ok(handle?.piHandle);
+          const runtime = handle.piHandle;
+          const submitting = yield* Deferred.make<void>();
+          const releaseSubmit = yield* Deferred.make<void>();
+          const snapshotting = yield* Deferred.make<void>();
+          const releaseSnapshot = yield* Deferred.make<void>();
+          let pauseSubmit = true;
+          let pauseSnapshot = false;
+          yield* SubscriptionRef.update(coordinator.state, (state) => ({
+            ...state,
+            handles: new Map(state.handles).set(handle.handleId, {
+              ...handle,
+              piHandle: {
+                ...runtime,
+                submit: (input) =>
+                  Effect.gen(function* () {
+                    if (pauseSubmit) {
+                      pauseSubmit = false;
+                      yield* Deferred.succeed(submitting, undefined);
+                      yield* Deferred.await(releaseSubmit);
+                    }
+                    return yield* runtime.submit(input);
+                  }),
+                snapshot: () =>
+                  Effect.gen(function* () {
+                    if (pauseSnapshot) {
+                      pauseSnapshot = false;
+                      yield* Deferred.succeed(snapshotting, undefined);
+                      yield* Deferred.await(releaseSnapshot);
+                    }
+                    return yield* runtime.snapshot();
+                  }),
+              },
+            }),
+          }));
+          yield* subagentInputs.prompt(
+            "parent",
+            started.handleId,
+            "Next assignment",
+            "prompt",
+            true,
+          );
+          yield* Deferred.await(submitting);
+          const update = yield* subagentInputs
+            .prompt("parent", started.handleId, "Evidence update", "follow-up", true)
+            .pipe(Effect.forkChild);
+          // Runtime handoff is still held: neither input has reached Pi yet.
+          assert.equal((yield* Ref.get(fixture.childPrompts)).length, 1);
+          yield* Deferred.succeed(releaseSubmit, undefined);
+          yield* Fiber.join(update);
+          const assignment = yield* Queue.take(fixture.childTurns);
+          const evidence = yield* Queue.take(fixture.childTurns);
+          assert.equal(assignment.text, "Next assignment");
+          assert.equal(evidence.text, "Evidence update");
+          pauseSnapshot = true;
+          yield* Deferred.succeed(assignment.gate, undefined);
+          yield* Deferred.succeed(evidence.gate, undefined);
+          yield* Deferred.await(snapshotting);
+          const late = yield* subagentInputs
+            .prompt("parent", started.handleId, "Just after settlement", "follow-up", true)
+            .pipe(Effect.forkChild);
+          yield* Deferred.succeed(releaseSnapshot, undefined);
+          yield* Fiber.join(late);
+          const last = yield* Queue.take(fixture.childTurns);
+          assert.equal(last.text, "Just after settlement");
+          yield* Deferred.succeed(last.gate, undefined);
+          while (
+            (yield* SubscriptionRef.get(coordinator.state)).handles.get(started.handleId)
+              ?.completionDisposition !== "notified"
+          )
+            yield* Effect.yieldNow;
+          // Initial, combined assignment/update, and post-settlement follow-up each report once.
+          assert.equal((yield* Ref.get(fixture.completions)).length, 3);
+          assert.equal(yield* Ref.get(fixture.constructions), 1);
+          yield* subagentLifetime.close("parent", started.handleId);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
+  it.effect(
+    "rolls back a rejected active runtime submission without aborting its existing turn",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const started = yield* subagents.start(
+            { task: "Initial", continuation: "resume" },
+            parent(fixture),
+          );
+          const initial = yield* Queue.take(fixture.childTurns);
+          const coordinator = yield* SubagentCoordinator;
+          const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
+            started.handleId,
+          );
+          assert.ok(handle?.piHandle);
+          const runtime = handle.piHandle;
+          yield* SubscriptionRef.update(coordinator.state, (state) => ({
+            ...state,
+            handles: new Map(state.handles).set(handle.handleId, {
+              ...handle,
+              piHandle: {
+                ...runtime,
+                submit: () =>
+                  Effect.fail(
+                    new PiSessionError({ operation: "submit", message: "Admission rejected" }),
+                  ),
+              },
+            }),
+          }));
+          const rejected = yield* Effect.flip(
+            subagentInputs.prompt("parent", started.handleId, "Update", "follow-up", true),
+          );
+          assert.match(rejected.message, /Admission rejected/);
+          const saved = yield* coordinator.storage.get(started.handleId);
+          assert.equal(saved?.pendingInputs.length, 1);
+          assert.equal(saved?.status, "running");
+          yield* Deferred.succeed(initial.gate, undefined);
+          yield* Queue.take(fixture.reports);
+          assert.equal((yield* Ref.get(fixture.completions)).length, 1);
+          yield* subagentLifetime.close("parent", started.handleId);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
   it.effect("serializes follow-up turns on the stable handle without another runtime", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
@@ -2864,7 +3302,7 @@ describe("Subagents", () => {
           .pipe(Effect.forkChild);
         assert.equal(yield* Queue.take(fixture.childStarted), childId);
         const conflict = yield* Effect.flip(
-          subagentInputs.prompt("parent", receipt.handleId, "Overlap", "follow-up"),
+          subagentInputs.prompt("parent", receipt.handleId, "Overlap", "prompt"),
         );
         assert.match(conflict.message, /already has active work/);
         yield* completeChild(fixture, childId);
