@@ -1,6 +1,7 @@
 import { createIncomingMessageProposalsScenario } from "./incoming-message-proposals";
 import { createSessionOutcomesScenario } from "./session-outcomes";
 import { createWorkspacePanelGeometryScenario } from "./workspace-panel-geometry";
+import { createTodoResponseFocusScenario } from "./todo-response-focus";
 import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
@@ -8229,6 +8230,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectChatAttentionResults,
   projectChatTaskRails,
   stickyTaskHeadings,
+  createTodoResponseFocusScenario(projectChatTaskRails.seed),
   adjacentTaskHeadings,
   pendingTaskTurn,
   pdfTaskSwitch,

@@ -13,6 +13,8 @@ import {
   defineTool,
   MemoryStorage,
   LiveDoc,
+  UserEntry,
+  AssistantEntry,
 } from "@earendil-works/pi-durable";
 import {
   Type,
@@ -221,6 +223,11 @@ it("uses only the normal conversation request for continuation, switch, explicit
   expect(
     page.parts
       .filter((part) => part.kind === "text" && part.role === "user")
+      .map((part) => (part.kind === "text" ? part.taskTodoId : undefined)),
+  ).toEqual(decisions);
+  expect(
+    page.parts
+      .filter((part) => part.kind === "text" && part.role === "assistant")
       .map((part) => (part.kind === "text" ? part.taskTodoId : undefined)),
   ).toEqual(decisions);
   expect(JSON.stringify(page.parts)).not.toContain("cake-todo");
@@ -499,6 +506,12 @@ it("keeps omitted and explicit decisions and manual corrections across SQLite re
     pending: false,
     todoId: null,
   });
+  const replies = (await reopened.page()).parts.filter(
+    (part) => part.kind === "text" && part.role === "assistant",
+  );
+  expect(replies[0]).toMatchObject({ taskTodoId: B });
+  expect(replies[1]).toMatchObject({ taskTodoId: null });
+  expect(replies[1]).not.toHaveProperty("taskAttributionPending");
   expect(reopened.requests).toHaveLength(0);
   expect(reopened.classify).not.toHaveBeenCalled();
 });
@@ -668,11 +681,23 @@ it("settles split prefix metadata before returning the first visible character a
     const event = await project({ type: "text_delta", contentIndex: 0, delta: char, partial });
     if (event.type === "text_delta") visible += event.delta;
     expect(JSON.stringify(event)).not.toContain("cake-todo");
-    const parts = partsFromMessage(
-      event.type === "text_delta" ? event.partial : partial,
-      "live",
-      true,
+    const visibleMessage = event.type === "text_delta" ? event.partial : partial;
+    const parts = partsFromMessage(visibleMessage, "live", true);
+    const projected = await readDurableOriginalPage(
+      f.engine.root,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (await f.doc())?.inputs,
+      undefined,
+      { id: "live", message: visibleMessage },
     );
+    const reply = projected.parts.findLast(
+      (part) => part.kind === "text" && part.role === "assistant",
+    );
+    if (raw.length > wire.indexOf("Answer"))
+      expect(reply).toMatchObject({ taskTodoId: A, status: "streaming" });
     if (raw.length <= wire.indexOf("Answer"))
       expect(parts.filter((part) => part.kind === "text")).toEqual([]);
     else
@@ -828,7 +853,10 @@ it.each([false, true])(
     held.stream.push({
       type: "error",
       reason: "aborted",
-      error: { ...durableAnswer(text), stopReason: "aborted" },
+      error: {
+        ...durableAnswer(text + (complete ? "Interrupted answer" : "")),
+        stopReason: "aborted",
+      },
     });
     const entry = Object.keys((await f.doc())?.inputs ?? {})[0];
     if (!entry) throw new Error("Missing original input");
@@ -840,6 +868,17 @@ it.each([false, true])(
     );
     expect(reopened.requests).toHaveLength(0);
     expect(JSON.stringify((await reopened.page()).parts)).not.toContain("cake-todo");
+    if (complete) {
+      reopened.setDecision(B);
+      await reopened.send("New human topic");
+      const parts = (await reopened.page()).parts;
+      expect(
+        parts.find((part) => part.kind === "text" && part.text === "Interrupted answer"),
+      ).toMatchObject({ taskTodoId: A });
+      expect(
+        parts.findLast((part) => part.kind === "text" && part.role === "assistant"),
+      ).toMatchObject({ taskTodoId: B });
+    }
   },
 );
 
@@ -879,4 +918,143 @@ it("rejects a late result after its run was stopped", async () => {
     todoId: null,
     responseStarted: true,
   });
+});
+
+it("includes every reply across an original-history page edge without replay or manual source links", async () => {
+  const f = await fixture();
+  const sent = await f.send("Startup");
+  await f.engine.root.commit(async (tx) => {
+    for (let i = 0; i < 205; i += 1)
+      await tx.appendEntry(AssistantEntry, f.engine.root.id, {
+        model: [{ ...durableAnswer("Continuation " + i), timestamp: 1000 + i }],
+      });
+  }, context);
+  const attributions = (await f.doc())?.inputs;
+  const newest = await readDurableOriginalPage(
+    f.engine.root,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    attributions,
+  );
+  expect(newest.cursor).toBeDefined();
+  expect(newest.parts.filter((part) => part.kind === "text")).toHaveLength(200);
+  expect(
+    newest.parts.filter((part) => part.kind === "text").every((part) => part.taskTodoId === A),
+  ).toBe(true);
+  const earlier = await readDurableOriginalPage(
+    f.engine.root,
+    newest.cursor,
+    undefined,
+    undefined,
+    undefined,
+    attributions,
+  );
+  expect(earlier.parts).toContainEqual(
+    expect.objectContaining({ entryId: String(sent.entry), taskTodoId: A }),
+  );
+  expect(
+    earlier.parts
+      .filter((part) => part.kind === "text" && part.role === "assistant")
+      .every((part) => part.kind === "text" && part.taskTodoId === A),
+  ).toBe(true);
+  expect(f.requests).toHaveLength(1);
+  expect(f.classify).not.toHaveBeenCalled();
+});
+
+it("bounds reply identity at new human, incoming report, automatic, pending and null inputs, never source cards", async () => {
+  const f = await fixture();
+  await f.send("Startup");
+  await f.engine.root.commit(async (tx) => {
+    const appendInput = async (
+      text: string,
+      attribution?: { pending: boolean; todoId: string | null },
+    ) => {
+      const entry = await tx.appendEntry(UserEntry, f.engine.root.id, {
+        model: [{ role: "user", content: text, timestamp: 2000 }],
+      });
+      if (attribution)
+        (await tx.doc(TaskAttributionDoc, f.engine.root.id)).inputs[String(entry.id)] = attribution;
+    };
+    const appendReply = (text: string) =>
+      tx.appendEntry(AssistantEntry, f.engine.root.id, {
+        model: [durableAnswer(text)],
+      });
+    await appendReply("Second block in same answer");
+    await tx.appendEntry(f.engine.root.id, {
+      kind: "cake.source-card",
+      data: { title: "Unrelated source" },
+    });
+    await appendReply("Answer after display-only source card");
+    const crossSession = {
+      version: 1,
+      messageId: A,
+      threadId: A,
+      sequence: 1,
+      expectsResponse: false,
+      sender: { sessionId: "worker", title: "Worker", kind: "project-session" },
+    };
+    await appendInput(
+      "<cake-session-message>" +
+        JSON.stringify(crossSession) +
+        "</cake-session-message>\nWorker findings",
+    );
+    await appendReply("Reply to incoming worker");
+    await appendInput(
+      durableInputText("Timer", [], false, false, undefined, undefined, {
+        _tag: "UpdateBatch",
+        notices: [],
+      }),
+    );
+    await appendReply("Reply to automatic input");
+    await appendInput(
+      durableInputText("Research findings", [], false, false, {
+        handleId: A,
+        task: "Research",
+        status: "complete",
+        fastMode: false,
+        resolvedModel: {
+          requested: "current",
+          source: "current",
+          provider: "fixture",
+          modelId: "fixture",
+          thinkingLevel: "off",
+          fallbacks: [],
+        },
+      }),
+    );
+    await appendReply("Reply to subagent report");
+    await appendInput("Unmatched human", { pending: false, todoId: null });
+    await appendReply("Unmatched answer");
+    await appendInput("Unsettled human", { pending: true, todoId: null });
+    await appendReply("Pending answer");
+    await appendInput("Switch to navigation", { pending: false, todoId: B });
+    await appendReply("Navigation answer");
+    await appendInput("Legacy untagged human");
+    await appendReply("Legacy untagged answer");
+  }, context);
+  const parts = (await f.page()).parts;
+  for (const text of ["Second block in same answer", "Answer after display-only source card"])
+    expect(parts.find((part) => part.kind === "text" && part.text === text)).toMatchObject({
+      taskTodoId: A,
+    });
+  for (const text of [
+    "Reply to incoming worker",
+    "Reply to automatic input",
+    "Reply to subagent report",
+    "Legacy untagged answer",
+  ])
+    expect(parts.find((part) => part.kind === "text" && part.text === text)).not.toHaveProperty(
+      "taskTodoId",
+    );
+  expect(
+    parts.find((part) => part.kind === "text" && part.text === "Unmatched answer"),
+  ).toMatchObject({ taskTodoId: null });
+  expect(
+    parts.find((part) => part.kind === "text" && part.text === "Pending answer"),
+  ).toMatchObject({ taskAttributionPending: true });
+  expect(
+    parts.find((part) => part.kind === "text" && part.text === "Navigation answer"),
+  ).toMatchObject({ taskTodoId: B });
 });

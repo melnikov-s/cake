@@ -43,7 +43,6 @@ import type {
   UiPart,
 } from "../../contracts/conversations/session-contract";
 import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-translation";
-import { projectSessionEntries } from "../pi/runtime/session-projection";
 import { TurnCanceledError, TurnDetachedError } from "../pi/runtime/RuntimeTurnCompletion";
 import type {
   CakeSessionRuntime,
@@ -341,6 +340,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         const active = await conversation.context(BACKGROUND_CONTEXT).catch(() => undefined);
         const contextTokens = active ? estimateContextTokens(active.messages).tokens : undefined;
         const snapshot = await conversation.commit(async (tx) => {
+          const live = await tx.doc(LiveDoc, conversation.id);
           const page = await readDurableOriginalPage(
             displayEntries((query, limit, cursor) =>
               tx.scanEntries({ ...query, conversationId: conversation.id }, limit, cursor),
@@ -351,8 +351,10 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             await readDurableActiveInterviews(tx, conversation.id),
             (await tx.doc(TaskAttributionDoc, conversation.id)).inputs,
             after,
+            live?.generation?.message
+              ? { id: `live-${live.run?.taskId}`, message: live.generation.message }
+              : undefined,
           );
-          const live = await tx.doc(LiveDoc, conversation.id);
           const agent = await tx.doc(AgentDoc, conversation.id);
           const usage = await tx.doc(UsageDoc, conversation.id);
           const preset = (await tx.doc(PresetContextDoc, conversation.id)).preset;
@@ -371,26 +373,6 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           const selected = ref ? host.catalog.getModel(ref.provider, ref.modelId) : undefined;
           const thinkingLevel = agent.thinkingLevel ?? "off";
           const parts: UiPart[] = [...page.parts];
-          if (live?.generation?.message) {
-            const message = live.generation.message;
-            parts.push(
-              ...projectSessionEntries(
-                [
-                  {
-                    type: "message",
-                    id: `live-${live.run?.taskId}`,
-                    parentId: null,
-                    timestamp: new Date(message.timestamp).toISOString(),
-                    message,
-                  },
-                ],
-                undefined,
-                { live: true },
-              ).map((part) =>
-                part.kind === "text" ? { ...part, status: "streaming" as const } : part,
-              ),
-            );
-          }
           for (const item of items)
             if (item.mode !== "write") {
               const id = await requestId(item);

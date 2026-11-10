@@ -128,7 +128,10 @@ for (const global of [false, true])
         transcript.getByText("I’ll trace project loading and compare the slow steps.", {
           exact: true,
         }),
-      ).toHaveCount(0);
+      ).toBeVisible();
+      await expect(
+        transcript.getByText("Investigate slow project startup.", { exact: true }),
+      ).toBeVisible();
       // Headings are native keyboard disclosures; folding one repeat leaves the other alone.
       await headingsA.nth(1).press("Enter");
       await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "false");

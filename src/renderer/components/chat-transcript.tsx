@@ -156,6 +156,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   );
   const focusedTodos = supportsTodoFocus ? (behavior.todos?.focusedItems ?? []) : [];
   const focused = focusedTodos.length > 0;
+  const history = store.history;
   const matchingParts = focused
     ? store.parts.filter((part) =>
         focusedTodos.some((todo) => todoMessageMatches(part, store.id, todo)),
@@ -252,6 +253,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         matchesFocus(item) &&
         (focused || taskSections.sections[index]?.todoId === request.todoId),
     );
+    if (!target && (history?.hasMore || history?.loading)) return;
     todos.completeTranscriptFocusRequest();
     if (!target) return;
     const messageId =
@@ -357,24 +359,24 @@ export const ChatTranscript = observer(function ChatTranscript({
     ? items.findIndex((item) => transcriptItemParts(item).some((part) => part.id === resultPartId))
     : -1;
   const resultItemKey = resultItemIndex < 0 ? undefined : itemKeys[resultItemIndex];
-  // Exact originals or an already-bound explanation can leave the current
-  // history page. Page only for explicit navigation, stopping on resolution/cancel.
-  const history = store.history;
+  // Explicit navigation may need an older original; Focus retrieves all repeated
+  // turns, even with recent matches. Reuse the owned pager, stopping on clear/error.
   const historyLoading = history?.loading;
   const historyHasMore = history?.hasMore;
   const historyError = history?.error;
   useEffect(() => {
     if (
-      resultReveal?.source !== "history" ||
-      !(resultReveal.partIds?.length || resultReveal.messageId) ||
-      resultPartId ||
+      (!focused &&
+        (resultReveal?.source !== "history" ||
+          !(resultReveal.partIds?.length || resultReveal.messageId) ||
+          resultPartId)) ||
       !historyHasMore ||
       historyLoading ||
       historyError
     )
       return;
     void history?.load();
-  }, [resultReveal, resultPartId, history, historyLoading, historyHasMore, historyError]);
+  }, [focused, resultReveal, resultPartId, history, historyLoading, historyHasMore, historyError]);
   const isArriving = useArrivals(itemKeys, store.id);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({
@@ -768,7 +770,7 @@ export const ChatTranscript = observer(function ChatTranscript({
           <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
             {focused ? (
               <p role="status" className="text-sm text-muted-foreground">
-                No messages tagged to this to-do.
+                {history?.hasMore || history?.loading ? null : "No messages tagged to this to-do."}
               </p>
             ) : (
               empty

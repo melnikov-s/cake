@@ -344,7 +344,7 @@ export const uiPartSchema = Schema.Union([
     agentSource: Schema.optionalKey(AgentUpdateSource),
     scheduled: Schema.optional(ScheduledMessageOrigin),
     /** Original payload and stable identity while Pi holds this input. */
-    /** Presentation-only attribution of this input; null explicitly ends a task section. */
+    /** Presentation-only identity of a human turn and its replies; null is explicitly unmatched. */
     taskTodoId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isUUID(4)))),
     /** Unresolved human input starts ungrouped until the conversational agent decides. */
     taskAttributionPending: Schema.optionalKey(Schema.Boolean),

@@ -99,7 +99,8 @@ projections needed by a surface. References do not transfer ownership.
   5. While following at the bottom, streaming output stays pinned.
   6. Only the reader scrolling back to the very end (or the jump control)
      resumes following; the list's own corrections never do.
-     Earlier history pages load only on the reader's approach to the top. Rules
+     Earlier history pages load on the reader's approach to the top, or to retrieve
+     the complete conversation for an explicitly focused to-do. Rules
      are verified in `tests/electron/transcript-follow.smoke.spec.ts`. Do not add
      another scroll writer or compensate layout outside the list.
 - Regular-Pi display history is the complete active branch from
@@ -607,6 +608,12 @@ is a refactoring signal, not precedent.
   distinct from explicit none. An already committed prefix survives later failure or abort.
   Settled metadata and manual corrections cannot be overwritten by later or replayed results.
   Reload preserves unresolved and settled states; old settled associations are not reclassified.
+  Original-history projection gives every answering assistant message the preceding human input's
+  identity, including live previews and page edges. Pi's model-input boundaries, not visual grouping,
+  determine ownership: new human, automatic and incoming session/subagent inputs stop inheritance;
+  display-only source cards do not assign identity. Focus still matches explicit per-message identity
+  or exact source links, never a source session or neighboring UI row. Explicit Focus pages earlier
+  originals even when recent matches exist, and only declares no matches after history is exhausted.
   The static instruction changes the system prefix once on deployment; per-input UUID
   markers are stable across tool rounds and later requests. Prefixes add generation tokens;
   removing metadata from subsequent context may invalidate the cached suffix beginning there.

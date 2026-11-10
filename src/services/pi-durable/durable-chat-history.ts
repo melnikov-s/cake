@@ -7,6 +7,10 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
+import type { AssistantMessage, UserMessage } from "@earendil-works/pi-durable-ai";
+import type { UiPart } from "../../contracts/conversations/session-contract";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { isAutomaticInput } from "../pi/runtime/internal-input-projection";
 import type { InterviewEntry } from "../../contracts/interviews/interview";
 import { durableToolInterview, withDurableToolInterview } from "./durable-side-chat-interviews";
 import { internalInputEntryType } from "../pi/runtime/internal-input-projection";
@@ -66,6 +70,7 @@ export async function readDurableOriginalPage(
   activeInterviews: ReadonlyMap<string, InterviewEntry> = new Map(),
   attributions: Readonly<Record<string, { pending: boolean; todoId: string | null }>> = {},
   originalHistoryThrough?: number,
+  liveResponse?: { id: string; message: AssistantMessage },
 ) {
   let next = cursor;
   do {
@@ -158,7 +163,61 @@ export async function readDurableOriginalPage(
                 })
               : [],
       );
-    const attributionInputs = new Set<string>();
+    // Pi places model inputs only at generation boundaries. Attribute replies from
+    // originals, not neighboring UI rows (which may be source cards or hidden inputs).
+    // Look beyond a page edge without projecting or retaining the preceding history.
+    const identityForInput = (message: UserMessage, entryId: string) => {
+      const input = durableInputPresentation(
+        typeof message.content === "string"
+          ? message.content
+          : message.content
+              .flatMap((block) => (block.type === "text" ? [block.text] : []))
+              .join("\n"),
+      );
+      if (
+        isAutomaticInput(input.internal) ||
+        input.subagentReport ||
+        parseCrossSessionMessage(input.text)
+      )
+        return {};
+      const attribution = attributions[entryId];
+      return attribution?.pending || (!attribution && input.attribution)
+        ? { taskAttributionPending: true as const }
+        : attribution
+          ? { taskTodoId: attribution.todoId }
+          : {};
+    };
+    let responseIdentity: Pick<
+      Extract<UiPart, { kind: "text" }>,
+      "taskTodoId" | "taskAttributionPending"
+    > = {};
+    const chronological = page.items.slice().reverse();
+    const firstInputOrReply = chronological.find((entry) =>
+      entry.model?.some((message) => message.role === "user" || message.role === "assistant"),
+    );
+    if (firstInputOrReply?.model?.[0]?.role !== "user") {
+      let before = page.next;
+      while (before !== undefined) {
+        const earlier = await root.entries({}, 200, before, BACKGROUND_CONTEXT);
+        const input = earlier.items.find((entry) =>
+          entry.model?.some((message) => message.role === "user"),
+        );
+        const message = input?.model?.findLast((message) => message.role === "user");
+        if (input && message) {
+          responseIdentity = identityForInput(message, String(input.id));
+          break;
+        }
+        before = earlier.next;
+      }
+    }
+    const identities = new Map<string, typeof responseIdentity>();
+    for (const entry of chronological) {
+      for (const message of entry.model ?? []) {
+        if (message.role === "user") responseIdentity = identityForInput(message, String(entry.id));
+        if (entry.kind === "pi.user" || entry.kind === "pi.assistant")
+          identities.set(String(entry.id), responseIdentity);
+      }
+    }
     const origins = new Map(
       page.items.flatMap((entry) =>
         (entry.model ?? []).flatMap((message) => {
@@ -170,7 +229,6 @@ export async function readDurableOriginalPage(
                   .flatMap((block) => (block.type === "text" ? [block.text] : []))
                   .join("\n"),
           );
-          if (input.attribution) attributionInputs.add(String(entry.id));
           return input.subagentReport ? [[String(entry.id), input.subagentReport] as const] : [];
         }),
       ),
@@ -220,18 +278,13 @@ export async function readDurableOriginalPage(
             : part,
           interviews.get(part.id),
         );
-      if (part.kind !== "text" || part.role !== "user" || !part.entryId) return part;
+      if (part.kind !== "text" || !part.entryId) return part;
+      if (part.role !== "user") return { ...part, ...identities.get(part.entryId) };
       const origin = origins.get(part.entryId);
       const markdown = presentationOverrides[part.entryId];
-      const attribution = attributions[part.entryId];
-      const unresolved = !attribution && attributionInputs.has(part.entryId);
       return {
         ...part,
-        ...(attribution?.pending || unresolved
-          ? { taskAttributionPending: true }
-          : attribution
-            ? { taskTodoId: attribution.todoId }
-            : null),
+        ...identities.get(part.entryId),
         ...(origin ? { subagentReport: origin } : null),
         renderAs:
           markdown === undefined
@@ -243,6 +296,26 @@ export async function readDurableOriginalPage(
               : undefined,
       };
     });
+    if (liveResponse)
+      parts.push(
+        ...projectSessionEntries(
+          [
+            {
+              type: "message",
+              id: liveResponse.id,
+              parentId: null,
+              timestamp: new Date(liveResponse.message.timestamp).toISOString(),
+              message: liveResponse.message,
+            },
+          ],
+          undefined,
+          { live: true },
+        ).map((part) =>
+          part.kind === "text"
+            ? { ...part, ...responseIdentity, status: "streaming" as const }
+            : part,
+        ),
+      );
     next = page.next === undefined ? undefined : JSON.stringify(page.next);
     if (parts.length || next === undefined) return { parts, cursor: next };
   } while (next !== undefined);
