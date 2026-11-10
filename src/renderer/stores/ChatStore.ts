@@ -739,7 +739,7 @@ export class ChatStore extends Store<ChatStoreProps> {
           this.cancelEnterContinuation();
         return false;
       }
-      // Sending a message is the only time the transcript scrolls to the bottom.
+      // Record composer sends without changing the reader's transcript position.
       // Editing an earlier message rewrites history in place instead.
       if (!this.editingMessage) this.transcriptInteraction.noteSentMessage();
       const submittedRevision = this.draftRevision;

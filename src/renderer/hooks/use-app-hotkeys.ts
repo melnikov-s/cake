@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { listenForModifierTap } from "../lib/modifier-tap";
 import { requestAnnotationDismissal } from "../lib/annotation-dismissal";
+import { chatBottomNavigationTarget } from "../lib/chat-bottom-navigation";
 import {
   cakeHotkeyEventName,
   cakeNativeHotkeyInputEventName,
@@ -36,7 +37,9 @@ export function useAppHotkeys(
         return;
       if (action === "new-terminal-tab" && target instanceof Element && target.closest(".xterm"))
         return;
-      if (action === "open-hovered-message") {
+      if (action === "scroll-to-bottom") {
+        chatBottomNavigationTarget(target)?.click();
+      } else if (action === "open-hovered-message") {
         if (document.querySelector('[data-slot="message"]:hover')) {
           window.dispatchEvent(new CustomEvent(cakeHotkeyEventName, { detail: action }));
           return;
@@ -69,7 +72,7 @@ export function useAppHotkeys(
       )
         return;
       const action = settings.hotkeys.actionForEvent(event);
-      if (!action) return;
+      if (!action || (action === "scroll-to-bottom" && !chatBottomNavigationTarget(target))) return;
       event.preventDefault();
       runAction(action, target);
     };
@@ -77,14 +80,16 @@ export function useAppHotkeys(
       if (event.defaultPrevented || recordingHotkey()) return;
       const binding = hotkeyFromKeyboardEvent(event.detail);
       const action = binding ? settings.hotkeys.actionForBinding(binding) : undefined;
-      if (!action) return;
+      // Native editor forwarding has no chat DOM target; never take its text navigation.
+      if (!action || action === "scroll-to-bottom") return;
       event.preventDefault();
       runAction(action, null);
     };
     const stopModifierTaps = listenForModifierTap((binding, event) => {
       if (event.defaultPrevented || recordingHotkey()) return;
       const action = settings.hotkeys.actionForBinding(binding);
-      if (!action) return;
+      if (!action || (action === "scroll-to-bottom" && !chatBottomNavigationTarget(event.target)))
+        return;
       event.preventDefault();
       runAction(action, event.target);
     });

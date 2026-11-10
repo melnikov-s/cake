@@ -11,8 +11,11 @@ import type { SessionAssistantStore } from "../stores/SessionAssistantStore";
 import type { DictationStore } from "../stores/DictationStore";
 import type { UiHintModeStore } from "../stores/UiHintModeStore";
 
-// The App handles hovered-message opening because it requires a DOM target.
-type ApplicationCommandId = Exclude<CakeHotkeyActionId, "open-hovered-message">;
+// These actions require a focused or hovered DOM target.
+type ApplicationCommandId = Exclude<
+  CakeHotkeyActionId,
+  "open-hovered-message" | "scroll-to-bottom"
+>;
 
 interface ApplicationCommand {
   enabled?(): boolean;

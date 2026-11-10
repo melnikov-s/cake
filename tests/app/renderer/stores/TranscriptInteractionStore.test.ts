@@ -101,6 +101,25 @@ describe("Transcript native/control adapter integration", () => {
     });
   });
 
+  it("records sends without clearing the selected message or saved reading anchor", () => {
+    using fixture = transcriptAdapter([user, assistant]);
+    const { interaction } = fixture;
+    interaction.navigateToMessage("user-1");
+    const selection = interaction.messageSelection;
+    const position = { kind: "message" as const, messageId: "user-1", offset: -20 };
+    interaction.setTranscriptScrollPosition(position);
+    interaction.noteSentMessage();
+    expect(interaction.sentMessageRevision).toBe(1);
+    expect(interaction.messageSelection).toEqual(selection);
+    expect(interaction.transcriptScrollPosition).toEqual(position);
+    expect(interaction.bottomRequestRevision).toBe(0);
+
+    interaction.returnToBottom();
+    expect(interaction.messageSelection).toBeUndefined();
+    expect(interaction.transcriptScrollPosition).toEqual({ kind: "bottom" });
+    expect(interaction.bottomRequestRevision).toBe(1);
+  });
+
   it("skips activity and empty assistant placeholders but includes attachment-only user anchors", () => {
     using fixture = transcriptAdapter([
       { ...user, id: "user", text: "" },

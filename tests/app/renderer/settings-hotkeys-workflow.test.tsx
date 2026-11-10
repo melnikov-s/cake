@@ -5,6 +5,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { SettingsHotkeysSection } from "../../../src/renderer/components/settings-hotkeys-section";
+import { defaultHotkeyBinding, formatHotkey } from "../../../src/renderer/lib/hotkeys";
 import type { HotkeySettingsStore } from "../../../src/renderer/stores/HotkeySettingsStore";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -37,6 +38,18 @@ afterEach(cleanup);
 // Native shortcut capture, focus, and dispatch are covered by tests/electron/hotkeys.smoke.spec.ts.
 // These workflows exercise preference editing through the real Settings UI and Root Store tree.
 describe("Hotkey settings workflow", () => {
+  it("exposes the bottom action in Conversation shortcuts and supports clearing and resetting its binding", async () => {
+    using fixture = renderHotkeys({ "scroll-to-bottom": "Alt+ArrowDown" });
+    const bottom = shortcut("Scroll to bottom");
+    expect(bottom.recorder.textContent).toBe(formatHotkey("Alt+ArrowDown"));
+    await fixture.user.click(bottom.clear);
+    expect(bottom.recorder.textContent).toBe("Not assigned");
+    await fixture.user.click(bottom.reset);
+    expect(bottom.recorder.textContent).toBe(
+      formatHotkey(defaultHotkeyBinding("scroll-to-bottom")),
+    );
+  });
+
   it("clears shortcuts, resets one without changing another, and restores all defaults", async () => {
     using fixture = renderHotkeys();
     const terminal = shortcut("Toggle terminal");

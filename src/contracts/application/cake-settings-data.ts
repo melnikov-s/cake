@@ -21,6 +21,7 @@ export const cakeHotkeyActionIds = [
   "toggle-work-logs",
   "cycle-work-log-view",
   "open-hovered-message",
+  "scroll-to-bottom",
   "open-companion",
   "toggle-dictation-mute",
   "open-settings",

@@ -80,8 +80,8 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   /** Counts the reader's own sends. */
   sentMessageRevision = 0;
   /**
-   * Counts the reader's requests for the newest content: sending, the
-   * jump-to-bottom control, or arrowing past the newest message. These are the
+   * Counts the reader's requests for the newest content: the jump-to-bottom
+   * control or arrowing past the newest message. These are the
    * only times the transcript scrolls to the bottom for the reader.
    */
   bottomRequestRevision = 0;
@@ -242,7 +242,8 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   /** The reader sent a message from the composer (typed or voice conversation mode). */
   noteSentMessage() {
     this.sentMessageRevision++;
-    this.returnToBottom();
+    // A send supersedes pending attention navigation, not the reader's position or selection.
+    this.cancelResultReveal();
   }
 
   /** The reader asked for the newest content; the transcript follows it again. */

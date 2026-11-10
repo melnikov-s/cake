@@ -11,6 +11,14 @@ export interface HotkeyDefinition {
 
 export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
   {
+    id: "scroll-to-bottom",
+    group: "Conversation",
+    label: "Scroll to bottom",
+    description:
+      "Show the newest content in the focused chat. Text editing keeps its navigation keys.",
+    defaultBinding: isMacPlatform ? "Mod+ArrowDown" : "",
+  },
+  {
     id: "new-session",
     group: "Navigation",
     label: "New session",

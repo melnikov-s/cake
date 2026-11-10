@@ -304,8 +304,7 @@ describe("Chat optional presentation capability", () => {
   });
 });
 
-// Sending is the one time the transcript scrolls for the reader, whichever
-// composer path sends (typed or voice conversation mode).
+// All composer paths record sends without changing the reader's saved position.
 describe("Sent message transcript signal", () => {
   function chatStore(options: { canSubmit: boolean; editing?: boolean }) {
     return mount(
@@ -325,13 +324,14 @@ describe("Sent message transcript signal", () => {
     );
   }
 
-  it("counts each accepted send and opens a later transcript at the bottom", async () => {
+  it("counts each accepted send and preserves the position for a later transcript", async () => {
     using store = chatStore({ canSubmit: true });
     store.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
     await store.submit("First");
     await store.submit("Second");
     expect(store.transcriptInteraction.sentMessageRevision).toBe(2);
-    expect(store.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "bottom" });
+    expect(store.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
+    expect(store.transcriptInteraction.bottomRequestRevision).toBe(0);
   });
 
   it("does not move the transcript for rejected sends or edits of an earlier message", async () => {

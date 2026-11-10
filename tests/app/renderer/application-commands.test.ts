@@ -13,7 +13,9 @@ describe("Application command registry", () => {
     using fixture = createRendererStoreFixture({ sessions: [summary] });
     const { root, models } = fixture;
     expect(Object.keys(root.commands.commands).sort()).toEqual(
-      cakeHotkeyActionIds.filter((action) => action !== "open-hovered-message").sort(),
+      cakeHotkeyActionIds
+        .filter((action) => action !== "open-hovered-message" && action !== "scroll-to-bottom")
+        .sort(),
     );
 
     root.commands.execute("toggle-session-tree");

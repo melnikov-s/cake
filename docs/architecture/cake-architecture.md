@@ -84,9 +84,11 @@ projections needed by a surface. References do not transfer ownership.
   `maintainVisibleContentPosition` keeps visible content still otherwise
   (streaming, arriving messages, tool cards, images, prepended history). Cake's
   follow rules live in one place, `src/renderer/lib/transcript-follow.ts`:
-  1. Only a reader action scrolls to the bottom: sending, the jump-to-bottom
-     control, or arrowing past the newest message. All three go through
-     `TranscriptInteractionStore.returnToBottom()` (`bottomRequestRevision`).
+  1. Only explicit navigation scrolls to the bottom: the jump-to-bottom control
+     (also ⌘↓ in the focused chat on Mac) or arrowing past the newest message.
+     Both go through `TranscriptInteractionStore.returnToBottom()`
+     (`bottomRequestRevision`). Sending preserves the reading position, selection,
+     and existing follow state. Text editors retain their navigation keys.
   2. Any upward reader input stops following at once and keeps it stopped
      (wheel, keys, touch, scrollbar; embedded widget frames forward theirs as
      `transcript-reader-input`). The list alone would resume within a pixel.

@@ -72,6 +72,9 @@ test("remaps application hotkeys from Settings", async () => {
     await expect(page.getByRole("heading", { name: "Hotkeys" })).toBeVisible();
 
     const terminalShortcut = page.getByRole("button", { name: "Toggle terminal shortcut" });
+    await expect(page.getByRole("button", { name: "Scroll to bottom shortcut" })).toContainText(
+      process.platform === "darwin" ? "⌘↓" : "Not assigned",
+    );
     await expect(page.getByRole("button", { name: "Go up one level shortcut" })).toContainText(
       process.platform === "darwin" ? "⌘⇧H" : "Ctrl+Shift+H",
     );

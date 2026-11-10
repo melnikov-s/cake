@@ -127,7 +127,7 @@ async function renderPlugins(authority: ReturnType<typeof createAuthority>) {
 }
 
 it.each(["session-1", CAKE_CHAT_SESSION_ID])(
-  "plugin button sends in %s request bottom without consuming the draft",
+  "plugin button sends in %s preserve the reading position and draft",
   async (sessionId) => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
       TurnId.make("10000000-0000-4000-8000-000000000001"),
@@ -163,6 +163,7 @@ it.each(["session-1", CAKE_CHAT_SESSION_ID])(
     chat.setDraft("Keep my unfinished draft");
     const reveal = chat.transcriptInteraction.beginResultReveal();
     chat.transcriptInteraction.completeResultReveal(reveal, ["older-report"]);
+    chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
     fixture.root.sessionPluginStore.applyApplicationState(1, {
       ...defaultApplicationState(),
       sessionPlugins: [plugin("tour", "Tour", sessionId)],
@@ -181,6 +182,8 @@ it.each(["session-1", CAKE_CHAT_SESSION_ID])(
     await userEvent.setup().click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
     expect(chat.transcriptInteraction.sentMessageRevision).toBe(1);
+    expect(chat.transcriptInteraction.bottomRequestRevision).toBe(0);
+    expect(chat.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
     expect(chat.transcriptInteraction.resultReveal).toBeUndefined();
     expect(chat.draft).toBe("Keep my unfinished draft");
     expect(prompt.mock.calls[0]?.[0]).toMatchObject({ sessionId, text: "Next", attachments: [] });

@@ -445,6 +445,8 @@ export const Chat = observer(function Chat({
         {bottomNavigation?.conversationId === store.id && (
           <IconButton
             tooltip="Scroll to bottom"
+            hotkey="scroll-to-bottom"
+            data-chat-scroll-to-bottom
             className="pointer-events-auto absolute right-0 bottom-2 size-9 rounded-full hover:bg-muted/85 focus-visible:ring-3 focus-visible:ring-ring/25 motion-reduce:transition-none"
             onClick={() => bottomNavigation.jumpToBottom()}
           >

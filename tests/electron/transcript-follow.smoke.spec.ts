@@ -315,7 +315,9 @@ const streamFor = async (page: Page, milliseconds: number, mode = "text+tool+arr
 };
 
 test.describe("transcript follow rules", () => {
-  test("rule 1: only reader actions scroll to the bottom", async ({ fixturePage: page }) => {
+  test("rule 1: sending preserves the reader; explicit navigation scrolls to the bottom", async ({
+    fixturePage: page,
+  }) => {
     const transcript = page.locator(".transcript");
     const input = page.getByRole("combobox", { name: "Message", exact: true });
     await wheel(page, transcript, -1400);
@@ -327,19 +329,35 @@ test.describe("transcript follow rules", () => {
     }
     expect(await gap(transcript)).toBeGreaterThan(400);
 
-    // Sending is a reader action: it returns to the bottom.
-    await input.fill("Take me to the newest content.");
-    await input.press("Enter");
-    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
-    await expect(transcript.getByText("Take me to the newest content.")).toBeVisible();
+    // Both composer paths submit without moving the reading anchor.
+    for (const method of ["Enter", "button"]) {
+      const text = `Keep my place (${method}).`;
+      await input.fill(text);
+      if (method === "Enter") await input.press("Enter");
+      else await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect.poll(() => fixtureCall(page, "submittedText")).toBe(text);
+      await expect(input).toHaveValue("");
+      await settle(page);
+      expect(await anchor(transcript)).toEqual(reading);
+      expect(await gap(transcript)).toBeGreaterThan(400);
+    }
 
-    // So is the jump-to-bottom control.
-    await wheel(page, transcript, -2400);
+    // The jump-to-bottom control remains explicit.
     const jump = page.getByRole("button", { name: "Scroll to bottom", exact: true });
     await expect(jump).toBeVisible();
     await jump.click();
     await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
     await expect(jump).toHaveCount(0);
+    await expect(transcript.getByText("Keep my place (button).")).toBeVisible();
+
+    // Sending while already at the bottom keeps normal following.
+    await input.fill("Keep following.");
+    await input.press("Enter");
+    await expect.poll(() => fixtureCall(page, "submittedText")).toBe("Keep following.");
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    await fixtureCall(page, "stream");
+    await settle(page);
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
 
     // And arrowing past the newest message.
     await wheel(page, transcript, -2400);
@@ -357,6 +375,58 @@ test.describe("transcript follow rules", () => {
     )
       await page.keyboard.press("ArrowDown");
     await expect(transcript.locator('[aria-current="true"]')).toHaveCount(0);
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+  });
+
+  test("writing clears keyboard selection but sending preserves the reading position", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const input = page.getByRole("combobox", { name: "Message", exact: true });
+    await input.focus();
+    for (let step = 0; step < 5; step++) await input.press("ArrowUp");
+    const selected = transcript.locator('[aria-current="true"]');
+    await expect(selected).toHaveCount(1);
+    await input.fill("Send without moving the reading position.");
+    // Writing intentionally ends keyboard message selection, not the reading position.
+    await expect(selected).toHaveCount(0);
+    await settle(page);
+    const reading = await anchor(transcript);
+    await input.press("Enter");
+    await expect
+      .poll(() => fixtureCall(page, "submittedText"))
+      .toBe("Send without moving the reading position.");
+    await settle(page);
+    await expect(selected).toHaveCount(0);
+    expect(await anchor(transcript)).toEqual(reading);
+  });
+
+  test("Cmd+Down uses the focused chat's arrow but preserves composer caret navigation", async ({
+    fixturePage: page,
+  }) => {
+    test.skip(process.platform !== "darwin", "Mac default binding.");
+    const transcript = page.locator(".transcript");
+    const input = page.getByRole("combobox", { name: "Message", exact: true });
+    await wheel(page, transcript, -1600);
+    const reading = await anchor(transcript);
+    await input.fill("First line.\\nSecond line.");
+    await input.press("Home");
+    await input.press("Meta+ArrowDown");
+    await settle(page);
+    expect(await anchor(transcript)).toEqual(reading);
+    expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(
+      "First line.\\nSecond line.".length,
+    );
+
+    await input.fill("");
+    const jump = page.getByRole("button", { name: "Scroll to bottom", exact: true });
+    await jump.hover();
+    await expect(page.getByRole("tooltip")).toContainText("⌘↓");
+    await input.press("Meta+ArrowDown");
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    await expect(jump).toHaveCount(0);
+    await fixtureCall(page, "stream");
+    await settle(page);
     await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
   });
 
@@ -595,7 +665,7 @@ test("reopening a conversation restores the reader's position", async ({ fixture
   await expect.poll(() => anchor(transcript)).toEqual(reading);
 });
 
-test("evidence: scrolling up during streaming holds; sending follows again", async ({
+test("evidence: sending holds the reading position; explicit navigation follows again", async ({
   fixturePage: page,
 }) => {
   test.skip(!capture, "Recording only: CAKE_TRANSCRIPT_CAPTURE=1.");
@@ -608,7 +678,8 @@ test("evidence: scrolling up during streaming holds; sending follows again", asy
   await fixtureCall(page, "startLive", 40, "text+tool+arrive");
   await page.waitForTimeout(2000);
   await shot("1-following-while-streaming");
-  await wheel(page, transcript, -500);
+  // The explicit arrow appears once more than a viewport of content lies below.
+  await wheel(page, transcript, -1600);
   await shot("2-scrolled-up");
   const reading = await anchor(transcript);
   await page.waitForTimeout(4000);
@@ -617,10 +688,22 @@ test("evidence: scrolling up during streaming holds; sending follows again", asy
   await input.fill("Please summarize.");
   await page.waitForTimeout(500);
   await input.press("Enter");
+  await expect.poll(() => fixtureCall(page, "submittedText")).toBe("Please summarize.");
+  await settle(page);
+  expect(await anchor(transcript)).toEqual(reading);
+  await shot("4-sent-still-reading");
+  const jump = page.getByRole("button", { name: "Scroll to bottom", exact: true });
+  await jump.hover();
+  await expect(page.getByRole("tooltip")).toContainText(
+    process.platform === "darwin" ? "⌘↓" : "Scroll to bottom",
+  );
+  await shot("5-explicit-arrow-shortcut");
+  await input.focus();
+  if (process.platform === "darwin") await input.press("Meta+ArrowDown");
+  else await jump.click();
   await expect.poll(() => gap(transcript)).toBeLessThan(1);
-  await shot("4-sent-back-at-bottom");
   await page.waitForTimeout(2500);
-  await shot("5-following-again");
+  await shot("6-following-again");
   expect(await gap(transcript)).toBeLessThan(1);
   await fixtureCall(page, "stopLive");
 });

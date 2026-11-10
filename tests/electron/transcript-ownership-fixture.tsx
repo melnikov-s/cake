@@ -10,6 +10,8 @@ import { flushSync } from "react-dom";
 import { StoreProvider } from "r-state-tree/react";
 import { ChatTranscript } from "../../src/renderer/components/chat-transcript";
 import { Chat } from "../../src/renderer/components/chat";
+import { IconButtonHotkeyProvider } from "../../src/renderer/components/ui/icon-button";
+import { useAppHotkeys } from "../../src/renderer/hooks/use-app-hotkeys";
 import type { TranscriptScrollPosition } from "../../src/renderer/stores/ChatStore";
 import type { AttachmentContent } from "../../src/contracts/conversations/attachment-reference-control";
 import { createRendererStoreFixture } from "../app/renderer/renderer-store-fixture";
@@ -369,59 +371,69 @@ const root = createRoot(document.getElementById("root")!);
 let liveTimer: ReturnType<typeof setInterval> | undefined;
 let tick = 0;
 let dockHeight = 0;
+const ignoreResponse = () => {};
+function FixtureHotkeys() {
+  useAppHotkeys(fixture.root, ignoreResponse);
+  return null;
+}
 function render() {
   flushSync(() =>
     root.render(
-      <StoreProvider store={fixture.root}>
-        <StoreProvider store={fixture.root.dictationStore}>
-          <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-            {chatMode ? (
-              <Chat
-                store={
-                  alternateConversation
-                    ? alternateSession.conversationSessionStore.chatStore
-                    : store
-                }
-                transcriptBehavior={
-                  widget
-                    ? {
-                        messageReferenceSessionId: session.sessionId,
-                        inlineWidgets: fixture.root.inlineWidgetStore,
-                        inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
-                      }
-                    : undefined
-                }
-                composerHeader={
-                  cakeSession || dockHeight > 0 ? (
-                    <>
-                      {cakeSession && <CakeChatComposerHeader session={cakeSession} />}
-                      {dockHeight > 0 && (
-                        <div style={{ height: dockHeight }}>Attention header fixture</div>
-                      )}
-                    </>
-                  ) : undefined
-                }
-                compact={chatMode === "compact"}
-                embedded={withUpdates && chatMode === "compact"}
-              />
-            ) : (
-              <ChatTranscript
-                store={store}
-                behavior={
-                  widget
-                    ? {
-                        messageReferenceSessionId: session.sessionId,
-                        inlineWidgets: fixture.root.inlineWidgetStore,
-                        inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
-                      }
-                    : undefined
-                }
-                footer={<div>Activity revision {revision}</div>}
-              />
-            )}
+      <IconButtonHotkeyProvider
+        bindingFor={(id) => fixture.root.settingsStore.hotkeys.bindingFor(id)}
+      >
+        <FixtureHotkeys />
+        <StoreProvider store={fixture.root}>
+          <StoreProvider store={fixture.root.dictationStore}>
+            <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+              {chatMode ? (
+                <Chat
+                  store={
+                    alternateConversation
+                      ? alternateSession.conversationSessionStore.chatStore
+                      : store
+                  }
+                  transcriptBehavior={
+                    widget
+                      ? {
+                          messageReferenceSessionId: session.sessionId,
+                          inlineWidgets: fixture.root.inlineWidgetStore,
+                          inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
+                        }
+                      : undefined
+                  }
+                  composerHeader={
+                    cakeSession || dockHeight > 0 ? (
+                      <>
+                        {cakeSession && <CakeChatComposerHeader session={cakeSession} />}
+                        {dockHeight > 0 && (
+                          <div style={{ height: dockHeight }}>Attention header fixture</div>
+                        )}
+                      </>
+                    ) : undefined
+                  }
+                  compact={chatMode === "compact"}
+                  embedded={withUpdates && chatMode === "compact"}
+                />
+              ) : (
+                <ChatTranscript
+                  store={store}
+                  behavior={
+                    widget
+                      ? {
+                          messageReferenceSessionId: session.sessionId,
+                          inlineWidgets: fixture.root.inlineWidgetStore,
+                          inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
+                        }
+                      : undefined
+                  }
+                  footer={<div>Activity revision {revision}</div>}
+                />
+              )}
+            </StoreProvider>
           </StoreProvider>
         </StoreProvider>
-      </StoreProvider>,
+      </IconButtonHotkeyProvider>,
     ),
   );
 }
