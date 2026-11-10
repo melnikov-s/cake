@@ -45,10 +45,13 @@ it.each([
       />,
     );
     expect(screen.getByRole("article", { name: heading })).toBeDefined();
-    // The card names the worker once, with its status as a badge.
+    // Title/preview and the trailing status badge occupy independent columns.
     expect(
       screen.getByRole("button", { name: "Bug-fix workflow audit" }).parentElement?.textContent,
-    ).toBe(`Bug-fix workflow audit${badge}${findings}`);
+    ).toBe(`Bug-fix workflow audit${findings}`);
+    expect(view.container.querySelector('[data-slot="session-message-badges"]')?.textContent).toBe(
+      badge,
+    );
     const card = screen.getByRole("button", { name: "Bug-fix workflow audit" });
     expect(card.getAttribute("aria-expanded")).toBe("false");
     expect(view.container.querySelector('[data-slot="message-content"]')).toBeNull();
