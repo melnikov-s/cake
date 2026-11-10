@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createRegistry, MemoryStorage } from "@earendil-works/pi-durable";
@@ -272,11 +271,11 @@ async function renderChat(kind: ChatKind) {
   });
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
+      <>
         <AppShellLayout overlays={null} commandPaneWidth={420} onCommandPaneWidthChange={() => {}}>
           <CakeChatSurface />
         </AppShellLayout>
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   await waitFor(() =>
@@ -956,13 +955,13 @@ it.each(chats)(
     });
     const ordinaryView = render(
       <StoreProvider store={f.root}>
-        <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
+        <>
           <Chat
             store={ordinary.conversationSessionStore.chatStore}
             transcriptBehavior={projectTranscriptBehaviorFor(f.root, ordinary)}
             composerFocusEnabled={false}
           />
-        </VirtuosoMockContext.Provider>
+        </>
       </StoreProvider>,
     );
     await waitFor(() =>
@@ -1084,9 +1083,9 @@ it.each([
     });
     const view = render(
       <StoreProvider store={f.root}>
-        <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
+        <>
           <Chat store={store} transcriptBehavior={behavior} composerFocusEnabled={false} />
-        </VirtuosoMockContext.Provider>
+        </>
       </StoreProvider>,
     );
     await waitFor(() =>

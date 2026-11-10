@@ -613,6 +613,8 @@ describe("Project Session conversation mode", () => {
     await act(async () => result.resolve("Actually change that approach"));
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
     expect(f.prompt).not.toHaveBeenCalled();
+    // The transcript list settles its row order shortly after updates (<1s).
+    await act(async () => vi.advanceTimersByTimeAsync(600));
     expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
   });
@@ -1238,6 +1240,8 @@ describe("Project Session conversation mode", () => {
     expect(f.prompt).toHaveBeenCalledTimes(1);
     expect(f.release).toHaveBeenCalledTimes(releases);
     expect(f.microphone.open).toHaveBeenCalledTimes(1);
+    // The transcript list settles its row order shortly after updates (<1s).
+    await act(async () => vi.advanceTimersByTimeAsync(600));
     expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
   });

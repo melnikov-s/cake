@@ -3,7 +3,6 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { cakeChatBuiltinSlashCommands } from "../../../src/contracts/conversations/session-contract";
@@ -79,9 +78,9 @@ function renderChat(sessionId: string, options: { fail?: boolean; pending?: bool
   applyScheduledMessageUpdate(catalog, { _tag: "Snapshot", revision: 1, messages: [] });
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+      <>
         <CakeChatSurface />
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   return {

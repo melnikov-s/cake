@@ -1,7 +1,6 @@
 import { StoreProvider } from "r-state-tree/react";
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
@@ -81,13 +80,13 @@ export function renderWorkLog(
   });
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+      <>
         <Chat
           store={session.conversationSessionStore.chatStore}
           compact
           composerFocusEnabled={false}
         />
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   return {

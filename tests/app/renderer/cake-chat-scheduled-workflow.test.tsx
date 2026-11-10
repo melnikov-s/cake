@@ -3,7 +3,6 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ScheduledMessage } from "../../../src/contracts/scheduled-messages/scheduled-message-data";
@@ -77,9 +76,9 @@ it("shows a Cake Chat's own recurring check-in in its pending list and cancels i
   });
   render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+      <>
         <CakeChatSurface />
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
 

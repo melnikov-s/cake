@@ -3,7 +3,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import {
   AutomationOccurrenceId,
@@ -146,11 +145,11 @@ function setup(
   });
   root.navigationStore.showAutomations();
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 100 }}>
+    <>
       <StoreProvider store={root}>
         <App />
       </StoreProvider>
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   return {
     ...fixture,

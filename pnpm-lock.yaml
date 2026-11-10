@@ -7,11 +7,6 @@ settings:
 overrides:
   streamdown>mermaid: '-'
 
-patchedDependencies:
-  react-virtuoso@4.18.11:
-    hash: fa28d3dcabdfc71d96c4864bbc7d5c9fdb8e55560a3fc1f60e0ba198876ab40e
-    path: patches/react-virtuoso@4.18.11.patch
-
 importers:
 
   .:
@@ -52,6 +47,9 @@ importers:
       '@effect/platform-node-shared':
         specifier: 4.1.2
         version: 4.1.2(effect@4.1.2)
+      '@legendapp/list':
+        specifier: 3.7.1
+        version: 3.7.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@preact/signals-react':
         specifier: 3.10.3
         version: 3.10.3(react@19.2.8)
@@ -136,9 +134,6 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
-      react-virtuoso:
-        specifier: 4.18.11
-        version: 4.18.11(patch_hash=fa28d3dcabdfc71d96c4864bbc7d5c9fdb8e55560a3fc1f60e0ba198876ab40e)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       remark-gfm:
         specifier: 4.0.1
         version: 4.0.1
@@ -942,6 +937,18 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@legendapp/list@3.7.1':
+    resolution: {integrity: sha512-zgIy84yG2JP93+kib61rZBTcYGZ6fULrkCQz/MF7WrjVJeJQa/rR4z+rXfM5oveirO5mYkro4IDGytARIjJe9w==}
+    peerDependencies:
+      react: '*'
+      react-dom: '*'
+      react-native: '*'
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+      react-native:
+        optional: true
 
   '@malept/cross-spawn-promise@2.0.0':
     resolution: {integrity: sha512-1DpKU0Z5ThltBwjNySMC14g0CkbyhCaz9FkhxqNsZI6uAPJXFS8cMXlBKo26FJ8ZuW6S9GCMcR9IO5k2X5/9Fg==}
@@ -3774,12 +3781,6 @@ packages:
     resolution: {integrity: sha512-QgT5//D3jfjJb6Gsjxv0Slpj23ip+HtOpnNgnb2S5zU3CB26G/IDPGoy4RJB42wzFE46DRsstbW6tKHoKbhAxw==}
     engines: {node: '>=0.10.0'}
 
-  react-virtuoso@4.18.11:
-    resolution: {integrity: sha512-Qeeq9vqa5seCxACvzbQTUeq3s2/Bu+VlwOMF0jfy3E/ZKHLiXWwJpXBhv2rckqYkvm1XRVFLCBMCmqCU8JNEJg==}
-    peerDependencies:
-      react: '>=16 || >=17 || >= 18 || >= 19'
-      react-dom: '>=16 || >=17 || >= 18 || >=19'
-
   react@19.2.8:
     resolution: {integrity: sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==}
     engines: {node: '>=0.10.0'}
@@ -5305,6 +5306,13 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@legendapp/list@3.7.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      react: 19.2.8
+      use-sync-external-store: 1.6.0(react@19.2.8)
+    optionalDependencies:
+      react-dom: 19.2.8(react@19.2.8)
 
   '@malept/cross-spawn-promise@2.0.0':
     dependencies:
@@ -8244,11 +8252,6 @@ snapshots:
   react-is@17.0.2: {}
 
   react-refresh@0.18.0: {}
-
-  react-virtuoso@4.18.11(patch_hash=fa28d3dcabdfc71d96c4864bbc7d5c9fdb8e55560a3fc1f60e0ba198876ab40e)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
-    dependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
 
   react@19.2.8: {}
 

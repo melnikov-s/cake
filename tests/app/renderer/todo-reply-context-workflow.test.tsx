@@ -3,7 +3,6 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -111,7 +110,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
     chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
     const view = render(
       <StoreProvider store={f.root}>
-        <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+        <>
           <ProjectTodoSelectionBar todos={owner.todos} />
           <Chat
             store={chat}
@@ -122,7 +121,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
           <aside aria-label="To-do">
             <ProjectTodosPanel store={owner.todos} />
           </aside>
-        </VirtuosoMockContext.Provider>
+        </>
       </StoreProvider>,
     );
     try {

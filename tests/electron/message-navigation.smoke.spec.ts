@@ -263,7 +263,7 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
       for (let index = 0; index < 13; index++) await composer.press("ArrowDown");
       await expect(selected).toHaveCount(0);
       await expect(composer).toBeFocused();
-      // Let Virtuoso's measurement-retry frames run; an obsolete target must not
+      // Let the list's measurement frames run; an obsolete target must not
       // move the transcript after the selection ends.
       const tops = await transcript.evaluate(async (element) => {
         const tops: number[] = [];

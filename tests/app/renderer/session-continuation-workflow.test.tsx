@@ -3,7 +3,6 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   TurnId,
@@ -120,9 +119,9 @@ function renderContinuation(client: TestClientOverrides, managed = true) {
   const view = render(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-        <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+        <>
           <App />
-        </VirtuosoMockContext.Provider>
+        </>
       </StoreProvider>
     </StoreProvider>,
   );

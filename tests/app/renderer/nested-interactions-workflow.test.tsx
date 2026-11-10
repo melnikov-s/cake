@@ -3,7 +3,6 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { Effect, Queue, Stream } from "effect";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { applicationEventSchema } from "../../../src/contracts/application/cake-rpc-contract";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
@@ -128,9 +127,9 @@ function mountNested(client: TestClientOverrides, worker?: ReturnType<typeof wor
   const stop = observeApplicationEvents(runtime, fixture.root);
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+      <>
         <App />
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   return {

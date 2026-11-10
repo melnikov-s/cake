@@ -1,9 +1,8 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { observer, StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -160,9 +159,9 @@ function renderHistory(
   chat.openSideChat(thread.id);
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+      <>
         <Surface chat={chat} />
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   return {
@@ -253,10 +252,13 @@ it.each(scopes)(
       panel
         .getAllByText(/(?:Oldest|Older|Recent|Live) side-chat original/)
         .map((node) => node.textContent);
-    expect(messages()).toEqual([oldest.text, older.text, recent.text]);
+    // The list settles its rows into reading order after layout.
+    await waitFor(() => expect(messages()).toEqual([oldest.text, older.text, recent.text]));
     expect(panel.queryByRole("button", { name: "Load earlier messages" })).toBeNull();
     fixture.publish([textPart("entry-221-text", "Live side-chat original")]);
-    expect(messages()).toEqual([oldest.text, older.text, recent.text, "Live side-chat original"]);
+    await waitFor(() =>
+      expect(messages()).toEqual([oldest.text, older.text, recent.text, "Live side-chat original"]),
+    );
     expect(panel.queryByRole("button", { name: "Load earlier messages" })).toBeNull();
   },
 );

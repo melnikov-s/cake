@@ -64,6 +64,7 @@
     "@earendil-works/pi-tui": "1.4.0",
     "@effect/platform-node": "4.1.2",
     "@effect/platform-node-shared": "4.1.2",
+    "@legendapp/list": "3.7.1",
     "@preact/signals-react": "3.10.3",
     "@shikijs/langs": "3.23.0",
     "@shikijs/themes": "3.23.0",
@@ -92,7 +93,6 @@
     "react": "19.2.8",
     "react-day-picker": "9.14.0",
     "react-dom": "19.2.8",
-    "react-virtuoso": "4.18.11",
     "remark-gfm": "4.0.1",
     "remark-parse": "11.0.0",
     "shiki": "3.23.0",
@@ -149,10 +149,7 @@
       "@earendil-works/pi-mcp@1.4.0",
       "@earendil-works/pi-telemetry@1.4.0",
       "@earendil-works/pi-tui@1.4.0"
-    ],
-    "patchedDependencies": {
-      "react-virtuoso@4.18.11": "patches/react-virtuoso@4.18.11.patch"
-    }
+    ]
   },
   "productName": "Cake"
 }

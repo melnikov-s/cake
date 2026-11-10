@@ -114,7 +114,7 @@ test("Project Chat's first transcript has its own history, including cross-proje
       });
       expect(trace.length).toBeGreaterThan(0);
       expect(trace[0]!.elapsedMs).toBeLessThan(100);
-      // Virtuoso mounts its measuring tree before its rows; the first actual
+      // The list mounts its measuring tree before its rows; the first actual
       // transcript content must be history, never a guessed empty state.
       expect(trace.find(({ text }) => text.length > 0)?.text).toContain(project.text);
       expect(trace.every(({ text }) => !text.includes("Let’s talk about this project"))).toBe(true);

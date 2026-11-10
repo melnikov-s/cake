@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { applySnapshot } from "r-state-tree";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
@@ -111,14 +110,14 @@ function renderResources(
     if (texts.beta !== undefined) fixture.root.sessionLayoutStore.showSession("beta");
   }
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
+    <>
       <RendererRoot
         rootStore={fixture.root}
         openExternalUrl={vi.fn()}
         openSession={vi.fn()}
         openSubagent={vi.fn()}
       />
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   return {
     root: fixture.root,

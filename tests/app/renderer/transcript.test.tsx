@@ -32,7 +32,7 @@ afterEach(() => {
 
 // Scroll opening/following/restoration and offscreen reveal are native contracts:
 // session-scroll-position, message-navigation and message-keyboard-selection
-// Electron suites exercise real Virtuoso. message-selection and side-chat-streaming
+// Electron suites exercise the real transcript list. message-selection and side-chat-streaming
 // own native prose/code selection, highlights, annotation placement and focus.
 // No virtualizer substitute, fake Range geometry or parent callback is used here.
 // Rendering/formatting/loading/error/fullscreen/attachments are consolidated in

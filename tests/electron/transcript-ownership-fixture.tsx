@@ -367,6 +367,7 @@ applyConversationUpdate(alternateSession.model, {
 let alternateConversation = false;
 const root = createRoot(document.getElementById("root")!);
 let liveTimer: ReturnType<typeof setInterval> | undefined;
+let tick = 0;
 let dockHeight = 0;
 function render() {
   flushSync(() =>
@@ -427,7 +428,7 @@ function render() {
 render();
 
 // These entry points control only external projection delivery / React commit
-// ordering. DOM scrolling, measurements, Virtuoso and transcript policy are real.
+// ordering. DOM scrolling, measurements, the list and transcript policy are real.
 export interface TranscriptOwnershipFixture {
   /** Send intent before its external projection arrives; keep current embedded content mounted. */
   sendIntent(): void;
@@ -435,7 +436,7 @@ export interface TranscriptOwnershipFixture {
   dictate(): void;
   finishRecognition(): boolean;
   submittedText(): string | undefined;
-  /** Schedule real reminder rows through the observer, leaving mount/measurement to React/Virtuoso. */
+  /** Schedule real reminder rows through the observer, leaving mount/measurement to React/the list. */
   sessionUpdates(batch: string): void;
   delaySubmission(): void;
   admitSubmission(): void;
@@ -689,7 +690,7 @@ Reflect.set(window, "transcriptFixture", {
     render();
   },
   startLive(intervalMs, mode) {
-    let tick = 0;
+    // Ticks continue across runs so every live part keeps a unique id.
     liveTimer = setInterval(() => {
       tick++;
       if (mode.includes("tool") && tick % 3 === 0) {

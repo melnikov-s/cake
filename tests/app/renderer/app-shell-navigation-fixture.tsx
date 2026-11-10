@@ -2,7 +2,6 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { expect } from "vitest";
 import { isMacPlatform } from "../../../src/renderer/lib/platform";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { applySnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -122,15 +121,7 @@ export function renderAppShellNavigation(
       </StoreProvider>
     </StoreProvider>
   );
-  const view = render(
-    options.transcriptViewport ? (
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
-        {app}
-      </VirtuosoMockContext.Provider>
-    ) : (
-      app
-    ),
-  );
+  const view = render(options.transcriptViewport ? <>{app}</> : app);
   const user = userEvent.setup();
   return {
     root: fixture.root,

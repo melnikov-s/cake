@@ -11,16 +11,12 @@ import {
 } from "react";
 import { untracked } from "r-state-tree";
 import { observer } from "r-state-tree/react";
-import {
-  Conversation,
-  VirtualizedConversation,
-  type VirtualizedConversationHandle,
-} from "@/components/ai-elements/conversation";
+import { LegendList, type LegendListRef } from "@legendapp/list/react";
+import { Conversation } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
-import { ChatTranscriptFooter, type ChatTranscriptFooterContext } from "./chat-transcript-footer";
+import { ChatTranscriptFooter, type ChatTranscriptFooterError } from "./chat-transcript-footer";
 import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 import { FullscreenTranscriptContext } from "./fullscreen-transcript-context";
-import { TranscriptScroller } from "./transcript-scroller";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -28,7 +24,6 @@ import { SideChatContext } from "@/components/side-chat-context";
 import type { ChatStore, TranscriptScrollPosition } from "../stores/ChatStore";
 import {
   ErrorNotice,
-  TranscriptList,
   captureTranscriptSelection,
   chatWorkIsActive,
   errorNoticeFollowsUser,
@@ -39,7 +34,7 @@ import {
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
 import { transcriptItemParts, type TranscriptContentPart } from "./chat-transcript-items";
-import { ChatTranscriptItem } from "./chat-transcript-item";
+import { ChatTranscriptItem, transcriptAnchorId } from "./chat-transcript-item";
 import { transcriptItemKeys } from "./chat-transcript-items";
 import { transcriptTaskSections } from "../lib/transcript-task-sections";
 import { todoMessageMatches } from "../lib/todo-message-matches";
@@ -50,10 +45,7 @@ import {
   cakeChatSideChatParentId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { useArrivals } from "../hooks/use-arrivals";
-import {
-  createTranscriptScrollOwner,
-  type TranscriptScrollOwner,
-} from "../lib/transcript-scroll-owner";
+import { useTranscriptFollow } from "../lib/transcript-follow";
 
 export {
   captureMessageSelection,
@@ -68,27 +60,27 @@ export interface TranscriptBottomNavigation {
 
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
 const selectionRevealMargin = 16;
+const scrollerClassName =
+  "transcript @container/transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]";
 
-function captureScrollPosition(scroller: HTMLElement): TranscriptScrollPosition | undefined {
-  if (scroller.clientHeight <= 0) return undefined;
-  const list = scroller.querySelector('[aria-label="Conversation"]');
-  // Initial positioning is not a reading position, even when the scroller
-  // already has dimensions. Keep the saved anchor until Virtuoso reveals it.
-  if (list && getComputedStyle(list).visibility === "hidden") return undefined;
-  if (scroller.scrollTop <= 1) return { kind: "top" };
-  if (scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1)
-    return { kind: "bottom" };
-  const viewportTop = scroller.getBoundingClientRect().top;
-  const anchor = Array.from(
-    scroller.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]"),
-  ).find((item) => item.getBoundingClientRect().bottom > viewportTop + 1);
-  const messageId = anchor?.dataset.transcriptAnchorId;
-  if (!anchor || !messageId) return undefined;
-  return {
-    kind: "message",
-    messageId,
-    offset: anchor.getBoundingClientRect().top - viewportTop,
-  };
+interface TranscriptRow {
+  key: string;
+  item: TranscriptItem;
+}
+
+/** Records where the reader is, for reopening this conversation; never moves anything. */
+function captureScrollPosition(
+  list: LegendListRef,
+  anchorIds: ReadonlyMap<string, string | undefined>,
+): TranscriptScrollPosition | undefined {
+  // Undefined until the list finished its initial placement: that is not a reading position.
+  const anchor = list.anchorVisibleContent({ hold: false });
+  const state = list.getState();
+  if (!anchor || state.scrollLength <= 0) return undefined;
+  if (state.distanceFromEnd <= 1) return { kind: "bottom" };
+  if (state.scroll <= 1) return { kind: "top" };
+  const messageId = anchorIds.get(anchor.key);
+  return messageId ? { kind: "message", messageId, offset: -anchor.offset } : undefined;
 }
 
 export const ChatTranscript = observer(function ChatTranscript({
@@ -97,7 +89,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   empty,
   footer,
   error: errorOverride,
-  virtualized = true,
   annotationSubmitFocusRef,
   onBottomNavigationChange,
 }: {
@@ -106,7 +97,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   empty?: ReactNode;
   footer?: ReactNode;
   error?: { message: string; details?: string; title?: string };
-  virtualized?: boolean;
   annotationSubmitFocusRef?: RefObject<HTMLElement | null>;
   onBottomNavigationChange?(navigation: TranscriptBottomNavigation | undefined): void;
 }) {
@@ -128,13 +118,11 @@ export const ChatTranscript = observer(function ChatTranscript({
     [],
   );
   const uncoveredExpansion = useRef(new Map<string, boolean>());
-  const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
-  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const renderedItemKeys = useRef<string[]>([]);
-  const scrollToItem = useCallback((key: string) => {
-    const index = renderedItemKeys.current.indexOf(key);
-    if (index >= 0) virtuosoRef.current?.scrollToIndex({ index, align: "start", behavior: "auto" });
+  const listRef = useRef<LegendListRef | null>(null);
+  const [scroller, setScroller] = useState<HTMLElement | null>(null);
+  const attachList = useCallback((list: LegendListRef | null) => {
+    listRef.current = list;
+    setScroller(list?.getScrollableNode() ?? null);
   }, []);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
   const restoredScrollPosition = useMemo(
@@ -142,71 +130,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     [store],
   );
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
-  // One owner decides every transcript scroll; see transcript-scroll-owner.ts.
-  const scrollOwner = useRef<TranscriptScrollOwner | undefined>(undefined);
-  const initiallyFollowing = !restoredScrollPosition || restoredScrollPosition.kind === "bottom";
-  useLayoutEffect(() => {
-    const content = contentRef.current;
-    if (!scroller || !content) return;
-    const owner = createTranscriptScrollOwner(scroller, content, {
-      following: initiallyFollowing,
-      onJumpToBottomVisibilityChange: (visible) =>
-        onBottomNavigationChange?.(visible ? bottomNavigation : undefined),
-      restore: restoredScrollPosition?.kind === "message" ? restoredScrollPosition : undefined,
-      cancelVirtualNavigation: () => virtuosoRef.current?.cancelScrollToIndex(),
-      scrollToItem,
-      itemIndex: (key) => renderedItemKeys.current.indexOf(key),
-      loadEarlier: (beforePrepend) => {
-        const history = store.history;
-        if (!history?.hasMore || history.loading || history.error) return false;
-        void history.load(() => {
-          if (scrollOwner.current === owner) beforePrepend();
-        });
-        return true;
-      },
-    });
-    const bottomNavigation: TranscriptBottomNavigation = {
-      conversationId: store.id,
-      jumpToBottom() {
-        const keys = renderedItemKeys.current;
-        const itemKey = keys.at(-1);
-        owner.jumpToBottom(
-          virtualized && itemKey !== undefined
-            ? {
-                itemKey,
-                scrollToIndex: () =>
-                  virtuosoRef.current?.scrollToIndex({
-                    index: "LAST",
-                    align: "end",
-                    behavior: "auto",
-                  }),
-              }
-            : undefined,
-        );
-        // The control disappears at its destination; keep keyboard scrolling
-        // available instead of leaving focus on an unmounted button/the body.
-        scroller.focus({ preventScroll: true });
-      },
-    };
-    scrollOwner.current = owner;
-    return () => {
-      onBottomNavigationChange?.(undefined);
-      owner.dispose();
-      scrollOwner.current = undefined;
-    };
-  }, [
-    initiallyFollowing,
-    restoredScrollPosition,
-    scroller,
-    scrollToItem,
-    store,
-    virtualized,
-    onBottomNavigationChange,
-  ]);
-  // Sending a message (from any composer path) returns to the bottom, just like
-  // the reader's explicit jump-to-bottom action.
-  const sentMessageRevision = store.transcriptInteraction.sentMessageRevision;
-  const scrolledForSentMessage = useRef(sentMessageRevision);
   const supportsTodoFocus = Boolean(
     (isCakeChatSessionId(store.id) || cakeChatSideChatParentId(store.id)) && behavior.todos,
   );
@@ -394,12 +317,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
   });
   const itemKeys = visibleIndices.map((index) => allItemKeys[index]!);
-  const reconcileScroll = useCallback(() => {
-    // Runs at the virtual range's layout boundary, before scroll reconciliation.
-    renderedItemKeys.current = itemKeys;
-    scrollOwner.current?.reconcile();
-  }, [itemKeys]);
-  useLayoutEffect(reconcileScroll);
   const visibleSectionViews = visibleIndices.map((index, visibleIndex) => {
     const section = sectionViews?.[index];
     if (!focused || !section) return section;
@@ -410,48 +327,10 @@ export const ChatTranscript = observer(function ChatTranscript({
       start: previous === undefined || sectionViews?.[previous]?.key !== section.key,
     };
   });
-  // Loading rows can disappear during submission. Use the last
-  // content row as the durable destination while the virtual range settles.
-  const lastItemKey =
-    allItemKeys[visibleIndices.findLast((index) => index < visibleGroupedParts.length) ?? -1];
-  useLayoutEffect(() => {
-    const owner = scrollOwner.current;
-    if (!owner || scrolledForSentMessage.current === sentMessageRevision) return;
-    if (virtualized && lastItemKey !== undefined && !virtuosoRef.current) return;
-    scrolledForSentMessage.current = sentMessageRevision;
-    // Side chat may follow this send, but its covered transcript must keep
-    // the row that owns fullscreen mounted.
-    if (presentedFullscreens) return;
-    owner.scrollToBottomForSentMessage(
-      virtualized && lastItemKey !== undefined
-        ? {
-            itemKey: lastItemKey,
-            scrollToIndex: () =>
-              virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" }),
-          }
-        : undefined,
-    );
-  }, [lastItemKey, scroller, sentMessageRevision, virtualized, presentedFullscreens]);
   const resultItemIndex = resultPartId
     ? items.findIndex((item) => transcriptItemParts(item).some((part) => part.id === resultPartId))
     : -1;
   const resultItemKey = resultItemIndex < 0 ? undefined : itemKeys[resultItemIndex];
-  useLayoutEffect(() => {
-    const owner = scrollOwner.current;
-    if (!owner) return;
-    if (!resultReveal) {
-      owner.cancelResultReveal();
-      return;
-    }
-    if (virtualized && resultItemKey !== undefined && !virtuosoRef.current) return;
-    owner.revealResult(
-      resultItemKey,
-      () => {
-        if (resultItemKey !== undefined) scrollToItem(resultItemKey);
-      },
-      () => store.transcriptInteraction.cancelResultReveal(resultReveal.revision),
-    );
-  }, [resultReveal, resultItemKey, scroller, scrollToItem, store, virtualized]);
   // Exact originals or an already-bound explanation can leave the current
   // history page. Page only for explicit navigation, stopping on resolution/cancel.
   const history = store.history;
@@ -468,19 +347,8 @@ export const ChatTranscript = observer(function ChatTranscript({
       historyError
     )
       return;
-    const owner = scrollOwner.current;
-    void history?.load(() => {
-      if (owner && scrollOwner.current === owner) owner.preserveForPrepend(scrollToItem);
-    });
-  }, [
-    resultReveal,
-    resultPartId,
-    history,
-    historyLoading,
-    historyHasMore,
-    historyError,
-    scrollToItem,
-  ]);
+    void history?.load();
+  }, [resultReveal, resultPartId, history, historyLoading, historyHasMore, historyError]);
   const isArriving = useArrivals(itemKeys, store.id);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({
@@ -509,56 +377,116 @@ export const ChatTranscript = observer(function ChatTranscript({
       )
     : -1;
   const navigationItemIndex = messageSelection?.origin === "navigation" ? selectedItemIndex : -1;
-  const restoredMessageItemIndex =
-    restoredScrollPosition?.kind === "message"
-      ? items.findIndex((item) =>
-          transcriptItemParts(item).some((part) => part.id === restoredScrollPosition.messageId),
-        )
-      : -1;
-  const openingItemLocation = useMemo(() => {
-    if (navigationItemIndex >= 0) return undefined;
-    if (restoredScrollPosition?.kind === "top") return { index: 0, align: "start" as const };
-    if (restoredScrollPosition?.kind === "message" && restoredMessageItemIndex >= 0)
-      return {
-        index: restoredMessageItemIndex,
-        align: "start" as const,
-        offset: -restoredScrollPosition.offset,
-      };
-    // Start measurement at the destination instead of painting the top and
-    // scrolling afterwards. Virtuoso keeps the list hidden until its initial
-    // location settles, including the footer/composer spacer at the bottom.
-    // Later height changes reconcile committed geometry before paint.
-    return { index: "LAST" as const, align: "end" as const };
-  }, [navigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
   const selecting = selectedMessageId !== undefined;
-  useLayoutEffect(
-    () => scrollOwner.current?.setSelecting(selecting || presentedFullscreens > 0),
-    [scroller, selecting, presentedFullscreens],
-  );
-  useLayoutEffect(
-    () => scrollOwner.current?.setCovered(presentedFullscreens > 0),
-    [scroller, presentedFullscreens],
-  );
-  // The selection is identified by its stable item key, never by its index, so
-  // arriving or streaming messages cannot retarget a reveal.
+  const covered = presentedFullscreens > 0;
+  // The only place that decides when new output moves the viewport.
+  const follow = useTranscriptFollow({
+    list: listRef,
+    scroller,
+    paused: selecting || covered,
+    initiallyFollowing: !restoredScrollPosition || restoredScrollPosition.kind === "bottom",
+  });
+  const { followEnd, stopFollowing } = follow;
+  // The opening position belongs to this list's mount; later movement is the reader's or an
+  // explicit navigation below.
+  const opening = useRef<
+    { atEnd: true } | { atEnd: false; index: number; viewOffset: number } | undefined
+  >(undefined);
+  if (!opening.current && items.length > 0) {
+    const restoredIndex =
+      restoredScrollPosition?.kind === "message"
+        ? items.findIndex((item) => transcriptAnchorId(item) === restoredScrollPosition.messageId)
+        : -1;
+    opening.current =
+      navigationItemIndex >= 0
+        ? { atEnd: false, index: navigationItemIndex, viewOffset: selectionRevealMargin }
+        : restoredScrollPosition?.kind === "top"
+          ? { atEnd: false, index: 0, viewOffset: 0 }
+          : restoredScrollPosition?.kind === "message" && restoredIndex >= 0
+            ? { atEnd: false, index: restoredIndex, viewOffset: restoredScrollPosition.offset }
+            : { atEnd: true };
+  }
+  // Sending, the jump-to-bottom control and arrowing past the newest message
+  // are the reader's requests for the newest content.
+  const bottomRequest = store.transcriptInteraction.bottomRequestRevision;
+  const handledBottomRequest = useRef(bottomRequest);
+  useLayoutEffect(() => {
+    if (handledBottomRequest.current === bottomRequest) return;
+    handledBottomRequest.current = bottomRequest;
+    // A covered transcript must keep the row that owns the fullscreen reader mounted.
+    if (!covered) followEnd();
+  }, [bottomRequest, covered, followEnd]);
+  const jumpVisible = follow.jumpVisible && !covered;
+  useEffect(() => {
+    if (!jumpVisible || !scroller) return;
+    onBottomNavigationChange?.({
+      conversationId: store.id,
+      jumpToBottom() {
+        store.transcriptInteraction.returnToBottom();
+        // The control disappears at its destination; keep keyboard scrolling
+        // available instead of leaving focus on an unmounted button/the body.
+        scroller.focus({ preventScroll: true });
+      },
+    });
+    return () => onBottomNavigationChange?.(undefined);
+  }, [jumpVisible, onBottomNavigationChange, scroller, store]);
+  // An explicit attention click waits for its exact result, then shows its start.
+  const revealedResult = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!resultReveal) return;
+    const revision = resultReveal.revision;
+    const target = `${revision}:${resultItemKey}`;
+    if (revealedResult.current === target) return;
+    revealedResult.current = target;
+    stopFollowing();
+    if (resultItemKey === undefined) return;
+    // Reader input ends the reveal (`onUserScroll`); until then a re-keyed result is shown again.
+    void listRef.current?.scrollToKey({
+      key: resultItemKey,
+      animated: false,
+      viewOffset: selectionRevealMargin,
+    });
+  }, [resultReveal, resultItemKey, stopFollowing]);
+  // Earlier pages load only when the reader scrolls toward the start, one page
+  // per approach; layout, streaming and short transcripts never page by themselves.
+  const readerApproached = useRef(false);
+  const loadEarlier = useCallback(() => {
+    const history = store.history;
+    if (!readerApproached.current) return;
+    readerApproached.current = false;
+    if (history?.hasMore && !history.loading && !history.error) void history.load();
+  }, [store]);
+  useEffect(() => {
+    if (!scroller) return;
+    // Scrolling up at the very top moves nothing, so the list reports no reader scroll.
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY >= 0 || scroller.scrollTop > 1) return;
+      readerApproached.current = true;
+      loadEarlier();
+    };
+    scroller.addEventListener("wheel", handleWheel, { passive: true });
+    return () => scroller.removeEventListener("wheel", handleWheel);
+  }, [loadEarlier, scroller]);
+  // Each selection is revealed once, by its stable key. Arriving or streaming
+  // messages cannot retarget it, and the selection pauses following.
   const selectedItemKey = selectedItemIndex >= 0 ? itemKeys[selectedItemIndex] : undefined;
   useLayoutEffect(() => {
-    const owner = scrollOwner.current;
-    if (!owner || !messageSelection || selectedItemKey === undefined) return;
+    const list = listRef.current;
+    if (!list || !scroller || !messageSelection || selectedItemKey === undefined) return;
     if (revealedSelectionRevision.current === messageSelection.revision) return;
-    // Virtuoso is mounted in the commit after the scroller; wait for its handle.
-    if (virtualized && !virtuosoRef.current) return;
     revealedSelectionRevision.current = messageSelection.revision;
-    // Revealing a selection is the only movement besides the reader's own.
-    owner.reveal(selectedItemKey, () =>
-      virtuosoRef.current?.scrollToIndex({
-        index: selectedItemIndex,
-        align: "start",
-        behavior: "auto",
-        offset: -selectionRevealMargin,
-      }),
-    );
-  }, [messageSelection, scroller, selectedItemIndex, selectedItemKey, virtualized]);
+    stopFollowing();
+    const index = list.getState().indexByKey(selectedItemKey);
+    if (index === undefined) return;
+    // The composer dock overlays the bottom of the transcript.
+    const dock =
+      Number.parseFloat(getComputedStyle(scroller).getPropertyValue("--composer-dock-height")) || 0;
+    void list.scrollIndexIntoView({
+      index,
+      animated: false,
+      viewportMargin: { start: selectionRevealMargin, end: dock + selectionRevealMargin },
+    });
+  }, [messageSelection, scroller, selectedItemKey, stopFollowing]);
   // Clicking anywhere outside the selected message ends the selection; clicks
   // inside it are left for actions on that message.
   useEffect(() => {
@@ -576,32 +504,19 @@ export const ChatTranscript = observer(function ChatTranscript({
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [scroller, selectedMessageId, store]);
-  // Persist the reading position for session switches. This only records; the
-  // scroll owner alone moves the viewport.
-  useLayoutEffect(() => {
-    if (!scroller) return;
-    let savedPosition = untracked(() => store.transcriptInteraction.transcriptScrollPosition);
-    let saveTimer: ReturnType<typeof setTimeout> | undefined;
-    const commitScrollPosition = () => {
-      saveTimer = undefined;
-      // Keep the last capture while geometry is unavailable (hidden or positioning).
-      savedPosition = captureScrollPosition(scroller) ?? savedPosition;
-      if (savedPosition) store.transcriptInteraction.setTranscriptScrollPosition(savedPosition);
-    };
-    const handleScroll = () => {
-      // The scroll event can precede Virtuoso replacing its rendered range.
-      savedPosition = captureScrollPosition(scroller) ?? savedPosition;
-      if (saveTimer !== undefined) clearTimeout(saveTimer);
-      saveTimer = setTimeout(commitScrollPosition, 100);
-    };
-    scroller.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      scroller.removeEventListener("scroll", handleScroll);
-      if (saveTimer !== undefined) clearTimeout(saveTimer);
-      commitScrollPosition();
-    };
-  }, [scroller, store]);
-  const error: ChatTranscriptFooterContext["error"] = errorOverride ?? store.error;
+  // Persist the reading position for session switches. This only records.
+  const anchorIds = new Map(
+    items.map((item, index) => [itemKeys[index]!, transcriptAnchorId(item)]),
+  );
+  const currentAnchorIds = useRef(anchorIds);
+  currentAnchorIds.current = anchorIds;
+  // The list reports scrolling at most once per frame.
+  const recordPosition = useCallback(() => {
+    const list = listRef.current;
+    const position = list && captureScrollPosition(list, currentAnchorIds.current);
+    if (position) store.transcriptInteraction.setTranscriptScrollPosition(position);
+  }, [store]);
+  const error: ChatTranscriptFooterError | undefined = errorOverride ?? store.error;
   // Right-clicking any selection inside this conversation keeps the native
   // Electron edit menu. The capture is held until that menu sends its
   // "Chat about this" action back to this transcript.
@@ -670,13 +585,14 @@ export const ChatTranscript = observer(function ChatTranscript({
       )}
     </>
   );
-  const renderItem = (item: TranscriptItem, index: number) => (
-    <FullscreenTranscriptContext key={itemKeys[index]} value={fullscreenTranscript}>
+  const rows: TranscriptRow[] = items.map((item, index) => ({ key: itemKeys[index]!, item }));
+  const renderItem = ({ item: { key, item }, index }: { item: TranscriptRow; index: number }) => (
+    <FullscreenTranscriptContext value={fullscreenTranscript}>
       <ChatTranscriptItem
-        itemKey={itemKeys[index] ?? item.id}
+        itemKey={key}
         item={item}
         index={index}
-        arriving={isArriving(itemKeys[index] ?? item.id)}
+        arriving={isArriving(key)}
         errorFollowsUser={errorNoticeFollowsUser(items, index)}
         selected={index === selectedItemIndex}
         behavior={item.id === latestMessageId ? latestMessageBehavior : transcriptBehavior}
@@ -686,6 +602,27 @@ export const ChatTranscript = observer(function ChatTranscript({
       />
     </FullscreenTranscriptContext>
   );
+  const historyHeader = store.history?.hasMore && (
+    <div className="grid min-h-10 justify-items-center gap-2 px-6 py-2">
+      <span role="status" className="text-xs text-muted-foreground" aria-live="polite">
+        {store.history.loading ? "Loading earlier messages…" : "Earlier messages"}
+      </span>
+      {store.history.error && (
+        <>
+          <Callout variant="error">{store.history.error}</Callout>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={store.history.loading}
+            onClick={() => void store.history?.load()}
+          >
+            Retry loading earlier messages
+          </Button>
+        </>
+      )}
+    </div>
+  );
+  const showsList = visibleParts.length > 0 && !(focused && items.length === 0);
   return (
     <ConversationMarkdownProvider
       workspacePath={behavior.workspacePath}
@@ -693,90 +630,80 @@ export const ChatTranscript = observer(function ChatTranscript({
       stateSessionId={behavior.messageReferenceSessionId}
     >
       {selectionOverlays}
-      <div
-        ref={setScroller}
-        // Clicking the transcript focuses it (not the body) so its pane keeps
-        // keyboard message selection and keyboard scrolling. Not a tab stop.
-        tabIndex={-1}
-        className="transcript @container/transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
-      >
-        <div ref={contentRef} className="min-w-0">
-          {store.history?.hasMore && (
-            <div className="grid min-h-10 justify-items-center gap-2 px-6 py-2">
-              <span role="status" className="text-xs text-muted-foreground" aria-live="polite">
-                {store.history.loading ? "Loading earlier messages…" : "Earlier messages"}
-              </span>
-              {store.history.error && (
-                <>
-                  <Callout variant="error">{store.history.error}</Callout>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={store.history.loading}
-                    onClick={() => {
-                      const owner = scrollOwner.current;
-                      void store.history?.load(() => {
-                        if (owner && scrollOwner.current === owner)
-                          owner.preserveForPrepend(scrollToItem);
-                      });
-                    }}
-                  >
-                    Retry loading earlier messages
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-          {visibleParts.length === 0 || (focused && items.length === 0) ? (
-            <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
-              {focused ? (
-                <p role="status" className="text-sm text-muted-foreground">
-                  No messages tagged to this to-do.
-                </p>
-              ) : (
-                empty
-              )}
-              {showAssistantLoading && (
-                <LoadingState label={loadingLabel} startedAt={loadingStartedAt} />
-              )}
-              {footer}
-              {error?.message && (
-                <ErrorNotice
-                  title={error.title ?? "Operation failed"}
-                  message={error.message}
-                  details={error.details}
-                />
-              )}
-            </Conversation>
-          ) : !virtualized ? (
-            <TranscriptList>
-              {items.map(renderItem)}
-              <ChatTranscriptFooter context={{ footer, error }} />
-            </TranscriptList>
-          ) : (
-            scroller && (
-              <VirtualizedConversation
-                ref={virtuosoRef}
-                customScrollParent={scroller}
-                data={items}
-                context={{ footer, error, onLayout: reconcileScroll }}
-                computeItemKey={(index, item) => itemKeys[index] ?? item.id}
-                initialTopMostItemIndex={openingItemLocation}
-                followOutput={false}
-                // The transcript scroll owner anchors the reader. Virtuoso's
-                // total-height compensation would also react to tail growth.
-                skipUpwardScrollCompensation
-                components={{
-                  List: TranscriptList,
-                  Footer: ChatTranscriptFooter,
-                  Scroller: TranscriptScroller,
-                }}
-                itemContent={(index, item) => renderItem(item, index)}
+      {showsList ? (
+        <LegendList<TranscriptRow>
+          ref={attachList}
+          // Clicking the transcript focuses it (not the body) so its pane keeps
+          // keyboard message selection and keyboard scrolling. Not a tab stop.
+          tabIndex={-1}
+          role="region"
+          aria-label="Conversation"
+          className={scrollerClassName}
+          contentContainerClassName="transcript-content mx-auto w-full max-w-[75rem] min-w-0 px-6 max-[620px]:px-4 in-[.chat-layout-compact]:px-3"
+          data={rows}
+          // Row inputs beyond the item (selection, behaviors, sections) change per render.
+          extraData={renderItem}
+          keyExtractor={(row) => row.key}
+          getItemType={(row) => (row.item.kind === "text" ? row.item.role : row.item.kind)}
+          renderItem={renderItem}
+          recycleItems={false}
+          estimatedItemSize={120}
+          drawDistance={480}
+          {...(opening.current?.atEnd === false
+            ? {
+                initialScrollIndex: {
+                  index: opening.current.index,
+                  viewOffset: opening.current.viewOffset,
+                },
+              }
+            : { initialScrollAtEnd: true })}
+          maintainScrollAtEnd={follow.maintainScrollAtEnd}
+          maintainScrollAtEndThreshold={0}
+          maintainVisibleContentPosition={{ data: true, size: true }}
+          onUserScroll={() => {
+            readerApproached.current = true;
+            store.transcriptInteraction.cancelResultReveal();
+          }}
+          onStartReached={loadEarlier}
+          onScroll={recordPosition}
+          onItemSizeChanged={follow.update}
+          ListHeaderComponent={
+            <>
+              {historyHeader}
+              <div
+                aria-hidden
+                className="h-[42px] in-[.chat-layout-compact]:h-5"
+                data-slot="transcript-top-space"
               />
-            )
-          )}
+            </>
+          }
+          ListFooterComponent={<ChatTranscriptFooter footer={footer} error={error} />}
+        />
+      ) : (
+        <div ref={setScroller} tabIndex={-1} className={scrollerClassName}>
+          {historyHeader}
+          <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
+            {focused ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                No messages tagged to this to-do.
+              </p>
+            ) : (
+              empty
+            )}
+            {showAssistantLoading && (
+              <LoadingState label={loadingLabel} startedAt={loadingStartedAt} />
+            )}
+            {footer}
+            {error?.message && (
+              <ErrorNotice
+                title={error.title ?? "Operation failed"}
+                message={error.message}
+                details={error.details}
+              />
+            )}
+          </Conversation>
         </div>
-      </div>
+      )}
     </ConversationMarkdownProvider>
   );
 });

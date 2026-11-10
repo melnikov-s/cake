@@ -1,6 +1,5 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import type {
   ConversationEvent,
   ConversationSnapshot,
@@ -80,14 +79,14 @@ export function renderConversationDelivery(
     kind: "top",
   });
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+    <>
       <Chat
         store={session.conversationSessionStore.chatStore}
         compact
         embedded
         composerFocusEnabled={false}
       />
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   return {
     user: userEvent.setup(),

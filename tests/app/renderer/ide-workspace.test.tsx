@@ -126,7 +126,7 @@ describe("IDE conversation workflows", () => {
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     expect(screen.queryByRole("button", { name: /^Side chats/ })).toBeNull();
     await fixture.user.click((await screen.findByText("Work log")).closest("summary")!);
-    // jsdom cannot settle Virtuoso's bottom probe. Set the reader preference before mounting it.
+    // jsdom cannot settle the list's bottom placement. Set the reader preference before mounting it.
     act(() => {
       fixture.root.sessionRegistry
         .findSession(editorSessionId)!

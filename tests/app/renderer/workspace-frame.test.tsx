@@ -3,8 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { applySnapshot, toSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { settleListLayout } from "./settle-list-layout";
 import { App } from "../../../src/renderer/components/app";
 import { SidebarNavigationControls } from "../../../src/renderer/components/sidebar-navigation-controls";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -153,7 +153,7 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = 
     );
   const view = render(
     <StoreProvider store={root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+      <>
         {fullApp ? (
           <StoreProvider store={root.fullscreenSurfaceStore}>
             <App />
@@ -164,7 +164,7 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = 
             {surface}
           </>
         )}
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   return {
@@ -244,6 +244,7 @@ it.each<Mode>(["browser", "vscode"])(
           .find((button) => button.hasAttribute("aria-expanded"))
           ?.getAttribute("aria-expanded"),
       );
+    await settleListLayout();
     await f.user.click(focus("Task A"));
     expect(expanded()).toEqual(["true", undefined]);
     expect(companion.queryByText("Task A answer")).toBeNull();

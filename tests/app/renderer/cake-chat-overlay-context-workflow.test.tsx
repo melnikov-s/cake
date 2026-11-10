@@ -3,7 +3,6 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import {
@@ -78,7 +77,7 @@ it("attaches another app's selection to the Cake Chat draft as a removable chip"
       selectedText: { text: "The quarterly numbers look off", application: "Safari" },
     }),
   );
-  render(<Surface root={fixture.root} />, { wrapper: VirtuosoMockContext.Provider as never });
+  render(<Surface root={fixture.root} />);
   expect(draft().attachments).toEqual([
     {
       kind: "text",

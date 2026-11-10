@@ -261,7 +261,7 @@ it("shares scoped nonvisual demand and lets an embedded transcript own observati
   await vi.waitFor(() => expect(ended).toEqual([record.id]));
   const view = render(
     <StoreProvider store={fixture.root}>
-      <ChatTranscript store={session.chatStore} virtualized={false} />
+      <ChatTranscript store={session.chatStore} />
     </StoreProvider>,
   );
   await screen.findByText(`Transcript ${record.sidecarSessionId}`);

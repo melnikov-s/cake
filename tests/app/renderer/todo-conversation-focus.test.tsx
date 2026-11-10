@@ -18,6 +18,7 @@ import { ProjectTodoSelectionBar } from "../../../src/renderer/components/projec
 import { applyPartUpdate } from "../../../src/renderer/reducers/SessionPartReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import { settleListLayout } from "./settle-list-layout";
 
 const a = "00000000-0000-4000-8000-000000000011";
 const b = "00000000-0000-4000-8000-000000000012";
@@ -108,7 +109,6 @@ for (const global of [false, true]) {
           <ChatTranscript
             store={session.conversationSessionStore.chatStore}
             behavior={{ todos: store }}
-            virtualized={false}
           />
         </section>
         <aside aria-label="To-do">
@@ -124,6 +124,7 @@ for (const global of [false, true]) {
       const headingB = () => transcript.getAllByRole("button", { name: "Task B" })[0]!;
       const expanded = () =>
         [...headingA(), headingB()].map((h) => h.getAttribute("aria-expanded"));
+      await settleListLayout();
       expect(expanded()).toEqual(["true", "true", "true"]);
       expect(transcript.getByRole("img", { name: "a1-shot.png" })).toBeDefined();
       await u.click(transcript.getByRole("button", { name: "Collapse image: a1-shot.png" }));
@@ -248,7 +249,7 @@ for (const entry of ["pane", "message"] as const) {
     const view = render(
       <StoreProvider store={fixture.root}>
         <section aria-label="Transcript">
-          <ChatTranscript store={chat} behavior={{ todos: session.todos }} virtualized={false} />
+          <ChatTranscript store={chat} behavior={{ todos: session.todos }} />
         </section>
         <aside aria-label="To-do">
           <ProjectTodosPanel store={session.todos} />
@@ -263,6 +264,7 @@ for (const entry of ["pane", "message"] as const) {
         view.container
           .querySelector('[aria-current="true"]')
           ?.getAttribute("data-transcript-anchor-id");
+      await settleListLayout();
       await u.click(
         entry === "pane"
           ? panel.getByRole("button", { name: "Task A" })
@@ -345,7 +347,6 @@ it("filters exact message associations inside grouped history without session or
     <ChatTranscript
       store={session.conversationSessionStore.chatStore}
       behavior={{ todos: session.todos }}
-      virtualized={false}
     />,
   );
   try {
@@ -438,7 +439,6 @@ it("interrupts source rows without changing the discussion or borrowing pane sel
       <ChatTranscript
         store={session.conversationSessionStore.chatStore}
         behavior={{ todos: session.todos }}
-        virtualized={false}
       />
     </StoreProvider>,
   );
@@ -447,7 +447,20 @@ it("interrupts source rows without changing the discussion or borrowing pane sel
     const row = (id: string) =>
       view.container.querySelector(`[data-transcript-anchor-id="${id}"]`)!;
     const rail = (id: string) => row(id).querySelector('[data-slot="margin-rail"]');
-    const headings = () => screen.getAllByRole("button", { name: /^Task [AB]$/ });
+    // Rows are absolutely placed; read them in their laid-out order.
+    const headings = () =>
+      screen
+        .getAllByRole("button", { name: /^Task [AB]$/ })
+        .sort(
+          (a, b) =>
+            Number(
+              a.closest<HTMLElement>("[data-transcript-item-index]")?.dataset.transcriptItemIndex,
+            ) -
+            Number(
+              b.closest<HTMLElement>("[data-transcript-item-index]")?.dataset.transcriptItemIndex,
+            ),
+        );
+    await settleListLayout();
     expect(session.todos.focusedItems).toEqual([]);
     expect(headings().map((h) => h.getAttribute("aria-label"))).toEqual([
       "Task A",
@@ -509,11 +522,7 @@ it("keeps ordinary Project Sessions outside to-do folding", () => {
     applyPartUpdate(ordinary.model.parts, part, "ordinary"),
   );
   const view = render(
-    <ChatTranscript
-      store={ordinary.conversationSessionStore.chatStore}
-      behavior={{ todos }}
-      virtualized={false}
-    />,
+    <ChatTranscript store={ordinary.conversationSessionStore.chatStore} behavior={{ todos }} />,
   );
   try {
     expect(screen.getByText("ordinary answer")).toBeDefined();

@@ -3,7 +3,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -140,9 +139,9 @@ function mountCakeChat(sessionId: string, client: TestClientOverrides, parts = [
     <MarkdownLinkProvider actions={{ openSession, openExternalUrl: vi.fn() }}>
       <StoreProvider store={fixture.root}>
         <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-          <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+          <>
             <CakeChatSurface />
-          </VirtuosoMockContext.Provider>
+          </>
         </StoreProvider>
       </StoreProvider>
     </MarkdownLinkProvider>,
@@ -183,7 +182,7 @@ function mountProjectSession(client: TestClientOverrides) {
     });
   });
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+    <>
       <StoreProvider store={fixture.root}>
         <Chat
           store={session.conversationSessionStore.chatStore}
@@ -192,7 +191,7 @@ function mountProjectSession(client: TestClientOverrides) {
           composerFocusEnabled={false}
         />
       </StoreProvider>
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   return {
     view,

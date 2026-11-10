@@ -1,4 +1,4 @@
-export { ErrorNotice, TranscriptList } from "./chat-transcript-elements";
+export { ErrorNotice } from "./chat-transcript-elements";
 export {
   errorNoticeFollowsUser,
   groupTranscriptParts,

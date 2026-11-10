@@ -3,7 +3,6 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot, toSnapshot } from "r-state-tree";
 import { observer, StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type {
@@ -412,9 +411,9 @@ it("merges an idle side chat explicitly and closes only after successful resolut
   using fixture = mergeFixture(merge);
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+      <>
         <Surface chat={fixture.chat} />
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   const user = userEvent.setup();
@@ -576,12 +575,12 @@ it("appends collapsed attributed history with attachments and reopens its preser
     );
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+      <>
         <Surface
           chat={fixture.chat}
           behavior={cakeChatTranscriptBehaviorFor(fixture.root, fixture.chat)}
         />
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   const user = userEvent.setup();
@@ -780,9 +779,9 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
     });
     const view = render(
       <StoreProvider store={fixture.root}>
-        <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+        <>
           <Surface chat={chat} />
-        </VirtuosoMockContext.Provider>
+        </>
       </StoreProvider>,
     );
     const user = userEvent.setup();

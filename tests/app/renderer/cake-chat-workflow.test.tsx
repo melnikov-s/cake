@@ -3,7 +3,6 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { observer, StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { Chat } from "../../../src/renderer/components/chat";
@@ -106,14 +105,14 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
     },
   ]);
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+    <>
       <Chat
         store={chat.conversationSessionStore.chatStore}
         transcriptBehavior={{ subagents: chat.subagentActivityStore }}
         embedded
         composerFocusEnabled={false}
       />
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   const assertReport = async () => {
     expect(chat.model.parts).toHaveLength(2);
@@ -274,14 +273,14 @@ it("shows a rejected start's actual error without creating a worker chat, and ke
     }),
   );
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+    <>
       <Chat
         store={chat.conversationSessionStore.chatStore}
         transcriptBehavior={{ subagents: chat.subagentActivityStore }}
         embedded
         composerFocusEnabled={false}
       />
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   expect(chat.model.parts).toHaveLength(1);
   expect(chat.conversationSessionStore.chatStore.parts).toHaveLength(1);
@@ -434,9 +433,9 @@ it("opens Cake Chat project investigators in the existing subagent interface and
     });
   });
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+    <>
       <Surface root={fixture.root} />
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   try {
     const user = userEvent.setup();

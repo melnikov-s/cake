@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { ChatIcon, ForkIcon } from "../../../src/renderer/components/ui/icons";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
@@ -111,13 +110,13 @@ function renderActivity(
   const catalog = fixture.models.subagentCatalog(ownerId);
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+      <>
         {kind === "cake-chat" ? (
           <CakeChatSurface />
         ) : (
           <ProjectConversationSurface browserMode={false} />
         )}
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   let revision = 0;

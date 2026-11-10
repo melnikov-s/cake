@@ -274,7 +274,8 @@ export const Chat = observer(function Chat({
     event.preventDefault();
     event.stopPropagation();
     if (action === "select-next" && interaction.selectedMessageId === undefined) {
-      // Leaving the newest message returns focus to writing without scrolling.
+      // Arrowing past the newest message returns to the newest content and to writing.
+      interaction.returnToBottom();
       if (document.activeElement !== composerInputRef.current)
         composerFocusRef.current?.requestFocus();
     }

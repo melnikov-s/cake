@@ -2,7 +2,6 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
@@ -82,9 +81,9 @@ it.each([
   });
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+      <>
         <CakeChatSurface />
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   const expectReplies = (ids: string[]) =>

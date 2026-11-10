@@ -1,6 +1,5 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { StoreProvider } from "r-state-tree/react";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
@@ -59,10 +58,10 @@ export function renderChatSurface(
   const view = render(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-        <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+        <>
           <ProjectPaneHeader session={session} browserMode={false} />
           <Chat store={chat} compact composerFocusEnabled={false} />
-        </VirtuosoMockContext.Provider>
+        </>
       </StoreProvider>
     </StoreProvider>,
   );

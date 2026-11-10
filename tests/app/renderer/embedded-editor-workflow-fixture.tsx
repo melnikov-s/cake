@@ -2,7 +2,6 @@ import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { EmbeddedEditorStateSnapshot } from "../../../src/renderer/client/Client";
 import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
@@ -151,7 +150,7 @@ export function renderEmbeddedEditor(
   if (options.savedIde)
     fixture.root.sessionRegistry.findSession(editorSessionId)!.showPresentation("vscode");
   fixture.root.sessionLayoutStore.ensureSession(editorSessionId);
-  // jsdom cannot settle Virtuoso's initial bottom alignment. Restore a top
+  // jsdom cannot settle the list's initial bottom alignment. Restore a top
   // scroll preference so the real transcript mounts without fake geometry.
   const session = fixture.root.sessionRegistry.findSession(editorSessionId)!;
   session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
@@ -165,9 +164,9 @@ export function renderEmbeddedEditor(
   const view = render(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-        <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+        <>
           <App />
-        </VirtuosoMockContext.Provider>
+        </>
       </StoreProvider>
     </StoreProvider>,
   );

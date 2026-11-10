@@ -2,7 +2,6 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
@@ -91,7 +90,7 @@ function renderChatWorkspaceFinish(open: Client["projectSessions"]["open"]) {
   }
   fixture.root.navigationStore.showLoadedProjectSession(inboxId);
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+    <>
       <RendererRoot
         rootStore={fixture.root}
         openSubagent={(parent, handle, message) =>
@@ -102,7 +101,7 @@ function renderChatWorkspaceFinish(open: Client["projectSessions"]["open"]) {
           void fixture.root.navigationStore.openSessionLink(id, messageId, attachmentId)
         }
       />
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   return {
     user: userEvent.setup(),

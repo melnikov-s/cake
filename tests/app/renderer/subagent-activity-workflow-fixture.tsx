@@ -5,7 +5,6 @@ import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-n
 import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import {
   SubagentHandleId,
   type SubagentActivity,
@@ -158,7 +157,7 @@ export function renderSubagentActivity(options: {
     backgroundActive: false,
   });
   if (options.catalogReady === false) catalog.loaded = false;
-  // Content proof only: jsdom cannot settle Virtuoso's native bottom alignment.
+  // Content proof only: jsdom cannot settle native bottom alignment.
   for (const chat of [
     session.conversationSessionStore.chatStore,
     ...session.subagentActivityStore.chatStores,
@@ -182,7 +181,7 @@ export function renderSubagentActivity(options: {
           },
         }}
       >
-        <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+        <>
           {todos && <Todos />}
           <SideChatLayout
             store={session.conversationSessionStore.sideChatStore}
@@ -203,7 +202,7 @@ export function renderSubagentActivity(options: {
               composerFocusEnabled={false}
             />
           </SideChatLayout>
-        </VirtuosoMockContext.Provider>
+        </>
       </MarkdownLinkProvider>
     </StoreProvider>,
   );

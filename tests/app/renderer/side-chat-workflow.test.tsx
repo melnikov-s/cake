@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import {
   TurnId,
   type ConversationSnapshot,
@@ -189,9 +188,7 @@ function renderSideChats(
   }
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider
-        value={options.transcriptViewport ? { viewportHeight: 1200, itemHeight: 100 } : undefined}
-      >
+      <>
         <ConversationFocusContext.Provider value>
           <SideChatLayout
             store={session.conversationSessionStore.sideChatStore}
@@ -212,7 +209,7 @@ function renderSideChats(
             />
           </SideChatLayout>
         </ConversationFocusContext.Provider>
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
   return {

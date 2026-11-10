@@ -2,7 +2,6 @@ import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Schema } from "effect";
 import { applySnapshot } from "r-state-tree";
-import { VirtuosoMockContext } from "react-virtuoso";
 import {
   ArtifactReferenceMetadata,
   decodeArtifactLineageId,
@@ -192,7 +191,7 @@ export function renderArtifactReferences(
     kind: "top",
   });
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
+    <>
       <RendererRoot
         rootStore={fixture.root}
         openExternalUrl={() => {
@@ -205,7 +204,7 @@ export function renderArtifactReferences(
           throw new Error("Unexpected subagent navigation");
         }}
       />
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   let disposed = false;
   return {

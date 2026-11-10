@@ -127,7 +127,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect(composer).toHaveValue("", { timeout: 20_000 });
     await expect(page.getByText(/Session ID collision detected/)).toHaveCount(0);
     await expect(
-      page.getByTestId("virtuoso-item-list").getByText("Build this in isolation", { exact: true }),
+      page.locator(".transcript").getByText("Build this in isolation", { exact: true }),
     ).toBeVisible();
     expect(await initialChat!.evaluate((element) => element.isConnected)).toBe(true);
     expect(

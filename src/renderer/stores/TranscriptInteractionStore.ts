@@ -77,11 +77,14 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
     else this.openSideChatImports.delete(groupId);
   }
   userMessagePresentationError: string | undefined;
-  /**
-   * Counts the reader's own sends. Sending a message is the only time the
-   * transcript scrolls to the bottom for the reader; it reacts to each change.
-   */
+  /** Counts the reader's own sends. */
   sentMessageRevision = 0;
+  /**
+   * Counts the reader's requests for the newest content: sending, the
+   * jump-to-bottom control, or arrowing past the newest message. These are the
+   * only times the transcript scrolls to the bottom for the reader.
+   */
+  bottomRequestRevision = 0;
   private messageSelectionRevision = 0;
   /** Explicit attention navigation only; late receipts cannot revive a superseded request. */
   resultReveal:
@@ -238,9 +241,15 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
 
   /** The reader sent a message from the composer (typed or voice conversation mode). */
   noteSentMessage() {
+    this.sentMessageRevision++;
+    this.returnToBottom();
+  }
+
+  /** The reader asked for the newest content; the transcript follows it again. */
+  returnToBottom() {
     this.cancelResultReveal();
     this.clearMessageSelection();
-    this.sentMessageRevision++;
+    this.bottomRequestRevision++;
     // A transcript mounted later opens at the bottom too.
     this.transcriptScrollPosition = { kind: "bottom" };
   }

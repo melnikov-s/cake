@@ -126,7 +126,7 @@ export function renderTranscriptFinish(
       message: "Ready for the next step.",
     });
 
-  // Compact controls density only. Use the supported Virtuoso content context;
+  // Compact controls density only. Open at the top;
   // native layout, selection and scrolling remain Electron contracts.
   session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
     kind: "top",

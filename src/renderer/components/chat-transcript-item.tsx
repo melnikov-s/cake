@@ -12,7 +12,7 @@ import type { CanonicalTranscriptBehavior } from "./chat-message";
 import type { TranscriptItem } from "./chat-transcript-items";
 
 interface ChatTranscriptItemProps {
-  /** Stable row identity (the React/Virtuoso key) used for scroll anchoring and reveals. */
+  /** Stable row identity (the React/list key) used for reveals. */
   itemKey: string;
   item: TranscriptItem;
   index: number;
@@ -46,6 +46,17 @@ function sameItem(left: TranscriptItem, right: TranscriptItem) {
   return left.kind === "loading-state";
 }
 
+/** The message id that identifies a row in a saved reading position. */
+export function transcriptAnchorId(item: TranscriptItem) {
+  return item.kind === "original-history" ||
+    item.kind === "side-chat-import" ||
+    item.kind === "activity-group" ||
+    item.kind === "source-group" ||
+    item.kind === "context-group"
+    ? item.parts[0]?.id
+    : item.id;
+}
+
 /** Keeps collection-level streaming updates from re-rendering unchanged transcript items. */
 export const ChatTranscriptItem = memo(
   function ChatTranscriptItem({
@@ -65,15 +76,7 @@ export const ChatTranscriptItem = memo(
         data-slot="transcript-item"
         data-transcript-item-index={index}
         data-transcript-item-key={itemKey}
-        data-transcript-anchor-id={
-          item.kind === "original-history" ||
-          item.kind === "side-chat-import" ||
-          item.kind === "activity-group" ||
-          item.kind === "source-group" ||
-          item.kind === "context-group"
-            ? item.parts[0]?.id
-            : item.id
-        }
+        data-transcript-anchor-id={transcriptAnchorId(item)}
         aria-current={selected ? "true" : undefined}
         className={cn(
           "relative mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=task-section-label]]:grid has-[[data-slot=task-section-label]]:grid-cols-[minmax(0,1fr)] has-[[data-slot=task-section-label]]:pt-8 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5 [&:has([data-slot=artifact-disclosure])_[data-slot=margin-rail]]:hidden [&:has([data-widget-view-id])_[data-slot=margin-rail]]:hidden",

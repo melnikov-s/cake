@@ -85,7 +85,7 @@ it.each([false, true])(
     const content = (
       <StoreProvider store={fixture.root}>
         <CakeChatComposerHeader session={session} />
-        <ChatTranscript store={store} virtualized={false} />
+        <ChatTranscript store={store} />
       </StoreProvider>
     );
     const view = render(content);

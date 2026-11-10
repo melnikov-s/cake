@@ -73,3 +73,9 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
     }),
   });
 }
+
+// Virtualized lists need a viewport to render rows; see the helper.
+if (typeof window !== "undefined" && typeof HTMLElement !== "undefined") {
+  const { installVirtualListLayout } = await import("./helpers/virtual-list-layout");
+  installVirtualListLayout();
+}

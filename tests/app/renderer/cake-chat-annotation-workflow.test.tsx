@@ -3,7 +3,6 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -102,9 +101,9 @@ it("adds a selected Cake Chat passage as a composer annotation sent with the nex
   });
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+      <>
         <CakeChatSurface />
-      </VirtuosoMockContext.Provider>
+      </>
     </StoreProvider>,
   );
 

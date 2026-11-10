@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
@@ -58,13 +57,13 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatId, "project-session"])(
       });
     });
     const view = render(
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+      <>
         <Chat
           store={owner.conversationSessionStore.chatStore}
           compact
           composerFocusEnabled={false}
         />
-      </VirtuosoMockContext.Provider>,
+      </>,
     );
     const user = userEvent.setup();
     expect(Boolean(screen.queryByRole("button", { name: "Edit latest prompt" }))).toBe(!durable);

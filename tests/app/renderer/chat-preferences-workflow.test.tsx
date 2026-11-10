@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it } from "vitest";
 import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import type { PiSettings, UiPart } from "../../../src/contracts/conversations/session-contract";
@@ -228,13 +227,13 @@ async function renderPreferences() {
     <>
       <SettingsPage settings={fixture.root.settingsStore} />
       <WorkLogControls store={chats[0]!} />
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+      <>
         {chats.map((chat, index) => (
           <section key={chat.id} aria-label={["Parent", "Side chat", "Worker"][index]}>
             <Chat store={chat} compact={index > 0} embedded composerFocusEnabled={false} />
           </section>
         ))}
-      </VirtuosoMockContext.Provider>
+      </>
     </>,
   );
   return {

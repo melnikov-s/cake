@@ -547,7 +547,7 @@ describe("Agent session navigation workflow", () => {
             },
           });
         session.showPresentation("browser");
-        // jsdom cannot settle Virtuoso's native bottom alignment; Electron owns pixel scrolling.
+        // jsdom cannot settle native bottom alignment; Electron owns pixel scrolling.
         session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition(
           { kind: "top" },
         );

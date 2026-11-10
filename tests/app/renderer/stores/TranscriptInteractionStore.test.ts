@@ -59,7 +59,7 @@ function transcriptAdapter(parts: UiPart[]) {
 // Native/control-adapter exceptions, not parallel renderer workflow coverage:
 // openSession(messageId) is a control-protocol operation; selection methods are
 // the native keyboard adapter. Keep real Root/catalog/navigation/Models and no
-// fake parts callbacks or Store casts. Native key routing, focus and real Virtuoso
+// fake parts callbacks or Store casts. Native key routing, focus and the real transcript list
 // reveal are covered by message-keyboard-selection/message-navigation Electron
 // suites, not by jsdom with invented geometry. Visible formatting/failure/retry
 // lives in transcript-interaction-workflow; disclosure in chat-surface-workflow.

@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { Schema } from "effect";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -186,7 +185,7 @@ function renderSessionArtifacts(
     });
   const events = artifactObserverWorkflowEvents(fixture.root);
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
+    <>
       <StoreProvider store={fixture.root}>
         <RendererRoot
           rootStore={fixture.root}
@@ -199,7 +198,7 @@ function renderSessionArtifacts(
           }
         />
       </StoreProvider>
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   return {
     user: userEvent.setup(),

@@ -233,19 +233,6 @@ describe("App shell navigation workflow", () => {
   it.each([false, true])(
     "resolving the selected Project Session opens its local Project Chat, not global or history (prior visit: %s)",
     async (priorVisit) => {
-      // Virtuoso uses the custom scroll parent’s geometry even with its mock viewport.
-      vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(900);
-      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-        x: 0,
-        y: 0,
-        top: 0,
-        left: 0,
-        right: 900,
-        bottom: 900,
-        width: 900,
-        height: 900,
-        toJSON() {},
-      });
       const resolve = vi.fn<Client["projectSessions"]["resolve"]>(async () => undefined);
       const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
         TurnId.make("10000000-0000-4000-8000-000000000001"),

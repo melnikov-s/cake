@@ -57,7 +57,7 @@ it("ordinary sessions admit one page, serialize reads, preserve live rollover an
     });
   publish(1, [part("recent")]);
   const store = session.conversationSessionStore.chatStore;
-  const view = render(<ChatTranscript store={store} virtualized={false} />);
+  const view = render(<ChatTranscript store={store} />);
   try {
     expect(history).not.toHaveBeenCalled();
     scrollTranscriptEarlier(screen.getByText("Earlier messages"));
@@ -108,15 +108,13 @@ it("switching/disposal cannot prepend a stale page to another conversation", asy
       revision: 1,
       snapshot: snapshot(session.sessionId, [part(session.sessionId)]),
     });
-  const beforePrepend = vi.fn();
-  const read = first.history.load(beforePrepend);
+  const read = first.history.load();
   expect(history).toHaveBeenCalledOnce();
   expect(second.model.uiParts.map((p) => p.id)).toEqual(["second"]);
   fixture[Symbol.dispose]();
   expect(history.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
   pending.resolve({ parts: [part("stale")], cursor: undefined });
   await read;
-  expect(beforePrepend).not.toHaveBeenCalled();
   expect(first.model.earlierParts).toHaveLength(0);
   expect(second.model.earlierParts).toHaveLength(0);
 });

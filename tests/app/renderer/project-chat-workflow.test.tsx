@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { applySnapshot } from "r-state-tree";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
@@ -170,9 +169,9 @@ async function fixture(
             openExternalUrl: () => undefined,
           }}
         >
-          <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+          <>
             <App />
-          </VirtuosoMockContext.Provider>
+          </>
         </MarkdownLinkProvider>
       </StoreProvider>
     </StoreProvider>,

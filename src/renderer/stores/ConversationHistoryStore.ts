@@ -37,7 +37,7 @@ export class ConversationHistoryStore extends Store<{
     return (this.loaded ? this.cursor : this.props.model.historyCursor) !== undefined;
   }
 
-  async load(beforePrepend?: () => void) {
+  async load() {
     const cursor = this.loaded ? this.cursor : this.props.model.historyCursor;
     if (this.loading || cursor === undefined || this.signal.aborted) return;
     this.loading = true;
@@ -54,8 +54,6 @@ export class ConversationHistoryStore extends Store<{
         return;
       const known = new Set([...model.earlierParts, ...model.uiParts].map((part) => part.id));
       const older = page.parts.filter((part) => !known.has(part.id));
-      // Capture the current reader, not their position when the read started.
-      if (older.length) beforePrepend?.();
       batch(() => {
         model.earlierParts.unshift(...older);
         this.cursor = page.cursor;

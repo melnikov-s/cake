@@ -2,6 +2,7 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { applySnapshot, toSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { settleListLayout } from "./settle-list-layout";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 import { automationRun } from "./fixtures/automation-fixtures";
@@ -236,19 +237,6 @@ it.each([
 );
 
 async function inspectionFixture(parentSessionId: string, released = false) {
-  // Work-log Virtuoso also reads its custom scroll parent's geometry in jsdom.
-  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(900);
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-    x: 0,
-    y: 0,
-    top: 0,
-    left: 0,
-    right: 900,
-    bottom: 900,
-    width: 900,
-    height: 900,
-    toJSON() {},
-  });
   const fixture = renderAppShellNavigation({}, { history: ["beta"], transcriptViewport: true });
   await addProjectChat(fixture);
   await fixture.publishCakeChatProjection(parentSessionId, workerTranscript(), "Snapshot");
@@ -268,7 +256,7 @@ async function inspectionFixture(parentSessionId: string, released = false) {
       ],
     });
     await fixture.root.navigationStore.openCakeChat(parentSessionId);
-    // jsdom cannot settle Virtuoso's native bottom alignment for either transcript.
+    // jsdom cannot settle native bottom alignment for either transcript.
     const owner = fixture.root.workspaceSession!;
     for (const chat of [
       owner.conversationSessionStore.chatStore,
@@ -290,12 +278,15 @@ async function inspectWorker(
     );
   } else {
     // Wait for the virtualized transcript before opening its work-log disclosure.
+    await settleListLayout();
     if (!screen.queryByRole("button", { name: "Open subagent chat" })) {
       const summary = (await screen.findByText("Work log")).closest("summary");
       if (!summary) throw new Error("Missing work log disclosure");
       await fixture.user.click(summary);
     }
-    await fixture.user.click(await screen.findByRole("button", { name: "Open subagent chat" }));
+    const open = await screen.findByRole("button", { name: "Open subagent chat" });
+    await settleListLayout();
+    await fixture.user.click(open);
   }
   expect(screen.getByRole("region", { name: "Subagent" })).toBeDefined();
   expect(await screen.findByText("Inspecting now")).toBeDefined();

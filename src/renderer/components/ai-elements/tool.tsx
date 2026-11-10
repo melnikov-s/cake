@@ -281,7 +281,7 @@ export const Tool = observer(function Tool({
           </span>
         )}
       </div>
-      {/* Once opened, keep details mounted so later toggles do not feed Streamdown's passive update back into Virtuoso measurement. */}
+      {/* Once opened, keep details mounted so later toggles do not feed Streamdown's passive update back into transcript measurement. */}
       {hasDetails && detailsMounted && (
         <div data-slot="tool-details" className="mt-1" hidden={!open}>
           {activity?.inputUnavailable && (

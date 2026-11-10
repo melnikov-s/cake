@@ -8,7 +8,6 @@ export {
 } from "./chat-message";
 export {
   ErrorNotice,
-  TranscriptList,
   errorNoticeFollowsUser,
   groupTranscriptParts,
   type TranscriptItem,

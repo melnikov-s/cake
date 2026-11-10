@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
@@ -74,13 +73,13 @@ function renderSplitPanes(parts: UiPart[] = conversation) {
     return session.conversationSessionStore.chatStore;
   });
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 2400, itemHeight: 100 }}>
+    <>
       {chats.map((chat) => (
         <section key={chat.id} aria-label={chat.id}>
           <Chat store={chat} compact composerFocusEnabled={false} />
         </section>
       ))}
-    </VirtuosoMockContext.Provider>,
+    </>,
   );
   const pane = (sessionId: (typeof ids)[number]) => {
     const element = within(screen.getByRole("region", { name: sessionId }));

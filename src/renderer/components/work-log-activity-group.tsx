@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { observer } from "r-state-tree/react";
-import { VirtualizedConversation } from "@/components/ai-elements/conversation";
+import { LegendList } from "@legendapp/list/react";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { ImagePreview } from "@/components/image-preview";
 import { toolImageCaption, toolImagesAreConversationResults } from "../../utils/cake-tool";
@@ -35,6 +35,33 @@ function restoreScrollState(element: HTMLDivElement, state: WorkLogScrollState |
     if (!element.isConnected) return;
     element.scrollTop = state.atBottom ? element.scrollHeight : state.top;
   });
+}
+
+/**
+ * Virtualizes long work logs inside their own scroll area. The log's stick-to-bottom
+ * owns that area's position, so the list never compensates scrolling itself.
+ */
+function WorkLogList<Item extends { id: string }>({
+  scrollElement,
+  items,
+  renderItem,
+}: {
+  scrollElement: HTMLElement;
+  items: readonly Item[];
+  renderItem(item: Item): ReactNode;
+}) {
+  return (
+    <LegendList<Item>
+      scrollElement={scrollElement}
+      data={items}
+      extraData={renderItem}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => <div className="pb-2">{renderItem(item)}</div>}
+      recycleItems={false}
+      estimatedItemSize={40}
+      maintainVisibleContentPosition={false}
+    />
+  );
 }
 
 export const ActivityGroup = observer(function ActivityGroup({
@@ -250,13 +277,10 @@ export const ActivityGroup = observer(function ActivityGroup({
               >
                 <div ref={logContentRef} className="min-w-0">
                   {logElement && (
-                    <VirtualizedConversation
-                      className="space-y-2"
-                      customScrollParent={logElement}
-                      data={workLogItems}
-                      computeItemKey={(_index, item) => item.id}
-                      followOutput={false}
-                      itemContent={(_index, item) => renderWorkLogItem(item, true)}
+                    <WorkLogList
+                      scrollElement={logElement}
+                      items={workLogItems}
+                      renderItem={(item) => renderWorkLogItem(item, true)}
                     />
                   )}
                 </div>
@@ -287,13 +311,10 @@ export const ActivityGroup = observer(function ActivityGroup({
           >
             <div ref={logContentRef} className="min-w-0">
               {logElement && (
-                <VirtualizedConversation
-                  className="space-y-2"
-                  customScrollParent={logElement}
-                  data={workLogItems}
-                  computeItemKey={(_index, item) => item.id}
-                  followOutput={false}
-                  itemContent={(_index, item) => renderWorkLogItem(item)}
+                <WorkLogList
+                  scrollElement={logElement}
+                  items={workLogItems}
+                  renderItem={(item) => renderWorkLogItem(item)}
                 />
               )}
             </div>

@@ -143,7 +143,7 @@ it.each(["normal", "vscode", "browser"] as const)(
       }
       local.conversationSessionStore.composerStore.draftStore.setText("Project draft");
       global.conversationSessionStore.composerStore.draftStore.setText("Global draft");
-      // jsdom cannot settle Virtuoso native bottom alignment; keep these history fixtures at top.
+      // jsdom cannot settle native bottom alignment; keep these history fixtures at top.
       for (const session of [local, global])
         session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition(
           { kind: "top" },
