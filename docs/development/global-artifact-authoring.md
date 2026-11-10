@@ -181,7 +181,17 @@ viewing machine. Network requests execute on that backend too. Parse the respons
 bridge does not replace the response envelope with the server's JSON payload. This is not a
 promise that every Pi tool is a Cake command. Agent-originated calls carry their
 real calling session; background calls do not invent a current/creating session.
-Session-relative operations need a real caller. UI-originated calls carry their
+Session-relative operations need a real caller. For user-authorized unattended
+maintenance, `cake("sessions.tool-compact", {sessionId})` (or UI
+`cake.call("sessions.tool-compact", {sessionId})`) accepts an explicit Project
+Session ID or unambiguous discovered suffix without an agent caller. It uses
+trusted host authority across registered, accessible projects; actual session
+callers retain their project scope. Check `ok` and each `results[].status`: busy,
+pending or recovery-blocked work is skipped, never aborted/queued, and drafts,
+permanent chats or retired/missing checkouts cannot be compacted. No creator or
+parent is inferred, no turn is sent and nothing is restored or resolved. Normal
+compaction still requires a real caller.
+UI-originated calls carry their
 actual renderer connection independently of a conversation link, including calls
 from an unlinked global view and its semantic handler. Native/window/device
 functionality uses that real connected host; later background invocations do not

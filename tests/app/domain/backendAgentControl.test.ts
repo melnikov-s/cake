@@ -4,11 +4,21 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  createCakeSessionRuntime,
+  type CakeSessionRuntime,
+} from "../../../src/services/pi/runtime/cake-session-runtime";
+import { cakeWorkspaceSessionDirectory } from "../../../src/services/pi/runtime/session-discovery";
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from "effect/http";
 import * as artifactCommands from "../../../src/domain/artifacts/artifactCommands";
 import * as sessionReferences from "../../../src/domain/project-sessions/sessionReferences";
 import * as sessionMetadata from "../../../src/domain/project-sessions/projectSessionMetadata";
 import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
+import { ArtifactRuntimeLive } from "../../../src/services/artifact-runtime/ArtifactRuntimeLive";
+import { ArtifactRuntimeHostLive } from "../../../src/layers/ArtifactRuntimeHostLive";
+import { ArtifactRuntimeDescriptor } from "../../../src/contracts/artifacts/artifact-runtime-descriptor";
+import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import { ArtifactViews } from "../../../src/services/artifacts/ArtifactViews";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
@@ -182,6 +192,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   const deniedPaths = new Set<string>();
   const promptRoots = new Set<string>();
   const active = new Set<string>();
+  const pending = new Set<string>();
   const unavailable = new Set<string>();
   const failedTurns = new Set<string>();
   const admissions = yield* Queue.unbounded<void>();
@@ -195,6 +206,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   const received: Array<{ connectionId: number; event: CakeEvent }> = [];
   const deliveries = yield* Queue.unbounded<{ connectionId: number; event: CakeEvent }>();
   const runtimeCreates: string[] = [];
+  const runtimeFactories = new Map<string, () => Promise<CakeSessionRuntime>>();
   const internalInputs: InternalInput[] = [];
   const httpRequests: HttpClientRequest.HttpClientRequest[] = [];
   const gatewayCalls: Array<{
@@ -311,6 +323,8 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
       Effect.gen(function* () {
         const sessionId = options.sessionId ?? "unexpected";
         runtimeCreates.push(sessionId);
+        const factory = runtimeFactories.get(sessionId);
+        if (factory) return yield* Effect.promise(factory);
         if (pauseAdmission && sessionId === target) {
           yield* Queue.offer(admissions, undefined);
           yield* Deferred.await(admissionRelease);
@@ -323,6 +337,10 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             return active.has(sessionId);
           },
           snapshot: async () => ({ ...snapshot, sessionId, streaming: active.has(sessionId) }),
+          listQueuedMessages: async () => ({
+            steering: [],
+            followUp: pending.has(sessionId) ? ["Pending input"] : [],
+          }),
           scheduledInputReceipt: async (turnId) => {
             const consumedAt = consumedInputs.get(turnId);
             return consumedAt === undefined ? undefined : { status: "consumed", consumedAt };
@@ -642,6 +660,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     deny: (path: string) => deniedPaths.add(path),
     allowPromptRoot: (path: string) => promptRoots.add(path),
     active,
+    pending,
     unavailable,
     failedTurns,
     messageRelease,
@@ -664,6 +683,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     grants,
     queries,
     runtimeCreates,
+    runtimeFactories,
     inspections,
     contextBySession,
     listReads,
@@ -1017,6 +1037,341 @@ it.effect("tool compaction routes from Project Session controls and awaits actua
   }),
 );
 
+it.effect("unattended artifacts tool-compact explicit targets without impersonation or turns", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    f.pauseCompaction();
+    const operation = yield* f
+      .artifact("sessions.tool-compact", { sessionId: target })
+      .pipe(Effect.forkScoped);
+    yield* Deferred.await(f.compactStarted);
+    expect(operation.pollUnsafe()).toBeUndefined();
+    expect(f.toolCompactions).toEqual([target]);
+    yield* Deferred.succeed(f.compactRelease, undefined);
+    expect(yield* Fiber.join(operation)).toMatchObject({
+      ok: true,
+      command: "sessions.tool-compact",
+      results: [{ reference: target, sessionId: target, status: "compacted" }],
+    });
+    // Resolved history stays resolved. Tool compaction deliberately repeats branch creation;
+    // it is not a durable request-id replay.
+    f.resolve();
+    expect(yield* f.artifact("sessions.tool-compact", { sessionId: "00000022" })).toMatchObject({
+      ok: true,
+      results: [{ sessionId: target, status: "compacted" }],
+    });
+    expect(f.toolCompactions).toEqual([target, target]);
+    expect(yield* f.background("sessions.tool-compact", { sessionId: target })).toMatchObject({
+      ok: false,
+    });
+    for (const command of ["sessions.compact", "sessions.compact-batch"])
+      expect(
+        yield* f.artifact(
+          command,
+          command === "sessions.compact" ? { sessionId: target } : { sessionIds: [target] },
+        ),
+      ).toMatchObject({ ok: false });
+    expect(f.runtimeCreates).toEqual([source, target, target]);
+    expect(f.compactions).toEqual([]);
+    expect(f.gatewayCalls).toEqual([]);
+    expect(f.internalInputs).toEqual([]);
+    expect(yield* Queue.size(f.prompts)).toBe(0);
+    expect(f.requestCalls).toEqual([]);
+    expect(f.restored()).toBe(0);
+    expect(f.saveCount()).toBe(0);
+  }),
+);
+
+it.effect(
+  "artifact host authority reaches registered projects but never widens real session callers",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const project = f.state().projects[0];
+      assert.ok(project);
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: [...state.projects, { ...project, path: "/other", name: "Other" }],
+        }),
+      );
+      f.sessionsByDirectory.set("/project", [source, target]);
+      f.sessionsByDirectory.set("/other", [third]);
+      // A genuine session caller keeps its own project scope, even through the artifact bridge.
+      expect(
+        yield* f.artifact("sessions.tool-compact", { sessionId: third }, source),
+      ).toMatchObject({
+        ok: false,
+        results: [{ status: "unauthorized" }],
+      });
+      f.deny("/other");
+      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+        ok: false,
+        results: [{ status: "unauthorized" }],
+      });
+      expect(f.toolCompactions).toEqual([]);
+      expect(yield* f.artifact("sessions.tool-compact", { sessionId: target })).toMatchObject({
+        ok: true,
+      });
+      // Removing a project removes host routing authority too, even when its identity is known elsewhere.
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: state.projects.filter((item) => item.path !== "/other"),
+        }),
+      );
+      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+        ok: false,
+        results: [{ status: "invalid" }],
+      });
+      expect(f.toolCompactions).toEqual([target]);
+      // A separate registered and accessible project needs no creator/session identity.
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: [...state.projects, { ...project, path: "/accessible", name: "Accessible" }],
+        }),
+      );
+      f.sessionsByDirectory.set("/accessible", [third]);
+      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+        ok: true,
+      });
+      expect(f.toolCompactions).toEqual([target, third]);
+      expect(f.gatewayCalls).toEqual([]);
+      expect(f.restored()).toBe(0);
+    }),
+);
+
+it.effect(
+  "artifact tool compaction rejects malformed, ambiguous and session-relative targets",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const collision = "11111111-1111-4111-8111-000000000022";
+      f.sessionsByDirectory.set("/project", [source, target, third, collision]);
+      for (const sessionId of [
+        "parent",
+        "Same title",
+        "00000022",
+        "00000000-0000-4000-8000-00000000ffff",
+      ]) {
+        expect(yield* f.artifact("sessions.tool-compact", { sessionId })).toMatchObject({
+          ok: false,
+          results: [{ status: "invalid" }],
+        });
+      }
+      const invalidInputs: JsonValue[] = [
+        {},
+        { sessionId: "" },
+        { sessionId: null },
+        { sessionId: target, callingSessionId: source },
+        { sessionId: target, projectPath: "/project" },
+      ];
+      for (const input of invalidInputs) {
+        expect(yield* f.artifact("sessions.tool-compact", input).pipe(Effect.result)).toMatchObject(
+          {
+            _tag: "Failure",
+            failure: { _tag: "ArtifactCommandError" },
+          },
+        );
+      }
+      expect(f.toolCompactions).toEqual([]);
+      expect(f.runtimeCreates).toEqual([source]);
+      expect(f.restored()).toBe(0);
+    }),
+);
+
+it.effect(
+  "artifact tool compaction leaves streaming, queued and recovery-blocked targets untouched",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.direct("sessions.context", { sessionId: target });
+      const recovery = Context.get(f.context, RuntimeRecoveryStorage);
+      f.active.add(target);
+      expect(yield* f.artifact("sessions.tool-compact", { sessionId: target })).toMatchObject({
+        results: [{ status: "busy" }],
+      });
+      f.active.delete(target);
+      f.pending.add(target);
+      expect(yield* f.artifact("sessions.tool-compact", { sessionId: target })).toMatchObject({
+        results: [{ status: "busy" }],
+      });
+      expect(f.pending.has(target)).toBe(true);
+      f.pending.delete(target);
+      const blocked: RuntimeRecoveryRecord = {
+        ...location,
+        sessionId: third,
+        profile: "ProjectSession",
+        transcriptPersisted: true,
+        inputs: [],
+        state: "blocked",
+        issue: "Requires review",
+      };
+      yield* recovery.update(blocked);
+      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+        results: [{ status: "busy" }],
+      });
+      expect(yield* recovery.get(third)).toEqual(blocked);
+      yield* recovery.update({
+        ...blocked,
+        state: "active",
+        inputs: [
+          { turnId: "pending", text: "Wait", delivery: "prompt", attachments: [], markdown: true },
+        ],
+      });
+      const before = yield* recovery.get(third);
+      expect(yield* f.artifact("sessions.tool-compact", { sessionId: third })).toMatchObject({
+        results: [{ status: "busy" }],
+      });
+      expect(yield* recovery.get(third)).toEqual(before);
+      expect(f.toolCompactions).toEqual([]);
+      expect(f.runtimeCreates).toEqual([source, target]);
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+      expect(f.restored()).toBe(0);
+    }),
+);
+
+it.effect(
+  "a persistent QuickJS artifact dispatches unattended compaction through the production host",
+  () =>
+    Effect.gen(function* () {
+      const directory = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "cake-artifact-tool-compact-"))),
+        (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+      );
+      // Pi's SDK reads its credential root globally; keep it aligned with this isolated fixture.
+      vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
+      yield* Effect.addFinalizer(() => Effect.sync(() => vi.unstubAllEnvs()));
+      const sessionDir = join(directory, "sessions");
+      const manager = SessionManager.create(
+        directory,
+        cakeWorkspaceSessionDirectory(directory, sessionDir),
+      );
+      manager.appendMessage({ role: "user", content: "Inspect this", timestamp: 1 });
+      const usage = {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      };
+      manager.appendMessage({
+        role: "assistant",
+        content: [
+          { type: "text", text: "Inspecting" },
+          { type: "toolCall", id: "read-1", name: "read", arguments: { path: "large.ts" } },
+        ],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "fixture",
+        usage,
+        stopReason: "toolUse",
+        timestamp: 2,
+      });
+      manager.appendMessage({
+        role: "toolResult",
+        toolCallId: "read-1",
+        toolName: "read",
+        content: [{ type: "text", text: "Large tool output" }],
+        isError: false,
+        timestamp: 3,
+      });
+      const assistantId = manager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "Inspection complete" }],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "fixture",
+        usage,
+        stopReason: "stop",
+        timestamp: 4,
+      });
+      const sessionId = manager.getSessionId();
+      const sessionFile = manager.getSessionFile();
+      assert.ok(sessionFile);
+      const f = yield* fixture();
+      const project = f.state().projects[0];
+      assert.ok(project);
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: [...state.projects, { ...project, path: directory, name: "Runtime fixture" }],
+        }),
+      );
+      const saveCount = f.saveCount();
+      f.sessionsByDirectory.set(directory, [sessionId]);
+      f.contextBySession.set(sessionId, { estimatedTokens: 100 });
+      // Keep catalog/storage routing isolated, but acquire the real Pi target runtime and transcript.
+      f.runtimeFactories.set(sessionId, () =>
+        createCakeSessionRuntime({
+          cwd: directory,
+          agentDir: join(directory, "agent"),
+          sessionDir,
+          sessionId,
+          requestUi: async () => undefined,
+          onEvent: () => undefined,
+        }),
+      );
+      const runtimeContext = yield* Layer.build(ArtifactRuntimeLive).pipe(
+        Effect.provide(f.context),
+      );
+      const context = Context.merge(f.context, runtimeContext);
+      yield* Layer.build(ArtifactRuntimeHostLive).pipe(Effect.provide(context));
+      const runtime = Context.get(context, ArtifactRuntime);
+      const targetArtifact = {
+        lineageId: decodeArtifactLineageId("unattended-compaction"),
+        revision: 1,
+        runtime: Schema.decodeUnknownSync(ArtifactRuntimeDescriptor)({
+          source:
+            'return { tools: { compact: ({ sessionId }) => cake("sessions.tool-compact", { sessionId }) } };',
+          tools: [
+            {
+              name: "compact",
+              description: "Compact an explicit idle target",
+              inputSchema: {
+                type: "object",
+                properties: { sessionId: { type: "string" } },
+                required: ["sessionId"],
+                additionalProperties: false,
+              },
+              outputSchema: { type: "object" },
+            },
+          ],
+        }),
+      };
+      for (let index = 0; index < 2; index++)
+        expect(
+          yield* runtime.call({ target: targetArtifact, name: "compact", input: { sessionId } }),
+        ).toMatchObject({
+          ok: true,
+          results: [{ sessionId, status: "compacted" }],
+        });
+      expect((yield* runtime.status(targetArtifact.lineageId)).running).toBe(true);
+      yield* runtime.stop(targetArtifact.lineageId);
+      const persisted = SessionManager.open(
+        sessionFile,
+        cakeWorkspaceSessionDirectory(directory, sessionDir),
+        directory,
+      );
+      expect(persisted.getSessionId()).toBe(sessionId);
+      expect(persisted.getEntry(assistantId)).toBeDefined();
+      expect(persisted.getTree()).toHaveLength(3);
+      const messages = persisted.buildSessionContext().messages;
+      expect(messages.map((message) => message.role)).toEqual(["user", "assistant", "assistant"]);
+      expect(JSON.stringify(messages)).not.toContain("Large tool output");
+      expect(JSON.stringify(messages)).not.toContain("toolCall");
+      expect(JSON.stringify(messages)).toContain("Inspection complete");
+      expect(f.toolCompactions).toEqual([]);
+      expect(f.runtimeCreates).toEqual([source, sessionId, sessionId]);
+      expect(f.gatewayCalls).toEqual([]);
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+      expect(f.saveCount()).toBe(saveCount);
+      expect(f.restored()).toBe(0);
+    }),
+);
+
 it.effect(
   "bulk compaction preserves order, deduplicates aliases and retains partial failures",
   () =>
@@ -1217,9 +1572,28 @@ it.effect(
         ok: false,
         results: [{ status: "unavailable" }, { status: "unavailable" }, { status: "invalid" }],
       });
+      for (const sessionId of [target, "0000abcd"]) {
+        expect(yield* f.artifact("sessions.tool-compact", { sessionId })).toMatchObject({
+          ok: false,
+          results: [{ status: "unavailable" }],
+        });
+      }
+      f.worktreeRecords.splice(0);
+      f.sessionsByDirectory.delete("/retired");
+      expect(yield* f.artifact("sessions.tool-compact", { sessionId: target })).toMatchObject({
+        ok: false,
+        results: [{ status: "unavailable" }],
+      });
+      for (const sessionId of [CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")]) {
+        expect(yield* f.artifact("sessions.tool-compact", { sessionId })).toMatchObject({
+          ok: false,
+        });
+      }
       expect(f.runtimeCreates).toEqual([source]);
       expect(f.compactions).toEqual([]);
+      expect(f.toolCompactions).toEqual([]);
       expect(f.restored()).toBe(0);
+      expect(f.saveCount()).toBe(0);
     }),
 );
 

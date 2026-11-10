@@ -70,29 +70,27 @@ const compactOne = Effect.fn("SessionCompaction.compactOne")(function* (
   return yield* mode === "tools" ? handle.toolCompactIfIdle() : handle.compactIfIdle(instructions);
 });
 
-/** User-requested maintenance only. No lifecycle transition or message admission. */
-export const compact = Effect.fn("SessionCompaction.compact")(function* (
+interface CompactionScope {
+  readonly global: boolean;
+  readonly projectPath?: string;
+  readonly callingSessionId?: string;
+}
+
+/** Shared maintenance only. No lifecycle transition or message admission. */
+const compactInScope = Effect.fn("SessionCompaction.compactInScope")(function* (
   targets: readonly string[],
   instructions: string | undefined,
-  caller: AgentControlCaller,
-  mode: "normal" | "tools" = "normal",
+  authority: CompactionScope,
+  mode: "normal" | "tools",
 ) {
-  const global = caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID;
-  const scope = global
-    ? undefined
-    : caller.kind === "cake-chat"
-      ? (yield* ApplicationState)
-          .snapshot()
-          .projects.find((project) => projectChatSessionId(project.path) === caller.sessionId)?.path
-      : (caller.projectPath ??
-        (yield* metadata.lookup({ sessionId: caller.sessionId })).projectPath);
+  const { global, projectPath: scope } = authority;
   const roster = yield* references.discover();
   const results: SessionCompactionResult[] = [];
   const firstByIdentity = new Map<string, number>();
   for (const reference of targets) {
     const resolved = yield* (
       reference === "parent"
-        ? references.resolve(reference, caller.sessionId)
+        ? references.resolve(reference, authority.callingSessionId)
         : references.resolveIn(reference, roster.roster)
     ).pipe(Effect.result);
     if (resolved._tag === "Failure") {
@@ -147,3 +145,34 @@ export const compact = Effect.fn("SessionCompaction.compact")(function* (
   }
   return results;
 });
+
+/** User-requested maintenance in the genuine invoking session's scope. */
+export const compact = Effect.fn("SessionCompaction.compact")(function* (
+  targets: readonly string[],
+  instructions: string | undefined,
+  caller: AgentControlCaller,
+  mode: "normal" | "tools" = "normal",
+) {
+  const global = caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID;
+  const projectPath = global
+    ? undefined
+    : caller.kind === "cake-chat"
+      ? (yield* ApplicationState)
+          .snapshot()
+          .projects.find((project) => projectChatSessionId(project.path) === caller.sessionId)?.path
+      : (caller.projectPath ??
+        (yield* metadata.lookup({ sessionId: caller.sessionId })).projectPath);
+  return yield* compactInScope(
+    targets,
+    instructions,
+    { global, projectPath, callingSessionId: caller.sessionId },
+    mode,
+  );
+});
+
+/** Trusted artifact command bridge only: host authority, not creator impersonation.
+ * Explicit targets still require registered routing and ProjectAccess authorization.
+ * No calling session means parent cannot resolve. Normal compaction is not exposed here.
+ */
+export const toolCompactFromArtifact = (sessionId: string) =>
+  compactInScope([sessionId], undefined, { global: true }, "tools");

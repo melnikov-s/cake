@@ -54,7 +54,7 @@ export const sessionCompactionDefinitions = [
     guidance: [
       "Only on a user request. Supply an explicit Project Session identity or discovered suffix, not a title. Targets the latest completed assistant text response on the active branch; no completed response is a failure.",
       "No model summary: replay user input/assistant text, omit tools/reasoning/reminders. ID and original history remain inspectable.",
-      "Project callers stay in-project; global Cake Chat uses authorized projects. Resolved needs available checkout; drafts/missing worktrees unavailable. No restore/resolve.",
+      "Project callers stay in-project; global Cake Chat uses authorized projects. Trusted artifacts without a calling session may use explicit targets across registered, accessible projects for user-authorized unattended maintenance; no creator/parent is inferred. Resolved needs available checkout; drafts/missing worktrees unavailable. No restore/resolve.",
       "Busy skips, never interrupts/queues. compacted means persisted branch/navigation/snapshot; failed is failure. Runtime stays until settled; no auto retry. Repeated calls create branches.",
     ],
     inputSchema: SessionToolCompactInput,

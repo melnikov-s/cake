@@ -170,6 +170,14 @@ real renderer connection separately from a conversation link, including semantic
 handlers called by an unlinked global view. Later background calls inherit neither
 a prior window nor a creator session. Session-relative operations need a real
 caller, and native/window operations still require their actual host.
+`sessions.tool-compact` is explicit-target maintenance, not session-relative: a
+user-authorized unattended artifact may tool-compact idle Project Sessions across
+registered projects permitted by `ProjectAccess`, using its trusted host authority.
+It never impersonates a creator or infers a parent; genuine session callers retain
+their existing project scope. Busy/pending/recovery-blocked targets are skipped;
+permanent chats, drafts and retired/missing checkouts remain unavailable. It neither
+admits an agent turn nor aborts, queues, restores or changes session lifecycle.
+Normal compaction and other caller-only operations still require a real session.
 This is Cake command coverage, not arbitrary access to Pi tools. See
 [authoring](../development/global-artifact-authoring.md) for discovery and schemas.
 
