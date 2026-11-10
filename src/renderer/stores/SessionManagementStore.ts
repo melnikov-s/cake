@@ -81,15 +81,9 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     if (!session || this.signal.aborted) return false;
     if (this.pending.savedRecord(sessionId)?.status === "activating") return false;
     if (this.pending.isDraft(sessionId)) {
-      try {
-        await this.pending.updateSavedMetadata(sessionId, { resolved });
-        if (this.signal.aborted) return false;
-        if (resolved) await onResolved?.([sessionId]);
-        return !this.signal.aborted;
-      } catch (error) {
-        if (!this.signal.aborted) this.props.reportError(error);
-        return false;
-      }
+      if (!resolved || !(await this.deleteSession(sessionId))) return false;
+      await onResolved?.([sessionId]);
+      return !this.signal.aborted;
     }
     if (resolved && this.pending.isTemporary(sessionId)) {
       this.registry.removeSession(sessionId);
@@ -194,16 +188,17 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   }
 
   async deleteSession(sessionId: string) {
-    if (!this.props.catalog.find(sessionId)?.resolved || this.signal.aborted) return;
+    if (this.signal.aborted) return false;
     try {
-      if (this.pending.isDraft(sessionId)) {
-        await this.pending.deleteResolvedDraft(sessionId);
-        return;
-      }
+      if (this.pending.isDraft(sessionId)) return await this.pending.deleteDraft(sessionId);
+      if (!this.props.catalog.find(sessionId)?.resolved) return false;
       await this.client.workspaces.deleteSession(sessionId, { signal: this.signal });
-      if (!this.signal.aborted) this.registry.removeSession(sessionId);
+      if (this.signal.aborted) return false;
+      this.registry.removeSession(sessionId);
+      return true;
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
+      return false;
     }
   }
 

@@ -96,7 +96,8 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
       const saved = record && record.status !== "activated" ? record : undefined;
       const facts =
         saved ?? (entry?.phase === "unlisted" ? entry.summary : this.conversation(sessionId));
-      if (!session || !facts) return [];
+      // Retain historical resolved drafts on disk, but never list them as sessions.
+      if (!session || !facts || saved?.resolved) return [];
       const metadata = this.summaryMetadataBySession[sessionId];
       const projectPath =
         record?.projectPath ??
@@ -300,7 +301,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
 
   async updateSavedMetadata(
     sessionId: string,
-    changes: Partial<Pick<SavedDraft, "title" | "resolved" | "labelIds" | "configuration">>,
+    changes: Partial<Pick<SavedDraft, "title" | "labelIds" | "configuration">>,
   ) {
     const record = this.savedRecords[sessionId];
     if (record?.status !== "saved") throw new Error("Cake could not find that saved Draft");
@@ -401,12 +402,18 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     await this.props.persistNow();
   }
 
-  async deleteResolvedDraft(sessionId: string) {
+  async deleteDraft(sessionId: string) {
     const record = this.savedRecords[sessionId];
-    if (!record?.resolved) return false;
-    await this.authority.remove(sessionId, record.revision, { signal: this.signal });
-    this.removeSavedRecord(sessionId);
-    return true;
+    if (record?.status !== "saved" || this.signal.aborted) return false;
+    try {
+      await this.authority.remove(sessionId, record.revision, { signal: this.signal });
+      if (this.signal.aborted) return false;
+      this.removeSavedRecord(sessionId);
+      return true;
+    } catch (error) {
+      await this.refreshSavedDrafts();
+      throw error;
+    }
   }
 
   relocate(sessionId: string, workingDirectory: string) {

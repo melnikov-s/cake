@@ -53,7 +53,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       {...row}
       activateOnMouseDown={management}
       revealWhenSelected={management}
-      onResolve={management ? row.onResolve : undefined}
+      onResolve={management ? (session.draft ? (id) => onDelete(id) : row.onResolve) : undefined}
       onSetLabels={management ? row.onSetLabels : undefined}
       associated={store.isSessionAssociatedWithFocusedTodos(session.sessionId)}
       activityTime={store.sessionActivityTime(session.modifiedAt)}

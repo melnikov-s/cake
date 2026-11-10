@@ -150,15 +150,22 @@ export const makeSavedDraftStorageLive = (stateDirectory: string) =>
         expectedRevision: number,
       ) {
         const updated = yield* mutate(record.sessionId, expectedRevision, "update", (current) =>
-          current.status !== "saved" || current.projectPath !== record.projectPath
-            ? Effect.fail(failure("update", "Saved Draft is not editable"))
-            : Effect.succeed({
-                ...record,
-                sessionId: current.sessionId,
-                createdAt: current.createdAt,
-                revision: current.revision + 1,
-                status: "saved" as const,
-              }),
+          record.resolved !== current.resolved
+            ? Effect.fail(
+                failure(
+                  "update",
+                  "Drafts cannot be resolved or restored; delete the Draft instead",
+                ),
+              )
+            : current.status !== "saved" || current.projectPath !== record.projectPath
+              ? Effect.fail(failure("update", "Saved Draft is not editable"))
+              : Effect.succeed({
+                  ...record,
+                  sessionId: current.sessionId,
+                  createdAt: current.createdAt,
+                  revision: current.revision + 1,
+                  status: "saved" as const,
+                }),
         );
         if (!updated) return yield* failure("update", "Saved Draft was removed");
         return updated;

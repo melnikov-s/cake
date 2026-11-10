@@ -744,7 +744,14 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
   const found = new Set(sessions.map((session) => session.sessionId));
   for (const draft of fallbackDrafts) {
     const project = state.projects.find((project) => project.path === draft.projectPath);
-    if (found.has(draft.sessionId) || resolvedSessionIds.has(draft.sessionId) || !project) continue;
+    // Old resolved Draft records are retained, not exposed as resolved sessions.
+    if (
+      draft.resolved ||
+      found.has(draft.sessionId) ||
+      resolvedSessionIds.has(draft.sessionId) ||
+      !project
+    )
+      continue;
     sessions.push({
       sessionId: draft.sessionId,
       title: draft.title,

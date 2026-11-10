@@ -288,17 +288,17 @@ describe("Session management workflow", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("deletes a resolved saved draft through its native menu without deleting a Project Session", async () => {
+  it("deletes a saved draft through its native menu without deleting a Project Session", async () => {
     const savedDrafts = fakeSavedDrafts();
     const draft: SavedDraft = {
       sessionId: "10000000-0000-4000-8000-000000000001",
       projectPath,
       workingDirectory: projectPath,
-      title: "Resolved draft",
+      title: "Saved draft",
       text: "Saved work",
       attachments: [],
       labelIds: [],
-      resolved: true,
+      resolved: false,
       createdAt: fixtureTimestamp,
       modifiedAt: fixtureTimestamp,
       revision: 1,
@@ -316,17 +316,152 @@ describe("Session management workflow", () => {
         workspaces: { deleteSession },
       },
     });
-    expect(region(true).getByText("Draft")).toBeDefined();
+    expect(region().getByText("Draft")).toBeDefined();
     await fixture.user.pointer({
-      target: region(true).getByText(draft.title),
+      target: region().getByText(draft.title),
       keys: "[MouseRight]",
     });
-    await waitFor(() => expect(region(true).queryByText(draft.title)).toBeNull());
+    await waitFor(() => expect(region().queryByText(draft.title)).toBeNull());
     expect(menu).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: draft.sessionId, draft: true, resolved: true }),
+      expect.objectContaining({ sessionId: draft.sessionId, draft: true, resolved: false }),
     );
     expect(savedDrafts.records.has(draft.sessionId)).toBe(false);
     expect(deleteSession).not.toHaveBeenCalled();
+  });
+
+  it.each(["button", "former-resolve"] as const)(
+    "deletes a selected draft via %s and retires navigation/layout without resolving real sessions",
+    async (action) => {
+      const drafts = fakeSavedDrafts();
+      const id = "10000000-0000-4000-8000-000000000001";
+      drafts.records.set(id, {
+        sessionId: id,
+        projectPath,
+        workingDirectory: projectPath,
+        title: "Unsent plan",
+        text: "Keep this unsent",
+        attachments: [],
+        labelIds: [],
+        resolved: false,
+        createdAt: fixtureTimestamp,
+        modifiedAt: fixtureTimestamp,
+        revision: 1,
+        status: "saved",
+      });
+      const remove = vi.fn(drafts.client.remove);
+      const resolve = vi.fn<Client["projectSessions"]["resolve"]>();
+      const deleteSession = vi.fn<Client["workspaces"]["deleteSession"]>();
+      using fixture = await renderManagement({
+        client: {
+          savedDrafts: { ...drafts.client, remove },
+          projectSessions: { resolve },
+          workspaces: { deleteSession },
+        },
+        history: [id],
+      });
+      expect(region().queryByRole("button", { name: "Resolve Unsent plan" })).toBeNull();
+      if (action === "button") {
+        await fixture.user.click(region().getByRole("button", { name: "Delete Unsent plan" }));
+      } else {
+        await act(async () => {
+          expect(
+            await fixture.root.sessionRetirementStore.setProjectSessionsResolved(
+              [id],
+              true,
+              "agent",
+            ),
+          ).toBe(1);
+        });
+      }
+      await waitFor(() => expect(region().queryByText("Unsent plan")).toBeNull());
+      expect(region(true).queryByText("Unsent plan")).toBeNull();
+      expect(drafts.records.has(id)).toBe(false);
+      expect(remove).toHaveBeenCalledExactlyOnceWith(
+        id,
+        1,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(resolve).not.toHaveBeenCalled();
+      expect(deleteSession).not.toHaveBeenCalled();
+      expect(fixture.root.sessionRegistry.findSession(id)).toBeUndefined();
+      expect(fixture.root.appShellStore.activeConversation).toEqual({
+        kind: "cake-chat",
+        sessionId: `project-chat:${"c".repeat(64)}`,
+      });
+      expect(fixture.root.sessionLayoutStore.history).not.toContain(id);
+    },
+  );
+
+  it("excludes historical resolved drafts without deleting their saved content", async () => {
+    const drafts = fakeSavedDrafts();
+    const id = "10000000-0000-4000-8000-000000000001";
+    const record: SavedDraft = {
+      sessionId: id,
+      projectPath,
+      workingDirectory: projectPath,
+      title: "Old resolved draft",
+      text: "Historical content",
+      attachments: [],
+      labelIds: [],
+      resolved: true,
+      createdAt: fixtureTimestamp,
+      modifiedAt: fixtureTimestamp,
+      revision: 4,
+      status: "saved",
+    };
+    drafts.records.set(id, record);
+    const remove = vi.fn(drafts.client.remove);
+    using fixture = await renderManagement({
+      client: { savedDrafts: { ...drafts.client, remove } },
+      sessions: [projectSession("real-resolved", { title: "Real history", resolved: true })],
+    });
+    expect(region(true).getByText("Real history")).toBeDefined();
+    expect(screen.queryByText(record.title)).toBeNull();
+    expect(drafts.records.get(id)).toEqual(record);
+    expect(remove).not.toHaveBeenCalled();
+    expect(fixture.root.sessionRegistry.pendingSessions.savedRecord(id)).toEqual(record);
+  });
+
+  it("refreshes a stale delete and leaves a draft available for an explicit retry", async () => {
+    const drafts = fakeSavedDrafts();
+    const id = "10000000-0000-4000-8000-000000000001";
+    const record: SavedDraft = {
+      sessionId: id,
+      projectPath,
+      workingDirectory: projectPath,
+      title: "Unsent plan",
+      text: "Original",
+      attachments: [],
+      labelIds: [],
+      resolved: false,
+      createdAt: fixtureTimestamp,
+      modifiedAt: fixtureTimestamp,
+      revision: 1,
+      status: "saved",
+    };
+    drafts.records.set(id, record);
+    const remove = vi.fn(drafts.client.remove);
+    using fixture = await renderManagement({
+      client: { savedDrafts: { ...drafts.client, remove } },
+    });
+    drafts.records.set(id, {
+      ...record,
+      text: "New remote content",
+      title: "Remote plan",
+      revision: 2,
+    });
+    await fixture.user.click(region().getByRole("button", { name: "Delete Unsent plan" }));
+    await region().findByText("Remote plan");
+    expect(await screen.findByText("Saved Draft revision conflict (remove)")).toBeDefined();
+    expect(drafts.records.get(id)?.text).toBe("New remote content");
+    await fixture.user.click(region().getByRole("button", { name: "Delete Remote plan" }));
+    await waitFor(() => expect(region().queryByText("Remote plan")).toBeNull());
+    expect(drafts.records.has(id)).toBe(false);
+    expect(remove).toHaveBeenLastCalledWith(
+      id,
+      2,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("resolves and restores a family through its parent, keeping child lifecycle controls unavailable", async () => {

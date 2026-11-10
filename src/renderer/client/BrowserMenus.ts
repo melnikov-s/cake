@@ -129,20 +129,29 @@ export function browserMenus(
             { label: "Mark as Unread", action: "mark-unread", disabled: input.unread !== false },
             copyId,
           ]
-        : input.resolved
+        : input.draft
           ? [
-              { label: "Unresolve", action: "unresolve" },
-              copyId,
-              ...(!input.familyChild ? [{ label: "Delete", action: "delete" }] : []),
-            ]
-          : [
               ...(input.unread === false
                 ? [{ label: "Mark as Unread", action: "mark-unread" }]
                 : []),
               { label: "Rename", action: "rename" },
               copyId,
-              ...(!input.draft ? [{ label: "Resolve", action: "resolve" }] : []),
-            ];
+              ...(!input.familyChild ? [{ label: "Delete", action: "delete" }] : []),
+            ]
+          : input.resolved
+            ? [
+                { label: "Unresolve", action: "unresolve" },
+                copyId,
+                ...(!input.familyChild ? [{ label: "Delete", action: "delete" }] : []),
+              ]
+            : [
+                ...(input.unread === false
+                  ? [{ label: "Mark as Unread", action: "mark-unread" }]
+                  : []),
+                { label: "Rename", action: "rename" },
+                copyId,
+                { label: "Resolve", action: "resolve" },
+              ];
       const action = await store.show("Session actions", items);
       return action === "rename" ||
         action === "mark-read" ||

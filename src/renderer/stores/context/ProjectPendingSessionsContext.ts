@@ -13,7 +13,7 @@ export const ProjectPendingSessionsContext =
       | "conversation"
       | "setLabels"
       | "setConfiguration"
-      | "deleteResolvedDraft"
+      | "deleteDraft"
       | "prepare"
       | "createDraft"
       | "projectSubmission"

@@ -7,7 +7,7 @@ import { store, windowStateChildren, windowStateDocument } from "../fixtures/win
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("restores, edits, resolves, and activates a project draft session", async () => {
+test("restores, edits, and activates a project draft session", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-draft-session-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -76,6 +76,12 @@ test("restores, edits, resolves, and activates a project draft session", async (
 
   try {
     const page = await application.firstWindow();
+    await page.getByRole("button", { name: "Open Project Chat for project", exact: true }).click();
+    await page.getByRole("button", { name: /^Sessions ·/ }).click();
+    await page
+      .locator(`[data-session-id="${sessionId}"]`)
+      .getByText("Planned work", { exact: true })
+      .click();
     await expect(page.getByText("Original plan", { exact: true })).toBeVisible({ timeout: 20_000 });
     const savedDraftFile = join(cakeHome, "state", "saved-drafts.json");
     await expect
@@ -90,7 +96,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
     const migratedWindow = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8"));
     expect(JSON.stringify(migratedWindow)).not.toContain("Original plan");
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
-    const draftSidebarItem = page.locator(`[data-session-id="${sessionId}"]`);
+    const draftSidebarItem = page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`);
     await expect(draftSidebarItem.getByText("main", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Current checkout" })).toBeVisible();
@@ -110,21 +116,15 @@ test("restores, edits, resolves, and activates a project draft session", async (
     const draftToolbar = page.locator('[data-slot="composer-toolbar"]');
     await expect(draftToolbar).toHaveCSS("border-top-width", "0px");
 
-    const panes = page.locator('[data-slot="session-pane"]');
-    await panes.nth(0).getByRole("button", { name: "Split right" }).click();
-    await expect(panes).toHaveCount(2);
-    await panes.nth(0).getByRole("button", { name: "Close pane" }).click();
-    await expect(panes).toHaveCount(1);
+    // Leave and reopen the draft through the current conversation navigator.
+    await page.getByRole("button", { name: "Open Project Chat for project", exact: true }).click();
     await expect(draftSidebarItem).toBeVisible();
     await draftSidebarItem.click();
     await expect(page.getByText("Original plan", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Activate draft" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Resolve Planned work" }).click();
-    await page.getByRole("button", { name: "Expand Resolved" }).click();
-    await page.getByRole("button", { name: "Expand project resolved" }).last().click();
-    await expect(page.getByRole("button", { name: "Restore Planned work" })).toBeVisible();
-    await page.getByRole("button", { name: "Restore Planned work" }).click();
+    await expect(page.getByRole("button", { name: "Delete Planned work" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Resolve Planned work" })).toHaveCount(0);
 
     await page.getByText("Original plan", { exact: true }).hover();
     await page.getByRole("button", { name: "Edit latest prompt" }).click();
@@ -136,7 +136,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
       "true",
     );
 
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to chat" }).click();
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveCount(0);

@@ -24,6 +24,28 @@ const props: SessionListItemProps = {
 };
 
 describe("session row metadata", () => {
+  it.each([false, true])(
+    "labels a draft action Delete even with historical resolved=%s",
+    (resolved) => {
+      const onResolve = vi.fn();
+      const onOpen = vi.fn();
+      render(
+        <SessionListItem
+          {...props}
+          session={{ ...props.session, draft: true }}
+          resolved={resolved}
+          onResolve={onResolve}
+          onOpen={onOpen}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: `Resolve ${props.session.title}` })).toBeNull();
+      expect(screen.queryByRole("button", { name: `Restore ${props.session.title}` })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: `Delete ${props.session.title}` }));
+      expect(onResolve).toHaveBeenCalledExactlyOnceWith(props.session.sessionId, true);
+      expect(onOpen).not.toHaveBeenCalled();
+    },
+  );
+
   it("shows base-relative committed stats without changing navigation or status controls", () => {
     const onOpen = vi.fn();
     const onResolve = vi.fn();

@@ -26,8 +26,9 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
   }
 
   async setProjectSessionResolved(sessionId: string, resolved: boolean) {
+    const projectPath = this.props.catalog.find(sessionId)?.projectPath;
     return this.management.resolveSession(sessionId, resolved, async (ids) => {
-      if (!this.signal.aborted) await this.forgetProjectSessions(ids);
+      if (!this.signal.aborted) await this.forgetProjectSessions(ids, projectPath);
     });
   }
 
@@ -36,11 +37,13 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
     resolved: boolean,
     origin: "user" | "agent" = "user",
   ) {
+    const activeId = this.props.shell.activeConversation?.sessionId;
+    const projectPath = activeId ? this.props.catalog.find(activeId)?.projectPath : undefined;
     return this.management.resolveSessionsById(
       sessionIds,
       resolved,
       async (ids) => {
-        if (!this.signal.aborted) await this.forgetProjectSessions(ids);
+        if (!this.signal.aborted) await this.forgetProjectSessions(ids, projectPath);
       },
       origin,
     );
@@ -49,7 +52,12 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
   async deleteProjectSession(sessionId: string) {
     const session = this.props.catalog.find(sessionId);
     const wasSelected = this.props.shell.activeConversation?.sessionId === sessionId;
-    await this.management.deleteSession(sessionId);
+    const draft = this.props.registry.pendingSessions.isDraft(sessionId);
+    if (!(await this.management.deleteSession(sessionId))) return;
+    if (draft) {
+      await this.forgetProjectSessions([sessionId], session?.projectPath);
+      return;
+    }
     if (!this.props.catalog.find(sessionId))
       await this.forgetSessions([sessionId], wasSelected ? session?.workingDirectory : undefined);
   }
@@ -84,9 +92,7 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
     this.props.shell.removeSessionsFromHistory(sessionIds);
     this.props.layout.removeSessions(sessionIds);
     for (const sessionId of sessionIds) {
-      // Saved drafts retain their renderer identity and unsent content for reopening.
-      if (!this.props.registry.pendingSessions.isDraft(sessionId))
-        this.props.registry.removeSession(sessionId);
+      this.props.registry.removeSession(sessionId);
     }
     if (projectPath) await this.props.openProjectChat(projectPath);
   }

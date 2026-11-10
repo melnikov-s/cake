@@ -2,6 +2,7 @@ import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserFiles } from "../../../src/renderer/client/BrowserFiles";
 import { BrowserMenuStore } from "../../../src/renderer/stores/BrowserMenuStore";
+import { browserMenus } from "../../../src/renderer/client/BrowserMenus";
 import { makeClient } from "../../../src/renderer/client/ClientLive";
 import { ClientError } from "../../../src/renderer/client/Client";
 import type { EditorLease } from "../../../src/contracts/vscode/editor-endpoint";
@@ -384,6 +385,29 @@ describe("Client transport and device integration", () => {
     expect(openExternalUrl).toHaveBeenCalledExactlyOnceWith("https://example.com");
     expect(transport.requests()).toEqual([]);
   });
+
+  it.each([false, true])(
+    "offers Delete, never Resolve/Restore for a draft browser menu (resolved=%s)",
+    async (resolved) => {
+      using devices = browserDevices();
+      const showing = browserMenus(devices.menus).showSessionContextMenu({
+        sessionId: "draft",
+        x: 0,
+        y: 0,
+        resolved,
+        draft: true,
+      });
+      expect(devices.menus.items.map((item) => item.label)).toEqual([
+        "Rename",
+        "Copy Session ID",
+        "Delete",
+      ]);
+      const remove = devices.menus.items.find((item) => item.label === "Delete");
+      if (!remove) throw new Error("Missing Delete action");
+      await devices.menus.choose(remove);
+      expect(await showing).toEqual({ action: "delete" });
+    },
+  );
 
   // These two browser-local authorities are device adapters outside the Root
   // tree. Keep their capability lifecycle real rather than hand-assembling peers.

@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from "effect/http";
 import * as artifactCommands from "../../../src/domain/artifacts/artifactCommands";
+import * as sessionReferences from "../../../src/domain/project-sessions/sessionReferences";
+import * as sessionMetadata from "../../../src/domain/project-sessions/projectSessionMetadata";
 import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
 import { ArtifactViews } from "../../../src/services/artifacts/ArtifactViews";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
@@ -2983,6 +2985,18 @@ it.effect(
         resolved: true,
       });
       f.resolve();
+      const historicalListing = yield* Effect.gen(function* () {
+        return yield* sessionMetadata.listing(
+          yield* sessionReferences.discover("/other"),
+          () => true,
+        );
+      }).pipe(Effect.provide(f.context));
+      expect(
+        historicalListing.sessions.some((session) => session.sessionId === resolvedForeignId),
+      ).toBe(false);
+      expect(f.drafts.find((draft) => draft.sessionId === resolvedForeignId)?.text).toBe(
+        "Private draft body",
+      );
       const global = {
         kind: "cake-chat" as const,
         sessionId: CAKE_CHAT_SESSION_ID,

@@ -11,7 +11,7 @@ import { AvatarLabelPicker } from "./avatar-label-picker";
 import { Badge } from "./badge";
 import { DepthRails } from "./depth-rails";
 import { IconButton } from "./icon-button";
-import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon } from "./icons";
+import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon, TrashIcon } from "./icons";
 import { LabelSwatch } from "./label-swatch";
 import { associationHighlightClassName, NavItem, type NavItemProps } from "./nav-item";
 import { SessionActivityTime } from "./session-activity-time";
@@ -376,14 +376,14 @@ export const SessionListItem = observer(function SessionListItem({
                         ? "text-sidebar-selection-foreground/80 opacity-100 hover:bg-sidebar-hover hover:text-sidebar-selection-foreground"
                         : "text-muted-foreground opacity-0 hover:bg-sidebar-hover hover:text-foreground group-hover/session:opacity-100 group-focus-within/session:opacity-100",
                     )}
-                    tooltip={resolved ? "Restore" : "Resolve"}
-                    ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
+                    tooltip={session.draft ? "Delete" : resolved ? "Restore" : "Resolve"}
+                    ariaLabel={`${session.draft ? "Delete" : resolved ? "Restore" : "Resolve"} ${session.title}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onResolve?.(session.sessionId, !resolved);
+                      onResolve?.(session.sessionId, session.draft || !resolved);
                     }}
                   >
-                    {resolved ? <RestoreIcon /> : <ResolveIcon />}
+                    {session.draft ? <TrashIcon /> : resolved ? <RestoreIcon /> : <ResolveIcon />}
                   </IconButton>
                 )}
               </div>

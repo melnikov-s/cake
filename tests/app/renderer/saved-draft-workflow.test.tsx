@@ -105,7 +105,12 @@ async function renderDrafts(
     });
   const Surface = observer(function Surface() {
     const session = root.sessionRegistry.findSession(sessionId);
-    if (!session) throw new Error("Missing draft session");
+    if (!session)
+      return (
+        <aside>
+          <ConversationNavigator projectPath={projectPath} />
+        </aside>
+      );
     const conversation = session.conversationSessionStore;
     const chat = conversation.chatStore;
     const error = root.projectWorkbenchStore.contextError(sessionId);
@@ -600,15 +605,18 @@ describe("Saved Draft workflows", () => {
     expect(input()).toBeDefined();
   });
 
-  it("refreshes a conflicting saved-draft rename, then renames and resolves using current revisions", async () => {
+  it("refreshes a conflicting saved-draft rename, then renames and deletes using current revisions", async () => {
     const drafts = fakeSavedDrafts();
     drafts.records.set(sessionId, savedDraft());
     const update = vi.fn(drafts.client.update);
+    const remove = vi.fn(drafts.client.remove);
+    const resolve = vi.fn<Client["projectSessions"]["resolve"]>();
     const menu = vi.fn<Client["electron"]["showSessionContextMenu"]>(async () => ({
       action: "rename",
     }));
     using fixture = await renderDrafts(drafts, {
-      savedDrafts: { update },
+      savedDrafts: { update, remove },
+      projectSessions: { resolve },
       electron: { showSessionContextMenu: menu },
     });
     // Another window commits revision 2 before this window's command reaches the authority.
@@ -636,18 +644,16 @@ describe("Saved Draft workflows", () => {
       2,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    await fixture.user.click(sidebar().getByRole("button", { name: "Resolve Final name" }));
-    await sidebar().findByRole("button", { name: "Restore Final name" });
-    expect(drafts.records.get(sessionId)).toMatchObject({
-      title: "Final name",
-      resolved: true,
-      revision: 4,
-    });
-    expect(update).toHaveBeenLastCalledWith(
-      expect.objectContaining({ resolved: true }),
+    expect(sidebar().queryByRole("button", { name: "Resolve Final name" })).toBeNull();
+    await fixture.user.click(sidebar().getByRole("button", { name: "Delete Final name" }));
+    await waitFor(() => expect(sidebar().queryByText("Final name")).toBeNull());
+    expect(drafts.records.has(sessionId)).toBe(false);
+    expect(remove).toHaveBeenCalledExactlyOnceWith(
+      sessionId,
       3,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it("projects canonical saved title, prompt, attachments and labels without reverting to a stale snapshot", async () => {

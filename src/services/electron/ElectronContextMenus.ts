@@ -193,19 +193,24 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
                       },
                       copyId,
                     ]
-                  : request.resolved
+                  : request.draft
                     ? [
-                        { label: "Unresolve", click: () => finish("unresolve") },
-                        copyId,
+                        ...activeItems,
                         ...(request.familyChild
                           ? []
-                          : [
-                              { type: "separator" as const },
-                              { label: "Delete", click: () => finish("delete") },
-                            ]),
+                          : [{ label: "Delete", click: () => finish("delete") }]),
                       ]
-                    : request.draft
-                      ? activeItems
+                    : request.resolved
+                      ? [
+                          { label: "Unresolve", click: () => finish("unresolve") },
+                          copyId,
+                          ...(request.familyChild
+                            ? []
+                            : [
+                                { type: "separator" as const },
+                                { label: "Delete", click: () => finish("delete") },
+                              ]),
+                        ]
                       : [...activeItems, { label: "Resolve", click: () => finish("resolve") }],
               );
               openSessionContextMenus.add(menu);

@@ -39,6 +39,59 @@ const run = <A>(directory: string, effect: Effect.Effect<A, unknown, SavedDraftS
   );
 
 describe("Saved Draft authority", () => {
+  it("deletes an unresolved saved draft durably and rejects resolution metadata changes", async () => {
+    await withStorage(async (directory) => {
+      await run(
+        directory,
+        Effect.gen(function* () {
+          const storage = yield* SavedDraftStorage;
+          yield* storage.create(record);
+          const resolution = yield* Effect.result(storage.update({ ...record, resolved: true }, 1));
+          expect(resolution).toMatchObject({
+            _tag: "Failure",
+            failure: { message: "Drafts cannot be resolved or restored; delete the Draft instead" },
+          });
+          expect(yield* storage.list()).toEqual([record]);
+          const stale = yield* Effect.result(storage.remove(record.sessionId, 0));
+          expect(stale._tag).toBe("Failure");
+          yield* storage.remove(record.sessionId, 1);
+          expect(yield* storage.list()).toEqual([]);
+        }),
+      );
+      expect(
+        await run(
+          directory,
+          Effect.flatMap(SavedDraftStorage, (storage) => storage.list()),
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  it("retains historical resolved drafts and never deletes activating or activated records", async () => {
+    await withStorage(async (directory) => {
+      await run(
+        directory,
+        Effect.gen(function* () {
+          const storage = yield* SavedDraftStorage;
+          const historical = { ...record, resolved: true };
+          yield* storage.create(historical);
+          expect(yield* storage.list()).toEqual([historical]);
+          yield* storage.remove(record.sessionId, 1);
+          yield* storage.create(record);
+          const claimed = yield* storage.claim(record.sessionId, 1, "/worktree");
+          expect(
+            (yield* Effect.result(storage.remove(record.sessionId, claimed.revision)))._tag,
+          ).toBe("Failure");
+          const completed = yield* storage.complete(record.sessionId, claimed.revision);
+          expect(
+            (yield* Effect.result(storage.remove(record.sessionId, completed.revision)))._tag,
+          ).toBe("Failure");
+          expect(yield* storage.list()).toEqual([completed]);
+        }),
+      );
+    });
+  });
+
   it("persists revisions through restart, rejects a stale client and admits one activation claim", async () => {
     await withStorage(async (directory) => {
       await run(
