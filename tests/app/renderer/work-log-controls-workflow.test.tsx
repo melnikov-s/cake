@@ -55,8 +55,10 @@ function renderToolbar(
 it.each([
   ["project", "normal"],
   ["project", "browser"],
+  ["project", "vscode"],
   ["cake", "normal"],
   ["cake", "browser"],
+  ["cake", "vscode"],
 ] as const)("exposes both work-log controls after Terminal in %s / %s", async (kind, mode) => {
   using fixture = renderToolbar(kind, mode);
   const trigger = screen.getByRole("button", { name: "Work log display options" });
@@ -79,15 +81,6 @@ it.each([
     expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
   }
 });
-
-it.each(["project", "cake"] as const)(
-  "omits work-log controls from the %s VS Code mode toolbar",
-  (kind) => {
-    using fixture = renderToolbar(kind, "vscode");
-    expect(screen.queryByRole("button", { name: "Work log display options" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Terminal" })).toBeDefined();
-  },
-);
 
 it("preserves defaults and restores toolbar choices from the existing window snapshot across surfaces", async () => {
   let saved: StoreSnapshot;

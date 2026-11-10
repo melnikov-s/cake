@@ -2,6 +2,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { WorkspaceModeControls } from "@/components/workspace-mode-controls";
 import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
+import { SessionToolsGroup } from "./session-tools-group";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { ConversationActivity } from "./conversation-activity";
 import { WorkLogControls } from "./work-log-controls";
@@ -30,20 +31,22 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
           onOpen={() => session.showWorkspaceChatSidebar()}
         />
       )}
-      <SessionArtifactMenu session={session} />
-      <SideChatsMenu store={session} onOpen={() => root.workspaceNavigatorStore.showChat()} />
       <SessionChangesToggle session={session} />
-      <WorkspaceModeControls
-        mode={mode}
-        terminalAvailable={terminal.available}
-        terminalOpen={terminal.open}
-        browserHost={browserMode}
-        onBackToAgent={() => void store.presentationStore.backToAgent()}
-        onOpenBrowser={() => void store.presentationStore.openBrowser()}
-        onOpenIde={() => void store.presentationStore.openIde()}
-        onToggleTerminal={() => void terminal.toggle()}
-      />
-      {mode !== "vscode" && <WorkLogControls store={session.conversationSessionStore.chatStore} />}
+      <SessionToolsGroup>
+        <SessionArtifactMenu session={session} />
+        <SideChatsMenu store={session} onOpen={() => root.workspaceNavigatorStore.showChat()} />
+        <WorkspaceModeControls
+          mode={mode}
+          terminalAvailable={terminal.available}
+          terminalOpen={terminal.open}
+          browserHost={browserMode}
+          onBackToAgent={() => void store.presentationStore.backToAgent()}
+          onOpenBrowser={() => void store.presentationStore.openBrowser()}
+          onOpenIde={() => void store.presentationStore.openIde()}
+          onToggleTerminal={() => void terminal.toggle()}
+        />
+        <WorkLogControls store={session.conversationSessionStore.chatStore} />
+      </SessionToolsGroup>
     </>
   );
 });

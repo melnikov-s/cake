@@ -22,14 +22,12 @@ import {
 export const AppShellLayout = observer(function AppShellLayout({
   children,
   overlays,
-  workspaceControls,
   workspaceMode,
   commandPaneWidth,
   onCommandPaneWidthChange,
 }: {
   children: ReactNode;
   overlays: ReactNode;
-  workspaceControls?: ReactNode;
   workspaceMode?: "browser" | "vscode";
   commandPaneWidth: number;
   onCommandPaneWidthChange(width: number): void;
@@ -107,12 +105,7 @@ export const AppShellLayout = observer(function AppShellLayout({
         <div
           ref={setHeaderTarget}
           data-slot="shell-header"
-          className={cn(
-            "col-start-2 col-end-5 row-start-1 min-w-0",
-            workspaceControls &&
-              // One more 28px control and 4px gap beside the shell's sidebar toggle.
-              "[&_[data-slot=workspace-actions]]:mr-8 [&_[data-slot=workspace-actions]]:max-w-[calc(100%-var(--workspace-mode-clearance)-2rem)]",
-          )}
+          className="col-start-2 col-end-5 row-start-1 min-w-0"
         />
         <section
           data-slot="workspace"
@@ -187,7 +180,11 @@ export const AppShellLayout = observer(function AppShellLayout({
             data-slot="shell-workspace-controls"
             className="absolute right-2 top-0 z-40 flex h-title-bar items-center gap-1 [app-region:no-drag]"
           >
-            {workspaceControls}
+            <span
+              aria-hidden="true"
+              data-slot="workspace-tools-divider"
+              className="mx-1 h-4 w-px shrink-0 bg-border/60"
+            />
             <SidebarNavigationControls />
           </div>
         )}

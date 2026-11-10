@@ -315,17 +315,29 @@ describe("Workspace mode navigation", () => {
       expect(actions.contains(modes)).toBe(false);
       const utilities = [...actions.querySelectorAll("button")];
       expect(utilities.map((button) => button.getAttribute("aria-label"))).toEqual([
+        "Review changes",
         "0 artifacts",
         "Side chats",
-        "Review changes",
         "Terminal",
         "Work log display options",
       ]);
       const terminal = within(tools).getByRole("button", { name: "Terminal" });
       expect(modes.contains(terminal)).toBe(false);
-      const separator = terminal.previousElementSibling!;
+      const sessionTools = screen.getByRole("group", { name: "Session tools" });
+      expect(sessionTools.contains(terminal)).toBe(true);
+      expect(
+        within(sessionTools)
+          .getAllByRole("button")
+          .map((button) => button.getAttribute("aria-label")),
+      ).toEqual(["0 artifacts", "Side chats", "Terminal", "Work log display options"]);
+      expect(sessionTools.contains(modes)).toBe(false);
+      const globalPanel = screen.getByRole("button", { name: /^(Open|Close) Workspace$/ });
+      expect(sessionTools.contains(globalPanel)).toBe(false);
+      const separator = globalPanel.previousElementSibling!;
+      expect(separator.getAttribute("data-slot")).toBe("workspace-tools-divider");
       expect(separator.getAttribute("aria-hidden")).toBe("true");
       expect(separator.classList.contains("w-px")).toBe(true);
+      expect(tools.querySelector('[aria-hidden="true"].w-px')).toBeNull();
       expect(actions.classList.contains("overflow-x-auto")).toBe(true);
       // Actions stop short of the window-centered mode group.
       expect(actions.classList.contains("max-w-[calc(100%-var(--workspace-mode-clearance))]")).toBe(

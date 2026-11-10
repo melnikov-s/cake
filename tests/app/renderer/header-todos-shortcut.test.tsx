@@ -8,6 +8,7 @@ import { CakeChatPaneHeader } from "../../../src/renderer/components/cake-chat-p
 import { CakeChatWorkspaceControls } from "../../../src/renderer/components/cake-chat-workspace-controls";
 import { ProjectPaneHeader } from "../../../src/renderer/components/project-pane-header";
 import { ProjectWorkspaceControls } from "../../../src/renderer/components/project-workspace-controls";
+import { WorkspaceHeader } from "../../../src/renderer/components/ui/workspace-header";
 import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import {
@@ -73,17 +74,30 @@ it.each(
     }
     const view = render(
       <StoreProvider store={root}>
-        <header aria-label="Conversation controls">{controls}</header>
+        <WorkspaceHeader title="Conversation controls">{controls}</WorkspaceHeader>
         <WorkspaceNavigator />
       </StoreProvider>,
     );
     try {
-      const header = within(screen.getByRole("banner", { name: "Conversation controls" }));
+      const header = within(
+        view.container.querySelector<HTMLElement>('[data-slot="workspace-header"]')!,
+      );
       expect(header.queryByRole("button", { name: "To-dos" })).toBeNull();
       expect(header.queryByRole("button", { description: /open to-dos/ })).toBeNull();
       expect(header.getByRole("button", { name: "0 artifacts" })).toBeDefined();
       expect(header.getByRole("button", { name: /^Side chats/ })).toBeDefined();
-      expect(header.getByRole("group", { name: "Conversation workspace" })).toBeDefined();
+      const modes = header.getByRole("group", { name: "Conversation workspace" });
+      const tools = header.getByRole("group", { name: "Session tools" });
+      expect(
+        within(tools)
+          .getAllByRole("button")
+          .map((button) => button.getAttribute("aria-label")),
+      ).toEqual(["0 artifacts", "Side chats, 1 open", "Terminal", "Work log display options"]);
+      expect(tools.contains(modes)).toBe(false);
+      expect(within(tools).queryByRole("button", { name: /Review changes/ })).toBeNull();
+      expect(header.queryByRole("button", { name: /Review changes/ }) !== null).toBe(
+        kind === "project",
+      );
       for (const name of [mode === "normal" ? "Main" : "Main", "VS Code", "Browser"]) {
         expect(header.getByRole("button", { name })).toBeDefined();
       }

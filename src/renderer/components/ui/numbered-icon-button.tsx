@@ -17,7 +17,11 @@ export const NumberedIconButton = forwardRef<HTMLButtonElement, NumberedIconButt
           {children}
         </span>
         {count !== undefined && count > 0 && (
-          <span aria-hidden="true" className="pointer-events-none absolute -top-1.5 -right-1">
+          <span
+            aria-hidden="true"
+            data-slot="count-badge-anchor"
+            className="pointer-events-none absolute -top-1.5 -right-1"
+          >
             {/* Counts are compact metadata, below the shared 14px small-copy tier. */}
             <Badge
               data-slot="count-badge"

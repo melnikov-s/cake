@@ -2,6 +2,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { SideChatsMenu } from "@/components/side-chats-menu";
 import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
+import { SessionToolsGroup } from "./session-tools-group";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { SessionChangesToggle } from "./session-changes-toggle";
 import { ConversationActivity } from "./conversation-activity";
@@ -29,11 +30,11 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
           sideChat={paneSession.conversationSessionStore.sideChatStore}
         />
       )}
-      <SessionArtifactMenu session={paneSession} />
-      <SideChatsMenu store={paneSession} />
-      {!resolved && (
-        <>
-          <SessionChangesToggle session={paneSession} />
+      {!resolved && <SessionChangesToggle session={paneSession} />}
+      <SessionToolsGroup>
+        <SessionArtifactMenu session={paneSession} />
+        <SideChatsMenu store={paneSession} />
+        {!resolved && (
           <WorkspaceModeControls
             mode="normal"
             terminalAvailable={terminal.available}
@@ -44,9 +45,9 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
             onOpenIde={() => void presentation.openIde()}
             onToggleTerminal={() => void terminal.toggle()}
           />
-        </>
-      )}
-      <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
+        )}
+        <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
+      </SessionToolsGroup>
     </>
   );
 });

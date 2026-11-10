@@ -12,7 +12,6 @@ import { AppShellLayout } from "./app-shell-layout";
 import { AppSurface } from "./app-surface";
 import { CakeChatWorkspaceSurface } from "./cake-chat-workspace-surface";
 import { ProjectWorkspaceSurface } from "./project-workspace-surface";
-import { WorkLogControls } from "./work-log-controls";
 
 export const App = observer(function App({ browserMode = false }: { browserMode?: boolean }) {
   const root = useStore(RootStore);
@@ -48,11 +47,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   return (
     <AppShellLayout
       overlays={overlays}
-      workspaceControls={
-        mode === "vscode" && session ? (
-          <WorkLogControls store={session.conversationSessionStore.chatStore} />
-        ) : undefined
-      }
       workspaceMode={mode}
       commandPaneWidth={commandPaneWidth}
       onCommandPaneWidthChange={setCommandPaneWidth}

@@ -3749,6 +3749,15 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
               ? navigator.getBoundingClientRect().bottom
               : undefined,
           headerBottom: box.bottom,
+          sessionTools: (() => {
+            const group = header.querySelector('[data-slot="session-tools"]')!;
+            const buttons = [...group.querySelectorAll("button")];
+            const bounds = buttons.map((button) => button.getBoundingClientRect());
+            return {
+              names: buttons.map((button) => button.getAttribute("aria-label")),
+              gaps: bounds.slice(1).map((b, index) => b.left - bounds[index]!.right),
+            };
+          })(),
           windowCenter: window.innerWidth / 2,
           vsCodeCenter: (() => {
             const b = header.querySelector('[aria-label="VS Code"]')?.getBoundingClientRect();
@@ -3779,6 +3788,13 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
       expect(geometry.titleCenter).toBe(geometry.titleBarHeight / 2);
       expect(geometry.actionsCenter).toBe(geometry.titleBarHeight / 2);
       expect(geometry.buttonsContained).toBe(true);
+      expect(geometry.sessionTools.names).toEqual([
+        "0 artifacts",
+        "Side chats",
+        "Terminal",
+        "Work log display options",
+      ]);
+      expect(geometry.sessionTools.gaps).toEqual([4, 4, 4]);
       if (geometry.vsCodeCenter !== undefined)
         expect(Math.abs(geometry.vsCodeCenter - geometry.windowCenter)).toBeLessThanOrEqual(1);
       for (const control of geometry.controls) {
@@ -4633,12 +4649,14 @@ function numberedIconButtonsScenario(count: number): VisualCaptureScenario {
       const artifact = header.getByRole("button", { name: `${count} artifacts`, exact: true });
       const chats = header.getByRole("button", { name: "Side chats, 1 open", exact: true });
       await expect(artifact).toBeVisible({ timeout: 20_000 });
-      await expect(
-        artifact.getByText(count > 99 ? "99+" : String(count), { exact: true }),
-      ).toBeVisible();
+      if (count > 0)
+        await expect(
+          artifact.getByText(count > 99 ? "99+" : String(count), { exact: true }),
+        ).toBeVisible();
+      else await expect(artifact.locator('[data-slot="count-badge"]')).toHaveCount(0);
       await expect(chats).toBeVisible();
       // Check actual CSS and geometry, not only the intended utility strings.
-      for (const trigger of [artifact, chats]) {
+      for (const trigger of count > 0 ? [artifact, chats] : [chats]) {
         const geometry = await trigger.evaluate((button) => {
           const badge = button.querySelector('[data-slot="count-badge"]')!;
           const b = badge.getBoundingClientRect();
@@ -4656,6 +4674,7 @@ function numberedIconButtonsScenario(count: number): VisualCaptureScenario {
             fontWeight: getComputedStyle(badge).fontWeight,
             badgeHeight: b.height,
             iconSize: [icon.width, icon.height],
+            glyphVisibleBelowBadge: icon.bottom > b.bottom,
             textFits:
               digits.left >= b.left &&
               digits.right <= b.right &&
@@ -4675,13 +4694,12 @@ function numberedIconButtonsScenario(count: number): VisualCaptureScenario {
             }),
             width: t.width,
             height: t.height,
-            // The bubble may extend past the target's corner into the gap, but stays
-            // inside the title bar and clear of every neighboring glyph.
+            // Session counts stay entirely inside their fixed-width button.
             contained:
               b.left >= t.left &&
-              b.right <= t.right + 4 &&
-              b.top >=
-                button.closest('[data-slot="workspace-header"]')!.getBoundingClientRect().top &&
+              b.right <= t.right &&
+              b.top >= t.top &&
+              b.bottom <= t.bottom &&
               Array.from(neighbors).every((neighbor) => {
                 const glyph = neighbor === button ? null : neighbor.querySelector("svg");
                 if (!glyph) return true;
@@ -4703,7 +4721,52 @@ function numberedIconButtonsScenario(count: number): VisualCaptureScenario {
         expect(geometry.textFits).toBe(true);
         expect(geometry.separated).toBe(true);
         expect(geometry.iconSize).toEqual([18, 18]);
+        expect(geometry.glyphVisibleBelowBadge).toBe(true);
       }
+      const layout = await header.evaluate((element) => {
+        const group = element.querySelector('[data-slot="session-tools"]')!;
+        const actions = element.querySelector('[data-slot="workspace-actions"]')!;
+        const modes = element.querySelector('[data-slot="workspace-mode"]')!;
+        const panel = document.querySelector('[data-slot="shell-workspace-toggle"]')!;
+        const divider = document.querySelector('[data-slot="workspace-tools-divider"]')!;
+        const buttons = [...group.querySelectorAll("button")];
+        const bounds = buttons.map((button) => button.getBoundingClientRect());
+        const g = group.getBoundingClientRect();
+        const a = actions.getBoundingClientRect();
+        const m = modes.getBoundingClientRect();
+        const p = panel.getBoundingClientRect();
+        const d = divider.getBoundingClientRect();
+        return {
+          names: buttons.map((button) => button.getAttribute("aria-label")),
+          widths: bounds.map((b) => b.width),
+          heights: bounds.map((b) => b.height),
+          centers: bounds.map((b) => b.y + b.height / 2),
+          gaps: bounds.slice(1).map((b, index) => b.left - bounds[index]!.right),
+          fullyVisible:
+            g.left >= a.left && g.right <= a.right && g.top >= a.top && g.bottom <= a.bottom,
+          modesSeparate: !group.contains(modes) && m.right <= g.left,
+          modeCenter: m.x + m.width / 2,
+          windowCenter: window.innerWidth / 2,
+          globalSeparate: !group.contains(panel) && g.right < d.left && d.right < p.left,
+          globalGap: p.left - g.right,
+        };
+      });
+      expect(layout.names).toEqual([
+        `${count} artifacts`,
+        "Side chats, 1 open",
+        "Terminal",
+        "Work log display options",
+      ]);
+      expect(layout.widths).toEqual([28, 28, 28, 28]);
+      expect(layout.heights).toEqual([28, 28, 28, 28]);
+      expect(new Set(layout.centers).size).toBe(1);
+      expect(layout.gaps).toEqual([4, 4, 4]);
+      expect(layout.fullyVisible).toBe(true);
+      expect(layout.modesSeparate).toBe(true);
+      expect(Math.abs(layout.modeCenter - layout.windowCenter)).toBeLessThanOrEqual(1);
+      expect(layout.globalSeparate).toBe(true);
+      expect(layout.globalGap).toBeGreaterThan(4);
+      console.log("SESSION_TOOLS_GEOMETRY", JSON.stringify(layout));
       await artifact.click();
       await expect(page.getByRole("dialog", { name: "Artifacts", exact: true })).toBeVisible();
       await page.keyboard.press("Escape");

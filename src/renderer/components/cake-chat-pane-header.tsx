@@ -3,6 +3,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { CloseIcon, CameraIcon } from "@/components/ui/icons";
 import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
+import { SessionToolsGroup } from "./session-tools-group";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { SideChatsMenu } from "./side-chats-menu";
 import { ConversationActivity } from "./conversation-activity";
@@ -36,10 +37,9 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           sideChat={paneSession.conversationSessionStore.sideChatStore}
         />
       )}
-      {!overlay && <SessionArtifactMenu session={paneSession} />}
-      <SideChatsMenu store={paneSession} />
       {overlay ? (
         <>
+          <SideChatsMenu store={paneSession} />
           <IconButton
             tooltip="Take screenshot"
             disabled={overlay.capturing}
@@ -52,7 +52,9 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           </IconButton>
         </>
       ) : (
-        <>
+        <SessionToolsGroup>
+          <SessionArtifactMenu session={paneSession} />
+          <SideChatsMenu store={paneSession} />
           <WorkspaceModeControls
             mode="normal"
             terminalAvailable={terminal.available}
@@ -66,7 +68,7 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
             onToggleTerminal={() => void terminal.toggle()}
           />
           <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
-        </>
+        </SessionToolsGroup>
       )}
     </>
   );

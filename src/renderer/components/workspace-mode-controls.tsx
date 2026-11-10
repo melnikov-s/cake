@@ -69,7 +69,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
           )}
         </SegmentedControlGroup>
       </WorkspaceModeSlot>
-      <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border/60 phone:hidden" />
       <IconButton
         data-cake-hint-key="t"
         className="phone:hidden"
