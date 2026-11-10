@@ -1,3 +1,4 @@
+import { createIncomingMessageProposalsScenario } from "./incoming-message-proposals";
 import { createSessionOutcomesScenario } from "./session-outcomes";
 import { createWorkspacePanelGeometryScenario } from "./workspace-panel-geometry";
 import { createServer } from "node:net";
@@ -8097,6 +8098,10 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   incomingReportRecapScenario,
   sessionUpdateReportsScenario,
   sessionUpdateSpacingScenario,
+  createIncomingMessageProposalsScenario({
+    seedArtifact: seedArtifactScenario,
+    retainBrowser: retainArtifactBrowser,
+  }),
   cakeChatSessionUpdatesScenario,
   activityWorktreeScenario,
   pausedWorktreeScenario,
