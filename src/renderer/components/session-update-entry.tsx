@@ -57,12 +57,12 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
         data-slot="session-system-update"
         className="min-w-0 px-2 py-1 text-xs text-muted-foreground"
       >
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_fit-content(45%)_1.75rem] items-center gap-x-3">
+        <div className="flex w-full min-w-0 items-center gap-3">
           {item && todos ? (
             <Button
               variant="ghost"
               size="sm"
-              className="min-w-0 justify-start px-0 text-left hover:bg-transparent hover:text-foreground"
+              className="min-w-0 flex-1 justify-start px-0 text-left hover:bg-transparent hover:text-foreground"
               aria-label={`View linked to-do: ${item.title}`}
               title={title}
               onClick={() => todos.reveal(item)}
@@ -74,31 +74,33 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
               href={sessionHref}
               presentation="text"
               title={title}
-              className="truncate text-xs font-medium [&>span]:block [&>span]:truncate"
+              className="min-w-0 flex-1 truncate text-xs font-medium [&>span]:line-clamp-none [&>span]:block [&>span]:truncate"
             >
               {title}
             </MarkdownLink>
           ) : (
-            <span className="min-w-0 truncate font-medium" title={title}>
+            <span className="min-w-0 flex-1 truncate font-medium" title={title}>
               {title}
             </span>
           )}
-          <span
-            data-slot="session-update-outcome"
-            className={`max-w-[12rem] text-right [overflow-wrap:anywhere] ${needsReview ? "text-attention" : ""}`}
-          >
-            {status}
-          </span>
-          {sessionHref && (
-            <MarkdownLink
-              href={sessionHref}
-              presentation="icon"
-              aria-label="Open session"
-              title="Open session"
+          <div className="flex shrink-0 items-center gap-3">
+            <span
+              data-slot="session-update-outcome"
+              className={`whitespace-nowrap text-right ${needsReview ? "text-attention" : ""}`}
             >
-              <LinkIcon />
-            </MarkdownLink>
-          )}
+              {status}
+            </span>
+            {sessionHref && (
+              <MarkdownLink
+                href={sessionHref}
+                presentation="icon"
+                aria-label="Open session"
+                title="Open session"
+              >
+                <LinkIcon />
+              </MarkdownLink>
+            )}
+          </div>
         </div>
         {needsReview && (
           <p className="mt-1 whitespace-pre-wrap break-words text-foreground">

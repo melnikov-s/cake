@@ -8,6 +8,7 @@ for (const [scenario, state, width, theme] of [
   ["session-update-spacing", "default", 1024, "light"],
   ["session-update-spacing", "default", 1024, "dark"],
   ["session-update-spacing", "narrow", 760, "light"],
+  ["session-update-spacing", "narrow", 760, "dark"],
   ["compact-session-reports", "default", 1024, "light"],
   ["compact-session-reports", "narrow", 760, "dark"],
 ] as const) {

@@ -5669,7 +5669,7 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
 const compactUpdateFixtures = [
   {
     sessionId: "e37674d0-0000-4000-8000-000000000001",
-    title: "Sticky transcript to-do labels",
+    title: "Sticky transcript to-do labels across merged-session updates",
     merged: true,
     resolved: true,
   },
@@ -5753,7 +5753,7 @@ const sessionUpdateSpacingScenario: VisualCaptureScenario = {
       sequence: 0,
       deliveryToken: null,
       pending: [],
-      items: compactUpdateFixtures.map(({ sessionId, title, resolved }, index) => ({
+      items: compactUpdateFixtures.slice(0, 2).map(({ sessionId, title, resolved }, index) => ({
         id: `00000000-0000-4000-8000-${String(index + 71).padStart(12, "0")}`,
         title,
         description: `Review ${title}`,
@@ -5797,56 +5797,106 @@ const sessionUpdateSpacingScenario: VisualCaptureScenario = {
         .locator('[data-slot="session-system-update"]')
         .evaluateAll((elements) =>
           elements.map((element) => {
-            const title = element.querySelector("button")!.getBoundingClientRect();
-            const outcome = element
-              .querySelector('[data-slot="session-update-outcome"]')!
+            const titleElement = element.firstElementChild!.firstElementChild!;
+            const title = titleElement.getBoundingClientRect();
+            const titleText = titleElement.firstElementChild!;
+            const titleStyle = getComputedStyle(titleText);
+            const outcomeElement = element.querySelector('[data-slot="session-update-outcome"]')!;
+            const outcome = outcomeElement.getBoundingClientRect();
+            const link = element
+              .querySelector('a[aria-label="Open session"]')!
               .getBoundingClientRect();
-            const link = element.querySelector("a")!.getBoundingClientRect();
             return {
-              targetHeight: title.height,
+              titleIsButton: titleElement.tagName === "BUTTON",
+              titleHeight: title.height,
+              titleLeft: title.left,
               titleRight: title.right,
+              titleTruncated: titleText.scrollWidth > titleText.clientWidth,
+              titleOverflow: titleStyle.textOverflow,
+              titleWhiteSpace: titleStyle.whiteSpace,
+              statusWhiteSpace: getComputedStyle(outcomeElement).whiteSpace,
+              controlsShrink: getComputedStyle(outcomeElement.parentElement!).flexShrink,
               statusLeft: outcome.left,
               statusRight: outcome.right,
+              statusHeight: outcome.height,
+              statusWidth: outcome.width,
+              rightEdge:
+                element.getBoundingClientRect().right -
+                parseFloat(getComputedStyle(element).paddingRight),
               actionLeft: link.left,
               actionRight: link.right,
+              actionHeight: link.height,
               overflow: element.scrollWidth > element.clientWidth,
             };
           }),
         );
       for (const row of rows) {
-        expect(row.targetHeight).toBeCloseTo(28, 2);
+        if (row.titleIsButton) expect(row.titleHeight).toBeCloseTo(28, 2);
+        else expect(row.titleHeight).toBeLessThanOrEqual(28);
+        expect(row.actionHeight).toBeCloseTo(28, 2);
+        expect(row.actionRight).toBeCloseTo(row.rightEdge, 2);
+        expect(row.titleOverflow).toBe("ellipsis");
+        expect(row.titleWhiteSpace).toBe("nowrap");
+        expect(row.statusWhiteSpace).toBe("nowrap");
+        expect(row.controlsShrink).toBe("0");
         expect(row.overflow).toBe(false);
+        expect(Math.abs(row.titleLeft - rows[0]!.titleLeft)).toBeLessThanOrEqual(1);
         expect(row.titleRight).toBeLessThanOrEqual(row.statusLeft);
         expect(row.statusRight).toBeLessThanOrEqual(row.actionLeft);
         expect(Math.abs(row.statusRight - rows[0]!.statusRight)).toBeLessThanOrEqual(1);
         expect(Math.abs(row.actionRight - rows[0]!.actionRight)).toBeLessThanOrEqual(1);
       }
+      return rows;
     };
-    await verifyGeometry();
+    const wideRows = await verifyGeometry();
     for (const [index, { title, sessionId }] of compactUpdateFixtures.entries()) {
-      await batch.getByRole("button", { name: `View linked to-do: ${title}`, exact: true }).click();
-      const todo = page.locator(
-        `[data-todo-id="00000000-0000-4000-8000-${String(index + 71).padStart(12, "0")}"]`,
-      );
-      await expect(todo).toBeVisible();
-      await expect(todo.getByRole("button", { name: title, exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
+      if (index < 2) {
+        await batch
+          .getByRole("button", { name: `View linked to-do: ${title}`, exact: true })
+          .click();
+        const todo = page.locator(
+          `[data-todo-id="00000000-0000-4000-8000-${String(index + 71).padStart(12, "0")}"]`,
+        );
+        await expect(todo).toBeVisible();
+        await expect(todo.getByRole("button", { name: title, exact: true })).toHaveAttribute(
+          "aria-pressed",
+          "false",
+        );
+        await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
+      }
       const link = batch.getByRole("link", { name: "Open session", exact: true }).nth(index);
       await expect(link).toHaveText("");
       await expect(link).toHaveAttribute("href", `cake://session/${sessionId}`);
-      await link.click();
+      if (index >= 2)
+        await expect(batch.getByRole("link", { name: title, exact: true })).toHaveAttribute(
+          "href",
+          `cake://session/${sessionId}`,
+        );
+      if (index === 2) await batch.getByRole("link", { name: title, exact: true }).click();
+      else await link.click();
       await expect(
         page.locator(".transcript").getByText(`Result for ${title}`, { exact: true }),
       ).toBeVisible();
       await openChat();
     }
+    await expect(page.getByText("Could not open link", { exact: true })).toHaveCount(0);
     // Verify navigation at native window sizes first. Electron's window minimum
     // is 760px; use a 480px renderer viewport for the final responsive proof.
     if (state === "narrow") await page.setViewportSize({ width: 480, height: 700 });
-    await verifyGeometry();
+    const finalRows = await verifyGeometry();
+    if (state === "narrow") {
+      // Both the to-do button and the direct session title must actually ellipsize.
+      expect(finalRows[0]!.titleTruncated).toBe(true);
+      expect(finalRows[2]!.titleTruncated).toBe(true);
+      for (const [index, row] of finalRows.entries()) {
+        expect(row.statusHeight).toBeCloseTo(wideRows[index]!.statusHeight, 2);
+        expect(row.statusWidth).toBeCloseTo(wideRows[index]!.statusWidth, 2);
+        expect(row.actionRight - row.actionLeft).toBeCloseTo(
+          wideRows[index]!.actionRight - wideRows[index]!.actionLeft,
+          2,
+        );
+      }
+    }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
