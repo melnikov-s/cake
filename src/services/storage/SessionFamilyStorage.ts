@@ -55,6 +55,7 @@ import {
   type SessionParent,
   type CoordinatorDigestItem,
   type UpdateBatch,
+  type QueuedAttention,
 } from "../../contracts/session-families/session-family-document";
 import {
   DOCUMENT_VERSION,
@@ -184,6 +185,19 @@ export class SessionFamilyStorage extends Context.Service<
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly markReferenceAdmissions: (
       ids: ReadonlyArray<string>,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Undoes one markReferenceAdmissions for a withdrawn attention input; re-holds under todoId. */
+    readonly restoreAttentionReports: (
+      recipientSessionId: string,
+      ids: readonly string[],
+      todoId?: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Upserts the restore point for an attention input that Pi may still withdraw. */
+    readonly recordQueuedAttention: (
+      item: QueuedAttention,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly settleQueuedAttention: (
+      turnId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly acknowledgeReports: (
       receipts: ReadonlyArray<ReportHandlingReceipt>,
@@ -1115,6 +1129,60 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             };
           }),
       );
+      const restoreAttentionReports = Effect.fn("SessionFamilyStorage.restoreAttentionReports")(
+        (recipientSessionId: string, ids: readonly string[], todoId?: string) =>
+          update((document) => {
+            if (!ids.length || !document.deferredReferences) return document;
+            const own = (item: PendingReport) =>
+              item.recipientSessionId === recipientSessionId && ids.includes(item.id);
+            // Mirror markReferenceAdmissions: the same aliases were counted once.
+            const presented = new Set(
+              document.deferredReferences
+                .filter(own)
+                .map((item) =>
+                  reportPresentationKey(item.recipientSessionId, pendingReportRef(item)),
+                )
+                .filter((key) => key !== undefined),
+            );
+            return {
+              ...document,
+              deferredReferences: document.deferredReferences.map((item) => {
+                const key = reportPresentationKey(item.recipientSessionId, pendingReportRef(item));
+                if (!own(item) && !(key && presented.has(key))) return item;
+                const { admissions, ...rest } = item;
+                const remaining = Math.max(0, (admissions ?? 0) - 1);
+                return {
+                  ...rest,
+                  ...(remaining ? { admissions: remaining } : null),
+                  ...(own(item) && todoId ? { attentionTodoId: todoId } : null),
+                };
+              }),
+            };
+          }),
+      );
+      const recordQueuedAttention = Effect.fn("SessionFamilyStorage.recordQueuedAttention")(
+        (item: QueuedAttention) =>
+          update((document) => ({
+            ...document,
+            queuedAttention: [
+              ...(document.queuedAttention ?? []).filter((other) => other.turnId !== item.turnId),
+              item,
+            ],
+          })),
+      );
+      const settleQueuedAttention = Effect.fn("SessionFamilyStorage.settleQueuedAttention")(
+        (turnId: string) =>
+          update((document) =>
+            document.queuedAttention?.some((item) => item.turnId === turnId)
+              ? {
+                  ...document,
+                  queuedAttention: document.queuedAttention.filter(
+                    (item) => item.turnId !== turnId,
+                  ),
+                }
+              : document,
+          ),
+      );
       const acknowledgeReports = Effect.fn("SessionFamilyStorage.acknowledgeReports")(
         (receipts: ReadonlyArray<ReportHandlingReceipt>) =>
           update((document) => {
@@ -1348,6 +1416,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         markPassiveNoticeAdmission,
         releaseAttentionReports,
         markReferenceAdmissions,
+        restoreAttentionReports,
+        recordQueuedAttention,
+        settleQueuedAttention,
         acknowledgeReports,
         recordLaunchReport,
         removeDigest,

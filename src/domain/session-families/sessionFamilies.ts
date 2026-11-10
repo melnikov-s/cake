@@ -1,5 +1,6 @@
 import * as workboardDeliveries from "./workboardDeliveries";
 import * as updateBatches from "./updateBatches";
+import * as projectTodoAttention from "../projects/projectTodoAttention";
 import { Cause, Effect, Schedule } from "effect";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
@@ -139,6 +140,7 @@ export const runWorker = Effect.gen(function* () {
       repeat("Session result delivery", runPass()),
       repeat("Workboard delivery", deliverBoards().pipe(Effect.timeout("30 seconds"))),
       repeat("Batched update delivery", updateBatches.runPass().pipe(Effect.timeout("30 seconds"))),
+      repeat("Queued attention restore", projectTodoAttention.runQueuedPass()),
     ],
     { concurrency: "unbounded", discard: true },
   );

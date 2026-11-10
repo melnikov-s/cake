@@ -167,6 +167,19 @@ export const UpdateBatch = Schema.Struct({
   turnId: Schema.optionalKey(BoundedId),
 });
 export interface UpdateBatch extends Schema.Schema.Type<typeof UpdateBatch> {}
+/**
+ * An attention click Cake admitted while it can still be withdrawn. Canceling that input
+ * restores the to-do's attention and its held reports; consuming it settles the record.
+ */
+export const QueuedAttention = Schema.Struct({
+  turnId: BoundedId,
+  recipientSessionId: BoundedId,
+  scope: BoundedPath,
+  todoId: BoundedId,
+  attentionReason: Schema.String,
+  reportIds: Schema.Array(BoundedId),
+});
+export interface QueuedAttention extends Schema.Schema.Type<typeof QueuedAttention> {}
 /** Creation provenance only; independent sessions do not become family members. */
 export const SessionParent = Schema.Struct({
   sessionId: BoundedId,
@@ -191,5 +204,6 @@ export const SessionFamilyDocument = Schema.Struct({
   completionInbox: Schema.optionalKey(Schema.Array(CompletionInboxItem)),
   autoMergeRequests: Schema.optionalKey(Schema.Array(AutoMergeRequest)),
   updateBatches: Schema.optionalKey(Schema.Array(UpdateBatch)),
+  queuedAttention: Schema.optionalKey(Schema.Array(QueuedAttention)),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}

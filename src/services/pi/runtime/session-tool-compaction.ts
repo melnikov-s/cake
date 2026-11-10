@@ -36,7 +36,8 @@ export function toolCompactDialogueMessage(
     internal?._tag === "WorkboardDelivery" ||
     internal?._tag === "SubagentCompletion" ||
     internal?._tag === "AgentUpdate" ||
-    internal?._tag === "UpdateBatch"
+    internal?._tag === "UpdateBatch" ||
+    internal?._tag === "AttentionItem"
   )
     return undefined;
   const message = entry.message;

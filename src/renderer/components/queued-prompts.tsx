@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import {
   BotIcon,
   ChatIcon,
+  AttentionIcon,
   ClockIcon,
-  ContextIcon,
   EditIcon,
   ForkIcon,
+  InboxIcon,
   RemoveIcon,
 } from "@/components/ui/icons";
 import { IconIndicator } from "@/components/ui/icon-indicator";
@@ -24,6 +25,12 @@ import { ScheduledGroup } from "@/components/scheduled-prompts";
 import { cn } from "@/lib/utils";
 import type { ChatStore, QueuedPrompt } from "../stores/ChatStore";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
+
+const provenanceLabel = {
+  agent: "Agent-generated message",
+  attention: "Needs attention item",
+  automatic: "Automatic update from Cake",
+} as const;
 
 /** One sender-neutral pending list above the composer: steering, then queued Pi delivery
  * lanes, then Cake-owned scheduled messages. */
@@ -199,14 +206,14 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                             </IconButton>
                           )}
                           {entry.provenance ? (
-                            <IconIndicator
-                              label={
-                                entry.provenance === "agent"
-                                  ? "Agent-generated message"
-                                  : "Automatic message"
-                              }
-                            >
-                              {entry.provenance === "agent" ? <BotIcon /> : <ContextIcon />}
+                            <IconIndicator label={provenanceLabel[entry.provenance]}>
+                              {entry.provenance === "agent" ? (
+                                <BotIcon />
+                              ) : entry.provenance === "attention" ? (
+                                <AttentionIcon />
+                              ) : (
+                                <InboxIcon />
+                              )}
                             </IconIndicator>
                           ) : entry.editable !== false && store.canEditQueuedPrompt ? (
                             <IconButton

@@ -55,9 +55,10 @@ export interface QueuedPrompt {
   state: "queued" | "steering";
   source?: Extract<UiPart, { kind: "text" }>["crossSession"];
   /** Typed authorship for the read-only queue indicator; never inferred from text/editability. */
-  provenance?: "agent" | "automatic";
+  provenance?: "agent" | "attention" | "automatic";
   scheduled?: Extract<UiPart, { kind: "text" }>["scheduled"];
-  /** Cake admitted it for someone else (a worker report, batched updates, Workboard entries). */
+  /** Cake admitted it for someone else (a worker report, batched updates, an opened attention
+   * item, Workboard entries). */
   automatic?: boolean;
   /** Whether the prompt text can be pulled back into the composer; runtime-held prompts cannot. */
   editable?: boolean;

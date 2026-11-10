@@ -340,6 +340,20 @@ export const BrowserIcon = () => (
     <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
   </Icon>
 );
+/** Exclamation in a circle: an opened Needs attention item. */
+export const AttentionIcon = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7.5v5M12 16.5h.01" />
+  </Icon>
+);
+/** Inbox tray: an update Cake delivered on its own. */
+export const InboxIcon = () => (
+  <Icon>
+    <path d="M3 13h5l1.5 3h5l1.5-3h5" />
+    <path d="M5.5 5h13L21 13v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5z" />
+  </Icon>
+);
 export const ContextIcon = () => (
   <Icon>
     <path d="m3 8 9-5 9 5-9 5zM3 12l9 5 9-5M3 16l9 5 9-5" />

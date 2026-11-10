@@ -33,10 +33,18 @@ export function internalInputOrigins(entries: readonly SessionEntry[]) {
 
 /** Stable sender-authored messages, independent of their user/timer transport and replay IDs. */
 export function passiveNoticeParts(origin?: InternalInput): UiPart[] {
-  if (origin?._tag !== "UserWithReminders" && origin?._tag !== "UpdateBatch") return [];
+  if (
+    origin?._tag !== "UserWithReminders" &&
+    origin?._tag !== "UpdateBatch" &&
+    origin?._tag !== "AttentionItem"
+  )
+    return [];
   return [
     ...(origin.updates ?? []).map(agentUpdatePart),
-    ...[...(origin.reportNotices ?? []), ...origin.notices].map(
+    ...[
+      ...(origin.reportNotices ?? []),
+      ...(origin._tag === "AttentionItem" ? [] : origin.notices),
+    ].map(
       (notice) =>
         ({
           id: `passive-${notice.id}`,
@@ -67,7 +75,8 @@ export function agentUpdatePart(update: AgentUpdate): UiPart {
 
 export type AutomaticInput = Exclude<InternalInput, { _tag: "UserWithReminders" }>;
 
-/** Application-admitted input (no user text): a worker report, batched updates or Workboard entries. */
+/** Application-admitted input (no user text): a worker report, batched updates, an opened
+ * attention item or Workboard entries. */
 export function isAutomaticInput(origin?: InternalInput): origin is AutomaticInput {
   return origin !== undefined && origin._tag !== "UserWithReminders";
 }
@@ -98,7 +107,9 @@ export function queuedAutomaticInputPart(
               ...(origin.updates ?? []).map((update) => update.text),
               ...[...(origin.reportNotices ?? []), ...origin.notices].map((notice) => notice.text),
             ].join("\n\n") || "Batched updates"
-          : row.text;
+          : origin._tag === "AttentionItem"
+            ? attentionItemLabel(origin)
+            : row.text;
   return {
     ...row,
     text,
@@ -112,6 +123,14 @@ export function queuedAutomaticInputPart(
       ? { queuedInput: { ...row.queuedInput, text, internal: origin._tag } }
       : null),
   };
+}
+
+/** Names the opened to-do; its held reports are counted, not inlined. */
+function attentionItemLabel(origin: Extract<AutomaticInput, { _tag: "AttentionItem" }>) {
+  const reports = (origin.updates?.length ?? 0) + (origin.reportNotices?.length ?? 0);
+  return `Needs attention: ${origin.title}${
+    reports ? ` (+${reports} ${reports === 1 ? "report" : "reports"})` : ""
+  }`;
 }
 
 export function internalInputPart(

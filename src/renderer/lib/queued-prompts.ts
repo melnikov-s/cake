@@ -26,9 +26,11 @@ export function queuedPrompts(parts: readonly UiPart[]): QueuedPrompt[] {
               part.queuedInput?.internal === "SubagentCompletion" ||
               part.queuedInput?.internal === "AgentUpdate"
                 ? "agent"
-                : part.queuedInput?.internal
-                  ? "automatic"
-                  : undefined,
+                : part.queuedInput?.internal === "AttentionItem"
+                  ? "attention"
+                  : part.queuedInput?.internal
+                    ? "automatic"
+                    : undefined,
             scheduled: part.scheduled,
             automatic: Boolean(part.queuedInput?.internal || part.subagentReport),
             editable:

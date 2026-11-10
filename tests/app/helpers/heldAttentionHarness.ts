@@ -71,6 +71,28 @@ export function heldAttentionHarness() {
     profile: "CakeChatSession",
     snapshot: () => Effect.succeed({ ...snapshot, streaming: state.streaming }),
     inputReceipt: (id) => Effect.succeed(receipts.get(id)),
+    // Follow-up admissions still pending in Pi are the queue; X withdraws one exactly.
+    pendingMessages: () =>
+      Effect.succeed({
+        items: submissions
+          .filter(
+            (input) => input.delivery === "follow-up" && receipts.get(input.turnId) === "pending",
+          )
+          .map((input, index) => ({
+            itemId: input.turnId,
+            turnId: input.turnId,
+            partId: `queued-${input.turnId}`,
+            lane: "follow-up" as const,
+            position: index + 1,
+            state: "queued" as const,
+            text: input.text,
+          })),
+      }),
+    removeQueuedMessage: (partId) =>
+      Effect.sync(() => {
+        receipts.set(partId.replace(/^queued-/, ""), "canceled");
+        return { steering: [], followUp: [] };
+      }),
     submit: (input) =>
       Effect.gen(function* () {
         if (state.beforeSubmit) yield* state.beforeSubmit;

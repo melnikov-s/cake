@@ -6189,6 +6189,77 @@ const queuedPromptsScenario: VisualCaptureScenario = {
       : page.locator("body"),
 };
 
+const queuedAttentionScenario: VisualCaptureScenario = {
+  name: "queued-attention",
+  description:
+    "A Needs attention pill opened while the agent runs queues as its named item; X restores it",
+  states: ["default", "restored"],
+  async seed(paths, theme) {
+    const fixture = await queuedPromptsScenario.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    const cakeChatTodos = {
+      selectedId: null,
+      sequence: 0,
+      deliveryToken: null,
+      pending: [],
+      items: [
+        {
+          id: "00000000-0000-4000-8000-000000000031",
+          title: "Review the merge fix",
+          description: "The worker finished; findings are ready.",
+          status: "",
+          state: "open",
+          needsAttention: true,
+          attentionReason: "Review the merge fix findings",
+          revision: 0,
+          associations: [],
+        },
+      ],
+    };
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 9,
+        data: { ...defaultApplicationState(), ...state.data, cakeChatTodos },
+      }),
+    );
+    return fixture;
+  },
+  async prepare(page, state) {
+    const input = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+    await expect(input).toBeVisible({ timeout: 20_000 });
+    await input.fill("Review the implementation while I open an attention item.");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+    // Click only once the agent runs the message, so the opened item queues behind it.
+    await expect(page.getByText(/· sending$/)).toHaveCount(0, { timeout: 20_000 });
+    await page.getByRole("button", { name: "Open attention: Review the merge fix" }).click();
+    const queue = page.getByRole("list", { name: "Queued prompts" });
+    await expect(
+      queue.getByRole("button", {
+        name: "View queued message: Needs attention: Review the merge fix",
+      }),
+    ).toBeVisible();
+    await expect(queue.getByRole("img", { name: "Needs attention item" })).toBeVisible();
+    if (state === "restored") {
+      await queue
+        .getByRole("button", {
+          name: "Cancel queued message: Needs attention: Review the merge fix",
+        })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "Open attention: Review the merge fix" }),
+      ).toBeVisible();
+      await expect(page.getByRole("list", { name: "Queued prompts" })).toHaveCount(0);
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page, state) =>
+    state === "restored" ? page.locator("body") : page.locator(".workbench-composer"),
+};
+
 const queuedAgentPromptsScenario: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "queued-agent-prompts",
@@ -8032,6 +8103,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   cakeChatArtifactScenario,
   contextOutlineScenario,
   queuedPromptsScenario,
+  queuedAttentionScenario,
   queuedAgentPromptsScenario,
   scheduledPromptsScenario,
   taskInputAttachmentsScenario,

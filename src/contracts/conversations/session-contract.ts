@@ -357,6 +357,7 @@ export const uiPartSchema = Schema.Union([
           Schema.Literals([
             "SubagentCompletion",
             "UpdateBatch",
+            "AttentionItem",
             "WorkboardDelivery",
             "AgentUpdate",
           ]),

@@ -32,10 +32,22 @@ it("attributes every typed nonhuman source without treating noneditable human in
   const human = queuePart(8, "Background subagent complete: I typed this myself");
   const command = queuePart(9, "/compact", { command: "compact" });
   const extension = { ...queuePart(10, "Unattributed extension input"), queuedInput: undefined };
+  const opened = queuePart(11, "Needs attention: Review");
+  const attention: TextPart = {
+    ...opened,
+    queuedInput: { ...opened.queuedInput!, internal: "AttentionItem" },
+  };
   expect(
-    queuedPrompts([...internal, report, update, cakeChat, human, command, extension]).map(
-      (row) => row.provenance,
-    ),
+    queuedPrompts([
+      ...internal,
+      report,
+      update,
+      cakeChat,
+      human,
+      command,
+      extension,
+      attention,
+    ]).map((row) => row.provenance),
   ).toEqual([
     "agent",
     "agent",
@@ -47,6 +59,7 @@ it("attributes every typed nonhuman source without treating noneditable human in
     undefined,
     undefined,
     undefined,
+    "attention",
   ]);
 });
 

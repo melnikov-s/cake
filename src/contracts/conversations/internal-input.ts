@@ -19,6 +19,13 @@ export const InternalInput = Schema.TaggedUnion({
     updates: Schema.optionalKey(Schema.Array(AgentUpdate)),
     reportNotices: Schema.optionalKey(Schema.Array(PassiveNotice)),
   },
+  /** The user opened one to-do's attention; carries that to-do's held reports. */
+  AttentionItem: {
+    todoId: Schema.String,
+    title: Schema.String,
+    updates: Schema.optionalKey(Schema.Array(AgentUpdate)),
+    reportNotices: Schema.optionalKey(Schema.Array(PassiveNotice)),
+  },
   AgentUpdate: {
     update: AgentUpdate,
   },

@@ -392,6 +392,14 @@ const withdrawQueuedMessages = Effect.fn("SessionChats.withdrawQueuedMessages")(
         item.crossSession ? [item.crossSession.messageId] : [],
       );
       if (messageIds.length) yield* storage.withdrawNotices(sessionId, messageIds);
+      // Only a single removal proves its input was withdrawn rather than consumed meanwhile;
+      // other withdrawals restore through Pi's durable cancel receipt.
+      yield* projectTodoAttention.reconcileQueued(
+        sessionId,
+        selection !== "all" && selection !== "steering"
+          ? pending.flatMap((item) => [item.itemId, ...(item.turnId ? [item.turnId] : [])])
+          : [],
+      );
       return projectQueuedMessages(result);
     }).pipe(Effect.uninterruptible),
   );

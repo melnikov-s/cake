@@ -510,7 +510,10 @@ is a refactoring signal, not precedent.
   Notification-mode completion reports linked to an open to-do in the recipient durable chat's own
   list are held in the existing report inbox and flag that item. Composer pills sit beneath Activity,
   above the input, independent of Workspace search or transcript focus. Opening a pill admits its held
-  originals through the normal chat runtime, then clears only attention. Its X only clears the flag;
+  originals through the normal chat runtime as their own `AttentionItem` input, then clears only attention.
+  While the agent runs, it queues as "Needs attention: <title>" with an attention marker. Canceling
+  that queued input restores the flag, reason and held reports unless the item's attention changed
+  meanwhile (a durable `queuedAttention` record, settled by Pi's input receipt). Its X only clears the flag;
   held reports never ride on unrelated input or timed batches. Explicit reply delivery remains immediate.
   No click completes the item, merges work, resolves sessions, or approves those actions.
   One-step Dismiss clears only the flag, retaining the hidden reason, selection and work state.

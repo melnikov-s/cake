@@ -1,10 +1,11 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { queuePart, queueSessionId, renderQueue } from "./prompt-queue-workflow-fixture";
 import { renderChatSurface } from "./chat-surface-workflow-fixture";
+import { ContextIcon } from "../../../src/renderer/components/ui/icons";
 
 const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
 const commandOptions = expect.objectContaining({ signal: expect.any(AbortSignal) });
@@ -45,7 +46,12 @@ describe("Prompt queue workflow", () => {
           sendAt: "2026-01-02T00:00:00Z",
         },
       };
-      using fixture = renderQueue([report, human, routed, update, automatic, scheduled], {});
+      const attention = queuePart(7, "Needs attention: Review merge fix (+1 report)", { lane });
+      Object.assign(attention.queuedInput!, { internal: "AttentionItem" });
+      using fixture = renderQueue(
+        [report, human, routed, update, automatic, scheduled, attention],
+        {},
+      );
       const rows = within(screen.getByRole("list", { name: "Queued prompts" })).getAllByRole(
         "listitem",
       );
@@ -66,10 +72,26 @@ describe("Prompt queue workflow", () => {
       expect(
         within(rows[1]!).getByRole("button", { name: `Edit queued prompt: ${text}` }),
       ).toBeDefined();
-      expect(within(rows[4]!).getByRole("img", { name: "Automatic message" }).title).toBe(
-        "Automatic message",
-      );
+      const automaticMarker = within(rows[4]!).getByRole("img", {
+        name: "Automatic update from Cake",
+      });
+      expect(automaticMarker.title).toBe("Automatic update from Cake");
       expect(within(rows[5]!).queryByRole("img", { name: "Agent-generated message" })).toBeNull();
+      // An opened attention item names its to-do and is marked as attention, read-only.
+      expect(
+        within(rows[6]!).getByRole("button", {
+          name: "View queued message: Needs attention: Review merge fix (+1 report)",
+        }),
+      ).toBeDefined();
+      const attentionMarker = within(rows[6]!).getByRole("img", { name: "Needs attention item" });
+      expect(attentionMarker.title).toBe("Needs attention item");
+      expect(attentionMarker.closest("button")).toBeNull();
+      expect(within(rows[6]!).queryByRole("button", { name: /^Edit queued prompt:/ })).toBeNull();
+      // Neither marker reuses the context meter's layered glyph.
+      const contextGlyph = render(<ContextIcon />).container.innerHTML;
+      for (const marker of [automaticMarker, attentionMarker])
+        expect(marker.innerHTML).not.toBe(contextGlyph);
+      expect(automaticMarker.innerHTML).not.toBe(attentionMarker.innerHTML);
       fixture.publish([human]);
       expect(screen.queryByRole("img", { name: "Agent-generated message" })).toBeNull();
       expect(screen.getByRole("button", { name: `Edit queued prompt: ${text}` })).toBeDefined();

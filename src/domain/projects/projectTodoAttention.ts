@@ -21,6 +21,7 @@ import {
 } from "../../contracts/projects/project-todos";
 import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import type { QueuedAttention } from "../../contracts/session-families/session-family-document";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import * as todos from "./projectTodos";
@@ -100,12 +101,97 @@ export const hold = Effect.fn("ProjectTodoAttention.hold")(function* (
   return true;
 });
 
+/**
+ * Undo one attention click whose input never reached the model: its held reports return to
+ * the inbox (still under the to-do when it needs attention), and the to-do needs attention
+ * again unless someone changed its attention since the click.
+ */
+const restoreQueued = Effect.fn("ProjectTodoAttention.restoreQueued")(function* (
+  record: QueuedAttention,
+) {
+  const storage = yield* SessionFamilyStorage;
+  const current = yield* todos
+    .read(record.scope, record.todoId)
+    .pipe(Effect.catchTag("ProjectError", () => Effect.succeed(undefined)));
+  const untouched =
+    current?.state === "open" &&
+    !current.snoozedUntil &&
+    !current.needsAttention &&
+    current.attentionReason === record.attentionReason;
+  const restored = untouched
+    ? yield* todos
+        .mutateUser(record.scope, {
+          _tag: "SetAttention",
+          id: record.todoId,
+          expectedRevision: current.revision,
+          needsAttention: true,
+          attentionReason: record.attentionReason,
+        })
+        .pipe(
+          Effect.as(true),
+          // A racing edit is newer state; keep it rather than overwrite it.
+          Effect.catchTag("ProjectError", () => Effect.succeed(false)),
+        )
+    : false;
+  const holds =
+    restored ||
+    (current?.state === "open" && !current.snoozedUntil && Boolean(current.needsAttention));
+  yield* storage.restoreAttentionReports(
+    record.recipientSessionId,
+    record.reportIds,
+    holds ? record.todoId : undefined,
+  );
+  yield* storage.settleQueuedAttention(record.turnId);
+});
+
+/**
+ * Settle queued attention records under notice delivery serialization. A withdrawn input
+ * restores immediately; otherwise Pi's durable receipt decides, so a restart between Pi
+ * removing the input and the restore still restores it.
+ */
+export const reconcileQueued = Effect.fn("ProjectTodoAttention.reconcileQueued")(function* (
+  sessionId?: string,
+  withdrawnTurnIds: readonly string[] = [],
+) {
+  const storage = yield* SessionFamilyStorage;
+  const runtimes = yield* CakeSessionRuntimes;
+  for (const record of (yield* storage.state()).queuedAttention ?? []) {
+    if (sessionId !== undefined && record.recipientSessionId !== sessionId) continue;
+    if (withdrawnTurnIds.includes(record.turnId)) {
+      yield* restoreQueued(record);
+      continue;
+    }
+    // A conversation that is not open keeps its record until it is.
+    const receipt = yield* Effect.gen(function* () {
+      const handle = yield* runtimes.acquireSession(record.recipientSessionId);
+      return handle.inputReceipt ? yield* handle.inputReceipt(record.turnId) : "pending";
+    }).pipe(
+      Effect.scoped,
+      Effect.catchTag("PiSessionError", () => Effect.succeed("pending" as const)),
+    );
+    if (receipt === "canceled") yield* restoreQueued(record);
+    else if (receipt !== "pending") yield* storage.settleQueuedAttention(record.turnId);
+  }
+});
+
+/** Background lane for withdrawals that did not pass through the queue's own X. */
+export const runQueuedPass = Effect.fn("ProjectTodoAttention.runQueuedPass")(function* () {
+  const storage = yield* SessionFamilyStorage;
+  if (!(yield* storage.state()).queuedAttention?.length) return;
+  yield* storage.withNoticeDelivery(reconcileQueued());
+});
+
 /** Only an explicit pill click admits held originals. X continues to use SetAttention(false). */
 export const activate = Effect.fn("ProjectTodoAttention.activate")(
   function* (scope: string, id: string, expectedRevision: number) {
     const storage = yield* SessionFamilyStorage;
     return yield* storage.withNoticeDelivery(
       Effect.gen(function* () {
+        const sessionId = isCakeChatTodoScope(scope)
+          ? CAKE_CHAT_SESSION_ID
+          : projectChatSessionId(scope);
+        // A stale withdrawn click restores first, so it cannot reopen this new one later.
+        yield* reconcileQueued(sessionId);
         const item = yield* todos.read(scope, id);
         if (
           item.revision !== expectedRevision ||
@@ -117,9 +203,6 @@ export const activate = Effect.fn("ProjectTodoAttention.activate")(
             operation: "activateAttention",
             message: "This attention item changed. Try again.",
           });
-        const sessionId = isCakeChatTodoScope(scope)
-          ? CAKE_CHAT_SESSION_ID
-          : projectChatSessionId(scope);
         const reports = ((yield* storage.state()).deferredReferences ?? []).filter(
           (report) => report.recipientSessionId === sessionId && report.attentionTodoId === id,
         );
@@ -157,8 +240,9 @@ export const activate = Effect.fn("ProjectTodoAttention.activate")(
             markdown: false,
             automaticTitle: false,
             internal: {
-              _tag: "UpdateBatch",
-              notices: [],
+              _tag: "AttentionItem",
+              todoId: item.id,
+              title: item.title,
               reportNotices: presentation.notices,
               updates: presentation.updates,
             },
@@ -169,6 +253,16 @@ export const activate = Effect.fn("ProjectTodoAttention.activate")(
               message: "The attention request was canceled. Try again.",
             });
         }
+        // Written before the handoff below, so withdrawing the input can undo exactly it.
+        if (receipt !== "consumed" && item.attentionReason)
+          yield* storage.recordQueuedAttention({
+            turnId,
+            recipientSessionId: sessionId,
+            scope,
+            todoId: id,
+            attentionReason: item.attentionReason,
+            reportIds: reports.map((report) => report.id),
+          });
         const ids = reports.map((report) => report.id);
         if (ids.length) {
           yield* storage.markReferenceAdmissions(ids);

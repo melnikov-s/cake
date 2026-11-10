@@ -83,7 +83,7 @@ export function partsFromMessage(
       text:
         internal?._tag === "UserWithReminders" && internal.userText !== undefined
           ? internal.userText
-          : internal?._tag === "UpdateBatch"
+          : internal?._tag === "UpdateBatch" || internal?._tag === "AttentionItem"
             ? ""
             : rawContext.text,
     };
@@ -96,6 +96,7 @@ export function partsFromMessage(
         (reminder) =>
           !(
             (internal?._tag === "UpdateBatch" ||
+              internal?._tag === "AttentionItem" ||
               (internal?._tag === "UserWithReminders" && internal.userText !== undefined)) &&
             (reminder.title === "Cake · reference notifications" ||
               reminder.title === "Cake · batched updates")
