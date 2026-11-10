@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NetworkIcon } from "../../../src/renderer/components/ui/icons";
+import { IconSizeProvider } from "../../../src/renderer/components/ui/icon-size";
 import { StoreProvider } from "r-state-tree/react";
 import { createStore, mount, updateStore } from "r-state-tree";
 import { DesktopConnectionStore } from "../../../src/renderer/stores/DesktopConnectionStore";
@@ -54,7 +55,12 @@ const offline = () => screen.getByRole("button", { name: "Browser sharing: Offli
 it("starts from the persistent rail with saved preferences, prevents repeated starts and shares Settings state", async () => {
   using f = setup();
   expect(f.configure).not.toHaveBeenCalled();
-  const connectionIcon = renderToStaticMarkup(<NetworkIcon />);
+  // Rail controls render glyphs in the shared 18px navigation role.
+  const connectionIcon = renderToStaticMarkup(
+    <IconSizeProvider size="navigation">
+      <NetworkIcon />
+    </IconSizeProvider>,
+  );
   expect(offline().querySelector("svg")?.outerHTML).toBe(connectionIcon);
   expect(offline().classList.contains("text-muted-foreground")).toBe(true);
   expect(offline().classList.contains("text-success")).toBe(false);

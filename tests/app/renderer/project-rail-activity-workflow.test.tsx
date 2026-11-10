@@ -64,12 +64,12 @@ it.each(Object.keys(iconSizes) as (keyof typeof iconSizes)[])(
     for (const name of ["Cake", "Fallback"]) {
       const button = screen.getByRole("button", { name: `Open Project Chat for ${name}` });
       const thumbnail = button.querySelector('[data-slot="avatar"]')!;
-      // Historical rail artwork box, independent of the 24/18/12px control system.
-      expect(thumbnail.classList.contains("size-[32.5px]")).toBe(true);
+      // Fixed 24px artwork level with line icons, independent of the 24/18/12px control system.
+      expect(thumbnail.classList.contains("size-6")).toBe(true);
       expect(thumbnail.classList.contains("size-[18px]")).toBe(false);
       expect(thumbnail.querySelector("img")!.classList.contains("size-full")).toBe(true);
-      expect(thumbnail.parentElement!.classList.contains("size-9")).toBe(true);
-      expect(button.classList.contains("h-9")).toBe(true);
+      expect(thumbnail.parentElement!.classList.contains("size-6")).toBe(true);
+      expect(button.classList.contains("h-8")).toBe(true);
     }
     expect(
       screen.getByRole("button", { name: "Open Project Chat for Cake" }).querySelector("img")!

@@ -105,6 +105,7 @@ export function createChatFirstNavigationScenario(
       "closed",
       "settings-icon",
       "rail-hover",
+      "rail-list-end",
       "rail-keyboard",
       "rail-activity",
       "rail-selection",
@@ -631,8 +632,13 @@ export function createChatFirstNavigationScenario(
       await expect(
         workspace.getByRole("button", { name: "Review conversation navigation", exact: true }),
       ).toBeVisible();
-      if (state === "rail-hover" || state === "rail-keyboard") {
-        if (state === "rail-hover") await hoverRail();
+      if (state === "rail-hover" || state === "rail-list-end" || state === "rail-keyboard") {
+        if (state === "rail-hover" || state === "rail-list-end") await hoverRail();
+        if (state === "rail-list-end")
+          // The end of a long project list, where list-trailing rail actions live.
+          await rail
+            .getByRole("region", { name: "Projects", exact: true })
+            .evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
         else {
           await page.mouse.move(500, 200);
           await rail

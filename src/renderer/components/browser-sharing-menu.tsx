@@ -7,8 +7,10 @@ import { CautionIcon, NetworkIcon, ReloadIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
 import { QrCode } from "./ui/qr-code";
+import { StatusDot } from "./ui/status-dot";
 
-/** A shortcut to the same listener controlled by Settings; never configures a tunnel. */
+/** A shortcut to the same listener controlled by Settings; never configures a tunnel. The rail
+ * variant is a quiet status dot on the icon rather than a labelled row. */
 export const BrowserSharingMenu = observer(function BrowserSharingMenu({
   rail = false,
 }: {
@@ -20,13 +22,14 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu({
   if (root.props.browserHost || root.desktopConnection?.remote) return null;
   const error = sharing.error ?? sharing.state?.error;
   const pending = sharing.pending;
+  const failed = Boolean(error) || sharing.state?.status === "failed";
   const status = !sharing.state
     ? "Loading…"
     : pending
       ? sharing.state.status === "stopping" || sharing.enabled
         ? "Going offline…"
         : "Connecting…"
-      : error || sharing.state.status === "failed"
+      : failed
         ? "Error"
         : sharing.enabled
           ? "Online"
@@ -34,27 +37,37 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverIconTrigger
-        label={
-          rail ? (
-            <>
-              Browser sharing<span className="font-normal text-muted-foreground">: {status}</span>
-            </>
-          ) : undefined
-        }
         tooltip={`Browser sharing: ${status}${status === "Offline" ? " — go online" : ""}`}
         className={cn(
           sharing.enabled && "text-success",
-          !pending && (error || sharing.state?.status === "failed") && "text-destructive",
+          !pending && failed && "text-destructive",
+          rail && "relative",
         )}
       >
         {pending ? (
           <span className="motion-safe:animate-spin">
             <ReloadIcon size={18} />
           </span>
-        ) : error || sharing.state?.status === "failed" ? (
+        ) : failed ? (
           <CautionIcon size={18} />
         ) : (
           <NetworkIcon size={18} />
+        )}
+        {rail && (
+          // Status at a glance instead of a full text row; the name carries it for assistive tech.
+          <StatusDot
+            status={
+              !sharing.state || pending
+                ? "pending"
+                : failed
+                  ? "error"
+                  : sharing.enabled
+                    ? "success"
+                    : "stopped"
+            }
+            size="sm"
+            className="absolute right-0.5 bottom-0.5 ring-2 ring-sidebar"
+          />
         )}
       </PopoverIconTrigger>
       <PopoverContent align="end" className="grid w-72 gap-3" aria-label="Browser sharing">

@@ -92,9 +92,9 @@ export function createInterfaceIconsScenario(
       expect(cakeGeometry.inside).toBe(true);
       const project = rail.getByRole("button", { name: /^Open Project Chat for / }).first();
       const projectIcon = await project.locator('[data-slot="avatar"] img').boundingBox();
-      expect(projectIcon!.width).toBe(32.5);
-      expect(projectIcon!.height).toBe(32.5);
-      expect((await project.boundingBox())!.height).toBe(36);
+      expect(projectIcon!.width).toBe(24);
+      expect(projectIcon!.height).toBe(24);
+      expect((await project.boundingBox())!.height).toBe(32);
       const breadcrumbIcon = page
         .getByRole("navigation", { name: "Conversation breadcrumb" })
         .locator('[data-slot="avatar"] img');
@@ -105,17 +105,19 @@ export function createInterfaceIconsScenario(
         ]),
       ).toEqual(["18px", "18px"]);
       await expectGlyph(rail.getByRole("button", { name: /^Browser sharing:/ }), 18);
-      for (const name of [
-        "Add project",
-        "New session",
-        "Search sessions",
-        "Artifacts",
-        "Automations",
-        "Settings",
-      ]) {
+      // The collapsed rail shows Add project as the heading's folder glyph.
+      await expectGlyph(rail.getByRole("button", { name: "Add project", exact: true }), 18);
+      // Primary rows are 32px; bottom utilities are quieter 28px rows with the same glyphs.
+      for (const [name, height] of [
+        ["New session", 32],
+        ["Search sessions", 32],
+        ["Artifacts", 28],
+        ["Automations", 28],
+        ["Settings", 28],
+      ] as const) {
         const control = rail.getByRole("button", { name, exact: true });
         await expectGlyph(control, 18);
-        expect((await control.boundingBox())!.height).toBe(36);
+        expect((await control.boundingBox())!.height).toBe(height);
       }
       for (const name of ["Main", "VS Code", "Browser"]) {
         const control = page.getByRole("button", { name, exact: true });

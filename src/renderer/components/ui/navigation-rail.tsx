@@ -19,6 +19,7 @@ import { NavigationRailLabelsContext } from "./navigation-rail-labels";
 export function NavigationRail({
   label,
   header,
+  listHeading,
   footer,
   children,
   onOverlayRightChange,
@@ -35,6 +36,8 @@ export function NavigationRail({
   retained?: boolean;
   onRevealChange?(revealed: boolean): void;
   header: ReactNode;
+  /** Section label above the scrolling list; stays put while the list scrolls. */
+  listHeading?: ReactNode;
   footer: ReactNode;
   children: ReactNode;
   onOverlayRightChange(right: number): void;
@@ -205,7 +208,7 @@ export function NavigationRail({
             !visible && "w-0 max-[700px]:w-0 border-r-0",
           )}
         >
-          <div className="max-h-[30%] shrink-0 overflow-y-auto overflow-x-hidden px-1">
+          <div className="max-h-[30%] shrink-0 overflow-y-auto overflow-x-hidden px-1 pb-2">
             {layout === "dynamic" && (
               <IconButton
                 tooltip="Show navigation labels"
@@ -218,6 +221,7 @@ export function NavigationRail({
             )}
             {header}
           </div>
+          {listHeading}
           <div
             role="region"
             aria-label="Projects"
@@ -226,7 +230,7 @@ export function NavigationRail({
           >
             <div className="flex min-w-0 flex-col gap-1 pr-1">{children}</div>
           </div>
-          <div className="max-h-[45%] shrink-0 overflow-y-auto overflow-x-hidden px-1 pb-2">
+          <div className="max-h-[45%] shrink-0 overflow-y-auto overflow-x-hidden border-t border-border/50 px-1 pt-1 pb-2">
             {footer}
           </div>
         </nav>

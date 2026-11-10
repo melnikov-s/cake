@@ -157,7 +157,7 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
     await page.keyboard.press("Tab");
     await expect(input).toBeFocused();
     await expect.poll(width).toBe(0);
-    await rail.getByRole("button", { name: "Add project", exact: true }).focus();
+    await rail.getByRole("button", { name: "New session", exact: true }).focus();
     await page.keyboard.press("Shift+Tab");
     await expect(first).toBeFocused();
     await settings.hover();

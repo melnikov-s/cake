@@ -150,11 +150,10 @@ describe("IconButton shortcut labels", () => {
     const ids = button.getAttribute("aria-describedby")!.split(" ");
     expect(ids[0]).toBe("existing");
     expect(document.getElementById(ids[1]!)?.textContent).toBeTruthy();
-    expect(
-      container
-        .querySelector('[data-slot="icon-button-label"]')
-        ?.classList.contains("font-semibold"),
-    ).toBe(true);
+    // Rail rows rank themselves (content vs action vs utility); the label inherits that tone.
+    const railLabel = container.querySelector('[data-slot="icon-button-label"]')!;
+    expect(railLabel.classList.contains("font-semibold")).toBe(false);
+    expect(railLabel.classList.contains("text-foreground")).toBe(false);
     act(() => button.click());
     expect(clicked).toHaveBeenCalledTimes(1);
     render(true);

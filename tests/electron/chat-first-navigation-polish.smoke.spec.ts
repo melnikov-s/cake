@@ -116,19 +116,15 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       .boundingBox())!;
     await rail.hover();
     await expect.poll(async () => (await rail.boundingBox())!.width).toBe(240);
-    for (const name of [
-      "Add project",
-      "Search sessions",
-      "Settings",
-      "Automations",
-      "Artifacts",
-      "Browser sharing: Offline — go online",
-    ]) {
-      const action = name.startsWith("Browser")
-        ? rail.getByRole("button", { name: /^Browser sharing:/ })
-        : rail.getByRole("button", { name, exact: true });
-      await expect(action.locator('[data-slot="icon-button-label"]')).toBeVisible();
-    }
+    for (const name of ["Search sessions", "Settings", "Automations", "Artifacts"])
+      await expect(
+        rail.getByRole("button", { name, exact: true }).locator('[data-slot="icon-button-label"]'),
+      ).toBeVisible();
+    // Icon-only rail controls: the heading + and the browser-sharing status dot.
+    await expect(rail.getByRole("button", { name: "Add project", exact: true })).toBeVisible();
+    await expect(
+      rail.getByRole("button", { name: "Browser sharing: Offline — go online", exact: true }),
+    ).toBeVisible();
     expect((await workspace.boundingBox())!.x).toBe(before.x);
     expect((await workspace.boundingBox())!.width).toBe(before.width);
     const last = rail.getByRole("button", {

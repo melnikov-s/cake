@@ -94,15 +94,15 @@ for (const theme of ["light", "dark"] as const) {
         await rail.getByRole("button", { name: "Add project", exact: true }).hover();
         await expect.poll(width).toBe(layout === "full" ? 240 : 54);
         await expect(rail).toHaveAttribute("data-expanded", String(layout === "full"));
-        if (layout === "full") {
-          await expect(page.getByRole("tooltip")).toHaveCount(0);
+        // Add project is an icon-only + on the Projects heading in both widths.
+        await expect(page.getByRole("tooltip").filter({ hasText: "Add project" })).toBeVisible();
+        if (layout === "full")
+          // Content rows use regular weight; only the selected row is medium.
           await expect(
             rail
-              .getByRole("button", { name: "Add project", exact: true })
+              .getByRole("button", { name: "Settings", exact: true })
               .locator('[data-slot="icon-button-label"]'),
-          ).toHaveCSS("font-weight", "600");
-        } else
-          await expect(page.getByRole("tooltip").filter({ hasText: "Add project" })).toBeVisible();
+          ).toHaveCSS("font-weight", "400");
         expect(await workspace.boundingBox()).toEqual(before);
         await screenshot(`off-${layout}`);
         await settings();

@@ -127,13 +127,11 @@ const ObservedIconButton = observer(function ObservedIconButton({
           children
         ) : (
           <>
-            <span className="grid h-9 w-11 place-items-center">{children}</span>
+            <span className="grid h-full w-11 place-items-center">{children}</span>
+            {/* Tone and weight come from the row so rails can rank content above actions. */}
             <span
               data-slot="icon-button-label"
-              className={cn(
-                "w-full min-w-0 truncate text-left text-xs",
-                railLabelsVisible !== undefined && "font-semibold text-foreground",
-              )}
+              className="w-full min-w-0 truncate text-left text-xs"
             >
               {visibleLabel}
             </span>

@@ -9,7 +9,6 @@ import { IconButton } from "./ui/icon-button";
 import {
   ArtifactIcon,
   CakeIcon,
-  FolderPlusIcon,
   LightningIcon,
   PlusIcon,
   SearchIcon,
@@ -20,12 +19,35 @@ import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
 import { SortableItem } from "./ui/sortable-item";
 import { NavigationRail } from "./ui/navigation-rail";
+import { NavigationRailSection } from "./ui/navigation-rail-section";
+import {
+  AddProjectHeadingButton,
+  AddProjectRow,
+  defaultAddProjectPlacement,
+  type AddProjectPlacement,
+} from "./project-rail-add-project";
 import { StatusDot } from "./ui/status-dot";
 import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog";
 import { SessionSearchDialog } from "./session-search-dialog";
 
+/**
+ * Three visual levels: content rows (Cake Chat, projects) at full-strength text, quieter
+ * grey actions, and compact utilities at the bottom. Only the selected row gains weight.
+ */
+const railRow = {
+  content: "h-8 shrink-0 text-foreground aria-[current=page]:font-medium",
+  action: "h-8 shrink-0",
+  utility: "h-7 shrink-0",
+} as const;
+
 /** Persistent project homes and global actions; never a second session list. */
-export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHide?: boolean }) {
+export const ProjectRail = observer(function ProjectRail({
+  autoHide,
+  addProjectPlacement = defaultAddProjectPlacement,
+}: {
+  autoHide?: boolean;
+  addProjectPlacement?: AddProjectPlacement;
+}) {
   const root = useStore(RootStore);
   const projects = root.projectCatalogStore;
   const preferences = root.settingsStore.appearance.leftToolbar.preferences;
@@ -53,6 +75,7 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
     }
   };
   const activeProject = root.workspaceProjectPath;
+  const addProject = () => void root.navigationStore.chooseProject();
   const runningProjects = new Set(
     projects.orderedProjectPaths.filter((path) =>
       root.conversationNavigatorStore.projectRunning(path),
@@ -93,7 +116,7 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
               label="Cake Chat"
               ariaLabel="Open Cake Chat"
               className={cn(
-                "h-9 shrink-0",
+                railRow.content,
                 !activeProject &&
                   root.appShellStore.surface === "cake-chat" &&
                   "bg-sidebar-active text-foreground",
@@ -112,22 +135,10 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
               <CakeIcon />
             </IconButton>
             <IconButton
-              tooltip="Add project"
-              label="Add project"
-              className="h-9 shrink-0"
-              onClick={() => void root.navigationStore.chooseProject()}
-            >
-              <FolderPlusIcon size={18} />
-            </IconButton>
-          </>
-        }
-        footer={
-          <>
-            <IconButton
               tooltip="New session"
               label="New session"
               hotkey="new-session"
-              className="h-9 shrink-0"
+              className={railRow.action}
               onClick={() => root.newSessionStore.show()}
             >
               <PlusIcon size={18} />
@@ -135,21 +146,30 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
             <IconButton
               tooltip="Search sessions"
               label="Search sessions"
-              className="h-9 shrink-0"
+              className={railRow.action}
               onClick={() => root.sidebarStore.sessionSearchStore.show()}
             >
               <SearchIcon size={18} />
             </IconButton>
-            {!root.props.browserHost && !root.desktopConnection?.remote && (
-              <div className="w-full shrink-0">
-                <BrowserSharingMenu rail />
-              </div>
-            )}
+          </>
+        }
+        listHeading={
+          <NavigationRailSection
+            label="Projects"
+            action={
+              addProjectPlacement === "heading" ? (
+                <AddProjectHeadingButton onAdd={addProject} />
+              ) : undefined
+            }
+          />
+        }
+        footer={
+          <>
             <IconButton
               tooltip="Artifacts"
               label="Artifacts"
               className={cn(
-                "h-9 shrink-0",
+                railRow.utility,
                 root.appShellStore.surface === "artifact-library" &&
                   "bg-sidebar-active text-foreground",
               )}
@@ -162,7 +182,7 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
             <IconButton
               tooltip="Automations"
               label="Automations"
-              className="h-9 shrink-0"
+              className={railRow.utility}
               onClick={() => root.navigationStore.showAutomations()}
             >
               <LightningIcon size={18} />
@@ -171,15 +191,20 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
               tooltip="Settings"
               label="Settings"
               hotkey="open-settings"
-              className="h-9 shrink-0"
+              className={railRow.utility}
               onClick={() => root.navigationStore.showSettings()}
             >
               <SettingsIcon size={18} />
             </IconButton>
+            {!root.props.browserHost && !root.desktopConnection?.remote && (
+              <div className="grid h-7 w-11 shrink-0 place-items-center">
+                <BrowserSharingMenu rail />
+              </div>
+            )}
           </>
         }
       >
-        <div className="flex w-full min-w-0 flex-col gap-1">
+        <div className="flex w-full min-w-0 flex-col gap-0.5">
           {projects.orderedProjectPaths.map((path) => (
             <SortableItem
               key={path}
@@ -194,7 +219,8 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
                   label={projects.nameForPath(path)}
                   ariaLabel={`Open Project Chat for ${projects.nameForPath(path)}`}
                   className={cn(
-                    "relative h-9 shrink-0",
+                    "relative",
+                    railRow.content,
                     activeProject === path &&
                       "bg-[color-mix(in_oklab,var(--sidebar-active),var(--foreground)_8%)] text-foreground hover:bg-[color-mix(in_oklab,var(--sidebar-active),var(--foreground)_8%)] before:pointer-events-none before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
                   )}
@@ -221,11 +247,11 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
                     }
                   }}
                 >
-                  <span className="relative grid size-9 place-items-center">
+                  <span className="relative grid size-6 place-items-center">
                     <Avatar
                       kind="project"
-                      // Project artwork is not a control glyph; keep its historical thumbnail box.
-                      className="size-[32.5px]"
+                      // Project artwork is not a control glyph; size it to sit level with line icons.
+                      className="size-6"
                       seed={projects.nameForPath(path)}
                       customIcon={projects.find(path)?.settings?.icon}
                       title={projects.nameForPath(path)}
@@ -239,7 +265,7 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
                           role="img"
                           aria-hidden={false}
                           aria-label={`${errorProjects.has(path) ? "Error" : "Unread sessions"} in ${projects.nameForPath(path)}`}
-                          className="absolute bottom-0.5 left-0.5 ring-2 ring-sidebar"
+                          className="absolute -bottom-0.5 -left-0.5 ring-2 ring-sidebar"
                         />
                       )}
                     {runningProjects.has(path) && (
@@ -249,7 +275,7 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
                         role="img"
                         aria-hidden={false}
                         aria-label={`Work running in ${projects.nameForPath(path)}`}
-                        className="absolute bottom-0.5 right-0.5 ring-2 ring-sidebar"
+                        className="absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar"
                       />
                     )}
                   </span>
@@ -257,6 +283,9 @@ export const ProjectRail = observer(function ProjectRail({ autoHide }: { autoHid
               )}
             </SortableItem>
           ))}
+          {addProjectPlacement === "row" && (
+            <AddProjectRow className={railRow.action} onAdd={addProject} />
+          )}
         </div>
       </NavigationRail>
       <ProjectSettingsDialog store={root.projectSettingsStore} />
