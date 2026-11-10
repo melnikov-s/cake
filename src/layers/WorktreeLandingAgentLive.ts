@@ -76,7 +76,7 @@ export const WorktreeLandingAgentLive = Layer.effect(
             location,
             sessionId,
           );
-          return yield* handle.toolCompactIfIdle();
+          return yield* handle.toolPruneIfIdle();
         }).pipe(Effect.provide(dependencies), Effect.scoped, asError("toolPrune")),
       ),
       promptAndWait: Effect.fn("WorktreeLandingAgent.promptAndWait")(function* (input) {
