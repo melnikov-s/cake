@@ -1,4 +1,5 @@
 import { createSessionOutcomesScenario } from "./session-outcomes";
+import { createWorkspacePanelGeometryScenario } from "./workspace-panel-geometry";
 import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
@@ -8134,6 +8135,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionSearchScenario,
   cakeChatScenario,
   titleBarAlignmentScenario,
+  createWorkspacePanelGeometryScenario(titleBarAlignmentScenario),
   titleBarSideChatsScenario,
   cakeChatConversationScenario,
   cakeChatOverlayScenario,
