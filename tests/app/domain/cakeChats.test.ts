@@ -1,3 +1,13 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
+import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
+import { makeArtifactProjectionLive } from "../../../src/services/artifacts/ArtifactProjectionLive";
+import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
+import * as artifactWorkflows from "../../../src/domain/artifacts/artifactWorkflows";
+import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { cakeChatControlTools } from "../../../src/contracts/application/window-control-definitions";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
@@ -847,6 +857,7 @@ describe("permanent Cake Chat", () => {
         expect(prompt()).not.toContain("/other chat only.");
         expect(prompt()).not.toContain("Coding only.");
         expect(commands).toContain("html.present");
+        expect(commands).toContain("widgets.present");
         expect(commands).toEqual(
           expect.arrayContaining([
             "plugins.present",
@@ -995,6 +1006,7 @@ describe("permanent Cake Chat", () => {
         expect(globalPrompt()).toContain(PROJECT_TODO_CLOSING_RULE);
         expect(globalPrompt()).not.toContain("Project commitment");
         expect(global.runtime.allowedCakeOperations).toContain("html.present");
+        expect(global.runtime.allowedCakeOperations).toContain("widgets.present");
         expect(global.runtime.persistArtifact).toBeDefined();
         expect(global.runtime.allowedCakeOperations).toContain("todos.update-many");
         expect(global.runtime.onCakeChatInputConsumed).toBeDefined();
@@ -1045,6 +1057,208 @@ describe("permanent Cake Chat", () => {
     },
   );
 
+  it.effect.each(["project", "global"] as const)(
+    "publishes widgets directly with %s permanent-chat authority and staged state",
+    (kind) =>
+      Effect.gen(function* () {
+        const root = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(join(tmpdir(), "cake-chat-widget-"))),
+          (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+        );
+        const projectPath = join(root, "project");
+        const sessionId =
+          kind === "project"
+            ? chatLocations.projectChatSessionId(projectPath)
+            : CAKE_CHAT_SESSION_ID;
+        const workingDirectory = kind === "project" ? projectPath : root;
+        const f = fixture();
+        f.setState({
+          ...defaultApplicationState(),
+          projects: [
+            {
+              path: projectPath,
+              name: "Project",
+              addedAt: "2026-01-01T00:00:00.000Z",
+              lastOpenedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        });
+        const generated = vi.fn(async () => ({
+          language: "html" as const,
+          source: "<button>Counter</button>",
+          generationSessionId: "private-generator",
+          browser: { digest: "a".repeat(64) },
+          preview: { mimeType: "image/png" as const, data: "cG5n" },
+          state: { count: 2 },
+        }));
+        const prepare = vi.fn((cwd: string, owner: string) => {
+          expect([cwd, owner]).toEqual([workingDirectory, sessionId]);
+          return Effect.succeed({
+            integrations: {
+              generateInlineWidget: generated,
+              requestUi: async () => undefined,
+              requestApplicationControl: async () => ({}),
+            },
+            initialize: Effect.void,
+            release: Effect.sync(() => {
+              released.push(owner);
+            }),
+          });
+        });
+        const released: string[] = [];
+        const broadcast = vi.fn();
+        const artifacts = Layer.merge(
+          makeArtifactStorageLive(join(root, "artifacts")),
+          makeArtifactProjectionLive(join(root, "projections")),
+        ).pipe(Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)));
+        const layer = Layer.mergeAll(
+          f.layer,
+          artifacts,
+          Layer.mock(ProjectSessionRuntimeHost, { prepare }),
+          Layer.mock(ClientEvents, { broadcast, sendTo: () => false }),
+          Layer.mock(SessionFamilyStorage, {
+            withMemberLock: (_id, effect) => effect,
+            familyForMember: () => Effect.succeed(undefined),
+          }),
+        );
+        yield* Effect.gen(function* () {
+          const acquired = yield* acquireOptions({
+            configuration: {
+              ...configuration,
+              location: { workingDirectory, sessionDirectory: join(root, "chat") },
+            },
+            target: { sessionId, tools: cakeChatControlTools() },
+            newSession: false,
+          });
+          const configured = configureCakeSessionRuntime({
+            ...acquired.runtime,
+            onEvent: () => undefined,
+          });
+          const registry = new CakeOperationRegistry(
+            configured.coordinator!.operations({
+              sessionId,
+              resolveModel: () => ({
+                provider: "p",
+                modelId: "vision",
+                thinkingLevel: "off",
+                fastMode: false,
+              }),
+              setModel: async () => undefined,
+              info: async () => ({}),
+              usage: async () => ({}),
+              contextStatus: async () => ({}),
+              compact: async () => ({}),
+            }),
+          );
+          const context = {
+            signal: new AbortController().signal,
+            toolCallId: "widget-call",
+            runtime: { sessionId, model: { provider: "p", id: "vision" } },
+          };
+          const widget = {
+            id: "counter",
+            title: "Counter",
+            brief: "An interactive counter.",
+            language: "html",
+            initialState: { count: 1 },
+            fallback: { markdown: "Counter" },
+          };
+          expect(
+            (yield* Effect.promise(() => registry.invoke({ command: "widgets" }, context))).text,
+          ).toContain("widgets.present");
+          expect(registry.operationHelp("widgets.present")).toContain("private conversation");
+          expect(registry.operationHelp("widgets.instantiate")).toBeUndefined();
+          expect(registry.operationHelp("artifacts.create")).toBeUndefined();
+          yield* Effect.promise(() =>
+            expect(
+              registry.invoke(
+                {
+                  command: "widgets.present",
+                  input: { widget: { ...widget, sessionId: "other" } },
+                },
+                context,
+              ),
+            ).rejects.toThrow(),
+          );
+          expect(generated).not.toHaveBeenCalled();
+          const result = yield* Effect.promise(() =>
+            registry.invoke(
+              {
+                command: "widgets.present",
+                input: { widget },
+              },
+              context,
+            ),
+          );
+          expect(generated).toHaveBeenCalledWith(
+            expect.objectContaining({
+              sessionId,
+              parentConversation: undefined,
+              language: "html",
+              model: { provider: "p", id: "vision" },
+              signal: context.signal,
+              initialState: { count: 1 },
+            }),
+          );
+          expect(released).toEqual([sessionId]);
+          expect(result.details).toMatchObject({
+            command: "widgets.present",
+            result: {
+              artifactId: "counter",
+              artifactRevision: 1,
+              exactRef: "cake://artifact/counter@r1",
+            },
+          });
+          expect(result.content).toContainEqual({
+            type: "image",
+            mimeType: "image/png",
+            data: "cG5n",
+          });
+          expect(result.text).not.toMatch(/private-generator|<button>/);
+          const owned = yield* artifactWorkflows.listEffectiveSessionArtifacts(sessionId);
+          expect(owned).toHaveLength(1);
+          const revision = owned[0]!.revision;
+          expect(revision.snapshot).toMatchObject({ sessionId, kind: "widget" });
+          expect(revision.metadata.workingDirectory).toBe(workingDirectory);
+          expect(yield* (yield* ArtifactStorage).readState(revision.lineageId)).toMatchObject({
+            version: 1,
+            value: { count: 2 },
+          });
+          expect(yield* artifactWorkflows.listEffectiveSessionArtifacts("unrelated-chat")).toEqual(
+            [],
+          );
+          expect(broadcast).toHaveBeenCalledWith({
+            type: "artifact-state-invalidated",
+            lineageId: "counter",
+          });
+          yield* Effect.promise(() =>
+            expect(
+              acquired.runtime.persistArtifact!({
+                ...revision.snapshot,
+                id: "spoofed",
+                sessionId: "other-chat",
+              }),
+            ).rejects.toThrow("snapshot must identify"),
+          );
+          // Same reviewed builder failure propagates, releases its borrowed host and publishes nothing.
+          generated.mockRejectedValueOnce(new Error("Vision review unavailable"));
+          yield* Effect.promise(() =>
+            expect(
+              registry.invoke(
+                {
+                  command: "widgets.present",
+                  input: { widget: { ...widget, id: "failed" } },
+                },
+                context,
+              ),
+            ).rejects.toThrow("Vision review unavailable"),
+          );
+          expect(released).toEqual([sessionId, sessionId]);
+          expect(yield* artifactWorkflows.listEffectiveSessionArtifacts(sessionId)).toHaveLength(1);
+        }).pipe(Effect.provide(layer));
+      }),
+  );
+
   it.effect("runs a permanent Project Chat in its registered project", () => {
     const f = fixture();
     const project = {
@@ -1068,6 +1282,7 @@ describe("permanent Cake Chat", () => {
       expect(options.runtime.cwd).toBe(project.path);
       expect(options.runtime.allowedCakeOperations).toEqual(
         expect.arrayContaining([
+          "widgets.present",
           "artifacts.link",
           "artifacts.present",
           "artifacts.state.read",

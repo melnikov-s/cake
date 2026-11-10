@@ -135,6 +135,7 @@ const CAKE_CHAT_OPERATIONS = [
   ...automationToolDescriptions.map((description) => description.command),
   ...Object.keys(themeOperationDefinitions),
   "html.present",
+  "widgets.present",
   "plugins.present",
   "plugins.patch",
   "plugins.update",
@@ -599,7 +600,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               Effect.tryPromise({
                 try: () => {
                   const generate = prepared.integrations.generateInlineWidget;
-                  if (!generate) throw new Error("Session Plugin generation is unavailable");
+                  if (!generate) throw new Error("Widget generation is unavailable");
                   return generate(input);
                 },
                 catch: (cause) => cause,
@@ -673,7 +674,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       allowedCakeOperations: project
         ? CAKE_CHAT_OPERATIONS.filter((command) => !command.startsWith("settings.cake-chat."))
         : CAKE_CHAT_OPERATIONS,
-      persistArtifact: (artifact) =>
+      persistArtifact: (artifact, stagedState) =>
         runArtifact(
           Effect.gen(function* () {
             const revision = yield* artifactWorkflows.create({
@@ -681,9 +682,16 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               lineageId: yield* Schema.decodeUnknownEffect(ArtifactLineageId)(artifact.id),
               snapshot: artifact,
               workingDirectory: configuration.location.workingDirectory,
+              stagedState,
             });
             const record = artifactRevisionToRecord(revision);
-            (yield* ClientEvents).broadcast({ type: "artifact-updated", record });
+            const events = yield* ClientEvents;
+            events.broadcast({ type: "artifact-updated", record });
+            if (stagedState)
+              events.broadcast({
+                type: "artifact-state-invalidated",
+                lineageId: revision.lineageId,
+              });
             return record;
           }),
         ),

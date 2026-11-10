@@ -9,7 +9,7 @@ import { Effect, Layer, ManagedRuntime, Schema } from "effect";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   decodeArtifactRevisionNumber,
   ArtifactLineageId,
@@ -70,6 +70,14 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       },
       fallback: { markdown: "Interactive prototype" },
     });
+    const generateInlineWidget = vi.fn(async () => ({
+      language: "html" as const,
+      source: "<button>Interactive widget</button>",
+      generationSessionId: "private-widget-generator",
+      browser: { digest: "c".repeat(64) },
+      preview: { mimeType: "image/png" as const, data: "cG5n" },
+      state: { count: 2 },
+    }));
     const configured = configureCakeSessionRuntime({
       cwd: root,
       agentDir: root,
@@ -79,7 +87,8 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       },
       onEvent: () => undefined,
       globalControl: { tools: [], invoke: async () => ({}) },
-      persistArtifact: (artifact) =>
+      generateInlineWidget,
+      persistArtifact: (artifact, stagedState) =>
         runtime.runPromise(
           workflows
             .create({
@@ -87,6 +96,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
               lineageId: Schema.decodeUnknownSync(ArtifactLineageId)(artifact.id),
               snapshot: artifact,
               workingDirectory: root,
+              stagedState,
             })
             .pipe(Effect.map(artifactRevisionToRecord)),
         ),
@@ -123,6 +133,16 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       parameters: Type.Object({
         command: Type.String(),
         input: Type.Union([
+          Type.Object({
+            widget: Type.Object({
+              id: Type.String(),
+              title: Type.String(),
+              brief: Type.String(),
+              language: Type.Literal("html"),
+              initialState: Type.Object({ count: Type.Number() }),
+              fallback: Type.Object({ markdown: Type.String() }),
+            }),
+          }),
           Type.Object({ reference: Type.String() }),
           Type.Object({
             id: Type.String(),
@@ -151,6 +171,27 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
           {
             type: "toolCall",
             name: "cake",
+            id: "widget-1",
+            arguments: {
+              command: "widgets.present",
+              input: {
+                widget: {
+                  id: "interactive",
+                  title: "Interactive widget",
+                  language: "html",
+                  brief: "A counter button for maintainers.",
+                  initialState: { count: 1 },
+                  fallback: { markdown: "Counter" },
+                },
+              },
+            },
+          },
+        ]);
+      if (index === 2)
+        return durableAnswer("", [
+          {
+            type: "toolCall",
+            name: "cake",
             id: "html-1",
             arguments: {
               command: "html.present",
@@ -163,7 +204,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
             },
           },
         ]);
-      const reference = references[index - 2];
+      const reference = references[index - 3];
       return reference
         ? durableAnswer("", [
             {
@@ -217,6 +258,14 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
         }),
       );
       const before = await readFile(join(root, "artifacts", "catalog.json"), "utf8");
+      expect((await operations.invoke({ command: "widgets" }, context)).text).toContain(
+        "widgets.present",
+      );
+      const widgetHelp = (await operations.invoke({ command: "widgets.present.help" }, context))
+        .text;
+      expect(widgetHelp).toContain("private conversation from the supplied brief/data");
+      expect(widgetHelp).toContain("actual Cake Electron screenshot");
+      expect(operations.operationHelp("artifacts.create")).toBeUndefined();
       expect(
         (await operations.invoke({ command: "artifacts.present.help" }, context)).text,
       ).toContain("Show existing artifact");
@@ -266,6 +315,8 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
             ],
         ),
       ).toEqual([
+        // Widget publications project their immutable identity/revision; exactRef stays in the result.
+        ["interactive", 1, undefined],
         ["headers", 1, "cake://artifact/headers@r1"],
         [id, 1, "cake://artifact/prototype@r1"],
         [id, 2, "cake://artifact/prototype@r2"],
@@ -286,9 +337,44 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
           kind: "tool",
           artifactId: part.kind === "tool" ? part.artifactId : undefined,
           artifactRevision: part.kind === "tool" ? part.artifactRevision : undefined,
-          artifactReference: part.kind === "tool" ? part.artifactReference : undefined,
+          ...(part.kind === "tool" && part.artifactReference
+            ? { artifactReference: part.artifactReference }
+            : {}),
         })),
       );
+      expect(surfaces[0]).toMatchObject({
+        kind: "tool",
+        command: "widgets.present",
+        state: "success",
+        output: expect.stringContaining("cake://artifact/interactive@r1"),
+        outputContent: expect.arrayContaining([
+          { type: "image", mimeType: "image/png", data: "cG5n" },
+        ]),
+      });
+      expect(generateInlineWidget).toHaveBeenCalledOnce();
+      expect(generateInlineWidget).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId,
+          parentConversation: undefined,
+          language: "html",
+          initialState: { count: 1 },
+        }),
+      );
+      const widgetId = Schema.decodeUnknownSync(ArtifactLineageId)("interactive");
+      expect(await runtime.runPromise(storage.readState(widgetId))).toMatchObject({
+        version: 1,
+        value: { count: 2 },
+      });
+      expect(await runtime.runPromise(storage.read(widgetId))).toMatchObject({
+        snapshot: {
+          sessionId,
+          kind: "widget",
+          payload: {
+            source: "<button>Interactive widget</button>",
+            preview: { mimeType: "image/png", data: "cG5n" },
+          },
+        },
+      });
       const after = await readFile(join(root, "artifacts", "catalog.json"), "utf8");
       await operations.invoke(
         { command: "artifacts.present", input: { reference: "prototype" } },
@@ -314,6 +400,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
           (link) => link.target.type === "session" && link.target.sessionId === sessionId,
         ),
       ).toMatchObject([
+        { lineageId: "interactive", selection: { mode: "follow-latest" } },
         { lineageId: "headers", selection: { mode: "follow-latest" } },
         { lineageId: "prototype", selection: { mode: "pinned", revision: 1 } },
       ]);
@@ -331,7 +418,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
         /private-generation|private generation|export default/,
       );
       const metadata = Schema.decodeUnknownSync(ArtifactProjectionMetadata)(
-        JSON.parse(surfaces[0]!.kind === "tool" ? surfaces[0]!.output! : ""),
+        JSON.parse(surfaces[1]!.kind === "tool" ? surfaces[1]!.output! : ""),
       );
       expect(metadata.digest).toHaveLength(64);
       await engine.close();

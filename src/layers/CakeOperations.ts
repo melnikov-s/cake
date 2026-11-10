@@ -243,6 +243,7 @@ export function coordinatorCakeOperations(
           access?.fullControl === true ||
           [
             "html.present",
+            "widgets.present",
             "artifacts.list",
             "artifacts.search",
             "artifacts.resolve-reference",

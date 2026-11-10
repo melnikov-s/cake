@@ -8,6 +8,8 @@ For generated widget source, repairs or capability questions. [Interactions](int
 React is the default for installed libraries, component-heavy UI and prototype manifests. Both use the widget sandbox, browser/visual acceptance, immutable revisions, fallback and retained accepted PNG. Replacements preserve language.
 Give the specialist verified facts, audience, goal, bounded data, interactions and fallback; not a diary or invented facts. Only already-installed libraries are available; dependency authorization happens outside the private generation branch.
 
+Permanent Project Chat and Global Chat publish directly with `widgets.present`; use `widgets` or `widgets.present.help` for discovery. Their specialist receives the supplied brief/data, not inherited chat history. The accepted widget appears on the successful tool result; `plugins.present` mounts session controls and is not a substitute. `artifacts.commands` discovers the artifact bridge, not direct widget publishing.
+
 ## Saved JSON state
 
 HTML uses `globalThis.cakeArtifact.read()`, `getSnapshot()`, `subscribe(listener)`, `replace(value,expectedVersion)`. Await hydration/read before mounting an editor or saving. Version zero uses seed; saved null is real data. Save against the observed version, reread conflicts, never blindly retry.

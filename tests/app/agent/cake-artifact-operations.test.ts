@@ -98,26 +98,25 @@ describe("Cake widget presentation operation", () => {
     );
   });
 
-  it.each([
-    ["malformed preview", "not base64"],
-    ["oversized immutable snapshot", "a".repeat(1_048_576)],
-  ])("rejects %s before publication instead of dropping visual evidence", async (_name, data) => {
+  it.each(
+    [true, false].flatMap((permanent) => [
+      { name: "malformed preview", data: "not base64", permanent },
+      { name: "oversized immutable snapshot", data: "a".repeat(1_048_576), permanent },
+    ]),
+  )("rejects $name before publication (permanent=$permanent)", async ({ data, permanent }) => {
     const persistArtifact = vi.fn();
     const appendEntry = vi.fn();
     const registry = new CakeOperationRegistry(
-      createCakeArtifactOperations(
-        { appendEntry },
-        {
-          persistArtifact,
-          generateInlineWidget: async () => ({
-            language: "react",
-            source: "export default () => null",
-            generationSessionId: "generation-1",
-            browser: { digest: "a".repeat(64) },
-            preview: { mimeType: "image/png", data },
-          }),
-        },
-      ),
+      createCakeArtifactOperations(permanent ? undefined : { appendEntry }, {
+        persistArtifact,
+        generateInlineWidget: async () => ({
+          language: "react",
+          source: "export default () => null",
+          generationSessionId: "generation-1",
+          browser: { digest: "a".repeat(64) },
+          preview: { mimeType: "image/png", data },
+        }),
+      }),
     );
     await expect(
       registry.invoke(widgetRequest, {
@@ -130,14 +129,14 @@ describe("Cake widget presentation operation", () => {
     expect(appendEntry).not.toHaveBeenCalled();
   });
 
-  it("does not persist or append a pointer when cancellation wins after generation", async () => {
-    const controller = new AbortController();
-    const persistArtifact = vi.fn();
-    const appendEntry = vi.fn();
-    const registry = new CakeOperationRegistry(
-      createCakeArtifactOperations(
-        { appendEntry },
-        {
+  it.each([true, false])(
+    "does not publish when cancellation wins (permanent=%s)",
+    async (permanent) => {
+      const controller = new AbortController();
+      const persistArtifact = vi.fn();
+      const appendEntry = vi.fn();
+      const registry = new CakeOperationRegistry(
+        createCakeArtifactOperations(permanent ? undefined : { appendEntry }, {
           persistArtifact,
           generateInlineWidget: vi.fn(async () => {
             controller.abort();
@@ -149,18 +148,18 @@ describe("Cake widget presentation operation", () => {
               preview: { mimeType: "image/png" as const, data: "cG5n" },
             };
           }),
-        },
-      ),
-    );
+        }),
+      );
 
-    await expect(
-      registry.invoke(widgetRequest, {
-        signal: controller.signal,
-        toolCallId: "tool-1",
-        runtime,
-      }),
-    ).rejects.toThrow("cancelled");
-    expect(persistArtifact).not.toHaveBeenCalled();
-    expect(appendEntry).not.toHaveBeenCalled();
-  });
+      await expect(
+        registry.invoke(widgetRequest, {
+          signal: controller.signal,
+          toolCallId: "tool-1",
+          runtime,
+        }),
+      ).rejects.toThrow("cancelled");
+      expect(persistArtifact).not.toHaveBeenCalled();
+      expect(appendEntry).not.toHaveBeenCalled();
+    },
+  );
 });

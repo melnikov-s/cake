@@ -954,7 +954,9 @@ export function createCakeArtifactOperations(
       limitations: [
         "The immutable snapshot, including accepted PNG bytes, must fit the existing 1 MiB serialized artifact limit. Oversized publication fails rather than silently omitting the preview.",
         "Generated widgets have no filesystem, Node, Electron, parent-DOM or unrestricted Cake API access. @cake/artifact-sdk (React) and globalThis.cakeArtifact (HTML) grant only artifact-scoped JSON state; cakeSpeech/useSpeech add read-aloud only (no microphone, voice choice or audio files). Speech fails with a readable error until speech output is configured in Settings. CSP blocks fetch/XHR/WebSocket. HTML has no external scripts/dependencies; React libraries must already be installed; ask for dependency authorization outside the private generation branch.",
-        "Generation inherits the caller's ancestor context at creation time, excluding sibling branches and unfinished tool calls. Revisions follow the artifact's generation branch, not later parent messages.",
+        pi
+          ? "Generation inherits the caller's ancestor context at creation time, excluding sibling branches and unfinished tool calls. Revisions follow the artifact's generation branch, not later parent messages."
+          : "Permanent chats generate in a private conversation from the supplied brief/data, without inheriting chat history. Include all verified context needed by the specialist.",
         "Every successfully rendered candidate is reviewed from an actual Cake Electron screenshot. Private review history stays private; only the accepted capture is retained in the immutable artifact snapshot and supplied to the caller. The capture covers one bounded initial state, not every interaction, theme, or viewport.",
       ],
       async execute(input, context) {
@@ -967,7 +969,8 @@ export function createCakeArtifactOperations(
         const sessionId = runtime.sessionId;
         const generated = await options.generateInlineWidget!({
           sessionId,
-          parentConversation: widgetConversationFromOperation(runtime),
+          // Durable owns permanent-chat history; never open it as a regular Pi transcript.
+          parentConversation: pi ? widgetConversationFromOperation(runtime) : undefined,
           brief: widget.brief,
           language: widget.language ?? "react",
           data: widget.data,
@@ -1010,7 +1013,8 @@ export function createCakeArtifactOperations(
               }
             : undefined,
         );
-        appendPointer(record, pointerOrigin(context));
+        // Durable presents the successful tool result; regular Pi needs its custom pointer.
+        if (pi) appendPointer(record, pointerOrigin(context));
         if (record.artifact.kind !== "widget" || !record.artifact.payload.preview)
           throw new Error("Published widget is missing its accepted preview");
         return cakeOperationImageResult(

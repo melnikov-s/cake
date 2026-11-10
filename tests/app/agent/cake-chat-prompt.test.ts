@@ -11,6 +11,7 @@ describe("compact Cake Chat guidance", () => {
   it("keeps authority, mutation and delivery boundaries inline", () => {
     for (const rule of [
       "Pi owns execution/history",
+      "Widgets: widgets.present, not plugins.",
       "Inspect projects read-only",
       "no checkout edits, installs, generated files or Git mutations",
       "Never sessions.fork for coding delegation",
