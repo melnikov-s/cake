@@ -232,6 +232,29 @@ it.each(["project", "cake-chat"] as const)(
   },
 );
 
+it("caps a long subagent prompt to a medium preview while keeping the full prompt reachable", async () => {
+  using view = renderActivity("project");
+  const task = `Read-only investigation.\n\n${"Trace every caller of the Activity row and report findings. ".repeat(20)}FINAL-SENTINEL`;
+  view.publishWorkers([
+    workerActivity({ parentSessionId: parentId, status: "running", streaming: true, task }),
+  ]);
+  await view.user.click(screen.getByRole("button", { name: "Activity · 1 running" }));
+  const menu = screen.getByRole("region", { name: "Conversation activity" });
+  const row = within(menu).getByRole("button", { name: /^Inspect subagent: Read-only/ });
+  const label = row.getAttribute("aria-label")!;
+  expect(label).not.toContain("FINAL-SENTINEL");
+  expect(label.endsWith("…")).toBe(true);
+  const preview = within(row).getByText(/^Read-only investigation\. Trace/);
+  expect(preview.className).toContain("line-clamp-3");
+  expect(preview.textContent).not.toContain("\n");
+  expect(preview.textContent!.length).toBeLessThanOrEqual(240);
+  expect(preview.textContent!.endsWith("…")).toBe(true);
+  // The full prompt stays in the hover title; the row still opens the subagent itself.
+  expect(row.getAttribute("title")).toContain("FINAL-SENTINEL");
+  await view.user.click(row);
+  expect(screen.getByRole("complementary", { name: "Subagent" })).toBeTruthy();
+});
+
 it.each(["project", "cake-chat"] as const)(
   "%s inset activity toggles from its header and keyboard without dismissing on composer input",
   async (kind) => {

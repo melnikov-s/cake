@@ -6367,6 +6367,83 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
   region: (page) => page.locator("body"),
 };
 
+const activityLongPromptTask = [
+  "Read-only investigation: find why the Workspace Activity section renders a subagent's entire initial prompt.",
+  "Trace which component renders each Activity entry and which field it shows (task, initial prompt, latest message).",
+  "Check whether the same preview is reused in the header pill, composer inset and workspace controls.",
+  "Do not edit files. Report the exact files, line numbers and the smallest fix, with any related tests that cover the row.",
+].join("\n");
+
+/** A real Project Session starts a Temporary subagent whose task is a long multi-line prompt. */
+const activityLongPromptScenario: VisualCaptureScenario = {
+  name: "activity-long-prompt",
+  description:
+    "Open composer Activity with a running subagent whose task is a long multi-line prompt",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    let started = false;
+    return openRequestInspectorFixture(paths, {
+      script(body) {
+        const request = JSON.parse(body) as {
+          tools?: { function: { name: string } }[];
+          messages: { role: string }[];
+        };
+        const tools = new Set(request.tools?.map((tool) => tool.function.name));
+        // The subagent keeps streaming so Activity shows it as running.
+        if (tools.has("message_parent")) return "hold";
+        if (!tools.has("cake")) return undefined;
+        if (started || request.messages.some((message) => message.role === "tool"))
+          return [{ role: "assistant", content: "Subagent started." }];
+        started = true;
+        return [
+          {
+            role: "assistant",
+            tool_calls: [
+              {
+                index: 0,
+                id: "start-long-prompt-subagent",
+                type: "function",
+                function: {
+                  name: "cake",
+                  arguments: JSON.stringify({
+                    command: "subagents.start",
+                    input: { task: activityLongPromptTask },
+                  }),
+                },
+              },
+            ],
+          },
+        ];
+      },
+    });
+  },
+  async prepare(page) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Model configuration", exact: true }).click();
+    const changeModel = page.getByRole("button", { name: "Change model", exact: true });
+    const modelSearch = page.getByLabel("Search presets and models");
+    await expect(changeModel.or(modelSearch)).toBeVisible();
+    if (await changeModel.isVisible()) await changeModel.click();
+    await modelSearch.fill("Inspection fixture");
+    await page
+      .getByRole("button", { name: /Inspection fixture/ })
+      .first()
+      .click();
+    await page
+      .getByRole("combobox", { name: "Message", exact: true })
+      .fill("Investigate the Activity rows.");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page.getByRole("button", { name: "Activity · 1 running" }).click({ timeout: 20_000 });
+    await expect(
+      page.getByRole("region", { name: "Conversation activity", exact: true }),
+    ).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="composer-dock"]'),
+};
+
 const activityWorktreeScenario: VisualCaptureScenario = {
   name: "activity-worktree-cap",
   description: "Attached activity band above real worktree tools and the shared composer",
@@ -8914,6 +8991,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
     retainBrowser: retainArtifactBrowser,
   }),
   cakeChatSessionUpdatesScenario,
+  activityLongPromptScenario,
   activityWorktreeScenario,
   worktreePromptConfirmationScenario,
   pausedWorktreeScenario,

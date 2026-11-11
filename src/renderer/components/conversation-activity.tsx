@@ -7,6 +7,7 @@ import { ActivityDisclosure } from "./ui/activity-disclosure";
 import { AutoMergeToggle } from "./auto-merge-toggle";
 import { ChatIcon, ForkIcon } from "./ui/icons";
 import { ComposerCap } from "./ui/composer-cap";
+import { textPreview } from "../lib/text-preview";
 
 /** Activity belongs to the pane's conversation, not the window's current selection. */
 export const ConversationActivity = observer(function ConversationActivity({
@@ -51,7 +52,7 @@ export const ConversationActivity = observer(function ConversationActivity({
           icon: <ForkIcon />,
           iconLabel: "Project Session",
           status: "running" as const,
-          accessibleLabel: `Open session: ${session.title}`,
+          accessibleLabel: `Open session: ${textPreview(session.title)}`,
           onSelect: () => void conversationActivity.openSession(session.sessionId),
         })),
         ...runs.map((run) => ({
@@ -61,7 +62,7 @@ export const ConversationActivity = observer(function ConversationActivity({
           icon: <ChatIcon size={14} />,
           iconLabel: "Temporary subagent",
           status: "running" as const,
-          accessibleLabel: `Inspect subagent: ${run.task}`,
+          accessibleLabel: `Inspect subagent: ${textPreview(run.task)}`,
           onSelect: () => {
             const chatStore = subagents.chatStore(run.key);
             if (!chatStore || !run.handleId) return;

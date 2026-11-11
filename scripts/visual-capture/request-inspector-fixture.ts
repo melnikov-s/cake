@@ -11,10 +11,13 @@ export async function openRequestInspectorFixture(
     holdResponse = false,
     contextLimitTokens = 300_000,
     beforeResponse,
+    script,
   }: {
     holdResponse?: boolean;
     contextLimitTokens?: number;
     beforeResponse?: (body: string) => Promise<void>;
+    /** Scenario-owned reply for a request: a complete delta list, "hold" to keep it streaming, or undefined for the default. */
+    script?: (body: string) => readonly object[] | "hold" | undefined;
   } = {},
 ) {
   const server = createServer((request, response) => {
@@ -35,6 +38,20 @@ export async function openRequestInspectorFixture(
       const chunk = (delta: object, finish_reason: string | null) =>
         `data: ${JSON.stringify({ id: "inspection-fixture", object: "chat.completion.chunk", model: "inspection-fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
       response.writeHead(200, { "content-type": "text/event-stream" });
+      const scripted = script?.(body);
+      if (scripted === "hold") {
+        response.write(chunk({ role: "assistant", content: "Working…" }, null));
+        return;
+      }
+      if (scripted) {
+        const finish = scripted.some((delta) => "tool_calls" in delta) ? "tool_calls" : "stop";
+        response.end(
+          scripted.map((delta) => chunk(delta, null)).join("") +
+            chunk({}, finish) +
+            "data: [DONE]\n\n",
+        );
+        return;
+      }
       if (holdResponse) {
         response.flushHeaders();
         return;

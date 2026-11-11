@@ -4,6 +4,7 @@ import { ChevronIcon, ChatIcon, ForkIcon } from "./icons";
 import { StatusDot, type StatusDotProps } from "./status-dot";
 import { InsetDisclosures, type InsetDisclosureSection } from "./inset-disclosures";
 import { cn } from "@/lib/utils";
+import { textPreview } from "@/lib/text-preview";
 
 interface ActivityDisclosureItem {
   id: string;
@@ -63,10 +64,12 @@ export function ActivityDisclosure({
         >
           {item.icon}
         </span>
-        <span className="min-w-0 flex-1 whitespace-normal break-words">
-          <span className="block text-xs font-medium text-foreground">{item.title}</span>
-          <span className="block text-xs font-normal text-muted-foreground">
-            {item.description}
+        <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">
+          <span className="line-clamp-3 text-xs font-medium text-foreground">
+            {textPreview(item.title)}
+          </span>
+          <span className="line-clamp-2 text-xs font-normal text-muted-foreground">
+            {textPreview(item.description)}
           </span>
         </span>
         <span className="flex w-[7px] shrink-0 justify-center">
