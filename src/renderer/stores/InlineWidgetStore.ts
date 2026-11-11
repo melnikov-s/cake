@@ -4,11 +4,16 @@ import type {
   InlineWidgetCapability,
   InlineWidgetLanguage,
 } from "../../contracts/widgets/inline-widget-contract";
+import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import { ClientContext } from "./context/ClientContext";
 import { ArtifactNavigationContext } from "./context/ArtifactNavigationContext";
 import type { ArtifactState } from "../../contracts/artifacts/artifact-state";
 import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
+import type {
+  WidgetEventSubscription,
+  WidgetPollOptions,
+} from "../../contracts/widgets/widget-updates";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { createSpeechPlayback } from "../speech/playback";
 import { createWidgetSpeech, type WidgetSpeech } from "../speech/widget-speech";
@@ -24,7 +29,17 @@ export interface InlineWidgetState {
 }
 
 /** Owns compilation state for sandboxed inline transcript widgets. */
-export class InlineWidgetStore extends Store {
+export class InlineWidgetStore extends Store<{
+  repair?: (artifact: CakeArtifactV1, diagnostic: string) => Promise<void>;
+}> {
+  get canRepair() {
+    return Boolean(this.props.repair);
+  }
+  async repair(artifact: CakeArtifactV1, diagnostic: string) {
+    if (!this.props.repair) throw new Error("Widget repair is unavailable in this surface");
+    await this.props.repair(artifact, diagnostic);
+  }
+
   get navigationContext() {
     return ArtifactNavigationContext.consume(this)?.() ?? null;
   }
@@ -60,7 +75,7 @@ export class InlineWidgetStore extends Store {
     return ClientContext.consume(this)!.inlineWidgets;
   }
 
-  /** Read-aloud for artifact widgets and Session Plugins: one speaking frame at a time. */
+  /** Read-aloud for inline and attached widgets: one speaking frame at a time. */
   readonly speech: WidgetSpeech = createWidgetSpeech({
     synthesize: (request, consume, options) =>
       ClientContext.consume(this)!.speechOutput.synthesize(request, consume, options),
@@ -72,6 +87,7 @@ export class InlineWidgetStore extends Store {
       string,
       {
         sessionId?: string;
+        attachmentId?: string;
         lineageId: ArtifactLineageId;
         current?: ArtifactState;
         error?: string;
@@ -79,10 +95,20 @@ export class InlineWidgetStore extends Store {
       }
     >
   >({});
-  bindArtifactState(id: string, sessionId: string | undefined, lineageId: ArtifactLineageId) {
+  bindArtifactState(
+    id: string,
+    sessionId: string | undefined,
+    lineageId: ArtifactLineageId,
+    attachmentId?: string,
+  ) {
     const current = this.artifactStates[id];
-    if (current?.sessionId === sessionId && current?.lineageId === lineageId) return;
-    this.artifactStates[id] = observable({ sessionId, lineageId, loading: false });
+    if (
+      current?.sessionId === sessionId &&
+      current?.lineageId === lineageId &&
+      current?.attachmentId === attachmentId
+    )
+      return;
+    this.artifactStates[id] = observable({ sessionId, lineageId, attachmentId, loading: false });
     void this.readArtifactState(id).catch(() => undefined);
   }
   releaseArtifactState(id: string) {
@@ -100,6 +126,11 @@ export class InlineWidgetStore extends Store {
     return binding.sessionId ? { lineageId, sessionId: binding.sessionId } : { lineageId };
   }
 
+  private stateScope(id: string) {
+    const attachmentId = this.artifactStates[id]?.attachmentId;
+    return { ...this.artifactScope(id), ...(attachmentId === undefined ? null : { attachmentId }) };
+  }
+
   async callArtifactTool(id: string, name: string, input: JsonValue) {
     return ClientContext.consume(this)!.artifacts.callTool(
       { ...this.artifactScope(id), name, input },
@@ -114,12 +145,33 @@ export class InlineWidgetStore extends Store {
     );
   }
 
+  subscribeWidgetEvent(
+    input: WidgetEventSubscription,
+    consume: (value: JsonValue) => void,
+    failure: (error: unknown) => void,
+  ) {
+    return ClientContext.consume(this)!.widgetUpdates.events(input, consume, failure);
+  }
+
+  subscribeWidgetPoll(
+    id: string,
+    options: WidgetPollOptions,
+    consume: (value: JsonValue) => void,
+    failure: (error: unknown) => void,
+  ) {
+    return ClientContext.consume(this)!.widgetUpdates.poll(
+      { ...this.artifactScope(id), options },
+      consume,
+      failure,
+    );
+  }
+
   async readArtifactState(id: string) {
     const binding = this.artifactStates[id];
     if (!binding) throw new Error("This widget has no linked artifact state scope");
     binding.loading = true;
     try {
-      const state = await ClientContext.consume(this)!.artifacts.stateRead(this.artifactScope(id), {
+      const state = await ClientContext.consume(this)!.artifacts.stateRead(this.stateScope(id), {
         signal: this.signal,
       });
       if (!this.signal.aborted && this.artifactStates[id] === binding) {
@@ -141,7 +193,7 @@ export class InlineWidgetStore extends Store {
       throw new Error("Artifact state is not hydrated; read before saving");
     try {
       const state = await ClientContext.consume(this)!.artifacts.stateReplace(
-        { ...this.artifactScope(id), expectedVersion, value },
+        { ...this.stateScope(id), expectedVersion, value },
         { signal: this.signal },
       );
       if (

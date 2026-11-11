@@ -7,7 +7,7 @@ import { moduleImports, prototypeModuleSpecifier, readPrototypeSource } from "./
  * The widget side chat writes source as named files instead of returning one
  * reply. Cake owns the mapping between those files and the published source:
  *
- * - `widget/widget.tsx`: an ordinary React widget or Session Plugin.
+ * - `widget/widget.tsx`: an ordinary React widget.
  * - `widget/widget.html`: a self-contained HTML widget.
  * - `widget/chooser.tsx`, `widget/options/<id>.tsx`, `widget/shared/<id>.tsx`:
  *   a five-option prototype-ui widget, assembled into cake.prototype-source/v1.

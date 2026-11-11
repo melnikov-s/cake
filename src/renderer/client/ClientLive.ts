@@ -12,6 +12,7 @@ import type { BrowserFiles } from "./BrowserFiles";
 import { browserFileChunk } from "./BrowserFiles";
 import type { BrowserMenuStore } from "../stores/BrowserMenuStore";
 import { browserMenus } from "./BrowserMenus";
+import { observeStream } from "../observers/observe-stream";
 import { currentEditorTheme } from "../lib/resolved-color-theme";
 
 const isolatedEditorUrl = (lease: {
@@ -412,6 +413,22 @@ export function makeClient(
     backendConnection: commands("backendConnection"),
     desktopSharing: commands("desktopSharing"),
     application: commands("application"),
+    widgetUpdates: {
+      events: (input, consume, failure) =>
+        observeStream(
+          runtime.execute,
+          (client) => client.artifacts.observeWidgetEvents(input),
+          consume,
+          { reportFailure: failure },
+        ),
+      poll: (input, consume, failure) =>
+        observeStream(
+          runtime.execute,
+          (client) => client.artifacts.observeWidgetPoll(input),
+          consume,
+          { reportFailure: failure },
+        ),
+    },
     windowState: commands("windowState"),
     nonChatModels: commands("nonChatModels"),
     models: {

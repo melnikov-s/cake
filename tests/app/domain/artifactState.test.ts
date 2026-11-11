@@ -18,6 +18,8 @@ import { createCakeArtifactOperations } from "../../../src/domain/artifacts/cake
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import * as workflows from "../../../src/domain/artifacts/artifactWorkflows";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
@@ -50,6 +52,7 @@ const fixture = async () => {
   directories.push(root);
   const events: CakeEvent[] = [];
   const layer = Layer.mergeAll(
+    Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
     makeArtifactStorageLive(root).pipe(
       Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
     ),

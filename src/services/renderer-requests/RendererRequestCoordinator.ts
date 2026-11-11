@@ -157,7 +157,7 @@ export interface RendererRequestCoordinatorService {
     sessionId: string,
     widget: CompiledInlineWidget,
     signal: AbortSignal,
-    pluginState?: JsonValue,
+    initialState?: JsonValue,
   ) => Effect.Effect<RenderedWidgetCaptureResult, RenderedWidgetCaptureError>;
   readonly hasPendingWidgetCapture: (
     requestId: string,
@@ -444,7 +444,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         sessionId: string,
         widget: CompiledInlineWidget,
         signal: AbortSignal,
-        pluginState?: JsonValue,
+        initialState?: JsonValue,
       ) {
         const fail = (message: string) =>
           new RenderedWidgetCaptureError({ kind: "infrastructure", message });
@@ -471,7 +471,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           requestId,
           sessionId,
           widget,
-          pluginState,
+          initialState,
         }).pipe(
           Effect.tapError(() => Effect.sync(() => requests.discard(requestId))),
           Effect.mapError((cause) => fail(cause.message)),

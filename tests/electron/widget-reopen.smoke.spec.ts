@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
+import { emitRendererEvent } from "./main-harness";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -30,6 +31,14 @@ test("a failed reopened widget document is reported and retry loads the same sav
   });
   try {
     const page = await app.firstWindow();
+    await page
+      .getByRole("combobox", { name: /^Message/ })
+      .first()
+      .waitFor();
+    await emitRendererEvent(app, {
+      type: "session-open-requested",
+      sessionId: "visual-inline-artifact",
+    });
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1000),
     );
@@ -94,7 +103,7 @@ test("a failed reopened widget document is reported and retry loads the same sav
     await mkdir(output, { recursive: true });
     await expect(inline.getByRole("alert")).toBeInViewport();
     await capture("widget-reopen-failed.png");
-    const retry = inline.getByRole("button", { name: "Retry view" });
+    const retry = inline.getByRole("button", { name: "Retry" });
     await retry.focus();
     await retry.press("Enter");
     await expect(heading).toBeVisible();

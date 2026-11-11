@@ -20,8 +20,8 @@ export const RemoteRenderedWidgetCaptureLive = Layer.effect(
           ),
       ),
       capture: Effect.fn("RemoteRenderedWidgetCapture.capture")(
-        (sessionId, widget, signal, pluginState) =>
-          requests.requestWidgetCapture(sessionId, widget, signal, pluginState).pipe(
+        (sessionId, widget, signal, initialState) =>
+          requests.requestWidgetCapture(sessionId, widget, signal, initialState).pipe(
             Effect.mapError((error) =>
               error instanceof RenderedWidgetCaptureError
                 ? error

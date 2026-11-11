@@ -38,7 +38,7 @@ async function launch(seedSpeech?: string) {
     for (const contents of webContents.getAllWebContents()) contents.setAudioMuted(true);
   });
   const page = await app.firstWindow();
-  await widgetSpeechScenario.prepare?.(page, "default");
+  await widgetSpeechScenario.prepare?.(page, "default", app);
   return {
     page,
     async [Symbol.asyncDispose]() {
@@ -59,7 +59,7 @@ async function readers(page: Page) {
   return { artifact, plugin };
 }
 
-test("artifact widgets and Session Plugins reach Cake speech and show its configuration error", async () => {
+test("artifact widgets and attached widgets reach Cake speech and show its configuration error", async () => {
   await using cake = await launch();
   const { artifact, plugin } = await readers(cake.page);
   const configure = "Configure an ElevenLabs API key and select a voice in Speech output settings.";
@@ -103,6 +103,6 @@ test("reads aloud with pause, resume, stop and one speaker at a time", async () 
   await expect(status).toHaveText(/^(loading|playing) 1\/4$/, { timeout: 60_000 });
   await plugin.getByRole("button", { name: "Read step" }).click();
   await expect(status).toHaveText("idle");
-  await expect(plugin.locator("output")).toHaveText("plugin playing", { timeout: 60_000 });
-  await expect(plugin.locator("output")).toHaveText("plugin ended", { timeout: 60_000 });
+  await expect(plugin.locator("output")).toHaveText("widget playing", { timeout: 60_000 });
+  await expect(plugin.locator("output")).toHaveText("widget ended", { timeout: 60_000 });
 });

@@ -6,9 +6,10 @@ import {
   RendererApplicationState,
 } from "../../contracts/application/application-data";
 import { AgentAvailabilitySnapshot } from "../../contracts/pi/agent-availability-data";
+import { widgetAttachmentContracts } from "../../contracts/widgets/widget-attachment";
 
-export class SessionPluginMutationError extends Schema.TaggedError<SessionPluginMutationError>()(
-  "SessionPluginMutationError",
+export class WidgetAttachmentMutationError extends Schema.TaggedError<WidgetAttachmentMutationError>()(
+  "WidgetAttachmentMutationError",
   { message: Schema.String },
 ) {}
 
@@ -24,40 +25,24 @@ export const ApplicationRpc = RpcGroup.make(
     error: ApplicationSettingsMutationError,
   }),
   Rpc.make("application.getState", { success: RendererApplicationState }),
-  Rpc.make("application.observeState", {
-    success: RendererApplicationProjection,
-    stream: true,
-  }),
+  Rpc.make("application.observeState", { success: RendererApplicationProjection, stream: true }),
   Rpc.make("application.observeAgentAvailability", {
     success: AgentAvailabilitySnapshot,
     stream: true,
   }),
-  Rpc.make("application.setSessionPluginHidden", {
-    payload: { sessionId: Schema.String, pluginId: Schema.String, hidden: Schema.Boolean },
+  Rpc.make("application.attachWidget", {
+    payload: widgetAttachmentContracts[0].inputSchema,
     success: Schema.Void,
-    error: SessionPluginMutationError,
+    error: WidgetAttachmentMutationError,
   }),
-  Rpc.make("application.setSessionPluginState", {
-    payload: {
-      sessionId: Schema.String,
-      pluginId: Schema.String,
-      state: Schema.Json,
-    },
+  Rpc.make("application.setWidgetAttachmentHidden", {
+    payload: { id: Schema.String, hidden: Schema.Boolean },
     success: Schema.Void,
-    error: SessionPluginMutationError,
+    error: WidgetAttachmentMutationError,
   }),
-  Rpc.make("application.setSessionPluginSharedState", {
-    payload: {
-      sessionId: Schema.String,
-      key: Schema.String,
-      value: Schema.Json,
-    },
+  Rpc.make("application.detachWidget", {
+    payload: { id: Schema.String },
     success: Schema.Void,
-    error: SessionPluginMutationError,
-  }),
-  Rpc.make("application.deleteSessionPlugin", {
-    payload: { sessionId: Schema.String, pluginId: Schema.String },
-    success: Schema.Void,
-    error: SessionPluginMutationError,
+    error: WidgetAttachmentMutationError,
   }),
 );

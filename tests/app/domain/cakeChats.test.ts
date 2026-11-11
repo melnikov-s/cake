@@ -859,74 +859,20 @@ describe("permanent Cake Chat", () => {
         expect(commands).toContain("html.present");
         expect(commands).toContain("widgets.present");
         expect(commands).toEqual(
+          expect.arrayContaining(["widgets.attach", "widgets.detach", "widgets.attachments"]),
+        );
+        expect(commands).not.toContain("plugins.present");
+        expect(options.runtime.persistArtifact).toBeDefined();
+        expect(options.runtime.captureWidgetInstance).toBeDefined();
+        expect(options.runtime.reviseInlineWidget).toBeDefined();
+        expect(commands).toEqual(
           expect.arrayContaining([
-            "plugins.present",
-            "plugins.patch",
-            "plugins.update",
-            "plugins.delete",
+            "widgets.instantiate",
+            "artifacts.replace",
+            "artifacts.state.replace",
+            "artifacts.state.update",
           ]),
         );
-        const pluginControl = options.runtime.sessionPluginControl;
-        if (!pluginControl) throw new Error("Expected Project Chat plugin authority");
-        expect(pluginControl.sessionId).toBe(sessionId);
-        const registry = new CakeOperationRegistry(
-          configured.coordinator!.operations({
-            sessionId,
-            resolveModel: () => ({
-              provider: "p",
-              modelId: "m",
-              thinkingLevel: "off",
-              fastMode: false,
-            }),
-            setModel: async () => undefined,
-            info: async () => ({}),
-            usage: async () => ({}),
-            contextStatus: async () => ({}),
-            compact: async () => ({}),
-          }),
-        );
-        const pluginContext = {
-          signal: new AbortController().signal,
-          toolCallId: "project-plugin",
-          runtime: { sessionId },
-        };
-        yield* Effect.promise(() =>
-          registry.invoke(
-            {
-              command: "plugins.present",
-              input: {
-                plugin: {
-                  id: "guide",
-                  title: "Guide",
-                  preset: "action-bar",
-                  initialState: {
-                    label: "First",
-                    actions: [{ id: "next", label: "Next", message: "Next" }],
-                  },
-                },
-              },
-            },
-            pluginContext,
-          ),
-        );
-        expect(f.state().sessionPlugins).toEqual([
-          expect.objectContaining({ sessionId, id: "guide" }),
-        ]);
-        yield* Effect.promise(() =>
-          registry.invoke(
-            { command: "plugins.patch", input: { id: "guide", patch: { label: "Second" } } },
-            pluginContext,
-          ),
-        );
-        expect(f.state().sessionPlugins[0]?.state).toEqual({
-          label: "Second",
-          actions: [{ id: "next", label: "Next", message: "Next" }],
-        });
-        yield* Effect.promise(() =>
-          registry.invoke({ command: "plugins.delete", input: { id: "guide" } }, pluginContext),
-        );
-        expect(f.state().sessionPlugins).toEqual([]);
-        expect(options.runtime.persistArtifact).toBeDefined();
         expect(options.runtime.allowedCakeOperations).toContain("settings.project-chat.update");
         expect(options.runtime.allowedCakeOperations).not.toContain("settings.cake-chat.update");
         // Its own Project's settings, scoped by the backend handler.
@@ -1167,7 +1113,9 @@ describe("permanent Cake Chat", () => {
             (yield* Effect.promise(() => registry.invoke({ command: "widgets" }, context))).text,
           ).toContain("widgets.present");
           expect(registry.operationHelp("widgets.present")).toContain("private conversation");
-          expect(registry.operationHelp("widgets.instantiate")).toBeUndefined();
+          expect(registry.operationHelp("widgets.instantiate")).toContain(
+            "Instantiate prepared widget",
+          );
           expect(registry.operationHelp("artifacts.create")).toBeUndefined();
           yield* Effect.promise(() =>
             expect(
@@ -1240,6 +1188,15 @@ describe("permanent Cake Chat", () => {
               }),
             ).rejects.toThrow("snapshot must identify"),
           );
+          // Permanent-chat repairs publish the next revision, not another revision-one creation.
+          const repaired = yield* Effect.promise(() =>
+            acquired.runtime.persistArtifact!({ ...revision.snapshot, revision: 2 }),
+          );
+          expect(repaired.artifact).toMatchObject({ id: "counter", revision: 2, sessionId });
+          expect(yield* (yield* ArtifactStorage).readState(revision.lineageId)).toMatchObject({
+            version: 1,
+            value: { count: 2 },
+          });
           // Same reviewed builder failure propagates, releases its borrowed host and publishes nothing.
           generated.mockRejectedValueOnce(new Error("Vision review unavailable"));
           yield* Effect.promise(() =>

@@ -160,6 +160,7 @@ export const Chat = observer(function Chat({
   status,
   composerContent,
   composerHeader,
+  widgets,
   composerLeadingAccessory,
   pluginActions,
   className = "",
@@ -179,6 +180,7 @@ export const Chat = observer(function Chat({
   status?: ReactNode;
   composerContent?: ReactNode;
   composerHeader?: ReactNode;
+  widgets?: Partial<Record<"top" | "bottom" | "left" | "right", ReactNode>>;
   composerLeadingAccessory?: { content: ReactNode; visible: boolean };
   pluginActions?: ReactNode;
   className?: string;
@@ -339,7 +341,12 @@ export const Chat = observer(function Chat({
           className={embedded ? "chat-embedded-workbench-composer" : undefined}
           configuration={composerConfiguration}
           inline={inlineComposer}
-          header={composerHeader}
+          header={
+            <>
+              {widgets?.bottom}
+              {composerHeader}
+            </>
+          }
           onSubmit={(event) => {
             event.preventDefault();
             if (activatingDraft) void store.activateDraft();
@@ -469,57 +476,64 @@ export const Chat = observer(function Chat({
     </div>
   );
   return (
-    <div
-      ref={layoutRef}
-      data-slot="chat"
-      data-composer-focus-enabled={composerVisible && !activatingDraft && composerFocusEnabled}
-      onKeyDownCapture={handleMessageSelectionKey}
-      className={cn(
-        "relative grid h-full w-full max-w-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",
-        compact && "chat-layout-compact",
-        className,
-      )}
-    >
-      <ContentTransition
-        contentKey={transcriptTransition?.contentKey ?? store.id}
-        requestedKey={transcriptTransition?.requestedKey}
-        ready={transcriptTransition?.ready}
-        enabled={Boolean(transcriptTransition)}
-      >
-        <ChatTranscript
-          store={store}
-          onBottomNavigationChange={setBottomNavigation}
-          annotationSubmitFocusRef={composerFocusEnabled ? composerInputRef : undefined}
-          behavior={
-            transcriptBehavior?.canReplyToMessage && composerVisible
-              ? {
-                  ...transcriptBehavior,
-                  onReplyToMessage: (entryId) => {
-                    flushSync(() => store.replyToMessage(entryId));
-                    requestAnimationFrame(() => {
-                      const input = composerInputRef.current;
-                      if (!input) return;
-                      // Reply is an explicit writing action, like clicking the input itself.
-                      input.focus();
-                      input.setSelectionRange(input.value.length, input.value.length);
-                      input.scrollTop = input.scrollHeight;
-                    });
-                  },
-                }
-              : transcriptBehavior
-          }
-          empty={empty}
-          footer={footer}
-          error={error}
-          key={store.id}
-        />
-      </ContentTransition>
-      {!composerVisible && store.scheduledMessageInteraction.messages.length > 0 && (
-        <div className="border-t border-border bg-background px-6 py-2 max-[620px]:px-2.5">
-          <ScheduledPrompts store={store.scheduledMessageInteraction} />
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      {widgets?.top}
+      <div className="flex min-h-0 min-w-0 flex-1">
+        {widgets?.left}
+        <div
+          ref={layoutRef}
+          data-slot="chat"
+          data-composer-focus-enabled={composerVisible && !activatingDraft && composerFocusEnabled}
+          onKeyDownCapture={handleMessageSelectionKey}
+          className={cn(
+            "relative grid h-full w-full max-w-full min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",
+            compact && "chat-layout-compact",
+            className,
+          )}
+        >
+          <ContentTransition
+            contentKey={transcriptTransition?.contentKey ?? store.id}
+            requestedKey={transcriptTransition?.requestedKey}
+            ready={transcriptTransition?.ready}
+            enabled={Boolean(transcriptTransition)}
+          >
+            <ChatTranscript
+              store={store}
+              onBottomNavigationChange={setBottomNavigation}
+              annotationSubmitFocusRef={composerFocusEnabled ? composerInputRef : undefined}
+              behavior={
+                transcriptBehavior?.canReplyToMessage && composerVisible
+                  ? {
+                      ...transcriptBehavior,
+                      onReplyToMessage: (entryId) => {
+                        flushSync(() => store.replyToMessage(entryId));
+                        requestAnimationFrame(() => {
+                          const input = composerInputRef.current;
+                          if (!input) return;
+                          // Reply is an explicit writing action, like clicking the input itself.
+                          input.focus();
+                          input.setSelectionRange(input.value.length, input.value.length);
+                          input.scrollTop = input.scrollHeight;
+                        });
+                      },
+                    }
+                  : transcriptBehavior
+              }
+              empty={empty}
+              footer={footer}
+              error={error}
+              key={store.id}
+            />
+          </ContentTransition>
+          {!composerVisible && store.scheduledMessageInteraction.messages.length > 0 && (
+            <div className="border-t border-border bg-background px-6 py-2 max-[620px]:px-2.5">
+              <ScheduledPrompts store={store.scheduledMessageInteraction} />
+            </div>
+          )}
+          {composer}
         </div>
-      )}
-      {composer}
+        {widgets?.right}
+      </div>
     </div>
   );
 });

@@ -1,3 +1,8 @@
+import {
+  isCakeChatSessionId,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
+import { chatWidgetsFor } from "../lib/chat-widgets";
 import type { ComponentProps } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
@@ -30,6 +35,14 @@ export const WorkspaceFrame = observer(function WorkspaceFrame({
   const presentation = root.projectWorkbenchStore.presentationStore;
   const commonProps = {
     ...slots,
+    widgets: chatWidgetsFor(root, {
+      sessionId: session.sessionId,
+      kind: isProjectChatSessionId(session.sessionId)
+        ? "project-chat"
+        : isCakeChatSessionId(session.sessionId)
+          ? "cake-chat"
+          : "project-session",
+    }),
     projectChat: session.conversationSessionStore.chatStore,
     sideChat: session.conversationSessionStore.sideChatStore,
   };

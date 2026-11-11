@@ -1,11 +1,8 @@
-import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
-import { agentListLabel } from "../../contracts/agent/agent-list-data";
-import {
-  CAKE_CHAT_REFERENCE,
-  CAKE_CHAT_SESSION_ID,
-} from "../../contracts/cake-chats/cake-chat-identity";
-import type { AgentSessionStatus } from "../../contracts/project-sessions/agent-session-list";
-import type { SessionContextMetadata } from "../../contracts/conversations/session-context-metadata";
+import type { SessionPurpose } from "../project-sessions/session-purpose";
+import { agentListLabel } from "./agent-list-data";
+import { CAKE_CHAT_REFERENCE, CAKE_CHAT_SESSION_ID } from "../cake-chats/cake-chat-identity";
+import type { AgentSessionStatus } from "../project-sessions/agent-session-list";
+import type { SessionContextMetadata } from "../conversations/session-context-metadata";
 import { sessionContextCost } from "../../utils/session-context-cost";
 
 interface RosterRow {

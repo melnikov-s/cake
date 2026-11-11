@@ -159,7 +159,7 @@ export interface ProjectSessionIntegrationHostOptions {
     sessionId: string,
     widget: { readonly token: string; readonly url: string },
     signal: AbortSignal,
-    pluginState?: JsonValue,
+    initialState?: JsonValue,
   ) => Promise<{ readonly pngBase64: string; readonly diagnostics: ReadonlyArray<string> }>;
   readonly requireVisionModel?: (
     model: { provider: string; id: string } | undefined,
@@ -392,10 +392,8 @@ export class ProjectSessionIntegrationHost {
       data: input.data,
       initialState: input.initialState,
       fallback: input.fallback,
-      surface: input.surface ?? "widget",
     });
     const candidate: WidgetCandidate = { files: {}, state: input.initialState ?? null };
-    const allowState = input.surface !== "session-plugin";
     return this.reviewWidget(input, context, candidate, () =>
       this.runWidgetGeneration({
         cwd: this.workspacePath,
@@ -406,13 +404,12 @@ export class ProjectSessionIntegrationHost {
           ? { type: "parent", origin: input.parentConversation }
           : { type: "new" },
         candidate,
-        allowState,
+        allowState: true,
         brief: input.brief,
         language: input.language,
         data: input.data,
         initialState: input.initialState,
         fallback: input.fallback,
-        surface: input.surface,
         model: input.model,
         signal: input.signal,
         onProgress: input.onProgress,
@@ -470,7 +467,6 @@ export class ProjectSessionIntegrationHost {
   ) {
     let generationSessionId: string | undefined;
     const language = input.language ?? "react";
-    const plugin = input.surface === "session-plugin";
     const branch = () => {
       if (!generationSessionId) throw new Error("Widget generation has not started");
       return {
@@ -480,7 +476,7 @@ export class ProjectSessionIntegrationHost {
         sessionRoots: this.widgetSessionRoots,
         conversation: { type: "continue" as const, sessionId: generationSessionId },
         candidate,
-        allowState: !plugin,
+        allowState: true,
         model: input.model,
         signal: input.signal,
         onProgress: input.onProgress,
@@ -507,11 +503,7 @@ export class ProjectSessionIntegrationHost {
         fromPromise(async () => {
           progress("compiling");
           const source = assembleWidgetSource(candidate.files, language);
-          const compiled = await this.compileWidget(
-            language,
-            source,
-            plugin ? "session-plugin" : "artifact",
-          );
+          const compiled = await this.compileWidget(language, source, "artifact");
           return { source, compiled };
         }).pipe(
           Effect.map(({ source, compiled }) => {
@@ -529,7 +521,7 @@ export class ProjectSessionIntegrationHost {
           this.runWidgetRepair({
             ...branch(),
             language,
-            capability: plugin ? "session-plugin" : "artifact",
+            capability: "artifact",
             context,
             diagnostic,
           }),
@@ -541,11 +533,9 @@ export class ProjectSessionIntegrationHost {
             input.sessionId,
             widget,
             signal,
-            plugin
-              ? (input.initialState ?? null)
-              : input.initialState === undefined && candidate.state === null
-                ? undefined
-                : candidate.state,
+            input.initialState === undefined && candidate.state === null
+              ? undefined
+              : candidate.state,
           );
         }),
       review: (diagnostic, pngBase64) => {
@@ -557,9 +547,7 @@ export class ProjectSessionIntegrationHost {
         return fromPromise(() =>
           this.runWidgetVisualReview({
             ...branch(),
-            context: plugin
-              ? context
-              : `${context}\n\nCurrent staged artifact state (authoritative for this preview):\n${JSON.stringify(candidate.state)}`,
+            context: `${context}\n\nCurrent staged artifact state (authoritative for this preview):\n${JSON.stringify(candidate.state)}`,
             diagnostic,
             pngBase64,
             model,

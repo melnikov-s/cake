@@ -4,7 +4,8 @@ import { currentSessionOutcome } from "../../contracts/project-sessions/session-
 import { agentListPage } from "../../contracts/agent/agent-list-data";
 import type { AgentSessionListInput } from "../../contracts/project-sessions/agent-session-list";
 import type { CompletionInboxItem } from "../../contracts/conversations/completion-inbox";
-import { sessionLink } from "../../contracts/conversations/message-reference";
+import { workflowRosterGroups as groups } from "../../contracts/project-sessions/workflow-roster";
+import { toJsonValue } from "../../utils/to-json-value";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
@@ -16,12 +17,6 @@ import type { AgentControlCaller } from "./agentControl";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 
-const groups = [
-  "working",
-  "waiting-for-input",
-  "ready-for-review/merge",
-  "blocked/stopped",
-] as const;
 const brief = (text: string, max = 160) => {
   const line = text.replace(/\s+/g, " ").trim();
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
@@ -31,7 +26,6 @@ const meaningful = (title: string | undefined) =>
   !/^(?:task session|new (?:project )?session|untitled|session(?: [\da-f-]+)?)$/i.test(title.trim())
     ? brief(title, 96)
     : undefined;
-const cell = (value: string) => (/[\t\r\n"\\]/.test(value) ? JSON.stringify(value) : value);
 
 /** Deliberately does not use the Pi catalog/preview APIs: even title discovery there
  * can open JSONL. Only launch/decision/lifecycle metadata and existing runtime facts
@@ -301,37 +295,14 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
   matched = selected.length;
   returned = page.items.length;
   enter("format");
-  const counts = groups
-    .map((group) => `${group}=${selected.filter((row) => row.group === group).length}`)
-    .join(" ");
-  const lines = [
-    `${page.total} launches${page.nextOffset === null ? "" : `; next=${page.nextOffset}`} | ${counts}`,
-    "Recorded metadata only; working includes idle/unknown. Merge=unknown is unverified. Result=latest retained link; decision is not resolution/unreadness.",
-  ];
-  if (page.items.length)
-    lines.push(
-      "group\ttask\tsession\tlifecycle\texecution\treason\tresult\toutcome\tdecision\tworktree\tmerge\tnext\tproject\tpurpose",
-    );
-  for (const row of page.items)
-    lines.push(
-      [
-        row.group,
-        row.title,
-        sessionLink(row.sessionId),
-        row.lifecycle,
-        row.execution,
-        row.reason,
-        row.result,
-        row.outcome,
-        row.decision,
-        row.worktree,
-        row.merge,
-        row.next,
-        row.projectPath,
-        row.purpose,
-      ]
-        .map(cell)
-        .join("\t"),
-    );
-  return lines.join("\n");
+  return toJsonValue({
+    projection: "workflow",
+    total: page.total,
+    offset: page.offset,
+    nextOffset: page.nextOffset,
+    sessions: page.items,
+    counts: Object.fromEntries(
+      groups.map((group) => [group, selected.filter((row) => row.group === group).length]),
+    ),
+  });
 }, Effect.scoped);

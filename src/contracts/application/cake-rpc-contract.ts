@@ -229,7 +229,7 @@ const cakeEventSchemas = {
     requestId: uuid,
     sessionId: stringMax(256),
     widget: Schema.Struct({ token: stringMax(64), url: stringMax(512) }),
-    pluginState: Schema.optional(jsonValueSchema),
+    initialState: Schema.optional(jsonValueSchema),
   }),
   "terminal-data": Schema.Struct({
     type: Schema.Literal("terminal-data"),
@@ -694,7 +694,7 @@ export const cakeRpcPayloadSchemas = {
   "capture-native-widget": Schema.Struct({
     sessionId: stringMax(256),
     widget: Schema.Struct({ token: stringMax(64), url: stringMax(512) }),
-    pluginState: Schema.optional(jsonValueSchema),
+    initialState: Schema.optional(jsonValueSchema),
   }),
   "respond-widget-capture": Schema.Struct({
     requestId: uuid,

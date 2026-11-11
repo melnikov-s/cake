@@ -1,5 +1,4 @@
 import { widgetThemeColorTokens, widgetThemeFontTokens } from "../../utils/widget-theme";
-import scrollbarStyles from "../../utils/scrollbars.css?raw";
 import { dirname } from "node:path";
 import { TextEncoder } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -12,7 +11,7 @@ import {
 } from "./widget-package-resolver";
 
 export type InlineWidgetLanguage = "html" | "react";
-export type InlineWidgetCapability = "display" | "artifact" | "request" | "session-plugin";
+export type InlineWidgetCapability = "display" | "artifact" | "request";
 
 export interface CompiledInlineWidgetDocument {
   document: string;
@@ -21,6 +20,7 @@ export interface CompiledInlineWidgetDocument {
 }
 
 import { artifactStateWireError } from "../../contracts/widgets/artifact-state-wire";
+import { widgetSdkBridge, widgetSdkHooks } from "./widget-sdk";
 
 const cakeModuleResolveDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -119,45 +119,6 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   addEventListener("unhandledrejection", (event) => send("error", event.reason?.stack || String(event.reason || "Unhandled widget rejection")));
   ${capability === "request" ? `globalThis.cakeRequest = Object.freeze({ submit: (value) => send("submit", value), cancel: () => send("cancel", true) });` : ""}
   ${
-    capability === "session-plugin"
-      ? `
-  const listeners = new Set();
-  const pending = new Map();
-  let requestId = 0;
-  let snapshot = Object.freeze({ hasContext: false, pluginState: null, sharedState: Object.freeze({}) });
-  const publish = (next) => { snapshot = Object.freeze(next); for (const listener of listeners) listener(); };
-  addEventListener("message", (event) => {
-    const message = event.data;
-    if (event.source !== parent || !message || message.source !== "cake-session-plugin-host" || message.token !== token) return;
-    if (message.type === "context") {
-      applyTheme(message.value.theme);
-      publish({ hasContext: true, pluginState: message.value.pluginState, sharedState: Object.freeze(message.value.sharedState || {}) });
-    }
-    if (message.type === "call-result") {
-      const operation = pending.get(message.value.id);
-      if (!operation) return;
-      pending.delete(message.value.id);
-      if (message.value.ok) operation.resolve(message.value.result);
-      else operation.reject(new Error(message.value.error || "Cake operation failed"));
-    }
-  });
-  globalThis.__cakePluginBridge = Object.freeze({
-    cake: Object.freeze({
-      call(command, input = {}) {
-        return new Promise((resolve, reject) => {
-          const id = String(++requestId);
-          pending.set(id, { resolve, reject });
-          send("plugin-call", { id, command, input });
-        });
-      },
-      session: Object.freeze({ sendMessage: (text) => globalThis.__cakePluginBridge.cake.call("session.prompt", { text }) }),
-    }),
-    getSnapshot: () => snapshot,
-    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-  });`
-      : ""
-  }
-  ${
     capability === "artifact"
       ? `
   addEventListener("pointerdown", () => send("artifact-interaction", true), true);
@@ -166,6 +127,8 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   const contextListeners = new Set();
   let contextSnapshot = null;
   let contextJson;
+  let resolveContext;
+  const contextReady = new Promise((resolve) => { resolveContext = resolve; });
   addEventListener("message", (event) => {
     const message = event.data;
     if (event.source !== parent || message?.source !== "cake-artifact-host" || message.token !== token || message.type !== "context") return;
@@ -174,6 +137,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
     contextJson = json;
     const value = message.value;
     contextSnapshot = value === null ? null : Object.freeze({ ...value, project: value.project && Object.freeze(value.project), session: value.session && Object.freeze(value.session) });
+    resolveContext();
     for (const listener of contextListeners) listener(contextSnapshot);
   });
   const stateListeners = new Set();
@@ -234,7 +198,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
     if (message.value.ok) operation.resolve(message.value.result);
     else operation.reject(new Error(message.value.error || "Artifact operation failed"));
   });
-  globalThis.cake = Object.freeze({ call: (command, input = {}) => requestCall("artifact-cake-call", { command, input }) });
+  ${widgetSdkBridge}
   globalThis.cakeArtifact = globalThis.__cakeArtifactBridge = Object.freeze({
     cake: globalThis.cake,
     getContext: () => contextSnapshot,
@@ -254,7 +218,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   `
       : ""
   }
-  ${capability === "artifact" || capability === "session-plugin" ? speechBridge : ""}
+  ${capability === "artifact" ? speechBridge : ""}
   addEventListener("DOMContentLoaded", () => {
     const startedAt = performance.now();
     let changedAt = startedAt;
@@ -290,7 +254,12 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
 </script>`;
 }
 
-function documentShell(token: string, body: string, capability: InlineWidgetCapability) {
+function documentShell(
+  token: string,
+  body: string,
+  capability: InlineWidgetCapability,
+  scrollbarStyles: string,
+) {
   // System-color defaults keep standalone review captures readable without
   // inventing a second Cake palette; the host overrides these before paint.
   const defaults = widgetThemeColorTokens
@@ -316,23 +285,8 @@ function documentShell(token: string, body: string, capability: InlineWidgetCapa
     .join(";");
   // Generated documents cannot inherit CSS across their opaque origin. These base
   // element rules consume the host's live tokens, never a second hardcoded palette.
-  const pluginStyles =
-    capability === "session-plugin"
-      ? `<style>
-body{padding:12px;color:var(--card-foreground);background:var(--card)}
-a{color:var(--accent)}
-button,input,select,textarea{border:1px solid var(--border);border-radius:6px;color:var(--foreground);background:var(--background);padding:6px 12px}
-button{cursor:pointer;font-weight:600}
-button:not(:disabled):hover{background:var(--muted)}
-button[data-variant="primary"]{color:var(--primary-foreground);background:var(--primary);border-color:var(--primary)}
-button[data-variant="primary"]:not(:disabled):hover{background:color-mix(in srgb,var(--primary) 88%,transparent)}
-:where(button,input,select,textarea,a):focus-visible{outline:2px solid var(--ring);outline-offset:2px}
-:where(button,input,select,textarea):disabled{opacity:.45;cursor:default}
-</style>`
-      : "";
-  const sizing =
-    capability === "request" || capability === "session-plugin" ? "content" : "viewport";
-  return `<!doctype html><html data-sizing="${sizing}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{${defaults};--font-sans:system-ui,sans-serif;--font-mono:monospace}html{color-scheme:light dark;font:14px/1.5 var(--font-sans,system-ui),sans-serif;background:transparent}body{min-width:0;margin:0;padding:16px;overflow:auto;color:var(--foreground,CanvasText);background:var(--background,Canvas)}html[data-presentation="inline"] body{padding:0;background:transparent}html[data-sizing="viewport"],html[data-sizing="viewport"] body,html[data-sizing="viewport"] #cake-widget-root{height:100%;min-height:0}code,pre,kbd{font-family:var(--font-mono,monospace)}*,*::before,*::after{box-sizing:border-box}body>*{max-width:100%}#cake-widget-root{min-width:0;max-width:100%}:where(h1,h2,h3,h4,h5,h6,p,span,a,button,label,legend,th,td){overflow-wrap:anywhere}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{max-width:100%;font:inherit}</style><style>${scrollbarStyles}</style>${pluginStyles}${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
+  const sizing = capability === "request" ? "content" : "viewport";
+  return `<!doctype html><html data-sizing="${sizing}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{${defaults};--font-sans:system-ui,sans-serif;--font-mono:monospace}html{color-scheme:light dark;font:14px/1.5 var(--font-sans,system-ui),sans-serif;background:transparent}body{min-width:0;margin:0;padding:16px;overflow:auto;color:var(--foreground,CanvasText);background:var(--background,Canvas)}html[data-presentation="inline"] body{padding:0;background:transparent}html[data-sizing="viewport"],html[data-sizing="viewport"] body,html[data-sizing="viewport"] #cake-widget-root{height:100%;min-height:0}code,pre,kbd{font-family:var(--font-mono,monospace)}*,*::before,*::after{box-sizing:border-box}body>*{max-width:100%}#cake-widget-root{min-width:0;max-width:100%}:where(h1,h2,h3,h4,h5,h6,p,span,a,button,label,legend,th,td){overflow-wrap:anywhere}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{max-width:100%;font:inherit}</style><style>${scrollbarStyles}</style>${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
 }
 
 function widgetModulePlugin(source: string): Plugin {
@@ -359,7 +313,7 @@ function widgetModulePlugin(source: string): Plugin {
       builder.onLoad({ filter: /.*/, namespace: "cake-artifact-sdk" }, () => ({
         loader: "ts",
         contents: [
-          'import { useCallback, useSyncExternalStore } from "react";',
+          'import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";',
           "const bridge = globalThis.__cakeArtifactBridge;",
           'if (!bridge) throw new Error("@cake/artifact-sdk is only available in artifact widgets");',
           "export function useArtifact() { const snapshot = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot); const context = useSyncExternalStore(bridge.subscribeContext, bridge.getContext, bridge.getContext); const replace = useCallback((value, expectedVersion = snapshot.version) => bridge.replace(value, expectedVersion), [snapshot.version]); return { ...snapshot, context, read: bridge.read, replace, callTool: bridge.callTool, cake: bridge.cake }; }",
@@ -368,36 +322,7 @@ function widgetModulePlugin(source: string): Plugin {
           "  const save = useCallback((value) => bridge.replace(value, snapshot.version), [snapshot.version]);",
           "  return { value: snapshot.version === 0 ? initialValue : snapshot.value, hydrated: snapshot.hydrated, version: snapshot.version, error: snapshot.error, save, reload: bridge.read };",
           "}",
-          useSpeechHook,
-        ].join("\n"),
-        resolveDir: cakeModuleResolveDirectory,
-      }));
-      builder.onResolve({ filter: /^@cake\/plugin-sdk$/ }, () => ({
-        path: "plugin-sdk.ts",
-        namespace: "cake-plugin-sdk",
-      }));
-      builder.onLoad({ filter: /.*/, namespace: "cake-plugin-sdk" }, () => ({
-        loader: "ts",
-        // electron-vite scans multiline template literals as host imports during
-        // production builds, so keep generated-module imports in separate strings.
-        contents: [
-          'import { useCallback, useSyncExternalStore } from "react";',
-          "const bridge = globalThis.__cakePluginBridge;",
-          'if (!bridge) throw new Error("@cake/plugin-sdk is only available in Session Plugins");',
-          "export function useCake() { return bridge.cake; }",
-          "function useSnapshot() { return useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot); }",
-          "export function usePluginState(initialState = null) {",
-          "  const snapshot = useSnapshot();",
-          "  const value = snapshot.hasContext ? snapshot.pluginState : initialState;",
-          '  const setValue = useCallback((next) => { const current = bridge.getSnapshot(); return bridge.cake.call("plugins.set-state", { state: typeof next === "function" ? next(current.hasContext ? current.pluginState : initialState) : next }); }, [initialState]);',
-          "  return [value, setValue];",
-          "}",
-          "export function useSharedState(key, initialState = null) {",
-          "  const snapshot = useSnapshot();",
-          "  const value = Object.prototype.hasOwnProperty.call(snapshot.sharedState, key) ? snapshot.sharedState[key] : initialState;",
-          '  const setValue = useCallback((next) => { const current = bridge.getSnapshot(); const previous = Object.prototype.hasOwnProperty.call(current.sharedState, key) ? current.sharedState[key] : initialState; return bridge.cake.call("plugins.set-shared-state", { key, value: typeof next === "function" ? next(previous) : next }); }, [initialState, key]);',
-          "  return [value, setValue];",
-          "}",
+          ...widgetSdkHooks,
           useSpeechHook,
         ].join("\n"),
         resolveDir: cakeModuleResolveDirectory,
@@ -424,15 +349,19 @@ export async function compileInlineWidget(
   language: InlineWidgetLanguage,
   source: string,
   capability: InlineWidgetCapability = "display",
-  options: WidgetCompileOptions = {},
+  options: WidgetCompileOptions & { scrollbarStyles?: string } = {},
 ): Promise<CompiledInlineWidgetDocument> {
   if (new TextEncoder().encode(source).byteLength > maximumSourceBytes)
     throw new Error("Inline widget source exceeds the 1 MB limit");
   const token = crypto.randomUUID();
-  if (language === "html") return { token, document: documentShell(token, source, capability) };
+  // Native fixture runners supply the same stylesheet without requiring Vite raw-import hooks.
+  const scrollbarStyles =
+    options.scrollbarStyles ?? (await import("../../utils/scrollbars.css?raw")).default;
+  if (language === "html")
+    return { token, document: documentShell(token, source, capability, scrollbarStyles) };
 
   const packages = await widgetPackageResolver(options, token);
-  // See the virtual plugin SDK above: avoid host import rewriting inside this source.
+  // See the virtual widget SDK above: avoid host import rewriting inside this source.
   const entry = [
     'import React from "react";',
     'import { createRoot } from "react-dom/client";',
@@ -441,8 +370,6 @@ export async function compileInlineWidget(
     'if (typeof Widget !== "function") throw new Error("A cake-react widget must default-export one React component");',
     `createRoot(host).render(React.createElement(Widget, ${capability === "request" ? "globalThis.cakeRequest" : "undefined"}));`,
   ].join("\n");
-  if (capability !== "session-plugin" && source.includes("@cake/plugin-sdk"))
-    throw new Error("@cake/plugin-sdk is available only to Session Plugins");
   if (capability !== "artifact" && source.includes("@cake/artifact-sdk"))
     throw new Error("@cake/artifact-sdk is available only to artifact widgets");
   const widgetModules = widgetModulePlugin(source);
@@ -493,6 +420,7 @@ export async function compileInlineWidget(
       token,
       `<style>${css.replaceAll("</style", "<\\/style")}</style><div id="cake-widget-root"></div><script>${javascript.replaceAll("</script", "<\\/script")}</script>`,
       capability,
+      scrollbarStyles,
     ),
   };
 }

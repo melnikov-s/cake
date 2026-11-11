@@ -74,7 +74,7 @@ test("production widget review captures settled sandbox pixels before persistenc
       language?: "react" | "html";
       artifactState?: { count: number };
       source: string;
-      pluginState?: { topic: string };
+      artifactState?: { topic: string };
       capability?: "artifact";
       expectedRevision?: number;
       cancelAfterMs?: number;
@@ -232,15 +232,15 @@ button.onclick = () => {const s = api.getSnapshot(); return api.replace({count: 
       contentType: "image/png",
     });
 
-    // A generated plugin must be reviewed with host state, not just its hook default.
+    // A generated widget must be reviewed with host state, not just its hook default.
     const plugin = await capture({
       sessionId: "widget-review-session",
       workingDirectory: project,
       artifactId: "plugin-state-review",
-      pluginState: { topic: "Authority" },
-      source: `import { usePluginState } from "@cake/plugin-sdk";
+      artifactState: { topic: "Authority" },
+      source: `import { useArtifactState } from "@cake/artifact-sdk";
 export default function StateReviewFixture() {
-  const [state] = usePluginState({ topic: "Default" });
+  const { value: state } = useArtifactState({ topic: "Default" });
   return <main style={{ height: 430, background: state.topic === "Authority" ? "rgb(0, 220, 220)" : "rgb(255, 0, 255)" }}>{state.topic}</main>;
 }`,
     });

@@ -299,7 +299,7 @@ describe("Cake structured output", () => {
     { name: "string", value: "Ordinary readable result" },
     { name: "image", value: cakeOperationImageResult({ width: 1 }, [image]) },
   ])(
-    "keeps nonselected $name results as strings without changing content or details",
+    "returns JSON for every $name operation without changing agent content or details",
     async ({ value }) => {
       const result = await invokeTool(
         [...operations(), nonselected(async () => value)],
@@ -307,12 +307,11 @@ describe("Cake structured output", () => {
       );
       const metadata = typeof value === "string" ? value : "_tag" in value ? value.metadata : value;
       const text = typeof metadata === "string" ? metadata : JSON.stringify(metadata, null, 2);
-      if (typeof value === "object" && "_tag" in value) {
-        expect(result.structuredContent).toContain(text);
-        expect(result.structuredContent).toContain("native image pixels were NOT forwarded");
-      } else {
-        expect(result.structuredContent).toBe(text);
-      }
+      expect(result.structuredContent).toMatchObject({ command: "app.fixture", result: metadata });
+      if (typeof value === "object" && "_tag" in value)
+        expect(result.structuredContent).toMatchObject({
+          warning: expect.stringContaining("Native image pixels were NOT forwarded"),
+        });
       expect(result.content).toEqual([
         { type: "text", text },
         ...(typeof value === "object" && "_tag" in value ? [image] : []),

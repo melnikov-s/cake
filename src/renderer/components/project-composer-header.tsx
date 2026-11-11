@@ -2,7 +2,6 @@ import { observer, useStore } from "r-state-tree/react";
 import { WorktreePill } from "@/components/worktree-pill";
 import { SavedDraftRecovery } from "@/components/saved-draft-recovery";
 import { ExtensionCompanionSlot } from "@/components/extension-companion-slot";
-import { SessionPluginSlot } from "@/components/session-plugin-slot";
 import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { ConversationActivity } from "./conversation-activity";
@@ -38,15 +37,6 @@ export const ProjectComposerHeader = observer(function ProjectComposerHeader({
             action,
             value,
           )
-        }
-      />
-      <SessionPluginSlot
-        sessionId={session.sessionId}
-        slot="composer.above"
-        plugins={root.sessionPluginStore}
-        inlineWidgets={root.inlineWidgetStore}
-        call={(pluginId, command, input) =>
-          root.sessionPluginOperations.invoke(session.sessionId, pluginId, command, input)
         }
       />
       {recoverSavedDraft &&

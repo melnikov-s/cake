@@ -73,6 +73,10 @@ export const AppShellLayout = observer(function AppShellLayout({
     "--navigator-width": navigatorVisible ? `${accessoryWidth}px` : "0px",
     "--command-width": commandVisible ? `${Math.min(commandPaneWidth, commandMax)}px` : "0px",
   };
+  const workspaceStyle: CSSProperties & Record<"--session-home-control-inset", string> = {
+    "--session-home-control-inset":
+      !workspaceMode && root.navigationStore.sessionChatHome ? "3.5rem" : "0.5rem",
+  };
   return (
     <ShellHeaderContext value={headerTarget}>
       <main
@@ -116,6 +120,7 @@ export const AppShellLayout = observer(function AppShellLayout({
               : "grid-rows-[auto_minmax(0,1fr)_auto]",
           )}
           data-session-id={shell.activeConversation?.sessionId}
+          style={workspaceStyle}
         >
           {!conversationPaneVisible && <AppSurfaceHeader />}
           <FullscreenViewportContext value={fullscreenViewport}>

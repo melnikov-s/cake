@@ -833,9 +833,9 @@ No save is promised for abrupt application termination before a pending debounce
 
 ### Read-aloud
 
-Artifact widgets and Session Plugins can read text aloud with the user's configured
+Inline and attached widget views can read text aloud with the user's configured
 speech output (Pocket TTS or ElevenLabs). HTML uses `globalThis.cakeSpeech`; React
-uses `useSpeech()` from `@cake/artifact-sdk` or `@cake/plugin-sdk`. `speak(text, { from })`
+uses `useSpeech()` from `@cake/artifact-sdk`. `speak(text, { from })`
 accepts text of any length and settles when reading ends, is stopped (resolve) or fails
 (reject with the provider's message, such as missing configuration). `pause()`,
 `resume()` and `stop()` control it; `getSnapshot()`/`subscribe()` report

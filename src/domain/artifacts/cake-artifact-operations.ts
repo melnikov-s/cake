@@ -623,6 +623,7 @@ export function createCakeArtifactOperations(
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed input with artifactReplaceSchema.
         const update = input as typeof artifactReplaceSchema.Type;
+        const origin = pi ? pointerOrigin(context) : undefined;
         const current = (await resolveArtifact(update.lineageId)).record;
         if (current.artifact.revision !== update.expectedRevision)
           throw new Error(
@@ -735,7 +736,7 @@ export function createCakeArtifactOperations(
           ...(update.description === undefined ? null : { description: update.description }),
         };
         const record = await persist(artifact, sessionId, stagedState);
-        appendPointer(record, pointerOrigin(context));
+        if (origin) appendPointer(record, origin);
         const resolved = await resolveArtifact(
           `cake://artifact/${record.artifact.id}@r${revision}`,
         );
@@ -847,7 +848,7 @@ export function createCakeArtifactOperations(
         // SAFETY: CakeOperationRegistry parsed input with widgetInstantiateSchema.
         const instance = input as typeof widgetInstantiateSchema.Type;
         const runtime = runtimeContext(context);
-        const origin = pointerOrigin(context);
+        const origin = pi ? pointerOrigin(context) : undefined;
         if (context.signal.aborted) throw new Error("Widget instantiation was cancelled");
         const reference =
           "reference" in instance
@@ -898,7 +899,7 @@ export function createCakeArtifactOperations(
           runtime.sessionId,
           { expectedVersion: 0, value: instance.initialState },
         );
-        appendPointer(record, origin);
+        if (origin) appendPointer(record, origin);
         const exactRef = `cake://artifact/${record.artifact.id}@r1`;
         return cakeOperationImageResult(
           {
@@ -953,7 +954,7 @@ export function createCakeArtifactOperations(
         "The persisted widget ID, revision, digest and exact reference plus its accepted review PNG as a native model-visible image; no generated source or private branch history.",
       limitations: [
         "The immutable snapshot, including accepted PNG bytes, must fit the existing 1 MiB serialized artifact limit. Oversized publication fails rather than silently omitting the preview.",
-        "Generated widgets have no filesystem, Node, Electron, parent-DOM or unrestricted Cake API access. @cake/artifact-sdk (React) and globalThis.cakeArtifact (HTML) grant only artifact-scoped JSON state; cakeSpeech/useSpeech add read-aloud only (no microphone, voice choice or audio files). Speech fails with a readable error until speech output is configured in Settings. CSP blocks fetch/XHR/WebSocket. HTML has no external scripts/dependencies; React libraries must already be installed; ask for dependency authorization outside the private generation branch.",
+        "Widgets use the sandboxed Cake SDK: structured Cake tool calls, view-local current session, host-owned events/polling, instance JSON state and read-aloud. No parent DOM, Node or Electron access; CSP blocks fetch/XHR/WebSocket. Widgets cannot manage attachments or permissions. Background work requires an explicit backend runtime/schedule. HTML has no external dependencies; React libraries must already be installed. Ask for dependency authorization outside generation.",
         pi
           ? "Generation inherits the caller's ancestor context at creation time, excluding sibling branches and unfinished tool calls. Revisions follow the artifact's generation branch, not later parent messages."
           : "Permanent chats generate in a private conversation from the supplied brief/data, without inheriting chat history. Include all verified context needed by the specialist.",

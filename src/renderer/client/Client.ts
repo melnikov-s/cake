@@ -1,3 +1,9 @@
+import type {
+  WidgetEvent,
+  WidgetEventSubscription,
+  WidgetPollRequest,
+  WidgetUpdate,
+} from "../../contracts/widgets/widget-updates";
 import type { LeftToolbarChange } from "../../utils/left-toolbar-preferences";
 import type { ProjectIconArtwork } from "../../contracts/projects/project-icon-generation";
 import type { CakeModelChoice } from "../../contracts/model-presets/cake-model-selection";
@@ -570,15 +576,15 @@ interface ArtifactCommands {
   ): Promise<JsonValue>;
   reportViewing(input: ArtifactViewingReport, options?: ClientCommandOptions): Promise<void>;
   stateRead(
-    input: { sessionId?: string; lineageId: ArtifactLineageId },
+    input: { sessionId?: string; attachmentId?: string; lineageId: ArtifactLineageId },
     options?: ClientCommandOptions,
   ): Promise<ArtifactState>;
   stateReplace(
-    input: ArtifactStateReplacement & { sessionId?: string },
+    input: ArtifactStateReplacement & { sessionId?: string; attachmentId?: string },
     options?: ClientCommandOptions,
   ): Promise<ArtifactState>;
   stateUpdate(
-    input: ArtifactStateUpdate & { sessionId?: string },
+    input: ArtifactStateUpdate & { sessionId?: string; attachmentId?: string },
     options?: ClientCommandOptions,
   ): Promise<ArtifactState>;
   boardEntries(
@@ -729,6 +735,18 @@ export interface Client {
   readonly browser: BrowserCommands;
   readonly vscode: VsCodeCommands;
   readonly artifacts: ArtifactCommands;
+  readonly widgetUpdates: {
+    events(
+      input: WidgetEventSubscription,
+      consume: (value: WidgetEvent) => void,
+      failure: (error: unknown) => void,
+    ): () => void;
+    poll(
+      input: WidgetPollRequest,
+      consume: (value: WidgetUpdate) => void,
+      failure: (error: unknown) => void,
+    ): () => void;
+  };
   readonly interviews: InterviewCommands;
   readonly inlineWidgets: InlineWidgetCommands;
   readonly foundation: CommandGroup<CakeIpcClientService["foundation"]>;

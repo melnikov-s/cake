@@ -1,6 +1,6 @@
 # Live widget theme
 
-For HTML/React widgets and Session Plugins. Static `html.present` does not receive live theme tokens.
+For inline and attached HTML/React widgets. Static `html.present` does not receive live theme tokens.
 
 ## Public contract
 

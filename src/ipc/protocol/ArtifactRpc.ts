@@ -1,4 +1,10 @@
 import { Schema } from "effect";
+import {
+  WidgetEvent,
+  WidgetEventSubscription,
+  WidgetPollRequest,
+  WidgetUpdate,
+} from "../../contracts/widgets/widget-updates";
 import { Rpc, RpcGroup } from "effect/rpc";
 import {
   BoardBrowseInput,
@@ -87,6 +93,16 @@ const LinkMutation = Schema.Struct({
 });
 
 export const ArtifactRpc = RpcGroup.make(
+  Rpc.make("artifacts.observeWidgetEvents", {
+    payload: WidgetEventSubscription,
+    success: WidgetEvent,
+    stream: true,
+  }),
+  Rpc.make("artifacts.observeWidgetPoll", {
+    payload: WidgetPollRequest,
+    success: WidgetUpdate,
+    stream: true,
+  }),
   Rpc.make("artifacts.setGlobal", {
     payload: ArtifactSetGlobalInput,
     success: ArtifactLineageSummary,
@@ -146,6 +162,7 @@ export const ArtifactRpc = RpcGroup.make(
   Rpc.make("artifacts.stateRead", {
     payload: Schema.Struct({
       sessionId: Schema.optionalKey(SessionId),
+      attachmentId: Schema.optionalKey(SessionId),
       lineageId: ArtifactLineageId,
     }),
     success: ArtifactState,
@@ -154,6 +171,7 @@ export const ArtifactRpc = RpcGroup.make(
   Rpc.make("artifacts.stateReplace", {
     payload: Schema.Struct({
       sessionId: Schema.optionalKey(SessionId),
+      attachmentId: Schema.optionalKey(SessionId),
       ...ArtifactStateReplacement.fields,
     }),
     success: ArtifactState,
@@ -162,6 +180,7 @@ export const ArtifactRpc = RpcGroup.make(
   Rpc.make("artifacts.stateUpdate", {
     payload: Schema.Struct({
       sessionId: Schema.optionalKey(SessionId),
+      attachmentId: Schema.optionalKey(SessionId),
       ...ArtifactStateUpdate.fields,
     }),
     success: ArtifactState,

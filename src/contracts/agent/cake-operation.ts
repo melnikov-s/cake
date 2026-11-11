@@ -5,7 +5,7 @@ import type { CakeOperationOptions } from "./cake-operation-options";
 import type { JsonObject, JsonValue } from "../serialization/json-contract";
 
 export const cakeToolDescription =
-  "Cake controls: {command,input}. Known commands need no discovery; {} lists topics, <topic> lists commands, <operation>.help gives inputs, .output-schema gives results. Codemode returns {command,result} for typed operations, text otherwise. Static HTML: html.present; interactive: widgets.present; prepared skill: widgets.instantiate directly; existing: artifacts.present.";
+  "Cake controls: {command,input}. Known commands need no discovery; {} lists topics, <topic> lists commands, <operation>.help gives inputs, .output-schema gives results. Programmatic calls return {command,result} JSON; agent text is compact. Static HTML: html.present; interactive: widgets.present; prepared skill: widgets.instantiate directly; existing: artifacts.present.";
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -52,6 +52,8 @@ type CakeOperationContent =
   | CakeOperationImageContent;
 
 export interface CakeOperationInvocation {
+  /** Programmatic result, independent of agent presentation and identifier projection. */
+  readonly json: JsonValue;
   readonly text: string;
   readonly content: CakeOperationContent[];
   readonly details: JsonValue;
@@ -78,7 +80,7 @@ export interface CakeOperationDefinition<
   inputSchema: Schema.ConstraintDecoder<Input, never>;
   /** Exact schema used in generated help when validation is delegated across a validated boundary. */
   inputJsonSchema?: JsonObject;
-  /** Opt into validated data for codemode; other operations continue to resolve to text.
+  /** Optional exact result schema; all programmatic results are JSON.
    * The registry also validates JSON after decoding, allowing authoritative projection
    * schemas whose optional fields include undefined in TypeScript. */
   outputSchema?: Schema.ConstraintDecoder<unknown, never>;

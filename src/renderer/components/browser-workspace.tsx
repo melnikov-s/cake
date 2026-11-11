@@ -23,6 +23,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   headerActions,
   conversationHeader,
   projectComposerHeader,
+  widgets,
   projectComposerContent,
   projectComposerLeadingAccessory,
   sessionTitle,
@@ -36,6 +37,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   headerActions?: ReactNode;
   conversationHeader?: ReactNode;
   projectComposerHeader?: ReactNode;
+  widgets?: ComponentProps<typeof Chat>["widgets"];
   projectComposerContent?: ReactNode;
   projectComposerLeadingAccessory?: ComponentProps<typeof Chat>["composerLeadingAccessory"];
   sessionTitle: string;
@@ -80,6 +82,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
     >
       <Chat
         className="h-full"
+        widgets={widgets}
         store={projectChat}
         transcriptBehavior={transcriptBehavior}
         composerHeader={projectComposerHeader}

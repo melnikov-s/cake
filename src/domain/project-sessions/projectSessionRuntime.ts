@@ -42,12 +42,8 @@ import type { HttpClient } from "effect/http";
 import type { ChildProcessSpawner } from "effect/process";
 import type { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
 import {
-  deleteSessionPlugin,
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
-  setSessionPluginState,
-  patchSessionPluginState,
-  upsertSessionPlugin,
 } from "../application/application";
 import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import {
@@ -455,15 +451,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       resolveModelSelection: (selection, caller) =>
         resolveCakeModelSelection(selection, modelPresets(), caller),
       nonChatModelPreferences: () => application.snapshot().nonChatModelPreferences ?? {},
-      sessionPluginControl: {
-        sessionId,
-        present: (plugin) => run(upsertSessionPlugin(plugin)).then(() => undefined),
-        setState: (pluginId, state) =>
-          run(setSessionPluginState(sessionId, pluginId, state)).then(() => undefined),
-        patchState: (pluginId, patch) =>
-          run(patchSessionPluginState(sessionId, pluginId, patch)).then(() => undefined),
-        delete: (pluginId) => run(deleteSessionPlugin(sessionId, pluginId)).then(() => undefined),
-      },
       fastMode: {
         get: () => application.snapshot().fastModeSessionIds.includes(sessionId),
         set: (enabled) => run(setSessionFastMode(sessionId, enabled)).then(() => undefined),

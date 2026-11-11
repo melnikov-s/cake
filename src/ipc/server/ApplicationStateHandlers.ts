@@ -1,24 +1,18 @@
 import { Effect, Stream } from "effect";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
-import {
-  deleteSessionPlugin,
-  getState,
-  observeState,
-  setSessionPluginSharedState,
-  setSessionPluginState,
-  setSessionPluginHidden,
-} from "../../domain/application/application";
+import { getState, observeState } from "../../domain/application/application";
+import * as widgetAttachments from "../../domain/widgets/widgetAttachments";
 import { AgentAvailability } from "../../services/pi/AgentAvailability";
 import {
   ApplicationRpc,
-  SessionPluginMutationError,
+  WidgetAttachmentMutationError,
   ApplicationSettingsMutationError,
 } from "../protocol/ApplicationRpc";
 
-const pluginMutationError = Effect.mapError(
+const mutationError = Effect.mapError(
   (cause: unknown) =>
-    new SessionPluginMutationError({
+    new WidgetAttachmentMutationError({
       message: cause instanceof Error ? cause.message : String(cause),
     }),
 );
@@ -39,12 +33,10 @@ export const applicationStateHandlers = ApplicationRpc.of({
   "application.observeState": () => Stream.unwrap(observeState()),
   "application.observeAgentAvailability": () =>
     Stream.unwrap(Effect.map(AgentAvailability, (availability) => availability.changes())),
-  "application.setSessionPluginHidden": ({ sessionId, pluginId, hidden }) =>
-    setSessionPluginHidden(sessionId, pluginId, hidden).pipe(Effect.asVoid, pluginMutationError),
-  "application.setSessionPluginState": ({ sessionId, pluginId, state }) =>
-    setSessionPluginState(sessionId, pluginId, state).pipe(Effect.asVoid, pluginMutationError),
-  "application.setSessionPluginSharedState": ({ sessionId, key, value }) =>
-    setSessionPluginSharedState(sessionId, key, value).pipe(Effect.asVoid, pluginMutationError),
-  "application.deleteSessionPlugin": ({ sessionId, pluginId }) =>
-    deleteSessionPlugin(sessionId, pluginId).pipe(Effect.asVoid, pluginMutationError),
+  "application.attachWidget": (input) =>
+    widgetAttachments.attach(input).pipe(Effect.asVoid, mutationError),
+  "application.setWidgetAttachmentHidden": ({ id, hidden }) =>
+    widgetAttachments.setHidden(id, hidden).pipe(Effect.asVoid, mutationError),
+  "application.detachWidget": ({ id }) =>
+    widgetAttachments.detach(id).pipe(Effect.asVoid, mutationError),
 });

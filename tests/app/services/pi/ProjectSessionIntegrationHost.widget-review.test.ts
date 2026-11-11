@@ -94,8 +94,8 @@ function host(options: {
         document: `<html>${name}</html>`,
       };
     },
-    captureWidget: async (_sessionId, widget, _signal, pluginState) => {
-      captureStates.push(pluginState);
+    captureWidget: async (_sessionId, widget, _signal, initialState) => {
+      captureStates.push(initialState);
       capturedTokens.push(widget.token);
       expect(inlineWidgetDocument(widget.token)).toMatch(/^<html>\w+<\/html>$/);
       calls.push(`capture:${widget.token.slice(-1)}`);
@@ -485,10 +485,10 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     expect(fixture.captureStates).toEqual([null, null]);
   });
 
-  it("generates, captures and reviews plugins with their actual durable state", async () => {
+  it("generates, captures and reviews widgets with their actual durable state", async () => {
     const fixture = host({ reviews: ["ACCEPT_CURRENT"] });
     const initialState = { topic: "Cake and Pi", step: 1 };
-    await generate(fixture.integration, { ...request(), surface: "session-plugin", initialState });
+    await generate(fixture.integration, { ...request(), initialState });
     expect(fixture.generationInputs).toEqual([
       expect.objectContaining({
         initialState,
@@ -502,7 +502,11 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
       }),
     ]);
     expect(fixture.captureStates).toEqual([initialState]);
-    expect(JSON.parse(fixture.reviewContexts[0]!)).toMatchObject({ initialState });
+    const [brief, staged] = fixture.reviewContexts[0]!.split(
+      "\n\nCurrent staged artifact state (authoritative for this preview):\n",
+    );
+    expect(JSON.parse(brief!)).toMatchObject({ initialState });
+    expect(JSON.parse(staged!)).toEqual(initialState);
   });
   it("starts a durable revision from the existing source and reviews the replacement", async () => {
     const fixture = host({ reviews: ["ACCEPT_CURRENT"] });

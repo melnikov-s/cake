@@ -44,9 +44,6 @@ describe("inline widget service", () => {
     await expect(compileInlineWidget("react", source, "display")).rejects.toThrow(
       "available only to artifact widgets",
     );
-    await expect(compileInlineWidget("react", source, "session-plugin")).rejects.toThrow(
-      "available only to artifact widgets",
-    );
   });
 
   it("injects the narrow request API into HTML widgets", async () => {
@@ -60,28 +57,14 @@ describe("inline widget service", () => {
     expect(html.document).toContain('send("submit", value)');
   });
 
-  it("bundles the Cake Plugin SDK only for Session Plugins", async () => {
-    const source = `
-      import { useCake, usePluginState, useSharedState } from "@cake/plugin-sdk";
-      export default function Tour() {
-        const cake = useCake();
-        const [state] = usePluginState({ current: 1 });
-        const [shared] = useSharedState("tour", { total: 3 });
-        return <button onClick={() => cake.session.sendMessage("Next")}>{state.current} / {shared.total}</button>;
-      }
-    `;
-    const compiled = await compileInlineWidget("react", source, "session-plugin");
-    expect(compiled.document).toContain('<html data-sizing="content">');
-    expect(compiled.document).toContain("__cakePluginBridge");
-    expect(compiled.document).toContain("plugin-call");
-    expect(compiled.document).toContain("event.source !== parent");
-    expect(compiled.document).toContain(
-      "document.documentElement.dataset.theme = theme.colorScheme",
-    );
-    expect(compiled.document).toContain("background:var(--card)");
-    expect(compiled.document).toContain(":focus-visible{outline:2px solid var(--ring)");
-    await expect(compileInlineWidget("react", source, "display")).rejects.toThrow(
-      "available only to Session Plugins",
-    );
+  it("bundles current session, typed events and host polling in the same artifact SDK", async () => {
+    const source =
+      'import { useCake, useCurrentSession, useCakeEvent, usePolling } from "@cake/artifact-sdk"; export default function Widget(){ const cake = useCake(); const session = useCurrentSession(); useCakeEvent("session.changed", {}, () => {}); usePolling(null, () => {}); return <p>{session?.sessionId ?? "No session"}</p>; }';
+    const compiled = await compileInlineWidget("react", source, "artifact");
+    expect(compiled.document).toContain("widget-subscribe");
+    expect(compiled.document).toContain("widget-unsubscribe");
+    expect(compiled.document).toContain("subscribeCurrent");
+    expect(compiled.document).toContain("contextReady");
+    expect(compiled.document).not.toContain("__cakePluginBridge");
   });
 });

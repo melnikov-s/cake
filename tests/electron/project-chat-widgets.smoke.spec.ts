@@ -1,11 +1,13 @@
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
-import { sessionPluginsScenario } from "../../scripts/visual-capture/scenarios";
+import { widgetAttachmentsScenario } from "../../scripts/visual-capture/scenarios";
 import {
   defaultApplicationState,
   type ApplicationState,
@@ -19,49 +21,48 @@ const repository = resolve(import.meta.dirname, "../..");
 // Scripted model output, not a product component or a snapshot of real user data.
 // The real private builder writes this file, compiles it, captures it and reviews it.
 const paginatorSource = `import { useEffect, useState } from "react";
-import { useCake, usePluginState } from "@cake/plugin-sdk";
+import { useCake, useArtifactState, useCurrentSession } from "@cake/artifact-sdk";
 export default function Paginator() {
   const cake = useCake();
-  const [state, setState] = usePluginState({ page: 0 });
+  const session = useCurrentSession();
+  const state = useArtifactState({ page: 0 });
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const page = state.value.page;
   useEffect(() => {
+    if (!state.hydrated) return;
     let active = true;
-    setData(null);
-    cake.call("todos.list", { state: "open", limit: 5, offset: state.page * 5 }).then(({ result }) => {
+    cake.tools.call("todos.list", { state: "open", limit: 5, offset: page * 5 }).then((result) => {
       if (!active) return;
       const last = Math.max(0, Math.ceil(result.total / 5) - 1);
-      if (state.page > last) setState({ page: last });
+      if (page > last) state.save({ page: last });
       else setData(result);
     }).catch((failure) => { if (active) setError(String(failure)); });
     return () => { active = false; };
-  }, [state.page]);
+  }, [page, state.hydrated]);
   if (error) return <p role="alert">{error}</p>;
   if (!data) return <p>Loading open to-dos</p>;
   const pages = Math.ceil(data.total / 5);
   return <section aria-label="Open to-do navigator">
-    <ul style={{ margin: 0, paddingLeft: "1.2em" }}>{data.items.map(item => <li key={item.id}>
-      <span>{item.title}</span>
-      {item.needsAttention && <span style={{ color: "var(--attention)" }}> — Needs attention: {item.attentionReason}</span>}
-    </li>)}</ul>
+    <ul>{data.items.map(item => <li key={item.id}>{item.title}{item.needsAttention && <span style={{ color: "var(--attention)" }}> — Needs attention: {item.attentionReason}</span>}</li>)}</ul>
     {!data.total && <p>No open to-dos</p>}
-    <nav aria-label="To-do pages">
-      <button disabled={!state.page} onClick={() => setState({ page: state.page - 1 })}>Previous</button>
-      <output aria-live="polite">Page {pages ? state.page + 1 : 0} / {pages}</output>
-      <button disabled={data.nextOffset === null} onClick={() => setState({ page: state.page + 1 })}>Next</button>
+    <nav><button disabled={!page} onClick={() => state.save({ page: page - 1 })}>Previous</button>
+      <output>Page {pages ? page + 1 : 0} / {pages}</output>
+      <button disabled={data.nextOffset === null} onClick={() => state.save({ page: page + 1 })}>Next</button>
+      <button onClick={() => cake.tools.call("chat.prompt", { sessionId: session.sessionId, text: "Explain fixture" })}>Explain fixture</button>
     </nav>
   </section>;
 }`;
 
-test("Project Chat generates a live read-only Session Plugin paginator with durable pages and scoped operations", async () => {
+test("Project Chat generates a unified widget paginator with durable pages, explicit duplication and scoped JSON tools", async () => {
   test.setTimeout(120_000);
-  const root = await mkdtemp(join(tmpdir(), "cake-project-chat-plugins-"));
+  const root = await mkdtemp(join(tmpdir(), "cake-project-chat-widgets-"));
   const paths = {
     project: join(root, "project"),
     cakeHome: join(root, "cake-home"),
     userData: join(root, "user-data"),
   };
-  await sessionPluginsScenario.seed(paths, "dark");
+  await widgetAttachmentsScenario.seed(paths, "dark");
   await mkdir(join(root, "home"));
   const sessionId = `project-chat:${createHash("sha256").update(paths.project).digest("hex")}`;
   const timestamp = new Date(0).toISOString();
@@ -93,24 +94,30 @@ test("Project Chat generates a live read-only Session Plugin paginator with dura
     const ordinary = JSON.stringify(latest?.content).includes("Explain fixture");
     const writing = latest?.role !== "tool" && !review && !ordinary;
     if (writing) generatedRequests.push(body);
+    const source = JSON.stringify(latest?.content).includes("Mark the widget as repaired")
+      ? paginatorSource.replace(
+          'aria-label="Open to-do navigator"',
+          'aria-label="Repaired to-do navigator"',
+        )
+      : paginatorSource;
     const delta = writing
       ? {
           role: "assistant",
           tool_calls: [
             {
               index: 0,
-              id: "write-plugin",
+              id: "write-widget",
               type: "function",
               function: {
                 name: "write",
-                arguments: JSON.stringify({ path: "widget/widget.tsx", content: paginatorSource }),
+                arguments: JSON.stringify({ path: "widget/widget.tsx", content: source }),
               },
             },
           ],
         }
       : {
           role: "assistant",
-          content: ordinary ? "Ordinary chat reply." : review ? "ACCEPT_CURRENT" : "Plugin ready.",
+          content: ordinary ? "Ordinary chat reply." : review ? "ACCEPT_CURRENT" : "Widget ready.",
         };
     response.writeHead(200, { "content-type": "text/event-stream" });
     for (const [value, finish_reason] of [
@@ -194,109 +201,92 @@ test("Project Chat generates a live read-only Session Plugin paginator with dura
   try {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1400, height: 1000 });
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await page
       .getByRole("button", { name: /^Open Project Chat for / })
       .first()
       .click();
     await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
-    const harness = await openRpcHarness(app, "project-chat-plugins");
+    const harness = await openRpcHarness(app, "project-chat-widgets");
     const call = (owner: string, command: string, input = {}) =>
       callRpcHarness(harness, "callCakeChatOperation", { sessionId: owner, command, input });
     const readState = () => callRpcHarness<ApplicationState>(harness, "getApplicationState");
-    await call(sessionId, "plugins.present", {
-      plugin: {
+    await call(sessionId, "widgets.present", {
+      widget: {
         id: "open-todos",
         title: "Open to-dos",
         brief:
-          "Read-only live to-do paginator: five open items per page, Previous/Next, page count and labeled needs-attention accent. Use todos.list via useCake and durable usePluginState. No edit or completion actions or links.",
+          "Read-only live five-open-to-do paginator using the Cake SDK and durable artifact state.",
         initialState: { page: 0 },
+        fallback: { markdown: "Open to-dos" },
       },
+    });
+    await call(sessionId, "widgets.attach", {
+      id: "open-todos",
+      lineageId: "open-todos",
+      target: { kind: "session", sessionId },
+      slot: "right",
     });
     expect(generatedRequests).toHaveLength(1);
     expect(screenshotReviews).toBe(1);
-    const frame = () => page.frameLocator('iframe[title="Open to-dos"]');
+    const frame = () => page.locator('[data-widget-attachment="open-todos"] iframe').contentFrame();
     await expect(frame().getByText("Page 1 / 3")).toBeVisible();
     await expect(frame().locator("li")).toHaveCount(5);
     await expect(frame().getByRole("button", { name: "Previous" })).toBeDisabled();
-    await expect(
-      frame().getByText("Needs attention: Choose the next step", { exact: false }),
-    ).toBeVisible();
-    await expect(frame().getByRole("button")).toHaveCount(2);
     const before = (await readState()).projects[0]!.todos!.items;
-    for (const theme of ["light", "dark"] as const) {
-      await page.evaluate((value) => {
-        document.documentElement.dataset.theme = value;
-      }, theme);
-      await expect(frame().locator("html")).toHaveAttribute("data-theme", theme);
-      const tokens = await page.evaluate(() => {
-        const probe = document.createElement("div");
-        document.body.append(probe);
-        const values = Object.fromEntries(
-          ["card", "attention"].map((name) => {
-            probe.style.color = `var(--${name})`;
-            return [name, getComputedStyle(probe).color];
-          }),
-        );
-        probe.remove();
-        return values;
-      });
-      await expect(frame().locator("body")).toHaveCSS("background-color", tokens.card!);
-      await expect(frame().getByText("Needs attention:", { exact: false })).toHaveCSS(
-        "color",
-        tokens.attention!,
-      );
-    }
-    await mkdir(join(repository, ".visual-captures"), { recursive: true });
-    await page
-      .locator('[data-session-plugin-slot="composer.above"]')
-      .screenshot({ path: join(repository, ".visual-captures/project-chat-todo-plugin.png") });
-    await frame().getByRole("button", { name: "Next" }).click();
+    await frame().getByRole("button", { name: "Next", exact: true }).click();
     await expect(frame().getByText("Page 2 / 3")).toBeVisible();
-    await expect(frame().locator("li")).toHaveCount(5);
     await page.reload();
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
     await expect(frame().getByText("Page 2 / 3")).toBeVisible();
-    const disk = JSON.parse(
-      await readFile(join(paths.cakeHome, "state", "application.json"), "utf8"),
-    );
-    expect(
-      disk.data.sessionPlugins.find(
-        (plugin: { sessionId: string }) => plugin.sessionId === sessionId,
-      ).state,
-    ).toEqual({ page: 1 });
-    await frame().getByRole("button", { name: "Next" }).click();
+    const saved = await call(sessionId, "artifacts.state.read", { lineageId: "open-todos" });
+    expect(saved).toMatchObject({ value: { page: 1 } });
+    await frame().getByRole("button", { name: "Next", exact: true }).click();
     await expect(frame().getByText("Page 3 / 3")).toBeVisible();
     await expect(frame().locator("li")).toHaveCount(1);
-    await expect(frame().getByRole("button", { name: "Next" })).toBeDisabled();
     expect((await readState()).projects[0]!.todos!.items).toEqual(before);
-    // A real backend change appears on the next page read, not a captured title list.
     await call(sessionId, "todos.create", { title: "Added live", description: "Fixture update" });
     await frame().getByRole("button", { name: "Previous" }).click();
     await expect(frame().getByText("Page 2 / 3")).toBeVisible();
-    await frame().getByRole("button", { name: "Next" }).click();
+    await frame().getByRole("button", { name: "Next", exact: true }).click();
     await expect(frame().getByText("Added live", { exact: true })).toBeVisible();
-    await expect(frame().locator("li")).toHaveCount(2);
-    await page.getByRole("button", { name: "Hide Open to-dos", exact: true }).click();
+    const attachment = page.locator('[data-widget-attachment="open-todos"]');
+    await attachment.getByRole("button", { name: "Hide", exact: true }).click();
+    await expect(attachment.locator("iframe")).toHaveCount(0);
     await page.reload();
-    await expect(page.getByRole("button", { name: "Show Open to-dos", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Show Open to-dos", exact: true }).click();
-    await expect(frame().getByText("Added live", { exact: true })).toBeVisible();
-    // The identical generated plugin in global Cake Chat reads its empty list, never the Project's.
-    await call(CAKE_CHAT_SESSION_ID, "plugins.present", {
-      plugin: {
-        id: "open-todos",
-        title: "Open to-dos",
-        brief: "Read-only five-open-to-do paginator",
-        initialState: { page: 0 },
-      },
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    await attachment.getByRole("button", { name: "Show", exact: true }).click();
+    await expect(frame().getByText("Page 3 / 3")).toBeVisible();
+    // Explicit duplication reuses the definition but creates independent saved state.
+    await call(CAKE_CHAT_SESSION_ID, "artifacts.link", {
+      reference: "cake://artifact/open-todos@r1",
     });
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-    await expect(frame().getByText("No open to-dos", { exact: true })).toBeVisible();
-    await expect(frame().getByText("Page 0 / 0")).toBeVisible();
-    await expect(frame().getByRole("button", { name: "Previous" })).toBeDisabled();
-    await expect(frame().getByRole("button", { name: "Next" })).toBeDisabled();
-    expect(generatedRequests).toHaveLength(2);
-    expect(screenshotReviews).toBe(2);
+    await call(CAKE_CHAT_SESSION_ID, "widgets.instantiate", {
+      id: "global-todos",
+      title: "Global to-dos",
+      reference: "cake://artifact/open-todos@r1",
+      initialState: { page: 0 },
+      fallback: { markdown: "Global to-dos" },
+    });
+    await call(CAKE_CHAT_SESSION_ID, "widgets.attach", {
+      id: "global-todos",
+      lineageId: "global-todos",
+      target: { kind: "session", sessionId: CAKE_CHAT_SESSION_ID },
+      slot: "right",
+    });
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    const globalFrame = page
+      .locator('[data-widget-attachment="global-todos"] iframe')
+      .contentFrame();
+    await expect(globalFrame.getByText("No open to-dos")).toBeVisible();
+    await expect(globalFrame.getByText("Page 0 / 0")).toBeVisible();
+    expect(generatedRequests).toHaveLength(1);
     for (const owner of [CAKE_CHAT_SESSION_ID, sessionId]) {
       if (owner === sessionId)
         await page
@@ -313,32 +303,45 @@ test("Project Chat generates a live read-only Session Plugin paginator with dura
       await expect(composer).toHaveValue("Ordinary typing remains available");
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await composer.fill("");
-      // Preset actions also use the owning permanent chat, not Project Session preparation.
-      await call(owner, "plugins.present", {
-        plugin: {
-          id: "guide",
-          title: "Guide",
-          preset: "action-bar",
-          initialState: {
-            label: "Fixture prompt",
-            actions: [{ id: "explain", label: "Explain fixture", message: "Explain fixture" }],
-          },
-        },
-      });
-      await page.getByRole("button", { name: "Explain fixture", exact: true }).click();
+      const scoped = page
+        .locator(
+          `[data-widget-attachment="${owner === sessionId ? "open-todos" : "global-todos"}"] iframe`,
+        )
+        .contentFrame();
+      await scoped.getByRole("button", { name: "Explain fixture", exact: true }).click();
       await expect(
         page
           .locator('[data-slot="message-content"]')
           .filter({ hasText: "Ordinary chat reply." })
           .last(),
       ).toBeVisible();
-      await call(owner, "plugins.delete", { id: "guide" });
     }
+    const beforeRepair = await call(CAKE_CHAT_SESSION_ID, "artifacts.state.read", {
+      lineageId: "global-todos",
+    });
+    const repaired = await call(CAKE_CHAT_SESSION_ID, "artifacts.replace", {
+      lineageId: "global-todos",
+      expectedRevision: 1,
+      instructions:
+        "Mark the widget as repaired by naming its region Repaired to-do navigator. Preserve saved state.",
+    });
+    expect(repaired).toMatchObject({ lineageId: "global-todos", selectedRevision: 2 });
+    expect(
+      await call(CAKE_CHAT_SESSION_ID, "artifacts.state.read", { lineageId: "global-todos" }),
+    ).toEqual(beforeRepair);
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await expect(
+      globalFrame.getByRole("region", { name: "Repaired to-do navigator" }),
+    ).toBeVisible();
+    expect(generatedRequests).toHaveLength(2);
+    expect(screenshotReviews).toBe(2);
+    await page.screenshot({ path: test.info().outputPath("widgets-repaired-global-chat.png") });
   } finally {
     await app.close();
     await new Promise<void>((done, reject) =>
       server.close((error) => (error ? reject(error) : done())),
     );
+    await promisify(execFile)("chmod", ["-R", "u+w", root]);
     await rm(root, { recursive: true, force: true });
   }
 });

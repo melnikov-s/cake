@@ -13,7 +13,6 @@ export interface InlineWidgetGenerationRequest {
   readonly data?: unknown;
   readonly initialState?: JsonValue;
   readonly fallback: string;
-  readonly surface?: "widget" | "session-plugin";
   readonly model?: { readonly provider: string; readonly id: string };
   readonly signal?: AbortSignal;
   readonly onProgress?: (progress: WidgetGenerationProgress) => void;

@@ -9,7 +9,7 @@ export const observeApplicationState = (runtime: Runtime, root: RootStore) =>
     (projection) => {
       applyCakeChatTodosProjection(root.props.projection.cakeChatTodos, projection);
       root.settingsStore.applyApplicationState(projection.revision, projection.state);
-      root.sessionPluginStore.applyApplicationState(projection.revision, projection.state);
+      root.widgetAttachmentStore.applyApplicationState(projection.revision, projection.state);
     },
     {
       reportFailure: (error) =>

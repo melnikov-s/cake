@@ -185,10 +185,10 @@ export const makeProjectSessionRuntimeHostLive = (
           retainWidgetBrowser: (compiled) => runAdapter(browserOutputs.retain(compiled)),
           openWidgetBrowser: (browser) => runAdapter(browserOutputs.open(browser)),
           runReviewedWidget: generateReviewedWidget,
-          captureWidget: (targetSessionId, widget, signal, pluginState) =>
+          captureWidget: (targetSessionId, widget, signal, initialState) =>
             runAdapter(
               Option.isSome(widgetCapture)
-                ? widgetCapture.value.capture(targetSessionId, widget, signal, pluginState)
+                ? widgetCapture.value.capture(targetSessionId, widget, signal, initialState)
                 : Effect.fail(
                     new RenderedWidgetCaptureError({
                       kind: "infrastructure",

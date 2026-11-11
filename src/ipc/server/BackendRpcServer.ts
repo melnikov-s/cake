@@ -21,6 +21,7 @@ import { DiscussionRpc } from "../protocol/DiscussionRpc";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";
 import { applicationStateHandlers } from "./ApplicationStateHandlers";
 import { artifactHandlers } from "./ArtifactHandlers";
+import { WidgetPolls } from "../../services/widgets/WidgetPolls";
 import { interviewHandlers } from "./InterviewHandlers";
 import { makeCakeChatHandlers } from "./CakeChatHandlers";
 import { makeConversationHandlers } from "./ConversationHandlers";
@@ -78,7 +79,7 @@ export const makeBackendRpcHandlersLive = (
     ...workspaceHandlers,
   });
   return Layer.mergeAll(
-    handlers,
+    handlers.pipe(Layer.provide(WidgetPolls.layer)),
     SubagentRpc.middleware(RendererConnectionMiddleware).toLayer(subagentHandlers),
     DiscussionRpc.middleware(RendererConnectionMiddleware).toLayer(discussionHandlers),
     CakeChatRpc.middleware(RendererConnectionMiddleware).toLayer(

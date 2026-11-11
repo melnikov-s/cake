@@ -3,6 +3,7 @@ import { ArtifactProjection } from "../../services/artifacts/ArtifactProjection"
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
+import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { familyMemberIds } from "../../contracts/session-families/session-family-document";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
@@ -64,7 +65,10 @@ export const collectGarbage = Effect.fn("Artifacts.collectGarbage")(function* ()
         familyMemberIds(family).some((sessionId) => survivingSessions.has(sessionId)),
       )
       .map((family) => family.familyId),
-    transcriptLineageIds,
+    transcriptLineageIds: [
+      ...transcriptLineageIds,
+      ...(yield* ApplicationState).snapshot().widgetAttachments.map((entry) => entry.lineageId),
+    ],
   });
   if (collected.skipped)
     return {

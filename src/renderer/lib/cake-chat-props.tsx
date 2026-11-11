@@ -1,6 +1,6 @@
 import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { ErrorNotice } from "../components/error-notice";
-import { SessionPluginSlot } from "../components/session-plugin-slot";
+import { chatWidgetsFor } from "./chat-widgets";
 import { CakeChatComposerHeader } from "../components/cake-chat-composer-header";
 import { SessionAssistant } from "../components/session-assistant";
 import type { RootStore } from "../stores/RootStore";
@@ -10,6 +10,10 @@ import { cakeChatTranscriptBehaviorFor } from "./cake-chat-transcript-behavior";
 /** Shared conversation presentation in standalone and mixed Project Chat panes. */
 export function cakeChatPropsFor(root: RootStore, session: CakeChatSessionStore, overlay = false) {
   return {
+    widgets: chatWidgetsFor(root, {
+      sessionId: session.sessionId,
+      kind: isProjectChatSessionId(session.sessionId) ? "project-chat" : "cake-chat",
+    }),
     composerLeadingAccessory: root.settingsStore.appearance.sessionAvatarsEnabled
       ? {
           visible: true,
@@ -26,15 +30,6 @@ export function cakeChatPropsFor(root: RootStore, session: CakeChatSessionStore,
       : undefined,
     composerHeader: (
       <>
-        <SessionPluginSlot
-          sessionId={session.sessionId}
-          slot="composer.above"
-          plugins={root.sessionPluginStore}
-          inlineWidgets={root.inlineWidgetStore}
-          call={(pluginId, command, input) =>
-            root.sessionPluginOperations.invoke(session.sessionId, pluginId, command, input)
-          }
-        />
         <CakeChatComposerHeader session={session} />
       </>
     ),

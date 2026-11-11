@@ -281,7 +281,6 @@ function startMain() {
         artifactId: string;
         language?: "react" | "html";
         source: string;
-        pluginState?: JsonValue;
         artifactState?: JsonValue;
         capability?: "artifact";
         expectedRevision?: number;
@@ -327,9 +326,7 @@ function startMain() {
                 input.source,
                 input.artifactState !== undefined || input.capability === "artifact"
                   ? "artifact"
-                  : input.pluginState === undefined
-                    ? "display"
-                    : "session-plugin",
+                  : "display",
                 { packageDirectory: packages.directory },
               ),
             );
@@ -340,12 +337,7 @@ function startMain() {
                 ? undefined
                 : setTimeout(() => controller.abort(), input.cancelAfterMs);
             const capture = yield* captures
-              .capture(
-                input.sessionId,
-                widget,
-                controller.signal,
-                input.artifactState ?? input.pluginState,
-              )
+              .capture(input.sessionId, widget, controller.signal, input.artifactState)
               .pipe(
                 Effect.ensuring(
                   Effect.sync(() => {

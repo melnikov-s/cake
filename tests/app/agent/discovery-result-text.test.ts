@@ -119,7 +119,7 @@ describe("compact discovery presentation", () => {
       expect(actual.text).toBe(text);
       expect(actual.content).toEqual([{ type: "text", text }]);
       expect(actual.details).toEqual({ protocol: "cake.operation/v1", command, result: value });
-      expect(actual.structuredContent).toEqual(typed ? { command, result: value } : text);
+      expect(actual.structuredContent).toEqual({ command, result: value });
     },
   );
 

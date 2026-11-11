@@ -70,7 +70,11 @@ import { subagentTaskTitle } from "../../src/contracts/subagents/subagent-presen
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/contracts/artifacts/artifact-contract.ts";
-import { Effect } from "effect";
+import { Effect, Layer, Schema } from "effect";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";
+import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
+import { ArtifactLineageId } from "../../src/contracts/artifacts/artifact-lineage";
 import { compileInlineWidget } from "../../src/services/widgets/inline-widget-service.ts";
 import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs.ts";
 import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive.ts";
@@ -1628,7 +1632,11 @@ async function retainArtifactBrowser(
   language: "html" | "react",
   source: string,
 ) {
-  const compiled = await compileInlineWidget(language, source, "artifact");
+  const scrollbarStyles = await readFile(
+    new URL("../../src/utils/scrollbars.css", import.meta.url),
+    "utf8",
+  );
+  const compiled = await compileInlineWidget(language, source, "artifact", { scrollbarStyles });
   return Effect.runPromise(
     Effect.flatMap(WidgetBrowserOutputs, (outputs) => outputs.retain(compiled)).pipe(
       Effect.provide(
@@ -7689,124 +7697,99 @@ const serverClientSettingsScenario: VisualCaptureScenario = {
   },
 };
 
-export const sessionPluginsScenario: VisualCaptureScenario = {
-  name: "session-plugins",
-  description: "Session Plugin controls and generated theme bridge above ordinary chat",
-  states: ["default", "hover"],
+export const widgetAttachmentsScenario: VisualCaptureScenario = {
+  name: "widget-attachments",
+  description: "One saved widget shared through four resizable chat slots",
+  states: ["default"],
   async seed(paths, theme) {
-    await assistantMarkdownCode.seed(paths, theme);
+    const source = `import { useState } from "react";
+import { useArtifactState, useCurrentSession, usePolling } from "@cake/artifact-sdk";
+export default function Dashboard() {
+  const state = useArtifactState({ count: 0 });
+  const session = useCurrentSession();
+  const [poll, setPoll] = useState("Waiting");
+  usePolling({ key: "sessions", command: "sessions.list", input: { limit: 5 }, intervalMs: 1000 }, (update) => setPoll(update.ok ? "Structured JSON: " + typeof update.result : update.error));
+  return <main style={{ color: "var(--foreground)", display: "grid", gap: 8 }}>
+    <strong>Shared count: {state.value.count}</strong>
+    <nav style={{display: "flex", gap: 8}}>
+      <button disabled={!state.hydrated} onClick={() => state.save({count: state.value.count + 1})}>Save count</button>
+      <button onClick={() => { throw new Error("Widget fixture crash"); }}>Crash widget</button>
+    </nav>
+    <output>{poll}</output>
+    <small>Current session: {session?.sessionId ?? "None"}</small>
+  </main>;
+}`;
+    await seedArtifactScenario(paths, theme, {
+      protocol: "cake.artifact/v1",
+      id: "shared-dashboard",
+      sessionId: "visual-widget-attachments",
+      revision: 1,
+      kind: "widget",
+      title: "Shared dashboard",
+      payload: {
+        language: "react",
+        brief: "Shared state and view-owned updates",
+        source,
+        browser: await retainArtifactBrowser(paths, "react", source),
+      },
+      fallback: { markdown: "Shared dashboard" },
+    });
     const timestamp = new Date(0).toISOString();
     await writeFile(
       join(paths.cakeHome, "state", "application.json"),
       JSON.stringify({
-        version: 10,
+        version: 11,
         data: {
           ...defaultApplicationState(),
           projects: [
             {
               path: paths.project,
-              name: "Session controls",
+              name: "Widget workspace",
               addedAt: timestamp,
               lastOpenedAt: timestamp,
             },
           ],
-          sessionPlugins: [
-            {
-              sessionId: "visual-assistant-markdown-code",
-              id: "generated",
-              title: "Custom controls",
-              slot: "composer.above",
-              source: `import { useCake, usePluginState } from "@cake/plugin-sdk";
-export default function Plugin() { const cake = useCake(); const [state, setState] = usePluginState({ topic: "Current selection" }); return <section><span>{state.topic}</span> <button onClick={() => setState({topic: "Selection clarified"})}>Explain this</button> <button disabled>Unavailable</button></section>; }`,
-              state: { topic: "Current selection" },
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            },
-            {
-              sessionId: "visual-assistant-markdown-code",
-              id: "explanation-guide",
-              title: "Explanation guide",
-              slot: "composer.above",
-              preset: "action-bar",
-              state: {
-                label: "One meaningful explanation step",
-                actions: [
-                  {
-                    id: "continue",
-                    label: "Continue",
-                    primary: true,
-                    message: "Continue with one meaningful explanation step.",
-                  },
-                  {
-                    id: "explain",
-                    label: "Explain this",
-                    message: "Clarify the current explanation point.",
-                  },
-                  {
-                    id: "done",
-                    label: "Done",
-                    message: "Remove explanation-guide with plugins.delete; preserve the artifact.",
-                  },
-                ],
-              },
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            },
-            {
-              sessionId: "visual-assistant-markdown-code",
-              id: "guided-steps",
-              title: "Guided steps",
-              slot: "composer.above",
-              preset: "action-bar",
-              state: {
-                label: "Understanding the flow",
-                progress: { current: 1, total: 4 },
-                actions: [
-                  {
-                    id: "previous",
-                    label: "Previous",
-                    disabled: true,
-                    message: "Revisit the previous step without undoing the board.",
-                  },
-                  {
-                    id: "next",
-                    label: "Next",
-                    primary: true,
-                    message: "Explain the next step and update guided-steps progress.",
-                  },
-                  {
-                    id: "done",
-                    label: "Done",
-                    message: "Delete guided-steps; preserve existing work.",
-                  },
-                ],
-              },
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            },
-          ],
+          widgetAttachments: (["top", "bottom", "left", "right"] as const).map((slot, order) => ({
+            id: "dashboard-" + slot,
+            lineageId: "shared-dashboard",
+            target: { kind: "global" },
+            slot,
+            order,
+            hidden: false,
+          })),
         },
       }),
     );
   },
-  async prepare(page, state) {
-    const frame = page.frameLocator('iframe[title="Custom controls"]');
-    await expect(frame.getByRole("button", { name: "Explain this" })).toBeVisible();
-    await expect(frame.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
-    if (state === "hover") await frame.getByRole("button", { name: "Explain this" }).hover();
+  async prepare(page, _state, application) {
+    if (application) {
+      await page
+        .getByRole("combobox", { name: /^Message/ })
+        .first()
+        .waitFor();
+      await emitRendererEvent(application, {
+        type: "session-open-requested",
+        sessionId: "visual-widget-attachments",
+      });
+    }
+    await expect(page.locator("[data-widget-attachment] iframe")).toHaveCount(4);
+    await expect(
+      page
+        .locator('[data-widget-slot="left"] iframe')
+        .contentFrame()
+        .getByRole("button", { name: "Save count" }),
+    ).toBeEnabled();
   },
-  region(page) {
-    return page.locator('[data-session-plugin-slot="composer.above"]');
-  },
+  region: (page) => page.locator('[data-slot="chat"]').first().locator("..").locator(".."),
 };
 
 const widgetSpeechArticle =
   "Cake can read widgets aloud. Press Play to hear this article in your configured voice. Pause keeps your place, and Resume continues from the same word. Stop ends reading.";
 
-/** Article-reader artifact and Session Plugin sharing one conversation, for read-aloud checks. */
+/** Inline and attached widgets share the same sandbox and read-aloud bridge. */
 export const widgetSpeechScenario: VisualCaptureScenario = {
   name: "widget-speech",
-  description: "Article reader artifact and Session Plugin using Cake read-aloud",
+  description: "Inline and attached widgets using Cake read-aloud",
   states: ["default"],
   async seed(paths, theme) {
     const source = `<!doctype html><html><head><style>
@@ -7874,18 +7857,34 @@ document.getElementById("stop").onclick = () => speech.stop();
       (part: { type: string }) => part.type === "toolCall",
     );
     await writeFile(transcript, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    const sourceStep =
+      'import { useSpeech } from "@cake/artifact-sdk";\nexport default function StepReader() {\n  const speech = useSpeech();\n  const busy = speech.status === "loading" || speech.status === "playing" || speech.status === "paused";\n  return <section>\n    <button data-variant="primary" onClick={() => speech.speak("Step one. Open the settings.").catch(() => undefined)}>Read step</button>{" "}\n    <button disabled={!busy} onClick={() => speech.status === "paused" ? speech.resume() : speech.pause()}>{speech.status === "paused" ? "Resume step" : "Pause step"}</button>{" "}\n    <button disabled={!busy} onClick={speech.stop}>Stop step</button>{" "}\n    <output>{speech.status === "error" ? "error: " + speech.error : "widget " + speech.status}</output>\n  </section>;\n}';
+    await seedArtifact(
+      paths,
+      {
+        protocol: "cake.artifact/v1",
+        id: "step-reader",
+        sessionId: "visual-widget-speech",
+        revision: 1,
+        kind: "widget",
+        title: "Step reader",
+        payload: {
+          language: "react",
+          source: sourceStep,
+          brief: "Read the current step",
+          browser: await retainArtifactBrowser(paths, "react", sourceStep),
+        },
+        fallback: { markdown: "Step reader" },
+      },
+      new Date(0).toISOString(),
+    );
     const timestamp = new Date(0).toISOString();
     await writeFile(
       join(paths.cakeHome, "state", "application.json"),
       JSON.stringify({
-        version: 4,
+        version: 11,
         data: {
-          globalSessionLabels: [],
-          unreadSessionIds: [],
-          fastModeSessionIds: [],
-          modelPresets: [],
-          sessionPluginSharedState: [],
-          trustedProjectPaths: [],
+          ...defaultApplicationState(),
           projects: [
             {
               path: paths.project,
@@ -7894,26 +7893,14 @@ document.getElementById("stop").onclick = () => speech.stop();
               lastOpenedAt: timestamp,
             },
           ],
-          sessionPlugins: [
+          widgetAttachments: [
             {
-              sessionId: "visual-widget-speech",
               id: "step-reader",
-              title: "Step reader",
-              slot: "composer.above",
-              source: `import { useSpeech } from "@cake/plugin-sdk";
-export default function StepReader() {
-  const speech = useSpeech();
-  const busy = speech.status === "loading" || speech.status === "playing" || speech.status === "paused";
-  return <section>
-    <button data-variant="primary" onClick={() => speech.speak("Step one. Open the settings.").catch(() => undefined)}>Read step</button>{" "}
-    <button disabled={!busy} onClick={() => speech.status === "paused" ? speech.resume() : speech.pause()}>{speech.status === "paused" ? "Resume step" : "Pause step"}</button>{" "}
-    <button disabled={!busy} onClick={speech.stop}>Stop step</button>{" "}
-    <output>{speech.status === "error" ? "error: " + speech.error : "plugin " + speech.status}</output>
-  </section>;
-}`,
-              state: null,
-              createdAt: timestamp,
-              updatedAt: timestamp,
+              lineageId: "step-reader",
+              target: { kind: "session", sessionId: "visual-widget-speech" },
+              slot: "bottom",
+              order: 0,
+              hidden: false,
             },
           ],
         },
@@ -7923,7 +7910,17 @@ export default function StepReader() {
   region(page) {
     return page.locator(".transcript").first();
   },
-  async prepare(page) {
+  async prepare(page, _state, application) {
+    if (application) {
+      await page
+        .getByRole("combobox", { name: /^Message/ })
+        .first()
+        .waitFor();
+      await emitRendererEvent(application, {
+        type: "session-open-requested",
+        sessionId: "visual-widget-speech",
+      });
+    }
     await expect(
       page
         .locator('[data-slot="artifact-disclosure"] iframe')
@@ -8757,7 +8754,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   readImageToolScenario,
   vscodeTerminalScenario,
   sourceSelectionScenario,
-  sessionPluginsScenario,
+  widgetAttachmentsScenario,
   widgetSpeechScenario,
   assistantMarkdownCode,
   assistantDiagrams,
@@ -9032,40 +9029,35 @@ export async function seedArtifact(
   artifact: CakeArtifactV1,
   timestamp: string,
 ) {
-  const serialized = `${JSON.stringify(artifact, null, 2)}\n`;
-  const digest = sha256(serialized);
-  const artifactRoot = join(paths.cakeHome, "state", "artifacts");
-  const recordDirectory = join(
-    artifactRoot,
-    "sessions",
-    sha256(paths.project),
-    sha256(artifact.sessionId),
-  );
-  await Promise.all([
-    mkdir(join(artifactRoot, "blobs"), { recursive: true }),
-    mkdir(recordDirectory, { recursive: true }),
-  ]);
-  await Promise.all([
-    writeFile(join(artifactRoot, "blobs", `${digest}.json`), serialized),
-    writeFile(
-      join(recordDirectory, `${sha256(artifact.id)}.json`),
-      `${JSON.stringify(
-        {
-          protocol: artifact.protocol,
-          id: artifact.id,
-          sessionId: artifact.sessionId,
-          workspacePath: paths.project,
-          revision: artifact.revision,
-          kind: artifact.kind,
-          digest,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        },
-        null,
-        2,
-      )}\n`,
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const storage = yield* ArtifactStorage;
+      const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(artifact.id);
+      const input = {
+        lineageId,
+        expectedLatestRevision: artifact.revision - 1,
+        snapshot: artifact,
+        workingDirectory: paths.project,
+      };
+      const link = {
+        lineageId,
+        target: { type: "session" as const, sessionId: artifact.sessionId },
+        selection: { mode: "follow-latest" as const },
+        createdAt: timestamp,
+      };
+      if (artifact.revision === 1) yield* storage.publishWithLink(input, link);
+      else {
+        yield* storage.publish(input);
+        yield* storage.putLink(link);
+      }
+    }).pipe(
+      Effect.provide(
+        makeArtifactStorageLive(join(paths.cakeHome, "state", "artifacts")).pipe(
+          Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+        ),
+      ),
     ),
-  ]);
+  );
 }
 
 function sha256(value: string) {

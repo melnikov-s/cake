@@ -74,7 +74,7 @@ const state = (id: string, status: string, extra: object = {}) => ({
 });
 
 describe("widget speech bridge", () => {
-  it.each(["artifact", "session-plugin"] as const)(
+  it.each(["artifact"] as const)(
     "gives %s widgets cakeSpeech requests and host-driven progress",
     async (capability) => {
       using bridge = await runBridge(capability);
@@ -132,11 +132,8 @@ describe("widget speech bridge", () => {
     }
   });
 
-  it("bundles useSpeech in both the artifact and plugin SDKs", async () => {
-    for (const [capability, sdk] of [
-      ["artifact", "@cake/artifact-sdk"],
-      ["session-plugin", "@cake/plugin-sdk"],
-    ] as const) {
+  it("bundles useSpeech in the unified widget SDK", async () => {
+    for (const [capability, sdk] of [["artifact", "@cake/artifact-sdk"]] as const) {
       const compiled = await compileInlineWidget(
         "react",
         `import { useSpeech } from "${sdk}"; export default function Reader() { const speech = useSpeech(); return <button onClick={() => speech.status === "playing" ? speech.pause() : speech.speak("Hello.")}>{speech.status}</button>; }`,

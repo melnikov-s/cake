@@ -6,7 +6,7 @@ import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { NativeWidgetCaptureRpc, WidgetCaptureResponseRpc } from "../protocol/WidgetCaptureRpc";
 
 export const nativeWidgetCaptureHandlers = NativeWidgetCaptureRpc.of({
-  "widgets.capture-native-widget": ({ sessionId, widget, pluginState }) =>
+  "widgets.capture-native-widget": ({ sessionId, widget, initialState }) =>
     Effect.gen(function* () {
       if (
         !/^[0-9a-f-]{36}$/.test(widget.token) ||
@@ -24,7 +24,7 @@ export const nativeWidgetCaptureHandlers = NativeWidgetCaptureRpc.of({
         });
       const cancellation = new AbortController();
       return yield* capture.value
-        .capture(sessionId, widget, cancellation.signal, pluginState)
+        .capture(sessionId, widget, cancellation.signal, initialState)
         .pipe(Effect.ensuring(Effect.sync(() => cancellation.abort())));
     }),
 });

@@ -1,4 +1,8 @@
 import { Schema } from "effect";
+import { SessionRoster } from "../project-sessions/session-roster";
+import { sessionRoster } from "./session-roster-text";
+import { WorkflowRoster } from "../project-sessions/workflow-roster";
+import { workflowRosterText } from "./workflow-roster-text";
 import { TaskInputReference } from "../conversations/task-input";
 import { MessageListResult } from "../conversations/message-reference";
 import type { JsonValue } from "../serialization/json-contract";
@@ -137,6 +141,12 @@ const table = (header: string, columns: readonly string[], rows: readonly (reado
 export function discoveryResultText(command: string, value: JsonValue): string | undefined {
   if (Schema.is(error)(value)) return undefined;
   switch (command) {
+    case "sessions.list": {
+      if (Schema.is(WorkflowRoster)(value))
+        return workflowRosterText(Schema.decodeUnknownSync(WorkflowRoster)(value));
+      if (!Schema.is(SessionRoster)(value)) return undefined;
+      return sessionRoster(value.sessions, value, value.sampledAt, true);
+    }
     case "automations.list": {
       const result = Schema.decodeUnknownSync(automations)(value);
       return table(

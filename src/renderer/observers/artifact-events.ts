@@ -24,6 +24,7 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
         }
         if (event.type === "renderer-events-ready") {
           root.inlineWidgetStore.refreshArtifactState();
+          root.widgetAttachmentStore.invalidate();
           root.artifactViewingStore.refresh();
           root.props.projection.artifacts.invalidate();
           // Reconcile content after stream subscription/reconnection, not only after opening.
@@ -38,6 +39,7 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
           root.props.projection.artifacts.invalidate();
           const lineageId =
             event.type === "artifact-updated" ? event.record.artifact.id : event.lineageId;
+          root.widgetAttachmentStore.invalidate(lineageId);
           root.artifactLibraryStore.receiveBoardChange(lineageId);
           root.artifactMenuStore.receiveBoardChange(lineageId);
           return;

@@ -23,7 +23,6 @@ export interface InlineWidgetGenerationRequest {
   data?: unknown;
   initialState?: JsonValue;
   fallback: string;
-  surface?: "widget" | "session-plugin";
   model?: { provider: string; id: string };
   signal?: AbortSignal;
   onProgress?(progress: WidgetGenerationProgress): void;

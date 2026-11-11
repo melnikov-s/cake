@@ -60,11 +60,11 @@ describe("mounted widget publication lifetime", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(15_000);
       });
-      expect(view.getByText("Widget view unavailable")).toBeDefined();
+      expect(view.getByText("Widget stopped")).toBeDefined();
       expect(view.getByText(/did not finish loading/)).toBeDefined();
       expect(view.getByText("Widget fallback")).toBeDefined();
       await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "Retry view" }));
+        fireEvent.click(view.getByRole("button", { name: "Retry" }));
       });
       const currentFrame = view.container.querySelector("iframe")!;
       expect(currentFrame.getAttribute("src")).toContain(publication(2).token);
@@ -105,7 +105,7 @@ describe("mounted widget publication lifetime", () => {
         await vi.advanceTimersByTimeAsync(60_000);
       });
       expect(view.container.querySelector('[data-widget-view-ready="true"]')).not.toBeNull();
-      expect(view.queryByText("Widget view unavailable")).toBeNull();
+      expect(view.queryByText("Widget stopped")).toBeNull();
     } finally {
       view.unmount();
       fixture[Symbol.dispose]();

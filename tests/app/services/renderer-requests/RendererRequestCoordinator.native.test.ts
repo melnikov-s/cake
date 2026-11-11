@@ -122,7 +122,7 @@ describe("native request correlation and deadlines", () => {
         const pending = yield* start().pipe(Effect.forkChild({ startImmediately: true }));
         const event = yield* Queue.take(events);
         if (event.type !== "widget-capture-requested") throw new Error("Expected widget capture");
-        expect(event.pluginState).toEqual({ version: 4 });
+        expect(event.initialState).toEqual({ version: 4 });
         const result = { ok: true as const, pngBase64: "png", diagnostics: ["ready"] };
         expect(
           Exit.isFailure(

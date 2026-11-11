@@ -8,7 +8,7 @@ import {
 import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
 import { createMessageOperations } from "../../../src/domain/conversations/cake-message-operations";
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
-import { createCakeSessionPluginOperations } from "../../../src/domain/session-plugins/cake-session-plugin-operations";
+import { createWidgetAttachmentOperations } from "../../../src/domain/widgets/cake-widget-attachment-operations";
 import { createCakeChatWorktreeOperations } from "../../../src/domain/worktrees/cake-session-worktree-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { coordinatorSystemPrompt } from "../../../src/services/pi-durable/coordinator-system-prompt";
@@ -20,8 +20,7 @@ import { presetGuidance } from "../../../src/contracts/model-presets/preset-cont
 const unused = async (): Promise<never> => {
   throw new Error("Reference generation must not execute controls");
 };
-const presentPlugin = vi.fn(async () => undefined);
-const generatePlugin = vi.fn(unused);
+const attachWidget = vi.fn(async () => ({ attached: true }));
 const operations = new CakeOperationRegistry([
   ...createGlobalControlOperations({ tools: cakeChatControlTools(), invoke: unused }, () => ({
     provider: "test",
@@ -39,14 +38,7 @@ const operations = new CakeOperationRegistry([
   }),
   ...createMessageOperations({ list: unused, read: unused, open: unused }),
   ...createCakeChatWorktreeOperations({ merge: unused, mergeAndResolve: unused }),
-  ...createCakeSessionPluginOperations({
-    sessionId: "project-chat:fixture",
-    generate: generatePlugin,
-    present: presentPlugin,
-    setState: unused,
-    patchState: unused,
-    delete: unused,
-  }),
+  ...createWidgetAttachmentOperations(attachWidget),
 ]);
 const reference = coreChatOperations(operations);
 const prompt = coordinatorSystemPrompt("", "/docs", false, reference);
@@ -83,46 +75,14 @@ describe("core coordinator calling reference", () => {
     expect(prompt).not.toMatch(/tool[ -]?compact/i);
   });
 
-  it("provides a directly executable action-bar recipe with owner-message and lifecycle semantics", async () => {
-    const recipe = line("plugins.present");
-    expect(recipe).toBeDefined();
-    expect(prompt).toContain(recipe!);
-    const input = JSON.parse(recipe!.slice("plugins.present ".length));
-    const mounted = await operations.invoke(
-      { command: "plugins.present", input },
-      {
-        signal: new AbortController().signal,
-        toolCallId: "prompt-plugin-recipe",
-        runtime: { sessionId: "project-chat:fixture" },
-      },
-    );
-    expect(mounted.details).toMatchObject({
-      result: { id: "hello-sample", slot: "composer.above", status: "mounted" },
-    });
-    expect(generatePlugin).not.toHaveBeenCalled();
-    expect(presentPlugin).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: "project-chat:fixture",
-        id: "hello-sample",
-        preset: "action-bar",
-        state: {
-          label: "Test session plugin",
-          actions: [{ id: "say-hello", label: "Say hello", message: "Hello!", primary: true }],
-        },
-      }),
-    );
-    expect(line("plugins.patch")).toBe("plugins.patch {id, patch}");
-    expect(line("plugins.delete")).toBe("plugins.delete {id}");
-    for (const rule of [
-      "Actions send visible messages to the owning session",
-      "no automatic progress/artifact change/deletion",
-      "Update after actual work",
-      "Shallow state merge; nested objects/arrays replace",
-      'patch:{label:"Next step"}',
-      "Custom UI: plugins.present.help",
-    ])
-      expect(prompt).toContain(rule);
-    expect(reference).not.toContain("plugins.update");
+  it("exposes the unified attachment operations without a second plugin recipe", () => {
+    expect(line("widgets.attach")).toContain("lineageId");
+    expect(line("widgets.attach")).toContain("target");
+    expect(line("widgets.detach")).toBe("widgets.detach {id}");
+    expect(line("widgets.attachments")).toBe("widgets.attachments {}");
+    expect(prompt).toContain("Moving keeps identity/state");
+    expect(reference).not.toContain("plugins.present");
+    expect(attachWidget).not.toHaveBeenCalled();
   });
 
   it("exposes complete common to-do editing and generated association shapes", () => {
@@ -225,9 +185,9 @@ describe("core coordinator calling reference", () => {
         "worktrees.merge",
         "sessions.resolve",
         "messages.read",
-        "plugins.present",
-        "plugins.patch",
-        "plugins.delete",
+        "widgets.attach",
+        "widgets.detach",
+        "widgets.attachments",
       ])
         expect(
           assembled.split("\n").filter((item) => item.startsWith(`${command} {`)),

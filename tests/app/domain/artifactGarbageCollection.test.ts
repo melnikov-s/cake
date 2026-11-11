@@ -13,6 +13,8 @@ import { makeArtifactProjectionLive } from "../../../src/services/artifacts/Arti
 import { PiSessionError, CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 
@@ -45,6 +47,7 @@ const testLayer = async (options: {
   return {
     root,
     layer: Layer.mergeAll(
+      Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
       makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
       makeArtifactProjectionLive(join(root, "cache")).pipe(Layer.provide(platform)),
       Layer.mock(CakeSessionRuntimes, {

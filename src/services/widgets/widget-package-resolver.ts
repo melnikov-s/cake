@@ -161,14 +161,13 @@ export async function widgetPackageResolver(
       builder.onResolve({ filter: /.*/ }, async (args) => {
         if (
           args.path.startsWith("cake:") ||
-          /^@cake\/(?:plugin-sdk|artifact-sdk)$/.test(args.path) ||
+          /^@cake\/artifact-sdk$/.test(args.path) ||
           args.namespace === "cake-widget-assets" ||
           args.pluginData?.cakePackageResolution
         )
           return;
         if (
           args.namespace === "cake-widget" ||
-          args.namespace === "cake-plugin-sdk" ||
           args.namespace === "cake-artifact-sdk" ||
           args.importer.endsWith("cake-widget-entry.tsx")
         ) {

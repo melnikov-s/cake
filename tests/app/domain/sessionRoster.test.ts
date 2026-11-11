@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sessionRoster } from "../../../src/domain/application/sessionRoster";
+import { sessionRoster } from "../../../src/contracts/agent/session-roster-text";
 import type { SessionContextMetadata } from "../../../src/contracts/conversations/session-context-metadata";
 import {
   CAKE_CHAT_REFERENCE,

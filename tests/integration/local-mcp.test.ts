@@ -73,6 +73,7 @@ const content = (value: { content: readonly unknown[] }) =>
     value.content[0],
   ).text;
 const emptyResult = (): CakeOperationInvocation => ({
+  json: {},
   text: "{}",
   content: [{ type: "text", text: "{}" }],
   details: {},

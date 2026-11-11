@@ -401,25 +401,27 @@ export default function Editor() {
         .attach("html-widget-state.png", { body: screenshot, contentType: "image/png" });
     }
 
-    const plugin = await callRpcHarness<{
-      widget: { token: string; url: string };
-    }>(harness, "invokeNative", {
-      type: "compile-inline-widget",
-      language: "react",
-      capability: "session-plugin",
-      source: `import { useCake, usePluginState } from "@cake/plugin-sdk";
-export default function TourPlugin() {
+    const interactive = await callRpcHarness<{ widget: { token: string; url: string } }>(
+      harness,
+      "invokeNative",
+      {
+        type: "compile-inline-widget",
+        language: "react",
+        capability: "artifact",
+        source: `import { useCake, useArtifactState } from "@cake/artifact-sdk";
+export default function TourWidget() {
   const cake = useCake();
-  const [state] = usePluginState({ current: 0 });
-  return <button onClick={() => cake.session.sendMessage("Next")}>Next from {state.current}</button>;
+  const { value: state } = useArtifactState({ current: 0 });
+  return <button onClick={() => cake.tools.call("chat.prompt", {sessionId: "fixture", text: "Next"})}>Next from {state.current}</button>;
 }`,
-    });
+      },
+    );
     await page.evaluate(({ url, token }) => {
       const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
       if (!frame) throw new Error("Widget frame is unavailable");
       const receive = (event: MessageEvent) => {
         if (event.source !== frame.contentWindow) return;
-        // SAFETY: This fixed smoke fixture checks the source and capability token before use.
+        // SAFETY: This controlled fixture checks frame provenance and capability token.
         const data = event.data as {
           source?: string;
           token?: string;
@@ -427,21 +429,25 @@ export default function TourPlugin() {
           value?: { id?: string; command?: string; input?: unknown };
         };
         if (data.source !== "cake-inline-widget" || data.token !== token) return;
-        if (data.type === "ready")
+        if (data.type === "artifact-state-read")
           frame.contentWindow?.postMessage(
             {
-              source: "cake-session-plugin-host",
+              source: "cake-artifact-host",
               token,
-              type: "context",
-              value: { pluginState: { current: 2 }, sharedState: {} },
+              type: "state-result",
+              value: {
+                id: data.value?.id,
+                ok: true,
+                state: { lineageId: "fixture", version: 1, value: { current: 2 } },
+              },
             },
             "*",
           );
-        if (data.type === "plugin-call" && data.value?.id) {
-          Object.assign(window, { __cakePluginSmokeCall: data.value });
+        if (data.type === "artifact-cake-call" && data.value?.id) {
+          Object.assign(window, { __cakeWidgetSmokeCall: data.value });
           frame.contentWindow?.postMessage(
             {
-              source: "cake-session-plugin-host",
+              source: "cake-artifact-host",
               token,
               type: "call-result",
               value: { id: data.value.id, ok: true, result: { accepted: true } },
@@ -452,20 +458,13 @@ export default function TourPlugin() {
       };
       window.addEventListener("message", receive);
       frame.src = url;
-    }, plugin.widget);
-    const pluginFrame = iframe.contentFrame();
-    await expect(pluginFrame.getByRole("button", { name: "Next from 2" })).toBeVisible();
-    await pluginFrame.getByRole("button", { name: "Next from 2" }).click();
+    }, interactive.widget);
+    const interactiveFrame = iframe.contentFrame();
+    await expect(interactiveFrame.getByRole("button", { name: "Next from 2" })).toBeVisible();
+    await interactiveFrame.getByRole("button", { name: "Next from 2" }).click();
     await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            Reflect.get(window, "__cakePluginSmokeCall") as
-              | { command?: string; input?: { text?: string } }
-              | undefined,
-        ),
-      )
-      .toMatchObject({ command: "session.prompt", input: { text: "Next" } });
+      .poll(() => page.evaluate(() => Reflect.get(window, "__cakeWidgetSmokeCall")))
+      .toMatchObject({ command: "chat.prompt", input: { sessionId: "fixture", text: "Next" } });
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

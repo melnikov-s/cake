@@ -1029,14 +1029,7 @@ export async function createCakeSessionRuntime(
     reload: resources.requestReload,
     async callCakeOperation(command, input, signal) {
       const result = await callCakeTool(command, input, signal);
-      if (
-        typeof result.details === "object" &&
-        result.details !== null &&
-        !Array.isArray(result.details) &&
-        "result" in result.details
-      )
-        return result.details.result;
-      return result.details;
+      return result.json;
     },
     dispatchExtensionCompanionAction: resources.dispatchCompanionAction,
     refreshModels: configuration.refreshModels,

@@ -5,7 +5,6 @@ import {
 } from "../../utils/left-toolbar-preferences";
 import { normalizeCakePromptOverrides } from "../../contracts/application/cake-prompt-defaults";
 import { type CakePromptOverrides } from "../../contracts/application/cake-prompt-data";
-import { jsonObjectSchema, type JsonObject } from "../../contracts/serialization/json-contract";
 import {
   ApplicationState as ApplicationStateSchema,
   type ApplicationState,
@@ -15,7 +14,6 @@ import {
   type ProjectWorkflow,
   type SessionLabelMutation,
   type ProjectWorkflowSessionDetails,
-  SessionPlugin,
   type UtilityModel,
   type CakeChatPreferences,
 } from "../../contracts/application/application-data";
@@ -499,128 +497,6 @@ export const setSessionUnread = Effect.fn("Application.setSessionUnread")(functi
   }));
 });
 
-export const upsertSessionPlugin = Effect.fn("Application.upsertSessionPlugin")(function* (
-  plugin: SessionPlugin,
-) {
-  return yield* update((current) => {
-    const existing = current.sessionPlugins.findIndex(
-      (candidate) => candidate.sessionId === plugin.sessionId && candidate.id === plugin.id,
-    );
-    return {
-      ...current,
-      sessionPlugins:
-        existing < 0
-          ? [...current.sessionPlugins, plugin]
-          : current.sessionPlugins.map((candidate, index) =>
-              index === existing
-                ? { ...plugin, createdAt: candidate.createdAt, hidden: candidate.hidden }
-                : candidate,
-            ),
-    };
-  });
-});
-
-export const setSessionPluginState = Effect.fn("Application.setSessionPluginState")(function* (
-  sessionId: string,
-  pluginId: string,
-  state: typeof Schema.Json.Type,
-) {
-  const updatedAt = DateTime.formatIso(yield* DateTime.now);
-  const owner = yield* ApplicationStateOwner;
-  return yield* owner.transact((current) =>
-    Effect.gen(function* () {
-      const plugins = yield* Effect.forEach(current.sessionPlugins, (plugin) =>
-        plugin.sessionId === sessionId && plugin.id === pluginId
-          ? Schema.decodeUnknownEffect(SessionPlugin)({ ...plugin, state, updatedAt }).pipe(
-              Effect.mapError((cause) => new ApplicationPolicyError({ message: cause.message })),
-            )
-          : Effect.succeed(plugin),
-      );
-      return yield* validate({ ...current, sessionPlugins: plugins });
-    }),
-  );
-});
-
-/** Shallow object patch, serialized with all application mutations; validate the complete result. */
-export const patchSessionPluginState = Effect.fn("Application.patchSessionPluginState")(function* (
-  sessionId: string,
-  pluginId: string,
-  patch: JsonObject,
-) {
-  const updatedAt = DateTime.formatIso(yield* DateTime.now);
-  const owner = yield* ApplicationStateOwner;
-  return yield* owner.transact((current) =>
-    Effect.gen(function* () {
-      const target = current.sessionPlugins.find(
-        (plugin) => plugin.sessionId === sessionId && plugin.id === pluginId,
-      );
-      if (!target)
-        return yield* new ApplicationPolicyError({ message: "Session Plugin not found" });
-      const previous = yield* Schema.decodeUnknownEffect(jsonObjectSchema)(target.state).pipe(
-        Effect.mapError(
-          () => new ApplicationPolicyError({ message: "Only object plugin state can be patched" }),
-        ),
-      );
-      const updated = yield* Schema.decodeUnknownEffect(SessionPlugin)({
-        ...target,
-        state: { ...previous, ...patch },
-        updatedAt,
-      }).pipe(Effect.mapError((cause) => new ApplicationPolicyError({ message: cause.message })));
-      return yield* validate({
-        ...current,
-        sessionPlugins: current.sessionPlugins.map((plugin) =>
-          plugin === target ? updated : plugin,
-        ),
-      });
-    }),
-  );
-});
-
-export const setSessionPluginHidden = Effect.fn("Application.setSessionPluginHidden")(function* (
-  sessionId: string,
-  pluginId: string,
-  hidden: boolean,
-) {
-  return yield* update((current) => ({
-    ...current,
-    sessionPlugins: current.sessionPlugins.map((plugin) =>
-      plugin.sessionId === sessionId && plugin.id === pluginId ? { ...plugin, hidden } : plugin,
-    ),
-  }));
-});
-
-export const deleteSessionPlugin = Effect.fn("Application.deleteSessionPlugin")(function* (
-  sessionId: string,
-  pluginId: string,
-) {
-  return yield* update((current) => ({
-    ...current,
-    sessionPlugins: current.sessionPlugins.filter(
-      (plugin) => plugin.sessionId !== sessionId || plugin.id !== pluginId,
-    ),
-  }));
-});
-
-export const setSessionPluginSharedState = Effect.fn("Application.setSessionPluginSharedState")(
-  function* (sessionId: string, key: string, value: typeof Schema.Json.Type) {
-    return yield* update((current) => {
-      const existing = current.sessionPluginSharedState.findIndex(
-        (entry) => entry.sessionId === sessionId && entry.key === key,
-      );
-      const entry = { sessionId, key, value };
-      return {
-        ...current,
-        sessionPluginSharedState:
-          existing < 0
-            ? [...current.sessionPluginSharedState, entry]
-            : current.sessionPluginSharedState.map((candidate, index) =>
-                index === existing ? entry : candidate,
-              ),
-      };
-    });
-  },
-);
-
 export const forgetProjectSessions = Effect.fn("Application.forgetProjectSessions")(function* (
   sessionIds: ReadonlyArray<string>,
 ) {
@@ -629,6 +505,9 @@ export const forgetProjectSessions = Effect.fn("Application.forgetProjectSession
     ...current,
     unreadSessionIds: current.unreadSessionIds.filter((id) => !forgotten.has(id)),
     fastModeSessionIds: current.fastModeSessionIds.filter((id) => !forgotten.has(id)),
+    widgetAttachments: current.widgetAttachments.filter(
+      (entry) => entry.target.kind !== "session" || !forgotten.has(entry.target.sessionId),
+    ),
     sessionPlugins: current.sessionPlugins.filter((plugin) => !forgotten.has(plugin.sessionId)),
     sessionPluginSharedState: current.sessionPluginSharedState.filter(
       (entry) => !forgotten.has(entry.sessionId),

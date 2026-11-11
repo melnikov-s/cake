@@ -17,7 +17,6 @@ import type { VscodeControl } from "../editor/vscode-agent-control";
 import type { InterviewRecord } from "../interviews/interview";
 import type { CakeModelPresetCatalog } from "../model-presets/cake-model-selection";
 import type { NonChatModelPreferences } from "../models/non-chat-model-data";
-import type { SessionPluginControl } from "../application/session-plugin-agent-control";
 import type { ParallelSubagentInput, SubagentTaskInput } from "../subagents/subagent-data";
 import type { ProjectSessionAgentPolicy } from "../project-sessions/project-session-agent-policy";
 import type { JsonObject, JsonValue } from "../serialization/json-contract";
@@ -184,7 +183,6 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   allowBlockingUserInput?: boolean;
   messageBoardControl?: MessageBoardControl;
   requestInterview?(record: InterviewRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
-  sessionPluginControl?: Omit<SessionPluginControl, "generate">;
   modelPresets?(): CakeModelPresetCatalog;
   nonChatModelPreferences?(): NonChatModelPreferences;
   currentSessionControl?: CurrentSessionControl;

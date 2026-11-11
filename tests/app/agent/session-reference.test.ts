@@ -246,13 +246,7 @@ describe("session references", () => {
     expect(result.text).toContain("Worker 0");
     expect(result.structuredContent).toEqual({
       command: "sessions.list",
-      result: {
-        sessions: [
-          { sessionId: "112345678", title: "Worker 0" },
-          { sessionId: "212345678", title: "Worker 1" },
-          { sessionId: "87654321", title: "Worker 2" },
-        ],
-      },
+      result: { sessions: roster },
     });
   });
 
@@ -290,7 +284,7 @@ describe("session references", () => {
     expect(routed).toEqual([a, b]);
     expect(output.status).toBe("partial");
     expect(output.outcomes.map((outcome) => outcome.sessionId)).toEqual([
-      "112345678",
+      a,
       "212345678",
       "ffffffff",
     ]);

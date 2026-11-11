@@ -19,7 +19,7 @@ export const respondWidgetCapture = Effect.fn("Renderer.respondWidgetCapture")(f
       : yield* client.widgets["capture-native-widget"]({
           sessionId: event.sessionId,
           widget: event.widget,
-          pluginState: event.pluginState,
+          initialState: event.initialState,
         }).pipe(
           Effect.map((value) => ({ ok: true as const, ...value })),
           Effect.catch((cause) =>

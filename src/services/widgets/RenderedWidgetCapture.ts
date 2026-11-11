@@ -16,7 +16,7 @@ export class RenderedWidgetCapture extends Context.Service<
       sessionId: string,
       widget: CompiledInlineWidget,
       signal: AbortSignal,
-      pluginState?: JsonValue,
+      initialState?: JsonValue,
     ) => Effect.Effect<RenderedWidgetCaptureResult, RenderedWidgetCaptureError>;
   }
 >()("cake/services/widgets/RenderedWidgetCapture") {}

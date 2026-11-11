@@ -13,6 +13,8 @@ import {
 import type { HttpClient } from "effect/http";
 import type { ChildProcessSpawner } from "effect/process";
 import * as artifactCommands from "../artifacts/artifactCommands";
+import * as widgetAttachments from "../widgets/widgetAttachments";
+import { widgetAttachmentContracts } from "../../contracts/widgets/widget-attachment";
 import {
   ArtifactCakeCallInput,
   ArtifactCommandDiscoveryInput,
@@ -24,7 +26,6 @@ import {
   cakeChatSideChatConversationId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId, projectLocation } from "../cake-chats/cakeChatLocations";
-import { sessionRoster } from "./sessionRoster";
 import { launchWorkflowRoster } from "./launchWorkflowRoster";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
@@ -106,7 +107,8 @@ export interface AgentControlCaller {
 export const handles = (command: string) =>
   backendAgentCommands.has(command) ||
   isBackendAgentSetting(command) ||
-  handlesGlobalArtifactCommand(command);
+  handlesGlobalArtifactCommand(command) ||
+  widgetAttachmentContracts.some((entry) => entry.command === command);
 
 export type AgentControlServices =
   | ModelPresetPrompts
@@ -196,6 +198,8 @@ export const invoke: (
 ) => Effect.Effect<JsonValue | undefined, AgentControlError, AgentControlServices | Scope.Scope> =
   Effect.fn("AgentControl.invoke")(
     function* (command, input, caller, windowConnectionId) {
+      if (widgetAttachmentContracts.some((entry) => entry.command === command))
+        return yield* widgetAttachments.invoke(command, input);
       if (command === "artifacts.commands") {
         const parsed = yield* Schema.decodeUnknownEffect(ArtifactCommandDiscoveryInput)(input, {
           onExcessProperty: "error",
@@ -619,7 +623,7 @@ export const invoke: (
             matched: selected.length,
             returned: listed.length,
           });
-          return sessionRoster(listed, page, now, true);
+          return toJsonValue({ ok: true, command, ...page, sampledAt: now, sessions: listed });
         }
         case "sessions.reports":
           if (!caller) return fail("Reports require an actual calling Session.");

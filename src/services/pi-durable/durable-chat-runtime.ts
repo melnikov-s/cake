@@ -1027,7 +1027,7 @@ export async function createDurableCakeChatRuntime(
           runtime: { sessionId, model: { provider: selected.provider, id: selected.id } },
         },
       );
-      return result.structuredContent;
+      return result.json;
     },
     async refreshModels() {
       await catalogRuntime.refresh();

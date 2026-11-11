@@ -23,13 +23,13 @@ const hostDocument = () =>
 
 const prepareScript = (
   widget: CompiledInlineWidget,
-  pluginState?: JsonValue,
+  initialState?: JsonValue,
 ) => `(() => new Promise((resolve) => {
   const token = ${JSON.stringify(widget.token)};
   const diagnostics = [];
   const stateWireError = ${artifactStateWireError.toString()};
   // Candidate captures get an ephemeral scope, never a linked artifact capability.
-  let artifactState = { version: ${pluginState === undefined ? 0 : 1}, value: ${JSON.stringify(pluginState ?? null)} };
+  let artifactState = { version: ${initialState === undefined ? 0 : 1}, value: ${JSON.stringify(initialState ?? null)} };
   let contentHeight;
   let settled = false;
   let timeout;
@@ -67,7 +67,7 @@ const prepareScript = (
       return;
     }
     if (value.type !== "ready") return;
-    ${pluginState === undefined ? "" : `frame.contentWindow.postMessage({ source: "cake-session-plugin-host", token, type: "context", value: { pluginState: ${JSON.stringify(pluginState)}, sharedState: {} } }, "*");`}
+    frame.contentWindow.postMessage({ source: "cake-artifact-host", token, type: "context", value: { session: null, project: null } }, "*");
     requestAnimationFrame(() => requestAnimationFrame(() => finish({
       rect: { x: 0, y: 0, width: innerWidth, height: innerHeight },
       diagnostics: [
@@ -136,7 +136,7 @@ export const RenderedWidgetCaptureLive = Layer.effect(
       _sessionId: string,
       widget: CompiledInlineWidget,
       signal: AbortSignal,
-      pluginState?: JsonValue,
+      initialState?: JsonValue,
     ) {
       if (signal.aborted) return yield* failure("cancelled", "Widget review was cancelled");
       const work = lock.withPermits(1)(
@@ -153,7 +153,7 @@ export const RenderedWidgetCaptureLive = Layer.effect(
             });
             const prepared = yield* Effect.tryPromise({
               try: () =>
-                window.webContents.executeJavaScript(prepareScript(widget, pluginState), true),
+                window.webContents.executeJavaScript(prepareScript(widget, initialState), true),
               catch: (cause) => failure("infrastructure", cause),
             }).pipe(
               Effect.flatMap((value) =>

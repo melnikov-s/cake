@@ -57,7 +57,7 @@ describe("observeApplicationEvents", () => {
       requestId: "00000000-0000-4000-8000-000000000002",
       sessionId: "session",
       widget: { token: "token", url: "cake-widget://token" },
-      pluginState: { version: 9 },
+      initialState: { version: 9 },
     });
     await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
     expect(application).toHaveBeenCalledTimes(1);

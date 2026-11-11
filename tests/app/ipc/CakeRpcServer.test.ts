@@ -595,10 +595,15 @@ describe("Cake RPC endpoint", () => {
         requestId: secondStream,
         values: [notification],
       });
-      const mutationId = yield* first.request("application.setSessionPluginSharedState", {
-        sessionId: "session-1",
-        key: "shared",
-        value: "first endpoint",
+      const mutationId = yield* first.request("projectWorkflow.mutateGlobal", {
+        mutation: {
+          _tag: "AddLabel",
+          label: {
+            id: "00000000-0000-4000-8000-000000000099",
+            name: "first endpoint",
+            color: "blue",
+          },
+        },
       });
       expect(yield* Queue.take(first.responses)).toMatchObject({
         _tag: "Exit",
@@ -612,9 +617,9 @@ describe("Cake RPC endpoint", () => {
         exit: {
           _tag: "Success",
           value: {
-            sessionPluginSharedState: [
-              { sessionId: "session-1", key: "shared", value: "first endpoint" },
-            ],
+            globalSessionLabels: expect.arrayContaining([
+              expect.objectContaining({ name: "first endpoint" }),
+            ]),
           },
         },
       });

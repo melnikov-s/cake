@@ -121,6 +121,45 @@ function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
 }
 
 describe("Cake artifact management operations", () => {
+  it("repairs a widget in a permanent chat without a Pi pointer while preserving saved state", async () => {
+    const f = makeHarness(widgetArtifact());
+    f.callbacks.reviseInlineWidget = vi.fn(async () => ({
+      language: "react" as const,
+      source: "export default function Chart(){return <p>Repaired</p>}",
+      generationSessionId: "repaired-generation",
+      browser: { digest: "c".repeat(64) },
+      preview: { mimeType: "image/png" as const, data: "cGl4ZWxz" },
+    }));
+    const registry = new CakeOperationRegistry(
+      createCakeArtifactOperations(undefined, f.callbacks),
+    );
+    const result = await registry.invoke(
+      {
+        command: "artifacts.replace",
+        input: {
+          lineageId: "chart",
+          expectedRevision: 1,
+          instructions: "Repair the view, preserving saved data",
+        },
+      },
+      {
+        signal: new AbortController().signal,
+        toolCallId: "durable-repair",
+        runtime: { sessionId: "project-chat:fixture", model: runtime.model },
+      },
+    );
+    expect(result.json).toMatchObject({ lineageId: "chart", selectedRevision: 2 });
+    expect(f.callbacks.reviseInlineWidget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialState: { scene: "latest live state" },
+        initialStateVersion: 9,
+      }),
+    );
+    expect(f.callbacks.persistArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "chart", revision: 2, sessionId: "project-chat:fixture" }),
+    );
+    expect(f.appendEntry).not.toHaveBeenCalled();
+  });
   it("explains static HTML styling, sizing and visual verification in operation help", async () => {
     const { registry } = makeHarness();
     const help = await registry.invoke({ command: "html.present.help" }, context());
@@ -224,7 +263,9 @@ describe("Cake artifact management operations", () => {
     });
     expect(callbacks.readArtifactState).not.toHaveBeenCalled();
     expect(callbacks.persistArtifact).not.toHaveBeenCalled();
-    expect(result.structuredContent).toContain("native image pixels were NOT forwarded");
+    expect(result.structuredContent).toMatchObject({
+      warning: expect.stringContaining("Native image pixels were NOT forwarded"),
+    });
     await expect(
       registry.invoke(
         { command: "artifacts.preview", input: { reference: "chart@r2" } },

@@ -116,7 +116,9 @@ describe("Cake operation registry", () => {
       await projecting.promise;
       expect(warning).not.toHaveBeenCalled();
       release.resolve();
-      expect((await result).structuredContent).toContain("PRIVATE_RESULT");
+      expect((await result).structuredContent).toMatchObject({
+        result: { status: "PRIVATE_RESULT" },
+      });
       expect(warning).toHaveBeenCalledExactlyOnceWith("Slow Cake operation", {
         command: "context.compact",
         call: expect.stringMatching(/^[0-9a-f]{16}$/),
@@ -367,7 +369,7 @@ describe("Cake operation registry", () => {
     await expect(available.invoke({ command: "context.fixture" }, context())).rejects.toThrow();
     expect(
       (await registry().invoke({ command: "session.info.output-schema" }, context())).text,
-    ).toContain("no structured output schema");
+    ).toContain("no exact result schema");
   });
 
   it("returns deterministic nearest matches without executing", async () => {
@@ -418,9 +420,15 @@ describe("Cake operation registry", () => {
       result: { boardId: "board-1", width: 640, height: 480 },
     });
     expect(JSON.stringify(result.details)).not.toContain(tinyPng.data);
-    expect(result.structuredContent).toContain("native image pixels were NOT forwarded");
-    expect(result.structuredContent).toContain("Descriptions and source are not image inspection");
-    expect(result.structuredContent).toContain("Call cake directly");
+    expect(result.structuredContent).toMatchObject({
+      command: "context.image",
+      result: { boardId: "board-1", width: 640, height: 480 },
+      warning: expect.stringContaining("Native image pixels were NOT forwarded"),
+    });
+    expect(JSON.stringify(result.structuredContent)).toContain(
+      "Descriptions and source are not image inspection",
+    );
+    expect(JSON.stringify(result.structuredContent)).toContain("Call cake directly");
     expect(JSON.stringify(result.structuredContent)).not.toContain(tinyPng.data);
     expect(result.text).not.toContain("NOT forwarded"); // direct result really carries pixels
   });

@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { Option, Schema } from "effect";
 import { expect, it, vi } from "vitest";
 import { compileInlineWidget } from "../../../../src/services/widgets/inline-widget-service";
 import type { ArtifactNavigationContext } from "../../../../src/contracts/artifacts/artifact-navigation-context";
@@ -126,6 +127,109 @@ it("rerenders the real React useArtifact context hook on navigation without remo
     send("/b", "b1");
     await vi.waitFor(() => expect(window.document.body.textContent).toContain("same mount: /b/b1"));
     expect(window.document.querySelector("p")).toBe(element);
+  } finally {
+    window.close();
+  }
+});
+
+it("runs the shared SDK's structured calls, hydrated current-session API and event disposal", async () => {
+  const compiled = await compileInlineWidget("html", "<p>SDK</p>", "artifact");
+  const wire = Schema.Struct({
+    type: Schema.Literals(["widget-subscribe", "widget-unsubscribe", "artifact-cake-call"]),
+    value: Schema.Struct({
+      id: Schema.optionalKey(Schema.String),
+      subscriptionId: Schema.optionalKey(Schema.String),
+    }),
+  });
+  const sent: (typeof wire.Type)[] = [];
+  const { window } = new JSDOM(compiled.document, {
+    runScripts: "dangerously",
+    beforeParse(window) {
+      window.postMessage = (message) => {
+        const parsed = Schema.decodeUnknownOption(wire)(message);
+        if (Option.isSome(parsed)) sent.push(parsed.value);
+      };
+      window.ResizeObserver = class {
+        observe() {}
+        disconnect() {}
+      };
+    },
+  });
+  try {
+    // SAFETY: compiled source under test installs this public SDK.
+    const cake = Reflect.get(window, "cake") as unknown as {
+      tools: { call(command: string, input: object): Promise<unknown> };
+      session: {
+        getCurrent(): Promise<unknown>;
+        subscribeCurrent(listener: (session: unknown) => void): Promise<() => void>;
+      };
+      events: {
+        subscribe(
+          topic: string,
+          filter: object,
+          listener: (event: unknown) => void,
+        ): Promise<() => void>;
+      };
+    };
+    const host = (type: string, value: unknown, token = compiled.token) =>
+      window.dispatchEvent(
+        new window.MessageEvent("message", {
+          source: window,
+          data: { source: "cake-artifact-host", token, type, value },
+        }),
+      );
+    let hydrated = false;
+    const current = cake.session.getCurrent().then((value) => {
+      hydrated = true;
+      return value;
+    });
+    await Promise.resolve();
+    expect(hydrated).toBe(false);
+    host("context", { session: { sessionId: "one", kind: "project-session" } });
+    expect(await current).toEqual({ sessionId: "one", kind: "project-session" });
+    const sessions = vi.fn();
+    const stopSession = await cake.session.subscribeCurrent(sessions);
+    host("context", { session: null });
+    expect(sessions).toHaveBeenLastCalledWith(null);
+    stopSession();
+    host("context", { session: { sessionId: "two", kind: "project-chat" } });
+    expect(sessions).toHaveBeenCalledTimes(2);
+
+    const call = cake.tools.call("sessions.list", {});
+    const callId = sent.find((entry) => entry.type === "artifact-cake-call")!.value.id;
+    host("call-result", {
+      id: callId,
+      ok: true,
+      result: { sessions: [{ sessionId: "canonical" }], total: 1 },
+    });
+    expect(await call).toEqual({ sessions: [{ sessionId: "canonical" }], total: 1 });
+
+    const listener = vi.fn();
+    const subscription = cake.events.subscribe("session.changed", {}, listener);
+    const request = sent.find((entry) => entry.type === "widget-subscribe")!.value;
+    host("call-result", { id: request.id, ok: true, result: { subscribed: true } });
+    const unsubscribe = await subscription;
+    host(
+      "widget-update",
+      { id: request.subscriptionId, update: { kind: "ready", topic: "session.changed" } },
+      "wrong-token",
+    );
+    expect(listener).not.toHaveBeenCalled();
+    host("widget-update", {
+      id: request.subscriptionId,
+      update: { kind: "ready", topic: "session.changed" },
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    unsubscribe();
+    expect(sent.at(-1)).toMatchObject({
+      type: "widget-unsubscribe",
+      value: { subscriptionId: request.subscriptionId },
+    });
+    host("widget-update", {
+      id: request.subscriptionId,
+      update: { kind: "ready", topic: "session.changed" },
+    });
+    expect(listener).toHaveBeenCalledOnce();
   } finally {
     window.close();
   }

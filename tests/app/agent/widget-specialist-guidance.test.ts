@@ -182,13 +182,12 @@ describe("widget side chat turns", () => {
   });
 
   it.each([{ topic: "Authority", step: 1 }, "Authority", null, false])(
-    "passes the exact durable state to the plugin builder without a state file: %j",
+    "passes the exact supplied initial state to the widget builder: %j",
     async (initialState) => {
       turn();
       await runInlineWidgetGeneration({
         ...context(),
         allowState: false,
-        surface: "session-plugin",
         brief: "Show the current topic.",
         data: { notes: "Separate reference data" },
         initialState,
@@ -198,7 +197,7 @@ describe("widget side chat turns", () => {
       const payload = JSON.parse(options.prompt.slice(options.prompt.lastIndexOf("\n") + 1));
       expect(payload.initialState).toEqual(initialState);
       expect(payload.data).toEqual({ notes: "Separate reference data" });
-      expect(options.prompt).toContain("render named scalar fields");
+      expect(options.prompt).toContain("useArtifactState(initialValue)");
       expect(options.prompt).not.toContain("widget/state.json");
       expect(options.widgetBranch?.allowState).toBe(false);
       expectLiveThemeGuidance(options.prompt);

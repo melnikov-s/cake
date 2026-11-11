@@ -67,7 +67,10 @@ describe("Cake SDK execution timing diagnostics", () => {
       { command: "context.compact" },
       { toolCallId: callId, signal: new AbortController().signal, runtime: {} },
     );
-    expect(result.structuredContent).toBe("PRIVATE_RESULT");
+    expect(result.structuredContent).toEqual({
+      command: "context.compact",
+      result: "PRIVATE_RESULT",
+    });
     reportSlowCakeToolExecution("pi", {
       toolName: "cake",
       toolCallId: callId,
@@ -137,7 +140,7 @@ describe("Cake SDK execution timing diagnostics", () => {
     expect(settled).toBe(false);
     expect(signal.aborted).toBe(false);
     finish("completed deliberately");
-    expect((await pending).structuredContent).toBe("completed deliberately");
+    expect((await pending).structuredContent).toMatchObject({ result: "completed deliberately" });
   });
 
   it("ignores missing durations, fast execution and unrelated tools", () => {

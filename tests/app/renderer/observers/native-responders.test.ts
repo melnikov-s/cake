@@ -40,7 +40,7 @@ const captureRequest: Extract<CakeEvent, { type: "widget-capture-requested" }> =
   requestId: "capture-request",
   sessionId: "session",
   widget: { token: "token", url: "cake-widget://token" },
-  pluginState: { version: 7 },
+  initialState: { version: 7 },
 };
 
 describe("native responders", () => {
@@ -186,7 +186,7 @@ describe("native responders", () => {
         expect(capture).toHaveBeenCalledExactlyOnceWith({
           sessionId: "session",
           widget: captureRequest.widget,
-          pluginState: { version: 7 },
+          initialState: { version: 7 },
         });
         expect(reply.mock.calls[0]![0]).toEqual({
           requestId: "capture-request",

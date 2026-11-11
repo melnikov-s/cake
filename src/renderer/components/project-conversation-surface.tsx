@@ -15,6 +15,7 @@ import { SessionForkStatus } from "./session-fork-status";
 import { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { CakeChatPaneHeader } from "./cake-chat-pane-header";
 import { ProjectTodoSelectionBar } from "./project-todo-selection-bar";
+import { chatWidgetsFor } from "../lib/chat-widgets";
 import { cakeChatPropsFor } from "../lib/cake-chat-props";
 
 export const ProjectConversationSurface = observer(function ProjectConversationSurface({
@@ -52,6 +53,9 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
         paneSession.conversationSessionStore.configurationStore.errorDetails ??
         paneSession.conversationSessionStore.interviewStore.error?.errorDetails);
     return {
+      widgets: paneSession.isForkPreview
+        ? undefined
+        : chatWidgetsFor(root, { sessionId: paneSession.sessionId, kind: "project-session" }),
       transcriptTransition: {
         contentKey: paneSession.transcriptContinuityKey ?? paneSession.sessionId,
         requestedKey:

@@ -1,8 +1,9 @@
 import { Option, Schema } from "effect";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
-import { Button } from "@/components/ui/button";
-import { Callout } from "@/components/ui/callout";
+import { WidgetFailure } from "./widget-failure";
+import { useWidgetUpdates } from "../hooks/use-widget-updates";
+import type { ArtifactNavigationContext } from "../../contracts/artifacts/artifact-navigation-context";
 import { observer } from "r-state-tree/react";
 import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 import {
@@ -22,6 +23,8 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   artifact,
   inlineWidgets,
   stateSessionId,
+  attachmentId,
+  viewSession,
   onInteraction,
   fill = false,
   presentation = "workspace",
@@ -29,6 +32,8 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   artifact: Extract<CakeArtifactV1, { kind: "widget" }>;
   inlineWidgets?: InlineWidgetStore;
   stateSessionId?: string;
+  attachmentId?: string;
+  viewSession?: ArtifactNavigationContext["session"];
   onInteraction?(): void;
   fill?: boolean;
   presentation?: "inline" | "workspace";
@@ -46,25 +51,38 @@ export const WidgetArtifact = observer(function WidgetArtifact({
         source: "cake-artifact-host",
         token: state.compiled.token,
         type: "context",
-        value: navigation ? { ...navigation, viewId: id } : null,
+        value: navigation
+          ? {
+              ...navigation,
+              session: viewSession === undefined ? navigation.session : viewSession,
+              viewId: id,
+            }
+          : { session: viewSession ?? null, viewId: id },
       },
       "*",
     );
-  }, [id, navigation, state?.compiled]);
+  }, [id, navigation, state?.compiled, viewSession]);
   const iframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   const [readyToken, setReadyToken] = useState<string>();
-  useWidgetSpeech(iframe, state?.compiled?.token, inlineWidgets?.speech);
+  const activeToken = state?.status === "error" ? undefined : state?.compiled?.token;
+  useWidgetSpeech(iframe, activeToken, inlineWidgets?.speech);
+  useWidgetUpdates(iframe, activeToken, inlineWidgets, id);
   useEffect(postContext, [postContext]);
   useEffect(() => {
     if (inlineWidgets) inlineWidgets.prepareBrowser(id, { digest: browserDigest });
     if (inlineWidgets)
-      inlineWidgets.bindArtifactState(id, stateSessionId, decodeArtifactLineageId(artifact.id));
+      inlineWidgets.bindArtifactState(
+        id,
+        stateSessionId,
+        decodeArtifactLineageId(artifact.id),
+        attachmentId,
+      );
     return () => {
       inlineWidgets?.release(id);
       inlineWidgets?.releaseArtifactState(id);
     };
-  }, [artifact.id, browserDigest, id, inlineWidgets, stateSessionId]);
+  }, [artifact.id, attachmentId, browserDigest, id, inlineWidgets, stateSessionId]);
   useEffect(() => {
     if (!state?.compiled) return;
     if (liveState?.error)
@@ -222,13 +240,15 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   if (state?.status === "error")
     return (
       <div>
-        <Callout variant="error" role="alert">
-          <strong>Widget view unavailable</strong>
-          {state.diagnostic}
-          <Button size="sm" variant="outline" onClick={() => inlineWidgets.retryBrowserView(id)}>
-            Retry view
-          </Button>
-        </Callout>
+        <WidgetFailure
+          diagnostic={state.diagnostic ?? "Widget view unavailable"}
+          retry={() => inlineWidgets.retryBrowserView(id)}
+          repair={
+            inlineWidgets.canRepair
+              ? () => inlineWidgets.repair(artifact, state.diagnostic ?? "Widget view unavailable")
+              : undefined
+          }
+        />
         <Markdown>{artifact.fallback.markdown}</Markdown>
       </div>
     );

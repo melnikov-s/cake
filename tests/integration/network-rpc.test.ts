@@ -718,10 +718,11 @@ it.live("two_websocket_clients_share_backend_authority_and_listener_close_preser
     const { backend, listener, url } = yield* start();
     const a = yield* connectClient(url);
     const b = yield* connectClient(url);
-    yield* a.client["application.setSessionPluginSharedState"]({
-      sessionId: "shared",
-      key: "value",
-      value: "from-a",
+    yield* a.client["projectWorkflow.mutateGlobal"]({
+      mutation: {
+        _tag: "AddLabel",
+        label: { id: "00000000-0000-4000-8000-000000000099", name: "from-a", color: "blue" },
+      },
     });
     const state = yield* b.client["application.getState"]();
     expect(JSON.stringify(state)).toContain("from-a");

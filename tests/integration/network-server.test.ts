@@ -107,10 +107,15 @@ it("opt_in_node_host_serves_two_real_rpc_clients_without_electron_or_provider_tr
       Effect.gen(function* () {
         const a = yield* connectClient(url);
         const b = yield* connectClient(url);
-        yield* a.client["application.setSessionPluginSharedState"]({
-          sessionId: "test",
-          key: "shared",
-          value: "one production backend",
+        yield* a.client["projectWorkflow.mutateGlobal"]({
+          mutation: {
+            _tag: "AddLabel",
+            label: {
+              id: "00000000-0000-4000-8000-000000000099",
+              name: "one production backend",
+              color: "blue",
+            },
+          },
         });
         expect(JSON.stringify(yield* b.client["application.getState"]())).toContain(
           "one production backend",

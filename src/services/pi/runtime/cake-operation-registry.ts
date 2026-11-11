@@ -34,7 +34,11 @@ const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAG
 /** Model-facing envelope only; exact result schemas are validated in invoke and disclosed by help. */
 export const cakeToolOutputSchema = Schema.Union([
   Schema.String,
-  Schema.Struct({ command: Schema.String, result: Schema.Unknown }),
+  Schema.Struct({
+    command: Schema.String,
+    result: Schema.Unknown,
+    warning: Schema.optionalKey(Schema.String),
+  }),
 ]);
 
 const cakeOperationImageSchema = Schema.Struct({
@@ -288,7 +292,7 @@ export class CakeOperationRegistry {
     if (!operation || operation.available?.() === false) return undefined;
     return operation.outputSchema
       ? `Output schema (result):\n${JSON.stringify(schemaJson(operation.outputSchema, "output"))}`
-      : `${command} returns text; no structured output schema is declared.`;
+      : `${command} returns JSON; no exact result schema is declared.`;
   }
 
   unknown(command: string) {
@@ -368,7 +372,11 @@ export class CakeOperationRegistry {
       const images = richResult ? decodeImages(executionResult.images) : [];
       const serialized = JSON.stringify(structured);
       const byteLength = new TextEncoder().encode(serialized).byteLength;
-      if (operation.outputSchema && byteLength > MAX_CAKE_OPERATION_RESULT_BYTES)
+      const canonicalByteLength = new TextEncoder().encode(JSON.stringify(result)).byteLength;
+      if (
+        operation.outputSchema &&
+        Math.max(byteLength, canonicalByteLength) > MAX_CAKE_OPERATION_RESULT_BYTES
+      )
         throw new Error(
           `Structured Cake operation ${command} exceeds the ${MAX_CAKE_OPERATION_RESULT_BYTES}-byte result limit`,
         );
@@ -380,6 +388,15 @@ export class CakeOperationRegistry {
               preview: formatCakeResult(presented),
             }
           : structured;
+      const programmaticResult: JsonValue =
+        canonicalByteLength > MAX_CAKE_OPERATION_RESULT_BYTES
+          ? {
+              truncated: true,
+              byteLength: canonicalByteLength,
+              guidance:
+                "Narrow the query or use pagination or an exact-item read for complete data.",
+            }
+          : result;
       const text = formatCakeResult(
         presented,
         operation.truncateResultText === false ? MAX_CAKE_OPERATION_RESULT_BYTES : undefined,
@@ -387,14 +404,18 @@ export class CakeOperationRegistry {
       );
       completed = true;
       return {
+        json: programmaticResult,
         text,
         content: [{ type: "text", text }, ...images],
         details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: boundedResult },
-        structuredContent: operation.outputSchema
-          ? { command, result: structured }
-          : richResult
-            ? `${text}\n\nWARNING: This nested/structured result contains text metadata only; native image pixels were NOT forwarded. Descriptions and source are not image inspection. Call cake directly (outside codemode) to receive the images, or use an image-capable read on the resolved file.`
-            : text,
+        structuredContent: richResult
+          ? {
+              command,
+              result: programmaticResult,
+              warning:
+                "Native image pixels were NOT forwarded. Descriptions and source are not image inspection. Call cake directly (outside codemode) to receive the images, or use an image-capable read on the resolved file.",
+            }
+          : { command, result: programmaticResult },
       };
     } finally {
       const finishedAt = performance.now();
@@ -437,6 +458,7 @@ function decodeOperationInput(operation: CakeOperationDefinition, raw: JsonObjec
 
 function helpResult(command: string, text: string) {
   return {
+    json: text,
     text,
     content: [{ type: "text" as const, text }],
     details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: text },

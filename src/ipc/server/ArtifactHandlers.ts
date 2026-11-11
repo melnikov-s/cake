@@ -3,6 +3,8 @@ import * as artifacts from "../../domain/artifacts/artifacts";
 import * as artifactState from "../../domain/artifacts/artifactState";
 import * as globalArtifacts from "../../domain/artifacts/globalArtifacts";
 import * as artifactCommands from "../../domain/artifacts/artifactCommands";
+import * as widgetUpdates from "../../domain/widgets/widgetUpdates";
+import * as widgetState from "../../domain/widgets/widgetState";
 import { ArtifactRuntimeError } from "../../contracts/artifacts/artifact-runtime";
 import * as artifactWorkflows from "../../domain/artifacts/artifactWorkflows";
 
@@ -24,6 +26,16 @@ const runtimeError = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   );
 
 export const artifactHandlers = ArtifactRpc.of({
+  "artifacts.observeWidgetEvents": (input) =>
+    Stream.unwrap(
+      Effect.map(RendererConnection, ({ connectionId }) =>
+        widgetUpdates.events(input, connectionId),
+      ),
+    ),
+  "artifacts.observeWidgetPoll": (input) =>
+    Stream.unwrap(
+      Effect.map(RendererConnection, ({ connectionId }) => widgetUpdates.poll(input, connectionId)),
+    ),
   "artifacts.setGlobal": ({ lineageId, global }) =>
     Effect.gen(function* () {
       const result = yield* artifactWorkflows.setArtifactGlobal(lineageId, global);
@@ -79,9 +91,18 @@ export const artifactHandlers = ArtifactRpc.of({
         globalArtifacts.reportViewing(connectionId, report),
       ),
     ),
-  "artifacts.stateRead": (request) => artifactState.read(request),
-  "artifacts.stateReplace": (request) => artifactState.replace(request),
-  "artifacts.stateUpdate": (request) => artifactState.update(request),
+  "artifacts.stateRead": ({ attachmentId, ...request }) =>
+    attachmentId === undefined
+      ? artifactState.read(request)
+      : widgetState.read({ ...request, attachmentId }),
+  "artifacts.stateReplace": ({ attachmentId, ...request }) =>
+    attachmentId === undefined
+      ? artifactState.replace(request)
+      : widgetState.replace({ ...request, attachmentId }),
+  "artifacts.stateUpdate": ({ attachmentId, ...request }) =>
+    attachmentId === undefined
+      ? artifactState.update(request)
+      : widgetState.update({ ...request, attachmentId }),
   "artifacts.respond-ui": (request) =>
     Effect.flatMap(RendererConnection, ({ connectionId }) =>
       artifacts.respondUi(connectionId, request),

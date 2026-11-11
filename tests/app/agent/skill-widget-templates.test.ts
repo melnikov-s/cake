@@ -82,12 +82,50 @@ async function fixture() {
     records,
     appendEntry,
     captureWidgetInstance,
+    resolveWidgetTemplate,
     persistArtifact,
     context,
   };
 }
 
 describe("skill-supplied widget templates", () => {
+  it("instantiates in a permanent chat without a Pi transcript host or assistant-entry pointer", async () => {
+    const f = await fixture();
+    const registry = new CakeOperationRegistry(
+      createCakeArtifactOperations(undefined, {
+        persistArtifact: f.persistArtifact,
+        resolveWidgetTemplate: f.resolveWidgetTemplate,
+        captureWidgetInstance: f.captureWidgetInstance,
+      }),
+    );
+    const result = await registry.invoke(
+      {
+        command: "widgets.instantiate",
+        input: {
+          template: "excalidraw-artifacts",
+          id: "durable-document",
+          title: "Durable document",
+          initialState: { elements: [] },
+          fallback: { markdown: "Durable document" },
+        },
+      },
+      {
+        signal: new AbortController().signal,
+        toolCallId: "durable-copy",
+        runtime: { sessionId: "project-chat:fixture" },
+      },
+    );
+    expect(result.json).toMatchObject({ artifactId: "durable-document", artifactRevision: 1 });
+    expect(f.appendEntry).not.toHaveBeenCalled();
+    expect(f.records[0]?.artifact.sessionId).toBe("project-chat:fixture");
+    expect(f.records[0]?.state).toEqual({ expectedVersion: 0, value: { elements: [] } });
+    expect(f.captureWidgetInstance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "project-chat:fixture",
+        initialState: { elements: [] },
+      }),
+    );
+  });
   it("advertises a portable drawing skill in a fresh project session and follows its two-call path without prior links", async () => {
     const f = await fixture();
     const prompt = formatSkillsForPrompt(f.skills);

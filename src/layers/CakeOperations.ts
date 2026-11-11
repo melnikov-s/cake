@@ -51,7 +51,7 @@ import { createCakeInterviewOperations } from "../domain/interviews/cake-intervi
 import { createMessageBoardOperations } from "../domain/artifacts/cake-message-board-operations";
 import { createCakeModelOperations } from "../domain/model-presets/cake-model-operations";
 import { createCakeNonChatModelOperations } from "../domain/model-preferences/cake-non-chat-model-operations";
-import { createCakeSessionPluginOperations } from "../domain/session-plugins/cake-session-plugin-operations";
+import { createWidgetAttachmentOperations } from "../domain/widgets/cake-widget-attachment-operations";
 import { createCakeWorktreeOperations } from "../domain/worktrees/cake-worktree-operations";
 import { createCakeVscodeOperations } from "../domain/editor/cake-vscode-operations";
 
@@ -123,11 +123,10 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
           })
         : []),
       ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
-      ...(options.sessionPluginControl && options.generateInlineWidget
-        ? createCakeSessionPluginOperations({
-            ...options.sessionPluginControl,
-            generate: options.generateInlineWidget,
-          })
+      ...(!options.auxiliary && options.tools === undefined
+        ? createWidgetAttachmentOperations((command, input, signal) =>
+            bridge.api().invokeAppControl(command, input, signal),
+          )
         : []),
       ...(!options.auxiliary && options.tools === undefined
         ? createGlobalArtifactOperations((command, input, signal) =>
@@ -219,12 +218,9 @@ export function coordinatorCakeOperations(
           )
         : []),
       ...createCoordinatorOperations(bridge),
-      ...(options.sessionPluginControl && options.generateInlineWidget
-        ? createCakeSessionPluginOperations({
-            ...options.sessionPluginControl,
-            generate: options.generateInlineWidget,
-          })
-        : []),
+      ...createWidgetAttachmentOperations((command, input, signal) =>
+        control.invoke({ name: command, arguments: input }, signal),
+      ),
       ...createGlobalArtifactOperations((command, input, signal) =>
         control.invoke(
           { name: command, arguments: Schema.decodeUnknownSync(jsonObjectSchema)(input) },
@@ -244,6 +240,10 @@ export function coordinatorCakeOperations(
           [
             "html.present",
             "widgets.present",
+            "widgets.instantiate",
+            "artifacts.replace",
+            "artifacts.state.replace",
+            "artifacts.state.update",
             "artifacts.list",
             "artifacts.search",
             "artifacts.resolve-reference",
@@ -303,7 +303,6 @@ export function configureCakeSessionRuntime(
     allowedCakeOperations,
     allowBlockingUserInput,
     requestInterview,
-    sessionPluginControl,
     modelPresets,
     nonChatModelPreferences,
     vscodeControl,
@@ -347,7 +346,6 @@ export function configureCakeSessionRuntime(
     messageBoardControl: runtime.messageBoardControl,
     allowedCakeOperations,
     requestInterview,
-    sessionPluginControl,
     modelPresets,
     nonChatModelPreferences,
     vscodeControl,

@@ -32,6 +32,10 @@ import * as sessionCompaction from "../project-sessions/sessionCompaction";
 import { SessionToolPruneInput } from "../../contracts/project-sessions/session-compaction";
 import * as sessionChats from "../conversations/sessionChats";
 import { toJsonValue } from "../../utils/to-json-value";
+import {
+  assertWidgetCommand,
+  widgetAttachmentContracts,
+} from "../../contracts/widgets/widget-attachment";
 
 export interface ArtifactCommandContext {
   readonly artifactId: string;
@@ -56,6 +60,11 @@ export function describe(command?: string): JsonValue {
       command: definition.command,
       description: definition.summary,
       parameters: toDraft07JsonSchema(definition.inputSchema),
+    })),
+    ...widgetAttachmentContracts.map((entry) => ({
+      command: entry.command,
+      description: entry.summary,
+      parameters: toDraft07JsonSchema(entry.inputSchema),
     })),
     ...ArtifactHostInvocation.members.map((member) => ({
       command: member.fields.name.literal,
@@ -213,6 +222,14 @@ export const invoke: (
 > = Effect.fn("ArtifactCommands.invoke")(
   function* (command: string, input: JsonValue, context: ArtifactCommandContext) {
     yield* Schema.decodeUnknownEffect(ArtifactLineageId)(context.artifactId);
+    yield* Effect.try({
+      try: () => assertWidgetCommand(command),
+      catch: (cause) =>
+        new ArtifactCommandError({
+          command,
+          message: cause instanceof Error ? cause.message : String(cause),
+        }),
+    });
     if (command === "artifacts.replace" || command === "artifacts.restore") {
       const target = yield* Schema.decodeUnknownEffect(
         Schema.Struct({ lineageId: ArtifactLineageId }),
@@ -261,7 +278,7 @@ export const invoke: (
     if (isCakeChatSessionId(context.callingSessionId)) {
       const handle = yield* chatTargets.acquireAvailable(context.callingSessionId);
       // The full-control registry uses this real chat as its context; it is not a background identity.
-      return (yield* handle.callCakeTool(command, arguments_)).structuredContent;
+      return (yield* handle.callCakeTool(command, arguments_)).json;
     }
     return yield* projectSessions.callCakeOperation(
       { sessionId: context.callingSessionId },

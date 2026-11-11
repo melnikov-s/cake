@@ -37,6 +37,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   headerActions,
   conversationHeader,
   projectComposerHeader,
+  widgets,
   projectComposerContent,
   projectComposerLeadingAccessory,
   sessionTitle,
@@ -53,6 +54,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   headerActions?: ReactNode;
   conversationHeader?: ReactNode;
   projectComposerHeader?: ReactNode;
+  widgets?: ComponentProps<typeof Chat>["widgets"];
   projectComposerContent?: ReactNode;
   projectComposerLeadingAccessory?: ComponentProps<typeof Chat>["composerLeadingAccessory"];
   sessionTitle: string;
@@ -102,6 +104,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
       ) : (
         <Chat
           className="h-full"
+          widgets={widgets}
           store={projectChat}
           transcriptBehavior={transcriptBehavior}
           composerHeader={

@@ -1,3 +1,5 @@
+import type { WidgetTarget, WidgetSlot } from "../contracts/widgets/widget-attachment";
+import type { ArtifactLineageId } from "../contracts/artifacts/artifact-lineage";
 import { Effect, Option, Schema, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
@@ -232,13 +234,15 @@ const harness = {
   getApplicationState: () => run(withClient((client) => client.application.getState())),
   callCakeChatOperation: (input: { sessionId: string; command: string; input: JsonObject }) =>
     run(withClient((client) => client.cakeChats.callCakeOperation(input))),
-  setSessionPluginState: (input: {
-    sessionId: string;
-    pluginId: string;
-    state: Schema.Schema.Type<typeof Schema.Json>;
-  }) => run(withClient((client) => client.application.setSessionPluginState(input))),
-  deleteSessionPlugin: (input: { sessionId: string; pluginId: string }) =>
-    run(withClient((client) => client.application.deleteSessionPlugin(input))),
+  attachWidget: (input: {
+    id: string;
+    lineageId: ArtifactLineageId;
+    target: WidgetTarget;
+    slot: WidgetSlot;
+    order?: number;
+  }) => run(withClient((client) => client.application.attachWidget(input))),
+  detachWidget: (id: string) =>
+    run(withClient((client) => client.application.detachWidget({ id }))),
   listModels: () => run(withClient((client) => client.models.list())),
   listModelPresets: () => run(withClient((client) => client.modelPresets.list())),
   invokeElectronProbe: () =>

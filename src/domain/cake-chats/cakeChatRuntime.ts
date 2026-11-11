@@ -61,10 +61,6 @@ import {
   getCakeChatInstructions,
   updateCakeChatInstructions,
   setSessionFastMode,
-  upsertSessionPlugin,
-  setSessionPluginState,
-  patchSessionPluginState,
-  deleteSessionPlugin,
 } from "../application/application";
 import { PiModels } from "../../services/pi/PiModels";
 import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRuntimeHost";
@@ -113,7 +109,10 @@ import * as agentArtifactAccess from "../artifacts/agentArtifactAccess";
 import * as artifactWorkflows from "../artifacts/artifactWorkflows";
 import { artifactRevisionToRecord } from "../../contracts/artifacts/artifact-lineage";
 import * as artifactState from "../artifacts/artifactState";
-import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
+import {
+  ArtifactLineageId,
+  ArtifactRevisionNumber,
+} from "../../contracts/artifacts/artifact-lineage";
 
 const SHARED_VSCODE_OPERATIONS = [
   "vscode.enter",
@@ -136,13 +135,16 @@ const CAKE_CHAT_OPERATIONS = [
   ...Object.keys(themeOperationDefinitions),
   "html.present",
   "widgets.present",
-  "plugins.present",
-  "plugins.patch",
-  "plugins.update",
-  "plugins.delete",
+  "widgets.instantiate",
+  "widgets.attach",
+  "widgets.detach",
+  "widgets.attachments",
   "artifacts.link",
   "artifacts.present",
   "artifacts.state.read",
+  "artifacts.state.replace",
+  "artifacts.state.update",
+  "artifacts.replace",
   "artifacts.selection.capture",
   "artifacts.source",
   "browser.enter",
@@ -582,16 +584,6 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     runtime: {
       cwd: configuration.location.workingDirectory,
       utilityModel: () => application.snapshot().utilityModel,
-      sessionPluginControl: {
-        sessionId: target.sessionId,
-        present: (plugin) => run(upsertSessionPlugin(plugin)).then(() => undefined),
-        setState: (pluginId, state) =>
-          run(setSessionPluginState(target.sessionId, pluginId, state)).then(() => undefined),
-        patchState: (pluginId, patch) =>
-          run(patchSessionPluginState(target.sessionId, pluginId, patch)).then(() => undefined),
-        delete: (pluginId) =>
-          run(deleteSessionPlugin(target.sessionId, pluginId)).then(() => undefined),
-      },
       generateInlineWidget: (input) =>
         run(
           // Borrow the existing builder only for generation. Do not register this
@@ -604,6 +596,40 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                   const generate = prepared.integrations.generateInlineWidget;
                   if (!generate) throw new Error("Widget generation is unavailable");
                   return generate(input);
+                },
+                catch: (cause) => cause,
+              }),
+            (prepared) => prepared.release.pipe(Effect.orDie),
+          ),
+          { signal: input.signal },
+        ),
+      reviseInlineWidget: (input) =>
+        run(
+          Effect.acquireUseRelease(
+            runtimeHost.prepare(configuration.location.workingDirectory, target.sessionId),
+            (prepared) =>
+              Effect.tryPromise({
+                try: () => {
+                  const revise = prepared.integrations.reviseInlineWidget;
+                  if (!revise) throw new Error("Widget revision generation is unavailable");
+                  return revise(input);
+                },
+                catch: (cause) => cause,
+              }),
+            (prepared) => prepared.release.pipe(Effect.orDie),
+          ),
+          { signal: input.signal },
+        ),
+      captureWidgetInstance: (input) =>
+        run(
+          Effect.acquireUseRelease(
+            runtimeHost.prepare(configuration.location.workingDirectory, target.sessionId),
+            (prepared) =>
+              Effect.tryPromise({
+                try: () => {
+                  const capture = prepared.integrations.captureWidgetInstance;
+                  if (!capture) throw new Error("Widget instance capture is unavailable");
+                  return capture(input);
                 },
                 catch: (cause) => cause,
               }),
@@ -679,13 +705,21 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       persistArtifact: (artifact, stagedState) =>
         runArtifact(
           Effect.gen(function* () {
-            const revision = yield* artifactWorkflows.create({
+            const publication = {
               sessionId: target.sessionId,
               lineageId: yield* Schema.decodeUnknownEffect(ArtifactLineageId)(artifact.id),
               snapshot: artifact,
               workingDirectory: configuration.location.workingDirectory,
               stagedState,
-            });
+            };
+            const revision = yield* artifact.revision === 1
+              ? artifactWorkflows.create(publication)
+              : artifactWorkflows.publish({
+                  ...publication,
+                  expectedLatestRevision: yield* Schema.decodeUnknownEffect(ArtifactRevisionNumber)(
+                    artifact.revision - 1,
+                  ),
+                });
             const record = artifactRevisionToRecord(revision);
             const events = yield* ClientEvents;
             events.broadcast({ type: "artifact-updated", record });
@@ -717,6 +751,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             });
           }),
         ),
+      replaceArtifactState: (input) =>
+        runArtifact(artifactState.replace({ ...input, sessionId: target.sessionId })),
+      updateArtifactState: (input) =>
+        runArtifact(artifactState.update({ ...input, sessionId: target.sessionId })),
       cakeChatWorktrees: {
         merge: (reference, signal) => landWorktree(reference, signal, false),
         mergeAndResolve: (reference, signal) => landWorktree(reference, signal, true),

@@ -4,10 +4,9 @@ import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArtifactRecord } from "../../../src/contracts/artifacts/artifact-contract";
 import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
-import type { SessionPlugin } from "../../../src/contracts/application/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { ArtifactHost } from "../../../src/renderer/components/artifact-host";
-import { GeneratedSessionPlugin } from "../../../src/renderer/components/generated-session-plugin";
+import { WidgetArtifact } from "../../../src/renderer/components/widget-artifact";
 import type { InlineWidgetStore } from "../../../src/renderer/stores/InlineWidgetStore";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -34,17 +33,6 @@ const record: ArtifactRecord = {
   createdAt: "",
   updatedAt: "",
 };
-const plugin: Extract<SessionPlugin, { source: string }> = {
-  sessionId: "session",
-  id: "reader",
-  title: "Reader plugin",
-  slot: "composer.above",
-  source: "export default function Reader() { return null; }",
-  state: null,
-  createdAt: "",
-  updatedAt: "",
-};
-
 /** Web Audio stand-in: every scheduled buffer finishes on the next timer turn. */
 function stubAudio() {
   const contexts: Array<{ state: AudioContextState; suspend: ReturnType<typeof vi.fn> }> = [];
@@ -94,15 +82,17 @@ function hosts(): Array<[string, (store: InlineWidgetStore) => ReactElement]> {
       (store) => <ArtifactHost record={record} presentation="workspace" inlineWidgets={store} />,
     ],
     [
-      "session plugin",
-      (store) => (
-        <GeneratedSessionPlugin
-          plugin={plugin}
-          sharedState={{}}
-          inlineWidgets={store}
-          call={async () => null}
-        />
-      ),
+      "attached widget",
+      (store) =>
+        record.artifact.kind === "widget" ? (
+          <WidgetArtifact
+            artifact={record.artifact}
+            inlineWidgets={store}
+            viewSession={{ sessionId: "viewer", kind: "project-session" }}
+          />
+        ) : (
+          <></>
+        ),
     ],
   ];
 }

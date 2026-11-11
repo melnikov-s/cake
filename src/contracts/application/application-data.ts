@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import { ProjectTodos } from "../projects/project-todos";
+import { WidgetAttachment } from "../widgets/widget-attachment";
 import { SessionPluginControls } from "./session-plugin-controls";
 import { ThinkingLevel } from "../pi/model-data";
 import { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
@@ -56,7 +57,8 @@ export const ModelPreset = Schema.Struct({
   fastMode: Schema.Boolean,
 });
 
-/** Durable session controls. Hidden is user-owned, separate from agent-managed state. */
+/** Storage-only legacy records, retained unchanged for a separate persisted-data migration.
+ * There is no legacy renderer, SDK or agent control surface. New widgets use artifact lineages. */
 const sessionPluginFields = {
   sessionId: nonEmptyBoundedString(256),
   id: nonEmptyBoundedString(256),
@@ -66,7 +68,7 @@ const sessionPluginFields = {
   createdAt: nonEmptyBoundedString(64),
   updatedAt: nonEmptyBoundedString(64),
 };
-export const SessionPlugin = Schema.Union([
+const SessionPlugin = Schema.Union([
   Schema.Struct({
     ...sessionPluginFields,
     source: nonEmptyBoundedString(1_048_576),
@@ -79,16 +81,12 @@ export const SessionPlugin = Schema.Union([
     state: SessionPluginControls,
   }),
 ]);
-export type SessionPlugin = typeof SessionPlugin.Type;
 
-export const SessionPluginSharedState = Schema.Struct({
+const SessionPluginSharedState = Schema.Struct({
   sessionId: nonEmptyBoundedString(256),
   key: nonEmptyBoundedString(256),
   value: Schema.Json,
 });
-export interface SessionPluginSharedState extends Schema.Schema.Type<
-  typeof SessionPluginSharedState
-> {}
 
 const IsoTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/),
@@ -279,6 +277,9 @@ const RendererApplicationFields = {
   globalCustomInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
   ),
+  widgetAttachments: boundedArray(WidgetAttachment, 500).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
   sessionPlugins: boundedArray(SessionPlugin, 500),
   sessionPluginSharedState: boundedArray(SessionPluginSharedState, 2_000),
 };
@@ -308,6 +309,8 @@ const CurrentApplicationState = Schema.Struct(RendererApplicationFields).check(
         }) &&
         (state.defaultModelPresetId === undefined ||
           presetIds.includes(state.defaultModelPresetId)) &&
+        new Set(state.widgetAttachments.map((attachment) => attachment.id)).size ===
+          state.widgetAttachments.length &&
         new Set(state.sessionPlugins.map((plugin) => `${plugin.sessionId}\u0000${plugin.id}`))
           .size === state.sessionPlugins.length &&
         new Set(
@@ -351,6 +354,7 @@ export const defaultApplicationState = (): ApplicationState => ({
   modelPresets: [],
   cakePrompts: {},
   globalCustomInstructions: "",
+  widgetAttachments: [],
   sessionPlugins: [],
   sessionPluginSharedState: [],
 });
