@@ -225,12 +225,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   const taskSections =
     supportsTodoFocus && behavior.todos
       ? transcriptTaskSections(allItems, (item) => {
-          if (focused) {
-            const parts = transcriptItemParts(item);
-            return focusedTodos.find((todo) =>
-              parts.some((part) => todoMessageMatches(part, store.id, todo)),
-            )?.id;
-          }
           const origin =
             item.kind === "tool" && item.messageReference
               ? referenceTodoOrigin(item.messageReference)
@@ -264,7 +258,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         : target.id;
     if (messageId) store.transcriptInteraction.navigateToMessage(messageId);
   });
-  // Keep section chronology and manual folding; focus removes unrelated rows entirely.
+  // Normal mode retains contiguous sections and their manual folding choices.
   // Filtering the view avoids zero-height rows in the virtualizer.
   const sectionViews = taskSections?.sections.map((section, index) => {
     const todoId = section.todoId;
@@ -296,6 +290,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       ]
     : undefined;
   const revealSectionKey =
+    !focused &&
     selectedHiddenSection &&
     !selectedHiddenSection.expanded &&
     (resultPartId !== undefined || revealedSelectionRevision.current !== messageSelection?.revision)
@@ -305,13 +300,10 @@ export const ChatTranscript = observer(function ChatTranscript({
   useLayoutEffect(() => {
     if (revealSectionKey) behavior.todos?.expandTranscriptSection(revealSectionKey);
   }, [behavior.todos, revealSectionKey]);
-  let previousFocusedSectionKey: string | undefined;
   const visibleIndices = allItems.flatMap((item, index) => {
     if (!matchesFocus(item)) return [];
     const section = sectionViews?.[index];
-    const firstMatch = focused && section && section.key !== previousFocusedSectionKey;
-    previousFocusedSectionKey = section?.key;
-    return !section || section.start || firstMatch || section.expanded ? [index] : [];
+    return focused || !section || section.start || section.expanded ? [index] : [];
   });
   const items = visibleIndices.map((index) => {
     const item = allItems[index]!;
@@ -341,13 +333,15 @@ export const ChatTranscript = observer(function ChatTranscript({
   });
   const itemKeys = visibleIndices.map((index) => allItemKeys[index]!);
   const visibleSectionViews = visibleIndices.map((index, visibleIndex) => {
-    const section = sectionViews?.[index];
-    if (!focused || !section) return section;
-    const previous = visibleIndices[visibleIndex - 1];
-    // A hidden attachment may have owned the heading; move it to the first match.
+    if (!focused) return sectionViews?.[index];
+    // Focus is one conversation for a stable to-do, not a set of folded header
+    // occurrences. Prepending pages moves its single heading to the earliest match.
+    const todoId = focusedTodos[0]!.id;
     return {
-      ...section,
-      start: previous === undefined || sectionViews?.[previous]?.key !== section.key,
+      todoId,
+      key: JSON.stringify([store.id, "focus", todoId]),
+      start: visibleIndex === 0,
+      expanded: true,
     };
   });
   const { rows, stickyIndices, messageIndices } = transcriptPresentationRows(
@@ -359,24 +353,23 @@ export const ChatTranscript = observer(function ChatTranscript({
     ? items.findIndex((item) => transcriptItemParts(item).some((part) => part.id === resultPartId))
     : -1;
   const resultItemKey = resultItemIndex < 0 ? undefined : itemKeys[resultItemIndex];
-  // Explicit navigation may need an older original; Focus retrieves all repeated
-  // turns, even with recent matches. Reuse the owned pager, stopping on clear/error.
+  // Explicit message navigation may need an older original. Focus uses the same
+  // owned pager through Show more, without eagerly reading the entire transcript.
   const historyLoading = history?.loading;
   const historyHasMore = history?.hasMore;
   const historyError = history?.error;
   useEffect(() => {
     if (
-      (!focused &&
-        (resultReveal?.source !== "history" ||
-          !(resultReveal.partIds?.length || resultReveal.messageId) ||
-          resultPartId)) ||
+      resultReveal?.source !== "history" ||
+      !(resultReveal.partIds?.length || resultReveal.messageId) ||
+      resultPartId ||
       !historyHasMore ||
       historyLoading ||
       historyError
     )
       return;
     void history?.load();
-  }, [focused, resultReveal, resultPartId, history, historyLoading, historyHasMore, historyError]);
+  }, [resultReveal, resultPartId, history, historyLoading, historyHasMore, historyError]);
   const isArriving = useArrivals(itemKeys, store.id);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({
@@ -656,7 +649,11 @@ export const ChatTranscript = observer(function ChatTranscript({
               headingOnly
               todos={behavior.todos}
               expanded={section.expanded}
-              onToggle={() => behavior.todos?.toggleTranscriptSection(section.key, section.todoId!)}
+              onToggle={
+                focused
+                  ? undefined
+                  : () => behavior.todos?.toggleTranscriptSection(section.key, section.todoId!)
+              }
             />
           </div>
         </div>
@@ -683,6 +680,16 @@ export const ChatTranscript = observer(function ChatTranscript({
       <span role="status" className="text-xs text-muted-foreground" aria-live="polite">
         {store.history.loading ? "Loading earlier messages…" : "Earlier messages"}
       </span>
+      {focused && !store.history.error && (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={store.history.loading}
+          onClick={() => void store.history?.load()}
+        >
+          Show more
+        </Button>
+      )}
       {store.history.error && (
         <>
           <Callout variant="error">{store.history.error}</Callout>

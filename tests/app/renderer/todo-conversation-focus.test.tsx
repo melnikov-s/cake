@@ -143,7 +143,8 @@ for (const global of [false, true]) {
       expect(transcript.queryByText("b1-answer")).toBeNull();
       expect(transcript.queryByRole("img", { name: "b1-shot.png" })).toBeNull();
       await u.click(panel.getByRole("button", { name: "Task A" }));
-      expect(headingA().map((h) => h.getAttribute("aria-expanded"))).toEqual(["true", "true"]);
+      expect(transcript.getAllByRole("button", { name: "Show in To-do: Task A" })).toHaveLength(1);
+      expect(transcript.queryByRole("button", { name: "Task A" })).toBeNull();
       expect(transcript.queryByRole("button", { name: "Task B" })).toBeNull();
       expect(transcript.queryByText("b1")).toBeNull();
       expect(transcript.queryByText("a1-answer")).toBeNull();
@@ -156,13 +157,12 @@ for (const global of [false, true]) {
           row.getAttribute("data-transcript-anchor-id"),
         ),
       ).toEqual(["a1", "a2"]);
-      // A hidden attachment must not take the focused section’s disclosure with it.
-      await u.click(headingA()[0]!);
-      expect(headingA()[0]!.getAttribute("aria-expanded")).toBe("false");
-      expect(transcript.queryByText("a1")).toBeNull();
-      expect(transcript.getByText("a2")).toBeDefined();
-      await u.click(headingA()[0]!);
+      // Repeated sections become one expanded conversation, even if an earlier
+      // occurrence was folded before focus. No minimize or collapse controls remain.
+      expect(view.container.querySelector('[data-slot="task-section-disclosure"]')).toBeNull();
+      expect(transcript.queryByRole("button", { name: "Focus to-do: Task A" })).toBeNull();
       expect(transcript.getByText("a1")).toBeDefined();
+      expect(transcript.getByText("a2")).toBeDefined();
       // Neither direct navigation nor late untagged input can bypass focus.
       act(() =>
         session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(
@@ -189,6 +189,11 @@ for (const global of [false, true]) {
       expect(store.focusedItems).toEqual([]);
       expect(store.transcriptFocusRequest).toBeUndefined();
       expect(expanded()).toEqual(["true", "true", "true"]);
+      // Normal mode still supports independent collapsing after leaving focus.
+      await u.click(headingA()[0]!);
+      expect(transcript.queryByText("a1-answer")).toBeNull();
+      expect(transcript.getByText("a2-answer")).toBeDefined();
+      await u.click(headingA()[0]!);
       // The manual image choice survives filtering and clearing.
       await u.click(transcript.getByRole("button", { name: "Expand image: a1-shot.png" }));
       expect(transcript.getByRole("img", { name: "a1-shot.png" })).toBeDefined();
@@ -207,10 +212,12 @@ for (const global of [false, true]) {
           publish();
         });
         expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
-        expect(headingA().map((h) => h.getAttribute("aria-expanded"))).toEqual(["true", "true"]);
+        expect(transcript.getAllByRole("button", { name: "Show in To-do: Task A" })).toHaveLength(
+          1,
+        );
+        expect(transcript.queryByRole("button", { name: "Task A" })).toBeNull();
         expect(transcript.queryByRole("button", { name: "Task B" })).toBeNull();
       }
-      await u.click(headingA()[0]!);
       act(() => {
         todos = { ...todos, items: todos.items.filter((item) => item.id !== a) };
         publish();
@@ -274,11 +281,7 @@ for (const entry of ["pane", "message"] as const) {
       expect(panel.getByRole("button", { name: "Task A" }).getAttribute("aria-pressed")).toBe(
         "true",
       );
-      await u.click(
-        entry === "pane"
-          ? panel.getByRole("button", { name: "Task A" })
-          : transcript.getByRole("button", { name: "Focus to-do: Task A" }),
-      );
+      await u.click(panel.getByRole("button", { name: "Task A" }));
       expect(session.todos.focusedItems).toEqual([]);
       expect(session.todos.transcriptFocusRequest).toBeUndefined();
       expect(panel.getByRole("button", { name: "Task A" }).getAttribute("aria-pressed")).toBe(

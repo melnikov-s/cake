@@ -23,7 +23,7 @@ export function MarginRail({
   onFocus(): void;
   focused: boolean;
   expanded: boolean;
-  onToggle(): void;
+  onToggle?(): void;
   showRail?: boolean;
 }) {
   return (
@@ -72,25 +72,29 @@ export function MarginRail({
           >
             <span className="min-w-0 wrap-anywhere">{title}</span>
           </Button>
-          <IconButton
-            iconSize="inline"
-            tooltip={`Focus to-do: ${title}`}
-            aria-pressed={focused}
-            onClick={onFocus}
-          >
-            <ExpandIcon />
-          </IconButton>
-          <IconButton
-            iconSize="inline"
-            data-slot="task-section-disclosure"
-            tooltip={`${expanded ? "Collapse" : "Expand"} conversation: ${title}`}
-            ariaLabel={title}
-            aria-expanded={expanded}
-            onClick={onToggle}
-            className="flex h-auto min-h-7 w-auto min-w-7 flex-1 self-stretch items-start justify-end px-1 py-1"
-          >
-            <ChevronIcon className={cn("mt-1 shrink-0", !expanded && "-rotate-90")} />
-          </IconButton>
+          {!focused && (
+            <IconButton
+              iconSize="inline"
+              tooltip={`Focus to-do: ${title}`}
+              aria-pressed={false}
+              onClick={onFocus}
+            >
+              <ExpandIcon />
+            </IconButton>
+          )}
+          {onToggle && (
+            <IconButton
+              iconSize="inline"
+              data-slot="task-section-disclosure"
+              tooltip={`${expanded ? "Collapse" : "Expand"} conversation: ${title}`}
+              ariaLabel={title}
+              aria-expanded={expanded}
+              onClick={onToggle}
+              className="flex h-auto min-h-7 w-auto min-w-7 flex-1 self-stretch items-start justify-end px-1 py-1"
+            >
+              <ChevronIcon className={cn("mt-1 shrink-0", !expanded && "-rotate-90")} />
+            </IconButton>
+          )}
         </div>
       )}
     </>

@@ -14,7 +14,7 @@ export const TaskSectionRail = observer(function TaskSectionRail({
   start: boolean;
   todos: ProjectTodosStore;
   expanded: boolean;
-  onToggle(): void;
+  onToggle?(): void;
   headingOnly?: boolean;
 }) {
   const item = todos.value?.items.find((todo) => todo.id === todoId);

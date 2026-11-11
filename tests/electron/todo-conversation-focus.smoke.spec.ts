@@ -11,7 +11,7 @@ const titleA = "Investigate slow project startup and repeated configuration read
 const titleB = "Improve project navigation";
 
 for (const global of [false, true])
-  test(`to-do disclosures, independent focus and reply context (${global ? "Cake Chat" : "Project Chat"})`, async () => {
+  test(`to-do disclosures, combined expanded focus and reply context (${global ? "Cake Chat" : "Project Chat"})`, async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-todo-focus-"));
     const paths = {
       cakeHome: join(root, "cake"),
@@ -117,9 +117,12 @@ for (const global of [false, true])
       await selectA.click();
       await expect(selectA).toHaveAttribute("aria-pressed", "true");
       await expect(bar).toContainText(`Focused to-do:${titleA}`);
-      await expect(headingsA).toHaveCount(2);
-      await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
-      await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "true");
+      await expect(headingsA).toHaveCount(0);
+      await expect(transcript.locator('[data-slot="task-section-label"]')).toHaveCount(1);
+      await expect(transcript.locator('[data-slot="task-section-disclosure"]')).toHaveCount(0);
+      await expect(transcript.getByRole("button", { name: `Focus to-do: ${titleA}` })).toHaveCount(
+        0,
+      );
       await expect(headingB).toHaveCount(0);
       const casual = transcript.getByText("Thanks. What does ⌘K open?", { exact: true });
       await expect(casual).toHaveCount(0);
@@ -132,16 +135,23 @@ for (const global of [false, true])
       await expect(
         transcript.getByText("Investigate slow project startup.", { exact: true }),
       ).toBeVisible();
-      // Headings are native keyboard disclosures; folding one repeat leaves the other alone.
-      await headingsA.nth(1).press("Enter");
-      await expect(headingsA.nth(1)).toHaveAttribute("aria-expanded", "false");
-      await expect(headingsA.nth(0)).toHaveAttribute("aria-expanded", "true");
-      await expect(headingB).toHaveCount(0);
+      await expect(
+        transcript.getByText("Back to startup—compare a cold launch too.", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        transcript.getByText("I’ll add a cold-launch comparison to the same investigation.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+
       await selectB.click();
       // A different row switches focus; clicking it again clears like the header.
       await expect(selectA).toHaveAttribute("aria-pressed", "false");
       await expect(headingsA).toHaveCount(0);
-      await expect(headingB).toHaveAttribute("aria-expanded", "true");
+      await expect(headingB).toHaveCount(0);
+      await expect(
+        transcript.getByRole("button", { name: `Show in To-do: ${titleB}` }),
+      ).toHaveCount(1);
       await selectB.click();
       await expect(selectB).toHaveAttribute("aria-pressed", "false");
       await expect(bar).toHaveCount(0);
