@@ -127,9 +127,7 @@ it.each([false, true])(
         expect(await screen.findByText("Middle backend follow-up answer")).toBeDefined();
         expect(screen.queryByText("Original backend question")).toBeNull();
         expect(history).toHaveBeenCalledOnce();
-        expect(
-          screen.getAllByRole("button", { name: `Show in To-do: ${task.title}` }),
-        ).toHaveLength(1);
+        expect(screen.queryByRole("button", { name: `Show in To-do: ${task.title}` })).toBeNull();
         expect(view.container.querySelector('[data-slot="task-section-disclosure"]')).toBeNull();
         await u.click(screen.getByRole("button", { name: "Show more" }));
         await waitFor(() => expect(chat.history?.hasMore).toBe(false));
@@ -157,9 +155,7 @@ it.each([false, true])(
           "Middle backend follow-up answer",
           ...(recentMatch ? ["Recent backend follow-up", "Recent backend follow-up answer"] : []),
         ]);
-        expect(
-          screen.getAllByRole("button", { name: `Show in To-do: ${task.title}` }),
-        ).toHaveLength(1);
+        expect(screen.queryByRole("button", { name: `Show in To-do: ${task.title}` })).toBeNull();
       } finally {
         view.unmount();
       }

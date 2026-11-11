@@ -1381,7 +1381,11 @@ it("keeps creation order and selection through description/status edits and link
   });
   expect(openOrder()).toEqual(expected);
   expect(screen.queryByText("New finding.")).toBeNull();
-  await fixture.user.hover(screen.getByRole("button", { name: "Task 1" }));
+  // Descriptions follow real pointer travel; user-event otherwise rests at (0, 0).
+  await fixture.user.pointer({
+    target: screen.getByRole("button", { name: "Task 1" }),
+    coords: { clientX: 24, clientY: 8 },
+  });
   expect(await screen.findByText("New finding.")).toBeDefined();
   expect(screen.getByRole("button", { name: "Task 1" }).getAttribute("aria-pressed")).toBe("true");
 });

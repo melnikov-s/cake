@@ -246,13 +246,17 @@ it.each<Mode>(["browser", "vscode"])(
       );
     await settleListLayout();
     await f.user.click(focus("Task A"));
-    expect(expanded()).toEqual(["true", undefined]);
+    // The selection bar titles focus; the transcript has no task headings of its own.
+    expect(expanded()).toEqual([undefined, undefined]);
+    expect(companion.queryByRole("button", { name: /^Show in To-do:/ })).toBeNull();
+    expect(companion.getByText("Task A prompt")).toBeDefined();
     expect(companion.queryByText("Task A answer")).toBeNull();
     expect(companion.queryByText("Task B prompt")).toBeNull();
     act(() => session.todos.toggleFocus(items[1]!));
-    expect(expanded()).toEqual([undefined, "true"]);
+    expect(companion.getByText("Task B prompt")).toBeDefined();
+    expect(companion.queryByText("Task A prompt")).toBeNull();
     expect(session.todos.focusedItemIds).toEqual([items[1]!.id]);
-    await f.user.click(focus("Task B"));
+    act(() => session.todos.toggleFocus(items[1]!));
     expect(expanded()).toEqual(["true", "true"]);
     expect(session.todos.focusedItems).toEqual([]);
     expect(session.todos.transcriptFocusRequest).toBeUndefined();

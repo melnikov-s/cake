@@ -4,6 +4,7 @@ import { verifyStackedAttentionPrototype } from "./stacked-attention-prototype";
 import { createSessionOutcomesScenario } from "./session-outcomes";
 import { createWorkspacePanelGeometryScenario } from "./workspace-panel-geometry";
 import { createTodoResponseFocusScenario } from "./todo-response-focus";
+import { createTodoFocusDescriptionScenario } from "./todo-focus-description";
 import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
@@ -9146,6 +9147,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectChatTaskRails,
   stickyTaskHeadings,
   createTodoResponseFocusScenario(projectChatTaskRails.seed),
+  createTodoFocusDescriptionScenario(projectChatTaskRails.seed),
   adjacentTaskHeadings,
   pendingTaskTurn,
   pdfTaskSwitch,

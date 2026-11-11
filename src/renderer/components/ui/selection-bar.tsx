@@ -1,15 +1,19 @@
+import type { ReactNode } from "react";
 import { IconButton } from "./icon-button";
 import { CloseIcon } from "./icons";
 
 /** Compact selection context, outside the content's scroll region. */
 export function SelectionBar({
   label,
+  status,
   title,
   onClear,
   clearLabel,
   disabled,
 }: {
   label: string;
+  /** Compact state of the selection, shown just before its title. */
+  status?: ReactNode;
   title: string;
   onClear(): void;
   clearLabel: string;
@@ -21,6 +25,7 @@ export function SelectionBar({
       className="flex min-w-0 shrink-0 items-center gap-2 border-b border-border/65 px-3 py-0.5 text-xs"
     >
       <span className="shrink-0">{label}</span>
+      {status}
       <span className="min-w-0 flex-1 truncate" title={title}>
         {title}
       </span>

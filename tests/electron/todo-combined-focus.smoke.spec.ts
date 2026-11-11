@@ -142,8 +142,7 @@ for (const mode of ["project", "global", "history"] as const) {
       await transcript.evaluate((element) => {
         element.scrollTop = 0;
       });
-      await expect(transcript.locator('[data-slot="task-section-label"]')).toHaveCount(1);
-      await expect(transcript.locator('[data-slot="task-section-disclosure"]')).toHaveCount(0);
+      await expect(transcript.locator('[data-slot="task-section-label"]')).toHaveCount(0);
       await expect(
         transcript.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
       ).toHaveCount(0);

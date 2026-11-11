@@ -594,7 +594,8 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
     expect(within(panel).queryByText(item.description)).toBeNull();
     expect(within(panel).queryByText("Earlier question")).toBeNull();
     const row = () => within(panel).getByRole("button", { name: item.title });
-    await f.user.hover(row());
+    // Descriptions follow real pointer travel; user-event otherwise rests at (0, 0).
+    await f.user.pointer({ target: row(), coords: { clientX: 24, clientY: 8 } });
     expect(await screen.findByText(item.description)).toBeTruthy();
     const focusList = () =>
       panel.querySelector<HTMLElement>('[data-todo-id][data-todo-section="Focus"]')!;

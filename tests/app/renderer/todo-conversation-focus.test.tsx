@@ -143,7 +143,10 @@ for (const global of [false, true]) {
       expect(transcript.queryByText("b1-answer")).toBeNull();
       expect(transcript.queryByRole("img", { name: "b1-shot.png" })).toBeNull();
       await u.click(panel.getByRole("button", { name: "Task A" }));
-      expect(transcript.getAllByRole("button", { name: "Show in To-do: Task A" })).toHaveLength(1);
+      // The selection bar alone titles focus: no duplicate heading or status row.
+      expect(transcript.queryByRole("button", { name: "Show in To-do: Task A" })).toBeNull();
+      expect(transcript.queryByText("Task A")).toBeNull();
+      expect(view.container.querySelector('[data-slot="task-section-label"]')).toBeNull();
       expect(transcript.queryByRole("button", { name: "Task A" })).toBeNull();
       expect(transcript.queryByRole("button", { name: "Task B" })).toBeNull();
       expect(transcript.queryByText("b1")).toBeNull();
@@ -151,6 +154,7 @@ for (const global of [false, true]) {
       expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
       const header = view.container.querySelector('[data-slot="selection-bar"]')!;
       expect(header.textContent).toContain("Focused to-do:Task A");
+      expect(within(header as HTMLElement).getByRole("img", { name: "Open" })).toBeDefined();
       expect(header.querySelector("svg")).not.toBeNull();
       expect(
         Array.from(view.container.querySelectorAll("[data-transcript-anchor-id]")).map((row) =>
@@ -212,9 +216,12 @@ for (const global of [false, true]) {
           publish();
         });
         expect(store.focusedItems.map((item) => item.id)).toEqual([a]);
-        expect(transcript.getAllByRole("button", { name: "Show in To-do: Task A" })).toHaveLength(
-          1,
-        );
+        // The removed heading's status lives on the selection bar.
+        const bar = view.container.querySelector<HTMLElement>('[data-slot="selection-bar"]')!;
+        expect(
+          within(bar).getByRole("img", { name: changes.state === "done" ? "Done" : "Open" }),
+        ).toBeDefined();
+        expect(transcript.queryByRole("button", { name: "Show in To-do: Task A" })).toBeNull();
         expect(transcript.queryByRole("button", { name: "Task A" })).toBeNull();
         expect(transcript.queryByRole("button", { name: "Task B" })).toBeNull();
       }
@@ -236,6 +243,84 @@ for (const global of [false, true]) {
     }
   });
 }
+
+it("enters focus with the description closed until a real pointer hover", async () => {
+  const description = "Find the startup bottleneck.";
+  using fixture = createRendererStoreFixture();
+  applySnapshot(fixture.models.cakeChatTodos, {
+    todos: {
+      ...emptyProjectTodos(),
+      items: [todo(b, "Task B"), { ...todo(a, "Task A"), description }],
+    },
+  });
+  const session = fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
+  [user("a1", a), answer("a1-answer")].forEach((part) =>
+    applyPartUpdate(session.model.parts, part, session.sessionId),
+  );
+  session.todos.open();
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <ProjectTodoSelectionBar todos={session.todos} />
+      <section aria-label="Transcript">
+        <ChatTranscript
+          store={session.conversationSessionStore.chatStore}
+          behavior={{ todos: session.todos }}
+        />
+      </section>
+      <aside aria-label="To-do">
+        <ProjectTodosPanel store={session.todos} />
+      </aside>
+    </StoreProvider>,
+  );
+  const wait = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 450)));
+  // user-event clicks at (0, 0): the pointer then rests there while rows move.
+  const pointAt = (target: Element, clientX: number) =>
+    act(() => {
+      target.dispatchEvent(new MouseEvent("pointerover", { bubbles: true, clientX }));
+      target.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX }));
+    });
+  try {
+    const u = userEvent.setup();
+    const transcript = within(screen.getByRole("region", { name: "Transcript" }));
+    const panel = within(screen.getByRole("complementary", { name: "To-do" }));
+    const row = () => panel.getByRole("button", { name: "Task A" });
+    const header = () => view.container.querySelector('[data-slot="selection-bar"]');
+    await settleListLayout();
+    for (const enter of [
+      () => u.click(row()),
+      () => u.click(transcript.getByRole("button", { name: "Focus to-do: Task A" })),
+    ]) {
+      await enter();
+      // Clicking moves the row into Focus and programmatically focuses it.
+      expect(row().getAttribute("aria-pressed")).toBe("true");
+      expect(document.activeElement).toBe(row());
+      await wait();
+      expect(header()?.textContent).toBe("Focused to-do:Task A");
+      expect(screen.getAllByText("Task A")).toHaveLength(2); // Bar and pane row only.
+      expect(screen.queryByText(description)).toBeNull();
+      // Layout moving the row under the resting pointer resends events in place.
+      pointAt(row(), 0);
+      await wait();
+      expect(screen.queryByText(description)).toBeNull();
+      // Real travel over the row opens it; leaving closes it even with focus kept.
+      pointAt(row(), 24);
+      await wait();
+      expect(screen.getByRole("tooltip").textContent).toBe(description);
+      act(() =>
+        row().dispatchEvent(
+          new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body }),
+        ),
+      );
+      await wait();
+      expect(document.activeElement).toBe(row());
+      expect(screen.queryByText(description)).toBeNull();
+      await u.click(screen.getByRole("button", { name: "Clear to-do focus" }));
+      expect(header()).toBeNull();
+    }
+  } finally {
+    view.unmount();
+  }
+});
 
 for (const entry of ["pane", "message"] as const) {
   it(`toggles ${entry} focus, reveals the latest task message once and safely ignores missing messages`, async () => {

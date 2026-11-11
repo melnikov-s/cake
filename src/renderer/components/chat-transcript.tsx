@@ -332,18 +332,11 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
   });
   const itemKeys = visibleIndices.map((index) => allItemKeys[index]!);
-  const visibleSectionViews = visibleIndices.map((index, visibleIndex) => {
-    if (!focused) return sectionViews?.[index];
-    // Focus is one conversation for a stable to-do, not a set of folded header
-    // occurrences. Prepending pages moves its single heading to the earliest match.
-    const todoId = focusedTodos[0]!.id;
-    return {
-      todoId,
-      key: JSON.stringify([store.id, "focus", todoId]),
-      start: visibleIndex === 0,
-      expanded: true,
-    };
-  });
+  // Focus is one conversation for a stable to-do, titled by the selection bar,
+  // so it has no task headings or rails of its own.
+  const visibleSectionViews = visibleIndices.map((index) =>
+    focused ? undefined : sectionViews?.[index],
+  );
   const { rows, stickyIndices, messageIndices } = transcriptPresentationRows(
     items,
     itemKeys,
@@ -649,11 +642,7 @@ export const ChatTranscript = observer(function ChatTranscript({
               headingOnly
               todos={behavior.todos}
               expanded={section.expanded}
-              onToggle={
-                focused
-                  ? undefined
-                  : () => behavior.todos?.toggleTranscriptSection(section.key, section.todoId!)
-              }
+              onToggle={() => behavior.todos?.toggleTranscriptSection(section.key, section.todoId!)}
             />
           </div>
         </div>

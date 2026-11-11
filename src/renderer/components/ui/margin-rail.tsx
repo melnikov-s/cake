@@ -11,7 +11,6 @@ export function MarginRail({
   start,
   onOpen,
   onFocus,
-  focused,
   expanded,
   onToggle,
   showRail = true,
@@ -21,7 +20,6 @@ export function MarginRail({
   start: boolean;
   onOpen(): void;
   onFocus(): void;
-  focused: boolean;
   expanded: boolean;
   onToggle?(): void;
   showRail?: boolean;
@@ -72,16 +70,14 @@ export function MarginRail({
           >
             <span className="min-w-0 wrap-anywhere">{title}</span>
           </Button>
-          {!focused && (
-            <IconButton
-              iconSize="inline"
-              tooltip={`Focus to-do: ${title}`}
-              aria-pressed={false}
-              onClick={onFocus}
-            >
-              <ExpandIcon />
-            </IconButton>
-          )}
+          <IconButton
+            iconSize="inline"
+            tooltip={`Focus to-do: ${title}`}
+            aria-pressed={false}
+            onClick={onFocus}
+          >
+            <ExpandIcon />
+          </IconButton>
           {onToggle && (
             <IconButton
               iconSize="inline"

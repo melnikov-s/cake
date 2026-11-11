@@ -113,13 +113,27 @@ for (const global of [false, true])
       const headingB = transcript.getByRole("button", { name: titleB, exact: true });
       const bar = pane.locator('[data-slot="selection-bar"]');
       const clear = bar.getByRole("button", { name: "Clear to-do focus" });
+      const description = page
+        .getByRole("tooltip")
+        .filter({ hasText: "Find the startup bottleneck and recommend a focused fix." });
       await expect(bar).toHaveCount(0);
+      // The pointer rests on the clicked row while focus reorders the pane under it.
       await selectA.click();
       await expect(selectA).toHaveAttribute("aria-pressed", "true");
+      await expect(selectA).toBeFocused();
       await expect(bar).toContainText(`Focused to-do:${titleA}`);
+      await expect(bar.getByRole("img", { name: "Open", exact: true })).toBeVisible();
+      await page.waitForTimeout(500);
+      await expect(
+        page.getByRole("tooltip").filter({ hasText: /^(Find the startup|Make it easier)/ }),
+      ).toHaveCount(0);
+      // Only real travel over the row shows its description; leaving hides it.
+      await selectA.hover({ position: { x: 12, y: 8 } });
+      await expect(description).toBeVisible();
+      await bar.hover();
+      await expect(description).toHaveCount(0);
       await expect(headingsA).toHaveCount(0);
-      await expect(transcript.locator('[data-slot="task-section-label"]')).toHaveCount(1);
-      await expect(transcript.locator('[data-slot="task-section-disclosure"]')).toHaveCount(0);
+      await expect(transcript.locator('[data-slot="task-section-label"]')).toHaveCount(0);
       await expect(transcript.getByRole("button", { name: `Focus to-do: ${titleA}` })).toHaveCount(
         0,
       );
@@ -151,7 +165,7 @@ for (const global of [false, true])
       await expect(headingB).toHaveCount(0);
       await expect(
         transcript.getByRole("button", { name: `Show in To-do: ${titleB}` }),
-      ).toHaveCount(1);
+      ).toHaveCount(0);
       await selectB.click();
       await expect(selectB).toHaveAttribute("aria-pressed", "false");
       await expect(bar).toHaveCount(0);
