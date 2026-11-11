@@ -1242,6 +1242,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
   states: [
     "default",
     "destination",
+    "destination-project",
     "annotate",
     "annotation-input",
     "annotation-confirmation",
@@ -1283,6 +1284,17 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
     if (!application) throw new Error("Screen capture requires Electron");
     // Capture edits do not depend on the startup conversation or its restored transcript.
     await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+    if (state === "destination-project") {
+      // A Project Session interaction preselects it, so only its project opens in the menu.
+      await openSeededSession(
+        page,
+        "Capture Project",
+        "How should agents capture Cake UI changes?",
+      );
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await composer.click();
+      await composer.pressSequentially("Look at this");
+    }
     const dimensions = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     // Fake only the native still. Never read the user's desktop or show/focus a window.
     await application.evaluate(
@@ -1332,7 +1344,7 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
         overlay.locator("canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width),
       )
       .toBe(dimensions.width);
-    if (state === "destination") {
+    if (state === "destination" || state === "destination-project") {
       await overlay.getByRole("button", { name: "Screenshot destination", exact: true }).click();
       await expect(overlay.getByRole("dialog", { name: "Screenshot destination" })).toBeVisible();
       captureOverlayRegions.set(page, overlay.getByLabel("Screen capture", { exact: true }));
@@ -7413,6 +7425,63 @@ const sessionSearchScenario: VisualCaptureScenario = {
   },
 };
 
+/** Composer entry points of the shared session destination picker, opened from a Project Session. */
+const sessionDestinationPickersScenario: VisualCaptureScenario = {
+  name: "session-destination-pickers",
+  description:
+    "Shared project/session picker from Move draft and Insert session reference, with projects collapsed",
+  states: ["draft-move", "session-reference"],
+  async seed(paths, theme) {
+    await sessionSearchScenario.seed(paths, theme);
+    const docs = resolve(paths.project, "../docs");
+    const website = resolve(paths.project, "../website");
+    const timestamp = new Date(0).toISOString();
+    await mkdir(docs, { recursive: true });
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
+          { path: docs, name: "Docs", addedAt: timestamp, lastOpenedAt: timestamp },
+          { path: website, name: "Website", addedAt: timestamp, lastOpenedAt: timestamp },
+        ],
+      }),
+    );
+    await writeSearchSession(paths, docs, "visual-session-destination-docs", "Update guide");
+  },
+  async prepare(page, state, application) {
+    if (!application) throw new Error("Composer native menus require Electron");
+    await openSeededSession(page, "Cake", "Session search");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await expect(composer).toBeVisible({ timeout: 20_000 });
+    await composer.fill("Draft to route to another session");
+    const action = state === "draft-move" ? "Move draft to session…" : "Insert session reference";
+    // Choose the native menu item without showing an OS popup.
+    await application.evaluate(({ Menu }, label) => {
+      const build = Menu.buildFromTemplate.bind(Menu);
+      Menu.buildFromTemplate = (template) => {
+        const menu = build(template);
+        const item = menu.items.find((entry) => entry.label === label);
+        if (item)
+          menu.popup = (options) => {
+            item.click();
+            options?.callback?.();
+          };
+        return menu;
+      };
+    }, action);
+    await composer.click({ button: "right" });
+    const name = state === "draft-move" ? "Move draft to session" : "Session reference";
+    await expect(page.getByRole("dialog", { name })).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.locator("body");
+  },
+};
+
 const sessionSearchHeightQueries = [
   { state: "one", query: "keyboard", count: 1 },
   { state: "few", query: "release", count: 5 },
@@ -9127,6 +9196,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectCustomInstructionsScenario,
   newSessionScenario,
   sessionSearchScenario,
+  sessionDestinationPickersScenario,
   sessionSearchHeightScenario,
   cakeChatScenario,
   titleBarAlignmentScenario,

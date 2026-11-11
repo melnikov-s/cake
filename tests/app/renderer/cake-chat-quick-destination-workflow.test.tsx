@@ -137,6 +137,8 @@ it("uses the capture picker to switch quick-chat drafts without sending or disca
   );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Chat destination" }));
+  // A global Cake Chat selection belongs to no project, so every project starts collapsed.
+  expect(screen.getByRole("button", { name: "Expand Project" }).ariaExpanded).toBe("false");
   await user.click(screen.getByRole("button", { name: "Open Project Chat for Project" }));
   await waitFor(() =>
     expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toHaveProperty(
@@ -149,6 +151,8 @@ it("uses the capture picker to switch quick-chat drafts without sending or disca
   await act(() => receiveCakeChatOverlayContext(view.root, {}));
   expect(view.root.appShellStore.selection).toMatchObject({ sessionId: projectChatId });
   await user.click(screen.getByRole("button", { name: "Chat destination" }));
+  // The selected Project Chat expands its own project.
+  expect(screen.getByRole("button", { name: "Collapse Project" }).ariaExpanded).toBe("true");
   await user.click(screen.getByRole("button", { name: "Cake Chat" }));
   await waitFor(() =>
     expect(screen.getByRole("combobox", { name: "Message Cake Chat" })).toHaveProperty(

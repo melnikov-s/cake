@@ -30,6 +30,10 @@ describe("composer session references", () => {
       expect.objectContaining({ selection: "replace", canInsertSession: true }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+    // No highlighted destination: every project starts collapsed, and stays hand-toggleable.
+    expect(picker.querySelector('[data-session-id="second"]')).toBeNull();
+    await fixture.user.click(within(picker).getByRole("button", { name: "Expand Project" }));
+    expect(picker.querySelector('[data-session-id="second"]')).not.toBeNull();
     await fixture.user.click(within(picker).getByRole("button", { name: "Collapse Project" }));
     expect(picker.querySelector('[data-session-id="second"]')).toBeNull();
     await fixture.user.click(within(picker).getByRole("button", { name: "Expand Project" }));
@@ -64,6 +68,7 @@ describe("composer session references", () => {
     input().setSelectionRange(7, 11);
     fireEvent.contextMenu(input());
     const picker = await screen.findByRole("dialog", { name: "Session reference" });
+    await fixture.user.click(within(picker).getByRole("button", { name: "Expand Project" }));
     await fixture.user.click(
       within(picker.querySelector<HTMLElement>('[data-session-id="second"]')!).getByRole("button"),
     );
@@ -116,6 +121,7 @@ describe("composer session references", () => {
     fireEvent.contextMenu(composer);
     const picker = await screen.findByRole("dialog", { name: "Session reference" });
     fireEvent.change(composer, { target: { value: "Newer draft" } });
+    await fixture.user.click(within(picker).getByRole("button", { name: "Expand Project" }));
     const row = picker.querySelector<HTMLElement>('[data-session-id="first"]')!;
     await fixture.user.click(within(row).getByRole("button"));
     expect(composer.value).toBe("Newer draft");

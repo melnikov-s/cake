@@ -189,6 +189,7 @@ function setup(
     async forwardQueue() {
       await user.click(screen.getByRole("button", { name: "Forward to another session" }));
       const picker = await screen.findByRole("dialog", { name: "Forward to another session" });
+      await expandProjectWithoutSelection(picker);
       expect(picker.querySelector(`[data-session-id="${sourceId}"]`)).toBeNull();
       await user.click(
         within(
@@ -200,6 +201,7 @@ function setup(
     async move() {
       fireEvent.contextMenu(input("Source"));
       const picker = await screen.findByRole("dialog", { name: "Move draft to session" });
+      await expandProjectWithoutSelection(picker);
       expect(picker.querySelector(`[data-session-id="${sourceId}"]`)).toBeNull();
       await user.click(
         within(
@@ -212,6 +214,12 @@ function setup(
       fixture[Symbol.dispose]();
     },
   };
+}
+
+/** Pickers without a highlighted destination open with every project collapsed. */
+async function expandProjectWithoutSelection(picker: HTMLElement) {
+  expect(picker.querySelector("[data-session-id]")).toBeNull();
+  await userEvent.click(within(picker).getByRole("button", { name: "Expand Project" }));
 }
 
 // UI-to-real-Store-to-persistence workflow evidence. Native right-click, typing,

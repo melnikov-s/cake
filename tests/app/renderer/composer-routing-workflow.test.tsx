@@ -128,6 +128,7 @@ describe("composer routing catalog isolation", () => {
     const targetId = "project-1-0";
     const target = fixture.models.sessionCatalog.find(targetId)!;
     const project = fixture.models.projects.find("/project-1")!;
+    await fixture.user.click(within(picker).getByRole("button", { name: "Expand project-1" }));
     const row = () => picker.querySelector<HTMLElement>(`[data-session-id="${targetId}"]`)!;
     expect(within(row()).getByLabelText("Labels: Review")).toBeTruthy();
     act(() => {

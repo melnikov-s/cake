@@ -19,7 +19,8 @@ export class CaptureDestinationPickerStore extends Store<{
       ? this.props.currentDestination()
       : this.selectedDestination;
   }
-  private readonly collapsedProjects = observable(new Set<string>());
+  /** Explicit project toggles; untouched projects follow `selectedProjectPath`. Retained for this store's lifetime. */
+  private readonly projectExpansion = observable(new Map<string, boolean>());
   private readonly collapsedFamilies = observable(new Set<string>());
 
   get routing() {
@@ -40,13 +41,24 @@ export class CaptureDestinationPickerStore extends Store<{
     this.props.onSelect?.(destination);
   }
 
+  /** The project owning the highlighted destination (a session or its Project Chat); global chats have none. */
+  get selectedProjectPath() {
+    const destination = this.destination;
+    if (!destination) return undefined;
+    return this.routing.projects.find((project) =>
+      destination.kind === "cake-chat"
+        ? project.chatSessionId === destination.sessionId
+        : project.sessions.some((session) => session.sessionId === destination.sessionId),
+    )?.path;
+  }
+
+  /** Projects start collapsed, except the one containing the current selection. */
   isProjectCollapsed(path: string) {
-    return this.collapsedProjects.has(path);
+    return !(this.projectExpansion.get(path) ?? path === this.selectedProjectPath);
   }
 
   toggleProject(path: string) {
-    if (this.collapsedProjects.has(path)) this.collapsedProjects.delete(path);
-    else this.collapsedProjects.add(path);
+    this.projectExpansion.set(path, this.isProjectCollapsed(path));
   }
 
   isFamilyCollapsed(sessionId: string) {

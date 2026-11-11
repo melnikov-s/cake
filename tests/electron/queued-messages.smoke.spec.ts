@@ -601,6 +601,8 @@ test("queued editor forwards edited input through the shared picker without send
     await expect(picker).toHaveCount(0);
     await expect(editor).toHaveValue("Wrong queue edited");
     await forward.click();
+    // No highlighted destination: the shared picker opens with every project collapsed.
+    await picker.getByRole("button", { name: "Expand project", exact: true }).click();
     await picker.locator(`[data-session-id="${fixture.sourceId}"]`).getByRole("button").click();
     await expect(page.getByText("Origin transcript.")).toBeVisible();
     await expect(composer).toHaveValue("Wrong queue edited");

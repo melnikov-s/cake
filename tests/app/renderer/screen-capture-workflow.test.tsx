@@ -715,6 +715,11 @@ describe("Screen capture attachment destinations", () => {
       "Session B",
     );
     const menu = await openMenu(fixture);
+    // Only the preselected destination's project opens; the rest start collapsed.
+    expect(menu.getByRole("button", { name: "Collapse Project" }).ariaExpanded).toBe("true");
+    expect(menu.getByRole("button", { name: "Expand Other Project" }).ariaExpanded).toBe("false");
+    expect(menu.queryByRole("button", { name: /^Session C / })).toBeNull();
+    await fixture.user.click(menu.getByRole("button", { name: "Expand Other Project" }));
     await fixture.user.click(menu.getByRole("button", { name: /^Session C / }));
     await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
     await screen.findByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ });

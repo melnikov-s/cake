@@ -258,6 +258,7 @@ test("shared model and session reference pickers preserve composer input and foc
       Reflect.set(Menu, "referenceAction", "Insert session reference"),
     );
     const sessions = page.getByRole("dialog", { name: "Session reference" });
+    let projectExpanded = false;
     // The first insertion swaps the textarea for the atomic-token editor. Type
     // immediately, before reopening/editing a chip can accidentally repair focus.
     for (const { draft, start, end } of [
@@ -276,6 +277,11 @@ test("shared model and session reference pickers preserve composer input and foc
         { start, end },
       );
       await expect(sessions).toBeVisible();
+      if (!projectExpanded) {
+        // No highlighted destination: projects start collapsed; the hand expansion is kept on reopen.
+        await sessions.getByRole("button", { name: "Expand project", exact: true }).click();
+        projectExpanded = true;
+      }
       await sessions.locator(`[data-session-id="${moveDestination}"]`).getByRole("button").click();
       await expect(sessions).toBeHidden();
       await expect(composer).toBeFocused();
@@ -454,6 +460,7 @@ test("shared model and session reference pickers preserve composer input and foc
     await movingInput.click({ button: "right" });
     const destinations = page.getByRole("dialog", { name: "Move draft to session" });
     await expect(destinations).toBeVisible();
+    await destinations.getByRole("button", { name: "Expand project", exact: true }).click();
     await expect(destinations.locator(`[data-session-id="${sessionId}"]`)).toHaveCount(0);
     await destinations
       .locator(`[data-session-id="${moveDestination}"]`)
