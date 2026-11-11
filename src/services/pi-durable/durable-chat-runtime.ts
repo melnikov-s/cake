@@ -57,6 +57,7 @@ import { durableModels } from "./durable-models";
 import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
 import { TaskAttributionDoc, TASK_ATTRIBUTION_INSTRUCTIONS } from "./durable-task-attribution";
+import { assertTaskCreationAllowed, previousDurableTaskContext } from "./durable-task-context";
 import { isAutomaticInput } from "../pi/runtime/internal-input-projection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { taskAttributionOperations } from "./durable-task-attribution-operations";
@@ -275,7 +276,20 @@ export async function createDurableCakeChatRuntime(
     todos: () => options.cakeChatTodos?.() ?? [],
   });
   const operations = new CakeOperationRegistry(
-    [...options.coordinator.operations(operationBridge), ...attributionOperations],
+    [
+      ...options.coordinator.operations(operationBridge).map((operation) =>
+        operation.command === "todos.create"
+          ? {
+              ...operation,
+              async execute(...args: Parameters<typeof operation.execute>) {
+                await assertTaskCreationAllowed(engine.root, engine.harness, storage);
+                return operation.execute(...args);
+              },
+            }
+          : operation,
+      ),
+      ...attributionOperations,
+    ],
     options.sessionReferences?.project,
   );
   // Full-control clients use the same definitions without model-facing catalog curation.
@@ -618,6 +632,15 @@ export async function createDurableCakeChatRuntime(
     // from the durable inbox/history rather than a second in-memory mode flag.
     const previous = await previousDurableInputModes(engine.root, queued, delivery);
     const response = durableInputResponse(previous.response, responseMode);
+    const todoItems = options.cakeChatTodos?.();
+    const attributable =
+      todoItems !== undefined &&
+      !subagentReport &&
+      !isAutomaticInput(internal) &&
+      !parseCrossSessionMessage(text);
+    const taskContext = attributable
+      ? await previousDurableTaskContext(engine.root, queued, todoItems ?? [])
+      : undefined;
     const content = [
       {
         type: "text" as const,
@@ -631,12 +654,8 @@ export async function createDurableCakeChatRuntime(
           internal,
           { mode: presentationMode ?? previous.presentation, previousMode: previous.presentation },
           previousArtifactTarget,
-          options.cakeChatTodos &&
-            !subagentReport &&
-            !isAutomaticInput(internal) &&
-            !parseCrossSessionMessage(text)
-            ? engine.root.id
-            : undefined,
+          attributable ? engine.root.id : undefined,
+          taskContext,
         ),
       },
       // Reference attachments have no image parts.

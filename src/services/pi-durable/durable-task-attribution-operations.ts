@@ -48,7 +48,7 @@ export function taskAttributionOperations(options: {
             attribution.pending
           )
             throw new Error("A settled human-turn attribution in this chat is required");
-          doc.inputs[String(id)] = { pending: false, todoId };
+          doc.inputs[String(id)] = { ...attribution, pending: false, todoId };
         }, BACKGROUND_CONTEXT);
         return { entryId: String(id), todoId };
       },

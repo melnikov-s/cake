@@ -11,17 +11,18 @@ import { windowState } from "../fixtures/window-state";
 const repository = resolve(import.meta.dirname, "../..");
 const A = "00000000-0000-4000-8000-000000000011";
 const B = "00000000-0000-4000-8000-000000000012";
+const C = "00000000-0000-4000-8000-000000000013";
 const chunk = (content: string, finish_reason: string | null = null) =>
   `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { content }, finish_reason }] })}\n\n`;
 
-test("Project Chat clears stale attribution before streaming omitted or invalid metadata and supports switch, null and return", async () => {
+test("Project Chat preserves explicit attention context without overriding normal task transitions", async () => {
   test.setTimeout(90_000);
   const root = await mkdtemp(join(tmpdir(), "cake-task-attribution-"));
   const project = join(root, "project");
   const cakeHome = join(root, "cake");
   const agentDir = join(cakeHome, "pi");
   const userData = join(root, "user-data");
-  const requests: Array<{ response: ServerResponse; turnId: string }> = [];
+  const requests: Array<{ response: ServerResponse; turnId: string; text: string }> = [];
   const server = createServer(async (request, response) => {
     const body = JSON.parse(Buffer.concat(await request.toArray()).toString()) as {
       messages: Array<{ role: string; content: string | Array<{ text?: string }> | null }>;
@@ -30,11 +31,21 @@ test("Project Chat clears stale attribution before streaming omitted or invalid 
     const text =
       typeof content === "string" ? content : (content?.map((part) => part.text).join("\n") ?? "");
     const turnId = [...text.matchAll(/cake-turn id="([^"]+)"/g)].at(-1)?.[1];
-    if (!turnId) throw new Error("Expected a current human attribution token");
+    if (!turnId) {
+      // The attention click is automatic and already identifies its existing task.
+      expect(text).toContain("The user opened this to-do's attention");
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        chunk("Review the selected task's recommendation") +
+          chunk("", "stop") +
+          "data: [DONE]\\n\\n",
+      );
+      return;
+    }
     expect(JSON.stringify(body)).toContain("For EVERY current human");
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.flushHeaders();
-    requests.push({ response, turnId });
+    requests.push({ response, turnId, text });
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   const address = server.address();
@@ -87,9 +98,14 @@ test("Project Chat clears stale attribution before streaming omitted or invalid 
               lastOpenedAt: timestamp,
               todos: {
                 ...emptyProjectTodos(),
-                items: [A, B].map((id, index) => ({
+                items: [A, B, C].map((id, index) => ({
                   id,
-                  title: index === 0 ? "Startup investigation" : "Navigation improvements",
+                  title: ["Startup investigation", "Navigation improvements", "Renderer review"][
+                    index
+                  ],
+                  ...(index > 0
+                    ? { needsAttention: true, attentionReason: "Review the recommendation" }
+                    : null),
                   description: "Attribution regression",
                   status: "",
                   state: "open",
@@ -137,6 +153,42 @@ test("Project Chat clears stale attribution before streaming omitted or invalid 
       transcript
         .getByText(text, { exact: true })
         .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
+    const expectTask = async (text: string, title: string) => {
+      // Attention reveal preserves the reader's position. Explicitly scroll the
+      // isolated test transcript before inspecting newly virtualized follow-ups.
+      await transcript.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      try {
+        await expect(row(text).locator('[data-slot="margin-rail"]')).toHaveCount(1);
+      } catch (error) {
+        await page.screenshot({
+          path: join(repository, ".visual-captures", "task-context-failure.png"),
+        });
+        await test.info().attach("transcript-at-failure", {
+          body: await transcript.innerText(),
+          contentType: "text/plain",
+        });
+        throw error;
+      }
+      const index = Number(await row(text).getAttribute("data-transcript-item-index"));
+      // Headings are separate virtual rows; use the preceding section, not a
+      // nonexistent heading button inside every message's rail.
+      await expect
+        .poll(() =>
+          transcript.locator('[data-slot="task-section-header"]').evaluateAll((headers, index) => {
+            const heading = headers
+              .filter(
+                (header) => Number(header.getAttribute("data-transcript-item-index")) <= index,
+              )
+              .at(-1);
+            return heading
+              ?.querySelector('[aria-label^="Show in To-do:"]')
+              ?.getAttribute("aria-label");
+          }, index),
+        )
+        .toBe(`Show in To-do: ${title}`);
+    };
     const choices = [A, "missing", "invalid", B, null, A] as const;
     const topics = [
       "Investigate startup",
@@ -165,12 +217,7 @@ test("Project Chat clears stale attribution before streaming omitted or invalid 
       await expect(transcript.getByText(answer, { exact: true })).toBeVisible();
       const assigned = choice === A || choice === B;
       if (assigned) {
-        await expect(
-          row(topic).getByRole("button", {
-            name: `Show in To-do: ${choice === A ? "Startup investigation" : "Navigation improvements"}`,
-            exact: true,
-          }),
-        ).toBeVisible();
+        await expectTask(topic, choice === A ? "Startup investigation" : "Navigation improvements");
       }
       for (const text of [topic, answer]) {
         await expect(row(text).locator('[data-slot="margin-rail"]')).toHaveCount(assigned ? 1 : 0);
@@ -196,6 +243,68 @@ test("Project Chat clears stale attribution before streaming omitted or invalid 
         });
       }
     }
+    // Reproduce A -> open B -> reply: even stale A metadata cannot undo explicit selection.
+    await page
+      .getByRole("button", { name: "Open attention: Navigation improvements", exact: true })
+      .click();
+    await expect(
+      transcript.getByText("Review the selected task's recommendation", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
+    for (const [index, topic] of [
+      "Use that navigation recommendation",
+      "Check that detail too",
+    ].entries()) {
+      await composer.fill(topic);
+      await composer.press("Enter");
+      await expect.poll(() => requests.length).toBe(7 + index);
+      const current = requests[6 + index]!;
+      expect(current.text).toContain(
+        `todoId="${B}" mode="${index === 0 ? "selected" : "continue"}"`,
+      );
+      const answer = `Navigation follow-up ${index + 1}`;
+      current.response.end(
+        chunk(
+          `<cake-todo>${JSON.stringify({ turnId: current.turnId, todoId: A })}</cake-todo>${answer}`,
+        ) +
+          chunk("", "stop") +
+          "data: [DONE]\\n\\n",
+      );
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
+      for (const text of [topic, answer]) await expectTask(text, "Navigation improvements");
+    }
+    await page.mouse.move(1, 1);
+    await page.screenshot({
+      animations: "disabled",
+      path: join(repository, ".visual-captures", "task-context-attention-followups.png"),
+    });
+    await page
+      .getByRole("button", { name: "Open attention: Renderer review", exact: true })
+      .click();
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
+    await composer.fill("Proceed with the renderer review");
+    await composer.press("Enter");
+    await expect.poll(() => requests.length).toBe(9);
+    const selectedC = requests[8]!;
+    expect(selectedC.text).toContain(`todoId="${C}" mode="selected"`);
+    selectedC.response.end(chunk("Renderer follow-up") + chunk("", "stop") + "data: [DONE]\\n\\n");
+    await expectTask("Renderer follow-up", "Renderer review");
+    await page.screenshot({
+      animations: "disabled",
+      path: join(repository, ".visual-captures", "task-context-explicit-switch.png"),
+    });
+    await composer.fill("New topic: back to startup instead");
+    await composer.press("Enter");
+    await expect.poll(() => requests.length).toBe(10);
+    const switched = requests[9]!;
+    switched.response.end(
+      chunk(
+        `<cake-todo>${JSON.stringify({ turnId: switched.turnId, todoId: A, newTopic: true })}</cake-todo>Deliberate startup return`,
+      ) +
+        chunk("", "stop") +
+        "data: [DONE]\\n\\n",
+    );
+    await expectTask("Deliberate startup return", "Startup investigation");
     expect(
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().every((window) => !window.isVisible()),

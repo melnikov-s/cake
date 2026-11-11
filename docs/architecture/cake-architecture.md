@@ -583,8 +583,8 @@ is a refactoring signal, not precedent.
   recreation/reset.
   Permanent Project Chat and Cake Chat group contiguous related conversation with a margin
   rail, labeling task switches rather than every message. A → B → A labels A again on return.
-  Newly admitted human inputs start unresolved and ungrouped until early attribution;
-  they never optimistically extend the preceding heading, status or rail.
+  Without explicit task context, newly admitted human inputs start unresolved and ungrouped
+  until early attribution; they never optimistically extend the preceding heading, status or rail.
   This also applies to shared-list side chats forked from permanent chats, not ordinary
   coding-session task management. A stable instruction asks the main conversational agent
   to emit a hidden `<cake-todo>` JSON prefix before any visible response text, with the exact
@@ -594,9 +594,17 @@ is a refactoring signal, not precedent.
   classifier, classification-only tool round, extra inference, duplicate history payload
   or per-turn full-list fetch. Existing baseline/reminders and normal creation-tool results
   supply identities, including to-dos created during the response.
-  Attached reply context is evidence, never an automatic assignment. Related follow-ups continue; genuine
-  topic switches choose another identity or none, and returning to an earlier task labels it
-  again. The provider-boundary adapter removes complete and split/incomplete metadata from
+  Attached reply context is evidence, never an automatic assignment. Opening Needs Attention,
+  however, explicitly selects that existing task: the next human input captures its ID in the
+  durable input envelope and is assigned directly before response streaming, without attribution
+  inference or to-do creation/title generation. Model-requested `todos.create` is rejected for
+  that selected message. Subsequent coherent follow-ups retain the context; a valid prefix with
+  `newTopic: true` permits a deliberate user topic transition and ends the handoff. A newer
+  attention selection replaces it. View focus and incoming reports do neither. Admission recovers
+  context from queued inputs and originals, so withdrawal, queue edits, steering and restart need
+  no parallel selection store; late results can only settle their own input, not a newer selection.
+  Without this handoff, genuine topic switches choose another identity or none, and returning
+  to an earlier task labels it again. The provider-boundary adapter removes complete and split/incomplete metadata from
   live and persisted assistant text, validates complete prefix decisions against the exact
   consumed human inputs and current open list, and commits identity-only metadata beside
   Durable originals before forwarding the first visible response text. Normal to-do creation
@@ -618,9 +626,10 @@ is a refactoring signal, not precedent.
   markers are stable across tool rounds and later requests. Prefixes add generation tokens;
   removing metadata from subsequent context may invalidate the cached suffix beginning there.
   This trades some prefix/cache cost for early headers, not another model request or a buffered
-  answer; no zero-latency or zero-cache-impact guarantee is made. Local preparation reads only
-  the active run's submissions/originals, not dialogue history, and performs metadata transactions
-  without creating scheduled work.
+  answer; no zero-latency or zero-cache-impact guarantee is made. Response attribution preparation
+  reads only the active run's submissions/originals; explicit-context admission additionally finds
+  the newest relevant input in the durable inbox/originals and reads its settled identity metadata.
+  Neither creates scheduled work.
   For explicit user-requested historical grouping repairs, the owning permanent chat exposes
   `messages.set-todo` with the original user entry ID and an existing chat-scoped to-do ID (or
   null). It updates settled identity-only attribution, never originals or the to-do itself;

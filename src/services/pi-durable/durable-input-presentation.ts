@@ -26,6 +26,13 @@ import {
   ConversationResponseMode,
 } from "../../contracts/conversations/response-mode-reminders";
 
+/** Captured at admission: explicit selection wins over per-turn inference. */
+export const DurableTaskContext = Schema.Struct({
+  todoId: Schema.String.check(Schema.isUUID(4)),
+  first: Schema.Boolean,
+});
+export interface DurableTaskContext extends Schema.Schema.Type<typeof DurableTaskContext> {}
+
 const Presentation = Schema.Struct({
   textLength: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   /** Start of the original user text, after any injected presentation reminder. */
@@ -40,6 +47,7 @@ const Presentation = Schema.Struct({
   responseMode: Schema.optionalKey(ConversationResponseMode),
   presentationMode: Schema.optionalKey(ProjectSessionPresentationMode),
   artifactTarget: Schema.optionalKey(Schema.Boolean),
+  taskContext: Schema.optionalKey(DurableTaskContext),
   attribution: Schema.optionalKey(
     Schema.Struct({
       conversationId: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
@@ -74,6 +82,7 @@ export function durableInputText(
   },
   previousArtifactTarget = false,
   attributionConversationId?: number,
+  taskContext?: DurableTaskContext,
 ) {
   const body = `${promptText(text, [...attachments])}${subagentReport ? `\n\nWorker provenance: ${JSON.stringify(subagentReport)}` : ""}`;
   const presented = presentation
@@ -82,6 +91,7 @@ export function durableInputText(
   const metadata = {
     internal,
     subagentReport,
+    taskContext,
     ...(attributionConversationId === undefined
       ? null
       : {
@@ -112,6 +122,7 @@ export function durableInputPresentation(value: string) {
       return {
         body,
         attribution: decoded.value.attribution,
+        taskContext: decoded.value.taskContext,
         subagentReport: decoded.value.subagentReport,
         internal: decoded.value.internal,
         text: body.slice(textOffset, textOffset + decoded.value.textLength),
@@ -135,6 +146,7 @@ export function durableInputPresentation(value: string) {
   return {
     body: value,
     attribution: undefined,
+    taskContext: undefined,
     text: value,
     textOffset: 0,
     markdown: false,
@@ -186,6 +198,7 @@ export function markDurableInputSteering(value: string, steering = true): string
   const metadata = {
     internal: input.internal,
     attribution: input.attribution,
+    taskContext: input.taskContext,
     subagentReport: input.subagentReport,
     textLength: input.text.length,
     textOffset: input.textOffset,
@@ -208,7 +221,11 @@ export function withoutDurableInputPresentation(
     const input = durableInputPresentation(text);
     if (options?.display) return input.subagentReport ? input.text : input.body;
     return (
-      input.body + (input.attribution ? `\n<cake-turn id="${input.attribution.turnId}"/>` : "")
+      input.body +
+      (input.attribution ? `\n<cake-turn id="${input.attribution.turnId}"/>` : "") +
+      (input.taskContext && input.attribution
+        ? `\n<cake-task-context todoId="${input.taskContext.todoId}" mode="${input.taskContext.first ? "selected" : "continue"}"/>`
+        : "")
     );
   };
   if (message.role !== "user") return message;

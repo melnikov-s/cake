@@ -10,7 +10,7 @@ import type { AssistantMessage, AssistantMessageEvent } from "@earendil-works/pi
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Option, Schema } from "effect";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
-import { durableInputPresentation } from "./durable-input-presentation";
+import { durableInputPresentation, type DurableTaskContext } from "./durable-input-presentation";
 import { isAutomaticInput } from "../pi/runtime/internal-input-projection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 
@@ -18,7 +18,13 @@ import { parseCrossSessionMessage } from "../../contracts/conversations/cross-se
 export const TaskAttributionDoc = defineDoc<{
   inputs: Record<
     string,
-    { pending: boolean; todoId: string | null; turnId?: string; responseStarted?: boolean }
+    {
+      pending: boolean;
+      todoId: string | null;
+      turnId?: string;
+      responseStarted?: boolean;
+      contextEnded?: boolean;
+    }
   >;
 }>({
   kind: "cake.task-attribution",
@@ -31,11 +37,12 @@ export const TaskAttributionDoc = defineDoc<{
 });
 
 export const TASK_ATTRIBUTION_INSTRUCTIONS =
-  '## Per-turn to-do attribution\nFor EVERY current human <cake-turn id="…"/>, independently choose an existing matching open to-do or JSON null. Never carry forward the previous choice: reassess follow-ups, new topics and returns. Prefix the FIRST meaningful response text (including commentary) with exactly one hidden <cake-todo>{"turnId":"exact cake-turn id","todoId":"open to-do UUID or null"}</cake-todo>. Updating a to-do or launching a session does not replace this prefix. Selection is evidence, not assignment. Only durable work warrants creation with normal tools before metadata/prose; do not create an item just to label a message. Never use completed/invented IDs, decide for historical turns or cross-session reports, or expose metadata in prose/fences. Never emit metadata-only commentary or extra calls/turns just for attribution.';
+  '## Per-turn to-do attribution\nFor EVERY current human <cake-turn id="…"/>, use its <cake-task-context> when present. Mode selected is explicit assignment: use that existing to-do directly, skip attribution inference and to-do creation/title generation for this message; emit no attribution metadata. Mode continue keeps that task for coherent follow-ups; only a deliberate user new-topic transition may override it, with "newTopic":true in the metadata. A prior task or a report is not a new-topic request. Without task context, independently choose an existing matching open to-do or JSON null; reassess follow-ups, new topics and returns. Otherwise prefix the FIRST meaningful response text (including commentary) with exactly one hidden <cake-todo>{"turnId":"exact cake-turn id","todoId":"open to-do UUID or null"}</cake-todo>. Updating a to-do or launching a session does not replace this prefix. View-only transcript focus is not task selection. Only durable work warrants creation with normal tools before metadata/prose; do not create an item just to label a message. Never use completed/invented IDs, decide for historical turns or cross-session reports, or expose metadata in prose/fences. Never emit metadata-only commentary or extra calls/turns just for attribution.';
 
 const Decision = Schema.Struct({
   turnId: Schema.String.check(Schema.isUUID(4)),
   todoId: Schema.NullOr(Schema.String.check(Schema.isUUID(4))),
+  newTopic: Schema.optionalKey(Schema.Boolean),
 });
 const OPEN = "<cake-todo>";
 
@@ -63,7 +70,7 @@ export async function prepareTaskAttribution(options: {
 }) {
   const { conversation, harness, storage } = options;
   const live = await harness.snapshot(LiveDoc, conversation.id, BACKGROUND_CONTEXT);
-  const bound = new Map<string, EntryId>();
+  const bound = new Map<string, { entry: EntryId; context?: DurableTaskContext }>();
   for (const id of live?.run?.inputs ?? []) {
     const submission = await storage.submission(id, BACKGROUND_CONTEXT);
     if (submission?.status !== "placed") continue;
@@ -83,13 +90,26 @@ export async function prepareTaskAttribution(options: {
       parseCrossSessionMessage(input.text)
     )
       continue;
-    bound.set(input.attribution.turnId, submission.entry);
+    bound.set(input.attribution.turnId, {
+      entry: submission.entry,
+      ...(input.taskContext &&
+      options
+        .todos()
+        .some(
+          (todo) =>
+            todo.id === input.taskContext?.todoId && todo.state === "open" && !todo.snoozedUntil,
+        )
+        ? { context: input.taskContext }
+        : null),
+    });
   }
   if (bound.size)
     await conversation.commit(async (tx) => {
       const doc = await tx.doc(TaskAttributionDoc, conversation.id);
-      for (const [turnId, entry] of bound)
-        doc.inputs[String(entry)] ??= { pending: true, todoId: null, turnId };
+      for (const [turnId, { entry, context }] of bound)
+        doc.inputs[String(entry)] ??= context?.first
+          ? { pending: false, todoId: context.todoId, turnId }
+          : { pending: true, todoId: null, turnId };
     }, BACKGROUND_CONTEXT);
   const lengths = new Map<number, number>();
   let responseStarted = false;
@@ -124,7 +144,7 @@ export async function prepareTaskAttribution(options: {
           )
             return;
           const doc = await tx.doc(TaskAttributionDoc, conversation.id);
-          for (const [turnId, entry] of bound) {
+          for (const [turnId, { entry, context }] of bound) {
             const candidates = decisions.get(turnId);
             const decision = candidates?.length === 1 ? candidates[0] : undefined;
             const current = doc.inputs[String(entry)];
@@ -136,7 +156,14 @@ export async function prepareTaskAttribution(options: {
                   .todos()
                   .some((todo) => todo.id === decision.todoId && todo.state === "open"))
             )
-              doc.inputs[String(entry)] = { pending: false, todoId: decision.todoId, turnId };
+              doc.inputs[String(entry)] = {
+                pending: false,
+                todoId: context && !decision.newTopic ? context.todoId : decision.todoId,
+                turnId,
+                ...(context && decision.newTopic ? { contextEnded: true } : null),
+              };
+            else if (responseStarted && context)
+              doc.inputs[String(entry)] = { pending: false, todoId: context.todoId, turnId };
             else if (responseStarted)
               // Omission is a final ungrouped display decision, not a continuation
               // or a pending choice that a later tool round can retroactively fill.

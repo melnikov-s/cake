@@ -13,6 +13,7 @@ import {
   defineTool,
   MemoryStorage,
   LiveDoc,
+  InboxDoc,
   UserEntry,
   AssistantEntry,
   ResetEntry,
@@ -32,7 +33,16 @@ import {
 } from "../../../../src/services/pi-durable/durable-task-attribution";
 import { taskAttributionOperations } from "../../../../src/services/pi-durable/durable-task-attribution-operations";
 import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
-import { durableInputText } from "../../../../src/services/pi-durable/durable-input-presentation";
+import {
+  durableInputText,
+  durableInputPresentation,
+  updateDurableInputText,
+  markDurableInputSteering,
+} from "../../../../src/services/pi-durable/durable-input-presentation";
+import {
+  previousDurableTaskContext,
+  assertTaskCreationAllowed,
+} from "../../../../src/services/pi-durable/durable-task-context";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import type { ProjectTodo } from "../../../../src/contracts/projects/project-todos";
 import { partsFromMessage } from "../../../../src/services/pi/runtime/message-projection";
@@ -116,12 +126,14 @@ async function fixture(database?: string) {
     }
   };
   cleanup.push(close);
-  const submit = (
+  const submit = async (
     text: string,
     conversation = engine.root,
     delivery: "steer" | "followUp" = "followUp",
-  ) =>
-    conversation.submit(
+  ) => {
+    const inbox = (await engine.harness.snapshot(InboxDoc, conversation.id, context))?.items ?? [];
+    const taskContext = await previousDurableTaskContext(conversation, inbox, items);
+    return conversation.submit(
       {
         type: "input",
         content: durableInputText(
@@ -135,8 +147,23 @@ async function fixture(database?: string) {
           undefined,
           false,
           conversation.id,
+          taskContext,
         ),
         whenBusy: delivery,
+      },
+      context,
+    );
+  };
+  const openAttention = (todoId: string) =>
+    engine.root.submit(
+      {
+        type: "input",
+        content: durableInputText("Open attention", [], false, false, undefined, undefined, {
+          _tag: "AttentionItem",
+          todoId,
+          title: todo(todoId).title,
+        }),
+        whenBusy: "followUp",
       },
       context,
     );
@@ -183,6 +210,7 @@ async function fixture(database?: string) {
     engine,
     classify,
     submit,
+    openAttention,
     send,
     doc,
     page,
@@ -202,6 +230,169 @@ async function fixture(database?: string) {
     },
   };
 }
+
+it("makes attention selection authoritative for the next human message and coherent follow-ups without inference or task creation", async () => {
+  const f = await fixture();
+  await f.send("Task A");
+  await (await f.openAttention(B)).wait(context);
+  const held = f.hold();
+  const first = await f.submit("Proceed with that recommendation");
+  const request = await held.started;
+  expect(JSON.stringify(request)).toContain(`mode=\\"selected\\"`);
+  expect(Object.values((await f.doc())?.inputs ?? {}).at(-1)).toMatchObject({
+    pending: false,
+    todoId: B,
+  });
+  await expect(
+    assertTaskCreationAllowed(f.engine.root, f.engine.harness, f.engine.storage),
+  ).rejects.toThrow("existing to-do");
+  // Even an explicit-looking model transition cannot replace the user's first selected send.
+  held.stream.push({
+    type: "done",
+    reason: "stop",
+    message: durableAnswer(
+      `<cake-todo>${JSON.stringify({ turnId: turnIds(request).at(-1), todoId: A, newTopic: true })}</cake-todo>Selected answer`,
+    ),
+  });
+  const settled = await first.wait(context);
+  expect(settled.status).toBe("done");
+  f.setDecision(undefined);
+  const second = await f.send("And check that detail too");
+  f.setDecision(A);
+  const third = await f.send("Continue checking it");
+  const doc = await f.doc();
+  if (settled.status !== "done" || settled.type !== "input") throw new Error("Expected input");
+  for (const entry of [settled.entry, second.entry, third.entry])
+    expect(doc?.inputs[String(entry)]).toMatchObject({ pending: false, todoId: B });
+  expect(f.requests).toHaveLength(5);
+  expect(f.classify).not.toHaveBeenCalled();
+  expect(JSON.stringify((await f.page()).parts)).not.toContain("cake-task-context");
+});
+
+it("honors later attention selection and deliberate topic transitions, then resumes ordinary inference", async () => {
+  const f = await fixture();
+  await (await f.openAttention(B)).wait(context);
+  await f.send("Follow B");
+  await (await f.openAttention(A)).wait(context);
+  f.setDecision(B);
+  const selected = await f.send("Follow selected A");
+  expect((await f.doc())?.inputs[String(selected.entry)]?.todoId).toBe(A);
+  f.setResponse((request) =>
+    durableAnswer(
+      `<cake-todo>${JSON.stringify({ turnId: turnIds(request).at(-1), todoId: null, newTopic: true })}</cake-todo>Different topic`,
+    ),
+  );
+  const unrelated = await f.send("New topic: what is the weather?");
+  expect((await f.doc())?.inputs[String(unrelated.entry)]).toMatchObject({
+    todoId: null,
+    contextEnded: true,
+  });
+  // A display-only repair must not revive the ended context handoff.
+  const registry = new CakeOperationRegistry(
+    taskAttributionOperations({
+      conversation: () => f.engine.root,
+      todos: () => [todo(A), todo(B)],
+    }),
+  );
+  await registry.invoke(
+    { command: "messages.set-todo", input: { entryId: String(unrelated.entry), todoId: A } },
+    { signal: new AbortController().signal, toolCallId: "repair", runtime: {} },
+  );
+  expect((await f.doc())?.inputs[String(unrelated.entry)]?.contextEnded).toBe(true);
+  f.setResponse(undefined);
+  f.setDecision(B);
+  const normal = await f.send("Now navigation");
+  expect((await f.doc())?.inputs[String(normal.entry)]?.todoId).toBe(B);
+  expect(
+    JSON.stringify(f.requests.at(-1)?.messages.findLast((message) => message.role === "user")),
+  ).not.toContain("cake-task-context");
+});
+
+it("captures queued selection changes without allowing a late prior-task response to restore its context", async () => {
+  const C = "00000000-0000-4000-8000-000000000003";
+  const f = await fixture();
+  f.setTodos([todo(A), todo(B), todo(C)]);
+  const held = f.hold();
+  const old = await f.submit("Old A question");
+  const request = await held.started;
+  await expect(
+    assertTaskCreationAllowed(f.engine.root, f.engine.harness, f.engine.storage),
+  ).resolves.toBeUndefined();
+  const attentionB = await f.openAttention(B);
+  const sendB = await f.submit("Queued B reply");
+  const attentionC = await f.openAttention(C);
+  const sendC = await f.submit("Queued C reply");
+  held.finish(request, A);
+  await Promise.all([old, attentionB, attentionC].map((s) => s.wait(context)));
+  for (const [submission, todoId] of [
+    [sendB, B],
+    [sendC, C],
+  ] as const) {
+    const result = await submission.wait(context);
+    if (result.status !== "done" || result.type !== "input") throw new Error("Expected input");
+    expect((await f.doc())?.inputs[String(result.entry)]?.todoId).toBe(todoId);
+  }
+  const follow = await f.send("Keep going");
+  expect((await f.doc())?.inputs[String(follow.entry)]?.todoId).toBe(C);
+});
+
+it("does not consume withdrawn attention and preserves explicit context across queue edits and steering", async () => {
+  const f = await fixture();
+  const held = f.hold();
+  const old = await f.submit("A question");
+  const request = await held.started;
+  const withdrawn = await f.openAttention(B);
+  await f.engine.harness.abortSubmission(withdrawn.id, context, f.engine.root.id);
+  const inbox = (await f.engine.harness.snapshot(InboxDoc, f.engine.root.id, context))?.items ?? [];
+  expect(
+    await previousDurableTaskContext(f.engine.root, inbox, [todo(A), todo(B)]),
+  ).toBeUndefined();
+  const attention = await f.openAttention(B);
+  const current =
+    (await f.engine.harness.snapshot(InboxDoc, f.engine.root.id, context))?.items ?? [];
+  const selected = await previousDurableTaskContext(f.engine.root, current, [todo(A), todo(B)]);
+  expect(selected).toEqual({ todoId: B, first: true });
+  const encoded = durableInputText(
+    "Reply",
+    [],
+    false,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    false,
+    f.engine.root.id,
+    selected,
+  );
+  expect(
+    durableInputPresentation(
+      markDurableInputSteering(updateDurableInputText(encoded, "Edited reply")),
+    ).taskContext,
+  ).toEqual(selected);
+  const steer = await f.submit("Steered B reply", f.engine.root, "steer");
+  held.finish(request);
+  await Promise.all([old, attention, steer].map((s) => s.wait(context)));
+  const doc = await f.doc();
+  expect(Object.values(doc?.inputs ?? {}).at(-1)).toMatchObject({ todoId: B });
+});
+
+it("recovers an unconsumed attention handoff and subsequent context from durable originals after reopening", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-explicit-task-context-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "chat.sqlite");
+  const first = await fixture(database);
+  await first.send("A question");
+  await (await first.openAttention(B)).wait(context);
+  await first.close();
+  const second = await fixture(database);
+  const follow = await second.send("Reply after restart");
+  expect((await second.doc())?.inputs[String(follow.entry)]?.todoId).toBe(B);
+  await second.close();
+  const third = await fixture(database);
+  const followAgain = await third.send("Continue after another restart");
+  expect((await third.doc())?.inputs[String(followAgain.entry)]?.todoId).toBe(B);
+});
 
 it("uses only the normal conversation request for continuation, switch, explicit none and return, without metadata in prose", async () => {
   const f = await fixture();
