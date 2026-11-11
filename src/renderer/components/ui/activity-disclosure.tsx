@@ -108,20 +108,8 @@ export function ActivityDisclosure({
                     </>
                   ),
                   onOpen,
-                  renderContent: (collapse: () => void) => (
-                    <>
-                      {renderItems(collapse)}
-                      {actions && (
-                        <div
-                          role="toolbar"
-                          aria-label="Activity actions"
-                          className="flex justify-end px-1"
-                        >
-                          {actions}
-                        </div>
-                      )}
-                    </>
-                  ),
+                  actions,
+                  renderContent: renderItems,
                 },
               ]
             : []),

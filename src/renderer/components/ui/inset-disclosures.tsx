@@ -9,6 +9,8 @@ export interface InsetDisclosureSection {
   count: number;
   icon: ReactNode;
   summary: ReactNode;
+  /** Independent controls that remain available when the disclosure is collapsed. */
+  actions?: ReactNode;
   accessibleLabel: string;
   accessibleDescription?: string;
   regionLabel: string;
@@ -62,39 +64,45 @@ export function InsetDisclosures({ sections }: { sections: readonly InsetDisclos
         const panelId = `${prefix}-${section.id}-panel`;
         return (
           <section key={section.id}>
-            <h2 className="m-0 text-xs font-medium">
-              <Button
-                id={headerId}
-                data-slot="inset-disclosure-trigger"
-                data-section={section.id}
-                variant="ghost"
-                iconSize="inline"
-                className="h-8 w-full min-w-0 justify-start gap-1.5 rounded-sm px-2.5 text-xs font-medium text-foreground shadow-none"
-                aria-label={section.accessibleLabel}
-                aria-description={section.accessibleDescription}
-                aria-expanded={open}
-                aria-controls={panelId}
-                onClick={() => {
-                  if (!open) section.onOpen?.();
-                  setOpenId(open ? null : section.id);
-                }}
-              >
-                <ChevronIcon className={cn("shrink-0", !open && "-rotate-90")} />
-                <span aria-hidden="true" className="flex shrink-0 text-muted-foreground">
-                  {section.icon}
-                </span>
-                <span>{section.label}</span>
-                <span className="min-w-[1.125rem] shrink-0 rounded-sm bg-muted px-1 text-center font-normal tabular-nums text-muted-foreground">
-                  {section.count}
-                </span>
-                <span
-                  aria-hidden="true"
-                  className="ml-auto flex shrink-0 items-center gap-2 font-normal tabular-nums text-muted-foreground"
+            <div className="@container/inset-header flex min-w-0 flex-wrap items-center gap-x-1 pr-1.5">
+              <h2 className="m-0 min-w-0 flex-1 text-xs font-medium">
+                <Button
+                  id={headerId}
+                  data-slot="inset-disclosure-trigger"
+                  data-section={section.id}
+                  variant="ghost"
+                  iconSize="inline"
+                  className="h-8 w-full min-w-0 justify-start gap-1.5 rounded-sm px-2.5 text-xs font-medium text-foreground shadow-none"
+                  aria-label={section.accessibleLabel}
+                  aria-description={section.accessibleDescription}
+                  aria-expanded={open}
+                  aria-controls={panelId}
+                  onClick={() => {
+                    if (!open) section.onOpen?.();
+                    setOpenId(open ? null : section.id);
+                  }}
                 >
-                  {section.summary}
-                </span>
-              </Button>
-            </h2>
+                  <ChevronIcon className={cn("shrink-0", !open && "-rotate-90")} />
+                  <span aria-hidden="true" className="flex shrink-0 text-muted-foreground">
+                    {section.icon}
+                  </span>
+                  <span>{section.label}</span>
+                  <span className="min-w-[1.125rem] shrink-0 rounded-sm bg-muted px-1 text-center font-normal tabular-nums text-muted-foreground">
+                    {section.count}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "ml-auto flex shrink-0 items-center gap-2 font-normal tabular-nums text-muted-foreground",
+                      section.actions && "@max-[360px]/inset-header:hidden",
+                    )}
+                  >
+                    {section.summary}
+                  </span>
+                </Button>
+              </h2>
+              {section.actions}
+            </div>
             <div
               id={panelId}
               role="region"

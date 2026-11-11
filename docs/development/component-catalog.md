@@ -86,7 +86,10 @@ equal compact rows, inline counts, session/subagent breakdown and indented bound
 Only one section expands; both may collapse without acknowledging work. Arrow keys,
 Home and End navigate headers; Escape inside the stack returns focus to its owner,
 never intercepting composer Escape. New counts do not expand sections or move focus.
-Auto-merge remains available inside expanded Activity. Clicking a header toggles its list;
+Independent header actions remain outside the disclosure trigger. Project Auto-merge
+uses the shared Switch with a visible label and a purple icon only when on, available
+even with Activity collapsed. At narrow widths the decorative session/subagent breakdown
+can hide before controls wrap. Clicking a header toggles its list;
 Enter and Space toggle it, and Escape collapses it and returns focus to the trigger.
 Per-row type icons retain accessible labels and tooltips, separate from status dots.
 Conversation owners supply only currently running work and derive the summary/count

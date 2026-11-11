@@ -1,3 +1,4 @@
+import { verifyActivityAutoMerge } from "./activity-auto-merge";
 import { createIncomingMessageProposalsScenario } from "./incoming-message-proposals";
 import { verifyStackedAttentionPrototype } from "./stacked-attention-prototype";
 import { createSessionOutcomesScenario } from "./session-outcomes";
@@ -6171,8 +6172,17 @@ async function startActivityFixtureSession(page: Page, title: string) {
   await page.getByRole("button", { name: "Search sessions", exact: true }).click();
   const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
   await search.getByRole("combobox", { name: "Search session titles" }).fill(title);
-  await search.getByRole("option").filter({ hasText: title }).click();
-  // Wait for the selected session, not the previous Project Chat configuration trigger.
+  const option = search.getByRole("option").filter({ hasText: title });
+  const sessionId = await option
+    .locator("xpath=ancestor::*[@data-session-id]")
+    .getAttribute("data-session-id");
+  await option.click();
+  // A previous Project Session also has a Message composer: wait for this selected pane.
+  await expect(page.locator('[data-slot="session-pane"]')).toHaveAttribute(
+    "data-session-id",
+    sessionId!,
+  );
+  await expect(page.getByText("Opening session", { exact: true })).not.toBeVisible();
   await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Model configuration", exact: true }).click();
   const changeModel = page.getByRole("button", { name: "Change model", exact: true });
@@ -6324,7 +6334,7 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
 const activityWorktreeScenario: VisualCaptureScenario = {
   name: "activity-worktree-cap",
   description: "Attached activity band above real worktree tools and the shared composer",
-  states: ["default", "open", "auto-merge-on"],
+  states: ["default", "open", "auto-merge-on", "narrow-off", "narrow-on"],
   async seed(paths, theme) {
     const cleanup = await cakeChatSessionUpdatesScenario.seed(paths, theme);
     if (cleanup) await cleanup();
@@ -6382,22 +6392,24 @@ const activityWorktreeScenario: VisualCaptureScenario = {
     await writeFile(familyPath, JSON.stringify(families));
     return openRequestInspectorFixture(paths, { holdResponse: true });
   },
-  async prepare(page, state) {
+  async prepare(page, state, application) {
     await assistantMarkdownCode.prepare(page, "default");
     await startActivityFixtureSession(page, "fix-x");
-    await page
-      .locator('.session-item[data-session-id="visual-assistant-markdown-code"] .session-row')
-      .click();
+    await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+    const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
+    await search.getByRole("combobox", { name: "Search session titles" }).fill("How should agents");
+    await search.getByRole("option").first().click();
+    if (state.startsWith("narrow-")) {
+      if (!application) throw new Error("Narrow Activity capture requires Electron");
+      await application.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(560, 800);
+      });
+    }
     const cap = page.getByTestId("worktree-pill");
     await expect(cap.getByRole("button", { name: "Rebase", exact: true })).toBeVisible();
     const activity = cap.getByRole("button", { name: "Activity · 1 running" });
     await expect(activity).toBeVisible();
-    if (state === "auto-merge-on") {
-      await cap.getByRole("button", { name: "Auto-merge: off", exact: true }).click();
-      await expect(
-        cap.getByRole("button", { name: "Auto-merge: on", exact: true }),
-      ).toHaveAttribute("aria-pressed", "true");
-    }
+    await verifyActivityAutoMerge(page, cap, state === "auto-merge-on" || state === "narrow-on");
     if (state === "open") {
       await activity.click();
       await expect(page.getByRole("region", { name: "Conversation activity" })).toBeVisible();

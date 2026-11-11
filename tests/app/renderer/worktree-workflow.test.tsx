@@ -318,7 +318,7 @@ describe("Worktree operation workflows", () => {
     expect(fixture.root.autoMergeForProject("/project")?.enabled ?? false).toBe(false);
     expect(await screen.findByRole("button", { name: "Merge" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Merge & resolve" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Auto-merge: off" })).toBeDefined();
+    expect(screen.getByRole("switch", { name: "Auto-merge: off" })).toBeDefined();
   });
 
   it("keeps explicit destructive discard confirmation for external projects", async () => {
@@ -343,13 +343,13 @@ describe("Worktree operation workflows", () => {
     await fixture.setLanding("pull-request");
     expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Merge & resolve" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+    expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Resolve" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Discard & resolve" })).toBeDefined();
     expect(fixture.root.autoMergeForProject("/project")?.enabled ?? false).toBe(false);
     await fixture.setLanding("merge");
     expect(screen.getByRole("button", { name: "Merge" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Auto-merge: off" })).toBeDefined();
+    expect(screen.getByRole("switch", { name: "Auto-merge: off" })).toBeDefined();
   });
 
   it("hides additional-commit landing and stalled merge retry for external projects", async () => {
@@ -362,7 +362,7 @@ describe("Worktree operation workflows", () => {
     expect(screen.queryByRole("button", { name: /Land.*commit/i })).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeDefined();
-    expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+    expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
     await fixture.publish(operation("stalled", { kind: "rebase", pauseReason: "rebase-conflict" }));
     expect(await screen.findByRole("button", { name: "Retry" })).toBeDefined();
   });
@@ -445,7 +445,7 @@ describe("Worktree operation workflows", () => {
     await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
     expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Merge & resolve" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+    expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
     // The merge target's state is irrelevant when Cake never merges.
     expect(screen.queryByTestId("worktree-target-warning")).toBeNull();
     expect(screen.getByRole("button", { name: "Discard & resolve" })).toBeDefined();

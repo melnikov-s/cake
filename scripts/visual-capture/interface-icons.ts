@@ -334,10 +334,10 @@ export function createAutoMergeIconsScenario(
         .getByRole("combobox", { name: "Search session titles" })
         .fill("How should agents");
       await search.getByRole("option").first().click();
-      const toggle = page.getByRole("button", { name: "Auto-merge: off", exact: true });
-      await expectGlyph(toggle, 12);
-      expect((await toggle.boundingBox())!.height).toBe(28);
-      await expect(toggle).toHaveAttribute("aria-pressed", "false");
+      const toggle = page.getByRole("switch", { name: "Auto-merge: off", exact: true });
+      await expectGlyph(toggle.locator(".."), 12);
+      expect((await toggle.boundingBox())!.height).toBe(20);
+      await expect(toggle).toHaveAttribute("aria-checked", "false");
       const copy = page.getByRole("button", { name: "Copy response", exact: true }).first();
       await copy.locator("xpath=ancestor::article").hover();
       await expectGlyph(copy, 12);

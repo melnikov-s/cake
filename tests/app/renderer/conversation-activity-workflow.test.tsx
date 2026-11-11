@@ -250,9 +250,16 @@ it.each(["project", "cake-chat"] as const)(
     await view.user.click(trigger);
     const details = screen.getByRole("region", { name: "Conversation activity" });
     expect(details.id).toBe(detailsId);
-    if (kind === "project")
-      expect(within(details).getByRole("button", { name: "Auto-merge: off" }).textContent).toBe("");
-    else expect(within(details).queryByRole("button", { name: /^Auto-merge:/ })).toBeNull();
+    expect(within(details).queryByRole("switch", { name: /^Auto-merge:/ })).toBeNull();
+    if (kind === "project") {
+      const toggle = within(dock as HTMLElement).getByRole("switch", { name: "Auto-merge: off" });
+      expect(toggle.getAttribute("aria-checked")).toBe("false");
+      expect(trigger.contains(toggle)).toBe(false);
+      expect(toggle.closest("label")?.textContent).toBe("Auto-merge");
+    } else
+      expect(
+        within(dock as HTMLElement).queryByRole("switch", { name: /^Auto-merge:/ }),
+      ).toBeNull();
     expect(dock.contains(details)).toBe(true);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     const input = within(dock as HTMLElement).getByRole("combobox");

@@ -214,15 +214,13 @@ test("background family children show running activity and only offer Mark as Un
       await expect
         .poll(() =>
           activity.evaluate((element) => {
-            const strip = element.getBoundingClientRect();
+            const strip = element.closest("h2")!.parentElement!.getBoundingClientRect();
             const dock = element.closest('[data-slot="composer-dock"]')!;
             const input = dock.querySelector("form")!.getBoundingClientRect();
             const chat = element.closest('[data-slot="chat"]')!;
             return (
               Math.abs(strip.bottom - input.top) < 5 &&
-              Math.abs(
-                strip.top - element.parentElement!.parentElement!.getBoundingClientRect().top,
-              ) < 2 &&
+              Math.abs(strip.top - element.closest("section")!.getBoundingClientRect().top) < 2 &&
               Math.abs(strip.left - input.left - 5) < 2 &&
               Math.abs(input.right - strip.right - 5) < 2 &&
               parseFloat((chat as HTMLElement).style.getPropertyValue("--composer-dock-height")) >=

@@ -366,14 +366,14 @@ it("keeps the rail free of global Auto-merge and hides project Activity and to-d
     ],
     autoMergeEnabled: true,
   });
-  expect(screen.getAllByRole("button", { name: "Auto-merge: on" }).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole("switch", { name: "Auto-merge: on" }).length).toBeGreaterThan(0);
   await fixture.updateLanding("pull-request");
-  expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+  expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
   expect(screen.queryByText("Auto-merge")).toBeNull();
   expect(fixture.root.autoMergeForProject("/cake")?.enabled).toBe(true);
   expect(fixture.autoMergeChanges).toEqual([]);
   await fixture.updateLanding("merge");
-  expect(screen.getAllByRole("button", { name: "Auto-merge: on" }).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole("switch", { name: "Auto-merge: on" }).length).toBeGreaterThan(0);
 });
 
 it("external projects do not present retained readiness as merge-ready, but keep actual failure details", async () => {
@@ -587,11 +587,11 @@ it("orders Ready to Merge between attention and Active, preserves collapse, and 
     "Done",
   ]);
   const workspace = () => within(screen.getByRole("complementary", { name: "Workspace" }));
-  const toggle = () => workspace().queryByRole("button", { name: /Auto-merge/ });
+  const toggle = () => workspace().queryByRole("switch", { name: /Auto-merge/ });
   expect(toggle()).toBeNull();
   expect(
     within(screen.getByRole("navigation", { name: "Projects and global utilities" })).queryByRole(
-      "button",
+      "switch",
       { name: /Auto-merge/ },
     ),
   ).toBeNull();
@@ -616,7 +616,7 @@ it("orders Ready to Merge between attention and Active, preserves collapse, and 
   expect(fixture.mutations).toEqual([]);
 });
 
-it("Activity retains Auto-merge control without adding it to Ready to Merge or changing ready work", async () => {
+it("collapsed Activity exposes a labeled project Auto-merge switch without changing disclosure or ready work", async () => {
   using fixture = renderTodos(false, {
     todos: { ...emptyProjectTodos(), items: [todo(219, undefined, ["ready"])] },
     sessions: [
@@ -634,22 +634,28 @@ it("Activity retains Auto-merge control without adding it to Ready to Merge or c
     autoMergeRequests: [mergeRequest("ready")],
   });
   const activity = screen.getByRole("button", { name: "Activity · 1 running" });
-  const bar = within(activity.parentElement!);
+  const bar = within(activity.parentElement!.parentElement!);
   const readyControl = () =>
-    within(screen.getByRole("complementary", { name: "Workspace" })).queryByRole("button", {
+    within(screen.getByRole("complementary", { name: "Workspace" })).queryByRole("switch", {
       name: /Auto-merge/,
     });
-  expect(bar.queryByText("Auto-merge off")).toBeNull();
-  expect(bar.getByRole("button", { name: "Auto-merge: off" }).textContent).toBe("");
-  await fixture.user.click(activity);
-  await fixture.user.click(bar.getByRole("button", { name: "Auto-merge: off" }));
+  expect(bar.getByText("Auto-merge", { exact: true })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
+  expect(bar.getAllByRole("switch", { name: /Auto-merge/ })).toHaveLength(1);
+  expect(activity.contains(bar.getByRole("switch", { name: "Auto-merge: off" }))).toBe(false);
+  await fixture.user.click(bar.getByText("Auto-merge", { exact: true }));
   expect(fixture.autoMergeChanges).toEqual([true]);
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(readyControl()).toBeNull();
+  expect(activity.getAttribute("aria-expanded")).toBe("false");
+  await fixture.user.click(activity);
+  expect(
+    screen.getByRole("region", { name: "Conversation activity" }).querySelector('[role="switch"]'),
+  ).toBeNull();
+  await fixture.user.click(bar.getByRole("switch", { name: "Auto-merge: on" }));
   expect(activity.getAttribute("aria-expanded")).toBe("true");
-  await fixture.user.click(bar.getByRole("button", { name: "Auto-merge: on" }));
   expect(fixture.autoMergeChanges).toEqual([true, false]);
-  expect(bar.getByRole("button", { name: "Auto-merge: off" }).getAttribute("aria-pressed")).toBe(
+  expect(bar.getByRole("switch", { name: "Auto-merge: off" }).getAttribute("aria-checked")).toBe(
     "false",
   );
   expect(todoSection("Ready to Merge to-dos")).toBeDefined();

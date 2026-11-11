@@ -106,18 +106,18 @@ it("has no global rail toggle; explicit project controls stay independent across
     </StoreProvider>
   );
   const view = render(surface(undefined));
-  expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+  expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
   view.rerender(surface("/cake"));
-  await userEvent.setup().click(screen.getByRole("button", { name: "Auto-merge: off" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Auto-merge: on" })).toBeTruthy());
+  await userEvent.setup().click(screen.getByRole("switch", { name: "Auto-merge: off" }));
+  await waitFor(() => expect(screen.getByRole("switch", { name: "Auto-merge: on" })).toBeTruthy());
   view.rerender(surface("/other"));
-  expect(screen.getByRole("button", { name: "Auto-merge: off" })).toBeTruthy();
+  expect(screen.getByRole("switch", { name: "Auto-merge: off" })).toBeTruthy();
   expect(fixture.root.projectForSession("owner")).toBe("/cake");
   expect(fixture.root.projectForSession(CAKE_CHAT_SESSION_ID)).toBeUndefined();
   view.rerender(surface("/cake"));
-  expect(screen.getByRole("button", { name: "Auto-merge: on" })).toBeTruthy();
+  expect(screen.getByRole("switch", { name: "Auto-merge: on" })).toBeTruthy();
   view.rerender(surface("/unregistered"));
-  expect(screen.queryByRole("button", { name: /Auto-merge/ })).toBeNull();
+  expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
   expect(setAutoMerge.mock.calls).toEqual([["/cake", true]]);
 });
 
@@ -153,12 +153,12 @@ it("hides project Auto-merge live for external workflows without disabling direc
     </StoreProvider>,
   );
   expect(
-    within(screen.getByRole("region", { name: "Direct project" })).getByRole("button", {
+    within(screen.getByRole("region", { name: "Direct project" })).getByRole("switch", {
       name: "Auto-merge: on",
     }),
   ).toBeDefined();
   expect(
-    within(screen.getByRole("region", { name: "External project" })).queryByRole("button"),
+    within(screen.getByRole("region", { name: "External project" })).queryByRole("switch"),
   ).toBeNull();
   await act(async () =>
     applySnapshot(fixture.models.projects, {
@@ -172,10 +172,10 @@ it("hides project Auto-merge live for external workflows without disabling direc
     }),
   );
   expect(
-    within(screen.getByRole("region", { name: "Direct project" })).queryByRole("button"),
+    within(screen.getByRole("region", { name: "Direct project" })).queryByRole("switch"),
   ).toBeNull();
   expect(
-    within(screen.getByRole("region", { name: "External project" })).getByRole("button", {
+    within(screen.getByRole("region", { name: "External project" })).getByRole("switch", {
       name: "Auto-merge: on",
     }),
   ).toBeDefined();
@@ -203,9 +203,9 @@ it("keeps the owning project's Auto-merge off when authorization fails", async (
       <ToastHost store={fixture.root.toastStore} />
     </StoreProvider>,
   );
-  await userEvent.setup().click(screen.getByRole("button", { name: "Auto-merge: off" }));
+  await userEvent.setup().click(screen.getByRole("switch", { name: "Auto-merge: off" }));
   expect(await screen.findByText("Could not change auto-merge")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Auto-merge: off" }).getAttribute("aria-pressed")).toBe(
+  expect(screen.getByRole("switch", { name: "Auto-merge: off" }).getAttribute("aria-checked")).toBe(
     "false",
   );
 });
