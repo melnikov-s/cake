@@ -70,6 +70,7 @@ import { createRootApplicationControlHost } from "../app-control/RootApplication
 import { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { AppShellStore } from "./AppShellStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
+import { WidgetComposerStore } from "./WidgetComposerStore";
 import { InlineArtifactPreviewStore } from "./InlineArtifactPreviewStore";
 import { WidgetAttachmentStore } from "./WidgetAttachmentStore";
 import { SessionCatalogStore } from "./SessionCatalogStore";
@@ -454,6 +455,7 @@ export class RootStore extends Store<{
   @child
   get inlineWidgetStore(): InlineWidgetStore {
     return createStore(InlineWidgetStore, {
+      composer: () => this.widgetComposerStore,
       repair: async (artifact, diagnostic) => {
         const session = this.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
         const text = [
@@ -469,6 +471,19 @@ export class RootStore extends Store<{
           throw new Error("Cake could not send the widget repair request");
         await this.cakeChatCollectionStore.open(session.sessionId);
       },
+    });
+  }
+
+  @child
+  get widgetComposerStore(): WidgetComposerStore {
+    return createStore(WidgetComposerStore, {
+      registry: this.sessionRegistry,
+      cakeChats: () => this.cakeChatCollectionStore,
+      destinations: () => this.screenCaptureStore.destinations,
+      persist: () => this.props.flushWindowState(),
+      workingDirectory: (id) =>
+        this.sessionCatalogStore.find(id)?.workingDirectory ??
+        this.sessionRegistry.pendingSessions.savedRecord(id)?.workingDirectory,
     });
   }
 

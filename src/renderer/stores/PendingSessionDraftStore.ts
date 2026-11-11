@@ -1,3 +1,4 @@
+import { widgetItemPart } from "../../utils/widget-item-parts";
 import { Store } from "r-state-tree";
 import type { Attachment, UiPart } from "../../contracts/conversations/session-contract";
 import { shouldRenderMarkdown } from "../../utils/markdown";
@@ -165,6 +166,8 @@ export class PendingSessionDraftStore extends Store<PendingSessionDraftStoreProp
               browserText: attachment.text,
             },
           ];
+        if (attachment.kind === "widget-item")
+          return [widgetItemPart(`draft-${sessionId}-attachment-${index}`, attachment)];
         return [];
       }),
     ];

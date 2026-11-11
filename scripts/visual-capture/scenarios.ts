@@ -19,6 +19,7 @@ import {
 import { projectSetupScenario } from "./project-setup.ts";
 import { serializeModelReference } from "../../src/contracts/model-presets/model-reference.ts";
 import { toolCallRowsScenario } from "./tool-call-rows";
+import { createWidgetComposerAttachScenario } from "./widget-composer-attach";
 import { cakeColorPalettes } from "../../src/utils/cake-color-palettes.ts";
 import { sessionChangesScenario } from "./session-changes";
 import { seedAutomationVisualFixture } from "../../tests/fixtures/automations";
@@ -9080,6 +9081,11 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   createIncomingMessageProposalsScenario({
     seedArtifact: seedArtifactScenario,
     retainBrowser: retainArtifactBrowser,
+  }),
+  createWidgetComposerAttachScenario({
+    seedArtifact: seedArtifactScenario,
+    retainBrowser: retainArtifactBrowser,
+    openSession: openSeededSession,
   }),
   cakeChatSessionUpdatesScenario,
   activityLongPromptScenario,

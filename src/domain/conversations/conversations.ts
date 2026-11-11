@@ -343,6 +343,14 @@ export const projectAttachments = (values: ReadonlyArray<Attachment>): ReadonlyA
           outerHTML: value.outerHTML,
           text: value.text,
         };
+      case "widget-item":
+        return {
+          kind: "widget-item",
+          name: value.name,
+          itemId: value.itemId,
+          widget: { ...value.widget },
+          ...(value.data !== undefined ? { data: structuredClone(value.data) } : null),
+        };
       case "annotation":
         return {
           kind: "annotation",

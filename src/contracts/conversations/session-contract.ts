@@ -18,6 +18,7 @@ import { ipcProjectionArray, ipcProjectionString } from "../serialization/projec
 import { sourceLocationSchema } from "../editor/source-location";
 import { TaskInputReference } from "./task-input";
 import { SubagentReportOrigin } from "../subagents/subagent-data";
+import { WidgetItemAttachment } from "../widgets/widget-composer-item";
 
 export const SESSION_TITLE_MAX_LENGTH = 144;
 
@@ -246,6 +247,8 @@ export const attachmentSchema = Schema.Union([
       Schema.isMaxLength(100),
     ),
   }),
+  // Added by a widget through cake.composer.attach; the host fills its origin.
+  WidgetItemAttachment,
 ]);
 
 const partBase = {
@@ -433,7 +436,7 @@ export const uiPartSchema = Schema.Union([
     inputReference: Schema.optionalKey(TaskInputReference),
     name: ipcProjectionString(512),
     mediaType: stringMax(128),
-    attachmentKind: Schema.Literals(["file", "image", "source", "browser"]),
+    attachmentKind: Schema.Literals(["file", "image", "source", "browser", "widget-item"]),
     data: Schema.optional(stringMax(20_000_000)),
     location: Schema.optional(sourceLocationSchema),
     selectedText: Schema.optional(ipcProjectionString(48_000)),
@@ -443,6 +446,13 @@ export const uiPartSchema = Schema.Union([
     selector: Schema.optional(ipcProjectionString(4_096)),
     outerHTML: Schema.optional(ipcProjectionString(48_000)),
     browserText: Schema.optional(ipcProjectionString(8_000)),
+    widgetItem: Schema.optional(
+      Schema.Struct({
+        itemId: WidgetItemAttachment.fields.itemId,
+        data: WidgetItemAttachment.fields.data,
+        widget: WidgetItemAttachment.fields.widget,
+      }),
+    ),
   }),
   Schema.Struct({
     ...partBase,

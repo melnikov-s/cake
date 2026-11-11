@@ -1,3 +1,4 @@
+import { widgetItemPart } from "../../../utils/widget-item-parts";
 import { parseSkillBlock, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { Tool } from "@earendil-works/pi-ai";
 import { Option, Schema } from "effect";
@@ -240,6 +241,10 @@ export function partsFromMessage(
           outerHTML: attachment.outerHTML,
           browserText: attachment.text,
         });
+        return;
+      }
+      if (attachment.kind === "widget-item") {
+        parts.push(widgetItemPart(`${baseId}-widget-item-${index}`, attachment));
         return;
       }
       parts.push({

@@ -79,6 +79,7 @@ export class Message extends Model {
   selector: string | undefined;
   outerHTML: string | undefined;
   browserText: string | undefined;
+  widgetItem: Extract<UiPart, { kind: "attachment" }>["widgetItem"];
   annotations: Annotation[] | undefined;
   tone: NoticeTone | undefined;
   detail: string | undefined;
@@ -180,6 +181,7 @@ export class Message extends Model {
         this.selector = part.selector;
         this.outerHTML = part.outerHTML;
         this.browserText = part.browserText;
+        this.widgetItem = part.widgetItem;
         return true;
       case "annotation":
         this.annotations = [...part.annotations];
@@ -320,6 +322,7 @@ export class Message extends Model {
           selector: this.selector,
           outerHTML: this.outerHTML,
           browserText: this.browserText,
+          widgetItem: this.widgetItem,
         };
       case "annotation":
         return { id: this.partKey, kind: this.kind, annotations: this.annotations! };

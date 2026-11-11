@@ -1,3 +1,4 @@
+import { widgetItemPart } from "../../utils/widget-item-parts";
 import { Store, computed, observable, untracked } from "r-state-tree";
 import type {
   Annotation,
@@ -168,6 +169,8 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
             browserText: attachment.text,
           },
         ];
+      if (attachment.kind === "widget-item")
+        return [widgetItemPart(`optimistic-user-${id}-attachment-${index}`, attachment)];
       if (attachment.kind === "annotation")
         return [
           {

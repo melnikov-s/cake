@@ -1,3 +1,4 @@
+import { widgetItemFromPart } from "../../utils/widget-item-parts";
 import { ArtifactPresentationContext } from "./context/ArtifactPresentationContext";
 import type { ArtifactPresentationContext as ViewContext } from "../../contracts/artifacts/artifact-presentation-context";
 import { Store, child, createStore } from "r-state-tree";
@@ -312,5 +313,6 @@ const attachmentsFromParts = (parts: readonly UiPart[]): Attachment[] =>
           text: part.browserText,
         },
       ];
-    return [];
+    const widgetItem = widgetItemFromPart(part);
+    return widgetItem ? [widgetItem] : [];
   });

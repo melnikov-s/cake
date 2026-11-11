@@ -93,6 +93,22 @@ export const inlineWidgetMessageSchema = Schema.Union([
       value: Schema.Json,
     }),
   }),
+  // The item stays unknown here so invalid input gets an explicit result, not silence.
+  Schema.Struct({
+    ...inlineWidgetMessageBase,
+    type: Schema.Literal("composer-attach"),
+    value: Schema.Struct({
+      id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+      item: Schema.Unknown,
+    }),
+  }),
+  Schema.Struct({
+    ...inlineWidgetMessageBase,
+    type: Schema.Literal("composer-targets"),
+    value: Schema.Struct({
+      id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+    }),
+  }),
   Schema.Struct({ ...inlineWidgetMessageBase, type: Schema.Literal("cancel") }),
 ]);
 

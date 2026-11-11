@@ -49,7 +49,7 @@ export function splitArtifactPresentationReminder(text: string) {
   // promptText appends attachment envelopes after application context. Recognize
   // only validated host envelopes here, not arbitrary trailing user prose.
   const envelopes = suffix.replace(
-    /\n{1,2}<(cake-task-input|cake-file-attachment|cake-source-attachment|cake-browser-attachment|cake-annotations)>([^\n]*)<\/\1>/g,
+    /\n{1,2}<(cake-task-input|cake-file-attachment|cake-source-attachment|cake-browser-attachment|cake-annotations|cake-widget-item)>([^\n]*)<\/\1>/g,
     (match, _tag: string, json: string) =>
       Option.isSome(Schema.decodeUnknownOption(Schema.fromJsonString(attachmentSchema))(json))
         ? ""

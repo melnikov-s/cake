@@ -17,6 +17,13 @@ import type {
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { createSpeechPlayback } from "../speech/playback";
 import { createWidgetSpeech, type WidgetSpeech } from "../speech/widget-speech";
+import type {
+  WidgetComposerAttachInput,
+  WidgetComposerAttachResult,
+  WidgetComposerTarget,
+  WidgetItemOrigin,
+} from "../../contracts/widgets/widget-composer-item";
+import type { WidgetComposerStore, WidgetViewSession } from "./WidgetComposerStore";
 
 export interface InlineWidgetState {
   language: InlineWidgetLanguage;
@@ -31,6 +38,7 @@ export interface InlineWidgetState {
 /** Owns compilation state for sandboxed inline transcript widgets. */
 export class InlineWidgetStore extends Store<{
   repair?: (artifact: CakeArtifactV1, diagnostic: string) => Promise<void>;
+  composer?: () => WidgetComposerStore;
 }> {
   get canRepair() {
     return Boolean(this.props.repair);
@@ -136,6 +144,22 @@ export class InlineWidgetStore extends Store<{
       { ...this.artifactScope(id), name, input },
       { signal: this.signal },
     );
+  }
+
+  /** `cake.composer.attach`: the caller supplies the origin from the rendered artifact. */
+  attachToComposer(
+    origin: WidgetItemOrigin,
+    request: WidgetComposerAttachInput,
+    session: WidgetViewSession,
+  ): Promise<WidgetComposerAttachResult> {
+    const composer = this.props.composer?.();
+    return composer
+      ? composer.attach(origin, request, session)
+      : Promise.resolve({ ok: false, error: "Composer attachments are unavailable here" });
+  }
+
+  composerTargets(session: WidgetViewSession): WidgetComposerTarget[] {
+    return this.props.composer?.().targets(session) ?? [];
   }
 
   async callArtifactCake(id: string, command: string, input: JsonValue) {

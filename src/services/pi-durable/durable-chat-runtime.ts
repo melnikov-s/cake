@@ -619,7 +619,10 @@ export async function createDurableCakeChatRuntime(
     // Annotations quote Cake Chat's own transcript and stay inline.
     if (
       attachments.some(
-        (attachment) => attachment.kind !== "input" && attachment.kind !== "annotation",
+        (attachment) =>
+          attachment.kind !== "input" &&
+          attachment.kind !== "annotation" &&
+          attachment.kind !== "widget-item",
       )
     )
       throw new Error("Cake Chat accepts attachment references only");

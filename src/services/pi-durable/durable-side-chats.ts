@@ -452,7 +452,10 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           );
         if (
           attachments.some(
-            (attachment) => attachment.kind !== "input" && attachment.kind !== "annotation",
+            (attachment) =>
+              attachment.kind !== "input" &&
+              attachment.kind !== "annotation" &&
+              attachment.kind !== "widget-item",
           )
         )
           throw new Error("Cake Chat side chats accept attachment references only");

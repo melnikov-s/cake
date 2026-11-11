@@ -33,6 +33,7 @@ import { SessionResultNotice } from "./ui/session-result-notice";
 import { SessionUpdateEntry } from "./session-update-entry";
 import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
+import { WidgetItemAttachment } from "./widget-item-attachment";
 import { SessionMessage } from "./session-message";
 import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
 import { parseSubagentLink, subagentLink } from "../../contracts/subagents/subagent-reference";
@@ -395,6 +396,11 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         part={part}
         sessionId={behavior.messageReferenceSessionId}
         images={behavior.store.attachmentImages}
+      />
+    ) : part.attachmentKind === "widget-item" && part.widgetItem ? (
+      <WidgetItemAttachment
+        presentation="transcript"
+        item={{ name: part.name, ...part.widgetItem }}
       />
     ) : part.attachmentKind === "browser" ? (
       <Badge variant="mono" className="w-fit">

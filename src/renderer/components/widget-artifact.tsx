@@ -16,6 +16,10 @@ import { decodeArtifactLineageId } from "../../contracts/artifacts/artifact-line
 import { ArtifactState } from "../../contracts/artifacts/artifact-state";
 import { artifactStateWireError } from "../../contracts/widgets/artifact-state-wire";
 import { useWidgetSpeech } from "../hooks/use-widget-speech";
+import {
+  decodeWidgetComposerAttachInput,
+  widgetComposerInputError,
+} from "../../contracts/widgets/widget-composer-item";
 
 const detachedState = Schema.decodeUnknownSync(Schema.fromJsonString(ArtifactState));
 
@@ -189,6 +193,57 @@ export const WidgetArtifact = observer(function WidgetArtifact({
             ),
         );
       }
+      if (parsed.value.type === "composer-attach" || parsed.value.type === "composer-targets") {
+        const message = parsed.value;
+        const token = state.compiled.token;
+        const target = iframe.current?.contentWindow;
+        const session =
+          viewSession === undefined ? (navigation?.session ?? null) : (viewSession ?? null);
+        const request =
+          message.type === "composer-attach"
+            ? decodeWidgetComposerAttachInput(message.value.item)
+            : undefined;
+        // The rendering host owns the widget origin; the iframe supplies only the item.
+        const operation = !request
+          ? Promise.resolve(inlineWidgets.composerTargets(session))
+          : request._tag === "Failure"
+            ? Promise.resolve({ ok: false, error: widgetComposerInputError(request.failure) })
+            : inlineWidgets.attachToComposer(
+                {
+                  lineageId: decodeArtifactLineageId(artifact.id),
+                  revision: artifact.revision,
+                  ...(artifact.title ? { title: artifact.title.slice(0, 512) } : null),
+                },
+                request.success,
+                session,
+              );
+        void operation.then(
+          (result) =>
+            target?.postMessage(
+              {
+                source: "cake-artifact-host",
+                token,
+                type: "call-result",
+                value: { id: message.value.id, ok: true, result },
+              },
+              "*",
+            ),
+          (error) =>
+            target?.postMessage(
+              {
+                source: "cake-artifact-host",
+                token,
+                type: "call-result",
+                value: {
+                  id: message.value.id,
+                  ok: false,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              },
+              "*",
+            ),
+        );
+      }
       if (
         parsed.value.type === "artifact-state-read" ||
         parsed.value.type === "artifact-state-replace"
@@ -234,7 +289,18 @@ export const WidgetArtifact = observer(function WidgetArtifact({
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, [id, inlineWidgets, state?.compiled, onInteraction, postContext]);
+  }, [
+    artifact.id,
+    artifact.revision,
+    artifact.title,
+    id,
+    inlineWidgets,
+    navigation?.session,
+    state?.compiled,
+    onInteraction,
+    postContext,
+    viewSession,
+  ]);
 
   if (!inlineWidgets) return <Markdown>{artifact.fallback.markdown}</Markdown>;
   if (state?.status === "error")

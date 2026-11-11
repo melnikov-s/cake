@@ -26,6 +26,7 @@ import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SourceAttachment } from "@/components/source-attachment";
 import { AttachmentTile } from "@/components/ui/attachment-tile";
 import { TextAttachment } from "./ui/text-attachment";
+import { WidgetItemAttachment } from "./widget-item-attachment";
 import { ContentTransition } from "@/components/ui/content-transition";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
 import { messageSelectionKeyAction } from "../lib/message-selection-keys";
@@ -428,6 +429,12 @@ export const Chat = observer(function Chat({
                     key={`text-${index}`}
                     name={attachment.name}
                     text={attachment.text}
+                    onRemove={() => store.removeAttachment(index)}
+                  />
+                ) : attachment.kind === "widget-item" ? (
+                  <WidgetItemAttachment
+                    key={`widget-item-${attachment.widget.lineageId}-${attachment.itemId}`}
+                    item={attachment}
                     onRemove={() => store.removeAttachment(index)}
                   />
                 ) : attachment.kind === "image" ? (

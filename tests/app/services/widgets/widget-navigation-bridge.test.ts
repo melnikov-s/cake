@@ -234,3 +234,55 @@ it("runs the shared SDK's structured calls, hydrated current-session API and eve
     window.close();
   }
 });
+
+it("exposes cake.composer.attach/targets as host requests carrying only the widget's item", async () => {
+  const compiled = await compileInlineWidget("html", "<p>SDK</p>", "artifact");
+  const sent: { type: string; value: { id: string; item?: unknown } }[] = [];
+  const { window } = new JSDOM(compiled.document, {
+    runScripts: "dangerously",
+    beforeParse(window) {
+      window.postMessage = (message: { type: string; value: { id: string; item?: unknown } }) => {
+        if (message.type === "composer-attach" || message.type === "composer-targets")
+          sent.push(message);
+      };
+      window.ResizeObserver = class {
+        observe() {}
+        disconnect() {}
+      };
+    },
+  });
+  try {
+    // SAFETY: compiled source under test installs this public SDK.
+    const cake = Reflect.get(window, "cake") as unknown as {
+      composer: { attach(item: unknown): Promise<unknown>; targets(): Promise<unknown> };
+    };
+    const host = (value: unknown) =>
+      window.dispatchEvent(
+        new window.MessageEvent("message", {
+          source: window,
+          data: { source: "cake-artifact-host", token: compiled.token, type: "call-result", value },
+        }),
+      );
+    const item = { label: "#1 Fix", itemId: "1", data: { number: 1 } };
+    const attach = cake.composer.attach(item);
+    expect(sent).toEqual([
+      expect.objectContaining({
+        type: "composer-attach",
+        token: compiled.token,
+        value: { id: expect.any(String), item },
+      }),
+    ]);
+    const result = { ok: true, duplicate: false, sent: false, target: { sessionId: "s" } };
+    host({ id: sent[0]!.value.id, ok: true, result });
+    expect(await attach).toEqual(result);
+    const targets = cake.composer.targets();
+    expect(sent[1]).toEqual(
+      expect.objectContaining({ type: "composer-targets", value: { id: expect.any(String) } }),
+    );
+    host({ id: sent[1]!.value.id, ok: true, result: [] });
+    expect(await targets).toEqual([]);
+    expect(Object.isFrozen(cake.composer)).toBe(true);
+  } finally {
+    window.close();
+  }
+});

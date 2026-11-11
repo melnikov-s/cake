@@ -16,13 +16,12 @@ const sourceAttachmentPattern =
 const browserAttachmentPattern =
   /(?:^|\n)<cake-browser-attachment>(.*?)<\/cake-browser-attachment>(?=\n|$)/gs;
 const annotationAttachmentPattern = /(?:^|\n)<cake-annotations>(.*?)<\/cake-annotations>(?=\n|$)/gs;
+const widgetItemAttachmentPattern = /(?:^|\n)<cake-widget-item>(.*?)<\/cake-widget-item>(?=\n|$)/gs;
+type ContextAttachmentKind = "source" | "browser" | "annotation" | "input" | "file" | "widget-item";
 
 export function parseContextAttachmentBlocks(text: string) {
-  const attachments: Extract<
-    Attachment,
-    { kind: "source" | "browser" | "annotation" | "input" | "file" }
-  >[] = [];
-  const parseBlocks = <Kind extends "source" | "browser" | "annotation" | "input" | "file">(
+  const attachments: Extract<Attachment, { kind: ContextAttachmentKind }>[] = [];
+  const parseBlocks = <Kind extends ContextAttachmentKind>(
     value: string,
     pattern: RegExp,
     kind: Kind,
@@ -37,7 +36,8 @@ export function parseContextAttachmentBlocks(text: string) {
           attachment.kind !== "browser" &&
           attachment.kind !== "annotation" &&
           attachment.kind !== "input" &&
-          attachment.kind !== "file"
+          attachment.kind !== "file" &&
+          attachment.kind !== "widget-item"
         )
           return match;
         attachments.push(attachment);
@@ -54,11 +54,12 @@ export function parseContextAttachmentBlocks(text: string) {
     browserAttachmentPattern,
     "browser",
   );
-  const visibleText = parseBlocks(
+  const withoutAnnotations = parseBlocks(
     withoutBrowserAttachments,
     annotationAttachmentPattern,
     "annotation",
   );
+  const visibleText = parseBlocks(withoutAnnotations, widgetItemAttachmentPattern, "widget-item");
   return { text: visibleText.trim(), attachments };
 }
 
@@ -115,6 +116,8 @@ export function promptText(text: string, attachments: Attachment[]) {
     if (item.kind === "browser")
       return [`<cake-browser-attachment>${encoded}</cake-browser-attachment>`];
     if (item.kind === "annotation") return [`<cake-annotations>${encoded}</cake-annotations>`];
+    // Label, item ID, widget data and the host-filled widget origin reach the model as data.
+    if (item.kind === "widget-item") return [`<cake-widget-item>${encoded}</cake-widget-item>`];
     return [];
   });
   return additions.length ? `${text}${text ? "\n\n" : ""}${additions.join("\n")}` : text;

@@ -39,7 +39,7 @@ const widgetRequirements = (language: "html" | "react") =>
   }`;
 
 const inlineWidgetSandboxRequirements =
-  "Sandbox: no parent DOM, Node/Electron/filesystem or fetch/XHR/WebSocket. Widgets use the token-bound Cake tools, state and speech bridges. Use cake.tools.call for structured Cake results; cake.session.getCurrent/subscribeCurrent follow this view. Prefer cake.events.subscribe or cake.poll.subscribe (1000–3600000ms) over setTimeout/setInterval. Host releases subscriptions when views close. Background work uses explicit artifact runtimes/schedules, not hidden views. Widgets cannot manage attachments or permissions. Display widgets have no Cake capabilities. Keep output self-contained; no remote requests.";
+  "Sandbox: no parent DOM, Node/Electron/filesystem or fetch/XHR/WebSocket. Widgets use the token-bound Cake tools, state and speech bridges. Use cake.tools.call for structured Cake results; cake.session.getCurrent/subscribeCurrent follow this view; cake.composer.attach({label,itemId,data?,sessionId?}) adds an unsent item chip to a chat draft (cake.composer.targets() lists chats). Prefer cake.events.subscribe or cake.poll.subscribe (1000–3600000ms) over setTimeout/setInterval. Host releases subscriptions when views close. Background work uses explicit artifact runtimes/schedules, not hidden views. Widgets cannot manage attachments or permissions. Display widgets have no Cake capabilities. Keep output self-contained; no remote requests.";
 
 export interface ReviewParentContext {
   sessionId: string;

@@ -34,6 +34,10 @@ export const widgetSdkBridge = `
         return () => contextListeners.delete(receive);
       },
     }),
+    composer: Object.freeze({
+      attach: (item) => requestCall("composer-attach", { item }),
+      targets: () => requestCall("composer-targets", {}),
+    }),
     events: Object.freeze({ subscribe: (topic, filter, listener) => subscribeUpdate("event", { topic, filter }, listener) }),
     poll: Object.freeze({ subscribe: (options, listener) => subscribeUpdate("poll", { options }, listener) }),
     state: Object.freeze({

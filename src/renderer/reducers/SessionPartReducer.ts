@@ -46,6 +46,8 @@ export function messageSnapshots(
         // SAFETY: runtime-validated JSON; Snapshot distributes heterogeneous
         // JSON arrays into homogeneous arrays, but its codec preserves them.
         subagentReport: subagentReport as Snapshot<Message>["subagentReport"],
+        // SAFETY: as above; queued widget-item attachments carry heterogeneous JSON data.
+        queuedInput: part.queuedInput as Snapshot<Message>["queuedInput"],
       };
     }
     if (part.kind === "skill") {
@@ -68,6 +70,13 @@ export function messageSnapshots(
         ...identity,
         interview: part.interview as Snapshot<Message>["interview"],
         interviewResult: part.interviewResult as Snapshot<Message>["interviewResult"],
+      };
+    if (part.kind === "attachment")
+      // SAFETY: as above; widget-item data is validated heterogeneous JSON.
+      return {
+        ...part,
+        ...identity,
+        widgetItem: part.widgetItem as Snapshot<Message>["widgetItem"],
       };
     return { ...part, ...identity };
   });
