@@ -220,12 +220,14 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
                 { label: "Rename", click: () => finish("rename") },
                 copyId,
               ];
-              const moveToUser: MenuItemConstructorOptions[] =
-                request.delegated && !request.permanent
-                  ? [{ label: "Move to My sessions", click: () => finish("move-to-user") }]
-                  : [];
+              const movePurpose: MenuItemConstructorOptions[] =
+                request.permanent || request.draft
+                  ? []
+                  : request.delegated
+                    ? [{ label: "Move to My sessions", click: () => finish("move-to-user") }]
+                    : [{ label: "Move to Delegated", click: () => finish("move-to-delegated") }];
               const menu = Menu.buildFromTemplate([
-                ...moveToUser,
+                ...movePurpose,
                 ...(request.permanent
                   ? [
                       {
@@ -391,6 +393,7 @@ type SuccessSessionMenu = {
     | "resolve"
     | "unresolve"
     | "delete"
-    | "move-to-user";
+    | "move-to-user"
+    | "move-to-delegated";
 };
 type SuccessProjectMenu = (typeof cakeRpcSuccessSchemas)["show-project-context-menu"]["Type"];

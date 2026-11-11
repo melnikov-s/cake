@@ -73,7 +73,7 @@ describe("SessionFamilyStorage", () => {
           createdPurpose: "user",
         });
         assert.equal(sessionPurpose(yield* storage.state(), "child"), "delegated");
-        yield* storage.moveToUser("child");
+        yield* storage.setPurpose({ sessionId: "child", projectPath: "/project", purpose: "user" });
         const converted = yield* storage.state();
         assert.equal(sessionPurpose(converted, "child"), "user");
         assert.equal(converted.sessionPurposes?.[0]?.createdPurpose, "delegated");
@@ -91,7 +91,7 @@ describe("SessionFamilyStorage", () => {
         assert.equal(yield* storage.pendingResponseRequest("child", []), undefined);
         yield* storage.recordTurn(turn({ turnId: "new-request" }));
         // Repeated clicks must not retire new explicit cross-session requests.
-        yield* storage.moveToUser("child");
+        yield* storage.setPurpose({ sessionId: "child", projectPath: "/project", purpose: "user" });
         assert.equal(
           (yield* storage.pendingResponseRequest("child", ["new-request"]))?.turnId,
           "new-request",

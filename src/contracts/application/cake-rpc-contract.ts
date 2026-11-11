@@ -862,6 +862,7 @@ const cakeRpcResultSchemas = {
         "unresolve",
         "delete",
         "move-to-user",
+        "move-to-delegated",
       ]),
     ),
   }),

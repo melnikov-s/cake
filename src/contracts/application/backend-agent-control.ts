@@ -30,6 +30,7 @@ import {
   ProjectSettingsUpdateInput,
 } from "../projects/project-settings-schema";
 import { SessionHistoryQuery } from "../conversations/session-query-data";
+import { SessionPurposeSetInput } from "../project-sessions/session-purpose-control";
 import { inputRefsSchema } from "../conversations/task-input";
 import { promptFilesSchema } from "../conversations/prompt-files";
 import { messageRefsSchema } from "../conversations/message-reference";
@@ -115,6 +116,7 @@ export const BackendAgentInvocation = Schema.Union([
   operation("sessions.tool-prune", SessionToolPruneInput),
   operation("sessions.compact-batch", SessionCompactBatchInput),
   operation("sessions.list-family", AgentListInput),
+  operation("sessions.set-purpose", SessionPurposeSetInput),
   operation(
     "sessions.set-labels",
     Schema.Struct({
@@ -182,6 +184,7 @@ export const backendAgentCommands: ReadonlySet<string> = new Set([
   "sessions.list",
   "sessions.list-family",
   "sessions.set-labels",
+  "sessions.set-purpose",
   "sessions.info",
   "sessions.abort",
   "sessions.set-model",

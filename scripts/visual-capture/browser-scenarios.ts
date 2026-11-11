@@ -38,8 +38,9 @@ export const browserVisualScenarios = [
   },
   {
     name: "browser-shared-chat",
-    description: "Chromium shared sidebar, project transcript and composer",
-    states: ["default"],
+    description:
+      "Chromium shared sidebar, project transcript and composer; session-menu opens a My sessions row's actions",
+    states: ["default", "session-menu"],
   },
   {
     name: "browser-phone-navigation",
@@ -255,6 +256,10 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
     await prepareSidebarDefaults(page, state);
     return;
   }
+  if (scenario === "browser-shared-chat" && state === "session-menu") {
+    await prepareSessionMenu(page);
+    return;
+  }
   if (!(await page.locator('[data-slot="sidebar"]').isVisible()))
     await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
   await page.locator(`[data-slot="sidebar"] [data-session-id="${sessionId}"]`).last().click();
@@ -395,6 +400,27 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
   }
   await page.waitForFunction(() => document.fonts.status === "loaded");
   await page.mouse.move(1, 1);
+}
+
+/** Seeded sessions have no recorded purpose, so they are My sessions and offer delegation. */
+async function prepareSessionMenu(page: Page) {
+  await page
+    .getByRole("button", { name: "Open Project Chat for Browser experience", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: /^Sessions / })
+    .first()
+    .click();
+  const tree = page.getByRole("region", { name: "Sessions", exact: true });
+  const expand = tree.getByRole("button", { name: "Expand Browser experience", exact: true });
+  if (await expand.count()) await expand.click();
+  await tree.locator(`[data-session-id="${linkSessionId}"]`).first().click({ button: "right" });
+  await expect(
+    page
+      .getByRole("dialog", { name: "Session actions" })
+      .getByRole("button", { name: "Move to Delegated", exact: true }),
+  ).toBeVisible();
+  await page.waitForFunction(() => document.fonts.status === "loaded");
 }
 
 async function prepareSidebarDefaults(page: Page, state: string) {

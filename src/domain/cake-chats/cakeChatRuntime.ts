@@ -221,6 +221,7 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.cancel-scheduled",
   "session-labels.list",
   "sessions.set-labels",
+  "sessions.set-purpose",
   "projects.list",
   "projects.info",
   "projects.add",

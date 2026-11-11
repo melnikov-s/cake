@@ -4,6 +4,7 @@ import { sessionMessageDeliveryGuidance } from "../conversations/session-message
 import { promptFilesGuidance } from "../conversations/prompt-files";
 import { sessionModelSwitchDefinitions } from "../conversations/session-model-switch";
 import { sessionCompactionDefinitions } from "../project-sessions/session-compaction";
+import { sessionPurposeSetDefinition } from "../project-sessions/session-purpose-control";
 import { resultDeliveryGuidance } from "../conversations/result-delivery";
 import { compactDiscoveryGuidance } from "../agent/discovery-result-text";
 import { sessionListGuidance, sessionListResult } from "../project-sessions/agent-session-list";
@@ -424,6 +425,17 @@ const definitions = [
           description: "Clear all labels.",
         },
       ],
+    },
+  },
+  {
+    command: sessionPurposeSetDefinition.command,
+    scope: "global",
+    discovery: {
+      topic: sessionPurposeSetDefinition.topic,
+      summary: sessionPurposeSetDefinition.summary,
+      guidance: sessionPurposeSetDefinition.guidance,
+      examples: sessionPurposeSetDefinition.examples,
+      result: sessionPurposeSetDefinition.result,
     },
   },
   {

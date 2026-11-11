@@ -521,11 +521,19 @@ const makeLayer = (
           if (!sessionPurposes.some((item) => item.sessionId === record.sessionId))
             sessionPurposes.push(record);
         }),
-      moveToUser: (sessionId) =>
+      setPurpose: ({ sessionId, purpose }) =>
         Effect.sync(() => {
           const index = sessionPurposes.findIndex((item) => item.sessionId === sessionId);
           const record = sessionPurposes[index];
-          if (record) sessionPurposes[index] = { ...record, purpose: "user" };
+          const previousPurpose = record?.purpose ?? "user";
+          if (record) sessionPurposes[index] = { ...record, purpose };
+          return {
+            previousPurpose,
+            changed: previousPurpose !== purpose,
+            retired: [],
+            adoptedTurnIds: [],
+            canceledAutoMergeIds: [],
+          };
         }),
       recordReport: () => Effect.void,
       settleTurn: () => Effect.void,

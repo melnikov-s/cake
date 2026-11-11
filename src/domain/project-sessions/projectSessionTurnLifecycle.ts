@@ -196,9 +196,12 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
             sessionId,
             text: todoReport,
           });
-        // Only an answer to the requester itself may become its implicit result.
+        // Only an answer to the requester itself may become its implicit result. An owner
+        // that adopted running work asked for whatever answer that turn produces.
         const text = familyTurn
-          ? implicitTurnResultFor(event.result, familyTurn.senderSessionId)
+          ? familyTurn.adopted
+            ? substantiveTurnResult(event.result)
+            : implicitTurnResultFor(event.result, familyTurn.senderSessionId)
           : undefined;
         const failed = event.outcome === "failed" || event.result?.stopReason === "error";
         const outcome = event.outcome === "aborted" ? "aborted" : failed ? "failed" : "complete";

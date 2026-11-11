@@ -27,6 +27,11 @@ import {
   QueuedSessionCommand,
 } from "../../contracts/conversations/session-query-data";
 
+import {
+  SessionPurposeOutput,
+  SessionPurposeSetInput,
+  sessionPurposeSetDefinition,
+} from "../../contracts/project-sessions/session-purpose-control";
 import { PiPendingMessageReorder } from "../../contracts/conversations/pending-message-data";
 
 import type { RuntimeOperationApi } from "../../contracts/agent/cake-operation-api";
@@ -381,6 +386,15 @@ export function createConversationOperations(
       ],
       result: "The target session and its committed ordered labels.",
       execute: invokeAppControl("sessions.set-labels"),
+    },
+    {
+      ...sessionPurposeSetDefinition,
+      examples: [...sessionPurposeSetDefinition.examples],
+      guidance: [...sessionPurposeSetDefinition.guidance],
+      requires: "invokeAppControl",
+      inputSchema: SessionPurposeSetInput,
+      outputSchema: SessionPurposeOutput,
+      execute: invokeAppControl("sessions.set-purpose"),
     },
     {
       command: "session.usage",

@@ -1,6 +1,7 @@
 import { Effect, SubscriptionRef } from "effect";
 import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
+import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing-data";
 import type { AutoMergeOutcome, AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
@@ -242,17 +243,19 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         ? "Waiting for task completion"
         : waiting
           ? `Waiting for result handoff${handoffError ? `: ${handoffError}` : ""}`
-          : !isDirectProjectChatDelegation(
-                document.spawnedSessions,
-                request,
-                projectChatSessionId(request.projectPath),
-              )
-            ? "Manual landing only: not directly delegated by this project’s Project Chat"
-            : !project?.enabled
-              ? "Auto-merge is off; ready for manual landing"
-              : (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)
-                ? "Waiting for session to become idle"
-                : undefined;
+          : sessionPurpose(document, request.sessionId) !== "delegated"
+            ? "Manual landing only: User Sessions (My sessions) never auto-merge"
+            : !isDirectProjectChatDelegation(
+                  document.spawnedSessions,
+                  request,
+                  projectChatSessionId(request.projectPath),
+                )
+              ? "Manual landing only: not directly delegated by this project’s Project Chat"
+              : !project?.enabled
+                ? "Auto-merge is off; ready for manual landing"
+                : (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)
+                  ? "Waiting for session to become idle"
+                  : undefined;
     if (reason) {
       yield* storage.updateAutoMerge(request.id, request.state, reason);
       continue;
@@ -283,6 +286,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         owner.state === "resolved" ||
         owner.state === "missing" ||
         owner.state === "discarded" ||
+        sessionPurpose(document, request.sessionId) !== "delegated" ||
         !isDirectProjectChatDelegation(
           document.spawnedSessions,
           request,

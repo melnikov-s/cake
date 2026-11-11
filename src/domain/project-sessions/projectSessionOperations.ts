@@ -1,4 +1,8 @@
 import { Effect, Exit, Schedule, Stream } from "effect";
+import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
+import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import {
   ensureAdmittedSession as ensureSessionTodo,
   existingTaskScope,
@@ -86,17 +90,143 @@ const acquireExistingTarget = Effect.fn("ProjectSessions.acquireExistingTarget")
   return yield* acquireTarget(location, target.sessionId, false);
 });
 
-/** Human-only relationship conversion: metadata only, never acquire or interrupt Pi. */
-export const moveToUser = Effect.fn("ProjectSessions.moveToUser")(function* (
+export interface SessionPurposeActor {
+  readonly kind: "user" | "project-session" | "cake-chat";
+  readonly sessionId?: string;
+  readonly title?: string;
+}
+
+const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** The one relationship conversion path for the interface and sessions.set-purpose, either
+ * direction: metadata only, never acquire or interrupt Pi. Moving to User retires owed reports,
+ * tells each other owner and cancels awaiting auto-merges; moving to Delegated makes the acting
+ * session (a human's Project Chat) the owner of results from work running now. */
+export const setPurpose = Effect.fn("ProjectSessions.setPurpose")(function* (
   target: ProjectSessionTarget,
+  purpose: SessionPurpose,
+  actor: SessionPurposeActor,
+  resultDelivery: ResultDelivery = "notification",
 ) {
+  const sessionId = target.sessionId;
   const location = yield* findLocation(target);
-  yield* (yield* SessionFamilyStorage).moveToUser(target.sessionId).pipe(asError("moveToUser"));
-  const resolved =
-    (yield* (yield* SessionArchiveStorage)
-      .locate(target.sessionId, archiveLocation(location))
-      .pipe(asError("moveToUser"))) === "resolved";
-  yield* publishCatalogChange(target.sessionId, location, resolved).pipe(asError("moveToUser"));
+  // A human delegating from the interface hands the session to its project's Project Chat.
+  const delegator =
+    actor.kind === "user"
+      ? {
+          kind: "cake-chat" as const,
+          sessionId: projectChatSessionId(location.projectPath),
+          title: `${location.projectName} Project Chat`,
+        }
+      : actor;
+  const ownerId = delegator.sessionId;
+  if (purpose === "delegated" && (!ownerId || ownerId === sessionId))
+    return yield* new ProjectSessionError({
+      operation: "setPurpose",
+      message: "A session cannot own itself; call from the session that will own it.",
+    });
+  const storage = yield* SessionFamilyStorage;
+  const runtimes = yield* CakeSessionRuntimes;
+  const runtime = {
+    workingDirectory: location.workingDirectory,
+    sessionDirectory: location.sessionDirectory,
+    sessionId,
+  };
+  const running = Boolean((yield* runtimes.currentStatus(runtime))?.streaming);
+  const title = (yield* runtimes
+    .catalogEntry(
+      { workingDirectory: location.workingDirectory, sessionDirectory: location.sessionDirectory },
+      sessionId,
+    )
+    .pipe(Effect.catch(() => Effect.succeed(undefined))))?.title;
+  const owner =
+    purpose === "delegated" && ownerId
+      ? {
+          sessionId: ownerId,
+          resultDelivery,
+          turnIds: yield* runtimes.executingTurnIds(runtime),
+          workingDirectory: location.workingDirectory,
+          ...(title ? { title } : null),
+          ...(delegator.kind === "cake-chat" && isCakeChatSessionId(ownerId)
+            ? {
+                requester: {
+                  sessionId: ownerId,
+                  kind: "cake-chat" as const,
+                  title: delegator.title ?? ownerId,
+                },
+              }
+            : null),
+        }
+      : undefined;
+  const change = yield* storage
+    .setPurpose({
+      sessionId,
+      projectPath: location.projectPath,
+      purpose,
+      ...(owner ? { owner } : null),
+    })
+    .pipe(asError("setPurpose"));
+  // A turn that settled before its new obligation landed has nothing left to report.
+  const executing = change.adoptedTurnIds.length ? yield* runtimes.executingTurnIds(runtime) : [];
+  const adoptedTurnIds: string[] = [];
+  for (const turnId of change.adoptedTurnIds)
+    if (executing.includes(turnId)) adoptedTurnIds.push(turnId);
+    else yield* storage.completeNotice(turnId).pipe(asError("setPurpose"));
+  const noticed = new Set<string>();
+  const who =
+    actor.kind === "user" ? "the user" : actor.title?.trim() || `session ${actor.sessionId}`;
+  const label = title ? `“${title}” (${sessionId})` : sessionId;
+  for (const turn of change.retired) {
+    if (turn.senderSessionId === actor.sessionId || noticed.has(turn.senderSessionId)) continue;
+    noticed.add(turn.senderSessionId);
+    yield* storage
+      .deferPassiveNotice({
+        id: crypto.randomUUID(),
+        recipientSessionId: turn.senderSessionId,
+        text: `Session ${label} was moved to a User Session by ${who}. The result it owed you was dropped and will not be sent; its work continues.`,
+        crossSession: {
+          version: 1,
+          messageId: crypto.randomUUID(),
+          threadId: uuidV4.test(turn.threadId) ? turn.threadId : crypto.randomUUID(),
+          sequence: 1,
+          expectsResponse: false,
+          resultDelivery: "ignore",
+          generatedNotice: true,
+          sender: {
+            sessionId,
+            title: (title ?? `Session ${sessionId}`).slice(0, 500),
+            kind: "project-session",
+            workingDirectory: location.workingDirectory,
+          },
+        },
+      })
+      .pipe(asError("setPurpose"));
+  }
+  if (change.changed) {
+    const resolved =
+      (yield* (yield* SessionArchiveStorage)
+        .locate(sessionId, archiveLocation(location))
+        .pipe(asError("setPurpose"))) === "resolved";
+    yield* publishCatalogChange(sessionId, location, resolved).pipe(asError("setPurpose"));
+  }
+  return {
+    ok: true as const,
+    command: "sessions.set-purpose" as const,
+    sessionId,
+    purpose,
+    previousPurpose: change.previousPurpose,
+    changed: change.changed,
+    running,
+    retiredReports: change.retired.map((turn) => ({
+      turnId: turn.turnId,
+      ownerSessionId: turn.senderSessionId,
+      ...(turn.resultDelivery ? { resultDelivery: turn.resultDelivery } : null),
+      noticed: noticed.has(turn.senderSessionId),
+    })),
+    ...(owner && change.changed ? { owner: { sessionId: owner.sessionId, resultDelivery } } : null),
+    adoptedTurnIds,
+    canceledAutoMergeIds: change.canceledAutoMergeIds,
+  };
 });
 
 export const start = Effect.fn("ProjectSessions.start")(function* (

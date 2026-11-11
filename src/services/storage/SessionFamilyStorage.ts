@@ -44,7 +44,12 @@ import type { SessionFamilyStorageError } from "../../contracts/storage/session-
 import type {
   CakeChatLaunchReport,
   SessionCompletionReport,
+  SessionRequester,
 } from "../../contracts/project-sessions/session-reporting";
+import {
+  sessionPurpose,
+  type SessionPurpose,
+} from "../../contracts/project-sessions/session-purpose";
 
 import {
   type SessionFamily,
@@ -132,7 +137,10 @@ export class SessionFamilyStorage extends Context.Service<
     readonly registerPurpose: (
       relationship: SessionRelationship,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
-    readonly moveToUser: (sessionId: string) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** One atomic purpose transition; never touches Pi or running work. */
+    readonly setPurpose: (
+      input: SessionPurposeTransition,
+    ) => Effect.Effect<SessionPurposeTransitionResult, SessionFamilyStorageError>;
     readonly registerParent: (
       parent: SessionParent,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
@@ -272,6 +280,32 @@ export class SessionFamilyStorage extends Context.Service<
     }) => Effect.Effect<SessionFamily, SessionFamilyStorageError>;
   }
 >()("cake/services/storage/SessionFamilyStorage") {}
+
+export interface SessionPurposeTransition {
+  readonly sessionId: string;
+  readonly projectPath: string;
+  readonly purpose: SessionPurpose;
+  /** Delegated only: the new owner receives results of these in-flight turns. */
+  readonly owner?: {
+    readonly sessionId: string;
+    readonly resultDelivery: ResultDelivery;
+    readonly turnIds: ReadonlyArray<string>;
+    /** Permanent-chat owners also become the launch requester for status surfaces. */
+    readonly requester?: SessionRequester;
+    readonly workingDirectory: string;
+    readonly title?: string;
+  };
+}
+
+export interface SessionPurposeTransitionResult {
+  readonly previousPurpose: SessionPurpose;
+  readonly changed: boolean;
+  /** Open obligations retired by moving to User. */
+  readonly retired: ReadonlyArray<FamilyTurn>;
+  readonly adoptedTurnIds: ReadonlyArray<string>;
+  /** Awaiting auto-merge declarations canceled because User Sessions never auto-merge. */
+  readonly canceledAutoMergeIds: ReadonlyArray<string>;
+}
 
 /** The initial assignment's obligation is the spawned session's one handoff to Cake Chat. */
 const settleHandoffs = (
@@ -772,35 +806,143 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                 },
           ),
       );
-      const moveToUser = Effect.fn("SessionFamilyStorage.moveToUser")(function* (
-        sessionId: string,
+      const setPurpose = Effect.fn("SessionFamilyStorage.setPurpose")(function* (
+        input: SessionPurposeTransition,
       ) {
-        const movedToUserAt = DateTime.formatIso(yield* DateTime.now);
+        const now = DateTime.formatIso(yield* DateTime.now);
+        let result: SessionPurposeTransitionResult = {
+          previousPurpose: "user",
+          changed: false,
+          retired: [],
+          adoptedTurnIds: [],
+          canceledAutoMergeIds: [],
+        };
         yield* update((document) => {
-          if (
-            !document.sessionPurposes?.some(
-              (item) => item.sessionId === sessionId && item.purpose === "delegated",
-            )
-          )
-            return document;
+          const previousPurpose = sessionPurpose(document, input.sessionId);
+          result = { ...result, previousPurpose };
+          if (previousPurpose === input.purpose) return document;
+          const existing = document.sessionPurposes?.find(
+            (item) => item.sessionId === input.sessionId,
+          );
+          // Legacy sessions have no record and read as User Sessions created as such.
+          const base: SessionRelationship = existing ?? {
+            sessionId: input.sessionId,
+            projectPath: input.projectPath,
+            purpose: "user",
+            createdPurpose: "user",
+          };
+          const relationship: SessionRelationship =
+            input.purpose === "user"
+              ? { ...base, purpose: "user", movedToUserAt: now }
+              : { ...Struct.omit(base, ["movedToUserAt"]), purpose: "delegated" };
+          const sessionPurposes = existing
+            ? (document.sessionPurposes ?? []).map((item) =>
+                item.sessionId === input.sessionId ? relationship : item,
+              )
+            : [...(document.sessionPurposes ?? []), relationship];
+          if (input.purpose === "user") {
+            const retired = document.turns.filter(
+              (turn) => turn.sessionId === input.sessionId && !turn.reported,
+            );
+            // A landing already underway is refused by its merge-time authorization check.
+            const canceled = (document.autoMergeRequests ?? []).filter(
+              (item) =>
+                item.sessionId === input.sessionId &&
+                item.readyToMerge &&
+                (item.state === "pending" || item.state === "ready"),
+            );
+            result = {
+              ...result,
+              changed: true,
+              retired,
+              canceledAutoMergeIds: canceled.map((item) => item.id),
+            };
+            return {
+              ...document,
+              sessionPurposes,
+              ...(canceled.length
+                ? {
+                    autoMergeRequests: document.autoMergeRequests?.map((item) =>
+                      canceled.includes(item)
+                        ? {
+                            ...item,
+                            readyToMerge: false,
+                            state: "canceled" as const,
+                            message:
+                              "Moved to My sessions: User Sessions never auto-merge; delegate again and declare fresh readiness",
+                          }
+                        : item,
+                    ),
+                  }
+                : null),
+              // Retire existing assignment obligations without interrupting Pi or deleting provenance.
+              turns: document.turns.map((turn) =>
+                turn.sessionId === input.sessionId ? { ...turn, reported: true } : turn,
+              ),
+              spawnedSessions: document.spawnedSessions.map((spawn) =>
+                spawn.sessionId === input.sessionId
+                  ? { ...spawn, reportDelivered: true, handoffSettled: true }
+                  : spawn,
+              ),
+            };
+          }
+          const owner = input.owner;
+          // One obligation per turn: work already owed to someone keeps that owner.
+          const adopted =
+            owner && owner.resultDelivery !== "ignore"
+              ? owner.turnIds.filter((id) => !document.turns.some((turn) => turn.turnId === id))
+              : [];
+          result = { ...result, changed: true, adoptedTurnIds: adopted };
+          const spawn = document.spawnedSessions.find((item) => item.sessionId === input.sessionId);
+          const requester = owner?.requester;
           return {
             ...document,
-            sessionPurposes: document.sessionPurposes?.map((item) =>
-              item.sessionId === sessionId && item.purpose === "delegated"
-                ? { ...item, purpose: "user" as const, movedToUserAt }
-                : item,
-            ),
-            // Retire existing assignment obligations without interrupting Pi or deleting provenance.
-            turns: document.turns.map((turn) =>
-              turn.sessionId === sessionId ? { ...turn, reported: true } : turn,
-            ),
-            spawnedSessions: document.spawnedSessions.map((spawn) =>
-              spawn.sessionId === sessionId
-                ? { ...spawn, reportDelivered: true, handoffSettled: true }
-                : spawn,
-            ),
+            sessionPurposes,
+            turns: [
+              ...document.turns,
+              ...adopted.map((turnId): FamilyTurn => ({
+                sessionId: input.sessionId,
+                senderSessionId: owner!.sessionId,
+                turnId,
+                requestMessageId: turnId,
+                threadId: turnId,
+                reported: false,
+                resultDelivery: owner!.resultDelivery,
+                adopted: true,
+              })),
+            ],
+            spawnedSessions: !requester
+              ? document.spawnedSessions
+              : spawn
+                ? document.spawnedSessions.map((item) =>
+                    item === spawn
+                      ? {
+                          ...item,
+                          requester,
+                          resultDelivery: owner.resultDelivery,
+                          reportDelivered: false,
+                          handoffSettled: true,
+                        }
+                      : item,
+                  )
+                : [
+                    ...document.spawnedSessions,
+                    {
+                      sessionId: input.sessionId,
+                      ...(owner.title ? { title: owner.title.slice(0, 500) } : null),
+                      projectPath: input.projectPath,
+                      workingDirectory: owner.workingDirectory,
+                      requester,
+                      reportDelivered: false,
+                      // Adopted turns are not the initial handoff; nothing to recover on restart.
+                      handoffSettled: true,
+                      launchedAt: now,
+                      resultDelivery: owner.resultDelivery,
+                    },
+                  ],
           };
         });
+        return result;
       });
       const registerParent = Effect.fn("SessionFamilyStorage.registerParent")(
         (parent: SessionParent) =>
@@ -1464,7 +1606,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         recordTurn,
         registerSpawn,
         registerPurpose,
-        moveToUser,
+        setPurpose,
         registerParent,
         recordReport,
         settleTurn,

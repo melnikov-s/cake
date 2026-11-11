@@ -2,6 +2,7 @@ import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ClientContext } from "./context/ClientContext";
+import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionManagementContext } from "./context/SessionManagementContext";
 import { SessionRetirementContext } from "./context/SessionRetirementContext";
@@ -143,8 +144,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.navigationMode = "activity";
   }
 
-  moveToUser(sessionId: string) {
-    return SessionManagementContext.consume(this)!.moveToUser(sessionId);
+  setSessionPurpose(sessionId: string, purpose: SessionPurpose) {
+    return SessionManagementContext.consume(this)!.setSessionPurpose(sessionId, purpose);
   }
 
   renameSession(sessionId: string, name: string) {

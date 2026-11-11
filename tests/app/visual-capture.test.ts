@@ -92,7 +92,7 @@ describe("browser visual scenarios", () => {
           "artifact",
         ],
       ],
-      ["browser-shared-chat", ["default"]],
+      ["browser-shared-chat", ["default", "session-menu"]],
       ["browser-phone-navigation", ["default"]],
       ["browser-phone-settings", ["default"]],
       ["browser-vscode", ["default"]],

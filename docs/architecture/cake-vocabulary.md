@@ -152,12 +152,23 @@ lifecycle, importance, pinning, family membership or creator identity.
 - **Delegated Session** (UI: **Delegated**): an agent-created assignment normally
   returning results to its delegator. Human steering does not silently convert it.
 
-**Move to My sessions** is an explicit, one-way human takeover. Identity, Pi
-context, worktree, running work and to-do associations stay intact. Existing
-assignment reporting obligations retire; future explicit cross-session requests
-still work. In-flight provider work finishes uninterrupted, and the existing
-runtime reads current relationship guidance at the next turn. Creation purpose
-and parent provenance remain separate historical facts.
+Purpose changes both ways through one path: the session menu's **Move to My
+sessions** / **Move to Delegated**, or the agent command `sessions.set-purpose`.
+Identity, Pi context, worktree, running work and to-do associations stay intact;
+in-flight provider work finishes uninterrupted, and the existing runtime reads
+current relationship guidance at the next turn. Creation purpose and parent
+provenance remain separate historical facts.
+
+- **To User**: owed assignment reports retire, and each other owner gets a short
+  passive notice that its report was dropped. Future explicit cross-session
+  requests still work. Awaiting auto-merges are canceled.
+- **To Delegated**: the caller becomes the owner (a human's move hands it to the
+  session's Project Chat). Results of turns running at that moment go to the
+  owner using its chosen result delivery.
+
+Auto-merge follows purpose, checked again at merge time: User Sessions never
+auto-merge; Delegated Sessions qualify under the existing Project Chat delegation
+rules.
 
 Legacy sessions without explicit purpose remain User Sessions. Storage does not
 guess intent from creators, human messages or historical transcript parsing.

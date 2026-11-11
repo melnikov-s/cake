@@ -1,6 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
+import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { ClientError } from "../client/Client";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -45,9 +46,9 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
       : true;
   }
 
-  async moveToUser(sessionId: string) {
+  async setSessionPurpose(sessionId: string, purpose: SessionPurpose) {
     try {
-      await this.client.projectSessions.moveToUser({ sessionId }, { signal: this.signal });
+      await this.client.projectSessions.setPurpose({ sessionId, purpose }, { signal: this.signal });
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
     }

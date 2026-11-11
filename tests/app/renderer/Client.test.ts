@@ -409,9 +409,12 @@ describe("Client transport and device integration", () => {
     },
   );
 
-  it.each([false, true])(
-    "offers only delegated sessions the one-way takeover action (delegated=%s)",
-    async (delegated) => {
+  it.each([
+    [true, "Move to My sessions", "move-to-user"],
+    [false, "Move to Delegated", "move-to-delegated"],
+  ] as const)(
+    "offers the purpose move for the other group (delegated=%s)",
+    async (delegated, label, action) => {
       using devices = browserDevices();
       const showing = browserMenus(devices.menus).showSessionContextMenu({
         sessionId: "session",
@@ -421,15 +424,12 @@ describe("Client transport and device integration", () => {
         draft: false,
         delegated,
       });
-      const move = devices.menus.items.find((item) => item.label === "Move to My sessions");
-      expect(Boolean(move)).toBe(delegated);
-      if (move) {
-        await devices.menus.choose(move);
-        expect(await showing).toEqual({ action: "move-to-user" });
-      } else {
-        devices.menus.close();
-        await showing;
-      }
+      expect(devices.menus.items[0]?.label).toBe(label);
+      expect(devices.menus.items.filter((item) => item.label?.startsWith("Move to "))).toHaveLength(
+        1,
+      );
+      await devices.menus.choose(devices.menus.items[0]!);
+      expect(await showing).toEqual({ action });
     },
   );
 

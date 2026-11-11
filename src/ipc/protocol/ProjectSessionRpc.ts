@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
+import { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
 import { ProjectSessionSignalsUpdate } from "../../contracts/project-sessions/project-session-signals";
 import { TurnId } from "../../contracts/conversations/conversation-data";
@@ -86,8 +87,8 @@ export const ProjectSessionRpc = RpcGroup.make(
     success: Schema.Struct({ sessionId: Schema.String }),
     error: ProjectSessionError,
   }),
-  Rpc.make("projectSessions.moveToUser", {
-    payload: ProjectSessionTarget,
+  Rpc.make("projectSessions.setPurpose", {
+    payload: { ...ProjectSessionTarget.fields, purpose: SessionPurpose },
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.rename", {

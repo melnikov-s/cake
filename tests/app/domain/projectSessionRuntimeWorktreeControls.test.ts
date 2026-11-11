@@ -201,7 +201,11 @@ describe("Project Session runtime worktree controls", () => {
           yield* Effect.promise(() => sideChatOptions.runtime.personalInstructions!()),
           userGuidance,
         );
-        yield* (yield* SessionFamilyStorage).moveToUser(rootId);
+        yield* (yield* SessionFamilyStorage).setPurpose({
+          sessionId: rootId,
+          projectPath: projectLocation.projectPath,
+          purpose: "user",
+        });
         assert.equal(
           yield* Effect.promise(() => rootOptions.runtime.personalInstructions!()),
           userGuidance,

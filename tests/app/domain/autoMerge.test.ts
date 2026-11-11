@@ -87,6 +87,8 @@ function fixture(
     statusWait?: Effect.Effect<void>;
     queue?: Effect.Success<ReturnType<typeof makeWorktreeLandingQueue>>;
     failStorageWrites?: () => boolean;
+    /** The owner's User/Delegated purpose; Project Chat launches are delegated. */
+    purpose?: "user" | "delegated";
   } = {},
 ) {
   const events: string[] = [];
@@ -109,6 +111,11 @@ function fixture(
         JSON.stringify({
           version: DOCUMENT_VERSION,
           data: {
+            sessionPurposes: ["owner", "other-owner", "second"].map((sessionId) => {
+              const purpose =
+                sessionId === "owner" ? (options.purpose ?? "delegated") : "delegated";
+              return { sessionId, projectPath: "/project", purpose, createdPurpose: purpose };
+            }),
             families: [],
             turns: [],
             spawnedSessions:
@@ -510,6 +517,80 @@ const terminal = Effect.gen(function* () {
     Stream.runHead,
   );
 });
+
+it.effect(
+  "auto-merge follows purpose at merge time: User Sessions hold, delegating admits, moving back cancels",
+  () => {
+    const test = fixture({ purpose: "user" });
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      const move = (purpose: "user" | "delegated") =>
+        storage.setPurpose({ sessionId: "owner", projectPath: "/project", purpose });
+      // Readiness is still accepted for manual landing, but never lands automatically.
+      yield* ready;
+      yield* runPass();
+      expect(test.events).toEqual([]);
+      expect((yield* requests)[0]).toMatchObject({
+        readyToMerge: true,
+        state: "ready",
+        message: "Manual landing only: User Sessions (My sessions) never auto-merge",
+      });
+      // Delegating makes the same ready declaration eligible under the existing rules.
+      expect((yield* move("delegated")).changed).toBe(true);
+      yield* runPass();
+      yield* terminal;
+      expect(test.events).toEqual(expect.arrayContaining(["land", "resolve"]));
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("moving a delegated session to My sessions cancels its awaiting auto-merge", () => {
+  const test = fixture();
+  return Effect.gen(function* () {
+    const storage = yield* SessionFamilyStorage;
+    yield* setEnabled("/project", true);
+    expect(yield* report(target, readiness)).toEqual({ eligible: true });
+    // Still pending: a queued declaration waiting for the task turn to settle.
+    const change = yield* storage.setPurpose({
+      sessionId: "owner",
+      projectPath: "/project",
+      purpose: "user",
+    });
+    expect(change.canceledAutoMergeIds).toEqual(["turn"]);
+    expect((yield* requests)[0]).toMatchObject({ readyToMerge: false, state: "canceled" });
+    yield* storage.updateAutoMerge("turn", "ready");
+    yield* runPass();
+    expect(test.events).toEqual([]);
+    // Delegating again does not resurrect the canceled declaration.
+    yield* storage.setPurpose({
+      sessionId: "owner",
+      projectPath: "/project",
+      purpose: "delegated",
+    });
+    yield* runPass();
+    expect(test.events).toEqual([]);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect(
+  "a landing already underway is refused at merge time once the session is a User Session",
+  () => {
+    const gate = Effect.runSync(Deferred.make<void>());
+    const test = fixture({ wait: Deferred.await(gate) });
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* ready;
+      yield* runPass();
+      expect((yield* requests)[0]?.state).toBe("landing");
+      yield* storage.setPurpose({ sessionId: "owner", projectPath: "/project", purpose: "user" });
+      yield* Deferred.succeed(gate, undefined);
+      yield* terminal;
+      yield* runPass();
+      expect(test.events).not.toContain("land");
+      expect((yield* requests)[0]?.state).toBe("failed");
+    }).pipe(Effect.provide(test.layer));
+  },
+);
 
 it.effect(
   "default off accepts readiness without landing; enabling still waits for task settlement",

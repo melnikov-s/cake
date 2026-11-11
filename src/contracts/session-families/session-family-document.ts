@@ -137,6 +137,8 @@ export const FamilyTurn = Schema.Struct({
   resultDelivery: Schema.optionalKey(ResultDelivery),
   /** Who deliberately stopped an aborted turn. Absent on an unexpected interruption. */
   stop: Schema.optionalKey(TurnStop),
+  /** Taken over by a new owner while running; its final answer is that owner's result. */
+  adopted: Schema.optionalKey(Schema.Boolean),
 });
 export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
 /** One quiet status line waiting for the user's next Cake Chat message. */
@@ -194,7 +196,7 @@ export const SessionRelationship = Schema.Struct({
   sessionId: BoundedId,
   projectPath: BoundedPath,
   purpose: SessionPurpose,
-  /** Creation intent is retained when the human takes over delegated work. */
+  /** Creation intent is retained across purpose changes. */
   createdPurpose: SessionPurpose,
   movedToUserAt: Schema.optionalKey(Schema.String),
 });

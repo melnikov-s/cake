@@ -36,6 +36,7 @@ import {
   Context,
   Deferred,
   Effect,
+  Exit,
   Fiber,
   FileSystem,
   Layer,
@@ -4522,7 +4523,7 @@ it.effect("session APIs expose User-first purpose and stop directing converted a
     expect(yield* f.direct("sessions.info", { sessionId: target })).toMatchObject({
       session: { purpose: "delegated" },
     });
-    yield* storage.moveToUser(target);
+    yield* storage.setPurpose({ sessionId: target, projectPath: "/project", purpose: "user" });
     expect(yield* f.direct("sessions.info", { sessionId: target })).toMatchObject({
       session: { purpose: "user" },
     });
@@ -4549,6 +4550,110 @@ it.effect("session APIs expose User-first purpose and stop directing converted a
       CAKE_CHAT_SESSION_ID,
     );
   }),
+);
+
+it.effect(
+  "sessions.set-purpose switches idle sessions both ways, idempotently, and refuses non-sessions",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      const purposeOf = Effect.fn(function* (sessionId: string) {
+        return (yield* storage.state()).sessionPurposes?.find(
+          (item) => item.sessionId === sessionId,
+        )?.purpose;
+      });
+      // A legacy session without a record already reads as a User Session.
+      expect(
+        yield* f.direct("sessions.set-purpose", { sessionId: target, purpose: "user" }),
+      ).toEqual({
+        ok: true,
+        command: "sessions.set-purpose",
+        sessionId: target,
+        purpose: "user",
+        previousPurpose: "user",
+        changed: false,
+        running: false,
+        retiredReports: [],
+        adoptedTurnIds: [],
+        canceledAutoMergeIds: [],
+      });
+      expect(
+        yield* f.direct(
+          "sessions.set-purpose",
+          { sessionId: target, purpose: "delegated" },
+          workflowCaller,
+        ),
+      ).toMatchObject({
+        ok: true,
+        purpose: "delegated",
+        previousPurpose: "user",
+        changed: true,
+        running: false,
+        owner: { sessionId: CAKE_CHAT_SESSION_ID, resultDelivery: "notification" },
+        adoptedTurnIds: [],
+      });
+      expect(yield* purposeOf(target)).toBe("delegated");
+      expect(
+        (yield* storage.state()).spawnedSessions.find((item) => item.sessionId === target)
+          ?.requester.sessionId,
+      ).toBe(CAKE_CHAT_SESSION_ID);
+      expect(yield* f.direct("sessions.info", { sessionId: target }, workflowCaller)).toMatchObject(
+        { session: { purpose: "delegated" } },
+      );
+      // Repeating is a no-op, whoever asks.
+      expect(
+        yield* f.direct("sessions.set-purpose", { sessionId: target, purpose: "delegated" }),
+      ).toMatchObject({ ok: true, changed: false, previousPurpose: "delegated" });
+      expect(
+        yield* f.direct("sessions.set-purpose", { sessionId: target, purpose: "user" }),
+      ).toMatchObject({
+        ok: true,
+        purpose: "user",
+        previousPurpose: "delegated",
+        changed: true,
+        retiredReports: [],
+      });
+      expect(yield* purposeOf(target)).toBe("user");
+      expect(
+        yield* f.direct("sessions.set-purpose", { sessionId: target, purpose: "user" }),
+      ).toMatchObject({ ok: true, changed: false });
+      // A Project Session can also own a delegated session; nothing about it is chat-only.
+      expect(
+        yield* f.direct("sessions.set-purpose", {
+          sessionId: third,
+          purpose: "delegated",
+          resultDelivery: "reply",
+        }),
+      ).toMatchObject({ changed: true, owner: { sessionId: source, resultDelivery: "reply" } });
+      expect(
+        (yield* storage.state()).spawnedSessions.some((item) => item.sessionId === third),
+      ).toBe(false);
+      for (const sessionId of [
+        CAKE_CHAT_SESSION_ID,
+        projectChatSessionId("/project"),
+        cakeChatSideChatSessionId(7),
+      ])
+        expect(
+          yield* f.direct("sessions.set-purpose", { sessionId, purpose: "delegated" }),
+        ).toMatchObject({ ok: false, command: "sessions.set-purpose" });
+      // A session never owns itself.
+      expect(
+        Exit.isFailure(
+          yield* Effect.exit(
+            f.direct("sessions.set-purpose", { sessionId: source, purpose: "delegated" }),
+          ),
+        ),
+      ).toBe(true);
+      expect(yield* purposeOf(source)).toBeUndefined();
+      // The human path (no calling session) hands the session to its Project Chat.
+      expect(
+        yield* f.background("sessions.set-purpose", { sessionId: target, purpose: "delegated" }),
+      ).toMatchObject({
+        changed: true,
+        owner: { sessionId: projectChatSessionId("/project"), resultDelivery: "notification" },
+      });
+    }),
 );
 
 it.effect(

@@ -110,7 +110,8 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     if (prompt !== undefined) Object.assign(input, { prompt });
     return projectSessionContinuations.toolPrune(input);
   },
-  "projectSessions.moveToUser": (target) => projectSessionOperations.moveToUser(target),
+  "projectSessions.setPurpose": ({ purpose, ...target }) =>
+    projectSessionOperations.setPurpose(target, purpose, { kind: "user" }).pipe(Effect.asVoid),
   "projectSessions.rename": ({ name, onlyIfUnnamed, ...target }) =>
     projectSessionOperations.rename(target, name, onlyIfUnnamed),
   "projectSessions.fork": ({ entryId, destinationWorkingDirectory, resolveSource, ...target }) => {

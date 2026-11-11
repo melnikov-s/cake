@@ -480,6 +480,29 @@ export const invoke: (
             labels: selected,
           });
         }
+        case "sessions.set-purpose": {
+          const sessionId = yield* sessionReferences.resolve(
+            invocation.arguments.sessionId,
+            caller?.sessionId,
+          );
+          if (
+            isCakeChatSessionId(sessionId) ||
+            cakeChatSideChatConversationId(sessionId) !== undefined
+          )
+            return fail(
+              "Only Project Sessions have a User/Delegated purpose; permanent chats and Side Chats do not.",
+            );
+          return toJsonValue(
+            yield* projectSessions.setPurpose(
+              { sessionId },
+              invocation.arguments.purpose,
+              caller
+                ? { kind: caller.kind, sessionId: caller.sessionId, title: caller.title }
+                : { kind: "user" },
+              invocation.arguments.resultDelivery,
+            ),
+          );
+        }
         case "sessions.list": {
           if (invocation.arguments.projection === "workflow")
             return caller

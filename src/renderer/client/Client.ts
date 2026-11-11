@@ -131,7 +131,8 @@ type SessionContextMenuAction = {
     | "resolve"
     | "unresolve"
     | "delete"
-    | "move-to-user";
+    | "move-to-user"
+    | "move-to-delegated";
 };
 
 interface ElectronCommands {

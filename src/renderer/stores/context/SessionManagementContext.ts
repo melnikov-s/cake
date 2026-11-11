@@ -7,7 +7,7 @@ export const SessionManagementContext =
     Pick<
       SessionManagementStore,
       | "renameSession"
-      | "moveToUser"
+      | "setSessionPurpose"
       | "ensureSessionActive"
       | "resolveSession"
       | "resolveSessionsById"

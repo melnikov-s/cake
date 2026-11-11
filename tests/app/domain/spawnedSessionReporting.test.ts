@@ -26,7 +26,7 @@ import * as families from "../../../src/domain/session-families/sessionFamilies"
 import * as agentControl from "../../../src/domain/application/agentControl";
 import { NOTICE_DELIVERY_MAX_FAILURES } from "../../../src/contracts/session-families/session-family-document";
 import * as updateBatches from "../../../src/domain/session-families/updateBatches";
-import { moveToUser } from "../../../src/domain/project-sessions/projectSessionOperations";
+import { setPurpose } from "../../../src/domain/project-sessions/projectSessionOperations";
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
@@ -491,7 +491,21 @@ it.effect(
           });
           const associations = (yield* projectTodos.list("/project")).items;
           const count = f.runtimeOptionsById.size;
-          yield* moveToUser({ sessionId: created.sessionId, workingDirectory: "/project" });
+          const change = yield* setPurpose(
+            { sessionId: created.sessionId, workingDirectory: "/project" },
+            "user",
+            { kind: "user" },
+          );
+          assert.equal(change.changed, true);
+          assert.equal(change.previousPurpose, "delegated");
+          assert.deepEqual(change.retiredReports, [
+            {
+              turnId: active.turnId,
+              ownerSessionId: CAKE_CHAT_SESSION_ID,
+              resultDelivery: "reply",
+              noticed: true,
+            },
+          ]);
           assert.deepEqual(
             yield* runtimes.currentStatus({ ...location, sessionId: created.sessionId }),
             before,
@@ -519,6 +533,134 @@ it.effect(
             )?.createdPurpose,
             "delegated",
           );
+          // Instead of silence, the launcher gets one passive notice that its report was dropped.
+          const notices = (yield* f.storage.state()).passiveNotices ?? [];
+          assert.equal(notices.length, 1);
+          assert.equal(notices[0]?.recipientSessionId, CAKE_CHAT_SESSION_ID);
+          assert.equal(notices[0]?.crossSession.sender.sessionId, created.sessionId);
+          assert.equal(notices[0]?.crossSession.expectsResponse, false);
+          assert.match(
+            notices[0]?.text ?? "",
+            /moved to a User Session by the user\. The result it owed you was dropped/,
+          );
+          yield* Effect.gen(function* () {
+            yield* updateBatches.runPass();
+            yield* TestClock.adjust("5 minutes");
+            yield* Deferred.succeed(f.consumeQueued, undefined);
+            yield* updateBatches.runPass();
+            yield* Deferred.await(f.persisted);
+          }).pipe(
+            Effect.provideService(CakeChatConfiguration, {
+              location: { workingDirectory: "/home", sessionDirectory: "/chat" },
+              agentDirectory: "/cake",
+            }),
+            Effect.provide(makeRuntimeRecoveryStorageTestLayer()),
+          );
+          assert.deepEqual(f.recipients, [CAKE_CHAT_SESSION_ID]);
+          const delivered = f.chatTranscripts.get(CAKE_CHAT_SESSION_ID)?.join("\n") ?? "";
+          assert.match(delivered, /The result it owed you was dropped/);
+          assert.doesNotMatch(delivered, /Research complete/);
+          // Moving again changes nothing and sends nothing more.
+          const again = yield* setPurpose(
+            { sessionId: created.sessionId, workingDirectory: "/project" },
+            "user",
+            { kind: "user" },
+          );
+          assert.equal(again.changed, false);
+          assert.deepEqual(again.retiredReports, []);
+          assert.equal((yield* f.storage.state()).passiveNotices?.length, 1);
+        }),
+      );
+    }),
+);
+
+it.effect(
+  "a chat that delegates running human work owns it and receives that turn's answer, idempotently",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.run(
+        Effect.gen(function* () {
+          const chat = yield* assembleCoordinator();
+          // A local human start: no sender, so nothing is owed and the answer addresses the human.
+          const created = yield* createPrompted({ ...createArgs, projectPath: "/project" });
+          const active = yield* Deferred.await(f.entered);
+          const purposeOf = Effect.fn(function* () {
+            return (yield* f.storage.state()).sessionPurposes?.find(
+              (item) => item.sessionId === created.sessionId,
+            );
+          });
+          assert.equal((yield* purposeOf())?.purpose, "user");
+          assert.equal((yield* f.storage.state()).turns.length, 0);
+          const runtimes = yield* CakeSessionRuntimes;
+          const before = yield* runtimes.currentStatus({
+            ...location,
+            sessionId: created.sessionId,
+          });
+          const options = f.runtimeOptionsById.get(created.sessionId);
+          const count = f.runtimeOptionsById.size;
+          const setPurposeFromChat = () =>
+            Effect.promise(() =>
+              chat.runtime.globalControl!.invoke(
+                {
+                  name: "sessions.set-purpose",
+                  arguments: {
+                    sessionId: created.sessionId,
+                    purpose: "delegated",
+                    resultDelivery: "reply",
+                  },
+                },
+                new AbortController().signal,
+              ),
+            );
+          const Change = Schema.Struct({
+            ok: Schema.Literal(true),
+            changed: Schema.Boolean,
+            previousPurpose: Schema.String,
+            purpose: Schema.String,
+            owner: Schema.optionalKey(
+              Schema.Struct({ sessionId: Schema.String, resultDelivery: Schema.String }),
+            ),
+            adoptedTurnIds: Schema.Array(Schema.String),
+          });
+          const change = yield* Schema.decodeUnknownEffect(Change)(yield* setPurposeFromChat());
+          assert.deepEqual(change, {
+            ok: true,
+            changed: true,
+            previousPurpose: "user",
+            purpose: "delegated",
+            owner: { sessionId: CAKE_CHAT_SESSION_ID, resultDelivery: "reply" },
+            adoptedTurnIds: [active.turnId],
+          });
+          // Running work is neither stopped, restarted nor re-acquired.
+          assert.deepEqual(
+            yield* runtimes.currentStatus({ ...location, sessionId: created.sessionId }),
+            before,
+          );
+          assert.equal(f.runtimeOptionsById.size, count);
+          assert.equal(f.runtimeOptionsById.get(created.sessionId), options);
+          assert.equal((yield* purposeOf())?.purpose, "delegated");
+          assert.equal((yield* purposeOf())?.createdPurpose, "user");
+          assert.match(
+            yield* Effect.promise(() => options!.sessionRelationshipPrompt!()),
+            /Delegated Session/,
+          );
+          assert.equal(
+            (yield* f.storage.state()).spawnedSessions.find(
+              (item) => item.sessionId === created.sessionId,
+            )?.requester.sessionId,
+            CAKE_CHAT_SESSION_ID,
+          );
+          const again = yield* Schema.decodeUnknownEffect(Change)(yield* setPurposeFromChat());
+          assert.equal(again.changed, false);
+          assert.deepEqual(again.adoptedTurnIds, []);
+          assert.equal((yield* f.storage.state()).turns.length, 1);
+          yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
+          yield* Deferred.await(f.settled);
+          for (const turn of (yield* f.storage.state()).turns)
+            yield* sessionFamilyCompletion.deliver(turn);
+          assert.deepEqual(f.recipients, [CAKE_CHAT_SESSION_ID]);
+          assert.ok(f.chatTranscripts.get(CAKE_CHAT_SESSION_ID)?.[0]?.includes(resultText));
         }),
       );
     }),

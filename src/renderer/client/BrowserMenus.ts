@@ -152,8 +152,12 @@ export function browserMenus(
                 copyId,
                 { label: "Resolve", action: "resolve" },
               ];
-      if (input.delegated && !input.permanent)
-        items.unshift({ label: "Move to My sessions", action: "move-to-user" });
+      if (!input.permanent && !input.draft)
+        items.unshift(
+          input.delegated
+            ? { label: "Move to My sessions", action: "move-to-user" }
+            : { label: "Move to Delegated", action: "move-to-delegated" },
+        );
       const action = await store.show("Session actions", items);
       return action === "rename" ||
         action === "mark-read" ||
@@ -161,7 +165,8 @@ export function browserMenus(
         action === "resolve" ||
         action === "unresolve" ||
         action === "delete" ||
-        action === "move-to-user"
+        action === "move-to-user" ||
+        action === "move-to-delegated"
         ? { action }
         : undefined;
     },

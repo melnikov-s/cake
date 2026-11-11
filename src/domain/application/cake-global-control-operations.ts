@@ -3,6 +3,7 @@ import {
   SessionCompactionOutput,
   sessionCompactionDefinitions,
 } from "../../contracts/project-sessions/session-compaction";
+import { SessionPurposeOutput } from "../../contracts/project-sessions/session-purpose-control";
 import {
   CakeModelSelection,
   type ExplicitCakeModelSelection,
@@ -41,7 +42,9 @@ export function createGlobalControlOperations(
         inputJsonSchema: tool.parameters,
         ...(sessionCompactionDefinitions.some((definition) => definition.command === tool.command)
           ? { outputSchema: SessionCompactionOutput }
-          : null),
+          : tool.command === "sessions.set-purpose"
+            ? { outputSchema: SessionPurposeOutput }
+            : null),
         examples: tool.examples ?? [],
         result: tool.result ?? "A bounded result from Cake's authoritative application control.",
         limitations: tool.limitations,
