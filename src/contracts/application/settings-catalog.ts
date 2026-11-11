@@ -344,11 +344,38 @@ export const settingsCatalog: readonly SettingDefinition[] = [
   setting({
     key: "instructions.global",
     category: "Instructions & prompts",
-    label: "Global custom instructions",
+    label: "Global instructions",
     description:
-      "Personal instructions for every coding Project Session; empty clears them. Trimmed when saved.",
+      "Universal guidance for all Cake chats, sessions, private subagents and automations. Empty clears; trimmed when saved.",
     value: Schema.String.check(Schema.isMaxLength(16_384)),
   }),
+  ...(
+    [
+      [
+        "durableChats",
+        "Durable-chat instructions",
+        "Shared by Global Cake Chat and permanent Project Chats, including their side chats. Reuses existing Cake Chat instructions; not normal sessions or the companion.",
+      ],
+      [
+        "userSessions",
+        "User-session instructions",
+        "Human-created normal sessions (MySession) and Project Session side chats; not delegated work.",
+      ],
+      [
+        "delegatedSessions",
+        "Delegated-session instructions",
+        "Agent-delegated normal sessions and private subagents, including context forks; not automations.",
+      ],
+    ] as const
+  ).map(([scope, label, description]) =>
+    setting({
+      key: `instructions.${scope}`,
+      category: "Instructions & prompts",
+      label,
+      description: `${description} Added alongside global guidance. Empty clears.`,
+      value: Schema.String.check(Schema.isMaxLength(16_384)),
+    }),
+  ),
   ...promptKeys.map(([key, label, description]) =>
     setting({
       key: `prompts.${key}`,

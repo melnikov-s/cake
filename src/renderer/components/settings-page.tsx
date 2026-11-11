@@ -852,10 +852,45 @@ export const SettingsPage = observer(function SettingsPage({
                   <SettingsPromptField
                     id="setting-global-custom-instructions"
                     label="Global instructions"
-                    description="Personal guidance added to every Project Session system prompt. Saved when you leave the field."
+                    description="Applies to every Cake chat and session, including the companion, private subagents and automations. Saved when you leave the field."
                     value={settings.globalInstructions.instructions}
                     defaultValue=""
                     onApply={(value) => void settings.globalInstructions.update(value)}
+                  />
+                </div>
+              </section>
+
+              <section className="grid gap-1.5" aria-labelledby="scoped-instructions-title">
+                <h2
+                  id="scoped-instructions-title"
+                  className="px-0.5 text-xs font-semibold text-foreground"
+                >
+                  Scoped instructions
+                </h2>
+                <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+                  <SettingsPromptField
+                    id="setting-cake-chat-instructions"
+                    label="Durable-chat instructions"
+                    description="Added alongside global guidance in Global Cake Chat and permanent Project Chats, including their side chats. Not normal sessions or the companion. Existing Cake Chat instructions are preserved here."
+                    value={settings.cakeChat.preferences.instructions}
+                    defaultValue=""
+                    onApply={(value) => void settings.cakeChat.setInstructions(value)}
+                  />
+                  <SettingsPromptField
+                    id="setting-user-session-instructions"
+                    label="User-session instructions"
+                    description="Added alongside global guidance in human-created normal sessions (MySession) and Project Session side chats. Not delegated work."
+                    value={settings.userInstructions.instructions}
+                    defaultValue=""
+                    onApply={(value) => void settings.userInstructions.update(value)}
+                  />
+                  <SettingsPromptField
+                    id="setting-delegated-session-instructions"
+                    label="Delegated-session instructions"
+                    description="Added alongside global guidance in agent-delegated normal sessions and private subagents, including context forks. Not automations."
+                    value={settings.delegatedInstructions.instructions}
+                    defaultValue=""
+                    onApply={(value) => void settings.delegatedInstructions.update(value)}
                   />
                 </div>
               </section>

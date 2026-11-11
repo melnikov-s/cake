@@ -46,6 +46,11 @@ export const workspaceHandlers = WorkspaceRpc.of({
       "setGlobalCustomInstructions",
       application.setGlobalCustomInstructions(instructions),
     ),
+  "workspaces.set-session-instructions": ({ scope, instructions }) =>
+    settingsResult(
+      "setSessionInstructions",
+      application.setSessionInstructions(scope, instructions),
+    ),
   "workspaces.load-staged-slash-commands": (request) =>
     withConnection((connectionId) => projects.loadStagedSlashCommands(connectionId, request)),
   "workspaces.generate-project-icon": (request) => generateProjectIcon(request),

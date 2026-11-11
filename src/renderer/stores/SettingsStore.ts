@@ -122,6 +122,12 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   @child get globalInstructions(): GlobalInstructionsStore {
     return createStore(GlobalInstructionsStore);
   }
+  @child get userInstructions(): GlobalInstructionsStore {
+    return createStore(GlobalInstructionsStore, { scope: "user" });
+  }
+  @child get delegatedInstructions(): GlobalInstructionsStore {
+    return createStore(GlobalInstructionsStore, { scope: "delegated" });
+  }
   @child get providers(): ProviderSettingsStore {
     return createStore(ProviderSettingsStore, {
       operations: this.props.operations,
@@ -166,7 +172,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   /** Keep each message attached to its own details and recovery destination. */
   get sectionErrors(): SettingsError[] {
     return [
-      ...settingsSectionError("cake-chat", this.cakeChat),
+      ...settingsSectionError(this.cakeChat.errorSection, this.cakeChat),
       ...settingsSectionError("cake-chat", this.companion),
       ...(this.providers.error ? [this.providers.error] : []),
       ...settingsSectionError(this.nonChatModels.errorSection, this.nonChatModels),
@@ -174,6 +180,8 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       ...settingsSectionError("models", this.modelPresets),
       ...settingsSectionError(this.cakePrompts.errorSection, this.cakePrompts),
       ...settingsSectionError("prompts", this.globalInstructions),
+      ...settingsSectionError("prompts", this.userInstructions),
+      ...settingsSectionError("prompts", this.delegatedInstructions),
       ...settingsSectionError("labels", this.globalLabels),
       ...settingsSectionError("models", this.configuration),
     ];
@@ -264,6 +272,8 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     this.cakeChat.applyApplicationState(revision, state);
     this.companion.applyApplicationState(revision, state);
     this.globalInstructions.applyApplicationState(revision, state);
+    this.userInstructions.applyApplicationState(revision, state);
+    this.delegatedInstructions.applyApplicationState(revision, state);
     this.globalLabels.applyApplicationState(revision, state);
   }
 }

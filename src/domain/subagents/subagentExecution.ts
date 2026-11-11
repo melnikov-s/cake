@@ -1,3 +1,5 @@
+import { personalInstructions } from "../../contracts/application/personal-instructions";
+import { ApplicationState } from "../../services/storage/ApplicationState";
 import {
   Deferred,
   Effect,
@@ -317,6 +319,7 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
   const coordinator = yield* SubagentCoordinator;
   const environment = yield* SubagentEnvironment;
   const sessions = yield* CakeSessionRuntimes;
+  const application = yield* ApplicationState;
   const location = yield* environment.location(prepared.workingDirectory).pipe(asError("start"));
   const handleId = restored?.handleId ?? SubagentHandleId.make(crypto.randomUUID());
   const lazy =
@@ -412,6 +415,7 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
           !prepared.initializeContext && !lazy && persisted === undefined && !transcriptExpected,
         sessionId: recipientSessionId,
         auxiliary: true,
+        personalInstructions: async () => personalInstructions(application.snapshot(), "delegated"),
         // Nobody can compact a background worker by hand, so it never inherits the
         // user's Project Session auto-compact choice.
         alwaysAutoCompact: true,

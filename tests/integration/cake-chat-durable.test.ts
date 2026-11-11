@@ -32,6 +32,7 @@ import {
 } from "../../src/contracts/conversations/message-reference";
 import { makeAttachmentReferenceControl } from "../../src/domain/conversations/attachmentReferences";
 import { prepareTaskInputs } from "../../src/domain/conversations/taskInputs";
+import { getCurrentSystemMessage, getSystemMessageText } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
   createAssistantMessageEventStream,
@@ -168,7 +169,10 @@ async function fixture() {
   const open = async (
     globalControl?: CakeSessionRuntimeSetup["globalControl"],
     attachmentReferenceControl?: CakeSessionRuntimeSetup["attachmentReferenceControl"],
-    scope?: Pick<CakeSessionRuntimeSetup, "sessionId" | "sessionDir" | "additionalSystemPrompt">,
+    scope?: Pick<
+      CakeSessionRuntimeSetup,
+      "sessionId" | "sessionDir" | "additionalSystemPrompt" | "personalInstructions"
+    >,
     onRuntimeEvent?: (event: CakeSessionRuntimeEvent) => void,
   ) => {
     const runtime = await serviceRuntime.runPromise(
@@ -584,6 +588,31 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/overflow-project")])(
     expect(originals).toContain("INTEGRATION_OVERFLOW_ORIGINAL");
     expect(originals).toContain("CURRENT_CORRELATED_INPUT");
     expect(originals).toContain(results[0]!.entryId!);
+  },
+);
+
+it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/scoped")])(
+  "delivers universal and durable guidance exactly once in %s and inherited side chats",
+  async (sessionId) => {
+    const f = await fixture();
+    let global = "UNIVERSAL_SCOPE";
+    const scope = { sessionId, sessionDir: f.sessionDir, personalInstructions: async () => global };
+    const chat = await f.open(undefined, undefined, scope);
+    await chat.runtime.prompt("First question", "prompt", [], false, ids.first);
+    const first = getSystemMessageText(getCurrentSystemMessage(f.requests.at(-1)!.messages)!);
+    expect(first.split("UNIVERSAL_SCOPE")).toHaveLength(2);
+    expect(first.split("Coordinate independent Project Sessions")).toHaveLength(2);
+    const before = await chat.runtime.snapshot();
+    const fork = await chat.runtime.fork(entryOf(before, "First question"), "Side chat");
+    global = "UPDATED_UNIVERSAL_SCOPE";
+    const side = await f.openSideChat(fork.sessionId);
+    await side.runtime.prompt("Follow up", "prompt", [], false, ids.second);
+    const next = getSystemMessageText(getCurrentSystemMessage(f.requests.at(-1)!.messages)!);
+    expect(next.split("UPDATED_UNIVERSAL_SCOPE")).toHaveLength(2);
+    expect(next.split("Coordinate independent Project Sessions")).toHaveLength(2);
+    expect(next.replaceAll("UPDATED_UNIVERSAL_SCOPE", "")).not.toContain("UNIVERSAL_SCOPE");
+    await side.close();
+    await chat.close();
   },
 );
 

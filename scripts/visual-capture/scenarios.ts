@@ -2501,7 +2501,7 @@ const requestExplanationScenario: VisualCaptureScenario = {
 
 const cakePromptsSettingsScenario: VisualCaptureScenario = {
   name: "cake-prompts-settings",
-  description: "Editable Cake workflow prompts in Settings",
+  description: "Universal and scoped instructions plus Cake workflow prompts in Settings",
   states: ["default", "lower"],
   async seed(paths, theme) {
     const timestamp = new Date(0).toISOString();
@@ -2540,10 +2540,14 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
     const prompts = page.getByRole("button", { name: "Instructions & prompts" });
     await prompts.waitFor({ state: "visible", timeout: 20_000 });
     await prompts.click();
-    await page.getByRole("textbox", { name: "Commit before merge" }).waitFor({
-      state: "visible",
-      timeout: 20_000,
-    });
+    for (const name of [
+      "Global instructions",
+      "Durable-chat instructions",
+      "User-session instructions",
+      "Delegated-session instructions",
+    ]) {
+      await expect(page.getByRole("textbox", { name, exact: true })).toBeVisible();
+    }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     if (state === "lower")
       await page.getByRole("textbox", { name: "Squash commit message" }).scrollIntoViewIfNeeded();

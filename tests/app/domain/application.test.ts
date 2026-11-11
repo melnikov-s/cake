@@ -10,6 +10,7 @@ import {
   renameProject,
   setProjectSettings,
   setGlobalCustomInstructions,
+  setSessionInstructions,
   getCakeChatInstructions,
   setCakeChatPreferences,
   setLeftToolbarPreferences,
@@ -91,6 +92,32 @@ describe("Application domain", () => {
         assert.equal(cleared.globalCustomInstructions, "");
       }),
     ),
+  );
+
+  it.effect(
+    "preserves concurrent universal guidance and unrelated preferences when saving session scopes",
+    () =>
+      run(
+        Effect.gen(function* () {
+          yield* setGlobalCustomInstructions("Current user writing guidance");
+          yield* setCakeChatPreferences({
+            memoryViewBytes: 8000,
+            instructions: "Durable guidance",
+          });
+          yield* setSessionInstructions("user", "  User guidance  ");
+          const state = yield* setSessionInstructions("delegated", "  Delegated guidance  ");
+          assert.equal(state.globalCustomInstructions, "Current user writing guidance");
+          assert.equal(state.userSessionInstructions, "User guidance");
+          assert.equal(state.delegatedSessionInstructions, "Delegated guidance");
+          assert.deepEqual(state.cakeChatPreferences, {
+            memoryViewBytes: 8000,
+            instructions: "Durable guidance",
+          });
+          const cleared = yield* setSessionInstructions("user", "");
+          assert.equal(cleared.userSessionInstructions, "");
+          assert.equal(cleared.delegatedSessionInstructions, "Delegated guidance");
+        }),
+      ),
   );
 
   it.effect(

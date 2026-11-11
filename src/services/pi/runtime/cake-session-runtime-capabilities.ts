@@ -278,10 +278,17 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         noThemes: options.auxiliary && !options.projectInvestigation,
         noContextFiles: options.isolatedSystemPrompt !== undefined,
         extensionFactories: options.projectInvestigation
-          ? [...requestExtensions, gateway]
+          ? [
+              ...requestExtensions,
+              createCakeSystemPromptExtension(undefined, options.personalInstructions),
+              gateway,
+            ]
           : [
               ...requestExtensions,
-              createCakeSystemPromptExtension(options.sessionRelationshipPrompt),
+              createCakeSystemPromptExtension(
+                options.sessionRelationshipPrompt,
+                options.personalInstructions,
+              ),
               ...(options.sessionReferences
                 ? [createSessionReferenceExtension(options.sessionReferences)]
                 : []),

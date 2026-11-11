@@ -404,7 +404,11 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await page
       .getByRole("combobox", { name: "Cake Chat history-view budget" })
       .selectOption("10000");
-    const instructions = page.getByRole("textbox", { name: "Cake Chat instructions", exact: true });
+    await page.getByRole("button", { name: /^Instructions & prompts\b/ }).click();
+    const instructions = page.getByRole("textbox", {
+      name: "Durable-chat instructions",
+      exact: true,
+    });
     await instructions.click();
     await expect(instructions).toBeFocused();
     await instructions.pressSequentially("Always create a worktree for coding sessions.");
@@ -420,9 +424,14 @@ test("permanent Cake Chat retains its input, history and settings across restart
       await page.getByRole("button", { name: "Open settings", exact: true }).click();
     }
     await page.getByRole("button", { name: /^Cake Chat\b/ }).click();
+    await expect(page.getByRole("combobox", { name: "Cake Chat history-view budget" })).toHaveValue(
+      "10000",
+    );
+    await page.getByRole("button", { name: /^Instructions & prompts\b/ }).click();
     await expect(
-      page.getByRole("textbox", { name: "Cake Chat instructions", exact: true }),
+      page.getByRole("textbox", { name: "Durable-chat instructions", exact: true }),
     ).toHaveValue("Always create a worktree for coding sessions.");
+    await page.getByRole("button", { name: /^Cake Chat\b/ }).click();
     await expect(page.getByRole("combobox", { name: "Cake Chat history-view budget" })).toHaveValue(
       "10000",
     );

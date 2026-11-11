@@ -249,6 +249,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.workspaces["set-cake-prompts"]({ prompts }),
           options,
         ).then((response) => response.state),
+      setSessionInstructions: (scope, instructions, options) =>
+        execute(
+          "workspaces.set-session-instructions",
+          (client) => client.workspaces["set-session-instructions"]({ scope, instructions }),
+          options,
+        ).then((response) => response.state),
       setGlobalCustomInstructions: (instructions, options) =>
         execute(
           "workspaces.set-global-custom-instructions",

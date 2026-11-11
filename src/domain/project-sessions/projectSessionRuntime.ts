@@ -1,3 +1,4 @@
+import { personalInstructions } from "../../contracts/application/personal-instructions";
 import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { projectSessionPurposePrompt } from "./projectSessionPurposePrompt";
 import type { MergeReadiness } from "../../contracts/worktrees/auto-merge";
@@ -283,7 +284,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const setupInstructions = location.managedWorktree
     ? projectSettings?.worktreeSetupInstructions.trim()
     : undefined;
-  const globalInstructions = appState.globalCustomInstructions.trim();
   const projectInstructions = projectSettings?.customInstructions.trim();
   const projectPrompt = setupInstructions
     ? `<worktree_instructions>\n## Project worktree setup instructions\n\n${setupInstructions}\n</worktree_instructions>`
@@ -398,9 +398,15 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         run(families.state()).then((state) =>
           projectSessionPurposePrompt(sessionPurpose(state, sessionId)),
         ),
+      personalInstructions: () =>
+        run(families.state()).then((state) =>
+          personalInstructions(
+            application.snapshot(),
+            sideChatSessionId ? "user" : sessionPurpose(state, sessionId),
+          ),
+        ),
       additionalSystemPrompt: [
         relationshipPrompt,
-        globalInstructions && `## Personal global instructions\n\n${globalInstructions}`,
         projectInstructions && `## Personal project instructions\n\n${projectInstructions}`,
         projectPrompt,
       ]

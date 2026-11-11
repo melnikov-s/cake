@@ -122,6 +122,27 @@ fresh Project Sessions and investigators (including seeded contextual history),
 and absence in unrelated projects. They also cover the permanent-chat file-loading
 gap. Delivered instructions are not a guarantee of model compliance.
 
+## Personal instruction scopes
+
+Settings → Prompts separates universal Global instructions from Durable-chat,
+User-session and Delegated-session instructions. Global guidance is read at each
+turn for permanent chats (including the companion), normal sessions, private
+subagents and automation runs. Normal sessions select scope from persisted
+`SessionPurpose`, not parentage; takeover selects User-session guidance on the next
+turn. Private subagents always select Delegated-session guidance, including seeded
+context forks. Automations and the companion receive global guidance plus their
+own role-specific instructions, not normal-session guidance. Utility completions
+such as titles, summaries and classifiers are not conversational sessions.
+
+Durable-chat instructions reuse `cakeChatPreferences.instructions` and the existing
+`settings.cake-chat.*` controls without copying or moving saved text. They apply to
+Global Cake Chat, permanent Project Chats and their Durable side chats, not the
+companion. Normal Project Session side chats select User-session guidance, even
+when branching delegated work. Global and project-specific settings remain in
+their existing fields; new user/delegated fields decode to empty for old documents.
+No live-settings rewrite is needed. Project Chat guidance and coding-project
+guidance retain their distinct existing routing.
+
 ## Core ownership rules
 
 - Pi owns agent sessions, transcript history, model/provider state, and execution.

@@ -205,11 +205,6 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             keywords: "utility background",
           },
           {
-            label: "Cake Chat instructions",
-            targetId: "setting-cake-chat-instructions",
-            keywords: "agent worktree delegation",
-          },
-          {
             label: "Drop-down Cake Chat",
             targetId: "cake-chat-overlay-settings-title",
             keywords: "global shortcut hotkey quake overlay command backquote",
@@ -306,7 +301,22 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
           {
             label: "Global custom instructions",
             targetId: "setting-global-custom-instructions",
-            keywords: "personal system prompt agent",
+            keywords: "personal system prompt agent universal everywhere",
+          },
+          {
+            label: "Durable-chat instructions",
+            targetId: "setting-cake-chat-instructions",
+            keywords: "shared permanent global Cake Chat project guidance",
+          },
+          {
+            label: "User-session instructions",
+            targetId: "setting-user-session-instructions",
+            keywords: "MySession My sessions human personal guidance",
+          },
+          {
+            label: "Delegated-session instructions",
+            targetId: "setting-delegated-session-instructions",
+            keywords: "agent subagent context fork guidance",
           },
           { label: "Commit before merge", targetId: "setting-prompt-worktree-commit" },
           { label: "Rebase conflict", targetId: "setting-prompt-worktree-rebase-conflict" },

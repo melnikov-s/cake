@@ -468,6 +468,9 @@ describe("ApplicationStorage", () => {
                 value: { provider: "example", modelId: "classifier" },
               },
               { key: "instructions.global", value: "Global coding guidance." },
+              { key: "instructions.userSessions", value: "User guidance." },
+              { key: "instructions.delegatedSessions", value: "Delegated guidance." },
+              { key: "instructions.durableChats", value: "Shared Cake Chat guidance." },
               ...Object.keys(CakePrompts.fields).map((key) => ({
                 key: `prompts.${key}`,
                 value: `Custom ${key} prompt.`,
@@ -597,6 +600,8 @@ describe("ApplicationStorage", () => {
           data: {
             ...current,
             globalCustomInstructions: undefined,
+            userSessionInstructions: undefined,
+            delegatedSessionInstructions: undefined,
             projects: [
               {
                 path: "/work/cake",
@@ -624,6 +629,8 @@ describe("ApplicationStorage", () => {
           assert.equal(loaded.state.projects[0]?.settings?.worktreeCommandTimeoutSeconds, 0);
           assert.equal(loaded.state.projects[0]?.settings?.worktreeLanding, "merge");
           assert.equal(loaded.state.globalCustomInstructions, "");
+          assert.equal(loaded.state.userSessionInstructions, "");
+          assert.equal(loaded.state.delegatedSessionInstructions, "");
         }),
     ),
   );

@@ -723,6 +723,10 @@ export const cakeRpcPayloadSchemas = {
   "set-cake-prompts": Schema.Struct({
     prompts: CakePromptOverrides,
   }),
+  "set-session-instructions": Schema.Struct({
+    scope: Schema.Literals(["user", "delegated"]),
+    instructions: stringMax(16_384),
+  }),
   "set-global-custom-instructions": Schema.Struct({
     instructions: stringMax(16_384),
   }),
@@ -992,6 +996,7 @@ export const cakeRpcSuccessSchemas = {
   "set-cake-chat-preferences": cakeRpcResultSchemas["application-state-updated"],
   "set-cake-prompts": cakeRpcResultSchemas["application-state-updated"],
   "set-global-custom-instructions": cakeRpcResultSchemas["application-state-updated"],
+  "set-session-instructions": cakeRpcResultSchemas["application-state-updated"],
   "load-staged-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],
   "generate-project-icon": ProjectIconArtwork,
   "register-project": cakeRpcResultSchemas["application-state-updated"],

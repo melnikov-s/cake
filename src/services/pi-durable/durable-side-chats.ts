@@ -97,6 +97,7 @@ export interface DurableSideChatHost {
   readonly models: () => ConversationSnapshot["models"];
   readonly fastMode: () => boolean;
   readonly todoContext?: () => string;
+  readonly instructions?: () => Promise<string>;
 }
 
 export interface DurableSideChats {
@@ -444,6 +445,11 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       ) {
         if (disposed) throw new Error("Cake Chat side chat has closed");
         const assertCurrent = await turnStop.beforeInput();
+        if (host.instructions)
+          await conversation.configure(
+            { instructions: await host.instructions() },
+            BACKGROUND_CONTEXT,
+          );
         if (
           attachments.some(
             (attachment) => attachment.kind !== "input" && attachment.kind !== "annotation",

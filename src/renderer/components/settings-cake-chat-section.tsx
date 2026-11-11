@@ -1,7 +1,6 @@
 import { observer } from "r-state-tree/react";
 import type { SettingsStore } from "../stores/SettingsStore";
 import { Select } from "./ui/select";
-import { SettingsPromptField } from "./settings/settings-prompt-field";
 import { SettingsModelChoiceField } from "./settings-model-choice-field";
 import {
   CAKE_CHAT_CONTEXT_LIMIT_CHOICES,
@@ -81,14 +80,6 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
           setting="subagentDefaultModel"
           label="Subagent default model"
           description="Used when Cake Chat starts a subagent without choosing a model."
-        />
-        <SettingsPromptField
-          id="setting-cake-chat-instructions"
-          label="Cake Chat instructions"
-          description="Shared by global Cake Chat and every permanent Project Chat, not coding Project Sessions. For one project only, use that project’s settings → Project Chat instructions. Always included, never summarized. Saved when you leave the field."
-          value={store.preferences.instructions}
-          defaultValue=""
-          onApply={(value) => void store.setInstructions(value)}
         />
       </div>
     </section>

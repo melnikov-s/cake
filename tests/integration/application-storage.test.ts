@@ -27,6 +27,9 @@ describe("ApplicationStorage filesystem integration", () => {
     const data = {
       ...defaultApplicationState(),
       globalCustomInstructions: "keep me",
+      userSessionInstructions: undefined,
+      delegatedSessionInstructions: undefined,
+      cakeChatPreferences: { memoryViewBytes: 8000, instructions: "Existing durable guidance" },
       leftToolbar: { autoHide: true, layout: "dynamic" },
     };
     await writeFile(target, JSON.stringify({ version: 11, data }));
@@ -46,6 +49,9 @@ describe("ApplicationStorage filesystem integration", () => {
       previousLayout: "dynamic",
     });
     assert.equal(loaded.state.globalCustomInstructions, "keep me");
+    assert.equal(loaded.state.userSessionInstructions, "");
+    assert.equal(loaded.state.delegatedSessionInstructions, "");
+    assert.equal(loaded.state.cakeChatPreferences?.instructions, "Existing durable guidance");
     assert.deepEqual(JSON.parse(await readFile(target, "utf8")).data, loaded.state);
     assert.deepEqual((await load()).state, loaded.state);
   });
@@ -93,6 +99,8 @@ describe("ApplicationStorage filesystem integration", () => {
       modelPresets: [],
       cakePrompts: {},
       globalCustomInstructions: "",
+      userSessionInstructions: "",
+      delegatedSessionInstructions: "",
       sessionPlugins: [],
       sessionPluginSharedState: [],
     };

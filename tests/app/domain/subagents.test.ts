@@ -96,6 +96,10 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 
 const applicationValue: ApplicationStateValue = {
   ...defaultApplicationState(),
+  globalCustomInstructions: "UNIVERSAL_SCOPE",
+  userSessionInstructions: "USER_SCOPE",
+  delegatedSessionInstructions: "DELEGATED_SCOPE",
+  cakeChatPreferences: { memoryViewBytes: 40000, instructions: "DURABLE_SCOPE" },
   projects: ["/project", "/another", "/repo/src/system/agents"].map((path) => ({
     path,
     name: path.slice(1),
@@ -1461,6 +1465,11 @@ describe("agent-owned context forks", () => {
                 const options = (yield* Ref.get(fixture.constructedOptions)).find(
                   (item) => item.sessionId === child,
                 );
+                assert.ok(options);
+                const guidance = yield* Effect.promise(() => options.personalInstructions!());
+                assert.equal(guidance.split("UNIVERSAL_SCOPE").length - 1, 1);
+                assert.match(guidance, /DELEGATED_SCOPE/);
+                assert.doesNotMatch(guidance, /USER_SCOPE|DURABLE_SCOPE/);
                 assert.equal(options?.projectInvestigation, true);
                 assert.equal(options?.allowMutations, false);
                 assert.equal(options?.newSession, false);
@@ -1685,6 +1694,10 @@ describe("Cake Chat project investigators", () => {
             (item) => item.sessionId === sessionId,
           );
           assert.ok(options);
+          const guidance = yield* Effect.promise(() => options.personalInstructions!());
+          assert.equal(guidance.split("UNIVERSAL_SCOPE").length - 1, 1);
+          assert.match(guidance, /DELEGATED_SCOPE/);
+          assert.doesNotMatch(guidance, /USER_SCOPE|DURABLE_SCOPE/);
           assert.equal(options.cwd, "/home");
           assert.equal(options.ephemeral, undefined);
           assert.equal(options.projectInvestigation, undefined);
@@ -2050,6 +2063,10 @@ describe("Cake Chat project investigators", () => {
             (item) => item.sessionId === sessionId,
           );
           assert.ok(options);
+          const guidance = yield* Effect.promise(() => options.personalInstructions!());
+          assert.equal(guidance.split("UNIVERSAL_SCOPE").length - 1, 1);
+          assert.match(guidance, /DELEGATED_SCOPE/);
+          assert.doesNotMatch(guidance, /USER_SCOPE|DURABLE_SCOPE/);
           assert.equal(options.cwd, "/another");
           assert.equal(options.ephemeral, undefined);
           assert.equal(options.projectInvestigation, true);
@@ -2919,6 +2936,10 @@ describe("Subagents", () => {
         );
         assert.equal(childOptions.agentControl, undefined);
         assert.equal(childOptions.additionalSystemPrompt, undefined);
+        const guidance = yield* Effect.promise(() => childOptions.personalInstructions!());
+        assert.equal(guidance.split("UNIVERSAL_SCOPE").length - 1, 1);
+        assert.match(guidance, /DELEGATED_SCOPE/);
+        assert.doesNotMatch(guidance, /USER_SCOPE|DURABLE_SCOPE/);
         assert.equal(childOptions.isolatedSystemPrompt, subagentSystemPrompt());
         yield* completeChild(fixture, childId);
         yield* subagents.wait("parent", receipt.handleId);

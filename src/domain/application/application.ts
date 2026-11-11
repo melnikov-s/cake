@@ -195,6 +195,18 @@ export const setGlobalCustomInstructions = Effect.fn("Application.setGlobalCusto
   },
 );
 
+/** Update only the selected scope; preserve global guidance and concurrent preferences. */
+export const setSessionInstructions = Effect.fn("Application.setSessionInstructions")(function* (
+  scope: "user" | "delegated",
+  instructions: string,
+) {
+  return yield* update((current) => ({
+    ...current,
+    [scope === "user" ? "userSessionInstructions" : "delegatedSessionInstructions"]:
+      instructions.trim(),
+  }));
+});
+
 export const setProjectSettings = Effect.fn("Application.setProjectSettings")(function* (
   path: string,
   settings: ProjectSettings,

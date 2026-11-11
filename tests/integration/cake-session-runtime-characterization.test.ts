@@ -1,3 +1,5 @@
+import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { personalInstructions } from "../../src/contracts/application/personal-instructions";
 import { projectSessionPurposePrompt } from "../../src/domain/project-sessions/projectSessionPurposePrompt";
 import type { PiTurnResult } from "../../src/contracts/pi/turn-result-data";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
@@ -144,6 +146,9 @@ async function createFixtureRuntime(
   options: {
     sessionFile?: string;
     sessionRelationshipPrompt?: CakeSessionRuntimeOptions["sessionRelationshipPrompt"];
+    personalInstructions?: CakeSessionRuntimeOptions["personalInstructions"];
+    isolatedSystemPrompt?: string;
+    additionalSystemPrompt?: string;
     projectInvestigation?: boolean;
     allowMutations?: boolean;
     onInitialTranscriptPersisted?(): void;
@@ -170,6 +175,9 @@ async function createFixtureRuntime(
       : {}),
     attachmentReferenceControl: options.attachmentReferenceControl,
     sessionRelationshipPrompt: options.sessionRelationshipPrompt,
+    personalInstructions: options.personalInstructions,
+    isolatedSystemPrompt: options.isolatedSystemPrompt,
+    additionalSystemPrompt: options.additionalSystemPrompt,
     allowedCakeOperations: options.attachmentReferenceControl
       ? ["attachments.list", "attachments.read"]
       : undefined,
@@ -619,6 +627,135 @@ describe("CakeSessionRuntime characterization", () => {
           );
         await runtime.dispose();
       }
+    },
+  );
+
+  it.each([
+    "user",
+    "delegated",
+    "automation",
+    "isolated subagent",
+    "context-forked investigator",
+  ] as const)(
+    "delivers universal guidance exactly once with only the intended scope in %s",
+    async (kind) => {
+      const directory = await createTemporaryDirectory();
+      const bodies: Array<Record<string, unknown>> = [];
+      await registerFixtureProvider(
+        directory,
+        (_index, response) => finishTextResponse(response, "Done"),
+        (body) => bodies.push(body),
+      );
+      await writeFile(join(directory, "AGENTS.md"), "PROJECT_POLICY_SENTINEL");
+      let sessionFile: string | undefined;
+      if (kind === "context-forked investigator") {
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const environment = yield* SubagentEnvironment;
+            if (!environment.seedContext) throw new Error("Missing seed adapter");
+            yield* environment.seedContext(directory, "00000000-0000-4000-8000-000000000009", {
+              entryId: "settled-entry",
+              messages: [
+                {
+                  role: "system",
+                  content: "STALE_PARENT_GLOBAL USER_SCOPE DURABLE_SCOPE",
+                  timestamp: 1,
+                },
+                { role: "user", content: "Settled context", timestamp: 1 },
+              ],
+            });
+          }).pipe(
+            Effect.provide(
+              makeSubagentEnvironmentLive({
+                homeDirectory: directory,
+                agentDirectory: join(directory, "agent"),
+                sessionDirectory: join(directory, "sessions"),
+              }),
+            ),
+          ),
+        );
+        sessionFile = (
+          await SessionManager.list(
+            directory,
+            cakeWorkspaceSessionDirectory(directory, join(directory, "sessions")),
+          )
+        )[0]?.path;
+        expect(sessionFile).toBeDefined();
+      }
+      const state = {
+        ...defaultApplicationState(),
+        globalCustomInstructions: "UNIVERSAL_SCOPE",
+        userSessionInstructions: "USER_SCOPE",
+        delegatedSessionInstructions: "DELEGATED_SCOPE",
+        cakeChatPreferences: { memoryViewBytes: 40000, instructions: "DURABLE_SCOPE" },
+      };
+      const scope = kind === "user" ? "user" : kind === "automation" ? "global" : "delegated";
+      const runtime = await createFixtureRuntime(directory, [], {
+        sessionFile,
+        projectInvestigation: kind === "context-forked investigator",
+        isolatedSystemPrompt: kind === "isolated subagent" ? "Isolated worker role" : undefined,
+        personalInstructions: async () => personalInstructions(state, scope),
+      });
+      await runtime.prompt("Inspect this task", "prompt", []);
+      const request = JSON.stringify(
+        (bodies.at(-1)!.messages as Array<{ role: string }>).filter(
+          (message) => message.role === "system",
+        ),
+      );
+      expect(request.split("UNIVERSAL_SCOPE")).toHaveLength(2);
+      expect(request.includes("USER_SCOPE")).toBe(scope === "user");
+      expect(request.includes("DELEGATED_SCOPE")).toBe(scope === "delegated");
+      expect(request).not.toContain("DURABLE_SCOPE");
+      expect(request).not.toContain("STALE_PARENT_GLOBAL");
+      expect(request.includes("PROJECT_POLICY_SENTINEL")).toBe(kind !== "isolated subagent");
+      state.globalCustomInstructions = "UPDATED_UNIVERSAL";
+      await runtime.prompt("Continue with updated guidance", "prompt", []);
+      expect(JSON.stringify(bodies.at(-1))).toContain("UPDATED_UNIVERSAL");
+      await runtime.dispose();
+    },
+  );
+
+  it.each(["current", "legacy"] as const)(
+    "replaces the %s source scope on a real Pi history fork without duplicating global guidance",
+    async (version) => {
+      const directory = await createTemporaryDirectory();
+      const bodies: Array<Record<string, unknown>> = [];
+      await registerFixtureProvider(
+        directory,
+        (_index, response) => finishTextResponse(response, "Done"),
+        (body) => bodies.push(body),
+      );
+      const state = {
+        ...defaultApplicationState(),
+        globalCustomInstructions: "FORK_UNIVERSAL",
+        userSessionInstructions: "SOURCE_USER_SCOPE",
+        delegatedSessionInstructions: "FORK_DELEGATED_SCOPE",
+      };
+      const source = await createFixtureRuntime(directory, [], {
+        personalInstructions:
+          version === "current" ? async () => personalInstructions(state, "user") : undefined,
+        additionalSystemPrompt:
+          version === "legacy" ? "## Personal global instructions\n\nFORK_UNIVERSAL" : undefined,
+      });
+      await source.prompt("Source discussion", "prompt", []);
+      const snapshot = await source.snapshot();
+      const manager = SessionManager.open(snapshot.sessionFile!, undefined, directory);
+      const fork = await source.fork(manager.getLeafId()!, "Delegated fork");
+      const child = await createFixtureRuntime(directory, [], {
+        sessionFile: fork.sessionFile,
+        personalInstructions: async () => personalInstructions(state, "delegated"),
+      });
+      await child.prompt("Delegated assignment", "prompt", []);
+      const system = (bodies.at(-1)!.messages as Array<{ role: string; content: string }>)
+        .filter((message) => message.role === "system")
+        .map((message) => message.content)
+        .join("\n");
+      expect(system.split("FORK_UNIVERSAL")).toHaveLength(2);
+      expect(system.split("FORK_DELEGATED_SCOPE")).toHaveLength(2);
+      expect(system).not.toContain("SOURCE_USER_SCOPE");
+      expect(JSON.stringify(bodies.at(-1))).toContain("Source discussion");
+      await child.dispose();
+      await source.dispose();
     },
   );
 

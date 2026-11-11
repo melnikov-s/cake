@@ -1,3 +1,4 @@
+import { personalInstructions } from "../../contracts/application/personal-instructions";
 import { AgentContextFork } from "../../contracts/cake-chats/agent-context-fork";
 import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
 import { fork as forkAgentContext } from "../subagents/agentContextFork";
@@ -650,6 +651,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           ? Promise.resolve()
           : run(projectTodos.acknowledge(todoScope, receipt), { signal });
       },
+      personalInstructions: async () => personalInstructions(application.snapshot(), "global"),
       cakeChatSystemPrompt: companion
         ? () =>
             [

@@ -165,6 +165,8 @@ export interface CakeSessionRuntimeOptions {
   sessionId?: string;
   sessionFile?: string;
   additionalSystemPrompt?: string;
+  /** Current personal guidance, refreshed at turn admission in every runtime kind. */
+  personalInstructions?(): Promise<string>;
   /** Live relationship guidance; refreshed on each new turn without restarting Pi. */
   sessionRelationshipPrompt?(): Promise<string>;
   /** How this Project lands Managed Worktree work; `pull-request` never merges through Cake. */

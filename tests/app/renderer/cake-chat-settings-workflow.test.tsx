@@ -47,10 +47,9 @@ it("persists the active context limit, memory budget and dedicated instructions 
         expect.anything(),
       ),
     );
-    expect(
-      screen.getByText(/Shared by global Cake Chat and every permanent Project Chat/).textContent,
-    ).toContain("For one project only, use that project’s settings → Project Chat instructions");
-    const instructions = screen.getByRole("textbox", { name: "Cake Chat instructions" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Settings section" }), "prompts");
+    expect(screen.getByText(/Existing Cake Chat instructions are preserved here/)).toBeDefined();
+    const instructions = screen.getByRole("textbox", { name: "Durable-chat instructions" });
     await user.type(instructions, "Always create worktrees.");
     await user.tab();
     await waitFor(() =>

@@ -280,6 +280,12 @@ const RendererApplicationFields = {
   widgetAttachments: boundedArray(WidgetAttachment, 500).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed([])),
   ),
+  userSessionInstructions: boundedString(16_384).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("")),
+  ),
+  delegatedSessionInstructions: boundedString(16_384).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("")),
+  ),
   sessionPlugins: boundedArray(SessionPlugin, 500),
   sessionPluginSharedState: boundedArray(SessionPluginSharedState, 2_000),
 };
@@ -355,6 +361,8 @@ export const defaultApplicationState = (): ApplicationState => ({
   cakePrompts: {},
   globalCustomInstructions: "",
   widgetAttachments: [],
+  userSessionInstructions: "",
+  delegatedSessionInstructions: "",
   sessionPlugins: [],
   sessionPluginSharedState: [],
 });

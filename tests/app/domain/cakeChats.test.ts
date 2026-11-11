@@ -1399,6 +1399,49 @@ describe("permanent Cake Chat", () => {
     },
   );
 
+  it.effect.each([
+    CAKE_CHAT_SESSION_ID,
+    chatLocations.projectChatSessionId("/zombies"),
+    SESSION_ASSISTANT_ID,
+  ])("wires universal guidance live without normal-session scopes for %s", (sessionId) => {
+    const f = fixture();
+    f.setState({
+      ...defaultApplicationState(),
+      globalCustomInstructions: "UNIVERSAL_SCOPE",
+      userSessionInstructions: "USER_SCOPE",
+      delegatedSessionInstructions: "DELEGATED_SCOPE",
+      cakeChatPreferences: { ...defaultCakeChatPreferences(), instructions: "DURABLE_SCOPE" },
+      projects: [
+        {
+          path: "/zombies",
+          name: "Zombies",
+          addedAt: "2026-01-01T00:00:00.000Z",
+          lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    return Effect.gen(function* () {
+      const options = yield* acquireOptions({
+        configuration: {
+          ...configuration,
+          location: yield* chatLocations.resolve(location, sessionId),
+        },
+        target: { sessionId, tools: [] },
+        newSession: false,
+      });
+      const guidance = yield* Effect.promise(() => options.runtime.personalInstructions!());
+      expect(guidance.split("UNIVERSAL_SCOPE")).toHaveLength(2);
+      expect(guidance).not.toMatch(/USER_SCOPE|DELEGATED_SCOPE|DURABLE_SCOPE/);
+      expect(
+        options.runtime.cakeChatMemory!.preferences().instructions.includes("DURABLE_SCOPE"),
+      ).toBe(sessionId !== SESSION_ASSISTANT_ID);
+      f.setState({ ...f.state(), globalCustomInstructions: "UPDATED_SCOPE" });
+      expect(yield* Effect.promise(() => options.runtime.personalInstructions!())).toContain(
+        "UPDATED_SCOPE",
+      );
+    }).pipe(Effect.provide(f.layer));
+  });
+
   it.effect(
     "wires dedicated instructions to the live application authority without desktop controls",
     () => {

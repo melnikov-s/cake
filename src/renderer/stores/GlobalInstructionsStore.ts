@@ -3,8 +3,8 @@ import type { ApplicationState } from "../../contracts/conversations/session-con
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 
-/** Owns the global personal instruction draft and its persistence. */
-export class GlobalInstructionsStore extends Store {
+/** Owns one personal instruction scope and serializes field-level saves. */
+export class GlobalInstructionsStore extends Store<{ scope?: "user" | "delegated" }> {
   instructions = "";
   saving = false;
   error: string | undefined;
@@ -16,7 +16,12 @@ export class GlobalInstructionsStore extends Store {
   applyApplicationState(revision: number, state: ApplicationState) {
     if (revision <= this.applicationRevision) return;
     this.applicationRevision = revision;
-    this.persisted = state.globalCustomInstructions;
+    this.persisted =
+      this.props.scope === "user"
+        ? state.userSessionInstructions
+        : this.props.scope === "delegated"
+          ? state.delegatedSessionInstructions
+          : state.globalCustomInstructions;
     if (!this.saving) this.instructions = this.persisted;
   }
 
@@ -30,9 +35,12 @@ export class GlobalInstructionsStore extends Store {
       .catch(() => undefined)
       .then(async () => {
         const baseRevision = this.applicationRevision;
-        await ClientContext.consume(this)!.workspaces.setGlobalCustomInstructions(instructions, {
-          signal: this.signal,
-        });
+        const workspaces = ClientContext.consume(this)!.workspaces;
+        if (this.props.scope)
+          await workspaces.setSessionInstructions(this.props.scope, instructions, {
+            signal: this.signal,
+          });
+        else await workspaces.setGlobalCustomInstructions(instructions, { signal: this.signal });
         return baseRevision;
       })
       .then((baseRevision) => {

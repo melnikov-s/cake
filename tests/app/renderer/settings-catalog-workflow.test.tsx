@@ -178,7 +178,7 @@ describe("settings catalog through the cake tool", () => {
     expect(overview.categories).toContainEqual({ category: "Cake Chat", settings: 7, changed: 0 });
     expect(overview.categories).toContainEqual({
       category: "Instructions & prompts",
-      settings: 7,
+      settings: 10,
       changed: 1,
     });
     expect(overview.categories.map(({ category, settings }) => ({ category, settings }))).toEqual(

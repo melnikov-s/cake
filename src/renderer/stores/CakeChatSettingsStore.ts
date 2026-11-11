@@ -17,6 +17,7 @@ export class CakeChatSettingsStore extends Store<{ companion?: boolean }> {
   saving = false;
   error: string | undefined;
   errorDetails: string | undefined;
+  errorSection: "cake-chat" | "prompts" = "cake-chat";
   private revision = -1;
   private editRevision = 0;
   private persisted = this.defaults();
@@ -47,7 +48,10 @@ export class CakeChatSettingsStore extends Store<{ companion?: boolean }> {
     return this.save({ ...this.preferences, memoryViewBytes: bytes });
   }
   setInstructions(instructions: string) {
-    return this.save({ ...this.preferences, instructions });
+    return this.save(
+      { ...this.preferences, instructions },
+      this.props.companion ? "cake-chat" : "prompts",
+    );
   }
   /** Choosing a setting's default source stores nothing, matching the out-of-the-box value. */
   setModelChoice(setting: CakeChatModelSetting, choice: CakeModelChoice) {
@@ -60,7 +64,7 @@ export class CakeChatSettingsStore extends Store<{ companion?: boolean }> {
     );
   }
 
-  private save(preferences: CakeChatPreferences) {
+  private save(preferences: CakeChatPreferences, section: "cake-chat" | "prompts" = "cake-chat") {
     const edit = ++this.editRevision;
     this.preferences = preferences;
     this.saving = true;
@@ -82,6 +86,7 @@ export class CakeChatSettingsStore extends Store<{ companion?: boolean }> {
         if (this.signal.aborted || edit !== this.editRevision) return;
         this.preferences = this.persisted;
         const described = describeError(error);
+        this.errorSection = section;
         this.error = described.message;
         this.errorDetails = described.details;
       })

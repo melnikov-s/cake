@@ -563,6 +563,8 @@ describe("automation lifecycle and execution", () => {
             Effect.succeed({
               ...current,
               globalCustomInstructions: "Global user guidance",
+              userSessionInstructions: "USER_SCOPE",
+              delegatedSessionInstructions: "DELEGATED_SCOPE",
               projects: current.projects.map((project) => ({
                 ...project,
                 settings: {
@@ -585,7 +587,10 @@ describe("automation lifecycle and execution", () => {
           expect(started.options.cwd).toBe("/projects/cake");
           expect(started.options.isolatedSystemPrompt).toBeUndefined();
           expect(started.options.agentDir).toBe("/agent");
-          expect(started.options.additionalSystemPrompt).toContain("Global user guidance");
+          const guidance = yield* Effect.promise(() => started.options.personalInstructions!());
+          expect(guidance.split("Global user guidance")).toHaveLength(2);
+          expect(guidance).not.toMatch(/USER_SCOPE|DELEGATED_SCOPE/);
+          expect(started.options.additionalSystemPrompt).not.toContain("Global user guidance");
           expect(started.options.additionalSystemPrompt).toContain("Project user guidance");
           expect(started.options.additionalSystemPrompt).not.toContain(
             "Project Chat only guidance",

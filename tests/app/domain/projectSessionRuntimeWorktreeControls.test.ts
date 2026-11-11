@@ -124,6 +124,8 @@ describe("Project Session runtime worktree controls", () => {
           snapshot: () => ({
             ...defaultApplicationState(),
             globalCustomInstructions: "Give direct answers globally.",
+            userSessionInstructions: "USER_SCOPE",
+            delegatedSessionInstructions: "DELEGATED_SCOPE",
             projects: [
               {
                 path: "/project",
@@ -172,10 +174,46 @@ describe("Project Session runtime worktree controls", () => {
           sessionId: rootId,
           newSession: false,
         });
+        const userGuidance = yield* Effect.promise(() =>
+          rootOptions.runtime.personalInstructions!(),
+        );
+        assert.equal(userGuidance.split("Give direct answers globally.").length - 1, 1);
+        assert.match(userGuidance, /USER_SCOPE/);
+        assert.doesNotMatch(userGuidance, /DELEGATED_SCOPE/);
+        yield* (yield* SessionFamilyStorage).registerPurpose({
+          sessionId: rootId,
+          projectPath: "/project",
+          purpose: "delegated",
+          createdPurpose: "delegated",
+        });
+        const delegatedGuidance = yield* Effect.promise(() =>
+          rootOptions.runtime.personalInstructions!(),
+        );
+        assert.match(delegatedGuidance, /DELEGATED_SCOPE/);
+        assert.doesNotMatch(delegatedGuidance, /USER_SCOPE/);
+        const sideChatOptions = yield* acquireOptions({
+          location: projectLocation,
+          sessionId: rootId,
+          newSession: false,
+          sideChatSessionId: "side-chat",
+        });
+        assert.equal(
+          yield* Effect.promise(() => sideChatOptions.runtime.personalInstructions!()),
+          userGuidance,
+        );
+        yield* (yield* SessionFamilyStorage).moveToUser(rootId);
+        assert.equal(
+          yield* Effect.promise(() => rootOptions.runtime.personalInstructions!()),
+          userGuidance,
+        );
+        assert.doesNotMatch(
+          rootOptions.runtime.additionalSystemPrompt ?? "",
+          /Give direct answers globally/,
+        );
         assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /pnpm install/);
         assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /discuss strategy/);
         assert.match(
-          rootOptions.runtime.additionalSystemPrompt ?? "",
+          yield* Effect.promise(() => rootOptions.runtime.personalInstructions!()),
           /## Personal global instructions\n\nGive direct answers globally\./,
         );
         assert.match(
@@ -254,7 +292,7 @@ describe("Project Session runtime worktree controls", () => {
           /## Project worktree setup instructions\n\nRun pnpm install only when dependencies are needed\./,
         );
         assert.match(
-          childOptions.runtime.additionalSystemPrompt ?? "",
+          yield* Effect.promise(() => childOptions.runtime.personalInstructions!()),
           /## Personal global instructions\n\nGive direct answers globally\./,
         );
         assert.match(

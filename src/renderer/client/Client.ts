@@ -319,6 +319,11 @@ interface WorkspaceCommands {
     prompts: CakePromptOverrides,
     options?: ClientCommandOptions,
   ): Promise<ApplicationState>;
+  setSessionInstructions(
+    scope: "user" | "delegated",
+    instructions: string,
+    options?: ClientCommandOptions,
+  ): Promise<ApplicationState>;
   setGlobalCustomInstructions(
     instructions: string,
     options?: ClientCommandOptions,

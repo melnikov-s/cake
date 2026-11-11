@@ -49,6 +49,54 @@ async function editInstructions(user: ReturnType<typeof userEvent.setup>, value:
 afterEach(cleanup);
 
 describe("Global instructions workflow", () => {
+  it("shows all four categories and persists only the edited normal-session scope", async () => {
+    let state = {
+      ...defaultApplicationState(),
+      globalCustomInstructions: "Latest writing guidance",
+      cakeChatPreferences: { memoryViewBytes: 8000, instructions: "Existing durable guidance" },
+    };
+    let revision = 0;
+    const save = vi.fn<Client["workspaces"]["setSessionInstructions"]>(
+      async (scope, instructions) => {
+        state = {
+          ...state,
+          [scope === "user" ? "userSessionInstructions" : "delegatedSessionInstructions"]:
+            instructions,
+        };
+        fixture.root.settingsStore.applyApplicationState(++revision, state);
+        return state;
+      },
+    );
+    using fixture = createRendererStoreFixture({
+      client: { workspaces: { setSessionInstructions: save } },
+    });
+    fixture.root.settingsStore.applyApplicationState(revision, state);
+    fixture.root.settingsStore.selectPage("prompts");
+    const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
+    const user = userEvent.setup();
+    try {
+      expect(instructionsField().value).toBe("Latest writing guidance");
+      expect(screen.getByRole("textbox", { name: "Durable-chat instructions" })).toHaveProperty(
+        "value",
+        "Existing durable guidance",
+      );
+      for (const [scope, label] of [
+        ["user", "User-session instructions"],
+        ["delegated", "Delegated-session instructions"],
+      ] as const) {
+        await user.type(screen.getByRole("textbox", { name: label }), "  Scoped guidance  ");
+        await user.click(screen.getByRole("heading", { name: "Scoped instructions" }));
+        await waitFor(() =>
+          expect(save).toHaveBeenLastCalledWith(scope, "Scoped guidance", expect.anything()),
+        );
+      }
+      expect(state.globalCustomInstructions).toBe("Latest writing guidance");
+      expect(state.cakeChatPreferences.instructions).toBe("Existing durable guidance");
+    } finally {
+      view.unmount();
+    }
+  });
+
   it("loads personal guidance, saves trimmed edits on blur, and resets it", async () => {
     using fixture = renderInstructions();
     expect(instructionsField().value).toBe("Original preference");

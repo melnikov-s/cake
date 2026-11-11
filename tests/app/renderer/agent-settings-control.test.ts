@@ -732,6 +732,22 @@ describe("Agent Settings through the real application-control/Client/domain boun
         value: "  Personal fixture instructions  ",
       });
       expect(h.saved().globalCustomInstructions).toBe("Personal fixture instructions");
+      for (const [scope, field] of [
+        ["userSessions", "userSessionInstructions"],
+        ["delegatedSessions", "delegatedSessionInstructions"],
+      ] as const) {
+        await h.call("settings.update", { key: `instructions.${scope}`, value: "  Scoped text  " });
+        expect(h.saved()[field]).toBe("Scoped text");
+        expect(value(await h.call("settings.get", { key: `instructions.${scope}` }))).toMatchObject(
+          { value: "Scoped text" },
+        );
+      }
+      await h.call("settings.update", { key: "instructions.durableChats", value: "Durable text" });
+      expect(h.saved().cakeChatPreferences?.instructions).toBe("Durable text");
+      expect(
+        value(await h.call("settings.get", { key: "instructions.durableChats" })),
+      ).toMatchObject({ value: "Durable text" });
+      expect(h.saved().globalCustomInstructions).toBe("Personal fixture instructions");
       for (const key of Object.keys(defaultCakePrompts())) {
         await h.call("settings.update", {
           key: `prompts.${key}`,

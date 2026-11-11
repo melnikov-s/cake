@@ -117,6 +117,12 @@ function applicationValue(state: ApplicationStateValue, key: string) {
       return state.nonChatModelPreferences?.classifier ?? null;
     case "instructions.global":
       return state.globalCustomInstructions;
+    case "instructions.userSessions":
+      return state.userSessionInstructions;
+    case "instructions.delegatedSessions":
+      return state.delegatedSessionInstructions;
+    case "instructions.durableChats":
+      return chat.instructions;
   }
   return undefined;
 }
@@ -141,6 +147,9 @@ function defaultValue(key: string, piDefaults: PiSettingsValue | undefined) {
     case "cakeChat.subagentDefaultModel":
       return cakeChatModelSettingDefaults.subagentDefaultModel;
     case "instructions.global":
+    case "instructions.userSessions":
+    case "instructions.delegatedSessions":
+    case "instructions.durableChats":
     case "companion.instructions":
       return "";
     case "companion.memoryViewBytes":
@@ -372,6 +381,19 @@ const write = Effect.fn("SettingsCatalog.write")(function* (key: string, value: 
         type: key === "models.imagePreference" ? "image" : "classifier",
         preference,
       });
+      return;
+    }
+    case "instructions.userSessions":
+    case "instructions.delegatedSessions": {
+      yield* application.setSessionInstructions(
+        key === "instructions.userSessions" ? "user" : "delegated",
+        yield* typed(Schema.String, key, value),
+      );
+      return;
+    }
+    case "instructions.durableChats": {
+      const instructions = yield* typed(Schema.String, key, value);
+      yield* application.updateCakeChatPreferences((current) => ({ ...current, instructions }));
       return;
     }
     case "instructions.global": {

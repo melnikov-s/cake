@@ -24,6 +24,7 @@ export const WorkspaceRpc = RpcGroup.make(
   workspaceRpc("workspaces.set-cake-prompts", "set-cake-prompts"),
   workspaceRpc("workspaces.set-cake-chat-preferences", "set-cake-chat-preferences"),
   workspaceRpc("workspaces.set-global-custom-instructions", "set-global-custom-instructions"),
+  workspaceRpc("workspaces.set-session-instructions", "set-session-instructions"),
   workspaceRpc("workspaces.load-staged-slash-commands", "load-staged-slash-commands"),
   workspaceRpc("workspaces.generate-project-icon", "generate-project-icon"),
   workspaceRpc("workspaces.register-project", "register-project"),

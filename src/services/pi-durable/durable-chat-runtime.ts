@@ -157,7 +157,7 @@ export async function createDurableCakeChatRuntime(
   });
   const commands = await createDurableChatCommands(options.cwd, options.agentDir, settings);
   const cakeDocsDirectory = await cakeAgentDocumentationDirectory(options.agentDir);
-  const instructions = () =>
+  const instructions = async () =>
     [
       coordinatorSystemPrompt(
         preferences.preferences().instructions,
@@ -167,6 +167,7 @@ export async function createDurableCakeChatRuntime(
       ),
       durableArchiveRecallInstructions(sessionId),
       options.additionalSystemPrompt,
+      await options.personalInstructions?.(),
       options.cakeChatSystemPrompt?.(),
       commands.instructions(),
       options.cakeChatTodos ? TASK_ATTRIBUTION_INSTRUCTIONS : undefined,
@@ -505,7 +506,7 @@ export async function createDurableCakeChatRuntime(
       model: { provider: selected.provider, modelId: selected.id },
       thinkingLevel,
       tools,
-      instructions: instructions(),
+      instructions: await instructions(),
     },
     contextLimitTokens: () =>
       preferences.preferences().contextLimitTokens ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
@@ -588,7 +589,7 @@ export async function createDurableCakeChatRuntime(
       thinkingLevel: next.thinkingLevel,
       // Saved coordinators predate some tools; the offered set is code-owned, not persisted policy.
       tools,
-      instructions: instructions(),
+      instructions: await instructions(),
     };
     await engine.root.commit(async (tx) => {
       const state = await tx.doc(PresetContextDoc, engine.root.id);
@@ -696,6 +697,7 @@ export async function createDurableCakeChatRuntime(
     settings,
     models: () => modelOptions,
     fastMode: () => fastMode,
+    instructions,
     todoContext: () =>
       projectTodoBaseline(
         { ...emptyProjectTodos(), items: [...(options.cakeChatTodos?.() ?? [])] },
