@@ -1,398 +1,972 @@
 <!doctype html>
 <html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Delta PRs</title>
-<style>
-  :root {
-    --w-muted-fg: var(--muted-foreground, color-mix(in srgb, currentColor 62%, transparent));
-    --w-success: var(--success, #2f9e5f);
-    --w-attention: var(--attention, #c98a12);
-    --w-destructive: var(--destructive, #d64545);
-    --w-primary: var(--primary, #4a7bd6);
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; background: transparent; }
-  body { color: var(--foreground); font-family: var(--font-sans); font-size: 13px; line-height: 1.4; }
-  #app { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-  a { color: inherit; }
-  button { font: inherit; }
-  :focus-visible { outline: 2px solid var(--ring, var(--primary)); outline-offset: 2px; border-radius: 4px; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delta PRs</title>
+    <style>
+      :root {
+        --w-muted-fg: var(--muted-foreground, color-mix(in srgb, currentColor 62%, transparent));
+        --w-success: var(--success, #2f9e5f);
+        --w-attention: var(--attention, #c98a12);
+        --w-destructive: var(--destructive, #d64545);
+        --w-primary: var(--primary, #4a7bd6);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      body {
+        color: var(--foreground);
+        font-family: var(--font-sans);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      #app {
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 0;
+      }
+      a {
+        color: inherit;
+      }
+      button {
+        font: inherit;
+      }
+      :focus-visible {
+        outline: 2px solid var(--ring, var(--primary));
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
 
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; }
-  .ttl { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
-  h1 { margin: 0; font-size: 15px; font-weight: 650; }
-  .sub { color: var(--muted-foreground); font-size: 12px; }
-  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
-  .refreshed { color: var(--muted-foreground); font-size: 12px; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--primary);
-    background: var(--primary); color: var(--primary-foreground); cursor: pointer; font-weight: 550; }
-  .btn:hover:not(:disabled) { filter: brightness(1.08); }
-  .btn:disabled { opacity: .7; cursor: default; }
-  .spin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: sp .8s linear infinite; }
-  @keyframes sp { to { transform: rotate(360deg); } }
-  .inline-err { color: var(--destructive); font-size: 12px; flex-basis: 100%; text-align: right; overflow-wrap: anywhere; }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
+        justify-content: space-between;
+      }
+      .ttl {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 8px;
+        min-width: 0;
+      }
+      h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 650;
+      }
+      .sub {
+        color: var(--muted-foreground);
+        font-size: 12px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 10px;
+        min-width: 0;
+      }
+      .refreshed {
+        color: var(--muted-foreground);
+        font-size: 12px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--primary);
+        background: var(--primary);
+        color: var(--primary-foreground);
+        cursor: pointer;
+        font-weight: 550;
+      }
+      .btn:hover:not(:disabled) {
+        filter: brightness(1.08);
+      }
+      .btn:disabled {
+        opacity: 0.7;
+        cursor: default;
+      }
+      .spin {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        animation: sp 0.8s linear infinite;
+      }
+      @keyframes sp {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .inline-err {
+        color: var(--destructive);
+        font-size: 12px;
+        flex-basis: 100%;
+        text-align: right;
+        overflow-wrap: anywhere;
+      }
 
-  .banner { border-radius: 6px; padding: 8px 10px; overflow-wrap: anywhere; }
-  .banner.err { border: 1px solid color-mix(in srgb, var(--destructive) 45%, transparent); background: color-mix(in srgb, var(--destructive) 12%, transparent); }
-  .banner.err strong { color: var(--destructive); }
-  .banner .note { color: var(--muted-foreground); font-size: 12px; margin-top: 2px; }
-  .banner.warn { border: 1px solid color-mix(in srgb, var(--attention) 40%, transparent); background: color-mix(in srgb, var(--attention) 10%, transparent); font-size: 12px; }
-  .banner.warn ul { margin: 0; padding-left: 16px; }
+      .banner {
+        border-radius: 6px;
+        padding: 8px 10px;
+        overflow-wrap: anywhere;
+      }
+      .banner.err {
+        border: 1px solid color-mix(in srgb, var(--destructive) 45%, transparent);
+        background: color-mix(in srgb, var(--destructive) 12%, transparent);
+      }
+      .banner.err strong {
+        color: var(--destructive);
+      }
+      .banner .note {
+        color: var(--muted-foreground);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .banner.warn {
+        border: 1px solid color-mix(in srgb, var(--attention) 40%, transparent);
+        background: color-mix(in srgb, var(--attention) 10%, transparent);
+        font-size: 12px;
+      }
+      .banner.warn ul {
+        margin: 0;
+        padding-left: 16px;
+      }
 
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip { --c: var(--muted-foreground); display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
-    border: 1px solid var(--border); background: transparent; color: var(--foreground); cursor: pointer; font-size: 12px; }
-  .chip:hover { background: var(--muted); }
-  .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex: none; }
-  .chip .n { font-family: var(--font-mono); font-weight: 650; }
-  .chip.zero { color: var(--muted-foreground); }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        --c: var(--muted-foreground);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--foreground);
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .chip:hover {
+        background: var(--muted);
+      }
+      .chip .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--c);
+        flex: none;
+      }
+      .chip .n {
+        font-family: var(--font-mono);
+        font-weight: 650;
+      }
+      .chip.zero {
+        color: var(--muted-foreground);
+      }
 
-  .sep { margin: 4px 0 -2px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted-foreground); display: flex; align-items: center; gap: 8px; }
-  .sep::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
+      .sep {
+        margin: 4px 0 -2px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted-foreground);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .sep::after {
+        content: "";
+        flex: 1;
+        border-top: 1px solid var(--border);
+      }
 
-  section { --c: var(--muted-foreground); border: 1px solid var(--border); border-left: 3px solid var(--c); border-radius: 6px;
-    background: var(--card); color: var(--card-foreground); min-width: 0; overflow: hidden; scroll-margin-top: 8px; }
-  section h2 { margin: 0; font-size: 13px; font-weight: 650; padding: 7px 10px; display: flex; align-items: center; gap: 8px; }
-  section h2 .n { font-family: var(--font-mono); font-size: 12px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); padding: 0 7px; border-radius: 999px; }
-  section.empty h2 { color: var(--muted-foreground); font-weight: 550; }
-  section.empty h2 .none { font-weight: 400; font-size: 12px; margin-left: auto; }
-  ul.rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
-  ul.rows li { padding: 6px 10px; min-width: 0; }
-  ul.rows li + li { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
-  ul.rows li:hover { background: var(--muted); }
-  .line1 { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-  .line1 a { display: flex; gap: 6px; min-width: 0; text-decoration: none; flex: 1; }
-  .line1 a:hover .t { text-decoration: underline; }
-  .line1 a.pending { opacity: .6; cursor: progress; }
-  .num { font-family: var(--font-mono); font-size: 12px; color: var(--c); flex: none; }
-  .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .pill { flex: none; font-size: 10px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted-foreground); }
-  .line2 { color: var(--muted-foreground); font-size: 12px; margin-top: 1px; overflow-wrap: anywhere; }
-  .attach { flex: none; align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin: -3px -4px -3px 0;
-    padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--w-muted-fg); cursor: pointer; opacity: .55; }
-  ul.rows li:hover .attach, .attach:focus-visible { opacity: 1; }
-  .attach:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
-  .attach:disabled { cursor: progress; }
-  .attach.done { opacity: 1; color: var(--w-success); }
-  .attach.bad { opacity: 1; color: var(--w-destructive); }
-  .attach svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+      section {
+        --c: var(--muted-foreground);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--c);
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--card-foreground);
+        min-width: 0;
+        overflow: hidden;
+        scroll-margin-top: 8px;
+      }
+      section h2 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 650;
+        padding: 7px 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      section h2 .n {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--c);
+        background: color-mix(in srgb, var(--c) 14%, transparent);
+        padding: 0 7px;
+        border-radius: 999px;
+      }
+      section.empty h2 {
+        color: var(--muted-foreground);
+        font-weight: 550;
+      }
+      section.empty h2 .none {
+        font-weight: 400;
+        font-size: 12px;
+        margin-left: auto;
+      }
+      ul.rows {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        border-top: 1px solid var(--border);
+      }
+      ul.rows li {
+        padding: 6px 10px;
+        min-width: 0;
+      }
+      ul.rows li + li {
+        border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+      }
+      ul.rows li:hover {
+        background: var(--muted);
+      }
+      .line1 {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        min-width: 0;
+      }
+      .line1 a {
+        display: flex;
+        gap: 6px;
+        min-width: 0;
+        text-decoration: none;
+        flex: 1;
+      }
+      .line1 a:hover .t {
+        text-decoration: underline;
+      }
+      .line1 a.pending {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .num {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--c);
+        flex: none;
+      }
+      .t {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+      .pill {
+        flex: none;
+        font-size: 10px;
+        padding: 0 6px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--muted-foreground);
+      }
+      .line2 {
+        color: var(--muted-foreground);
+        font-size: 12px;
+        margin-top: 1px;
+        overflow-wrap: anywhere;
+      }
+      .attach {
+        flex: none;
+        align-self: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        margin: -3px -4px -3px 0;
+        padding: 0;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--w-muted-fg);
+        cursor: pointer;
+        opacity: 0.55;
+      }
+      ul.rows li:hover .attach,
+      .attach:focus-visible {
+        opacity: 1;
+      }
+      .attach:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--foreground) 10%, transparent);
+        color: var(--foreground);
+      }
+      .attach:disabled {
+        cursor: progress;
+      }
+      .attach.done {
+        opacity: 1;
+        color: var(--w-success);
+      }
+      .attach.bad {
+        opacity: 1;
+        color: var(--w-destructive);
+      }
+      .attach svg {
+        width: 14px;
+        height: 14px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
 
-  .ready { --c: var(--w-success); } .binks { --c: var(--w-attention); } .fail { --c: var(--w-destructive); }
-  .wait { --c: var(--w-primary); } .draft { --c: var(--w-muted-fg); } .mine { --c: var(--w-primary); }
-  .sub, .refreshed, .line2, footer, .sep, section.empty h2, .pill, .chip.zero, .banner .note, .emptystate { color: var(--w-muted-fg); }
-  .inline-err, .banner.err strong, footer .bad { color: var(--w-destructive); }
+      .ready {
+        --c: var(--w-success);
+      }
+      .binks {
+        --c: var(--w-attention);
+      }
+      .fail {
+        --c: var(--w-destructive);
+      }
+      .wait {
+        --c: var(--w-primary);
+      }
+      .draft {
+        --c: var(--w-muted-fg);
+      }
+      .mine {
+        --c: var(--w-primary);
+      }
+      .sub,
+      .refreshed,
+      .line2,
+      footer,
+      .sep,
+      section.empty h2,
+      .pill,
+      .chip.zero,
+      .banner .note,
+      .emptystate {
+        color: var(--w-muted-fg);
+      }
+      .inline-err,
+      .banner.err strong,
+      footer .bad {
+        color: var(--w-destructive);
+      }
 
-  .emptystate { padding: 24px 12px; text-align: center; color: var(--muted-foreground); border: 1px dashed var(--border); border-radius: 6px; }
-  footer { color: var(--muted-foreground); font-size: 11px; display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 2px; }
-  footer .h { font-family: var(--font-mono); }
-  footer .bad { color: var(--destructive); }
-</style>
-</head>
-<body>
-<div id="app" aria-live="polite"></div>
-<script>
-(function () {
-  var api = globalThis.cakeArtifact;
-  var app = document.getElementById("app");
-  var state = null;
-  var hydrated = false;
-  var busy = false;
-  var inlineErr = "";
-  var openErr = "";
-  var openErrTimer = null;
-  var pendingOpen = {};
-  // Composer attach (cake.composer.attach). Hidden when the host does not provide it.
-  var attachState = {};
-  var attachTimers = {};
-  function composerApi() {
-    var c = globalThis.cake;
-    return c && c.composer && typeof c.composer.attach === "function" ? c.composer : null;
-  }
+      .emptystate {
+        padding: 24px 12px;
+        text-align: center;
+        color: var(--muted-foreground);
+        border: 1px dashed var(--border);
+        border-radius: 6px;
+      }
+      footer {
+        color: var(--muted-foreground);
+        font-size: 11px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+        padding-top: 2px;
+      }
+      footer .h {
+        font-family: var(--font-mono);
+      }
+      footer .bad {
+        color: var(--destructive);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app" aria-live="polite"></div>
+    <script>
+      (function () {
+        var api = globalThis.cakeArtifact;
+        var app = document.getElementById("app");
+        var state = null;
+        var hydrated = false;
+        var busy = false;
+        var inlineErr = "";
+        var openErr = "";
+        var openErrTimer = null;
+        var pendingOpen = {};
+        // Composer attach (cake.composer.attach). Hidden when the host does not provide it.
+        var attachState = {};
+        var attachTimers = {};
+        function composerApi() {
+          var c = globalThis.cake;
+          return c && c.composer && typeof c.composer.attach === "function" ? c.composer : null;
+        }
 
-  var SECTIONS = [
-    { key: "ready_to_merge", label: "Ready to merge", cls: "ready" },
-    { key: "binks_comments", label: "Binks comments", cls: "binks" },
-    { key: "ci_failing", label: "CI failing", cls: "fail" },
-    { key: "waiting_on_review", label: "Waiting on review", cls: "wait" },
-    { key: "draft", label: "Draft", cls: "draft" },
-    { key: "waiting_on_my_review", label: "Waiting on my review", cls: "mine" }
-  ];
+        var SECTIONS = [
+          { key: "ready_to_merge", label: "Ready to merge", cls: "ready" },
+          { key: "binks_comments", label: "Binks comments", cls: "binks" },
+          { key: "ci_failing", label: "CI failing", cls: "fail" },
+          { key: "waiting_on_review", label: "Waiting on review", cls: "wait" },
+          { key: "draft", label: "Draft", cls: "draft" },
+          { key: "waiting_on_my_review", label: "Waiting on my review", cls: "mine" },
+        ];
 
-  function el(tag, attrs, kids) {
-    var e = document.createElement(tag);
-    if (attrs) for (var k in attrs) {
-      var v = attrs[k];
-      if (v == null || v === false) continue;
-      if (k === "class") e.className = v;
-      else if (k === "text") e.textContent = v;
-      else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), v);
-      else e.setAttribute(k, v === true ? "" : String(v));
-    }
-    (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
-    return e;
-  }
+        function el(tag, attrs, kids) {
+          var e = document.createElement(tag);
+          if (attrs)
+            for (var k in attrs) {
+              var v = attrs[k];
+              if (v == null || v === false) continue;
+              if (k === "class") e.className = v;
+              else if (k === "text") e.textContent = v;
+              else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), v);
+              else e.setAttribute(k, v === true ? "" : String(v));
+            }
+          (kids || []).forEach(function (c) {
+            if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+          });
+          return e;
+        }
 
-  function ts(iso) { var t = iso ? Date.parse(iso) : NaN; return isNaN(t) ? null : t; }
-  function rel(iso) {
-    var t = ts(iso); if (t == null) return "never";
-    var s = Math.round((Date.now() - t) / 1000);
-    if (s < 45) return "just now";
-    var m = Math.round(s / 60); if (m < 60) return m + " min ago";
-    var h = Math.round(m / 60); if (h < 36) return h + " h ago";
-    var d = Math.round(h / 24); return d + " d ago";
-  }
-  function abs(iso) { var t = ts(iso); return t == null ? "" : new Date(t).toLocaleString(); }
-  function hm(iso) { var t = ts(iso); if (t == null) return "?"; var d = new Date(t); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
-  function arr(x) { return Array.isArray(x) ? x : []; }
+        function ts(iso) {
+          var t = iso ? Date.parse(iso) : NaN;
+          return isNaN(t) ? null : t;
+        }
+        function rel(iso) {
+          var t = ts(iso);
+          if (t == null) return "never";
+          var s = Math.round((Date.now() - t) / 1000);
+          if (s < 45) return "just now";
+          var m = Math.round(s / 60);
+          if (m < 60) return m + " min ago";
+          var h = Math.round(m / 60);
+          if (h < 36) return h + " h ago";
+          var d = Math.round(h / 24);
+          return d + " d ago";
+        }
+        function abs(iso) {
+          var t = ts(iso);
+          return t == null ? "" : new Date(t).toLocaleString();
+        }
+        function hm(iso) {
+          var t = ts(iso);
+          if (t == null) return "?";
+          var d = new Date(t);
+          return (
+            String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")
+          );
+        }
+        function arr(x) {
+          return Array.isArray(x) ? x : [];
+        }
 
-  function backendRefreshing() {
-    var r = state && state.refreshing;
-    var t = r && ts(r.startedAt);
-    return t != null && Date.now() - t < 120000;
-  }
+        function backendRefreshing() {
+          var r = state && state.refreshing;
+          var t = r && ts(r.startedAt);
+          return t != null && Date.now() - t < 120000;
+        }
 
-  function cleanStatus(row) {
-    var s = String(row.status || "");
-    if (row.imported) s = s.split(" · ").filter(function (p) { return !/^Imported from Meteorite/.test(p); }).join(" · ");
-    return s;
-  }
+        function cleanStatus(row) {
+          var s = String(row.status || "");
+          if (row.imported)
+            s = s
+              .split(" · ")
+              .filter(function (p) {
+                return !/^Imported from Meteorite/.test(p);
+              })
+              .join(" · ");
+          return s;
+        }
 
-  var SVG_NS = "http://www.w3.org/2000/svg";
-  function icon(d) {
-    var svg = document.createElementNS(SVG_NS, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("aria-hidden", "true");
-    var p = document.createElementNS(SVG_NS, "path");
-    p.setAttribute("d", d);
-    svg.appendChild(p);
-    return svg;
-  }
-  var PAPERCLIP = "m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l10-10a4 4 0 0 1 5.66 5.66l-10 10a2 2 0 0 1-2.83-2.83l9.19-9.19";
-  var CHECK = "m5 12 4 4L19 6";
-  var CROSS = "M6 6l12 12M18 6 6 18";
+        var SVG_NS = "http://www.w3.org/2000/svg";
+        function icon(d) {
+          var svg = document.createElementNS(SVG_NS, "svg");
+          svg.setAttribute("viewBox", "0 0 24 24");
+          svg.setAttribute("aria-hidden", "true");
+          var p = document.createElementNS(SVG_NS, "path");
+          p.setAttribute("d", d);
+          svg.appendChild(p);
+          return svg;
+        }
+        var PAPERCLIP =
+          "m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l10-10a4 4 0 0 1 5.66 5.66l-10 10a2 2 0 0 1-2.83-2.83l9.19-9.19";
+        var CHECK = "m5 12 4 4L19 6";
+        var CROSS = "M6 6l12 12M18 6 6 18";
 
-  function attachKey(row) { return String(row.group || "") + ":" + String(row.number); }
+        function attachKey(row) {
+          return String(row.group || "") + ":" + String(row.number);
+        }
 
-  function attachButton(row) {
-    if (!composerApi()) return null;
-    var key = attachKey(row);
-    var st = attachState[key];
-    var label = "Add #" + row.number + " to chat composer";
-    var title = st ? st.message : "Add to the current chat's composer (not sent)";
-    return el("button", {
-      type: "button",
-      class: "attach" + (st && st.kind === "ok" ? " done" : st && st.kind === "error" ? " bad" : ""),
-      "aria-label": label,
-      "data-attach-key": key,
-      title: title,
-      disabled: st && st.kind === "pending",
-      onclick: function (ev) { ev.preventDefault(); ev.stopPropagation(); attachRow(row); }
-    }, [icon(st && st.kind === "ok" ? CHECK : st && st.kind === "error" ? CROSS : PAPERCLIP)]);
-  }
+        function attachButton(row) {
+          if (!composerApi()) return null;
+          var key = attachKey(row);
+          var st = attachState[key];
+          var label = "Add #" + row.number + " to chat composer";
+          var title = st ? st.message : "Add to the current chat's composer (not sent)";
+          return el(
+            "button",
+            {
+              type: "button",
+              class:
+                "attach" +
+                (st && st.kind === "ok" ? " done" : st && st.kind === "error" ? " bad" : ""),
+              "aria-label": label,
+              "data-attach-key": key,
+              title: title,
+              disabled: st && st.kind === "pending",
+              onclick: function (ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                attachRow(row);
+              },
+            },
+            [icon(st && st.kind === "ok" ? CHECK : st && st.kind === "error" ? CROSS : PAPERCLIP)],
+          );
+        }
 
-  function setAttachState(key, value, clearAfterMs) {
-    if (attachTimers[key]) { clearTimeout(attachTimers[key]); delete attachTimers[key]; }
-    if (value) attachState[key] = value; else delete attachState[key];
-    if (clearAfterMs) attachTimers[key] = setTimeout(function () { delete attachTimers[key]; delete attachState[key]; render(); }, clearAfterMs);
-    render();
-  }
+        function setAttachState(key, value, clearAfterMs) {
+          if (attachTimers[key]) {
+            clearTimeout(attachTimers[key]);
+            delete attachTimers[key];
+          }
+          if (value) attachState[key] = value;
+          else delete attachState[key];
+          if (clearAfterMs)
+            attachTimers[key] = setTimeout(function () {
+              delete attachTimers[key];
+              delete attachState[key];
+              render();
+            }, clearAfterMs);
+          render();
+        }
 
-  async function attachRow(row) {
-    var composer = composerApi();
-    if (!composer) return;
-    var key = attachKey(row);
-    if (attachState[key] && attachState[key].kind === "pending") return;
-    var n = Number(row.number);
-    var title = String(row.title || "(untitled)");
-    var label = ("#" + n + " " + title).slice(0, 200);
-    var data = {
-      repo: "shop/world",
-      number: n,
-      title: title.slice(0, 500),
-      url: row.url || ("https://delta.shopify.io/shop/world/pull/" + n),
-      section: (SECTIONS.filter(function (s) { return s.key === row.group; })[0] || {}).label || row.group || null,
-      status: cleanStatus(row).slice(0, 500) || null,
-      updatedAt: row.updatedAt || null
-    };
-    if (row.author) data.author = String(row.author).slice(0, 100);
-    if (row.draft != null) data.draft = !!row.draft;
-    setAttachState(key, { kind: "pending", message: "Adding…" });
-    var result;
-    try { result = await composer.attach({ label: label, itemId: String(n), data: data }); }
-    catch (e) { result = { ok: false, error: (e && e.message) || String(e) }; }
-    if (result && result.ok) {
-      var where = result.target && result.target.title ? result.target.title : "the chat";
-      setAttachState(key, { kind: "ok", message: (result.duplicate ? "Already in " : "Added to ") + where + " — not sent" }, 2500);
-    } else {
-      var msg = (result && result.error) || "Unknown error";
-      setAttachState(key, { kind: "error", message: msg }, 6000);
-      showOpenErr("Couldn't add #" + n + " to the composer: " + msg);
-    }
-  }
+        async function attachRow(row) {
+          var composer = composerApi();
+          if (!composer) return;
+          var key = attachKey(row);
+          if (attachState[key] && attachState[key].kind === "pending") return;
+          var n = Number(row.number);
+          var title = String(row.title || "(untitled)");
+          var label = ("#" + n + " " + title).slice(0, 200);
+          var data = {
+            repo: "shop/world",
+            number: n,
+            title: title.slice(0, 500),
+            url: row.url || "https://delta.shopify.io/shop/world/pull/" + n,
+            section:
+              (
+                SECTIONS.filter(function (s) {
+                  return s.key === row.group;
+                })[0] || {}
+              ).label ||
+              row.group ||
+              null,
+            status: cleanStatus(row).slice(0, 500) || null,
+            updatedAt: row.updatedAt || null,
+          };
+          if (row.author) data.author = String(row.author).slice(0, 100);
+          if (row.draft != null) data.draft = !!row.draft;
+          setAttachState(key, { kind: "pending", message: "Adding…" });
+          var result;
+          try {
+            result = await composer.attach({ label: label, itemId: String(n), data: data });
+          } catch (e) {
+            result = { ok: false, error: (e && e.message) || String(e) };
+          }
+          if (result && result.ok) {
+            var where = result.target && result.target.title ? result.target.title : "the chat";
+            setAttachState(
+              key,
+              {
+                kind: "ok",
+                message: (result.duplicate ? "Already in " : "Added to ") + where + " — not sent",
+              },
+              2500,
+            );
+          } else {
+            var msg = (result && result.error) || "Unknown error";
+            setAttachState(key, { kind: "error", message: msg }, 6000);
+            showOpenErr("Couldn't add #" + n + " to the composer: " + msg);
+          }
+        }
 
-  function rowEl(row) {
-    var status = cleanStatus(row);
-    var bits = [];
-    if (status) bits.push(status);
-    if (row.updatedAt) bits.push("updated " + rel(row.updatedAt));
-    var url = "https://delta.shopify.io/shop/world/pull/" + encodeURIComponent(String(row.number));
-    return el("li", null, [
-      el("div", { class: "line1" }, [
-        el("a", { href: url, "data-pr": String(row.number), class: pendingOpen[Number(row.number)] ? "pending" : null, "aria-busy": pendingOpen[Number(row.number)] ? "true" : null, title: "#" + row.number + " " + (row.title || "") }, [
-          el("span", { class: "num", text: "#" + row.number }),
-          el("span", { class: "t", text: row.title || "(untitled)" })
-        ]),
-        row.imported ? el("span", { class: "pill", title: "Imported from Meteorite (read-only)", text: "imported" }) : null,
-        attachButton(row)
-      ]),
-      el("div", { class: "line2", title: row.updatedAt ? abs(row.updatedAt) : null, text: bits.join(" · ") })
-    ]);
-  }
+        function rowEl(row) {
+          var status = cleanStatus(row);
+          var bits = [];
+          if (status) bits.push(status);
+          if (row.updatedAt) bits.push("updated " + rel(row.updatedAt));
+          var url =
+            "https://delta.shopify.io/shop/world/pull/" + encodeURIComponent(String(row.number));
+          return el("li", null, [
+            el("div", { class: "line1" }, [
+              el(
+                "a",
+                {
+                  href: url,
+                  "data-pr": String(row.number),
+                  class: pendingOpen[Number(row.number)] ? "pending" : null,
+                  "aria-busy": pendingOpen[Number(row.number)] ? "true" : null,
+                  title: "#" + row.number + " " + (row.title || ""),
+                },
+                [
+                  el("span", { class: "num", text: "#" + row.number }),
+                  el("span", { class: "t", text: row.title || "(untitled)" }),
+                ],
+              ),
+              row.imported
+                ? el("span", {
+                    class: "pill",
+                    title: "Imported from Meteorite (read-only)",
+                    text: "imported",
+                  })
+                : null,
+              attachButton(row),
+            ]),
+            el("div", {
+              class: "line2",
+              title: row.updatedAt ? abs(row.updatedAt) : null,
+              text: bits.join(" · "),
+            }),
+          ]);
+        }
 
-  function onRefresh() {
-    if (busy) return;
-    inlineErr = "";
-    if (!api || typeof api.callTool !== "function") { inlineErr = "Refresh unavailable: no artifact backend in this view."; render(); return; }
-    busy = true; render();
-    Promise.resolve().then(function () { return api.callTool("refresh", { source: "view" }); })
-      .catch(function (e) { inlineErr = (e && e.message) || String(e); })
-      .then(function () { busy = false; render(); });
-  }
+        function onRefresh() {
+          if (busy) return;
+          inlineErr = "";
+          if (!api || typeof api.callTool !== "function") {
+            inlineErr = "Refresh unavailable: no artifact backend in this view.";
+            render();
+            return;
+          }
+          busy = true;
+          render();
+          Promise.resolve()
+            .then(function () {
+              return api.callTool("refresh", { source: "view" });
+            })
+            .catch(function (e) {
+              inlineErr = (e && e.message) || String(e);
+            })
+            .then(function () {
+              busy = false;
+              render();
+            });
+        }
 
-  function render() {
-    var s = state || {};
-    var authored = arr(s.authored);
-    var reviews = arr(s.reviewRequests);
-    var groups = {};
-    SECTIONS.forEach(function (sec) { groups[sec.key] = []; });
-    authored.forEach(function (r) { (groups[r.group] || (groups[r.group] = [])).push(r); });
-    groups.waiting_on_my_review = reviews;
+        function render() {
+          var s = state || {};
+          var authored = arr(s.authored);
+          var reviews = arr(s.reviewRequests);
+          var groups = {};
+          SECTIONS.forEach(function (sec) {
+            groups[sec.key] = [];
+          });
+          authored.forEach(function (r) {
+            (groups[r.group] || (groups[r.group] = [])).push(r);
+          });
+          groups.waiting_on_my_review = reviews;
 
-    var running = busy || backendRefreshing();
-    var me = s.me && s.me.login ? "@" + s.me.login : "";
-    var focusedRefresh = document.activeElement && document.activeElement.id === "refresh-btn";
-    var focusedAttach = document.activeElement && document.activeElement.getAttribute ? document.activeElement.getAttribute("data-attach-key") : null;
+          var running = busy || backendRefreshing();
+          var me = s.me && s.me.login ? "@" + s.me.login : "";
+          var focusedRefresh =
+            document.activeElement && document.activeElement.id === "refresh-btn";
+          var focusedAttach =
+            document.activeElement && document.activeElement.getAttribute
+              ? document.activeElement.getAttribute("data-attach-key")
+              : null;
 
-    var nodes = [];
-    nodes.push(el("header", null, [
-      el("div", { class: "ttl" }, [el("h1", { text: "Delta PRs" }), el("span", { class: "sub", text: "shop/world" + (me ? " · " + me : "") })]),
-      el("div", { class: "actions" }, [
-        el("span", { class: "refreshed", title: abs(s.refreshedAt) || null, text: s.refreshedAt ? "Refreshed " + rel(s.refreshedAt) : "Never refreshed" }),
-        el("button", { id: "refresh-btn", class: "btn", type: "button", disabled: running, "aria-busy": running ? "true" : null, onclick: onRefresh },
-          running ? [el("span", { class: "spin", "aria-hidden": "true" }), "Refreshing…"] : ["Refresh"]),
-        inlineErr ? el("span", { class: "inline-err", role: "alert", text: inlineErr }) : null,
-        openErr ? el("span", { class: "inline-err", role: "alert", text: openErr }) : null
-      ])
-    ]));
+          var nodes = [];
+          nodes.push(
+            el("header", null, [
+              el("div", { class: "ttl" }, [
+                el("h1", { text: "Delta PRs" }),
+                el("span", { class: "sub", text: "shop/world" + (me ? " · " + me : "") }),
+              ]),
+              el("div", { class: "actions" }, [
+                el("span", {
+                  class: "refreshed",
+                  title: abs(s.refreshedAt) || null,
+                  text: s.refreshedAt ? "Refreshed " + rel(s.refreshedAt) : "Never refreshed",
+                }),
+                el(
+                  "button",
+                  {
+                    id: "refresh-btn",
+                    class: "btn",
+                    type: "button",
+                    disabled: running,
+                    "aria-busy": running ? "true" : null,
+                    onclick: onRefresh,
+                  },
+                  running
+                    ? [el("span", { class: "spin", "aria-hidden": "true" }), "Refreshing…"]
+                    : ["Refresh"],
+                ),
+                inlineErr
+                  ? el("span", { class: "inline-err", role: "alert", text: inlineErr })
+                  : null,
+                openErr ? el("span", { class: "inline-err", role: "alert", text: openErr }) : null,
+              ]),
+            ]),
+          );
 
-    var le = s.lastError;
-    if (le && le.message && (ts(s.refreshedAt) == null || (ts(le.at) || 0) > ts(s.refreshedAt))) {
-      nodes.push(el("div", { class: "banner err", role: "alert" }, [
-        el("div", null, [el("strong", { text: "Last refresh failed " + rel(le.at) + (le.source ? " (" + le.source + ")" : "") + ": " }), String(le.message)]),
-        el("div", { class: "note", text: s.refreshedAt ? "PRs below are from the last successful refresh, " + rel(s.refreshedAt) + "." : "No successful refresh yet." })
-      ]));
-    }
-    var warns = arr(s.warnings);
-    if (warns.length) nodes.push(el("div", { class: "banner warn" }, [el("ul", null, warns.map(function (w) { return el("li", { text: String(w) }); }))]));
+          var le = s.lastError;
+          if (
+            le &&
+            le.message &&
+            (ts(s.refreshedAt) == null || (ts(le.at) || 0) > ts(s.refreshedAt))
+          ) {
+            nodes.push(
+              el("div", { class: "banner err", role: "alert" }, [
+                el("div", null, [
+                  el("strong", {
+                    text:
+                      "Last refresh failed " +
+                      rel(le.at) +
+                      (le.source ? " (" + le.source + ")" : "") +
+                      ": ",
+                  }),
+                  String(le.message),
+                ]),
+                el("div", {
+                  class: "note",
+                  text: s.refreshedAt
+                    ? "PRs below are from the last successful refresh, " + rel(s.refreshedAt) + "."
+                    : "No successful refresh yet.",
+                }),
+              ]),
+            );
+          }
+          var warns = arr(s.warnings);
+          if (warns.length)
+            nodes.push(
+              el("div", { class: "banner warn" }, [
+                el(
+                  "ul",
+                  null,
+                  warns.map(function (w) {
+                    return el("li", { text: String(w) });
+                  }),
+                ),
+              ]),
+            );
 
-    if (!hydrated) {
-      nodes.push(el("div", { class: "emptystate", text: "Loading…" }));
-    } else if (!s.refreshedAt && !authored.length && !reviews.length) {
-      nodes.push(el("div", { class: "emptystate", text: "Not refreshed yet — press Refresh." }));
-    } else {
-      nodes.push(el("nav", { class: "chips", "aria-label": "Sections" }, SECTIONS.map(function (sec) {
-        var n = groups[sec.key].length;
-        return el("button", { type: "button", class: "chip " + sec.cls + (n ? "" : " zero"), onclick: function () {
-          var t = document.getElementById("sec-" + sec.key); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" });
-        } }, [el("span", { class: "dot", "aria-hidden": "true" }), sec.label, el("span", { class: "n", text: String(n) })]);
-      })));
-      SECTIONS.forEach(function (sec) {
-        if (sec.key === "waiting_on_my_review") nodes.push(el("div", { class: "sep", text: "Reviews requested from you" }));
-        var rows = groups[sec.key];
-        var head = el("h2", null, [sec.label, el("span", { class: "n", text: String(rows.length) }), rows.length ? null : el("span", { class: "none", text: "Nothing here" })]);
-        nodes.push(el("section", { id: "sec-" + sec.key, class: sec.cls + (rows.length ? "" : " empty"), "aria-label": sec.label }, [
-          head, rows.length ? el("ul", { class: "rows" }, rows.map(rowEl)) : null
-        ]));
-      });
-    }
+          if (!hydrated) {
+            nodes.push(el("div", { class: "emptystate", text: "Loading…" }));
+          } else if (!s.refreshedAt && !authored.length && !reviews.length) {
+            nodes.push(
+              el("div", { class: "emptystate", text: "Not refreshed yet — press Refresh." }),
+            );
+          } else {
+            nodes.push(
+              el(
+                "nav",
+                { class: "chips", "aria-label": "Sections" },
+                SECTIONS.map(function (sec) {
+                  var n = groups[sec.key].length;
+                  return el(
+                    "button",
+                    {
+                      type: "button",
+                      class: "chip " + sec.cls + (n ? "" : " zero"),
+                      onclick: function () {
+                        var t = document.getElementById("sec-" + sec.key);
+                        if (t) t.scrollIntoView({ behavior: "smooth", block: "start" });
+                      },
+                    },
+                    [
+                      el("span", { class: "dot", "aria-hidden": "true" }),
+                      sec.label,
+                      el("span", { class: "n", text: String(n) }),
+                    ],
+                  );
+                }),
+              ),
+            );
+            SECTIONS.forEach(function (sec) {
+              if (sec.key === "waiting_on_my_review")
+                nodes.push(el("div", { class: "sep", text: "Reviews requested from you" }));
+              var rows = groups[sec.key];
+              var head = el("h2", null, [
+                sec.label,
+                el("span", { class: "n", text: String(rows.length) }),
+                rows.length ? null : el("span", { class: "none", text: "Nothing here" }),
+              ]);
+              nodes.push(
+                el(
+                  "section",
+                  {
+                    id: "sec-" + sec.key,
+                    class: sec.cls + (rows.length ? "" : " empty"),
+                    "aria-label": sec.label,
+                  },
+                  [head, rows.length ? el("ul", { class: "rows" }, rows.map(rowEl)) : null],
+                ),
+              );
+            });
+          }
 
-    var hist = arr(s.history).slice(0, 3);
-    nodes.push(el("footer", null, [el("span", { text: "Auto-refreshes every 15 min · links open in your browser" })].concat(hist.map(function (h) {
-      var dur = typeof h.durationMs === "number" ? " · " + (h.durationMs / 1000).toFixed(1) + " s" : "";
-      return el("span", { class: "h" + (h.ok ? "" : " bad"), title: abs(h.at),
-        text: hm(h.at) + " · " + (h.source || "?") + " · " + (h.ok ? "ok" : "failed: " + String(h.error || "").slice(0, 80)) + dur });
-    }))));
+          var hist = arr(s.history).slice(0, 3);
+          nodes.push(
+            el(
+              "footer",
+              null,
+              [
+                el("span", { text: "Auto-refreshes every 15 min · links open in your browser" }),
+              ].concat(
+                hist.map(function (h) {
+                  var dur =
+                    typeof h.durationMs === "number"
+                      ? " · " + (h.durationMs / 1000).toFixed(1) + " s"
+                      : "";
+                  return el("span", {
+                    class: "h" + (h.ok ? "" : " bad"),
+                    title: abs(h.at),
+                    text:
+                      hm(h.at) +
+                      " · " +
+                      (h.source || "?") +
+                      " · " +
+                      (h.ok ? "ok" : "failed: " + String(h.error || "").slice(0, 80)) +
+                      dur,
+                  });
+                }),
+              ),
+            ),
+          );
 
-    app.replaceChildren.apply(app, nodes);
-    if (focusedRefresh) { var b = document.getElementById("refresh-btn"); if (b) b.focus(); }
-    if (focusedAttach) {
-      var again = Array.prototype.find.call(app.querySelectorAll("button[data-attach-key]"), function (x) { return x.getAttribute("data-attach-key") === focusedAttach; });
-      if (again) again.focus();
-    }
-  }
+          app.replaceChildren.apply(app, nodes);
+          if (focusedRefresh) {
+            var b = document.getElementById("refresh-btn");
+            if (b) b.focus();
+          }
+          if (focusedAttach) {
+            var again = Array.prototype.find.call(
+              app.querySelectorAll("button[data-attach-key]"),
+              function (x) {
+                return x.getAttribute("data-attach-key") === focusedAttach;
+              },
+            );
+            if (again) again.focus();
+          }
+        }
 
-  function take(snap) {
-    if (!snap) return;
-    if (snap.hydrated === false) return;
-    hydrated = true;
-    state = snap.value && typeof snap.value === "object" ? snap.value : null;
-    render();
-  }
+        function take(snap) {
+          if (!snap) return;
+          if (snap.hydrated === false) return;
+          hydrated = true;
+          state = snap.value && typeof snap.value === "object" ? snap.value : null;
+          render();
+        }
 
-  async function start() {
-    render();
-    if (!api) { hydrated = true; inlineErr = "Artifact state is unavailable in this view."; render(); return; }
-    try {
-      var r = await api.read();
-      hydrated = true;
-      state = r && r.value && typeof r.value === "object" ? r.value : null;
-      render();
-    } catch (e) {
-      hydrated = true; inlineErr = "Could not read state: " + ((e && e.message) || e); render();
-    }
-    try { take(api.getSnapshot()); } catch (e) {}
-    try { api.subscribe(function () { try { take(api.getSnapshot()); } catch (e) {} }); } catch (e) {}
-  }
+        async function start() {
+          render();
+          if (!api) {
+            hydrated = true;
+            inlineErr = "Artifact state is unavailable in this view.";
+            render();
+            return;
+          }
+          try {
+            var r = await api.read();
+            hydrated = true;
+            state = r && r.value && typeof r.value === "object" ? r.value : null;
+            render();
+          } catch (e) {
+            hydrated = true;
+            inlineErr = "Could not read state: " + ((e && e.message) || e);
+            render();
+          }
+          try {
+            take(api.getSnapshot());
+          } catch (e) {}
+          try {
+            api.subscribe(function () {
+              try {
+                take(api.getSnapshot());
+              } catch (e) {}
+            });
+          } catch (e) {}
+        }
 
-  function showOpenErr(msg) {
-    openErr = msg;
-    if (openErrTimer) clearTimeout(openErrTimer);
-    openErrTimer = setTimeout(function () { openErr = ""; openErrTimer = null; render(); }, 8000);
-    render();
-  }
+        function showOpenErr(msg) {
+          openErr = msg;
+          if (openErrTimer) clearTimeout(openErrTimer);
+          openErrTimer = setTimeout(function () {
+            openErr = "";
+            openErrTimer = null;
+            render();
+          }, 8000);
+          render();
+        }
 
-  async function openPr(n) {
-    var url = "https://delta.shopify.io/shop/world/pull/" + n;
-    if (pendingOpen[n]) return;
-    if (!api || typeof api.callTool !== "function") { showOpenErr("Couldn't open #" + n + ": no artifact backend in this view. Copy the link: " + url); return; }
-    pendingOpen[n] = true; render();
-    try {
-      await api.callTool("open_pr", { number: n });
-    } catch (e) {
-      delete pendingOpen[n];
-      showOpenErr("Couldn't open #" + n + ": " + ((e && e.message) || String(e)) + ". Copy the link: " + url);
-      return;
-    }
-    delete pendingOpen[n]; render();
-  }
+        async function openPr(n) {
+          var url = "https://delta.shopify.io/shop/world/pull/" + n;
+          if (pendingOpen[n]) return;
+          if (!api || typeof api.callTool !== "function") {
+            showOpenErr(
+              "Couldn't open #" + n + ": no artifact backend in this view. Copy the link: " + url,
+            );
+            return;
+          }
+          pendingOpen[n] = true;
+          render();
+          try {
+            await api.callTool("open_pr", { number: n });
+          } catch (e) {
+            delete pendingOpen[n];
+            showOpenErr(
+              "Couldn't open #" +
+                n +
+                ": " +
+                ((e && e.message) || String(e)) +
+                ". Copy the link: " +
+                url,
+            );
+            return;
+          }
+          delete pendingOpen[n];
+          render();
+        }
 
-  function onLinkClick(ev) {
-    var a = ev.target && ev.target.closest ? ev.target.closest("a[data-pr]") : null;
-    if (!a || !app.contains(a)) return;
-    if (ev.type === "auxclick" && ev.button !== 1) return;
-    ev.preventDefault();
-    var n = Number(a.getAttribute("data-pr"));
-    if (!Number.isInteger(n) || n <= 0) return;
-    openPr(n);
-  }
-  app.addEventListener("click", onLinkClick);
-  app.addEventListener("auxclick", onLinkClick);
+        function onLinkClick(ev) {
+          var a = ev.target && ev.target.closest ? ev.target.closest("a[data-pr]") : null;
+          if (!a || !app.contains(a)) return;
+          if (ev.type === "auxclick" && ev.button !== 1) return;
+          ev.preventDefault();
+          var n = Number(a.getAttribute("data-pr"));
+          if (!Number.isInteger(n) || n <= 0) return;
+          openPr(n);
+        }
+        app.addEventListener("click", onLinkClick);
+        app.addEventListener("auxclick", onLinkClick);
 
-  setInterval(function () { if (!document.hidden) render(); }, 30000);
-  start();
-})();
-</script>
-</body>
+        setInterval(function () {
+          if (!document.hidden) render();
+        }, 30000);
+        start();
+      })();
+    </script>
+  </body>
 </html>
