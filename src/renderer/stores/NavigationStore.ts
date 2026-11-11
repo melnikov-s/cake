@@ -701,9 +701,12 @@ export class NavigationStore extends Store<{
   }
 
   showArtifactLibrary(sessionId?: string, lineageId?: string, revision?: number) {
+    const active = this.props.shell.activeConversation;
+    const targetSessionId =
+      sessionId ?? (active?.kind === "automation-session" ? undefined : active?.sessionId);
     this.workbench.dismissSecondarySurfaces();
     const artifacts = this.props.artifacts();
-    artifacts.open(sessionId);
+    artifacts.open(targetSessionId);
     this.props.shell.showArtifactLibrary();
     if (lineageId)
       void artifacts.detailStore.select(

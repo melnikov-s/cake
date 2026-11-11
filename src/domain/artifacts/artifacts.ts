@@ -1,4 +1,9 @@
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  isCakeChatSessionId,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
+import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
+import { ApplicationState } from "../../services/storage/ApplicationState";
 import { Effect } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -111,6 +116,32 @@ const authorizeTarget = Effect.fn("Artifacts.authorizeTarget")(function* (
   sessionId: string,
   target: ArtifactLinkTarget,
 ) {
+  if (isCakeChatSessionId(sessionId)) {
+    // Permanent chats are Durable conversations, not Pi Project Session files.
+    // Their catalog-only links must stay direct and scoped to the calling chat.
+    if (target.type !== "session" || target.sessionId !== sessionId)
+      return yield* new ArtifactError({
+        operation: "authorize",
+        message: "Permanent chat target mismatch",
+      });
+    if (isProjectChatSessionId(sessionId)) {
+      const application = yield* ApplicationState;
+      const project = application
+        .snapshot()
+        .projects.find((candidate) => projectChatSessionId(candidate.path) === sessionId);
+      if (!project)
+        return yield* new ArtifactError({
+          operation: "authorize",
+          message: "Project Chat belongs to no registered project",
+        });
+      if (!(yield* (yield* ProjectAccess).isAllowed(project.path)))
+        return yield* new ArtifactError({
+          operation: "authorize",
+          message: "Project path was not selected by the user",
+        });
+    }
+    return;
+  }
   yield* authorizedWorkingDirectory(sessionId);
   if (target.type === "session") {
     if (target.sessionId !== sessionId)

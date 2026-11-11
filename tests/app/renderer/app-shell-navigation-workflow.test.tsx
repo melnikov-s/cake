@@ -68,6 +68,15 @@ async function selectProjectSession(
 // The artifact browser exposes the shell's conversation history; workbench Back/Forward
 // first traverses pane-local history (covered by project-navigation/workbench workflows).
 describe("App shell navigation workflow", () => {
+  it("keeps Global Cake Chat as the sidebar library link target and honors an explicit caller", async () => {
+    using fixture = renderAppShellNavigation();
+    await fixture.user.click(cakeChatButton());
+    await openLibrary(fixture.user);
+    expect(fixture.root.artifactLibraryStore.activeSessionId).toBe(CAKE_CHAT_SESSION_ID);
+    act(() => fixture.root.navigationStore.showArtifactLibrary("alpha"));
+    expect(fixture.root.artifactLibraryStore.activeSessionId).toBe("alpha");
+  });
+
   it.each(
     (["project-session", "project-chat"] as const).flatMap((initial) =>
       (["settings", "automations", "artifact-library"] as const).map((destination) => ({
@@ -132,6 +141,9 @@ describe("App shell navigation workflow", () => {
         document.querySelector('[aria-label^="Open Project Chat for"][aria-current="page"]'),
       ).toBeNull();
       if (destination === "artifact-library") {
+        expect(fixture.root.artifactLibraryStore.activeSessionId).toBe(
+          initial === "project-chat" ? projectChats[0]!.sessionId : "alpha",
+        );
         expect(screen.getByRole("textbox", { name: "Search artifact library" })).toBeDefined();
         expect(screen.getByRole("button", { name: "Artifacts" }).getAttribute("aria-current")).toBe(
           "page",

@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from "react";
 import type { SourceLocation } from "../../contracts/editor/source-location";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { observer } from "r-state-tree/react";
 import { ArtifactHost } from "@/components/artifact-host";
 import { cn } from "@/lib/utils";
@@ -342,12 +345,14 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                         ? "Shared with workgroup"
                         : link.target.sessionId === CAKE_CHAT_SESSION_ID
                           ? "Cake Chat"
-                          : (sessions.find(link.target.sessionId)?.title ?? (
-                              <SessionIdLink
-                                sessionId={link.target.sessionId}
-                                knownSessionIds={sessions.authoritativeSessionIds}
-                              />
-                            ))}
+                          : isProjectChatSessionId(link.target.sessionId)
+                            ? "Project Chat"
+                            : (sessions.find(link.target.sessionId)?.title ?? (
+                                <SessionIdLink
+                                  sessionId={link.target.sessionId}
+                                  knownSessionIds={sessions.authoritativeSessionIds}
+                                />
+                              ))}
                     </strong>
                     <span className="shrink-0 font-mono text-xs text-muted-foreground">
                       {link.mode === "follow-latest"
@@ -366,7 +371,13 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                         void referencePreviews.link(activeSessionId, lineageId, target)
                       }
                     >
-                      {target.type === "family" ? "Link to this family" : "Link to this session"}
+                      {target.type === "family"
+                        ? "Link to this family"
+                        : isProjectChatSessionId(activeSessionId)
+                          ? "Link to Project Chat"
+                          : activeSessionId === CAKE_CHAT_SESSION_ID
+                            ? "Link to Cake Chat"
+                            : "Link to this session"}
                     </Button>
                   ) : (
                     <div className="flex items-center gap-1.5">

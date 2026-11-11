@@ -14,10 +14,12 @@ import {
   type ArtifactLineageId,
   type ArtifactLineagePage,
   type ArtifactLineageSummary,
+  type ArtifactLink,
   type ArtifactRevision,
   type ArtifactRevisionMetadata,
   type ArtifactTextComparison,
 } from "../../../src/contracts/artifacts/artifact-lineage";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { Client } from "../../../src/renderer/client/Client";
 import { ArtifactLibrary } from "../../../src/renderer/components/artifact-library";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
@@ -89,6 +91,7 @@ function gate<T>() {
 function renderLibrary(
   artifacts: Partial<Client["artifacts"]> = {},
   inlineWidgets: Partial<Client["inlineWidgets"]> = {},
+  activeSessionId = "session-1",
 ) {
   const fixture = createRendererStoreFixture({
     sessions: [
@@ -118,7 +121,7 @@ function renderLibrary(
       },
     },
   });
-  fixture.root.artifactLibraryStore.open("session-1");
+  fixture.root.artifactLibraryStore.open(activeSessionId);
   const events = artifactObserverWorkflowEvents(fixture.root);
   const view = render(
     <ArtifactLibrary
@@ -153,6 +156,66 @@ async function confirmRestore(user: ReturnType<typeof userEvent.setup>) {
 afterEach(cleanup);
 
 describe("Artifact library workflow", () => {
+  it.each([
+    ["project-chat:" + "a".repeat(64), "Project Chat"],
+    [CAKE_CHAT_SESSION_ID, "Cake Chat"],
+  ])(
+    "uses the durable direct target for %s without a Project Session summary",
+    async (sessionId, label) => {
+      let links: ReadonlyArray<ArtifactLink> = [];
+      const link = vi.fn<Client["artifacts"]["link"]>(async (input) => {
+        const linked = {
+          lineageId: reportId,
+          target: input.target,
+          selection: input.selection,
+          createdAt: metadata(1).publishedAt,
+        };
+        links = [linked];
+        return linked;
+      });
+      const setSelection = vi.fn<Client["artifacts"]["setSelection"]>(async (input) => {
+        const linked = {
+          lineageId: reportId,
+          target: input.target,
+          selection: input.selection,
+          createdAt: metadata(1).publishedAt,
+        };
+        links = [linked];
+        return linked;
+      });
+      const unlink = vi.fn<Client["artifacts"]["unlink"]>(async () => {
+        links = [];
+      });
+      await using fixture = renderLibrary(
+        { detail: async () => ({ ...detail(), links }), link, setSelection, unlink },
+        {},
+        sessionId,
+      );
+      await openReport(fixture.user);
+      await fixture.user.click(screen.getByRole("button", { name: `Link to ${label}` }));
+      const target = { type: "session", sessionId };
+      expect(link).toHaveBeenCalledWith(
+        { sessionId, lineageId: reportId, target, selection: { mode: "follow-latest" } },
+        expect.anything(),
+      );
+      expect(await screen.findByText(label, { exact: true })).toBeDefined();
+      await fixture.user.click(screen.getByRole("button", { name: "Pin r2" }));
+      expect(await screen.findByText("Pinned r2")).toBeDefined();
+      expect(setSelection).toHaveBeenLastCalledWith(
+        { sessionId, lineageId: reportId, target, selection: { mode: "pinned", revision: 2 } },
+        expect.anything(),
+      );
+      await fixture.user.click(screen.getByRole("button", { name: "Follow latest" }));
+      expect(await screen.findByText("Following latest")).toBeDefined();
+      await fixture.user.click(screen.getByRole("button", { name: "Unlink" }));
+      expect(await screen.findByRole("button", { name: `Link to ${label}` })).toBeDefined();
+      expect(unlink).toHaveBeenCalledWith(
+        { sessionId, lineageId: reportId, target },
+        expect.anything(),
+      );
+    },
+  );
+
   it("opens paused runtime views without resuming background work, exposes lifecycle controls and failures", async () => {
     const widgetMetadata = { ...metadata(2), kind: "widget" as const };
     const widget = { ...summary(), latest: widgetMetadata, global: true };
