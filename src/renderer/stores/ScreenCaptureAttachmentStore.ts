@@ -338,6 +338,14 @@ export class ScreenCaptureAttachmentStore extends Store<{
       if (context) draft.setText([draft.text, `${name}\n${context}`].filter(Boolean).join("\n\n"));
       // Pixels and draft handoff are complete. Never dismiss captured content on failure/cancel.
       this.props.fullscreen().closeAll();
+      // Ordinary navigation retains inspection. A completed capture must instead reveal
+      // the exact composer that received it, not its retained subagent/secondary panel.
+      const session =
+        target.kind === "project-session"
+          ? this.props.registry.findSession(target.sessionId)
+          : this.props.cakeChat().registry.find(target.sessionId);
+      if (session?.conversationSessionStore.sideChatStore.target)
+        session.conversationSessionStore.sideChatStore.close();
       const navigation = this.props.navigation();
       if (target.kind === "project-session") navigation.showLoadedProjectSession(target.sessionId);
       else await navigation.openCakeChat(target.sessionId);

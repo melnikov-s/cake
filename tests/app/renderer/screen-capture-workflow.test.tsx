@@ -19,6 +19,14 @@ import { ScreenCaptureOverlayStore } from "../../../src/renderer/stores/ScreenCa
 import { createTestClient } from "./test-client";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import { applySubagentUpdate } from "../../../src/renderer/reducers/SubagentReducer";
+import {
+  CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { workerActivity } from "./subagent-activity-workflow-fixture";
+import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
+import { CakeChatSummary } from "../../../src/renderer/models/CakeChatSummary";
 import { applyAutomationCatalogUpdate } from "../../../src/renderer/reducers/AutomationReducer";
 import { automationSession, automationSummary } from "./fixtures/automation-fixtures";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -278,7 +286,190 @@ async function openMenu(fixture: ReturnType<typeof renderCapture>) {
   await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
   return within(popup());
 }
+async function inspectCaptureWorker(
+  fixture: ReturnType<typeof renderCapture>,
+  destination: { kind: "project-session" | "cake-chat"; sessionId: string },
+) {
+  const { sessionId } = destination;
+  const handleId = SubagentHandleId.make(crypto.randomUUID());
+  await act(async () => {
+    if (destination.kind === "cake-chat") {
+      if (!fixture.models.cakeChatCatalog.find(sessionId))
+        fixture.models.cakeChatCatalog.sessions.push(
+          CakeChatSummary.create({
+            sessionId,
+            title: "Cake Chat",
+            createdAt: "2026-01-01T00:00:00Z",
+            modifiedAt: "2026-01-01T00:00:00Z",
+            messageCount: 0,
+            resolved: false,
+            unread: false,
+          }),
+        );
+      await fixture.root.navigationStore.openCakeChat(sessionId);
+    } else fixture.select(sessionId);
+    applySubagentUpdate(fixture.models.subagentCatalog(sessionId), sessionId, {
+      _tag: "Snapshot",
+      revision: 1,
+      parentSessionId: sessionId,
+      activities: [
+        workerActivity({
+          handleId,
+          parentSessionId: sessionId,
+          status: "complete",
+          streaming: false,
+          released: true,
+          task: "Read-only capture investigation",
+        }),
+      ],
+      backgroundActive: false,
+    });
+    await fixture.root.navigationStore.openSubagentLink(sessionId, handleId);
+    fixture.root.appShellStore.recordConversationInteraction(destination);
+  });
+  const owner =
+    destination.kind === "cake-chat"
+      ? fixture.root.cakeChatCollectionStore.registry.find(sessionId)!
+      : fixture.root.sessionRegistry.findSession(sessionId)!;
+  expect(owner.conversationSessionStore.sideChatStore.target?.navigationTarget).toEqual({
+    kind: "subagent",
+    sessionId,
+    handleId,
+  });
+  return owner;
+}
+
 describe("Screen capture attachment destinations", () => {
+  it.each([
+    { label: "Project Chat", kind: "cake-chat", sessionId: projectChatId },
+    { label: "global Cake Chat", kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID },
+    { label: "companion", kind: "cake-chat", sessionId: SESSION_ASSISTANT_ID },
+    { label: "Project Session", kind: "project-session", sessionId: "alpha" },
+  ] as const)(
+    "returns from a read-only subagent to the $label attachment composer",
+    async ({ kind, sessionId }) => {
+      const destination = { kind, sessionId };
+      using fixture = renderCapture(async (routing) => ({
+        annotationColor: "pink",
+        capture: { data: png, annotationText: "", destination: routing.defaultDestination! },
+      }));
+      const owner = await inspectCaptureWorker(fixture, destination);
+      const draft = owner.conversationSessionStore.composerStore.draftStore;
+      act(() => draft.setText("Destination draft"));
+      const beforeFocus = draft.focusRequestRevision;
+      expect(screen.getByRole("region", { name: "Read-only capture investigation" })).toBeDefined();
+      await act(() => fixture.capture.capture());
+      expect(fixture.startScreenCapture.mock.calls[0]![0].defaultDestination).toEqual(destination);
+      expect(fixture.root.appShellStore.activeConversation).toEqual(destination);
+      expect(owner.conversationSessionStore.sideChatStore.target).toBeUndefined();
+      expect(screen.queryByRole("region", { name: "Read-only capture investigation" })).toBeNull();
+      expect(
+        screen.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
+      ).toBeDefined();
+      expect(draft.text).toBe("Destination draft");
+      expect(draft.attachments).toEqual([expect.objectContaining({ kind: "image", data: png })]);
+      expect(draft.focusRequestRevision).toBeGreaterThan(beforeFocus);
+      expect(fixture.root.appShellStore.lastInteractedConversation).toEqual(destination);
+      expect(fixture.prompt).not.toHaveBeenCalled();
+    },
+  );
+
+  it("honors an explicit different destination without closing the source inspection or attaching to its parent", async () => {
+    const destination = { kind: "project-session" as const, sessionId: "beta" };
+    using fixture = renderCapture(async () => ({
+      annotationColor: "pink",
+      capture: { data: png, annotationText: "", destination },
+    }));
+    const target = await inspectCaptureWorker(fixture, destination);
+    const sourceDestination = { kind: "cake-chat" as const, sessionId: projectChatId };
+    const source = await inspectCaptureWorker(fixture, sourceDestination);
+    const sourcePanel = source.conversationSessionStore.sideChatStore.target;
+    await act(() => fixture.capture.capture());
+    expect(fixture.startScreenCapture.mock.calls[0]![0].defaultDestination).toEqual(
+      sourceDestination,
+    );
+    expect(fixture.root.appShellStore.activeConversation).toEqual(destination);
+    expect(target.conversationSessionStore.sideChatStore.target).toBeUndefined();
+    expect(target.conversationSessionStore.composerStore.draftStore.attachments).toEqual([
+      expect.objectContaining({ kind: "image", data: png }),
+    ]);
+    expect(source.conversationSessionStore.sideChatStore.target).toBe(sourcePanel);
+    expect(source.conversationSessionStore.composerStore.draftStore.attachments).toEqual([]);
+    expect(fixture.root.appShellStore.lastInteractedConversation).toEqual(sourceDestination);
+  });
+
+  it.each(["cancel", "failure", "unavailable", "full"] as const)(
+    "retains the inspected worker and destination draft on %s",
+    async (outcome) => {
+      const destination = { kind: "cake-chat" as const, sessionId: projectChatId };
+      using fixture = renderCapture(async () => {
+        if (outcome === "failure") throw new Error("Capture failed");
+        if (outcome === "cancel") return { annotationColor: "pink" };
+        return {
+          annotationColor: "pink",
+          capture: {
+            data: png,
+            annotationText: "",
+            destination:
+              outcome === "unavailable" ? { ...destination, sessionId: "missing" } : destination,
+          },
+        };
+      });
+      const owner = await inspectCaptureWorker(fixture, destination);
+      const draft = owner.conversationSessionStore.composerStore.draftStore;
+      const panel = owner.conversationSessionStore.sideChatStore.target;
+      const existing = Array.from({ length: outcome === "full" ? 20 : 1 }, (_, index) => ({
+        kind: "file" as const,
+        name: `keep-${index}.txt`,
+        path: `/keep-${index}.txt`,
+      }));
+      act(() => {
+        draft.setText("Keep draft");
+        draft.appendAttachments(existing);
+      });
+      const beforeFocus = draft.focusRequestRevision;
+      await act(() => fixture.capture.capture());
+      expect(owner.conversationSessionStore.sideChatStore.target).toBe(panel);
+      expect(draft.text).toBe("Keep draft");
+      expect(draft.attachments).toEqual(existing);
+      expect(draft.focusRequestRevision).toBe(beforeFocus);
+      expect(fixture.root.appShellStore.activeConversation).toEqual(destination);
+    },
+  );
+
+  it("completes only in the originating window when another window views the same destination", async () => {
+    const completion = Promise.withResolvers<CaptureCompletion>();
+    using origin = renderCapture(async () => completion.promise);
+    using other = renderCapture();
+    const destination = { kind: "cake-chat" as const, sessionId: projectChatId };
+    const source = await inspectCaptureWorker(origin, destination);
+    const otherOwner = await inspectCaptureWorker(other, destination);
+    const otherPanel = otherOwner.conversationSessionStore.sideChatStore.target;
+    const otherDraft = otherOwner.conversationSessionStore.composerStore.draftStore;
+    const otherFocus = otherDraft.focusRequestRevision;
+    let capturing: Promise<void>;
+    act(() => {
+      capturing = origin.capture.capture();
+    });
+    // Changing the other window's view while capture is open cannot redirect completion.
+    act(() => other.root.appShellStore.showSettings());
+    await act(async () => {
+      completion.resolve({
+        annotationColor: "pink",
+        capture: { data: png, annotationText: "", destination },
+      });
+      await capturing!;
+    });
+    expect(source.conversationSessionStore.sideChatStore.target).toBeUndefined();
+    expect(source.conversationSessionStore.composerStore.draftStore.attachments).toHaveLength(1);
+    expect(origin.root.appShellStore.activeConversation).toEqual(destination);
+    expect(other.root.appShellStore.selection).toEqual({ kind: "settings" });
+    expect(otherOwner.conversationSessionStore.sideChatStore.target).toBe(otherPanel);
+    expect(otherDraft.attachments).toEqual([]);
+    expect(otherDraft.focusRequestRevision).toBe(otherFocus);
+    expect(other.startScreenCapture).not.toHaveBeenCalled();
+  });
+
   it.each(
     (["normal", "vscode", "browser"] as const).flatMap((mode) =>
       (["sessions", "todos", "chat"] as const).map((tab) => ({ mode, tab })),

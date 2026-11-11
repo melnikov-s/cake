@@ -77,9 +77,12 @@ test("capture handoff reveals and focuses Chat without leaving Browser or VS Cod
       .poll(() => app.evaluate(() => typeof Reflect.get(globalThis, "returnCaptureShortcut")))
       .toBe("function");
     const openCapture = async () => {
-      const opened = app.waitForEvent("window");
       await app.evaluate(() => Reflect.get(globalThis, "returnCaptureShortcut")());
-      const overlay = await opened;
+      // VS Code can create a webview concurrently; the next window is not necessarily capture.
+      const captureWindow = () =>
+        app.windows().find((window) => new URL(window.url()).searchParams.has("screenCapture"));
+      await expect.poll(() => Boolean(captureWindow())).toBe(true);
+      const overlay = captureWindow()!;
       await expect(overlay.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();
       return overlay;
     };
@@ -117,10 +120,7 @@ test("capture handoff reveals and focuses Chat without leaving Browser or VS Cod
       const tabs = page.getByRole("group", { name: "Companion content", exact: true });
       for (const tab of ["Sessions", "Todos", "Chat"] as const) {
         await tabs.getByRole("button", { name: tab, exact: true }).click();
-        const opened = app.waitForEvent("window");
-        await app.evaluate(() => Reflect.get(globalThis, "returnCaptureShortcut")());
-        const overlay = await opened;
-        await expect(overlay.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();
+        const overlay = await openCapture();
         const closed = overlay.waitForEvent("close");
         await overlay.getByRole("button", { name: "Attach full display", exact: true }).click();
         await closed;
