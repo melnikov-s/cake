@@ -233,6 +233,13 @@ export const MergeResolveIcon = () => (
     <path d="m12 18 2.2 2.2L20 14.5" />
   </Icon>
 );
+export const UserIcon = () => (
+  <Icon>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21v-2a8 8 0 0 1 16 0v2" />
+  </Icon>
+);
+
 export const BotIcon = () => (
   <Icon>
     <rect x="4" y="7" width="16" height="13" rx="3" />

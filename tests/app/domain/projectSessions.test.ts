@@ -363,6 +363,9 @@ const makeLayer = (
         })),
       }
     : undefined;
+  const sessionPurposes: Array<
+    import("../../../src/contracts/session-families/session-family-document").SessionRelationship
+  > = [];
   const application = Layer.effect(
     ApplicationState,
     Effect.gen(function* () {
@@ -506,12 +509,24 @@ const makeLayer = (
           families: family ? [family] : [],
           turns: [],
           spawnedSessions: [],
+          sessionPurposes,
         }),
       withMemberLock: (_id, effect) => effect,
       withCreationLock: (_key, effect) => effect,
       recordTurn: () => Effect.void,
       registerSpawn: () => Effect.void,
       registerParent: () => Effect.void,
+      registerPurpose: (record) =>
+        Effect.sync(() => {
+          if (!sessionPurposes.some((item) => item.sessionId === record.sessionId))
+            sessionPurposes.push(record);
+        }),
+      moveToUser: (sessionId) =>
+        Effect.sync(() => {
+          const index = sessionPurposes.findIndex((item) => item.sessionId === sessionId);
+          const record = sessionPurposes[index];
+          if (record) sessionPurposes[index] = { ...record, purpose: "user" };
+        }),
       recordReport: () => Effect.void,
       settleTurn: () => Effect.void,
       pendingResponseRequest: () => Effect.succeed(undefined),
@@ -4803,7 +4818,7 @@ describe("Project Sessions domain", () => {
       }).pipe(Effect.provide(makeLayer(undefined, { applicationLayer: projectTodoLayer() }))),
   );
 
-  it.effect.each(["global chat", "project chat", "user"] as const)(
+  it.effect.each(["global chat", "project chat", "user", "on behalf"] as const)(
     "sessions.create from %s creates exactly one Project-owned to-do and queues the original task once",
     (source) => {
       const requests: ProjectTodoInitialDescription[] = [];
@@ -4814,6 +4829,7 @@ describe("Project Sessions domain", () => {
           const result = yield* createPrompted({
             projectPath: "/project",
             name: "Startup improvement",
+            ...(source === "on behalf" ? { purpose: "user" as const } : null),
             initialPrompt: "Reduce startup latency without changing behavior.",
             model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
             ...(source === "user"
@@ -4840,6 +4856,12 @@ describe("Project Sessions domain", () => {
           assert.equal(requests[0]?.id, items[0]?.id);
           assert.equal(requests[0]?.brief, "Reduce startup latency without changing behavior.");
           assert.equal(result.status, "started");
+          assert.equal(
+            (yield* (yield* SessionFamilyStorage).state()).sessionPurposes?.find(
+              (item) => item.sessionId === result.sessionId,
+            )?.purpose,
+            source === "user" || source === "on behalf" ? "user" : "delegated",
+          );
           // The accepted runtime turn starts independently of description work.
           const record = yield* (yield* RuntimeRecoveryStorage).get(result.sessionId);
           assert.ok(record);

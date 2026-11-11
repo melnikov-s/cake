@@ -38,6 +38,8 @@ import { Link, type LinkProps } from "../ui/link";
 import { MarkdownTable } from "../ui/markdown-table";
 import { ModelReferenceChip, modelReferenceChipClassName } from "../ui/model-reference-chip";
 import { LinkIcon } from "../ui/icons";
+import type { SessionPurpose } from "../../../contracts/project-sessions/session-purpose";
+import { SessionPurposeIndicator } from "../ui/session-purpose-indicator";
 import {
   splitModelReferences,
   type ModelReferenceSelection,
@@ -72,6 +74,7 @@ type MarkdownLinkActions = {
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
   openSubagent?(parentSessionId: string, handleId: string, messageId?: string): void;
   sessionTitle?(sessionId: string): string | undefined;
+  sessionPurpose?(sessionId: string): SessionPurpose | undefined;
   sessionIds?(): readonly string[];
   loadWorkspaceImage?(
     path: string,
@@ -305,6 +308,7 @@ function linkAnchor(
   allProps: AnchorProps,
   actions?: MarkdownLinkActions,
   presentation: LinkPresentation = "chip",
+  showSessionPurpose = true,
 ) {
   const props = {
     ...allProps,
@@ -366,6 +370,7 @@ function linkAnchor(
     const reference = sessionLink(sessionId, session.messageId, session.attachmentId);
     const labelText = linkLabelText(label);
     const chip = presentation === "chip";
+    const purpose = showSessionPurpose ? actions?.sessionPurpose?.(sessionId) : undefined;
     return (
       <Link
         {...props}
@@ -395,7 +400,11 @@ function linkAnchor(
           else actions?.openSession(sessionId);
         }}
       >
-        {chip && <LinkIcon className="size-3 shrink-0 text-muted-foreground" />}
+        {purpose ? (
+          <SessionPurposeIndicator purpose={purpose} />
+        ) : chip ? (
+          <LinkIcon className="size-3 shrink-0 text-muted-foreground" />
+        ) : null}
         {presentation === "icon" ? (
           label
         ) : (
@@ -430,10 +439,12 @@ function linkAnchor(
 export const MarkdownLink = observer(function MarkdownLink({
   onOpenSourceLocation,
   presentation,
+  showSessionPurpose,
   ...allProps
 }: AnchorProps & {
   onOpenSourceLocation?(location: SourceLocation): void;
   presentation?: LinkPresentation;
+  showSessionPurpose?: boolean;
 }) {
   const actions = useMarkdownLinkActions();
   const phone = usePhoneLayout();
@@ -446,7 +457,7 @@ export const MarkdownLink = observer(function MarkdownLink({
     !location ||
     (nonPathHref.test(href) && !href.startsWith(workspacePathPrefix))
   )
-    return linkAnchor(allProps, actions, presentation);
+    return linkAnchor(allProps, actions, presentation, showSessionPurpose);
   // Keep source references readable, without an editor entry point on phones.
   if (phone) return <span>{allProps.children}</span>;
   const props = { showIcon: true, ...allProps, href: reference };

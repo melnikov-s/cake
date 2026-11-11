@@ -202,6 +202,14 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
                 : Effect.void,
             ),
           );
+        const reservedChild = family.children.find((item) => item.requestId === requestId);
+        if (reservedChild)
+          yield* storage.registerPurpose({
+            sessionId: reservedChild.sessionId,
+            projectPath: location.projectPath,
+            purpose: "delegated",
+            createdPurpose: "delegated",
+          });
         const originatingSession = yield* sessions
           .catalogEntry(
             {

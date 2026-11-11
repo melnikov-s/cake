@@ -115,6 +115,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       y,
       resolved,
       draft: session?.draft === true,
+      delegated: session?.purpose === "delegated",
       unread,
       familyChild,
     });
@@ -140,6 +141,10 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   showActivity() {
     this.navigationMode = "activity";
+  }
+
+  moveToUser(sessionId: string) {
+    return SessionManagementContext.consume(this)!.moveToUser(sessionId);
   }
 
   renameSession(sessionId: string, name: string) {

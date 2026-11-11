@@ -103,7 +103,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                 contextMenuUnread,
               );
           void menu.then((action) => {
-            if (action?.action === "rename") setRenamingValue(session.title);
+            if (action?.action === "move-to-user") void store.moveToUser(session.sessionId);
+            else if (action?.action === "rename") setRenamingValue(session.title);
             else if (action?.action === "mark-unread") onMarkUnread?.(session.sessionId, true);
             else if (action?.action === "resolve") onResolve(session.sessionId, true);
             else if (action?.action === "unresolve") onResolve(session.sessionId, false);

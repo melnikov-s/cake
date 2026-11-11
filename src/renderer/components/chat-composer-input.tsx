@@ -224,6 +224,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
         inputHistoryRevision={store.inputHistoryRevision}
         onValueChange={(value) => store.setDraft(value)}
         sessionReferenceNames={sessionReferenceNames}
+        sessionReferencePurposes={store.sessionReferencePurposes}
         onEditReference={
           configuration || sessionPicker
             ? (segment, anchor) => {

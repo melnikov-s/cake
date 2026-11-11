@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { describe } from "vitest";
+import { sessionPurpose } from "../../../../src/contracts/project-sessions/session-purpose";
 import { Effect, Struct } from "effect";
 import { familyStorageHarness } from "../../helpers/familyStorageHarness";
 import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
@@ -32,6 +33,80 @@ const child = (requestId: string, childSessionId: string) => ({
 });
 
 describe("SessionFamilyStorage", () => {
+  it.effect("persists explicit purposes and one-way takeover without inferring legacy intent", () =>
+    Effect.gen(function* () {
+      const harness = familyStorageHarness(
+        new Map([
+          [
+            "state/session-families.json",
+            JSON.stringify({
+              version: 11,
+              data: {
+                families: [],
+                turns: [turn()],
+                spawnedSessions: [],
+                sessionParents: [{ sessionId: "legacy", parentSessionId: "agent" }],
+              },
+            }),
+          ],
+        ]),
+      );
+      yield* Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        assert.equal(sessionPurpose(yield* storage.state(), "legacy"), "user");
+        yield* storage.registerPurpose({
+          sessionId: "child",
+          projectPath: "/project",
+          purpose: "delegated",
+          createdPurpose: "delegated",
+        });
+        yield* storage.registerParent({
+          sessionId: "child",
+          parentSessionId: "parent",
+          projectPath: "/project",
+        });
+        // Human activity/resumption cannot silently reclassify an assignment.
+        yield* storage.registerPurpose({
+          sessionId: "child",
+          projectPath: "/project",
+          purpose: "user",
+          createdPurpose: "user",
+        });
+        assert.equal(sessionPurpose(yield* storage.state(), "child"), "delegated");
+        yield* storage.moveToUser("child");
+        const converted = yield* storage.state();
+        assert.equal(sessionPurpose(converted, "child"), "user");
+        assert.equal(converted.sessionPurposes?.[0]?.createdPurpose, "delegated");
+        assert.ok(converted.sessionPurposes?.[0]?.movedToUserAt);
+        assert.equal(
+          converted.sessionParents?.find((item) => item.sessionId === "child")?.parentSessionId,
+          "parent",
+        );
+        assert.equal(converted.turns[0]?.reported, true);
+        // A running turn settles normally, but cannot re-open the old reporting obligation.
+        yield* storage.settleTurn("turn", "complete", {
+          outcome: "result",
+          text: "Finished for the human",
+        });
+        assert.equal(yield* storage.pendingResponseRequest("child", []), undefined);
+        yield* storage.recordTurn(turn({ turnId: "new-request" }));
+        // Repeated clicks must not retire new explicit cross-session requests.
+        yield* storage.moveToUser("child");
+        assert.equal(
+          (yield* storage.pendingResponseRequest("child", ["new-request"]))?.turnId,
+          "new-request",
+        );
+      }).pipe(Effect.provide(harness.layer));
+      yield* Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        assert.equal(sessionPurpose(yield* storage.state(), "child"), "user");
+        assert.equal((yield* storage.state()).sessionPurposes?.[0]?.createdPurpose, "delegated");
+        yield* storage.removeProject("/project");
+        assert.deepEqual((yield* storage.state()).sessionPurposes, []);
+      }).pipe(Effect.provide(familyStorageHarness(harness.files).layer));
+    }),
+  );
+
   it.effect(
     "round-trips independent parent provenance across restart without inventing legacy owners",
     () =>
@@ -118,7 +193,7 @@ describe("SessionFamilyStorage", () => {
           (yield* storage.state()).boardDeliveries?.map((item) => item.status),
           ["pending", "canceled"],
         );
-        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 11);
+        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 12);
       }).pipe(Effect.provide(familyStorageHarness(files).layer));
     },
   );
@@ -223,7 +298,7 @@ describe("SessionFamilyStorage", () => {
         assert.equal(reopened.turns.length, modes.length);
         assert.equal(reopened.turns[0]?.deliveryTurnId, "stable-admission");
         assert.deepEqual(reopened.coordinatorDigest, [digest]);
-        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 11);
+        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 12);
         assert.ok(
           !JSON.stringify(
             JSON.parse(files.get("state/session-families.json")!).data.turns,
@@ -372,7 +447,7 @@ describe("SessionFamilyStorage", () => {
         yield* storage.settleTurn("turn", "complete");
         const persisted = JSON.parse(files.get("state/session-families.json") ?? "{}");
         assert.deepEqual(persisted, {
-          version: 11,
+          version: 12,
           data: {
             families: [
               {
@@ -401,7 +476,7 @@ describe("SessionFamilyStorage", () => {
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 11);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 12);
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 

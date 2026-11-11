@@ -20,7 +20,6 @@ export const ConversationNavigator = observer(function ConversationNavigator({
   const rows = store.rows(projectPath);
   const scope = projectPath ?? "cake-chat";
   const resolvedExpanded = list.isResolvedGroupExpanded(scope);
-  const resolvedRows = resolvedExpanded ? store.rows(projectPath, true) : [];
   // Flattened rows are parent-first. Only a visible project heading supplies identity
   // to its descendants; ungrouped global rows (including resolved history) still need a badge.
   const containingProjects = new Map<string, string>();
@@ -59,15 +58,24 @@ export const ConversationNavigator = observer(function ConversationNavigator({
         aria-label="Session conversations"
       >
         <section aria-label="Active sessions">
-          {rows.map(({ node, depth }) => (
-            <ConversationNavigatorRow
-              key={node.key}
-              node={node}
-              depth={depth}
-              hideHomeRail={home?.label === "Project Chat"}
-              containingProjectPath={containingProjects.get(node.key)}
-              projectPath={projectPath}
-            />
+          {store.rowGroups(projectPath).map((group, index) => (
+            <section key={index} aria-label={group.label}>
+              {group.label && (
+                <h3 className="px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
+                  {group.label}
+                </h3>
+              )}
+              {group.rows.map(({ node, depth }) => (
+                <ConversationNavigatorRow
+                  key={node.key}
+                  node={node}
+                  depth={depth}
+                  hideHomeRail={home?.label === "Project Chat"}
+                  containingProjectPath={containingProjects.get(node.key)}
+                  projectPath={projectPath}
+                />
+              ))}
+            </section>
           ))}
           {rows.length === 0 && (
             <p role="status" className="px-2 py-4 text-sm text-muted-foreground">
@@ -100,13 +108,22 @@ export const ConversationNavigator = observer(function ConversationNavigator({
         </Button>
         {resolvedExpanded && (
           <section aria-label="Resolved sessions">
-            {resolvedRows.map(({ node, depth }) => (
-              <ConversationNavigatorRow
-                key={node.key}
-                node={node}
-                depth={depth}
-                projectPath={projectPath}
-              />
+            {store.rowGroups(projectPath, true).map((group, index) => (
+              <section key={index} aria-label={group.label}>
+                {group.label && (
+                  <h3 className="px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
+                    {group.label}
+                  </h3>
+                )}
+                {group.rows.map(({ node, depth }) => (
+                  <ConversationNavigatorRow
+                    key={node.key}
+                    node={node}
+                    depth={depth}
+                    projectPath={projectPath}
+                  />
+                ))}
+              </section>
             ))}
             {resolvedHasMore && (
               <Button

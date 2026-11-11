@@ -11,6 +11,7 @@ import { ClientContext } from "./context/ClientContext";
 import { applySessionCatalogGroupUpdate } from "../reducers/CatalogReducer";
 
 export interface PendingSessionSummary {
+  purpose?: "user" | "delegated";
   sessionId: string;
   title: string;
   createdAt: string;
@@ -101,6 +102,12 @@ export class SessionCatalogStore extends Store<{
       ...sessions,
       ...(this.props.pendingSessions?.().filter((session) => !ids.has(session.sessionId)) ?? []),
     ];
+  }
+
+  sessionPurpose(sessionId: string) {
+    return (
+      this.props.model.signals.purposes[sessionId] ?? this.backgroundSession(sessionId)?.purpose
+    );
   }
 
   backgroundSession(sessionId: string) {

@@ -5,6 +5,7 @@ import { CaptureDestinationPickerStore } from "./CaptureDestinationPickerStore";
 import { SessionReferenceContext } from "./context/SessionReferenceContext";
 import { splitComposerReferences } from "../lib/composer-references";
 import { ClientContext } from "./context/ClientContext";
+import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { child, computed, createStore, snapshot, Store } from "r-state-tree";
 import { ChatPresentationContext } from "./context/ChatPresentationContext";
 import { DictationContext } from "./context/DictationContext";
@@ -560,6 +561,17 @@ export class ChatStore extends Store<ChatStoreProps> {
     if (this.props.setDraft) this.props.setDraft(value);
     else this.localDraft = value;
     this.rewordError = undefined;
+  }
+
+  get sessionReferencePurposes() {
+    const catalog = SessionReferenceContext.consume(this);
+    const purposes = new Map<string, SessionPurpose>();
+    for (const segment of splitComposerReferences(this.draft)) {
+      if (!segment.sessionId) continue;
+      const purpose = catalog?.sessionPurpose?.(segment.sessionId);
+      if (purpose) purposes.set(segment.sessionId, purpose);
+    }
+    return purposes;
   }
 
   get sessionReferenceNames(): ReadonlyMap<string, string> {

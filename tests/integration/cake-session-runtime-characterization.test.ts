@@ -1,3 +1,4 @@
+import { projectSessionPurposePrompt } from "../../src/domain/project-sessions/projectSessionPurposePrompt";
 import type { PiTurnResult } from "../../src/contracts/pi/turn-result-data";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import type { AttachmentReferenceControl } from "../../src/contracts/conversations/attachment-reference-control";
@@ -142,6 +143,7 @@ async function createFixtureRuntime(
   events: CakeSessionRuntimeEvent[],
   options: {
     sessionFile?: string;
+    sessionRelationshipPrompt?: CakeSessionRuntimeOptions["sessionRelationshipPrompt"];
     projectInvestigation?: boolean;
     allowMutations?: boolean;
     onInitialTranscriptPersisted?(): void;
@@ -167,6 +169,7 @@ async function createFixtureRuntime(
         }
       : {}),
     attachmentReferenceControl: options.attachmentReferenceControl,
+    sessionRelationshipPrompt: options.sessionRelationshipPrompt,
     allowedCakeOperations: options.attachmentReferenceControl
       ? ["attachments.list", "attachments.read"]
       : undefined,
@@ -618,6 +621,38 @@ describe("CakeSessionRuntime characterization", () => {
       }
     },
   );
+
+  it("refreshes effective relationship after takeover without losing shared instructions or conversation", async () => {
+    const directory = await createTemporaryDirectory();
+    const bodies: Array<Record<string, unknown>> = [];
+    let purpose: "user" | "delegated" = "delegated";
+    await registerFixtureProvider(
+      directory,
+      (index, response) => finishTextResponse(response, `answer-${index}`),
+      (body) => bodies.push(body),
+    );
+    await writeFile(join(directory, "AGENTS.md"), "SHARED_PROJECT_POLICY_SENTINEL");
+    const runtime = await createFixtureRuntime(directory, [], {
+      sessionRelationshipPrompt: async () => projectSessionPurposePrompt(purpose),
+    });
+    const sessionId = runtime.sessionId;
+    await runtime.prompt("Assigned design work", "prompt", []);
+    expect(JSON.stringify(bodies[0])).toContain("Delegated Session:");
+    purpose = "user";
+    await runtime.prompt("Continue implementation directly with me", "prompt", []);
+    const next = JSON.stringify(bodies[1]);
+    expect(next).toContain("human is your primary collaborator");
+    expect(next).toContain("no Project Chat relay or replacement session");
+    expect(next).toContain("receive the context, briefly greet the human, then wait");
+    expect(next).toContain("requested reading, investigation and recommendations are welcome");
+    expect(next).toContain("Do not start implementation without human authorization");
+    expect(next).toContain("Explicit human instructions to begin work take precedence");
+    expect(next).toContain("SHARED_PROJECT_POLICY_SENTINEL");
+    expect(next).toContain("Assigned design work");
+    expect(next).toContain("answer-1");
+    expect(runtime.sessionId).toBe(sessionId);
+    await runtime.dispose();
+  });
 
   it("loads fresh project instructions, skills and extensions into an in-memory investigator across follow-ups", async () => {
     const directory = await createTemporaryDirectory();

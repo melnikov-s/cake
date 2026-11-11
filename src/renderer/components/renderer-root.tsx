@@ -56,6 +56,7 @@ export const RendererRoot = observer(function RendererRoot({
         ...rootStore.props.projection.automations.unresolvedSessions.map((item) => item.sessionId),
         ...rootStore.automationSessionsStore.identities.map((item) => item.sessionId),
       ],
+      sessionPurpose: (sessionId) => rootStore.sessionCatalogStore.sessionPurpose(sessionId),
       // Passive summaries only: rendering a reference must never load a conversation.
       sessionTitle: (sessionId) =>
         rootStore.sessionCatalogStore.find(sessionId)?.title ??

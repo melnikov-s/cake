@@ -4,10 +4,15 @@ import { retainRelocatedForkContext } from "./fork-context";
 import { withoutTerminalDocumentation } from "./pi-documentation";
 
 /** Retain Pi's generated prompt, trim terminal docs, and avoid relocation-only fork reinjection. */
-export function createCakeSystemPromptExtension(): ExtensionFactory {
+export function createCakeSystemPromptExtension(
+  relationshipPrompt?: () => Promise<string>,
+): ExtensionFactory {
   return (pi) => {
-    pi.on("before_agent_start", (event, ctx) => {
+    pi.on("before_agent_start", async (event, ctx) => {
       const options = event.systemPromptOptions;
+      // Read at turn admission, including on an already-acquired running runtime.
+      // An in-flight provider request finishes unchanged; no abort/restart is needed.
+      if (relationshipPrompt) options.sections.session_relationship = await relationshipPrompt();
       if (
         !options.customPrompt &&
         !options.forceSystemPrompt &&

@@ -32,7 +32,16 @@ const page = { total: 1, nextOffset: null };
 describe("LLM session roster", () => {
   it("uses one compact header, rounded tokens, relative freshness and a bare routable id", () => {
     expect(sessionRoster([row], page, at + 120_000, false)).toBe(
-      `1 sessions\nid status lifecycle outcome tokens cache age ttl | title\n${a} idle active - 18K warm 2m 3m | Implement search`,
+      `1 sessions\nid status lifecycle outcome tokens cache age ttl purpose | title\n${a} idle active - 18K warm 2m 3m - | Implement search`,
+    );
+  });
+
+  it("includes explicit relationship purpose separately from execution status", () => {
+    expect(sessionRoster([{ ...row, purpose: "user" }], page, at, false)).toContain(
+      "5m user | Implement search",
+    );
+    expect(sessionRoster([{ ...row, purpose: "delegated" }], page, at, false)).toContain(
+      "5m delegated | Implement search",
     );
   });
 
@@ -55,7 +64,7 @@ describe("LLM session roster", () => {
 
   it("shows canonical project paths when requested and preserves canonical references", () => {
     expect(sessionRoster([row], { total: 2, nextOffset: 1 }, at, true)).toBe(
-      `2 sessions; next=1\nid status lifecycle outcome tokens cache age ttl | project | title\n${a} idle active - 18K warm 0s 5m | /projects/my-app | Implement search`,
+      `2 sessions; next=1\nid status lifecycle outcome tokens cache age ttl purpose | project | title\n${a} idle active - 18K warm 0s 5m - | /projects/my-app | Implement search`,
     );
     expect(sessionRoster([], { total: 0, nextOffset: null }, at, false)).toBe("0 sessions");
   });

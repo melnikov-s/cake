@@ -61,6 +61,9 @@ interface SlashCommandComboboxProps extends Omit<
   onPaste?(event: ClipboardEvent<HTMLElement>): void;
   onEditReference?(segment: ComposerReferenceSegment, anchor: HTMLElement): void;
   sessionReferenceNames?: ReadonlyMap<string, string>;
+  sessionReferencePurposes?: ComponentProps<
+    typeof ComposerReferenceInput
+  >["sessionReferencePurposes"];
 }
 
 interface CommandQuery {
@@ -169,6 +172,7 @@ export function SlashCommandCombobox({
   onPaste,
   onEditReference,
   sessionReferenceNames,
+  sessionReferencePurposes,
   ...inputProps
 }: SlashCommandComboboxProps) {
   const inputRef = useRef<ComposerInputElement>(null);
@@ -530,6 +534,7 @@ export function SlashCommandCombobox({
             onPaste={onPaste}
             onEditReference={onEditReference}
             sessionReferenceNames={sessionReferenceNames}
+            sessionReferencePurposes={sessionReferencePurposes}
           />
         </div>
       ) : (

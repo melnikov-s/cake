@@ -1,3 +1,4 @@
+import { SessionPurpose } from "./session-purpose";
 import { PresetContext } from "../model-presets/preset-context";
 import { Schema } from "effect";
 import { SessionContextMetadata } from "../conversations/session-context-metadata";
@@ -26,6 +27,7 @@ export const ProjectSessionLocation = Schema.Struct({
 export interface ProjectSessionLocation extends Schema.Schema.Type<typeof ProjectSessionLocation> {}
 
 export const ProjectSessionSummary = Schema.Struct({
+  purpose: Schema.optionalKey(SessionPurpose),
   sessionId: boundedId,
   title: Schema.String.check(Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH)),
   createdAt: Schema.String,
@@ -94,6 +96,7 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
     input: Schema.Record(Schema.String, Schema.Json),
   },
   CreateSession: {
+    purpose: Schema.optionalKey(SessionPurpose),
     todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
     name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
     initialPrompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
@@ -184,6 +187,7 @@ export interface ProjectSessionPromptInput extends Schema.Schema.Type<
 > {}
 
 export const ProjectSessionStartInput = Schema.Struct({
+  purpose: Schema.optionalKey(SessionPurpose),
   todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   sessionId: boundedId,
   projectPath: Schema.optionalKey(boundedPath),

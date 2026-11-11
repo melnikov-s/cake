@@ -118,7 +118,14 @@ export interface BrowserStateSnapshot {
 type TerminalTarget = { readonly workingDirectory: string };
 
 type SessionContextMenuAction = {
-  action: "rename" | "mark-read" | "mark-unread" | "resolve" | "unresolve" | "delete";
+  action:
+    | "rename"
+    | "mark-read"
+    | "mark-unread"
+    | "resolve"
+    | "unresolve"
+    | "delete"
+    | "move-to-user";
 };
 
 interface ElectronCommands {
@@ -188,6 +195,7 @@ interface ElectronCommands {
       draft: boolean;
       unread?: boolean;
       familyChild?: boolean;
+      delegated?: boolean;
       permanent?: boolean;
     },
     options?: ClientCommandOptions,

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { SessionPurpose } from "../project-sessions/session-purpose";
 import { MessageReference } from "../conversations/message-reference";
 import { StoredPassiveNotice } from "../conversations/passive-notice";
 import { PendingReport, ReportHandlingReceipt } from "../conversations/pending-report";
@@ -189,7 +190,18 @@ export const SessionParent = Schema.Struct({
 });
 export interface SessionParent extends Schema.Schema.Type<typeof SessionParent> {}
 
+export const SessionRelationship = Schema.Struct({
+  sessionId: BoundedId,
+  projectPath: BoundedPath,
+  purpose: SessionPurpose,
+  /** Creation intent is retained when the human takes over delegated work. */
+  createdPurpose: SessionPurpose,
+  movedToUserAt: Schema.optionalKey(Schema.String),
+});
+export interface SessionRelationship extends Schema.Schema.Type<typeof SessionRelationship> {}
+
 export const SessionFamilyDocument = Schema.Struct({
+  sessionPurposes: Schema.optionalKey(Schema.Array(SessionRelationship)),
   sessionParents: Schema.optionalKey(Schema.Array(SessionParent)),
   families: Schema.Array(SessionFamily),
   turns: Schema.Array(FamilyTurn),

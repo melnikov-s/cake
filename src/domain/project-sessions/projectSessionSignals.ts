@@ -1,3 +1,4 @@
+import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { Effect, Stream } from "effect";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
@@ -33,6 +34,7 @@ const signalFor = Effect.fn("ProjectSessions.signalFor")(function* (
   const status = yield* sessions.currentStatus({ ...location, sessionId });
   return {
     sessionId,
+    purpose: sessionPurpose(families, sessionId),
     projectPath: location.projectPath,
     workingDirectory: location.workingDirectory,
     running: status?.streaming ?? false,
@@ -111,6 +113,11 @@ const snapshot = Effect.fn("ProjectSessions.signalsSnapshot")(function* () {
   }
   return {
     _tag: "Snapshot",
+    purposes: Object.fromEntries(
+      (families.sessionPurposes ?? [])
+        .filter((item) => registered.has(item.projectPath))
+        .map((item) => [item.sessionId, item.purpose]),
+    ),
     sessions: [...signals.values()],
   } satisfies ProjectSessionSignalsUpdate;
 });

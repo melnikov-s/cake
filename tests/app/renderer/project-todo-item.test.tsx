@@ -19,6 +19,53 @@ import type {
   ProjectTodoAssociation,
 } from "../../../src/contracts/projects/project-todos";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { sessionSummary } from "./fixtures/catalog-fixtures";
+
+it("keeps mixed session purposes on their individual to-do links without reordering associations or to-dos", () => {
+  using fixture = createRendererStoreFixture({
+    sessions: [
+      sessionSummary({ sessionId: "mine", projectPath: "/project", purpose: "user" }),
+      sessionSummary({ sessionId: "assigned", projectPath: "/project", purpose: "delegated" }),
+    ],
+  });
+  // Cold archive identities have relationship metadata even without a loaded list row.
+  fixture.models.sessionCatalog.sessions.splice(0);
+  fixture.models.sessionCatalog.signals.loaded = true;
+  fixture.models.sessionCatalog.signals.purposes = { mine: "user", assigned: "delegated" };
+  const store = fixture.root.cakeChatCollectionStore.registry.load("project-chat:test").todos;
+  const items: ProjectTodo[] = ["first", "second"].map((title, index) => ({
+    id: `00000000-0000-4000-8000-00000000001${index}`,
+    title,
+    description: title,
+    status: "",
+    state: "open",
+    revision: 0,
+    associations: [
+      { kind: "session", sessionId: "assigned", title: "Assigned work" },
+      { kind: "session", sessionId: "mine", title: "Direct work" },
+    ],
+  }));
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      {items.map((item) => (
+        <ProjectTodoItem key={item.id} item={item} store={store} />
+      ))}
+    </StoreProvider>,
+  );
+  const links = screen.getAllByRole("link");
+  expect(links.map((link) => link.textContent)).toEqual([
+    "Assigned work",
+    "Direct work",
+    "Assigned work",
+    "Direct work",
+  ]);
+  const rows = view.container.querySelectorAll("[data-todo-id]");
+  expect([...rows].map((row) => row.getAttribute("data-todo-id"))).toEqual(
+    items.map((item) => item.id),
+  );
+  expect(screen.getAllByRole("img", { name: "Delegated Session" })).toHaveLength(2);
+  expect(screen.getAllByRole("img", { name: "User Session" })).toHaveLength(2);
+});
 
 const cases = [
   {

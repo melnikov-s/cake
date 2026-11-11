@@ -498,6 +498,35 @@ export class ConversationNavigatorStore extends Store<{
     return rows;
   }
 
+  /** Presentation groups only; ownership, family edges and to-do order are unchanged. */
+  rowGroups(projectPath: string | undefined, resolved = false) {
+    const rows = this.rows(projectPath, resolved);
+    const tree = this.tree(projectPath, resolved);
+    const groups: { label?: string; rows: typeof rows }[] = [];
+    let segment: Array<(typeof rows)[number]> = [];
+    const delegated = (node: ConversationNavigationNode): boolean => {
+      if (node.target.kind === "project-session")
+        return this.props.catalog.find(node.target.sessionId)?.purpose === "delegated";
+      const parent = node.parentKey ? tree.byKey.get(node.parentKey) : undefined;
+      return parent ? delegated(parent) : false;
+    };
+    const flush = () => {
+      const mine = segment.filter(({ node }) => !delegated(node));
+      const assigned = segment.filter(({ node }) => delegated(node));
+      if (mine.length) groups.push({ label: "My sessions", rows: mine });
+      if (assigned.length) groups.push({ label: "Delegated", rows: assigned });
+      segment = [];
+    };
+    for (const row of rows) {
+      if (row.node.relationship === "home") {
+        flush();
+        groups.push({ rows: [row] });
+      } else segment.push(row);
+    }
+    flush();
+    return groups;
+  }
+
   async open(node: ConversationNavigationEntry) {
     this.error = undefined;
     try {

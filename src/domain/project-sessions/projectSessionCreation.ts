@@ -1,3 +1,4 @@
+import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { Cause, DateTime, Effect, Exit } from "effect";
 import { snapshotPromptFiles } from "../../services/filesystem/prompt-files";
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
@@ -32,6 +33,7 @@ import * as managedWorktrees from "../worktrees/managedWorktrees";
 /** One backend admission for independent sessions; presentation is never part of creation. */
 export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(function* (input: {
   readonly projectPath: string;
+  readonly purpose?: SessionPurpose;
   readonly todoId?: string;
   readonly source?: CrossSessionMessageMetadata["sender"];
   readonly attachments?: readonly Attachment[];
@@ -75,6 +77,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
           ),
         );
   const sessionId = crypto.randomUUID();
+  const purpose = input.purpose ?? (input.source || input.requester ? "delegated" : "user");
   const todoScope = input.todoId
     ? yield* existingTaskScope(
         input.projectPath,
@@ -118,7 +121,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
         ? input.requester
         : undefined;
     const sender = requester ?? input.source;
-    const resultDelivery = input.resultDelivery ?? "notification";
+    const resultDelivery = input.resultDelivery ?? (purpose === "user" ? "ignore" : "notification");
     const expectsResponse = resultDelivery !== "ignore";
     const storage = yield* SessionFamilyStorage;
     const parentSessionId = input.source?.sessionId ?? requester?.sessionId;
@@ -152,6 +155,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       .start(
         {
           sessionId,
+          purpose,
           workingDirectory,
           projectPath: input.projectPath,
           text,

@@ -1,3 +1,4 @@
+import type { SessionPurpose } from "../../../contracts/project-sessions/session-purpose";
 import { createContext } from "r-state-tree";
 import type { CapturePreferences } from "../../../contracts/desktop/screen-capture-data";
 
@@ -5,4 +6,5 @@ import type { CapturePreferences } from "../../../contracts/desktop/screen-captu
 export const SessionReferenceContext = createContext<{
   readonly destinations: Omit<CapturePreferences, "defaultDestination">;
   sessionTitle(sessionId: string): string | undefined;
+  sessionPurpose?(sessionId: string): SessionPurpose | undefined;
 }>();

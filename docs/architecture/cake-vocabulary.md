@@ -136,6 +136,34 @@ authorities and renderer Models instead of being copied into a Project
 Session-shaped payload. The renderer consumes these projections but does not
 define Project Session ownership.
 
+### User Session and Delegated Session
+
+Both are normal Project Sessions, from sustained design through authorized coding.
+Their persisted `purpose` describes the working relationship, not permissions,
+lifecycle, importance, pinning, family membership or creator identity.
+
+- **User Session** (UI: **My sessions**): created by a human, or explicitly on
+  their behalf for direct ongoing work. Discussion-context handoffs briefly greet
+  and wait for the human, rather than starting an autonomous assignment; explicit
+  human instructions to begin work take precedence. Launch intent may request
+  reading, investigation and recommendations without authorizing implementation.
+  No Project Chat relay or
+  replacement session is needed to move from discussion to coding.
+- **Delegated Session** (UI: **Delegated**): an agent-created assignment normally
+  returning results to its delegator. Human steering does not silently convert it.
+
+**Move to My sessions** is an explicit, one-way human takeover. Identity, Pi
+context, worktree, running work and to-do associations stay intact. Existing
+assignment reporting obligations retire; future explicit cross-session requests
+still work. In-flight provider work finishes uninterrupted, and the existing
+runtime reads current relationship guidance at the next turn. Creation purpose
+and parent provenance remain separate historical facts.
+
+Legacy sessions without explicit purpose remain User Sessions. Storage does not
+guess intent from creators, human messages or historical transcript parsing.
+User Sessions sort first, preserving prior order within each purpose; mixed
+session links carry individual cues without classifying or reordering to-dos.
+
 ### Cake Chat Session
 
 A permanent conversational assistant, either the global Cake Chat or a Project Chat

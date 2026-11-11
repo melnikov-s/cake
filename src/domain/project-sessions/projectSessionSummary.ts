@@ -1,3 +1,4 @@
+import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import {
   SESSION_TITLE_MAX_LENGTH,
   type PiSessionSummary,
@@ -26,9 +27,11 @@ export const summary = (
   recoveryIssue?: string,
   latestTurnOutcome?: ProjectSessionSummary["latestTurnOutcome"],
   workingStartedAt?: number,
+  purpose: SessionPurpose = "user",
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
     sessionId: item.id,
+    purpose,
     title: item.title,
     createdAt: item.created,
     modifiedAt: item.modified,
@@ -85,9 +88,11 @@ export const archivedSummary = (
   title: string,
   unreadIds: ReadonlySet<string>,
   family?: SessionFamily,
+  purpose: SessionPurpose = "user",
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
     sessionId: entry.sessionId,
+    purpose,
     title: title.slice(0, SESSION_TITLE_MAX_LENGTH),
     createdAt: entry.createdAt,
     modifiedAt: entry.modifiedAt,

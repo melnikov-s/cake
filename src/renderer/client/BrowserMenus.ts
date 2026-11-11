@@ -152,13 +152,16 @@ export function browserMenus(
                 copyId,
                 { label: "Resolve", action: "resolve" },
               ];
+      if (input.delegated && !input.permanent)
+        items.unshift({ label: "Move to My sessions", action: "move-to-user" });
       const action = await store.show("Session actions", items);
       return action === "rename" ||
         action === "mark-read" ||
         action === "mark-unread" ||
         action === "resolve" ||
         action === "unresolve" ||
-        action === "delete"
+        action === "delete" ||
+        action === "move-to-user"
         ? { action }
         : undefined;
     },

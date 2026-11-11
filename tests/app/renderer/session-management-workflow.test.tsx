@@ -143,6 +143,38 @@ function region(resolved = false) {
 afterEach(cleanup);
 
 describe("Session management workflow", () => {
+  it("moves delegated work to My sessions without resolving, reopening or changing focused context", async () => {
+    const moveToUser = vi.fn<Client["projectSessions"]["moveToUser"]>(async () => undefined);
+    const resolve = vi.fn<Client["projectSessions"]["resolve"]>(async () => undefined);
+    const menu = vi.fn<Client["electron"]["showSessionContextMenu"]>(async () => ({
+      action: "move-to-user",
+    }));
+    using fixture = await renderManagement({
+      client: {
+        projectSessions: { moveToUser, resolve },
+        electron: { showSessionContextMenu: menu },
+      },
+      sessions: [
+        projectSession("focused", { title: "My discussion" }),
+        { ...projectSession("assigned", { title: "Assigned work" }), purpose: "delegated" },
+      ],
+      history: ["focused"],
+    });
+    const selection = fixture.root.appShellStore.activeConversation;
+    await fixture.user.pointer({
+      target: region().getByRole("button", { name: /^Assigned work/ }),
+      keys: "[MouseRight]",
+    });
+    await waitFor(() => expect(moveToUser).toHaveBeenCalledOnce());
+    expect(menu.mock.calls[0]?.[0]).toMatchObject({ sessionId: "assigned", delegated: true });
+    expect(moveToUser).toHaveBeenCalledWith(
+      { sessionId: "assigned" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(resolve).not.toHaveBeenCalled();
+    expect(fixture.root.appShellStore.activeConversation).toEqual(selection);
+  });
+
   it("renames an unselected session through the sidebar without changing the focused conversation", async () => {
     const rename = vi.fn<Client["projectSessions"]["rename"]>(async () => undefined);
     const menu = vi.fn<Client["electron"]["showSessionContextMenu"]>(async () => ({

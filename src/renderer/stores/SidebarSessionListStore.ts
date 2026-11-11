@@ -2,6 +2,7 @@ import { Store, computed, observable, snapshot, type ReadonlySignal } from "r-st
 import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
 import {
+  compareSessionPurposes,
   compareSessionSummariesByCreation,
   compareSessionSummariesForSidebar,
 } from "../../utils/session-summary-order";
@@ -408,7 +409,7 @@ export class SidebarSessionListStore extends Store<{
         .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
       return [session, ...children.flatMap(flatten)];
     };
-    return roots.flatMap(flatten);
+    return roots.flatMap(flatten).sort(compareSessionPurposes);
   }
 
   private sortedProjectSessionRoots(projectPath: string, resolved: boolean): ProjectSessionRoots {
@@ -458,6 +459,8 @@ export class SidebarSessionListStore extends Store<{
         ? new Map(this.metadata.projectLabels(projectPath).map((label, index) => [label.id, index]))
         : undefined;
     roots.sort((left, right) => {
+      const purposeOrder = compareSessionPurposes(left, right);
+      if (purposeOrder) return purposeOrder;
       const activityOrder =
         activityPriorities.get(left.sessionId)! - activityPriorities.get(right.sessionId)!;
       if (activityOrder) return activityOrder;

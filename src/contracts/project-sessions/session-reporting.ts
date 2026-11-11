@@ -1,5 +1,6 @@
 import { MessageReference } from "../conversations/message-reference";
 import { Schema } from "effect";
+import { SessionPurpose } from "./session-purpose";
 import { promptFilesSchema } from "../conversations/prompt-files";
 import { ResultDelivery } from "../conversations/result-delivery";
 import { ExplicitCakeModelSelection } from "../model-presets/cake-model-selection";
@@ -64,6 +65,7 @@ export interface SessionRequester extends Schema.Schema.Type<typeof SessionReque
 
 /** Cake Chat's resolved application control input; caller identity is never model supplied. */
 export const AgentProjectSessionCreate = Schema.Struct({
+  purpose: Schema.optionalKey(SessionPurpose),
   todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   workspacePath: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
   name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),

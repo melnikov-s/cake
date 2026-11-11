@@ -55,6 +55,7 @@ import {
   type FamilyTurn,
   type SpawnedSession,
   type SessionParent,
+  type SessionRelationship,
   type CoordinatorDigestItem,
   type UpdateBatch,
   type QueuedAttention,
@@ -127,6 +128,11 @@ export class SessionFamilyStorage extends Context.Service<
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | SessionFamilyStorageError, R>;
     readonly recordTurn: (turn: FamilyTurn) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** First creation wins; opening, resuming and human messages never change purpose. */
+    readonly registerPurpose: (
+      relationship: SessionRelationship,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly moveToUser: (sessionId: string) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly registerParent: (
       parent: SessionParent,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
@@ -755,6 +761,47 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             : [...document.turns, turn],
         })),
       );
+      const registerPurpose = Effect.fn("SessionFamilyStorage.registerPurpose")(
+        (relationship: SessionRelationship) =>
+          update((document) =>
+            document.sessionPurposes?.some((item) => item.sessionId === relationship.sessionId)
+              ? document
+              : {
+                  ...document,
+                  sessionPurposes: [...(document.sessionPurposes ?? []), relationship],
+                },
+          ),
+      );
+      const moveToUser = Effect.fn("SessionFamilyStorage.moveToUser")(function* (
+        sessionId: string,
+      ) {
+        const movedToUserAt = DateTime.formatIso(yield* DateTime.now);
+        yield* update((document) => {
+          if (
+            !document.sessionPurposes?.some(
+              (item) => item.sessionId === sessionId && item.purpose === "delegated",
+            )
+          )
+            return document;
+          return {
+            ...document,
+            sessionPurposes: document.sessionPurposes?.map((item) =>
+              item.sessionId === sessionId && item.purpose === "delegated"
+                ? { ...item, purpose: "user" as const, movedToUserAt }
+                : item,
+            ),
+            // Retire existing assignment obligations without interrupting Pi or deleting provenance.
+            turns: document.turns.map((turn) =>
+              turn.sessionId === sessionId ? { ...turn, reported: true } : turn,
+            ),
+            spawnedSessions: document.spawnedSessions.map((spawn) =>
+              spawn.sessionId === sessionId
+                ? { ...spawn, reportDelivered: true, handoffSettled: true }
+                : spawn,
+            ),
+          };
+        });
+      });
       const registerParent = Effect.fn("SessionFamilyStorage.registerParent")(
         (parent: SessionParent) =>
           update((document) => {
@@ -1343,6 +1390,13 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           for (const spawn of document.spawnedSessions)
             if (spawn.projectPath === projectPath) removedMembers.add(spawn.sessionId);
           return {
+            ...(document.sessionPurposes
+              ? {
+                  sessionPurposes: document.sessionPurposes.filter(
+                    (item) => item.projectPath !== projectPath,
+                  ),
+                }
+              : null),
             ...(document.coordinatorDigest
               ? {
                   coordinatorDigest: document.coordinatorDigest.filter(
@@ -1409,6 +1463,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         withCreationLock: (key, effect) => withKeyLock(`creation:${key}`, effect),
         recordTurn,
         registerSpawn,
+        registerPurpose,
+        moveToUser,
         registerParent,
         recordReport,
         settleTurn,

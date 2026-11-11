@@ -168,6 +168,9 @@ export class ApplicationControlStore extends Store<{
                 workspacePath: context.projectPath,
                 name: invocation.name,
                 initialPrompt: invocation.initialPrompt,
+                ...(invocation._tag === "CreateSession" && invocation.purpose
+                  ? { purpose: invocation.purpose }
+                  : null),
                 ...(invocation._tag === "CreateSession" && invocation.todoId
                   ? { todoId: invocation.todoId }
                   : null),

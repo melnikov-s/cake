@@ -1,3 +1,4 @@
+import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
 import type { ProjectSessionStartInput } from "../../contracts/project-sessions/project-session-data";
 import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
@@ -13,6 +14,7 @@ import { ProjectOpenContext } from "./context/ProjectOpenContext";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface CreatePromptedProjectSessionInput {
+  purpose?: SessionPurpose;
   todoId?: string;
   inputRefs?: readonly string[];
   workspacePath: string;
@@ -116,6 +118,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       input.markdown !== false,
       input.inputRefs,
       input.todoId,
+      input.purpose ?? "delegated",
     );
     return managedWorktree
       ? { workspacePath, sessionId, managedWorktree }
@@ -151,6 +154,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     renderUserMessageAsMarkdown = true,
     inputRefs: readonly string[] = [],
     todoId?: string,
+    purpose: SessionPurpose = "user",
   ) {
     const sessionId = crypto.randomUUID();
     this.pending.prepare(path, sessionId);
@@ -158,6 +162,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     conversation.setName(name);
     if (configuration) conversation.setConfiguration(configuration);
     const input: ProjectSessionStartInput = {
+      purpose,
       ...(todoId ? { todoId } : null),
       sessionId,
       workingDirectory: path,

@@ -9,6 +9,7 @@ import type { ProjectSessionSummary } from "../../../../src/contracts/project-se
 export const fixtureTimestamp = "2026-01-01T00:00:00.000Z";
 
 export interface SessionSummaryFixture {
+  readonly purpose?: "user" | "delegated";
   readonly sessionId: string;
   readonly title: string;
   readonly createdAt: string;
@@ -62,6 +63,7 @@ export function sessionSummary(
 ): SessionSummaryFixture {
   return {
     sessionId: input.sessionId,
+    ...(input.purpose === undefined ? null : { purpose: input.purpose }),
     title: input.title ?? input.sessionId,
     createdAt: input.createdAt ?? fixtureTimestamp,
     modifiedAt: input.modifiedAt ?? fixtureTimestamp,

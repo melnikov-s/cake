@@ -1,4 +1,5 @@
 import { Cache, Effect, Stream } from "effect";
+import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { summary, archivedSummary } from "./projectSessionSummary";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -178,6 +179,7 @@ const catalogMetadata = Effect.fn("ProjectSessions.catalogMetadata")(function* (
     familyState.families.reduce((count, family) => count + familyMemberIds(family).length, 0) + 2,
   );
   return {
+    sessionPurposes: familyState.sessionPurposes,
     families: familyState.families,
     spawns: new Map(familyState.spawnedSessions.map((spawn) => [spawn.sessionId, spawn])),
     locations,
@@ -246,7 +248,16 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
             : (yield* archive
                 .resolvedEntry(sessionId, archivedStorageLocation(entry))
                 .pipe(asError("catalog")))?.title;
-          return { ...archivedSummary(entry, title ?? sessionId, unread, family), resolved };
+          return {
+            ...archivedSummary(
+              entry,
+              title ?? sessionId,
+              unread,
+              family,
+              sessionPurpose(metadata, sessionId),
+            ),
+            resolved,
+          };
         }
         // Family membership retains routing even after an isolated checkout is retired.
         const location: ProjectSessionLocation = locations.find(
@@ -283,6 +294,7 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
               status?.recoveryIssue,
               status?.latestTurnOutcome,
               status?.workingStartedAt,
+              sessionPurpose(metadata, sessionId),
             )
           : undefined;
       }),
@@ -371,8 +383,10 @@ const resolvedCatalogPage = Effect.fn("ProjectSessions.resolvedCatalogPage")(fun
   }
   roots.sort(
     (left, right) =>
-      compareSessionSummariesForSidebar(left, right) ||
-      left.sessionId.localeCompare(right.sessionId),
+      compareSessionSummariesForSidebar(
+        { ...left, purpose: sessionPurpose(metadata, left.sessionId) },
+        { ...right, purpose: sessionPurpose(metadata, right.sessionId) },
+      ) || left.sessionId.localeCompare(right.sessionId),
   );
   const selected = roots.slice(0, query.limit ?? 10);
   const selectedEntries = selected.flatMap((root) =>
@@ -395,7 +409,16 @@ const resolvedCatalogPage = Effect.fn("ProjectSessions.resolvedCatalogPage")(fun
     } else {
       for (const id of ids) {
         const entry = byId.get(id);
-        if (entry) sessions.push(archivedSummary(entry, titles.get(id) ?? id, unread, root.family));
+        if (entry)
+          sessions.push(
+            archivedSummary(
+              entry,
+              titles.get(id) ?? id,
+              unread,
+              root.family,
+              sessionPurpose(metadata, id),
+            ),
+          );
       }
     }
   }
@@ -464,6 +487,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
                     status?.recoveryIssue,
                     status?.latestTurnOutcome,
                     status?.workingStartedAt,
+                    sessionPurpose(metadata, item.id),
                   ),
                 ),
               ),
@@ -524,7 +548,13 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
       .resolvedEntry(sessionId, archivedStorageLocation(entry))
       .pipe(asError("catalog"));
     return {
-      ...archivedSummary(entry, item?.title ?? sessionId, new Set(state.unreadSessionIds), family),
+      ...archivedSummary(
+        entry,
+        item?.title ?? sessionId,
+        new Set(state.unreadSessionIds),
+        family,
+        sessionPurpose(metadata, sessionId),
+      ),
       resolved: family ? namespace === "resolved" : true,
     };
   }
@@ -543,6 +573,7 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
     status?.recoveryIssue,
     status?.latestTurnOutcome,
     status?.workingStartedAt,
+    sessionPurpose(metadata, sessionId),
   );
 });
 
@@ -716,7 +747,13 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
       if (item?.sessionFile) sessionFiles.set(sessionId, item.sessionFile);
       if (entry) {
         sessions.push({
-          ...archivedSummary(entry, item?.title ?? sessionId, unread, family),
+          ...archivedSummary(
+            entry,
+            item?.title ?? sessionId,
+            unread,
+            family,
+            sessionPurpose(discovery.familyState, sessionId),
+          ),
           resolved: family ? resolved : true,
         });
       } else if (item) {
@@ -733,6 +770,7 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
               status?.recoveryIssue,
               status?.latestTurnOutcome,
               status?.workingStartedAt,
+              sessionPurpose(discovery.familyState, sessionId),
             ),
           ),
           Effect.catch(() => Effect.succeed(undefined)),

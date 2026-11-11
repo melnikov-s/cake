@@ -1,3 +1,5 @@
+import { compareSessionPurposes } from "../../utils/session-summary-order";
+import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import {
   Clock,
   Effect,
@@ -522,6 +524,7 @@ export const invoke: (
             )
             .map((session) => ({
               sessionId: session.sessionId,
+              purpose: session.purpose ?? "user",
               title: session.title,
               contextMetadata: undefined,
               projectName: session.projectName,
@@ -538,6 +541,7 @@ export const invoke: (
                   .catalog(chatConfiguration.value.location)
                   .pipe(Effect.withSpan("sessions.list.chats"))).map((chat) => ({
                   sessionId: chat.sessionId,
+                  purpose: undefined,
                   title: chat.projectPath ? "Project Chat" : chat.title,
                   projectName: chat.projectPath ? chat.title : undefined,
                   projectPath: chat.projectPath,
@@ -570,7 +574,9 @@ export const invoke: (
             )
             .sort(
               (a, b) =>
-                b.modifiedAt.localeCompare(a.modifiedAt) || a.sessionId.localeCompare(b.sessionId),
+                compareSessionPurposes(a, b) ||
+                b.modifiedAt.localeCompare(a.modifiedAt) ||
+                a.sessionId.localeCompare(b.sessionId),
             );
           const { items, ...page } = agentListPage(selected, input);
           const now = yield* Clock.currentTimeMillis;
@@ -927,6 +933,7 @@ export const invoke: (
               command,
               session: {
                 sessionId,
+                purpose: sessionPurpose(familyState, sessionId),
                 deepLink: sessionLink(sessionId),
                 workspacePath: location?.workingDirectory ?? draft?.workingDirectory,
                 resolved,

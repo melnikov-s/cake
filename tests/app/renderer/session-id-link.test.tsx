@@ -29,6 +29,27 @@ it("links bare identity metadata with canonical destinations, including collisio
   expect(openSession).toHaveBeenCalledWith(id);
 });
 
+it("marks both session-link purposes accessibly without changing their destinations", () => {
+  render(
+    <MarkdownLinkProvider
+      actions={{
+        openSession: vi.fn(),
+        openExternalUrl: vi.fn(),
+        sessionPurpose: (id) => (id === "mine" ? "user" : "delegated"),
+      }}
+    >
+      <SessionIdLink sessionId="mine" />
+      <SessionIdLink sessionId="assigned" />
+    </MarkdownLinkProvider>,
+  );
+  expect(screen.getByRole("img", { name: "User Session" }).closest("a")?.getAttribute("href")).toBe(
+    "cake://session/mine",
+  );
+  expect(
+    screen.getByRole("img", { name: "Delegated Session" }).closest("a")?.getAttribute("href"),
+  ).toBe("cake://session/assigned");
+});
+
 it("retains a full destination when no conversation navigation provider is mounted", () => {
   const id = "01957936-0000-7000-8000-0001f80c961e";
   render(<SessionIdLink sessionId={id} />);

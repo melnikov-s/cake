@@ -1,4 +1,8 @@
 import { toDraft07JsonSchema } from "../serialization/json-contract";
+import {
+  SessionPurpose,
+  sessionPurposeCreationGuidance,
+} from "../project-sessions/session-purpose";
 import { AgentContextFork } from "../cake-chats/agent-context-fork";
 import { themeOperationDefinitions } from "../themes/theme-operations";
 import { PresetContext } from "../model-presets/preset-context";
@@ -40,6 +44,7 @@ const sessionIdTargetSchema = Schema.Struct({ sessionId: bounded(1, 256) });
 const emptyArgumentsSchema = Schema.Struct({});
 
 const createSessionArgs = Schema.Struct({
+  purpose: Schema.optionalKey(SessionPurpose),
   todoId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   promptFiles: Schema.optionalKey(promptFilesSchema),
   messageRefs: Schema.optionalKey(messageRefsSchema),
@@ -294,6 +299,7 @@ export const windowControlDefinitions = {
       topic: "sessions",
       summary: "Launch independent Project Session",
       guidance: [
+        sessionPurposeCreationGuidance,
         'Default for implementation/code changes ("do work"): create a fresh independent Project Session with its own scoped task and Cake-managed worktree, never sessions.fork or family children. workspacePath must be an authorized registered Project root; Project Chat targets only its own project. Pass worktreeName and a focused initialPrompt with meaningful context, constraints, relevant findings and acceptance checks; fresh sessions do not inherit conversation history.',
         "Investigation with useful existing context where implementation is not yet clear uses sessions.fork read-only. If code changes become needed, hand off findings here; do not silently expand research into coding. Fresh-context subagents require an explicit request; sessions.fork is an allowed context-inheriting subagent. Investigation with an explicitly requested different model uses a private subagent directly with that model, not sessions.create as a research workaround. Investigation where existing context is not helpful may use a private subagent only when explicitly authorized. Otherwise use the contextual fork for investigation.",
         "Pass todoId to attach to the existing open outcome instead of creating a phase task. Carry the same ID from investigation to implementation/review. Omit for normal new-task tracking.",

@@ -409,6 +409,30 @@ describe("Client transport and device integration", () => {
     },
   );
 
+  it.each([false, true])(
+    "offers only delegated sessions the one-way takeover action (delegated=%s)",
+    async (delegated) => {
+      using devices = browserDevices();
+      const showing = browserMenus(devices.menus).showSessionContextMenu({
+        sessionId: "session",
+        x: 0,
+        y: 0,
+        resolved: false,
+        draft: false,
+        delegated,
+      });
+      const move = devices.menus.items.find((item) => item.label === "Move to My sessions");
+      expect(Boolean(move)).toBe(delegated);
+      if (move) {
+        await devices.menus.choose(move);
+        expect(await showing).toEqual({ action: "move-to-user" });
+      } else {
+        devices.menus.close();
+        await showing;
+      }
+    },
+  );
+
   // These two browser-local authorities are device adapters outside the Root
   // tree. Keep their capability lifecycle real rather than hand-assembling peers.
   it("expires browser file capabilities and settles native-menu emulation exactly once", async () => {

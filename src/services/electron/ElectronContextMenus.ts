@@ -220,8 +220,13 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
                 { label: "Rename", click: () => finish("rename") },
                 copyId,
               ];
-              const menu = Menu.buildFromTemplate(
-                request.permanent
+              const moveToUser: MenuItemConstructorOptions[] =
+                request.delegated && !request.permanent
+                  ? [{ label: "Move to My sessions", click: () => finish("move-to-user") }]
+                  : [];
+              const menu = Menu.buildFromTemplate([
+                ...moveToUser,
+                ...(request.permanent
                   ? [
                       {
                         label: "Mark as Read",
@@ -253,8 +258,8 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
                                 { label: "Delete", click: () => finish("delete") },
                               ]),
                         ]
-                      : [...activeItems, { label: "Resolve", click: () => finish("resolve") }],
-              );
+                      : [...activeItems, { label: "Resolve", click: () => finish("resolve") }]),
+              ]);
               openSessionContextMenus.add(menu);
               menu.popup({
                 window: owner,
@@ -379,6 +384,13 @@ type SuccessComposerMenu = {
     | "move-draft";
 };
 type SuccessSessionMenu = {
-  readonly action?: "rename" | "mark-read" | "mark-unread" | "resolve" | "unresolve" | "delete";
+  readonly action?:
+    | "rename"
+    | "mark-read"
+    | "mark-unread"
+    | "resolve"
+    | "unresolve"
+    | "delete"
+    | "move-to-user";
 };
 type SuccessProjectMenu = (typeof cakeRpcSuccessSchemas)["show-project-context-menu"]["Type"];

@@ -128,6 +128,8 @@ worktree tools beneath it when present. Empty caps collapse without reserved spa
 `IconButton` and `Avatar` for header navigation to the owning registered Project's existing
 Project Chat, shared by Project Sessions and Project Chat itself.
 
+[`SessionPurposeIndicator`](../../src/renderer/components/ui/session-purpose-indicator.tsx) identifies User Sessions and Delegated Sessions with a muted, accessible person/bot icon. Share it across session rows and references, including mixed links in a single to-do; it is not a to-do status.
+
 [`SessionListItem`](../../src/renderer/components/ui/session-list-item.tsx) is the authoritative
 session row shared by the sidebar, screenshot destination picker, and session search: identity, labels,
 family depth, worktree context, relative time and activity. Its shared

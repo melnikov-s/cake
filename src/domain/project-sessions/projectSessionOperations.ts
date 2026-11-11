@@ -86,6 +86,19 @@ const acquireExistingTarget = Effect.fn("ProjectSessions.acquireExistingTarget")
   return yield* acquireTarget(location, target.sessionId, false);
 });
 
+/** Human-only relationship conversion: metadata only, never acquire or interrupt Pi. */
+export const moveToUser = Effect.fn("ProjectSessions.moveToUser")(function* (
+  target: ProjectSessionTarget,
+) {
+  const location = yield* findLocation(target);
+  yield* (yield* SessionFamilyStorage).moveToUser(target.sessionId).pipe(asError("moveToUser"));
+  const resolved =
+    (yield* (yield* SessionArchiveStorage)
+      .locate(target.sessionId, archiveLocation(location))
+      .pipe(asError("moveToUser"))) === "resolved";
+  yield* publishCatalogChange(target.sessionId, location, resolved).pipe(asError("moveToUser"));
+});
+
 export const start = Effect.fn("ProjectSessions.start")(function* (
   input: ProjectSessionStartInput,
   onAccepted?: () => void,
@@ -118,6 +131,15 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
   return yield* Effect.gen(function* () {
     if (todoScope && input.todoId)
       attached = yield* attachExisting(todoScope, input.todoId, association).pipe(asError("start"));
+    const purpose = input.purpose ?? "user";
+    yield* (yield* SessionFamilyStorage)
+      .registerPurpose({
+        sessionId: input.sessionId,
+        projectPath: location.projectPath,
+        purpose,
+        createdPurpose: purpose,
+      })
+      .pipe(asError("start"));
     const handle = yield* acquireTarget(location, input.sessionId, true);
     if (input.labelIds?.length)
       yield* setProjectSessionLabels(location.projectPath, input.sessionId, input.labelIds).pipe(

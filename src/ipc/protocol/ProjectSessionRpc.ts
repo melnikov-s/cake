@@ -86,6 +86,10 @@ export const ProjectSessionRpc = RpcGroup.make(
     success: Schema.Struct({ sessionId: Schema.String }),
     error: ProjectSessionError,
   }),
+  Rpc.make("projectSessions.moveToUser", {
+    payload: ProjectSessionTarget,
+    error: ProjectSessionError,
+  }),
   Rpc.make("projectSessions.rename", {
     payload: {
       ...ProjectSessionTarget.fields,

@@ -1,3 +1,4 @@
+import type { ProjectSessionCreateInput } from "../project-sessions/agent-session-create";
 import type { ResultDelivery } from "../conversations/result-delivery";
 import type { ChildSessionAssignment } from "../project-sessions/child-session-assignment";
 import type { ParentContinuation } from "../conversations/parent-continuation";
@@ -50,14 +51,7 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
     signal: AbortSignal,
   ): Promise<string>;
   createSession?(
-    input: {
-      name: string;
-      initialPrompt: string;
-      promptFiles?: readonly string[];
-      resultDelivery?: ResultDelivery;
-      model: ChatConfiguration;
-      worktreeName?: string;
-    },
+    input: Omit<ProjectSessionCreateInput, "model"> & { model: ChatConfiguration },
     signal: AbortSignal,
   ): Promise<JsonValue>;
   createDraftSession?(

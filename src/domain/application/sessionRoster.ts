@@ -1,3 +1,4 @@
+import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { agentListLabel } from "../../contracts/agent/agent-list-data";
 import {
   CAKE_CHAT_REFERENCE,
@@ -10,6 +11,7 @@ import { sessionContextCost } from "../../utils/session-context-cost";
 interface RosterRow {
   readonly sessionId: string;
   readonly title: string;
+  readonly purpose?: SessionPurpose;
   readonly projectName?: string;
   readonly projectPath?: string;
   readonly status: AgentSessionStatus;
@@ -44,7 +46,7 @@ export function sessionRoster(
   const lines = [header];
   if (!rows.length) return header;
   lines.push(
-    `id status lifecycle outcome tokens cache age ttl | ${showProject ? "project | " : ""}title`,
+    `id status lifecycle outcome tokens cache age ttl purpose | ${showProject ? "project | " : ""}title`,
   );
   for (const row of rows) {
     const context = sessionContextCost(row.contextMetadata, now);
@@ -63,7 +65,7 @@ export function sessionRoster(
     const tokens =
       context.estimatedTokens === undefined ? "?" : compactNumber.format(context.estimatedTokens);
     lines.push(
-      `${row.sessionId === CAKE_CHAT_SESSION_ID ? CAKE_CHAT_REFERENCE : row.sessionId} ${row.status} ${row.resolved || row.status === "resolved" ? "resolved" : row.status === "draft" ? "draft" : "active"} ${row.outcome ?? "-"} ${tokens} ${cache} ${age} ${ttl} | ${showProject ? `${label(row.projectPath ?? row.projectName ?? "—")} | ` : ""}${label(row.title)}`,
+      `${row.sessionId === CAKE_CHAT_SESSION_ID ? CAKE_CHAT_REFERENCE : row.sessionId} ${row.status} ${row.resolved || row.status === "resolved" ? "resolved" : row.status === "draft" ? "draft" : "active"} ${row.outcome ?? "-"} ${tokens} ${cache} ${age} ${ttl} ${row.purpose ?? "-"} | ${showProject ? `${label(row.projectPath ?? row.projectName ?? "—")} | ` : ""}${label(row.title)}`,
     );
   }
   return lines.join("\n");

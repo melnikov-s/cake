@@ -78,6 +78,51 @@ function familySessions(parentUnread = false): SessionSummaryFixture[] {
   ];
 }
 
+it("groups User Sessions before delegated work while retaining each lane's prior activity order", () => {
+  using setup = renderOrdering([
+    sessionSummary({
+      sessionId: "delegate-new",
+      projectPath,
+      purpose: "delegated",
+      modifiedAt: "2026-04-01",
+      running: true,
+    }),
+    sessionSummary({
+      sessionId: "mine-old",
+      projectPath,
+      purpose: "user",
+      modifiedAt: "2026-01-01",
+    }),
+    sessionSummary({
+      sessionId: "delegate-old",
+      projectPath,
+      purpose: "delegated",
+      modifiedAt: "2026-01-01",
+    }),
+    sessionSummary({
+      sessionId: "mine-new",
+      projectPath,
+      purpose: "user",
+      modifiedAt: "2026-03-01",
+    }),
+  ]);
+  expect(setup.order()).toEqual(["mine-new", "mine-old", "delegate-new", "delegate-old"]);
+  expect(
+    within(screen.getByRole("region", { name: "My sessions" })).getAllByRole("img", {
+      name: "User Session",
+    }),
+  ).toHaveLength(2);
+  expect(
+    within(screen.getByRole("region", { name: "Delegated" })).getAllByRole("img", {
+      name: "Delegated Session",
+    }),
+  ).toHaveLength(2);
+  act(() => {
+    setup.root.sessionCatalogStore.find("delegate-new")!.purpose = "user";
+  });
+  expect(setup.order()[0]).toBe("delegate-new");
+});
+
 function conversation(sessionId: string): ConversationSnapshot {
   return {
     sessionId,
@@ -172,8 +217,8 @@ function renderOrdering(sessions: SessionSummaryFixture[] = initialSessions) {
     respondFlush,
     root,
     status: (sessionId: string) =>
-      within(view.container.querySelector<HTMLElement>(`[data-session-id="${sessionId}"]`)!)
-        .queryByRole("img")
+      view.container
+        .querySelector(`[data-session-id="${sessionId}"] [data-slot="own-activity"] [role="img"]`)
         ?.getAttribute("aria-label"),
     resolve,
     finishResolve() {

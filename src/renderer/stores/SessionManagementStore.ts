@@ -45,6 +45,14 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
       : true;
   }
 
+  async moveToUser(sessionId: string) {
+    try {
+      await this.client.projectSessions.moveToUser({ sessionId }, { signal: this.signal });
+    } catch (error) {
+      if (!this.signal.aborted) this.props.reportError(error);
+    }
+  }
+
   async renameSession(sessionId: string, name: string) {
     const title = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     if (!title || this.signal.aborted) return;

@@ -6,6 +6,7 @@ import {
   type Ref,
   type HTMLAttributes,
 } from "react";
+import type { SessionPurpose } from "../../../contracts/project-sessions/session-purpose";
 import { modelReferenceLabel } from "../../../contracts/model-presets/model-reference";
 import {
   splitComposerReferences,
@@ -13,7 +14,7 @@ import {
 } from "../../lib/composer-references";
 import { modelChipClassName } from "../model-picker";
 import { buttonVariants } from "./button";
-import { ChevronDownIcon, LinkIcon } from "./icons";
+import { ChevronDownIcon, LinkIcon, UserIcon, BotIcon } from "./icons";
 import type { ComposerInputElement } from "../../lib/composer-input-element";
 import { modelReferenceChipClassName } from "./model-reference-chip";
 import { cn } from "../../lib/utils";
@@ -89,6 +90,7 @@ export function ComposerReferenceInput({
   onValueChange,
   onEditReference,
   sessionReferenceNames,
+  sessionReferencePurposes,
   onCursorChange,
   inputRef,
   placeholder,
@@ -107,6 +109,7 @@ export function ComposerReferenceInput({
   onValueChange(value: string, cursor: number): void;
   onEditReference(segment: ComposerReferenceSegment, anchor: HTMLElement): void;
   sessionReferenceNames?: ReadonlyMap<string, string>;
+  sessionReferencePurposes?: ReadonlyMap<string, SessionPurpose>;
   onCursorChange?(cursor: number): void;
   inputRef: Ref<ComposerInputElement>;
   placeholder?: string;
@@ -118,8 +121,20 @@ export function ComposerReferenceInput({
     const id = chip.dataset.sessionId!;
     const name = sessionName(id);
     chip.querySelector("[data-session-name]")!.textContent = name;
-    chip.title = `${name}\n${id}`;
+    const purpose = sessionReferencePurposes?.get(id);
+    const label =
+      purpose === "user"
+        ? "User Session"
+        : purpose === "delegated"
+          ? "Delegated Session"
+          : undefined;
+    const icon =
+      sessionIcons.current?.children[purpose === "user" ? 2 : purpose === "delegated" ? 3 : 0];
+    if (icon) chip.firstElementChild?.replaceWith(icon.cloneNode(true));
+    chip.title = [name, label, id].filter(Boolean).join("\n");
     chip.setAttribute("aria-label", `Edit session reference: ${name}`);
+    if (label) chip.setAttribute("aria-description", label);
+    else chip.removeAttribute("aria-description");
   };
   const textInput = useRef<ComposerInputElement | null>(null);
   const voice = useDictationInput(dictation, textInput, dictationSubmit);
@@ -194,7 +209,7 @@ export function ComposerReferenceInput({
     element.current
       ?.querySelectorAll<HTMLElement>('[data-slot="session-reference"]')
       .forEach(updateSessionChip);
-  }, [sessionReferenceNames]);
+  }, [sessionReferenceNames, sessionReferencePurposes]);
   const publish = () => {
     const root = element.current!;
     const text = nodeText(root);
@@ -226,6 +241,12 @@ export function ComposerReferenceInput({
         <LinkIcon className="size-3 shrink-0 text-muted-foreground" />
         <span className="shrink-0 text-muted-foreground">
           <ChevronDownIcon size={12} />
+        </span>
+        <span className="text-muted-foreground [&>svg]:size-3">
+          <UserIcon />
+        </span>
+        <span className="text-muted-foreground [&>svg]:size-3">
+          <BotIcon />
         </span>
       </span>
       <div

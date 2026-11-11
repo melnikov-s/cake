@@ -1,8 +1,10 @@
 import { Schema } from "effect";
+import { SessionPurpose } from "./session-purpose";
 import { ProjectSessionSummary } from "./project-session-data";
 
 /** Background attention/routing facts, never list titles, message counts or transcript metadata. */
 export const ProjectSessionSignal = Schema.Struct({
+  purpose: ProjectSessionSummary.fields.purpose,
   sessionId: Schema.String,
   projectPath: Schema.String,
   workingDirectory: Schema.String,
@@ -18,7 +20,11 @@ export const ProjectSessionSignal = Schema.Struct({
 export interface ProjectSessionSignal extends Schema.Schema.Type<typeof ProjectSessionSignal> {}
 
 export const ProjectSessionSignalsUpdate = Schema.TaggedUnion({
-  Snapshot: { sessions: Schema.Array(ProjectSessionSignal) },
+  Snapshot: {
+    sessions: Schema.Array(ProjectSessionSignal),
+    /** Explicit relationship metadata includes archives without loading list pages/transcripts. */
+    purposes: Schema.optionalKey(Schema.Record(Schema.String, SessionPurpose)),
+  },
   Upserted: { session: ProjectSessionSignal },
   Removed: { sessionId: Schema.String },
   TitleChanged: { sessionId: Schema.String, title: Schema.String },

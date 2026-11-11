@@ -56,6 +56,7 @@ const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource
 
 export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
   readonly target: ProjectSessionTarget;
+  readonly purpose?: "user" | "delegated";
   readonly entryId: string;
   readonly destinationWorkingDirectory?: string;
   readonly resolveSource?: boolean;
@@ -156,6 +157,15 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         sessionId = result.sessionId;
         artifactPointers = result.artifactPointers;
       }
+      const purpose = input.purpose ?? "user";
+      yield* (yield* SessionFamilyStorage)
+        .registerPurpose({
+          sessionId,
+          projectPath: source.projectPath,
+          purpose,
+          createdPurpose: purpose,
+        })
+        .pipe(asError("fork"));
       yield* ensureSessionTodo(
         source.projectPath,
         sessionId,

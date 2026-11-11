@@ -1,3 +1,4 @@
+import { sessionPurposeCreationGuidance } from "../../contracts/project-sessions/session-purpose";
 import { Effect, Schema } from "effect";
 import { promptFilesGuidance } from "../../contracts/conversations/prompt-files";
 import { resultDeliveryGuidance } from "../../contracts/conversations/result-delivery";
@@ -21,6 +22,7 @@ export function createProjectSessionOperations(
       topic: "sessions",
       summary: "Create independent session",
       guidance: [
+        sessionPurposeCreationGuidance,
         promptFilesGuidance,
         resultDeliveryGuidance,
         "This singular Project Session-local operation derives the project from the caller and never accepts a workspacePath or sessionId. Cake Chat uses the separate plural sessions.create application control.",

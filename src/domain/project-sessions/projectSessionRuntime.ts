@@ -1,3 +1,5 @@
+import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
+import { projectSessionPurposePrompt } from "./projectSessionPurposePrompt";
 import type { MergeReadiness } from "../../contracts/worktrees/auto-merge";
 import type { DiscussionTitleRequests } from "../../services/discussion-sessions/DiscussionTitleRequests";
 import * as autoMergeReadiness from "../worktrees/autoMergeReadiness";
@@ -396,6 +398,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       },
       cwd: location.workingDirectory,
       agentDir: configuration.agentDirectory,
+      sessionRelationshipPrompt: () =>
+        run(families.state()).then((state) =>
+          projectSessionPurposePrompt(sessionPurpose(state, sessionId)),
+        ),
       additionalSystemPrompt: [
         relationshipPrompt,
         globalInstructions && `## Personal global instructions\n\n${globalInstructions}`,
@@ -642,6 +648,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   projectSessionContinuations.fork({
                     target: { sessionId, workingDirectory: location.workingDirectory },
                     entryId: input.entryId,
+                    purpose: "delegated",
                     destinationWorkingDirectory,
                     resolveSource: input.resolveSource,
                     title: input.title,

@@ -25,7 +25,10 @@ export function applySessionSignalsUpdate(
               update.session,
             ]
           : signals.sessions.filter((session) => session.sessionId !== update.sessionId);
-    if (update._tag === "Snapshot") signals.loaded = true;
+    if (update._tag === "Snapshot") {
+      signals.loaded = true;
+      signals.purposes = update.purposes ?? {};
+    }
     const affected =
       update._tag === "Snapshot"
         ? undefined
@@ -36,6 +39,7 @@ export function applySessionSignalsUpdate(
       const session = model.sessions[index]!;
       if (affected !== undefined && session.sessionId !== affected) continue;
       const signal = signals.find(session.sessionId);
+      session.purpose = signals.purposes[session.sessionId] ?? signal?.purpose ?? session.purpose;
       if (signal) {
         session.running = signal.running;
         session.workingStartedAt = signal.workingStartedAt;

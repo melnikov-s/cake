@@ -14,6 +14,28 @@ import { createRendererStoreFixture } from "../renderer-store-fixture";
 // Pending submission corrected into another Project, authority takeover during start
 // and eventual removal now run through App in remaining-store-finish-workflow.test.tsx.
 describe("Session catalog derivation integration", () => {
+  it("projects archived relationship cues without list or transcript demand, and updates takeover in cached rows", () => {
+    using fixture = createRendererStoreFixture({
+      sessions: [
+        sessionSummary({
+          sessionId: "cached",
+          projectPath: "/project",
+          purpose: "delegated",
+          resolved: true,
+        }),
+      ],
+    });
+    applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+      _tag: "Snapshot",
+      sessions: [],
+      purposes: { cached: "user", "cold-archive": "delegated" },
+    });
+    expect(fixture.root.sessionCatalogStore.find("cold-archive")).toBeUndefined();
+    expect(fixture.root.sessionCatalogStore.sessionPurpose("cold-archive")).toBe("delegated");
+    expect(fixture.root.sessionCatalogStore.find("cached")?.purpose).toBe("user");
+    expect(fixture.root.sidebarStore.sessionListStore.projectSessionCatalogQueries).toEqual([]);
+  });
+
   it("derives landed worktrees without loading an archive lane and respects restore/resolve", () => {
     using fixture = createRendererStoreFixture({
       projects: [projectRecord({ path: "/project" })],

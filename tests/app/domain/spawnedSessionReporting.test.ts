@@ -26,6 +26,7 @@ import * as families from "../../../src/domain/session-families/sessionFamilies"
 import * as agentControl from "../../../src/domain/application/agentControl";
 import { NOTICE_DELIVERY_MAX_FAILURES } from "../../../src/contracts/session-families/session-family-document";
 import * as updateBatches from "../../../src/domain/session-families/updateBatches";
+import { moveToUser } from "../../../src/domain/project-sessions/projectSessionOperations";
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
@@ -114,6 +115,10 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const received = yield* Deferred.make<void>();
   const persisted = yield* Deferred.make<void>();
   const executing = new Map<string, string[]>();
+  const runtimeOptionsById = new Map<
+    string,
+    import("../../../src/services/pi/runtime/cake-session-runtime").CakeSessionRuntimeOptions
+  >();
   const consumedInputs = new Set<string>();
   const materialized = new Set<string>([parentId, CAKE_CHAT_SESSION_ID]);
   const consumeQueued = yield* Deferred.make<void>();
@@ -193,6 +198,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
           ? Effect.fail(new Error("Provider unavailable during session startup"))
           : Effect.sync(() => {
               materialized.add(options.sessionId ?? "unexpected");
+              runtimeOptionsById.set(options.sessionId ?? "unexpected", options);
               const ownTranscript = isCakeChatSessionId(options.sessionId ?? "")
                 ? (chatTranscripts.get(options.sessionId!) ?? [])
                 : transcript;
@@ -343,6 +349,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   };
   return {
     context,
+    runtimeOptionsById,
     storage: observedStorage,
     harness,
     entered,
@@ -420,6 +427,102 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
   );
   return yield* Schema.decodeUnknownEffect(Schema.Struct({ sessionId: Schema.String }))(result);
 });
+
+it.effect(
+  "explicit on-behalf creation is a User Session with context handoff but no unsolicited report",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.run(
+        Effect.gen(function* () {
+          const created = yield* createPrompted({
+            ...createArgs,
+            projectPath: "/project",
+            purpose: "user",
+            source: { sessionId: CAKE_CHAT_SESSION_ID, kind: "cake-chat", title: "Cake Chat" },
+            requester: { sessionId: CAKE_CHAT_SESSION_ID, kind: "cake-chat", title: "Cake Chat" },
+          });
+          const active = yield* Deferred.await(f.entered);
+          assert.equal(parseCrossSessionMessage(active.text)?.metadata.expectsResponse, false);
+          assert.equal(parseCrossSessionMessage(active.text)?.metadata.resultDelivery, "ignore");
+          assert.equal(
+            (yield* f.storage.state()).sessionPurposes?.find(
+              (item) => item.sessionId === created.sessionId,
+            )?.purpose,
+            "user",
+          );
+          const prompt = f.runtimeOptionsById.get(created.sessionId)?.sessionRelationshipPrompt;
+          assert.ok(prompt);
+          assert.match(
+            yield* Effect.promise(prompt),
+            /requested reading, investigation and recommendations are welcome/,
+          );
+          yield* Deferred.succeed(f.finish, {
+            stopReason: "stop",
+            text: "Hello, ready to discuss.",
+          });
+          yield* Deferred.await(f.settled);
+          assert.equal((yield* f.storage.state()).turns.length, 0);
+          assert.equal(f.deliveries.length, 0);
+        }),
+      );
+    }),
+);
+
+it.effect(
+  "taking over running delegated work preserves execution and context but retires automatic reports",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.run(
+        Effect.gen(function* () {
+          const created = yield* createFromChat();
+          const active = yield* Deferred.await(f.entered);
+          const options = f.runtimeOptionsById.get(created.sessionId);
+          assert.ok(options?.sessionRelationshipPrompt);
+          assert.match(
+            yield* Effect.promise(() => options.sessionRelationshipPrompt!()),
+            /Delegated Session/,
+          );
+          const runtimes = yield* CakeSessionRuntimes;
+          const before = yield* runtimes.currentStatus({
+            ...location,
+            sessionId: created.sessionId,
+          });
+          const associations = (yield* projectTodos.list("/project")).items;
+          const count = f.runtimeOptionsById.size;
+          yield* moveToUser({ sessionId: created.sessionId, workingDirectory: "/project" });
+          assert.deepEqual(
+            yield* runtimes.currentStatus({ ...location, sessionId: created.sessionId }),
+            before,
+          );
+          assert.equal(f.runtimeOptionsById.size, count);
+          assert.equal(f.runtimeOptionsById.get(created.sessionId), options);
+          assert.deepEqual((yield* projectTodos.list("/project")).items, associations);
+          assert.match(
+            yield* Effect.promise(() => options.sessionRelationshipPrompt!()),
+            /human is your primary collaborator/,
+          );
+          assert.equal(
+            (yield* f.storage.state()).turns.find((turn) => turn.turnId === active.turnId)
+              ?.reported,
+            true,
+          );
+          yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
+          yield* Deferred.await(f.settled);
+          for (const turn of (yield* f.storage.state()).turns)
+            yield* sessionFamilyCompletion.deliver(turn);
+          assert.equal(f.deliveries.length, 0);
+          assert.equal(
+            (yield* f.storage.state()).sessionPurposes?.find(
+              (item) => item.sessionId === created.sessionId,
+            )?.createdPurpose,
+            "delegated",
+          );
+        }),
+      );
+    }),
+);
 
 it.effect.each(["global", "project"] as const)(
   "sessions.create tool carries todoId into one canonical %s outcome",

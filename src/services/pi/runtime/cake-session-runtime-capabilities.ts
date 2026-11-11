@@ -281,7 +281,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
           ? [...requestExtensions, gateway]
           : [
               ...requestExtensions,
-              createCakeSystemPromptExtension(),
+              createCakeSystemPromptExtension(options.sessionRelationshipPrompt),
               ...(options.sessionReferences
                 ? [createSessionReferenceExtension(options.sessionReferences)]
                 : []),

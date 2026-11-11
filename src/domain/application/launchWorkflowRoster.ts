@@ -1,3 +1,4 @@
+import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import { Clock, Effect } from "effect";
 import { currentSessionOutcome } from "../../contracts/project-sessions/session-reporting";
 import { agentListPage } from "../../contracts/agent/agent-list-data";
@@ -232,23 +233,29 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
           ? "none"
           : "unknown"
         : `${worktree.branch}:${worktree.state ?? "active"}${worktree.pendingStrategy ? `; pending-landing=${worktree.pendingStrategy}` : ""}${worktree.landedSourceCommit ? `; landed-source=${worktree.landedSourceCommit}` : ""}; head/dirty=unknown`;
+      const explicitUserRelationship = state.sessionPurposes?.some(
+        (item) => item.sessionId === spawn.sessionId && item.purpose === "user",
+      );
       const next = resolved
         ? "none"
-        : wait
-          ? "answer input"
-          : busy
-            ? "wait"
-            : blocked || failed || stopped
-              ? "inspect blocker/stop"
-              : worktree?.pendingStrategy
-                ? "inspect pending landing"
-                : landed
-                  ? "review/resolve; already landed"
-                  : ready
-                    ? "review result; verify merge"
-                    : "inspect; readiness unknown";
+        : explicitUserRelationship
+          ? "human-led; no autonomous assignment"
+          : wait
+            ? "answer input"
+            : busy
+              ? "wait"
+              : blocked || failed || stopped
+                ? "inspect blocker/stop"
+                : worktree?.pendingStrategy
+                  ? "inspect pending landing"
+                  : landed
+                    ? "review/resolve; already landed"
+                    : ready
+                      ? "review result; verify merge"
+                      : "inspect; readiness unknown";
       return {
         sessionId: spawn.sessionId,
+        purpose: sessionPurpose(state, spawn.sessionId),
         projectPath: spawn.projectPath,
         title,
         group,
@@ -303,7 +310,7 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
   ];
   if (page.items.length)
     lines.push(
-      "group\ttask\tsession\tlifecycle\texecution\treason\tresult\toutcome\tdecision\tworktree\tmerge\tnext\tproject",
+      "group\ttask\tsession\tlifecycle\texecution\treason\tresult\toutcome\tdecision\tworktree\tmerge\tnext\tproject\tpurpose",
     );
   for (const row of page.items)
     lines.push(
@@ -321,6 +328,7 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
         row.merge,
         row.next,
         row.projectPath,
+        row.purpose,
       ]
         .map(cell)
         .join("\t"),

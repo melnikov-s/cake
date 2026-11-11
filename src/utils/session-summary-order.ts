@@ -1,15 +1,27 @@
-/** Stable newest-created-first order; activity and catalog arrival order never move rows. */
+import type { SessionPurpose } from "../contracts/project-sessions/session-purpose";
+
+export function compareSessionPurposes(
+  left: { purpose?: SessionPurpose },
+  right: { purpose?: SessionPurpose },
+): number {
+  return Number(left.purpose === "delegated") - Number(right.purpose === "delegated");
+}
+
+/** User Sessions first, then stable newest-created-first order; activity and catalog arrival order never move rows. */
 export function compareSessionSummariesByCreation(
-  left: { createdAt: string; sessionId: string },
-  right: { createdAt: string; sessionId: string },
+  left: { createdAt: string; sessionId: string; purpose?: SessionPurpose },
+  right: { createdAt: string; sessionId: string; purpose?: SessionPurpose },
 ): number {
   return (
-    right.createdAt.localeCompare(left.createdAt) || left.sessionId.localeCompare(right.sessionId)
+    compareSessionPurposes(left, right) ||
+    right.createdAt.localeCompare(left.createdAt) ||
+    left.sessionId.localeCompare(right.sessionId)
   );
 }
 
 /** Minimal shape of a session summary needed to determine sidebar list order. */
 interface OrderableSessionSummary {
+  purpose?: SessionPurpose;
   modifiedAt: string;
   draft?: boolean;
   working?: boolean;
@@ -20,6 +32,8 @@ export function compareSessionSummariesForSidebar(
   left: OrderableSessionSummary,
   right: OrderableSessionSummary,
 ): number {
+  const purposeOrder = compareSessionPurposes(left, right);
+  if (purposeOrder) return purposeOrder;
   if (Boolean(left.working) !== Boolean(right.working)) return left.working ? -1 : 1;
   if (Boolean(left.draft) !== Boolean(right.draft)) return left.draft ? -1 : 1;
   return compareSessionSummariesByActivity(left, right);

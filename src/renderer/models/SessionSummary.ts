@@ -3,6 +3,7 @@ import type { ProjectSessionSummary } from "../../contracts/project-sessions/pro
 export class SessionSummary extends Model {
   @id sessionId = "";
   title = "";
+  purpose: "user" | "delegated" = "user";
   createdAt = "";
   modifiedAt = "";
   messageCount = 0;

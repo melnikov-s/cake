@@ -1,3 +1,4 @@
+import { parseSessionLink } from "../../contracts/conversations/message-reference";
 import type { ProjectTodoAssociation } from "../../contracts/projects/project-todos";
 import { editorLocationFromPath } from "../../contracts/editor/editor-location";
 import { observer, useStore } from "r-state-tree/react";
@@ -5,6 +6,7 @@ import { projectTodoAssociationDestination } from "../lib/project-todo-associati
 import { cn } from "../lib/utils";
 import { RootStore } from "../stores/RootStore";
 import { MarkdownLink } from "./ai-elements/markdown";
+import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 import { SessionActivityIndicator } from "./session-activity-indicator";
 import { CommitChangeStatsText } from "./ui/commit-change-stats";
 
@@ -17,6 +19,13 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
   const root = useStore(RootStore);
   const { href, Icon } = projectTodoAssociationDestination(association);
   const isSource = association.kind === "source";
+  const sessionId = parseSessionLink(href)?.sessionId;
+  const purpose = sessionId
+    ? (root.sessionCatalogStore.sessionPurpose(sessionId) ??
+      (association.kind === "session" && root.sessionCatalogStore.backgroundSignalsLoaded
+        ? "user"
+        : undefined))
+    : undefined;
   const readiness =
     association.kind === "session"
       ? root.sessionMetadataStore.sessionMergeReadiness(association.sessionId)
@@ -46,13 +55,14 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
           />
         )}
         <span className="text-muted-foreground [&>svg]:size-3">
-          <Icon />
+          {purpose ? <SessionPurposeIndicator purpose={purpose} /> : <Icon />}
         </span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 [&>a]:max-w-full [&>a]:min-w-0 [&>a]:[overflow-wrap:anywhere] [&>a]:font-normal [&>a]:leading-4 [&>a]:no-underline [&>a:hover]:text-foreground [&>a:hover]:underline">
         <MarkdownLink
           href={href}
           presentation="text"
+          showSessionPurpose={false}
           onOpenSourceLocation={
             isSource
               ? (location) =>

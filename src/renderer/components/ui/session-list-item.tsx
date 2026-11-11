@@ -4,6 +4,8 @@ import type { ProjectIcon, SessionLabel } from "../../../contracts/application/a
 import type { WorktreeCatalogEntry } from "../../../contracts/worktrees/managed-worktree-data";
 import { isActiveSessionActivity, type SessionActivity } from "../../lib/session-activity";
 import { cn } from "../../lib/utils";
+import { SessionPurposeIndicator } from "./session-purpose-indicator";
+import type { SessionPurpose } from "../../../contracts/project-sessions/session-purpose";
 import { SessionActivityIndicator } from "../session-activity-indicator";
 import { WorktreeStatusIcon } from "../worktree-status-icon";
 import { Avatar } from "./avatar";
@@ -20,6 +22,7 @@ import { CommitChangeStatsText } from "./commit-change-stats";
 export interface SessionListItemProps {
   session: {
     sessionId: string;
+    purpose?: SessionPurpose;
     title: string;
     modifiedAt: string;
     workingStartedAt?: number;
@@ -260,8 +263,12 @@ export const SessionListItem = observer(function SessionListItem({
           onClick={() => onOpen(session.sessionId)}
           onContextMenu={onContextMenu}
           label={
-            <span className="session-title block min-w-0 truncate" title={session.title}>
-              {session.title}
+            <span
+              className="session-title flex min-w-0 items-center gap-1 truncate"
+              title={session.title}
+            >
+              <span className="truncate">{session.title}</span>
+              {session.purpose && <SessionPurposeIndicator purpose={session.purpose} />}
             </span>
           }
           badge={

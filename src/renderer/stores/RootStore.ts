@@ -230,6 +230,7 @@ export class RootStore extends Store<{
         return destinations();
       },
       sessionTitle,
+      sessionPurpose: (sessionId: string) => this.sessionCatalogStore.sessionPurpose(sessionId),
     };
   }
 
