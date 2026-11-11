@@ -511,18 +511,22 @@ export const awaitTurnSettled = Effect.fn("ProjectSessions.awaitTurnSettled")(fu
   turnId: TurnId,
 ) {
   const location = yield* findLocation(target);
-  const sessions = yield* CakeSessionRuntimes;
-  const pending = () =>
-    sessions
-      .currentTurnIds({
+  const settlement = yield* (yield* CakeSessionRuntimes)
+    .turnSettlement(
+      {
         workingDirectory: location.workingDirectory,
         sessionDirectory: location.sessionDirectory,
         sessionId: target.sessionId,
-      })
-      .pipe(Effect.map((turnIds) => turnIds.includes(turnId)));
-  yield* pending().pipe(
-    Effect.repeat({ while: (running) => running, schedule: Schedule.spaced("250 millis") }),
-  );
+      },
+      turnId,
+    )
+    .pipe(
+      Effect.repeat({
+        while: (state) => state === "running",
+        schedule: Schedule.spaced("250 millis"),
+      }),
+    );
+  return settlement === "running" || settlement === "unknown" ? undefined : settlement;
 });
 
 export const getChangelog = Effect.fn("ProjectSessions.getChangelog")(function* (

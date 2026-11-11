@@ -49,6 +49,8 @@ import { retainNotification } from "../../../src/domain/session-families/session
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 
 const target = { sessionId: "owner", workingDirectory: "/tree", sessionDirectory: "/sessions" };
+/** What the repair turn's runtime settled with; void means a successful turn. */
+type RepairOutcome = "complete" | "failed" | "aborted" | "unknown" | void;
 const commit = "a".repeat(40);
 const readiness = {
   readyToMerge: true,
@@ -92,6 +94,7 @@ function fixture(
   } = {},
 ) {
   const events: string[] = [];
+  const prompts: string[] = [];
   const notices: Array<{ connectionId: number; event: CakeEvent }> = [];
   const recipients: string[] = [];
   let landing = options.landing ?? "merge";
@@ -100,7 +103,8 @@ function fixture(
   let head = options.head ?? commit;
   let conflict: boolean | undefined;
   let executingTurns: string[] | undefined;
-  let repair: Effect.Effect<void, WorktreeLandingAgentError> = Effect.void;
+  let changedFiles: string[] = [];
+  let repair: Effect.Effect<RepairOutcome, WorktreeLandingAgentError> = Effect.void;
   let currentRecord: WorktreeRecord = options.recovery
     ? { ...record, state: "landed", resolveAfterLanding: true, landedSourceCommit: commit }
     : record;
@@ -218,6 +222,7 @@ function fixture(
           rebasing: false,
           squashMessageReady: false,
         }).pipe(Effect.tap(() => options.statusWait ?? Effect.void)),
+      headState: () => Effect.sync(() => ({ head, changedFiles, merging: false, rebasing: false })),
       records: () =>
         Effect.sync(() => [
           currentRecord,
@@ -281,7 +286,13 @@ function fixture(
           events.push("repair");
           expect(text).toContain("worktrees.reportReadiness");
           expect(text).toContain("Do not call worktrees.merge");
-        }).pipe(Effect.andThen(Effect.suspend(() => repair))),
+          prompts.push(text);
+        }).pipe(
+          Effect.andThen(Effect.suspend(() => repair)),
+          Effect.map((outcome) =>
+            outcome === "unknown" ? undefined : (outcome ?? ("complete" as const)),
+          ),
+        ),
     }),
     Layer.mock(WorktreeLandingCompletion, {
       resolveWorkingDirectory: () =>
@@ -307,8 +318,12 @@ function fixture(
     events,
     notices,
     recipients,
-    setRepair: (value: Effect.Effect<void, WorktreeLandingAgentError>) => {
+    prompts,
+    setRepair: (value: Effect.Effect<RepairOutcome, WorktreeLandingAgentError>) => {
       repair = value;
+    },
+    setChangedFiles: (value: string[]) => {
+      changedFiles = value;
     },
     setHead: (value: string) => {
       head = value;
@@ -769,6 +784,8 @@ const completedRepair = Effect.fn("test.completedRepair")(function* (
         text: "Repaired conflicts, committed final changes, and task-scoped validation passed.",
       },
     });
+    // Like the live agent, report the outcome once settlement hooks have finished.
+    return outcome;
   }).pipe(
     Effect.provide(context),
     Effect.mapError(
@@ -995,6 +1012,187 @@ it.effect("reports a failed repair without resurrecting validation or resolving"
   }).pipe(Effect.provide(test.layer));
 });
 
+const declareOnlyHead = { readyToMerge: true, taskCompleted: true, validationPassed: true };
+
+/** A repair turn that ends without landable readiness, as in the observed incident. */
+const invalidRepair = Effect.fn("test.invalidRepair")(function* (
+  test: ReturnType<typeof fixture>,
+  kind: "withdrawn" | "rejected" | "stale",
+  id = "repair-turn",
+) {
+  const context = yield* Effect.context<Effect.Services<ReturnType<typeof report>>>();
+  return Effect.gen(function* () {
+    test.setHead("b".repeat(40));
+    test.setExecutingTurns([id]);
+    if (kind === "rejected") {
+      const error = yield* report(target, { ...readiness, validatedCommit: "2c77633cb5ed" }).pipe(
+        Effect.flip,
+      );
+      expect(error.message).toContain(`HEAD is ${"b".repeat(40)}; you passed 2c77633cb5ed.`);
+      return;
+    }
+    expect(yield* report(target, declareOnlyHead)).toEqual({ eligible: true });
+    if (kind === "withdrawn")
+      expect(yield* report(target, { ...declareOnlyHead, readyToMerge: false })).toEqual({
+        eligible: false,
+        reason: "Merge readiness was revoked.",
+      });
+    else test.setHead("c".repeat(40));
+  }).pipe(
+    Effect.provide(context),
+    Effect.mapError(
+      (error) => new WorktreeLandingAgentError({ operation: "repair", message: String(error) }),
+    ),
+  );
+});
+
+it.effect.each([
+  { kind: "withdrawn", reason: "was withdrawn or invalidated", head: "b" },
+  { kind: "rejected", reason: "No readiness was reported after the repair", head: "b" },
+  { kind: "stale", reason: `but HEAD is now ${"c".repeat(40)}`, head: "c" },
+] as const)(
+  "re-asks once after $kind repair readiness, then lands the valid report",
+  ({ kind, reason, head }) => {
+    const test = fixture({ conflict: true });
+    return Effect.gen(function* () {
+      yield* ready;
+      const turns = [
+        yield* invalidRepair(test, kind),
+        yield* completedRepair(test, "reask-turn", head.repeat(40)),
+      ];
+      test.setRepair(Effect.suspend(() => turns.shift() ?? Effect.die("Unexpected third prompt")));
+      yield* runPass();
+      yield* terminal;
+      expect(test.prompts).toHaveLength(2);
+      expect(test.prompts[1]).toContain("Automatic landing repair is not finished");
+      expect(test.prompts[1]).toContain(reason);
+      expect(test.prompts[1]).toContain("This is the only reminder");
+      test.setConflict(false);
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect((yield* requests).at(-1)).toMatchObject({
+        id: "reask-turn",
+        commit: head.repeat(40),
+        repairAttempt: 1,
+        repairOfRequestId: "turn",
+        state: "landed",
+      });
+      expect(test.events.filter((event) => event === "land")).toHaveLength(2);
+      expect(test.events).toContain("resolve");
+      expect(test.notices).toHaveLength(1);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("fails cleanly, with one failed outcome, when the reminder also ends invalid", () => {
+  const test = fixture({ conflict: true });
+  return Effect.gen(function* () {
+    yield* ready;
+    const turns = [Effect.void, yield* invalidRepair(test, "withdrawn", "reask-turn")];
+    test.setRepair(Effect.suspend(() => turns.shift() ?? Effect.die("Unexpected third prompt")));
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    yield* runPass();
+    expect(test.prompts).toHaveLength(2);
+    expect(test.prompts[1]).toContain(
+      `No readiness was reported after the repair. HEAD is ${commit}.`,
+    );
+    const original = (yield* requests)[0];
+    expect(original).toMatchObject({ id: "turn", state: "failed", readyToMerge: false });
+    expect(original?.message).toMatch(
+      /^Automatic repair stopped after one reminder without fresh validated completion: Readiness for b{40} was withdrawn or invalidated .*No retry or resolution occurred\.$/,
+    );
+    expect(original?.outcome).toMatchObject({ merged: false, resolutionSucceeded: false });
+    expect((yield* requests).every((item) => !item.readyToMerge)).toBe(true);
+    expect(
+      (yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state)).operations.get(
+        "/tree",
+      )?.phase,
+    ).toBe("failed");
+    expect(
+      ((yield* (yield* SessionFamilyStorage).state()).coordinatorDigest ?? []).map(
+        (item) => item.id,
+      ),
+    ).toEqual(["auto-merge:turn"]);
+    expect(test.events.filter((event) => event === "land")).toHaveLength(1);
+    expect(test.events).not.toContain("resolve");
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect.each(["aborted", "failed", "unknown"] as const)(
+  "never re-asks a repair turn that settled %s",
+  (outcome) => {
+    const test = fixture({ conflict: true });
+    return Effect.gen(function* () {
+      yield* ready;
+      test.setRepair(Effect.succeed(outcome));
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect(test.prompts).toHaveLength(1);
+      expect((yield* requests)[0]).toMatchObject({ state: "failed", readyToMerge: false });
+      expect((yield* requests)[0]?.message).toContain(
+        outcome === "aborted"
+          ? "Automatic repair turn was stopped"
+          : outcome === "failed"
+            ? "Automatic repair turn failed"
+            : "Automatic repair turn ended with an unknown outcome",
+      );
+      expect(test.events).not.toContain("resolve");
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("records the worktree HEAD when readiness omits the commit", () => {
+  const test = fixture({ head: "c".repeat(40) });
+  return Effect.gen(function* () {
+    expect(yield* report(target, declareOnlyHead)).toEqual({ eligible: true });
+    expect((yield* requests)[0]).toMatchObject({
+      commit: "c".repeat(40),
+      state: "pending",
+      readyToMerge: true,
+    });
+    // A matching full or prefix commit is only an assertion of that same HEAD.
+    expect(yield* report(target, { ...readiness, validatedCommit: "C".repeat(12) })).toEqual({
+      eligible: true,
+    });
+    expect(yield* report(target, { ...readiness, validatedCommit: "c".repeat(40) })).toEqual({
+      eligible: true,
+    });
+    expect(yield* requests).toHaveLength(1);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect.each(["d".repeat(40), "dddddddd"])(
+  "rejects mismatched commit %s at call time without recording readiness",
+  (validatedCommit) => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      const error = yield* report(target, { ...readiness, validatedCommit }).pipe(Effect.flip);
+      expect(error.message).toBe(
+        `HEAD is ${commit}; you passed ${validatedCommit}. Omit validatedCommit to declare the current HEAD, or commit the validated work first.`,
+      );
+      expect(yield* requests).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("rejects readiness while uncommitted or untracked files remain", () => {
+  const test = fixture();
+  return Effect.gen(function* () {
+    test.setChangedFiles(["src/a.ts", "notes.txt"]);
+    const error = yield* report(target, declareOnlyHead).pipe(Effect.flip);
+    expect(error.message).toBe(
+      "The worktree has 2 uncommitted or untracked file(s): src/a.ts, notes.txt. Commit or discard them first, then report readiness.",
+    );
+    expect(yield* requests).toEqual([]);
+    test.setChangedFiles([]);
+    expect(yield* report(target, declareOnlyHead)).toEqual({ eligible: true });
+  }).pipe(Effect.provide(test.layer));
+});
+
 it.effect(
   "repair waiting does not block another worktree and cannot be canceled as queued Git",
   () =>
@@ -1127,10 +1325,11 @@ it.effect.each(["revoked", "previous-run", "different-commit"] as const)(
           ...state,
           autoMergeRunId: "new-run",
         }));
+      if (change === "different-commit") test.setHead("b".repeat(40));
       const result = yield* report(
         target,
         change === "different-commit"
-          ? { ...readiness, validatedCommit: "b".repeat(40) }
+          ? { readyToMerge: true, taskCompleted: true, validationPassed: true }
           : readiness,
       );
       expect(result).toEqual({
@@ -1140,7 +1339,7 @@ it.effect.each(["revoked", "previous-run", "different-commit"] as const)(
             ? "New input invalidated merge readiness"
             : change === "previous-run"
               ? "Readiness belongs to a previous app run."
-              : "Stored readiness does not match this session, workspace, or validated commit.",
+              : `This run already declared readiness for ${commit}, but HEAD is now ${"b".repeat(40)}. A run's declaration is not replaced; landing will reject the earlier commit as stale.`,
       });
       expect((yield* requests)[0]?.commit).toBe(commit);
       yield* setEnabled("/project", true);
@@ -1327,9 +1526,12 @@ it.effect.each([
   { head: "b".repeat(40) },
   { resolveFailure: true },
 ])("keeps failed/blocked landing unresolved: %j", (options) => {
-  const test = fixture(options);
+  const { head, ...fixtureOptions } = options;
+  const test = fixture(fixtureOptions);
   return Effect.gen(function* () {
     yield* ready;
+    // HEAD moved after validation: landing, not the declaration, rejects it.
+    if (head) test.setHead(head);
     yield* runPass();
     yield* terminal;
     yield* runPass();
@@ -1973,7 +2175,7 @@ it.effect.each([
       yield* runPass();
       expect(test.events.filter((item) => item === "land")).toHaveLength(landings);
       expect(test.events).not.toContain("resolve");
-      expect(yield* report(target, readiness)).toMatchObject({ eligible: false });
+      expect(yield* report(target, declareOnlyHead)).toMatchObject({ eligible: false });
       test.setExecutingTurns(["fresh-repair-turn"]);
       expect(
         yield* report(target, {

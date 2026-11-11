@@ -51,6 +51,8 @@ export interface SharedRuntime {
   readonly activityTiming: { startedAt: number | undefined };
   readonly settledInputIds: Set<string>;
   readonly turnResults: Map<string, PiTurnResult>;
+  /** Recent outcomes, recorded only after settlement hooks finish. */
+  readonly settledOutcomes: Map<string, "complete" | "failed" | "aborted">;
   readonly queueEdits: Semaphore.Semaphore;
   readonly turnAdmissions: Semaphore.Semaphore;
 }
@@ -244,6 +246,7 @@ export const makeSessionRuntimeRegistry = Effect.fn("CakeSessionRuntimes.makeReg
               initialTranscriptPersisted,
               settledInputIds,
               turnResults,
+              settledOutcomes: new Map(),
               fingerprint: key.fingerprint,
               acquireOptions: key.options,
               workingDirectory: key.options.runtime.cwd,

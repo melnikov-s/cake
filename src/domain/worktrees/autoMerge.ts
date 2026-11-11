@@ -12,10 +12,39 @@ import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAg
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
+import * as readiness from "./autoMergeReadiness";
 import * as landings from "./worktreeLandings";
 import * as worktreeLifecycle from "./worktreeLifecycle";
 
 const emptyRequests: ReadonlyArray<AutoMergeRequest> = [];
+
+/** Why the latest repair turn did not leave a landable declaration, or undefined. */
+const repairProblem = Effect.fn("AutoMerge.repairProblem")(function* (request: AutoMergeRequest) {
+  const inspected = yield* readiness.inspectReadyHead(request.workspacePath);
+  if (inspected.problem !== undefined) return inspected.problem;
+  const declaration = ((yield* (yield* SessionFamilyStorage).state()).autoMergeRequests ?? [])
+    .filter(
+      (item) =>
+        item.id !== request.id &&
+        item.sessionId === request.sessionId &&
+        item.workspacePath === request.workspacePath &&
+        item.runId === request.runId &&
+        item.repairAttempt === (request.repairAttempt ?? 0) + 1 &&
+        item.repairOfRequestId === request.id,
+    )
+    .at(-1);
+  if (!declaration) return `No readiness was reported after the repair. HEAD is ${inspected.head}.`;
+  if (
+    !declaration.readyToMerge ||
+    (declaration.state !== "pending" && declaration.state !== "ready")
+  )
+    return `Readiness for ${declaration.commit} was withdrawn or invalidated${declaration.message ? ` (${declaration.message})` : ""}. HEAD is ${inspected.head}.`;
+  if (declaration.commit === request.commit)
+    return `Readiness names the pre-repair commit ${request.commit}; the repaired HEAD must be revalidated and declared.`;
+  if (declaration.commit !== inspected.head)
+    return `Readiness was declared for ${declaration.commit}, but HEAD is now ${inspected.head}.`;
+  return undefined;
+});
 
 /** Single worker pass. The existing engine owns the repository FIFO and Git safety. */
 export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
@@ -97,11 +126,20 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
     // Pi can retire active input before its completion hooks finish. A repair
     // declaration may still be pending when promptAndWait returns; only the
     // normal successful-settlement path may promote it to an authorized retry.
+    // A reminder turn supersedes an earlier invalid declaration of the same round.
     if (
       repairPredecessor &&
       request.state === "canceled" &&
       !request.readyToMerge &&
-      operation.phase === "stalled"
+      operation.phase === "stalled" &&
+      requests.findLast(
+        (item) =>
+          item.repairOfRequestId === request.repairOfRequestId &&
+          item.repairAttempt === request.repairAttempt &&
+          item.workspacePath === request.workspacePath &&
+          item.sessionId === request.sessionId &&
+          item.runId === request.runId,
+      ) === request
     ) {
       const error =
         request.message ??
@@ -354,28 +392,39 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
                   message:
                     "Automatic repair stopped after two repair turns with recurring conflicts; no merge or resolution occurred.",
                 });
-              yield* agent.promptAndWait({
+              const outcome = yield* agent.promptAndWait({
                 sessionId: request.sessionId,
-                text: `${text}\n\nAutomatic landing repair: own routine merge/rebase conflicts. If Git already completed a clean rebase, review the updated commits. Revalidate the final changes with task-scoped checks, commit, then call worktrees.reportReadiness with that exact HEAD. Do not call worktrees.merge, resolve sessions, or change Auto-merge. Cake will retry only after successful turn completion and fresh current authorization. Report genuine repair failures or ambiguous design/permission decisions honestly.`,
+                text: `${text}\n\nAutomatic landing repair: own routine merge/rebase conflicts. If Git already completed a clean rebase, review the updated commits. Revalidate the final changes with task-scoped checks, commit, then call worktrees.reportReadiness; Cake records the current HEAD, so no commit hash is needed. Do not call worktrees.merge, resolve sessions, or change Auto-merge. Cake will retry only after successful turn completion and fresh current authorization. Report genuine repair failures or ambiguous design/permission decisions honestly.`,
               });
-              const status = yield* worktrees.status(request.workspacePath);
-              const fresh = (yield* storage.state()).autoMergeRequests?.find(
-                (item) =>
-                  item.id !== request.id &&
-                  item.sessionId === request.sessionId &&
-                  item.workspacePath === request.workspacePath &&
-                  item.runId === request.runId &&
-                  item.repairAttempt === (request.repairAttempt ?? 0) + 1 &&
-                  item.repairOfRequestId === request.id &&
-                  item.readyToMerge &&
-                  (item.state === "pending" || item.state === "ready") &&
-                  item.commit !== request.commit,
+              let problem = yield* repairProblem(request).pipe(
+                Effect.provideService(ManagedWorktrees, worktrees),
+                Effect.provideService(SessionFamilyStorage, storage),
               );
-              if (!status || status.dirtyCount > 0 || status.merging || status.rebasing || !fresh)
+              // Missing, invalid or withdrawn readiness after a successful turn gets exactly
+              // one specific reminder. Stopped, failed or unknown turns are never re-prompted.
+              if (problem && outcome === "complete") {
+                yield* landings
+                  .revokeReadiness(request.workspacePath, request.id)
+                  .pipe(Effect.provideService(SessionFamilyStorage, storage));
+                yield* agent.promptAndWait({
+                  sessionId: request.sessionId,
+                  text: `Automatic landing repair is not finished: ${problem}\n\nFinish the repair, commit, rerun task-scoped checks if the code changed, then call worktrees.reportReadiness {readyToMerge: true, taskCompleted: true, validationPassed: true}; Cake records the current HEAD. Do not call worktrees.merge, resolve sessions, or change Auto-merge. This is the only reminder: if readiness is still missing or invalid when this turn ends, automatic landing stops. If you cannot finish the repair, say so instead of reporting readiness.`,
+                });
+                problem = yield* repairProblem(request).pipe(
+                  Effect.provideService(ManagedWorktrees, worktrees),
+                  Effect.provideService(SessionFamilyStorage, storage),
+                );
+              }
+              if (problem)
                 return yield* new WorktreeLandingError({
                   operation: "repair",
-                  message:
-                    "Automatic repair did not produce clean committed changes and fresh validated completion; no retry or resolution occurred.",
+                  message: `${
+                    outcome === "complete"
+                      ? "Automatic repair stopped after one reminder"
+                      : outcome
+                        ? `Automatic repair turn ${outcome === "aborted" ? "was stopped" : "failed"}`
+                        : "Automatic repair turn ended with an unknown outcome"
+                  } without fresh validated completion: ${problem} No retry or resolution occurred.`,
                 });
             }).pipe(
               Effect.mapError(

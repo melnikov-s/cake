@@ -13,6 +13,7 @@ import type {
   WorktreeRecord,
 } from "../../contracts/worktrees/managed-worktree-data";
 import type {
+  WorktreeHeadState,
   WorktreeLandOutcome,
   WorktreeLandRequest,
   WorktreeRebaseOutcome,
@@ -76,6 +77,10 @@ export interface ManagedWorktreesService {
   readonly status: (
     worktreePath: string,
   ) => Effect.Effect<WorktreeStatus | undefined, ManagedWorktreeError>;
+  /** Undefined unless the path is an active or landed managed checkout. */
+  readonly headState: (
+    worktreePath: string,
+  ) => Effect.Effect<WorktreeHeadState | undefined, ManagedWorktreeError>;
   /** Reserves FIFO landing order without waiting or blocking source preparation. */
   readonly prepareLanding: (
     worktreePath: string,

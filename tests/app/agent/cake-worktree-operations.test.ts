@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { expect, it } from "vitest";
-import { MergeReadinessResult } from "../../../src/contracts/worktrees/auto-merge";
+import { MergeReadiness, MergeReadinessResult } from "../../../src/contracts/worktrees/auto-merge";
 import { createCakeWorktreeOperations } from "../../../src/domain/worktrees/cake-worktree-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 
@@ -48,7 +48,9 @@ it("exposes scoped validation and unchanged authorization in readiness help", as
     "Unrelated baseline failures or broad-suite timeouts alone do not block readiness",
     "Unfinished acceptance criteria, known relevant failures and uncommitted/unvalidated task changes block readiness",
     "Never relabel failed task checks as passed",
-    "exact HEAD as validatedCommit",
+    "Cake records the worktree's current HEAD, so no commit hash is needed",
+    "Optional validatedCommit (full or prefix) only asserts that HEAD",
+    "Fails immediately when HEAD differs from validatedCommit, the worktree has uncommitted or untracked files",
     "user-owned project Auto-merge toggle",
     "Do not call worktrees.merge to force automatic landing",
   ])
@@ -57,4 +59,14 @@ it("exposes scoped validation and unchanged authorization in readiness help", as
 
 it("requires an explanation for ineligible readiness in the output contract", () => {
   expect(Schema.is(MergeReadinessResult)({ eligible: false })).toBe(false);
+});
+
+it("accepts readiness without a commit and only well-formed commit assertions", () => {
+  const base = { readyToMerge: true, taskCompleted: true, validationPassed: true };
+  const valid = Schema.is(MergeReadiness);
+  expect(valid(base)).toBe(true);
+  expect(valid({ ...base, validatedCommit: "2c77633c" })).toBe(true);
+  expect(valid({ ...base, validatedCommit: "A".repeat(40) })).toBe(true);
+  expect(valid({ ...base, validatedCommit: "2c77" })).toBe(false);
+  expect(valid({ ...base, validatedCommit: "HEAD" })).toBe(false);
 });

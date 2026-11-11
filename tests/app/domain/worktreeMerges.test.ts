@@ -117,7 +117,7 @@ const layer = (harness: Harness) => {
     Layer.mock(WorktreeLandingAgent, {
       promptAndWait: ({ text }) => {
         harness.prompts.push(text);
-        return harness.prompt?.(text) ?? Effect.void;
+        return (harness.prompt?.(text) ?? Effect.void).pipe(Effect.as("complete" as const));
       },
     }),
     Layer.mock(WorktreeLandingCompletion, {

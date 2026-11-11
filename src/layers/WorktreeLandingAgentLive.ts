@@ -86,7 +86,7 @@ export const WorktreeLandingAgentLive = Layer.effect(
             message:
               "This Side Chat is read-only. Recover its work in an independent Project Session before requesting commits or conflict resolution; the worktree has been preserved.",
           });
-        yield* Effect.gen(function* () {
+        return yield* Effect.gen(function* () {
           const turnId = yield* projectSessionOperations
             .sendAutomatically({
               sessionId: input.sessionId,
@@ -95,7 +95,7 @@ export const WorktreeLandingAgentLive = Layer.effect(
               renderUserMessageAsMarkdown: false,
             })
             .pipe(asError("prompt"));
-          yield* projectSessionOperations
+          return yield* projectSessionOperations
             .awaitTurnSettled({ sessionId: input.sessionId }, turnId)
             .pipe(asError("awaitTurnSettled"));
         }).pipe(Effect.provide(dependencies), Effect.scoped);

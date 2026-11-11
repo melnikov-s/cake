@@ -686,6 +686,14 @@ describe("CakeSessionRuntimes", () => {
         assert.equal(turns.get(requests.failed.id), "failed");
         assert.equal(turns.get(requests.complete.id), "complete");
         assert.deepEqual(yield* sessions.currentTurnIds(target), []);
+        // Waiters observe each outcome only after its settlement hooks finished.
+        const settlement = (turnId: string) =>
+          sessions
+            .turnSettlement(target, turnId)
+            .pipe(Effect.repeat({ while: (state) => state === "running" }));
+        assert.equal(yield* settlement(requests.failed.id), "failed");
+        assert.equal(yield* settlement(requests.complete.id), "complete");
+        assert.equal(yield* sessions.turnSettlement(target, "never-admitted"), "unknown");
         // Restart recovery re-attaches to the durable input and reports what it produced.
         const record = yield* Context.get(context, RuntimeRecoveryStorage).get("session-1");
         assert.deepEqual(

@@ -2,12 +2,13 @@ import { Schema } from "effect";
 
 /** Proportionate task validation with no known clear regression caused by the change.
  * Unrelated failures and infrastructure timeouts are diagnostics, not global green gates.
- * These explicit assertions are never inferred from completion prose. */
+ * These explicit assertions are never inferred from completion prose. Cake binds readiness
+ * to the worktree's current HEAD; `validatedCommit` (full or prefix) only asserts it. */
 export const MergeReadiness = Schema.Struct({
   readyToMerge: Schema.Boolean,
   taskCompleted: Schema.Boolean,
   validationPassed: Schema.Boolean,
-  validatedCommit: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40,64}$/)),
+  validatedCommit: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[0-9a-fA-F]{7,64}$/))),
 });
 export interface MergeReadiness extends Schema.Schema.Type<typeof MergeReadiness> {}
 

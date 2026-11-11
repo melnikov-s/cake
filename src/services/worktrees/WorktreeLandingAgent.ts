@@ -22,10 +22,11 @@ export class WorktreeLandingAgent extends Context.Service<
     readonly toolPrune: (
       sessionId: string,
     ) => Effect.Effect<IdleCompactionResult, WorktreeLandingAgentError>;
-    /** Accepts one ordinary Project Session turn and waits until that turn settles. */
+    /** Accepts one ordinary Project Session turn and waits until that turn and its settlement
+     * hooks finish. Undefined when the runtime no longer knows the outcome. */
     readonly promptAndWait: (input: {
       readonly sessionId: string;
       readonly text: string;
-    }) => Effect.Effect<void, WorktreeLandingAgentError>;
+    }) => Effect.Effect<"complete" | "failed" | "aborted" | undefined, WorktreeLandingAgentError>;
   }
 >()("cake/services/worktrees/WorktreeLandingAgent") {}

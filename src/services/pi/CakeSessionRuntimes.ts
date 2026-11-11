@@ -403,6 +403,12 @@ export class CakeSessionRuntimes extends Context.Service<
     readonly executingTurnIds: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
     ) => Effect.Effect<ReadonlyArray<string>>;
+    /** "running" until the turn and its settlement hooks finish; "unknown" once the runtime
+     * no longer holds the turn or its outcome. */
+    readonly turnSettlement: (
+      target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+      turnId: string,
+    ) => Effect.Effect<"running" | "complete" | "failed" | "aborted" | "unknown">;
     /** Called after permanent session/worker deletion, never on ordinary runtime release. */
     readonly forgetRecovery: (sessionId: string) => Effect.Effect<void, PiSessionError>;
     readonly refreshModels: () => Effect.Effect<void, PiSessionError>;
@@ -634,6 +640,23 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             candidate.runtime.sessionId === target.sessionId,
         );
         return shared ? [...(yield* Ref.get(shared.activeTurns)).keys()] : [];
+      });
+
+      const turnSettlement = Effect.fn("CakeSessionRuntimes.turnSettlement")(function* (
+        target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+        turnId: string,
+      ) {
+        const shared = [...activeRuntimes].find(
+          (candidate) =>
+            candidate.workingDirectory === target.workingDirectory &&
+            candidate.sessionDirectory === target.sessionDirectory &&
+            candidate.runtime.sessionId === target.sessionId,
+        );
+        if (!shared) return "unknown" as const;
+        if ((yield* Ref.get(shared.activeTurns)).has(turnId)) return "running" as const;
+        const outcome = shared.settledOutcomes.get(turnId);
+        if (outcome) return outcome;
+        return shared.settledInputIds.has(turnId) ? ("running" as const) : ("unknown" as const);
       });
 
       const executingTurnIds = Effect.fn("CakeSessionRuntimes.executingTurnIds")(function* (
@@ -888,6 +911,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         currentModifiedAt,
         currentTurnIds,
         executingTurnIds,
+        turnSettlement,
         refreshModels,
         reloadWorkingDirectory,
         reloadAll,

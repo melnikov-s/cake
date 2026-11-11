@@ -100,7 +100,9 @@ describe("Project Session runtime worktree controls", () => {
         AgentControlTestLive,
         makeProjectSessionRuntimeMechanismTestLayer(integrations),
         WorktreeLandingCoordinatorLive,
-        Layer.mock(WorktreeLandingAgent, { promptAndWait: () => Effect.void }),
+        Layer.mock(WorktreeLandingAgent, {
+          promptAndWait: () => Effect.succeed("complete" as const),
+        }),
         Layer.mock(WorktreeLandingCompletion, {
           resolveWorkingDirectory: (workingDirectory) =>
             Effect.succeed({

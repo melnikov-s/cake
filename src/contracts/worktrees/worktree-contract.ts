@@ -21,6 +21,14 @@ export const worktreeStatusSchema = Schema.Struct({
   landingQueuePosition: Schema.optionalKey(nonNegativeInt),
 });
 export type WorktreeStatus = typeof worktreeStatusSchema.Type;
+/** The checkout's current commit and anything that would keep it from landing as-is. */
+export interface WorktreeHeadState {
+  readonly head: string;
+  /** `git status --porcelain` paths: uncommitted and untracked, not ignored. */
+  readonly changedFiles: ReadonlyArray<string>;
+  readonly merging: boolean;
+  readonly rebasing: boolean;
+}
 export type WorktreeLandRequest =
   | {
       readonly strategy: "preserve";

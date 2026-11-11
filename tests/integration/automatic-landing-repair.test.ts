@@ -33,6 +33,7 @@ import {
 } from "../../src/services/worktrees/WorktreeLandingCoordinator";
 import { familyStorageHarness } from "../app/helpers/familyStorageHarness";
 import { makeTestWorktreeService } from "../helpers/worktree-service";
+import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees";
 
 const exec = promisify(execFile);
 
@@ -225,6 +226,7 @@ it.each(["conflict", "clean-rebase"] as const)(
                     text: "Repaired both requirements, committed final changes, and the scoped acceptance test passed.",
                   },
                 });
+                return "complete" as const;
               }).pipe(
                 Effect.provide(context),
                 Effect.mapError(
@@ -276,6 +278,47 @@ it.each(["conflict", "clean-rebase"] as const)(
       await exec(process.execPath, ["--test", "feature.test.mjs", "upstream.test.mjs"], {
         cwd: root,
       });
+    } finally {
+      const records = await engine.records().catch(() => []);
+      for (const record of records)
+        await engine.discard(record.worktreePath, false).catch(() => undefined);
+      await engine.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+it(
+  "reports the real checkout HEAD and every file that would block readiness",
+  { timeout: 30_000 },
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-readiness-head-"));
+    const engine = makeTestWorktreeService(join(root, ".git", "cake-test-worktrees.json"));
+    const git = (cwd: string, ...args: string[]) => exec("git", args, { cwd });
+    const headState = (path: string) =>
+      engine.run(Effect.flatMap(ManagedWorktrees, (service) => service.headState(path)));
+    try {
+      await git(root, "init", "-b", "main");
+      await git(root, "config", "user.email", "cake@example.test");
+      await git(root, "config", "user.name", "Cake Test");
+      await writeFile(join(root, "tracked.txt"), "base\n");
+      await git(root, "add", "tracked.txt");
+      await git(root, "commit", "-m", "base");
+      const source = await engine.create(root);
+      const head = (await git(source.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+      expect(await headState(source.worktreePath)).toEqual({
+        head,
+        changedFiles: [],
+        merging: false,
+        rebasing: false,
+      });
+      await writeFile(join(source.worktreePath, "tracked.txt"), "changed\n");
+      await writeFile(join(source.worktreePath, "untracked.txt"), "new\n");
+      expect((await headState(source.worktreePath))?.changedFiles.toSorted()).toEqual([
+        "tracked.txt",
+        "untracked.txt",
+      ]);
+      expect(await headState(join(root, "not-managed"))).toBeUndefined();
     } finally {
       const records = await engine.records().catch(() => []);
       for (const record of records)

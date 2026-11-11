@@ -96,6 +96,7 @@ export class SessionFamilyStorage extends Context.Service<
     readonly invalidateAutoMerge: (
       workspacePath: string,
       id?: string,
+      message?: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly advanceBoardDelivery: (
       familyId: string,
@@ -707,7 +708,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         });
       });
       const invalidateAutoMerge = Effect.fn("SessionFamilyStorage.invalidateAutoMerge")(
-        (workspacePath: string, id?: string) =>
+        (workspacePath: string, id?: string, message = "New input invalidated merge readiness") =>
           update((document) =>
             !(document.autoMergeRequests ?? []).some(
               (item) =>
@@ -728,7 +729,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                           ...item,
                           readyToMerge: false,
                           state: "canceled" as const,
-                          message: "New input invalidated merge readiness",
+                          message,
                         }
                       : item,
                   ),

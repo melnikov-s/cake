@@ -16,6 +16,7 @@ import type {
 } from "../../contracts/worktrees/managed-worktree-data";
 import {
   worktreeStatusSchema,
+  type WorktreeHeadState,
   type WorktreeRebaseOutcome,
   type WorktreeStatus,
 } from "../../contracts/worktrees/worktree-contract";
@@ -286,6 +287,36 @@ export const ManagedWorktreesLive: Layer.Layer<
       });
     });
 
+    const headStateInternal = Effect.fn("ManagedWorktrees.headStateInternal")(function* (
+      worktreePath: string,
+    ): Effect.fn.Return<WorktreeHeadState | undefined, unknown> {
+      const normalized = resolveNormalized(worktreePath);
+      const record = (yield* Ref.get(recordsRef)).find(
+        (entry) =>
+          ["active", "landed"].includes(entry.state ?? "active") &&
+          resolveNormalized(entry.worktreePath) === normalized,
+      );
+      if (!record || !(yield* exists(record.worktreePath))) return undefined;
+      const [head, porcelain, merging, rebasing] = yield* Effect.all(
+        [
+          git(record.worktreePath, "rev-parse", "HEAD"),
+          git(record.worktreePath, "status", "--porcelain"),
+          revParseExists(record.worktreePath, "MERGE_HEAD"),
+          rebaseInProgress(record.worktreePath),
+        ] as const,
+        { concurrency: "unbounded" },
+      );
+      return {
+        head: head.trim(),
+        changedFiles: porcelain
+          .split("\n")
+          .filter((line) => line.trim().length > 0)
+          .map((line) => line.replace(/^[ MTADRCU?!]{1,2} /, "")),
+        merging,
+        rebasing,
+      };
+    });
+
     const service = ManagedWorktrees.of({
       observeLandingQueue: landingQueue.observe,
       records,
@@ -392,6 +423,8 @@ export const ManagedWorktreesLive: Layer.Layer<
           "ManagedWorktrees.status",
           statusInternal(worktreePath).pipe(Effect.tap(() => publish(worktreePath))),
         ),
+      headState: (worktreePath) =>
+        mapError("ManagedWorktrees.headState", headStateInternal(worktreePath)),
       prepareLanding: Effect.fn("ManagedWorktrees.prepareLanding")((worktreePath, operationId) =>
         mapError(
           "ManagedWorktrees.prepareLanding",

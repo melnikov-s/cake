@@ -21,7 +21,8 @@ export function createCakeWorktreeOperations(
             topic: "worktrees",
             summary: "Declare validated task completion for optional auto-merge",
             guidance: [
-              "Scope complete + relevant checks passed = ready. Report readyToMerge: true when nothing remains in task scope. Commit the validated work and supply that exact HEAD as validatedCommit.",
+              "Scope complete + relevant checks passed = ready. Report readyToMerge: true when nothing remains in task scope. Commit the validated work first: Cake records the worktree's current HEAD, so no commit hash is needed. Optional validatedCommit (full or prefix) only asserts that HEAD.",
+              "Fails immediately when HEAD differs from validatedCommit, the worktree has uncommitted or untracked files, or a merge/rebase is in progress; fix the cause and call again.",
               "validationPassed means task-scoped validation, not repo-wide green typecheck/Knip/full suite or exhaustive visual/E2E proof. Choose checks by changed behavior/risk. Unrelated baseline failures or broad-suite timeouts alone do not block readiness or require a completed full suite; report them separately. Triage unclassified failures enough to assess task relevance; do not presume baseline debt or expand scope to fix unrelated issues.",
               "Set taskCompleted and validationPassed truthfully. Unfinished acceptance criteria, known relevant failures and uncommitted/unvalidated task changes block readiness. Never relabel failed task checks as passed. Checkpoints, investigations and generic finished prose are NOT readiness. Keep fixing task-specific regressions; report real external blockers honestly. readyToMerge: false revokes readiness.",
               "This is structured completion metadata, not a replacement for your ordinary final answer, Workboard result or correlated report. Do not send duplicate completion prose. Readiness also serves manual landing; automatic landing is restricted to sessions directly created by the owning project’s own Project Chat, never human/global-chat/nested delegation or later messages.",
@@ -35,12 +36,11 @@ export function createCakeWorktreeOperations(
                   readyToMerge: true,
                   taskCompleted: true,
                   validationPassed: true,
-                  validatedCommit: "a".repeat(40),
                 },
               },
             ],
             result:
-              "Whether current-run readiness was accepted, independent of Auto-merge being on or off; ineligible declarations include a reason. Automatic merge and resolution require Auto-merge authorization and successful turn completion.",
+              "Whether current-run readiness for the current HEAD was accepted, independent of Auto-merge being on or off; ineligible declarations include a reason. Automatic merge and resolution require Auto-merge authorization and successful turn completion.",
             execute: (input) => {
               // SAFETY: CakeOperationRegistry parsed this input with MergeReadiness.
               return reportReadiness(input as MergeReadiness);

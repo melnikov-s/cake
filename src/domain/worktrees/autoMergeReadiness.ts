@@ -87,6 +87,42 @@ export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (
   );
 });
 
+const listed = (files: ReadonlyArray<string>) =>
+  `${files.slice(0, 5).join(", ")}${files.length > 5 ? ` and ${files.length - 5} more` : ""}`;
+
+/** Why the checkout cannot be declared ready as-is, or its HEAD. A supplied commit (full or
+ * prefix) is only an assertion: Cake always records the checkout's actual HEAD. */
+export const inspectReadyHead = Effect.fn("AutoMerge.inspectReadyHead")(function* (
+  workspacePath: string,
+  asserted?: string,
+) {
+  const state = yield* (yield* ManagedWorktrees)
+    .headState(workspacePath)
+    .pipe(
+      Effect.mapError(
+        (error) => new WorktreeLandingError({ operation: "readiness", message: error.message }),
+      ),
+    );
+  if (!state)
+    return { problem: "The managed worktree is unavailable; readiness needs its checkout." };
+  if (state.rebasing || state.merging)
+    return {
+      head: state.head,
+      problem: `A ${state.rebasing ? "rebase" : "merge"} is still in progress. Resolve, stage and continue it until Git finishes, then report readiness.`,
+    };
+  if (state.changedFiles.length)
+    return {
+      head: state.head,
+      problem: `The worktree has ${state.changedFiles.length} uncommitted or untracked file(s): ${listed(state.changedFiles)}. Commit or discard them first, then report readiness.`,
+    };
+  if (asserted && !state.head.startsWith(asserted.toLowerCase()))
+    return {
+      head: state.head,
+      problem: `HEAD is ${state.head}; you passed ${asserted}. Omit validatedCommit to declare the current HEAD, or commit the validated work first.`,
+    };
+  return { head: state.head };
+});
+
 /** A declaration is metadata for the executing turn, not a second completion report. */
 export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
   target: Pick<PiSessionTarget, "sessionId" | "workingDirectory" | "sessionDirectory">,
@@ -94,7 +130,11 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
 ) {
   const storage = yield* SessionFamilyStorage;
   if (!readiness.readyToMerge) {
-    yield* storage.invalidateAutoMerge(target.workingDirectory);
+    yield* storage.invalidateAutoMerge(
+      target.workingDirectory,
+      undefined,
+      "The session revoked merge readiness",
+    );
     return { eligible: false as const, reason: "Merge readiness was revoked." };
   }
   const record = (yield* (yield* ManagedWorktrees).records()).find(
@@ -111,6 +151,14 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
       operation: "readiness",
       message: "Finish the task and all necessary validation before declaring readiness.",
     });
+  // Fail at call time instead of accepting a declaration that landing would later reject.
+  const inspected = yield* inspectReadyHead(target.workingDirectory, readiness.validatedCommit);
+  if (inspected.problem !== undefined || !inspected.head)
+    return yield* new WorktreeLandingError({
+      operation: "readiness",
+      message: inspected.problem ?? "Cake could not read the worktree HEAD.",
+    });
+  const head = inspected.head;
   const projectPath = record.projectPath;
   if (
     !projectPath ||
@@ -160,7 +208,7 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
     projectPath,
     epoch: state.autoMergeProjects?.find((item) => item.projectPath === projectPath)?.epoch ?? "",
     runId: state.autoMergeRunId,
-    commit: readiness.validatedCommit,
+    commit: head,
     state: "pending",
     message: "Waiting for task completion",
     readyToMerge: true,
@@ -190,12 +238,16 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
   if (
     stored.sessionId !== target.sessionId ||
     stored.workspacePath !== target.workingDirectory ||
-    stored.projectPath !== projectPath ||
-    stored.commit !== readiness.validatedCommit
+    stored.projectPath !== projectPath
   )
     return {
       eligible: false as const,
-      reason: "Stored readiness does not match this session, workspace, or validated commit.",
+      reason: "Stored readiness does not match this session or workspace.",
+    };
+  if (stored.commit !== head)
+    return {
+      eligible: false as const,
+      reason: `This run already declared readiness for ${stored.commit}, but HEAD is now ${head}. A run's declaration is not replaced; landing will reject the earlier commit as stale.`,
     };
   if (!stored.readyToMerge || (stored.state !== "pending" && stored.state !== "ready"))
     return {

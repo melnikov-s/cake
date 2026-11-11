@@ -110,6 +110,7 @@ function services(options: {
     awaitSetup: () => Effect.void,
     status: () =>
       Effect.sync(options.status).pipe(Effect.tap(() => options.statusWait ?? Effect.void)),
+    headState: () => Effect.fail(failure("headState")),
     setResolveAfterLanding: (_worktreePath, enabled) =>
       Effect.sync(() => options.events.push(`resolve-intent:${enabled}`)).pipe(
         Effect.andThen(options.setResolveIntent?.(enabled) ?? Effect.void),
@@ -157,6 +158,7 @@ function services(options: {
         Effect.mapError(
           () => new WorktreeLandingAgentError({ operation: "prompt", message: "failed" }),
         ),
+        Effect.as("complete" as const),
       ),
   });
   const defaults = defaultApplicationState();
@@ -754,6 +756,7 @@ describe("WorktreeLandings", () => {
                       clean = true;
                     }),
                   ),
+                  Effect.as("complete" as const),
                 ),
             });
             yield* Effect.gen(function* () {

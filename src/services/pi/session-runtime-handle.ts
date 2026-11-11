@@ -50,6 +50,20 @@ type MutableModelSwitchReceipt = {
   -readonly [K in keyof SessionModelSwitchStatus]: SessionModelSwitchStatus[K];
 };
 
+/** Waiters only need outcomes of turns that just settled. */
+function rememberOutcome(
+  outcomes: SharedRuntime["settledOutcomes"],
+  turnId: string,
+  outcome: "complete" | "failed" | "aborted",
+) {
+  outcomes.delete(turnId);
+  outcomes.set(turnId, outcome);
+  for (const id of outcomes.keys()) {
+    if (outcomes.size <= 64) break;
+    outcomes.delete(id);
+  }
+}
+
 export function createSessionRuntimeHandle(input: {
   readonly shared: SharedRuntime;
   readonly options: CakeSessionRuntimeAcquireOptions;
@@ -229,13 +243,14 @@ export function createSessionRuntimeHandle(input: {
       outcome: "complete" | "failed" | "aborted",
       message?: string,
     ) {
+      // Mark settling before leaving activeTurns so waiters never see a gap.
+      retained.settledInputIds.add(turnId);
       const active = yield* Ref.modify(retained.activeTurns, (turns) => {
         if (!turns.has(turnId)) return [false, turns] as const;
         const next = new Map(turns);
         next.delete(turnId);
         return [true, next] as const;
       });
-      retained.settledInputIds.add(turnId);
       const result = retained.turnResults.get(turnId);
       retained.turnResults.delete(turnId);
       // A run whose final response errored or was cut off at a token limit never
@@ -266,14 +281,19 @@ export function createSessionRuntimeHandle(input: {
         );
         yield* PubSub.publish(retained.events, event);
         yield* options.onTurnActivityChanged ?? Effect.void;
-        if (options.onTurnSettled)
-          yield* options.onTurnSettled({
+        // Publish the outcome only after settlement hooks.
+        const recordOutcome = Effect.sync(() =>
+          rememberOutcome(retained.settledOutcomes, turnId, settledOutcome),
+        );
+        yield* (
+          options.onTurnSettled?.({
             sessionId: retained.runtime.sessionId,
             turnId,
             outcome: settledOutcome,
             ...(result ? { result } : null),
             ...(settledMessage ? { message: settledMessage } : null),
-          });
+          }) ?? Effect.void
+        ).pipe(Effect.ensuring(recordOutcome));
       }
       retained.settledInputIds.delete(turnId);
     });
@@ -430,12 +450,14 @@ export function createSessionRuntimeHandle(input: {
   const claimAbortedTurns = Effect.fn("CakeSessionRuntimes.claimAbortedTurns")(function* (
     turnIds: ReadonlyArray<string>,
   ) {
-    return yield* Ref.modify(shared.activeTurns, (turns) => {
+    const claimed = yield* Ref.modify(shared.activeTurns, (turns) => {
       const claimed = turnIds.filter((turnId) => turns.has(turnId));
       const next = new Map(turns);
       for (const turnId of claimed) next.delete(turnId);
       return [claimed, next] as const;
     });
+    for (const turnId of claimed) rememberOutcome(shared.settledOutcomes, turnId, "aborted");
+    return claimed;
   });
 
   const settleAbortedTurns = Effect.fn("CakeSessionRuntimes.settleAbortedTurns")(function* (
