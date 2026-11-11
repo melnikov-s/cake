@@ -33,6 +33,33 @@ describe("Searchable choice dialog presentation", () => {
     expect(first.classList.contains("text-muted-foreground")).toBe(true);
     expect(second.classList.contains("text-foreground")).toBe(true);
   });
+  it("sizes to its results unless the caller opts into a stable frame", () => {
+    const view = render(
+      <SearchableChoiceDialog
+        title="Choose"
+        searchLabel="Search choices"
+        choices={() => choices.slice(0, 3)}
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const content = () => screen.getByRole("dialog").firstElementChild!;
+    expect(content().className).not.toContain("h-[min(");
+    expect(screen.getByRole("listbox").className).toContain("max-h-72");
+    view.rerender(
+      <SearchableChoiceDialog
+        title="Choose"
+        searchLabel="Search choices"
+        choices={() => choices.slice(0, 3)}
+        stableHeight
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(content().className).toContain("h-[min(28rem,75vh)]");
+    expect(screen.getByRole("listbox").className).toContain("min-h-0");
+    expect(screen.getByRole("listbox").className).not.toContain("max-h-72");
+  });
   it("keeps urgent draft updates out of the results render and prevents selecting stale results", async () => {
     let ready = false;
     let finish!: () => void;

@@ -29,6 +29,7 @@ export const SessionSearchDialog = observer(function SessionSearchDialog({
       choicesLabel="Sessions"
       emptyMessage="No matching sessions."
       choices={store.search}
+      stableHeight
       filters={
         <label className="flex items-center gap-2 px-2 pt-3 text-xs text-muted-foreground">
           <Switch

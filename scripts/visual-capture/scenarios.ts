@@ -7311,6 +7311,37 @@ const newSessionScenario: VisualCaptureScenario = {
   },
 };
 
+async function writeSearchSession(
+  paths: ScenarioFixturePaths,
+  project: string,
+  sessionId: string,
+  title: string,
+) {
+  const timestamp = new Date(0).toISOString();
+  const directory = workspaceSessionDirectory(project, join(paths.cakeHome, "pi", "sessions"));
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+    [
+      { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      { type: "session_info", id: "title", parentId: null, timestamp, name: title },
+      {
+        type: "message",
+        id: "user-1",
+        parentId: "title",
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: `Work on ${title}` }],
+          timestamp: 0,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
+}
+
 const sessionSearchScenario: VisualCaptureScenario = {
   name: "session-search",
   description: "Deterministic session title picker across registered projects",
@@ -7336,29 +7367,11 @@ const sessionSearchScenario: VisualCaptureScenario = {
       "Workspace layout",
       "Website search",
     ].entries()) {
-      const project = index === 3 ? website : paths.project;
-      const sessionId = `visual-session-search-${index}`;
-      const directory = workspaceSessionDirectory(project, join(paths.cakeHome, "pi", "sessions"));
-      await mkdir(directory, { recursive: true });
-      await writeFile(
-        join(directory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
-        [
-          { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
-          { type: "session_info", id: "title", parentId: null, timestamp, name: title },
-          {
-            type: "message",
-            id: "user-1",
-            parentId: "title",
-            timestamp,
-            message: {
-              role: "user",
-              content: [{ type: "text", text: `Work on ${title}` }],
-              timestamp: 0,
-            },
-          },
-        ]
-          .map((entry) => JSON.stringify(entry))
-          .join("\n") + "\n",
+      await writeSearchSession(
+        paths,
+        index === 3 ? website : paths.project,
+        `visual-session-search-${index}`,
+        title,
       );
     }
   },
@@ -7380,6 +7393,65 @@ const sessionSearchScenario: VisualCaptureScenario = {
       .getByRole("dialog", { name: "Search sessions", exact: true })
       .locator(":scope > div");
   },
+};
+
+const sessionSearchHeightQueries = [
+  { state: "one", query: "keyboard", count: 1 },
+  { state: "few", query: "release", count: 5 },
+  { state: "many", query: "", count: 20 },
+  { state: "empty", query: "missing", count: 0 },
+] as const;
+
+const sessionSearchHeightScenario: VisualCaptureScenario = {
+  name: "session-search-height",
+  description: "Session search dialog frame with one, a few, many and no matching sessions",
+  states: sessionSearchHeightQueries.map(({ state }) => state),
+  async seed(paths, theme) {
+    await sessionSearchScenario.seed(paths, theme);
+    for (const [index, title] of [
+      "Release notes draft",
+      "Release checklist",
+      "Release build fix",
+      "Release tagging",
+      "Release announcement",
+      "Sidebar polish",
+      "Composer attachments",
+      "Model picker",
+      "Terminal workflow",
+      "Theme gallery",
+      "Browser sharing",
+      "Dictation input",
+      "Project settings",
+      "Workboard cards",
+      "Activity rows",
+      "Title bar alignment",
+    ].entries())
+      await writeSearchSession(paths, paths.project, `visual-session-search-extra-${index}`, title);
+  },
+  async prepare(page, state) {
+    const target = sessionSearchHeightQueries.find((entry) => entry.state === state);
+    if (!target) throw new Error(`Unknown session-search-height state: ${state}`);
+    const { query, count } = target;
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Search sessions", exact: true })
+      .click();
+    const filter = page.getByRole("combobox", { name: "Search session titles" });
+    await expect(filter).toBeFocused();
+    await expect(page.getByRole("option")).toHaveCount(20);
+    await filter.fill(query);
+    await expect(page.getByRole("option")).toHaveCount(count);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page
+      .getByRole("dialog", { name: "Search sessions", exact: true })
+      .evaluate((dialog) =>
+        Promise.all(
+          dialog.getAnimations({ subtree: true }).map((animation) => animation.finished),
+        ).then(() => undefined),
+      );
+    await page.mouse.move(1, 1);
+  },
+  region: (page, state) => sessionSearchScenario.region(page, state),
 };
 
 const projectCustomInstructionsScenario: VisualCaptureScenario = {
@@ -9031,6 +9103,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectCustomInstructionsScenario,
   newSessionScenario,
   sessionSearchScenario,
+  sessionSearchHeightScenario,
   cakeChatScenario,
   titleBarAlignmentScenario,
   createSessionHeaderTitleScenario(assistantMarkdownCode),

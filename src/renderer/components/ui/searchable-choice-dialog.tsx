@@ -41,6 +41,7 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   emptyMessage = "No matching destinations.",
   choices: getChoices,
   filters,
+  stableHeight = false,
   renderChoice,
   initialActiveId,
   onSelect,
@@ -54,6 +55,9 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   /** Called during the deferred results render, never from the input event. */
   choices(query: string): readonly Choice[];
   filters?: ReactNode;
+  /** Keep one viewport-clamped frame height so typing never resizes or moves the dialog;
+   * results scroll inside it and leftover space stays below the list. */
+  stableHeight?: boolean;
   /** Compose an authoritative row instead of the default destination button. */
   renderChoice?(
     choice: Choice,
@@ -127,7 +131,13 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
         }
       }}
     >
-      <DialogContent ref={contentRef} className="max-w-md overflow-hidden p-0 phone:p-0">
+      <DialogContent
+        ref={contentRef}
+        className={cn(
+          "max-w-md overflow-hidden p-0 phone:p-0",
+          stableHeight && "flex h-[min(28rem,75vh)] flex-col",
+        )}
+      >
         <div className="flex items-start justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 py-3">
           <div className="grid gap-1">
             <DialogTitle id={`${id}-title`}>{title}</DialogTitle>
@@ -139,7 +149,7 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
             <CloseIcon />
           </IconButton>
         </div>
-        <div className="p-3">
+        <div className={cn("p-3", stableHeight && "flex min-h-0 flex-1 flex-col")}>
           <SearchableChoiceInput
             inputRef={inputRef}
             query={query}
@@ -173,7 +183,10 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
             id={`${id}-choices`}
             role="listbox"
             aria-label={choicesLabel}
-            className="mt-2 max-h-72 space-y-0.5 overflow-y-auto"
+            className={cn(
+              "mt-2 space-y-0.5 overflow-y-auto",
+              stableHeight ? "min-h-0" : "max-h-72",
+            )}
           >
             {choices.slice(pageStart, pageEnd).map((choice, offset) => {
               const index = pageStart + offset;

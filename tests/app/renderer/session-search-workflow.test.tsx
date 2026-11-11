@@ -134,6 +134,48 @@ describe("Session search workflow", () => {
     });
   });
 
+  it("keeps one fixed dialog frame while typing changes the number of matches", async () => {
+    const catalog = Array.from({ length: 20 }, (_, index) =>
+      sidebarSummary(`session-${index}`, 1, {
+        title:
+          index === 0 ? "Needle in catalog" : index <= 5 ? `Release ${index}` : `Task ${index}`,
+        modifiedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+      }),
+    );
+    using fixture = renderSidebarNavigation({ projects: [projects[0]!], sessions: catalog });
+    await fixture.user.click(searchButton());
+    const frame = () => {
+      const listbox = dialog().getByRole("listbox", { name: "Sessions" });
+      return {
+        content: screen.getByRole("dialog", { name: "Search sessions" }).firstElementChild!
+          .className,
+        body: listbox.parentElement!.className,
+        listbox: listbox.className,
+      };
+    };
+    const initial = frame();
+    expect(initial.content).toContain("h-[min(28rem,75vh)]");
+    expect(initial.body).toContain("flex-1");
+    expect(initial.listbox).toContain("overflow-y-auto");
+    expect(initial.listbox).not.toContain("max-h-");
+    const input = dialog().getByRole("combobox");
+    for (const [query, count] of [
+      ["release", 5],
+      ["needle", 1],
+      ["missing", 0],
+      ["", 20],
+    ] as const) {
+      await fixture.user.clear(input);
+      if (query) await fixture.user.type(input, query);
+      await waitFor(() => expect(dialog().queryAllByRole("option")).toHaveLength(count));
+      expect(frame()).toEqual(initial);
+    }
+    await fixture.user.type(input, "missing");
+    await waitFor(() => expect(dialog().getByRole("status")).toBeDefined());
+    await fixture.user.click(dialog().getByRole("switch", { name: "Include resolved" }));
+    expect(frame()).toEqual(initial);
+  });
+
   it.each([
     { avatars: true, characters: false },
     { avatars: true, characters: true },
