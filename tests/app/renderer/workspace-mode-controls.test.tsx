@@ -352,7 +352,12 @@ describe("Workspace mode navigation", () => {
         name: "Conversation breadcrumb",
       });
       expect(breadcrumb.classList.contains("flex-wrap")).toBe(false);
-      expect(breadcrumb.classList.contains("overflow-x-auto")).toBe(true);
+      expect(breadcrumb.classList.contains("overflow-hidden")).toBe(true);
+      expect(breadcrumb.classList.contains("overflow-x-auto")).toBe(false);
+      for (const button of within(breadcrumb).getAllByRole("button")) {
+        expect(button.classList.contains("min-w-0")).toBe(true);
+        expect(button.querySelector("span.truncate")).not.toBeNull();
+      }
       return {
         header: header.className,
         titleRow: header.firstElementChild!.className,

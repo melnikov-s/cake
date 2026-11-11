@@ -7,6 +7,7 @@ import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
 import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
 import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
+import { createSessionHeaderTitleScenario } from "./session-header-title.ts";
 import { createSidebarSurfacesScenario } from "./sidebar-surfaces.ts";
 import {
   createInterfaceIconsScenario,
@@ -8776,6 +8777,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionSearchScenario,
   cakeChatScenario,
   titleBarAlignmentScenario,
+  createSessionHeaderTitleScenario(assistantMarkdownCode),
   createWorkspacePanelGeometryScenario(titleBarAlignmentScenario),
   titleBarSideChatsScenario,
   cakeChatConversationScenario,

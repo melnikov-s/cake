@@ -34,13 +34,13 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
     <div className="flex h-full w-full min-w-0 items-center">
       <nav
         aria-label="Conversation breadcrumb"
-        className="flex h-full min-w-0 flex-1 items-center gap-x-0.5 overflow-x-auto text-xs leading-5 [&>*]:shrink-0"
+        className="flex h-full min-w-0 flex-1 items-center gap-x-0.5 overflow-hidden text-xs leading-5"
       >
         {!projectPath ? (
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
+            className="h-6 min-w-0 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
             aria-current={!projectPath && lineage.length === 0 ? "page" : undefined}
             onClick={() => {
               root.appShellStore.recordConversationInteraction({
@@ -50,13 +50,13 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               void root.navigationStore.openGlobalChat();
             }}
           >
-            Cake Chat
+            <span className="truncate">Cake Chat</span>
           </Button>
         ) : (
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 max-w-full gap-2 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
+            className="h-6 min-w-0 max-w-full gap-2 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
             title={projectPath}
             aria-current={lineage.length === 0 && !previewTitle ? "page" : undefined}
             onClick={() => void root.navigationStore.openProjectChat(projectPath)}
@@ -68,36 +68,40 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               className="size-[18px]"
               aria-hidden="true"
             />
-            {root.projectCatalogStore.nameForPath(projectPath)}
+            <span className="truncate">{root.projectCatalogStore.nameForPath(projectPath)}</span>
           </Button>
         )}
         {previewTitle && (
           <>
-            <span aria-hidden="true" className="text-muted-foreground">
+            <span aria-hidden="true" className="shrink-0 text-muted-foreground">
               ›
             </span>
-            <span aria-current="page" className="px-1 font-bold text-foreground">
+            <span
+              aria-current="page"
+              className="min-w-0 truncate px-1 font-bold text-foreground"
+              title={previewTitle}
+            >
               {previewTitle}
             </span>
           </>
         )}
         {lineage.map((node, index) => (
           <Fragment key={node.key}>
-            <span aria-hidden="true" className="text-muted-foreground">
+            <span aria-hidden="true" className="shrink-0 text-muted-foreground">
               ›
             </span>
             <Button
               variant="ghost"
               size="sm"
               className={cn(
-                "h-6 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
+                "h-6 min-w-0 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
                 index === lineage.length - 1 && "font-bold text-foreground",
               )}
               title={node.title}
               aria-current={index === lineage.length - 1 ? "page" : undefined}
               onClick={() => void navigator.open(node)}
             >
-              {node.title}
+              <span className="truncate">{node.title}</span>
             </Button>
           </Fragment>
         ))}
