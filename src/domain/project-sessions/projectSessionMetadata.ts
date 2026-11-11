@@ -422,7 +422,16 @@ const resolvedCatalogPage = Effect.fn("ProjectSessions.resolvedCatalogPage")(fun
       }
     }
   }
-  return { _tag: "InitialBatch" as const, sessions, hasMore: roots.length > selected.length };
+  return {
+    _tag: "InitialBatch" as const,
+    sessions,
+    hasMore: roots.length > selected.length,
+    // Family members travel with their root, so the count includes child sessions.
+    total: roots.reduce(
+      (sum, root) => sum + (root.family ? familyMemberIds(root.family).length : 1),
+      0,
+    ),
+  };
 });
 
 const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
@@ -1051,14 +1060,13 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
                     revision,
                     event: { _tag: "UpsertedBatch", sessions: item.sessions },
                   }
-                : item.hasMore === undefined
-                  ? { _tag: "Snapshot", revision, sessions: item.sessions }
-                  : {
-                      _tag: "Snapshot",
-                      revision,
-                      sessions: item.sessions,
-                      hasMore: item.hasMore,
-                    };
+                : {
+                    _tag: "Snapshot",
+                    revision,
+                    sessions: item.sessions,
+                    ...(item.hasMore === undefined ? null : { hasMore: item.hasMore }),
+                    ...(item.total === undefined ? null : { total: item.total }),
+                  };
             return [{ revision, initialized: true }, [update]];
           }
           return [{ revision, initialized: true }, [{ _tag: "Event", revision, event: item }]];

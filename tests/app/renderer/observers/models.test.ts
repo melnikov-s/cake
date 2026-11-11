@@ -351,15 +351,21 @@ describe("Project Session composition observer", () => {
       expect(catalogs).toHaveBeenCalledTimes(4);
       expect(signalStream).toHaveBeenCalledOnce();
       fixture.root.workspaceNavigatorStore.show("sessions");
-      await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(5));
-      expect(catalogs.mock.calls[4]?.[0]).toEqual({ projectPath: "/project", resolved: false });
+      await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(6));
+      // The shown Project's archive page supplies the collapsed Resolved sessions count.
+      expect(catalogs.mock.calls.slice(4).map(([query]) => query)).toEqual([
+        { projectPath: "/project", resolved: false },
+        { projectPath: "/project", resolved: true, limit: 10 },
+      ]);
       fixture.root.workspaceNavigatorStore.close();
-      await vi.waitFor(() => expect(ended).toHaveLength(5));
+      await vi.waitFor(() => expect(ended).toHaveLength(6));
       fixture.root.sidebarStore.sessionSearchStore.show();
-      await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(7));
+      // Search spans every Project's active lane only; collapsed archives stay unobserved.
+      await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(8));
+      expect(catalogs.mock.calls.slice(6).every(([query]) => !query.resolved)).toBe(true);
       expect(fixture.root.workspaceNavigatorStore.visible).toBe(false);
       fixture.root.sidebarStore.sessionSearchStore.close();
-      await vi.waitFor(() => expect(ended).toHaveLength(7));
+      await vi.waitFor(() => expect(ended).toHaveLength(8));
       expect(signalStream).toHaveBeenCalledOnce();
     } finally {
       stop();

@@ -6,6 +6,7 @@ import { conversationOwnedNavigation } from "../lib/conversation-owned-navigatio
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SidebarSessionListStore } from "./SidebarSessionListStore";
+import { sessionKind, sessionKinds, type SessionKind } from "../lib/session-kind";
 import type { ReviewThread } from "../models/ReviewThread";
 import type { DiscussionThreadMetadata } from "../../contracts/discussion-sessions/discussion-session-data";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
@@ -461,8 +462,7 @@ export class ConversationNavigatorStore extends Store<{
       if (!resolved && home && !this.isExpanded(projectPath, home.key)) return false;
       return resolved
         ? this.props.sessionList.hasMoreResolvedProjectSessions(path)
-        : this.props.sessionList.projectSessions(path).length >
-            this.props.sessionList.visibleProjectSessions(path).length;
+        : this.props.sessionList.hasMoreActiveProjectSessions(path);
     });
   }
 
@@ -499,33 +499,80 @@ export class ConversationNavigatorStore extends Store<{
     return rows;
   }
 
-  /** Presentation groups only; ownership, family edges and to-do order are unchanged. */
-  rowGroups(projectPath: string | undefined, resolved = false) {
+  /**
+   * Presentation groups only; ownership, family edges and to-do order are unchanged.
+   * Active kind groups get a collapsible header only when both kinds are active in the Project.
+   */
+  rowGroups(projectPath: string | undefined, resolved = false): readonly ConversationRowGroup[] {
     const rows = this.rows(projectPath, resolved);
     const tree = this.tree(projectPath, resolved);
-    const groups: { label?: string; rows: typeof rows }[] = [];
-    let segment: Array<(typeof rows)[number]> = [];
-    const delegated = (node: ConversationNavigationNode): boolean => {
+    const groups: ConversationRowGroup[] = [];
+    // Paging may leave an expanded kind with no rows yet; only search hides its header.
+    const searching = Boolean(this.query(projectPath).trim());
+    let segment: ConversationRow[] = [];
+    let segmentProject: string | undefined;
+    // Collapsed headers may stand alone, but never beneath a collapsed Project Chat.
+    let segmentOpen =
+      projectPath !== undefined && !tree.roots.some((node) => node.relationship === "home");
+    const kindOf = (node: ConversationNavigationNode): SessionKind => {
       if (node.target.kind === "project-session")
-        return this.props.catalog.find(node.target.sessionId)?.purpose === "delegated";
+        return sessionKind(this.props.catalog.find(node.target.sessionId));
       const parent = node.parentKey ? tree.byKey.get(node.parentKey) : undefined;
-      return parent ? delegated(parent) : false;
+      return parent ? kindOf(parent) : "user";
     };
     const flush = () => {
-      const mine = segment.filter(({ node }) => !delegated(node));
-      const assigned = segment.filter(({ node }) => delegated(node));
-      if (mine.length) groups.push({ label: "My sessions", rows: mine });
-      if (assigned.length) groups.push({ label: "Delegated", rows: assigned });
+      if (!segment.length && !segmentOpen) return;
+      const first = segment.find(({ node }) => node.target.kind === "project-session");
+      const path =
+        projectPath ??
+        segmentProject ??
+        (first && this.props.catalog.find(first.node.target.sessionId)?.projectPath);
+      const list = this.props.sessionList;
+      const headed =
+        !resolved && path !== undefined && list.showsSessionKindGroups(path) ? path : undefined;
+      const counts = headed !== undefined ? list.activeSessionKindCounts(headed) : undefined;
+      for (const kind of sessionKinds) {
+        const expanded = headed === undefined || list.isSessionKindGroupExpanded(headed, kind);
+        const kindRows = expanded ? segment.filter(({ node }) => kindOf(node) === kind) : [];
+        const key = `${resolved ? "resolved" : "active"}:${path ?? ""}:${kind}`;
+        // Resolved history keeps its plain labels inside the Resolved sessions disclosure.
+        if (resolved) {
+          if (kindRows.length) groups.push({ key, label: sessionKindLabels[kind], rows: kindRows });
+        } else if (headed !== undefined && (kindRows.length || !expanded || !searching)) {
+          groups.push({
+            key,
+            label: sessionKindLabels[kind],
+            rows: kindRows,
+            header: { projectPath: headed, kind, count: counts![kind], expanded },
+          });
+        } else if (kindRows.length) groups.push({ key, rows: kindRows });
+      }
       segment = [];
     };
     for (const row of rows) {
       if (row.node.relationship === "home") {
         flush();
-        groups.push({ rows: [row] });
+        segmentProject = this.props.projection.cakeChatCatalog.sessions.find(
+          (chat) => chat.sessionId === row.node.target.sessionId,
+        )?.projectPath;
+        segmentOpen = this.isExpanded(projectPath, row.node.key);
+        groups.push({ key: row.node.key, rows: [row] });
       } else segment.push(row);
     }
     flush();
     return groups;
+  }
+
+  /** Every archived session in scope, including children; undefined until each archive is observed. */
+  resolvedCount(projectPath: string | undefined) {
+    let total = 0;
+    for (const path of this.projectPaths(projectPath)) {
+      const count = this.props.catalog.resolvedSessionTotal(path);
+      if (count === undefined) return undefined;
+      // A just-resolved row can arrive through the active lane before the archive page refreshes.
+      total += Math.max(count, this.props.catalog.projectSessions(path, true).length);
+    }
+    return total;
   }
 
   async open(node: ConversationNavigationEntry) {
@@ -541,6 +588,27 @@ export class ConversationNavigatorStore extends Store<{
   private scopeKey(projectPath: string | undefined) {
     return projectPath ?? "cake-chat";
   }
+}
+
+const sessionKindLabels = {
+  user: "My sessions",
+  delegated: "Delegated",
+} satisfies Record<SessionKind, string>;
+
+export type ConversationRow = { node: ConversationNavigationNode; depth: number };
+
+export interface ConversationRowGroup {
+  /** Stable across header appearance, so rows keep their React identity and focus. */
+  readonly key: string;
+  readonly label?: string;
+  readonly rows: readonly ConversationRow[];
+  /** Collapsible active kind group; absent when only one kind is active. */
+  readonly header?: {
+    readonly projectPath: string;
+    readonly kind: SessionKind;
+    readonly count: number;
+    readonly expanded: boolean;
+  };
 }
 
 function sameLineage(

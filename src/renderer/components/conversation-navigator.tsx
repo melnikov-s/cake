@@ -2,9 +2,10 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { ConversationNavigatorRow } from "./conversation-navigator-row";
 import { Button } from "./ui/button";
-import { ChevronIcon, PlusIcon } from "./ui/icons";
+import { PlusIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { ConversationNavigatorSearch } from "./conversation-navigator-search";
+import { ConversationNavigatorGroupHeader } from "./conversation-navigator-group-header";
 
 /** Scoped recursive Sessions source-list. Project utilities remain in the persistent rail. */
 export const ConversationNavigator = observer(function ConversationNavigator({
@@ -37,6 +38,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
   const home = tree.roots.find((node) => node.relationship === "home");
   const activeHasMore = store.hasMoreSessions(projectPath);
   const resolvedHasMore = store.hasMoreSessions(projectPath, true);
+  const resolvedCount = store.resolvedCount(projectPath);
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Sessions">
       <div className="mx-2 my-2 flex min-w-0 items-center gap-1">
@@ -58,12 +60,25 @@ export const ConversationNavigator = observer(function ConversationNavigator({
         aria-label="Session conversations"
       >
         <section aria-label="Active sessions">
-          {store.rowGroups(projectPath).map((group, index) => (
-            <section key={index} aria-label={group.label}>
-              {group.label && (
-                <h3 className="px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
-                  {group.label}
-                </h3>
+          {store.rowGroups(projectPath).map((group) => (
+            <section key={group.key} aria-label={group.label}>
+              {group.header && (
+                <ConversationNavigatorGroupHeader
+                  label={group.label!}
+                  count={group.header.count}
+                  expanded={group.header.expanded}
+                  hiddenActivity={
+                    group.header.expanded
+                      ? undefined
+                      : list.sessionKindGroupActivity(group.header.projectPath, group.header.kind)
+                  }
+                  onToggle={() =>
+                    list.toggleSessionKindGroupExpanded(
+                      group.header!.projectPath,
+                      group.header!.kind,
+                    )
+                  }
+                />
               )}
               {group.rows.map(({ node, depth }) => (
                 <ConversationNavigatorRow
@@ -93,23 +108,18 @@ export const ConversationNavigator = observer(function ConversationNavigator({
             </Button>
           )}
         </section>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-2 w-full justify-start gap-1 text-muted-foreground"
-          iconSize="inline"
-          aria-expanded={resolvedExpanded}
-          onClick={() => list.toggleResolvedGroupExpanded(scope)}
-        >
-          <span className={resolvedExpanded ? undefined : "-rotate-90"}>
-            <ChevronIcon />
-          </span>
-          Resolved sessions
-        </Button>
-        {resolvedExpanded && (
+        {resolvedCount !== 0 && (
+          <ConversationNavigatorGroupHeader
+            label="Resolved sessions"
+            count={resolvedCount}
+            expanded={resolvedExpanded}
+            onToggle={() => list.toggleResolvedGroupExpanded(scope)}
+          />
+        )}
+        {resolvedExpanded && resolvedCount !== 0 && (
           <section aria-label="Resolved sessions">
-            {store.rowGroups(projectPath, true).map((group, index) => (
-              <section key={index} aria-label={group.label}>
+            {store.rowGroups(projectPath, true).map((group) => (
+              <section key={group.key} aria-label={group.label}>
                 {group.label && (
                   <h3 className="px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
                     {group.label}

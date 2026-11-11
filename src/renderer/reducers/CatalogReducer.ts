@@ -116,8 +116,11 @@ export function applySessionCatalogGroupUpdate(
             model.sessions.splice(index, 1);
           }
         }
-        if (update._tag === "Snapshot" && query.resolved)
+        if (update._tag === "Snapshot" && query.resolved) {
           model.resolvedHasMoreByProject[query.projectPath] = update.hasMore ?? false;
+          if (update.total === undefined) delete model.resolvedTotalByProject[query.projectPath];
+          else model.resolvedTotalByProject[query.projectPath] = update.total;
+        }
       } catch (error) {
         // batch is not a transaction. Keep rollback scoped to touched rows, not a
         // serialized copy of every Project, and restore the original array/order.

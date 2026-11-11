@@ -8,8 +8,10 @@ import {
 } from "../../utils/session-summary-order";
 import {
   isActiveSessionActivity,
+  mostUrgentSessionActivity,
   sessionActivityWithInheritedWorking,
 } from "../lib/session-activity";
+import { sessionKind, type SessionKind } from "../lib/session-kind";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -43,6 +45,8 @@ export class SidebarSessionListStore extends Store<{
     "cake-chat": true,
   });
   private readonly expandedResolvedGroups: Record<string, boolean> = observable({});
+  /** Per Project and kind, remembered like Resolved sessions; kind groups start expanded. */
+  private readonly collapsedSessionKindGroups: Record<string, boolean> = observable({});
   private readonly activatedResolvedCakeChatCatalogs: Record<string, boolean> = observable({});
   private readonly sessionLimits: Record<string, number> = observable({});
   @snapshot private readonly collapsedFamilies: Record<string, boolean> = observable({});
@@ -124,9 +128,66 @@ export class SidebarSessionListStore extends Store<{
   }
 
   visibleProjectSessions(projectPath: string, resolved = false) {
-    const { byId, roots } = this.sortedProjectSessionRoots(projectPath, resolved);
-    const visibleRoots = roots.slice(0, this.sessionLimit(projectPath, resolved));
+    const { byId } = this.sortedProjectSessionRoots(projectPath, resolved);
+    const visibleRoots = this.pagedProjectSessionRoots(projectPath, resolved).slice(
+      0,
+      this.sessionLimit(projectPath, resolved),
+    );
     return this.flattenProjectSessionRoots(byId, visibleRoots);
+  }
+
+  hasMoreActiveProjectSessions(projectPath: string) {
+    return (
+      this.pagedProjectSessionRoots(projectPath, false).length > this.sessionLimit(projectPath)
+    );
+  }
+
+  /** Collapsed kind groups do not spend the shared page on hidden rows. */
+  private pagedProjectSessionRoots(projectPath: string, resolved: boolean) {
+    const { roots } = this.sortedProjectSessionRoots(projectPath, resolved);
+    return resolved
+      ? roots
+      : roots.filter((root) => this.isSessionKindGroupExpanded(projectPath, sessionKind(root)));
+  }
+
+  /** Active sessions per kind, including family children; independent of disclosure or paging. */
+  activeSessionKindCounts(projectPath: string) {
+    const counts = { user: 0, delegated: 0 } satisfies Record<SessionKind, number>;
+    for (const session of this.props.catalog.projectSessions(projectPath, false))
+      counts[sessionKind(session)] += 1;
+    return counts;
+  }
+
+  /** Kind headers appear only when both kinds are active; a single kind lists directly. */
+  showsSessionKindGroups(projectPath: string) {
+    const counts = this.activeSessionKindCounts(projectPath);
+    return counts.user > 0 && counts.delegated > 0;
+  }
+
+  isSessionKindGroupExpanded(projectPath: string, kind: SessionKind) {
+    return (
+      !this.collapsedSessionKindGroups[this.sessionKindGroupKey(projectPath, kind)] ||
+      !this.showsSessionKindGroups(projectPath)
+    );
+  }
+
+  toggleSessionKindGroupExpanded(projectPath: string, kind: SessionKind) {
+    this.collapsedSessionKindGroups[this.sessionKindGroupKey(projectPath, kind)] =
+      this.isSessionKindGroupExpanded(projectPath, kind);
+  }
+
+  /** What a collapsed kind header must still surface from its hidden rows. */
+  sessionKindGroupActivity(projectPath: string, kind: SessionKind) {
+    return mostUrgentSessionActivity(
+      this.props.catalog
+        .projectSessions(projectPath, false)
+        .filter((session) => sessionKind(session) === kind)
+        .map((session) => this.metadata.sessionActivity(session.sessionId)),
+    );
+  }
+
+  private sessionKindGroupKey(projectPath: string, kind: SessionKind) {
+    return `${projectPath}\n${kind}`;
   }
 
   /** Canonical conversation order across projects, independent of pagination or collapse. */
@@ -187,7 +248,12 @@ export class SidebarSessionListStore extends Store<{
     const selected = this.props.selectedConversation?.();
     if (selected?.kind !== "project-session") return;
     const session = this.props.catalog.find(selected.sessionId);
-    if (session && !session.resolved) this.expandActiveGroup(session.projectPath);
+    if (session && !session.resolved) {
+      this.expandActiveGroup(session.projectPath);
+      delete this.collapsedSessionKindGroups[
+        this.sessionKindGroupKey(session.projectPath, sessionKind(session))
+      ];
+    }
     for (const ancestorId of this.sidebarAncestorIds(selected.sessionId))
       delete this.collapsedFamilies[ancestorId];
   }
@@ -200,6 +266,9 @@ export class SidebarSessionListStore extends Store<{
       selected.sessionId,
       session?.projectPath,
       session?.resolved,
+      sessionKind(session),
+      // Returning kind headers reveal the selection instead of hiding it in a remembered collapse.
+      session && this.showsSessionKindGroups(session.projectPath),
       ...this.sidebarAncestorIds(selected.sessionId),
     ].join("\n");
   }
@@ -375,13 +444,12 @@ export class SidebarSessionListStore extends Store<{
       (!navigator.visible || navigator.showingWidget || navigator.mode !== "sessions")
     )
       return [];
-    const paths =
-      !searchDemand && navigator?.projectPath
-        ? [navigator.projectPath]
-        : this.projects.orderedProjectPaths;
+    const scoped = !searchDemand ? navigator?.projectPath : undefined;
+    const paths = scoped ? [scoped] : this.projects.orderedProjectPaths;
     return paths.flatMap((projectPath) => [
       { projectPath, resolved: false },
-      ...(this.isResolvedGroupExpanded(projectPath)
+      // The shown Project's archive page also supplies the collapsed Resolved count.
+      ...(projectPath === scoped || this.isResolvedGroupExpanded(projectPath)
         ? [{ projectPath, resolved: true, limit: this.sessionLimit(projectPath, true) }]
         : []),
     ]);

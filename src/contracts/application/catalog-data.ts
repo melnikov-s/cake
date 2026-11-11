@@ -58,6 +58,8 @@ export const SessionCatalogUpdate = Schema.TaggedUnion({
     revision: Schema.Int,
     sessions: Schema.Array(ProjectSessionSummary),
     hasMore: Schema.optionalKey(Schema.Boolean),
+    /** Resolved pages only: every archived session in the Project, beyond this page. */
+    total: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   },
   Event: {
     revision: Schema.Int,

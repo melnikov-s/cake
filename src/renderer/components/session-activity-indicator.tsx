@@ -14,20 +14,7 @@ export function SessionActivityIndicator({
 }) {
   const status = activity && sessionActivityDotStatus[activity];
   if (!status) return null;
-  const label =
-    activity === "blocked"
-      ? "Needs your input"
-      : activity === "waiting"
-        ? "Waiting for your answer"
-        : activity === "running"
-          ? "Running"
-          : activity === "error"
-            ? "Error"
-            : activity === "stopped"
-              ? "Stopped"
-              : activity === "ready"
-                ? "Ready for review"
-                : "Ready, unread";
+  const label = sessionActivityLabel(activity);
   return (
     <StatusDot
       status={status}
@@ -47,4 +34,20 @@ export function SessionActivityIndicator({
       title={label}
     />
   );
+}
+
+export function sessionActivityLabel(activity: SessionActivity | SessionWorkActivity) {
+  return activity === "blocked"
+    ? "Needs your input"
+    : activity === "waiting"
+      ? "Waiting for your answer"
+      : activity === "running"
+        ? "Running"
+        : activity === "error"
+          ? "Error"
+          : activity === "stopped"
+            ? "Stopped"
+            : activity === "ready"
+              ? "Ready for review"
+              : "Ready, unread";
 }

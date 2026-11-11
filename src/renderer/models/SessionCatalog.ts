@@ -7,6 +7,7 @@ export class SessionCatalog extends Model {
   @child(SessionSummary) sessions: SessionSummary[] = observable([]);
   @child(SessionSignals) signals = SessionSignals.create();
   resolvedHasMoreByProject: Record<string, boolean> = observable({});
+  resolvedTotalByProject: Record<string, number> = observable({});
 
   find(sessionId: string): SessionSummary | undefined {
     // The tree maintains its reactive @id index across attach/detach and ID edits.

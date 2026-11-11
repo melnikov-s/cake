@@ -11,6 +11,7 @@ import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report"
 import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
 import { createSessionHeaderTitleScenario } from "./session-header-title.ts";
 import { createSidebarSurfacesScenario } from "./sidebar-surfaces.ts";
+import { sidebarSessionGroupsScenarios } from "./sidebar-session-groups.ts";
 import {
   createInterfaceIconsScenario,
   createAutoMergeIconsScenario,
@@ -9043,6 +9044,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectSetupScenario,
   chatFirstNavigation,
   createSidebarSurfacesScenario(chatFirstNavigation),
+  ...sidebarSessionGroupsScenarios,
   createProjectThumbnailsScenario(
     createChatFirstNavigationScenario(assistantMarkdownCode.seed, seedDurableChat),
   ),

@@ -171,6 +171,11 @@ export class SessionCatalogStore extends Store<{
     return this.props.model.resolvedHasMoreByProject[projectPath] === true;
   }
 
+  /** Unknown until the Project's archive page is observed. */
+  resolvedSessionTotal(projectPath: string): number | undefined {
+    return this.props.model.resolvedTotalByProject[projectPath];
+  }
+
   notePendingManagedWorktree(record: WorktreeRecord) {
     this.pendingManagedWorktrees.set(record.worktreePath, record);
   }

@@ -10,6 +10,7 @@ export type ProjectCatalogItem =
       readonly _tag: "InitialBatch";
       readonly sessions: ProjectSessionSummary[];
       readonly hasMore?: boolean;
+      readonly total?: number;
     }
   | Extract<SessionCatalogUpdate, { _tag: "Event" }>["event"];
 

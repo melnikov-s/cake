@@ -60,6 +60,26 @@ export function sessionActivityWithInheritedWorking(
   return own ?? (working ? "running" : undefined);
 }
 
+const hiddenActivityPrecedence: readonly SessionActivity[] = [
+  "waiting",
+  "blocked",
+  "error",
+  "unread",
+  "running",
+];
+
+/** A collapsed group surfaces its most urgent hidden row: attention, then unread, then work. */
+export function mostUrgentSessionActivity(
+  activities: Iterable<SessionActivity | undefined>,
+): SessionActivity | undefined {
+  let best = hiddenActivityPrecedence.length;
+  for (const activity of activities) {
+    const rank = activity ? hiddenActivityPrecedence.indexOf(activity) : -1;
+    if (rank >= 0 && rank < best) best = rank;
+  }
+  return hiddenActivityPrecedence[best];
+}
+
 /** Waiting sessions still own an active Pi turn blocked on user input. */
 export function isActiveSessionActivity(activity: SessionActivity | undefined) {
   return activity === "waiting" || activity === "running";

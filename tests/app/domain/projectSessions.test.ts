@@ -3489,6 +3489,7 @@ describe("Project Sessions domain", () => {
       assert.equal(first.sessions[0]?.sessionId, "session-11");
       assert.equal(first.sessions[9]?.sessionId, "session-2");
       assert.equal(first.hasMore, true);
+      assert.equal(first.total, 12);
       const [second] = yield* page(20);
       assert.ok(second?._tag === "Snapshot");
       assert.equal(second.sessions.length, 12);
@@ -3519,6 +3520,8 @@ describe("Project Sessions domain", () => {
         nestedFamilyIds,
       );
       assert.equal(page.hasMore, true);
+      // The Resolved count spans every archived session, including family children.
+      assert.equal(page.total, nestedFamilyIds.length + 1);
     }).pipe(
       Effect.provide(
         makeLayer(undefined, {
