@@ -1,4 +1,5 @@
 import * as discussionTitles from "../domain/discussion-sessions/discussionTitles";
+import * as subagentTitles from "../domain/subagents/subagentTitles";
 import { DiscussionTitleRequests } from "../services/discussion-sessions/DiscussionTitleRequests";
 import * as projectTodoUpdates from "../domain/projects/projectTodoUpdates";
 import { ProjectTodoReports } from "../services/projects/ProjectTodoReports";
@@ -406,6 +407,7 @@ export const makeBackendLive = <HostServices, HostError>(
       startupDiagnostics.measure("todo-updates-initialize", projectTodoUpdates.initialize()),
     ),
     Layer.effectDiscard(discussionTitles.initialize()),
+    Layer.effectDiscard(subagentTitles.initialize()),
     Layer.effectDiscard(
       Effect.gen(function* () {
         yield* startupDiagnostics.measure(

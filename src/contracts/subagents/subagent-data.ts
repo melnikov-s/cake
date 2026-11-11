@@ -29,6 +29,8 @@ export const SubagentMetadata = Schema.Struct({
   handleId: SubagentHandleId,
   anchorPartId: Schema.String,
   task: Schema.String,
+  /** Short utility-model summary of `task`; absent until generated or when naming is unavailable. */
+  title: Schema.optionalKey(Schema.String),
   projectPath: Schema.optionalKey(Schema.String),
   status: SubagentStatus,
   streaming: Schema.Boolean,
@@ -116,6 +118,7 @@ export const SubagentActivity = Schema.Struct({
   handleId: SubagentHandleId,
   revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   task: SubagentTask.fields.task,
+  title: Schema.optionalKey(boundedString(256)),
   projectPath: SubagentTask.fields.projectPath,
   status: SubagentStatus,
   resolvedModel: ResolvedAgentModel,

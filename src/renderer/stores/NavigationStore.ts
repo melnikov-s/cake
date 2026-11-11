@@ -1,4 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
+import { subagentTitle } from "../lib/subagent-title";
 import { ToastContext } from "./context/ToastContext";
 import { describeError } from "../lib/error-details";
 import { linkedMessageTarget } from "../lib/message-navigation";
@@ -385,7 +386,8 @@ export class NavigationStore extends Store<{
     parent.conversationSessionStore.sideChatStore.open({
       key: `subagent:${handleId}`,
       navigationTarget: { kind: "subagent", sessionId: parentSessionId, handleId },
-      title: run.task,
+      title: subagentTitle(run),
+      currentTitle: () => subagentTitle(subagents.run(handleId) ?? run),
       eyebrow: () => `Subagent · ${subagents.run(handleId)?.status ?? run.status}`,
       model: () => subagents.model(handleId),
       chatStore,

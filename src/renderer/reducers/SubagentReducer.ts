@@ -58,6 +58,7 @@ function upsertSubagentActivity(model: SubagentCatalog, activity: SubagentActivi
   target.anchorPartId = activity.anchorPartId;
   target.revision = activity.revision;
   target.task = activity.task;
+  target.title = activity.title;
   target.projectPath = activity.projectPath;
   target.status = activity.status;
   target.resolved = activity.resolved;

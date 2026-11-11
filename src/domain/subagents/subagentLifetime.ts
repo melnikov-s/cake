@@ -121,6 +121,7 @@ const releaseHandle = Effect.fn("Subagents.releaseHandle")(function* (
         resolvedModel: current.resolvedModel,
         fastMode: current.fastMode,
       };
+      if (current.recovery.title) Object.assign(history, { title: current.recovery.title });
       if (current.projectPath) Object.assign(history, { projectPath: current.projectPath });
       if (current.error !== undefined) Object.assign(history, { error: current.error });
       if (current.failurePhase !== undefined)

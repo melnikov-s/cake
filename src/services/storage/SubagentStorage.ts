@@ -25,6 +25,8 @@ export const SubagentRecord = Schema.Struct({
   workingDirectory: Schema.String,
   projectPath: Schema.optionalKey(Schema.String),
   task: Schema.String,
+  /** Utility-model title generated once at admission; older records have none. */
+  title: Schema.optionalKey(Schema.String),
   instructions: Schema.optionalKey(Schema.String),
   preset: Schema.optionalKey(PresetContext),
   allowMutations: Schema.Boolean,
@@ -57,6 +59,7 @@ export const SubagentHistory = Schema.Struct({
   sessionDirectory: Schema.String,
   projectPath: Schema.optionalKey(Schema.String),
   task: Schema.String,
+  title: Schema.optionalKey(Schema.String),
   status: SubagentStatus,
   resolvedModel: ResolvedAgentModel,
   fastMode: Schema.Boolean,

@@ -4,6 +4,7 @@ import {
   Exit,
   FiberMap,
   Layer,
+  Queue,
   RcMap,
   Scope,
   Semaphore,
@@ -80,6 +81,8 @@ export interface SubagentCoordinatorService {
   readonly storage: SubagentStorage["Service"];
   readonly checkpoints: Semaphore.Semaphore;
   readonly shuttingDown: Ref.Ref<boolean>;
+  /** Newly admitted handles awaiting one utility-model title; dropping keeps bursts bounded. */
+  readonly titleRequests: Queue.Queue<SubagentHandleId>;
 }
 
 /** Process-scoped resource owner; durable worker facts are checkpointed separately from Pi history. */
@@ -87,6 +90,8 @@ export class SubagentCoordinator extends Context.Service<
   SubagentCoordinator,
   SubagentCoordinatorService
 >()("cake/services/subagents/SubagentCoordinator") {}
+
+const TITLE_REQUEST_CAPACITY = 64;
 
 export const SubagentCoordinatorLive = Layer.effect(
   SubagentCoordinator,
@@ -100,6 +105,8 @@ export const SubagentCoordinatorLive = Layer.effect(
       handles: new Map(),
     });
     const fibers = yield* FiberMap.make<SubagentHandleId>();
+    const titleRequests = yield* Queue.dropping<SubagentHandleId>(TITLE_REQUEST_CAPACITY);
+    yield* Effect.addFinalizer(() => Queue.shutdown(titleRequests));
     const slots = yield* RcMap.make<string, Semaphore.Semaphore, never, never>({
       lookup: () => Semaphore.make(4),
     });
@@ -122,6 +129,7 @@ export const SubagentCoordinatorLive = Layer.effect(
       storage,
       checkpoints,
       shuttingDown,
+      titleRequests,
     });
   }),
 );
@@ -164,6 +172,7 @@ export const activityOf = (handle: SubagentHandleState): SubagentActivity => {
           ]
         : handle.parts,
   };
+  if (handle.recovery.title) Object.assign(activity, { title: handle.recovery.title });
   if (handle.projectPath) Object.assign(activity, { projectPath: handle.projectPath });
   if (handle.failurePhase) Object.assign(activity, { failurePhase: handle.failurePhase });
   if (handle.usage !== undefined) Object.assign(activity, { usage: handle.usage });

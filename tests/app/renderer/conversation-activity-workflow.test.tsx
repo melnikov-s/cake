@@ -255,6 +255,32 @@ it("caps a long subagent prompt to a medium preview while keeping the full promp
   expect(screen.getByRole("complementary", { name: "Subagent" })).toBeTruthy();
 });
 
+it("labels a subagent row with its generated title once it arrives, keeping the preview until then", async () => {
+  using view = renderActivity("project");
+  const task = `Read-only investigation.\n\n${"Trace every caller of the Activity row and report findings. ".repeat(20)}FINAL-SENTINEL`;
+  const running = { parentSessionId: parentId, status: "running" as const, streaming: true, task };
+  view.publishWorkers([workerActivity(running)]);
+  await view.user.click(screen.getByRole("button", { name: "Activity · 1 running" }));
+  const menu = screen.getByRole("region", { name: "Conversation activity" });
+  // Pending: the trimmed preview is the label; the row is usable immediately.
+  expect(within(menu).getByText(/^Read-only investigation\. Trace/)).toBeTruthy();
+  view.publishWorkers([
+    workerActivity({ ...running, revision: 2, title: "Trace Activity row callers" }),
+  ]);
+  const row = within(menu).getByRole("button", {
+    name: "Inspect subagent: Trace Activity row callers",
+  });
+  expect(within(row).getByText("Trace Activity row callers").className).toContain("line-clamp-3");
+  expect(within(row).queryByText(/^Read-only investigation/)).toBeNull();
+  // The full prompt remains reachable from the hover title.
+  expect(row.getAttribute("title")).toContain("FINAL-SENTINEL");
+  // Re-rendering with the same saved title keeps it; nothing reverts to the preview.
+  view.publishWorkers([
+    workerActivity({ ...running, revision: 3, title: "Trace Activity row callers" }),
+  ]);
+  expect(within(menu).getByText("Trace Activity row callers")).toBeTruthy();
+});
+
 it.each(["project", "cake-chat"] as const)(
   "%s inset activity toggles from its header and keyboard without dismissing on composer input",
   async (kind) => {

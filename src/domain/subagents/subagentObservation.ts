@@ -40,6 +40,7 @@ const historyActivity = Effect.fn("Subagents.historyActivity")(function* (record
     resolved: true,
     parts: preview._tag === "Success" ? preview.success.parts.map(jsonValue) : [],
   };
+  if (record.title) Object.assign(activity, { title: record.title });
   if (record.projectPath) Object.assign(activity, { projectPath: record.projectPath });
   if (record.failurePhase) Object.assign(activity, { failurePhase: record.failurePhase });
   if (preview._tag === "Failure")
@@ -79,6 +80,7 @@ export const observeMetadata = Effect.fn("Subagents.observeMetadata")(function* 
               handleId: handle.handleId,
               anchorPartId: handle.anchorPartId,
               task: handle.task,
+              ...(handle.recovery.title ? { title: handle.recovery.title } : null),
               ...(handle.projectPath ? { projectPath: handle.projectPath } : null),
               status: handle.status,
               streaming: handle.streaming,
@@ -95,6 +97,7 @@ export const observeMetadata = Effect.fn("Subagents.observeMetadata")(function* 
               handleId: record.handleId,
               anchorPartId: record.anchorPartId,
               task: record.task,
+              ...(record.title ? { title: record.title } : null),
               ...(record.projectPath ? { projectPath: record.projectPath } : null),
               status: record.status,
               streaming: false,

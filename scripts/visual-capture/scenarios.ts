@@ -6374,11 +6374,14 @@ const activityLongPromptTask = [
   "Do not edit files. Report the exact files, line numbers and the smallest fix, with any related tests that cover the row.",
 ].join("\n");
 
-/** A real Project Session starts a Temporary subagent whose task is a long multi-line prompt. */
+const activityLongPromptTitle = "Trace full prompts in Activity rows";
+
+/** A real Project Session starts a Temporary subagent whose task is a long multi-line prompt;
+ * the utility model then names it, replacing the trimmed preview as the row label. */
 const activityLongPromptScenario: VisualCaptureScenario = {
   name: "activity-long-prompt",
   description:
-    "Open composer Activity with a running subagent whose task is a long multi-line prompt",
+    "Open composer Activity with a running subagent titled by the utility model from its long prompt",
   states: ["default"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
@@ -6392,6 +6395,16 @@ const activityLongPromptScenario: VisualCaptureScenario = {
         const tools = new Set(request.tools?.map((tool) => tool.function.name));
         // The subagent keeps streaming so Activity shows it as running.
         if (tools.has("message_parent")) return "hold";
+        // Utility-model naming: the subagent's task gets its own short Activity title.
+        if (body.includes("Title this coding-agent session"))
+          return [
+            {
+              role: "assistant",
+              content: body.includes("Read-only investigation")
+                ? activityLongPromptTitle
+                : "Investigate Activity rows",
+            },
+          ];
         if (!tools.has("cake")) return undefined;
         if (started || request.messages.some((message) => message.role === "tool"))
           return [{ role: "assistant", content: "Subagent started." }];
@@ -6435,9 +6448,11 @@ const activityLongPromptScenario: VisualCaptureScenario = {
       .fill("Investigate the Activity rows.");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await page.getByRole("button", { name: "Activity · 1 running" }).click({ timeout: 20_000 });
+    const activity = page.getByRole("region", { name: "Conversation activity", exact: true });
+    await expect(activity).toBeVisible();
     await expect(
-      page.getByRole("region", { name: "Conversation activity", exact: true }),
-    ).toBeVisible();
+      activity.getByRole("button", { name: `Inspect subagent: ${activityLongPromptTitle}` }),
+    ).toBeVisible({ timeout: 20_000 });
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },

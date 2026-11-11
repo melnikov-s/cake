@@ -9,6 +9,8 @@ import { textPreview } from "@/lib/text-preview";
 interface ActivityDisclosureItem {
   id: string;
   title: string;
+  /** Full source text for the hover tooltip when `title` is a summary of it. */
+  fullText?: string;
   description: string;
   status: StatusDotProps["status"];
   icon: ReactNode;
@@ -50,7 +52,7 @@ export function ActivityDisclosure({
         className="h-auto min-h-11 min-w-0 w-full justify-start gap-2 px-1.5 py-1.5 text-left"
         aria-label={item.accessibleLabel}
         aria-description={`${item.iconLabel} · ${item.description}`}
-        title={`${item.iconLabel}: ${item.title} — ${item.description}`}
+        title={`${item.iconLabel}: ${item.fullText ?? item.title} — ${item.description}`}
         onClick={() => {
           item.onSelect();
           collapse();

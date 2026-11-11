@@ -74,6 +74,7 @@ export class SubagentActivityStore extends Store<{
         anchorPartId: activity.anchorPartId,
         handleId: activity.handleId,
         task: activity.task,
+        ...(activity.title ? { title: activity.title } : null),
         status: activity.status,
         resolvedModel: {
           ...activity.resolvedModel,

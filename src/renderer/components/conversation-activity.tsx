@@ -8,6 +8,7 @@ import { AutoMergeToggle } from "./auto-merge-toggle";
 import { ChatIcon, ForkIcon } from "./ui/icons";
 import { ComposerCap } from "./ui/composer-cap";
 import { textPreview } from "../lib/text-preview";
+import { subagentTitle } from "../lib/subagent-title";
 
 /** Activity belongs to the pane's conversation, not the window's current selection. */
 export const ConversationActivity = observer(function ConversationActivity({
@@ -57,12 +58,13 @@ export const ConversationActivity = observer(function ConversationActivity({
         })),
         ...runs.map((run) => ({
           id: `subagent:${run.key}`,
-          title: run.task,
+          title: subagentTitle(run),
+          fullText: run.task,
           description: "Running · Temporary subagent",
           icon: <ChatIcon size={14} />,
           iconLabel: "Temporary subagent",
           status: "running" as const,
-          accessibleLabel: `Inspect subagent: ${textPreview(run.task)}`,
+          accessibleLabel: `Inspect subagent: ${subagentTitle(run)}`,
           onSelect: () => {
             const chatStore = subagents.chatStore(run.key);
             if (!chatStore || !run.handleId) return;

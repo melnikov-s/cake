@@ -1,4 +1,5 @@
 import { Store, computed, observable, snapshot, type ReadonlySignal } from "r-state-tree";
+import { subagentTitle } from "../lib/subagent-title";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import type { RootProjection } from "../models/RootProjection";
 import { conversationOwnedNavigation } from "../lib/conversation-owned-navigation";
@@ -326,7 +327,7 @@ export class ConversationNavigatorStore extends Store<{
             ...parent,
             {
               key: conversationNavigationTargetKey(target),
-              title: worker.task || "Subagent",
+              title: subagentTitle(worker),
               relationship: "subagent",
               target,
             },

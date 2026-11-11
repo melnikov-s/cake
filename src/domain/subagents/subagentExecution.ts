@@ -7,6 +7,7 @@ import {
   Fiber,
   FiberMap,
   Option,
+  Queue,
   RcMap,
   Ref,
   Schema,
@@ -588,6 +589,8 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         message: `An agent may own at most ${MAX_HANDLES_PER_PARENT} subagent handles.`,
       });
     if (!lazy) yield* checkpoint(handleId);
+    // Named once at admission; restored handles keep their saved title (or preview fallback).
+    if (!restored) yield* Queue.offer(coordinator.titleRequests, handleId);
     const hydration =
       restored && !lazy
         ? yield* sessions.acquire(runtimeOptions).pipe(

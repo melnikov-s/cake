@@ -1,4 +1,5 @@
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
+import { subagentTitle } from "./subagent-title";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { Conversation } from "../models/Conversation";
 import {
@@ -72,7 +73,7 @@ export function conversationOwnedNavigation(
       !released && (worker.streaming || worker.status === "queued" || worker.status === "running");
     nodes.push({
       key: subagentNavigationKey(sessionId, worker.handleId),
-      title: worker.task || "Subagent",
+      title: subagentTitle(worker),
       label: "Subagent",
       relationship: "subagent",
       parentKey: conversationNavigationKey(sessionId),

@@ -43,6 +43,8 @@ export interface SubagentRun {
   anchorPartId: string;
   handleId?: string;
   task: string;
+  /** Generated short label; callers fall back to a task preview. */
+  title?: string;
   status: "queued" | "running" | "complete" | "error" | "aborted";
   resolvedModel?: typeof resolvedAgentModelSchema.Type;
   fastMode?: boolean;

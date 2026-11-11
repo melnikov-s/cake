@@ -87,6 +87,7 @@ import { subagentSystemPrompt } from "../../../src/services/pi/subagent-system-p
 import {
   SubagentCoordinator,
   SubagentCoordinatorLive,
+  activityOf,
 } from "../../../src/services/subagents/SubagentCoordinator";
 import {
   makeSubagentEnvironmentLayer,
@@ -2520,6 +2521,39 @@ describe("Subagents", () => {
             assert.deepEqual(yield* (yield* SubagentCoordinator).storage.list(), []);
           }).pipe(Effect.provide(fixture.layer));
         }
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "requests one utility title per admitted worker and none when restoring a saved one",
+    () =>
+      Effect.gen(function* () {
+        const original = yield* makeFixture();
+        const record = yield* Effect.gen(function* () {
+          const coordinator = yield* SubagentCoordinator;
+          const running = yield* subagents
+            .run({ task: "Already done" }, parent(original))
+            .pipe(Effect.forkChild);
+          const child = yield* Queue.take(original.childStarted);
+          const requested = yield* Queue.clear(coordinator.titleRequests);
+          assert.equal(requested.length, 1);
+          yield* completeChild(original, child);
+          yield* Fiber.join(running);
+          const saved = (yield* coordinator.storage.list())[0];
+          assert.ok(saved);
+          assert.equal(requested[0], saved.handleId);
+          return { ...saved, title: "Saved worker title" };
+        }).pipe(Effect.provide(original.layer));
+        const restored = yield* makeFixture(false, [record]);
+        yield* Effect.gen(function* () {
+          yield* subagents.restore(record, parent(restored), true);
+          const coordinator = yield* SubagentCoordinator;
+          assert.equal(yield* Queue.size(coordinator.titleRequests), 0);
+          const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
+            record.handleId,
+          );
+          assert.equal(handle && activityOf(handle).title, "Saved worker title");
+        }).pipe(Effect.provide(restored.layer));
       }).pipe(Effect.scoped),
   );
 
