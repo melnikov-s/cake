@@ -134,100 +134,91 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
             <UserMessageContent parts={userContent} behavior={behavior} />
           ) : undefined
         }
-      >
-        <div
-          className={
-            part.text.trim()
-              ? "ml-auto flex min-h-[30px] items-center gap-2"
-              : "absolute top-0 right-0 flex items-center gap-2"
-          }
-          aria-label="User actions"
-        >
-          {part.text.trim() && (
-            <CopyButton
-              getText={async () => part.text}
-              className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100"
-            />
-          )}
-          {part.entryId &&
-            behavior.store.transcriptInteraction.canToggleUserMessageMarkdown &&
-            !hasArtifactReference &&
-            !part.draft && (
+        messageActions={
+          <>
+            {part.text.trim() && <CopyButton getText={async () => part.text} />}
+            {part.entryId &&
+              behavior.store.transcriptInteraction.canToggleUserMessageMarkdown &&
+              !hasArtifactReference &&
+              !part.draft && (
+                <IconButton
+                  tooltip={
+                    userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"
+                  }
+                  ariaLabel={
+                    userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"
+                  }
+                  aria-pressed={userMessageRendersAsMarkdown}
+                  disabled={behavior.store.transcriptInteraction.updatingUserMessagePresentation.has(
+                    part.entryId,
+                  )}
+                  onClick={() => {
+                    if (part.entryId)
+                      void behavior.store.transcriptInteraction.setUserMessageMarkdown(
+                        part.entryId,
+                        !userMessageRendersAsMarkdown,
+                      );
+                  }}
+                >
+                  <MarkdownIcon />
+                </IconButton>
+              )}
+            {part.entryId && behavior.onTree && !part.draft && (
               <IconButton
-                className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-                tooltip={
-                  userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"
-                }
-                ariaLabel={
-                  userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"
-                }
-                aria-pressed={userMessageRendersAsMarkdown}
-                disabled={behavior.store.transcriptInteraction.updatingUserMessagePresentation.has(
-                  part.entryId,
-                )}
-                onClick={() => {
-                  if (part.entryId)
-                    void behavior.store.transcriptInteraction.setUserMessageMarkdown(
-                      part.entryId,
-                      !userMessageRendersAsMarkdown,
-                    );
-                }}
+                tooltip="Continue here in session tree"
+                ariaLabel="Continue from message in session tree"
+                onClick={() => behavior.onTree!(part.entryId!)}
               >
-                <MarkdownIcon />
+                <TreeIcon />
               </IconButton>
             )}
-          {part.entryId && behavior.onTree && !part.draft && (
-            <IconButton
-              className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-              tooltip="Continue here in session tree"
-              ariaLabel="Continue from message in session tree"
-              onClick={() => behavior.onTree!(part.entryId!)}
-            >
-              <TreeIcon />
-            </IconButton>
-          )}
-          {part.entryId === behavior.store.lastEditableUserEntryId &&
-            behavior.store.canEditLastUserMessage && (
-              <IconButton
-                className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-                tooltip="Edit message"
-                ariaLabel="Edit latest prompt"
-                onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
-              >
-                <EditIcon />
-              </IconButton>
-            )}
-        </div>
-      </ChatTextMessage>
+            {part.entryId === behavior.store.lastEditableUserEntryId &&
+              behavior.store.canEditLastUserMessage && (
+                <IconButton
+                  tooltip="Edit message"
+                  ariaLabel="Edit latest prompt"
+                  onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
+                >
+                  <EditIcon />
+                </IconButton>
+              )}
+          </>
+        }
+      />
     );
   if (part.kind === "skill")
     return (
-      <div className="group/msg grid gap-2">
-        <SkillMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />
-        <div className="ml-auto flex min-h-[30px] items-center gap-2">
-          {part.entryId && behavior.onTree && (
-            <IconButton
-              className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-              tooltip="Continue here in session tree"
-              ariaLabel="Continue from message in session tree"
-              onClick={() => behavior.onTree!(part.entryId!)}
-            >
-              <TreeIcon />
-            </IconButton>
-          )}
-          {part.entryId === behavior.store.lastEditableUserEntryId &&
-            behavior.store.canEditLastUserMessage && (
-              <IconButton
-                className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-                tooltip="Edit message"
-                ariaLabel="Edit latest prompt"
-                onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
-              >
-                <EditIcon />
-              </IconButton>
-            )}
-        </div>
-      </div>
+      <SkillMessage
+        part={part}
+        onOpenSourceLocation={behavior.openSourceLocation}
+        actions={
+          (part.entryId && behavior.onTree) ||
+          (part.entryId === behavior.store.lastEditableUserEntryId &&
+            behavior.store.canEditLastUserMessage) ? (
+            <>
+              {part.entryId && behavior.onTree && (
+                <IconButton
+                  tooltip="Continue here in session tree"
+                  ariaLabel="Continue from message in session tree"
+                  onClick={() => behavior.onTree!(part.entryId!)}
+                >
+                  <TreeIcon />
+                </IconButton>
+              )}
+              {part.entryId === behavior.store.lastEditableUserEntryId &&
+                behavior.store.canEditLastUserMessage && (
+                  <IconButton
+                    tooltip="Edit message"
+                    ariaLabel="Edit latest prompt"
+                    onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                )}
+            </>
+          ) : undefined
+        }
+      />
     );
   if (part.kind === "reasoning")
     return (

@@ -216,6 +216,8 @@ for (const timing of ["next-user", "timer"] as const)
         ).toBeVisible();
         await expect(update.locator('[data-streamdown="strong"]')).toHaveText("Source located");
         await expect(update.getByRole("listitem")).toHaveText("Checking transport.");
+        // The shared action bar is hidden while its message's actions cannot be placed on screen.
+        await update.locator('[data-slot="message-actions"]').scrollIntoViewIfNeeded();
         await expect(
           update.getByRole("link", { name: "Open source", exact: true }),
         ).toHaveAttribute("href", /^cake:\/\/subagent\//);
@@ -305,6 +307,8 @@ for (const timing of ["next-user", "timer"] as const)
           "Typed provenance fixes attribution.",
         );
         await expect(update.locator("pre")).toContainText("const authoredBy = 'worker';");
+        // The shared action bar is hidden while its message's actions cannot be placed on screen.
+        await update.locator('[data-slot="message-actions"]').scrollIntoViewIfNeeded();
         await expect(
           update.getByRole("link", { name: "Open source", exact: true }),
         ).toHaveAttribute("href", /^cake:\/\/subagent\/.*\?message=/);

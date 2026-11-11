@@ -39,14 +39,18 @@ for (const theme of ["light", "dark"] as const) {
       await scenario.prepare(page, "default");
       const batch = page.getByRole("status", { name: "Session results" });
       const card = batch.locator('[data-slot="session-message-card"]');
-      const sourceLink = card.getByRole("link", { name: "Open source" });
+      // Open source sits in the shared message action bar, which owns the hover reveal.
+      const sourceActions = batch
+        .locator('[data-slot="session-message"]')
+        .locator('[data-slot="message-action-toolbar"]');
+      const sourceLink = sourceActions.getByRole("link", { name: "Open source" });
       const disclosure = card.getByRole("button", { name: "Worker findings stay readable" });
       const rows = batch.locator('[data-slot="session-system-update"]');
       const rowLinks = rows.getByRole("link", { name: "Open session", exact: true });
       await expect(rows).toHaveCount(4);
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
 
-      for (const link of [sourceLink, ...(await rowLinks.all())]) {
+      for (const link of [sourceActions, ...(await rowLinks.all())]) {
         await expect(link).toHaveCSS("opacity", "0");
       }
       const cardBounds = await card.boundingBox();
@@ -56,7 +60,7 @@ for (const theme of ["light", "dark"] as const) {
       await batch.screenshot({ path: testInfo.outputPath(`links-rest-${theme}.png`) });
 
       await card.hover();
-      await expect(sourceLink).toHaveCSS("opacity", "1");
+      await expect(sourceActions).toHaveCSS("opacity", "1");
       for (const link of await rowLinks.all()) await expect(link).toHaveCSS("opacity", "0");
       expect(await card.boundingBox()).toEqual(cardBounds);
       expect(await sourceLink.boundingBox()).toEqual(sourceBounds);
@@ -65,7 +69,7 @@ for (const theme of ["light", "dark"] as const) {
       // Every system-update variant has its own hover scope, including merged/resolved.
       for (let index = 0; index < 4; index++) {
         await rows.nth(index).hover();
-        await expect(sourceLink).toHaveCSS("opacity", "0");
+        await expect(sourceActions).toHaveCSS("opacity", "0");
         for (let other = 0; other < 4; other++) {
           await expect(rowLinks.nth(other)).toHaveCSS("opacity", index === other ? "1" : "0");
         }
@@ -78,11 +82,11 @@ for (const theme of ["light", "dark"] as const) {
 
       await page.mouse.move(1, 1);
       await disclosure.focus();
-      await expect(sourceLink).toHaveCSS("opacity", "1");
+      await expect(sourceActions).toHaveCSS("opacity", "1");
       // Cake reserves plain Tab for the composer; Shift+Tab retains control traversal.
       await sourceLink.focus();
       await expect(sourceLink).toBeFocused();
-      await expect(sourceLink).toHaveCSS("opacity", "1");
+      await expect(sourceActions).toHaveCSS("opacity", "1");
       await sourceLink.press("Shift+Tab");
       await expect(disclosure).toBeFocused();
       await sourceLink.focus();
@@ -109,7 +113,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
       await page.getByRole("combobox", { name: "Message Cake Chat", exact: true }).focus();
       await page.mouse.move(1, 1);
-      await expect(sourceLink).toHaveCSS("opacity", "0");
+      await expect(sourceActions).toHaveCSS("opacity", "0");
       await expect(rowLinks.nth(1)).toHaveCSS("opacity", "0");
       // Pointer activation still navigates without toggling the card.
       await sourceLink.click();

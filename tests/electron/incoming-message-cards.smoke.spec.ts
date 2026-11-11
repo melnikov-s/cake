@@ -93,9 +93,12 @@ for (const theme of ["dark", "light"] as const)
         "cake://session/3d4e5f6a-7b8c-4d9e-8f01-2a3b4c5d6e71?message=build-result",
       );
       const actions = source.locator('[data-slot="message-actions"]');
+      const toolbar = actions.locator('[data-slot="message-action-toolbar"]');
       const copy = actions.getByRole("button", { name: "Copy message", exact: true });
-      const fullscreen = source.getByRole("button", { name: /^View message fullscreen:/ });
-      await expect(actions.getByRole("button")).toHaveCount(2);
+      const fullscreen = actions.getByRole("button", { name: /^View message fullscreen:/ });
+      // One shared group: Copy, Open source, Reply, then the fullscreen reader.
+      await expect(toolbar.locator("button, a")).toHaveCount(4);
+      await expect(toolbar.locator("a")).toHaveAttribute("aria-label", "Open source");
       await expect(
         actions.getByRole("button", { name: "Reply to message", exact: true }),
       ).toBeAttached();
@@ -106,26 +109,20 @@ for (const theme of ["dark", "light"] as const)
           card: box('[data-slot="session-message-card"]'),
           actions: box('[data-slot="message-actions"]'),
           fullscreen: box(".fullscreen-trigger"),
-          header: box('[data-slot="response-disclosure"]'),
         };
       });
       expect(geometry.actions.y).toBeGreaterThanOrEqual(geometry.card.bottom);
-      expect(Math.abs(geometry.fullscreen.y - geometry.card.y)).toBeLessThan(10);
-      expect(Math.abs(geometry.card.right - geometry.fullscreen.right)).toBeLessThan(10);
-      expect(geometry.header.right).toBeLessThan(geometry.fullscreen.x);
+      expect(geometry.fullscreen.y).toBeGreaterThanOrEqual(geometry.card.bottom);
       await sourceToggle.evaluate((button) => button.blur());
       await page.mouse.move(1, 1);
-      await expect(actions).toHaveCSS("opacity", "0");
-      await expect(fullscreen).toHaveCSS("opacity", "0");
+      await expect(toolbar).toHaveCSS("opacity", "0");
       await source.hover();
-      await expect(actions).toHaveCSS("opacity", "1");
-      await expect(fullscreen).toHaveCSS("opacity", "1");
+      await expect(toolbar).toHaveCSS("opacity", "1");
       await page.mouse.move(1, 1);
-      await expect(actions).toHaveCSS("opacity", "0");
-      await expect(fullscreen).toHaveCSS("opacity", "0");
+      await expect(toolbar).toHaveCSS("opacity", "0");
       await copy.focus();
       await expect(copy).toBeFocused();
-      await expect(actions).toHaveCSS("opacity", "1");
+      await expect(toolbar).toHaveCSS("opacity", "1");
       await copy.press("Enter");
       await expect(
         actions.getByRole("button", { name: "Copied message", exact: true }),
@@ -134,7 +131,7 @@ for (const theme of ["dark", "light"] as const)
         "const ready = true;",
       );
       await fullscreen.focus();
-      await expect(fullscreen).toHaveCSS("opacity", "1");
+      await expect(toolbar).toHaveCSS("opacity", "1");
       await fullscreen.press("Enter");
       const reader = page.getByRole("dialog", { name: "Fix the flaky build", exact: true });
       await expect(reader.getByRole("heading", { name: "Build fixed" })).toBeVisible();
@@ -151,7 +148,8 @@ for (const theme of ["dark", "light"] as const)
       await titleLink.focus();
       await expect(source.locator('[data-slot="response-header"] a')).toHaveCount(0);
       await titleLink.press("Shift+Tab");
-      await expect(sourceToggle).toBeFocused();
+      await expect(copy).toBeFocused();
+      await sourceToggle.focus();
       await sourceToggle.press("Enter");
       const rail = page
         .getByRole("button", { name: "Show in To-do: Fix the flaky build", exact: true })

@@ -3,11 +3,22 @@ import { cn } from "@/lib/utils";
 import { IconSizeProvider } from "../ui/icon-size";
 import {
   messageActionPlacement,
+  messageActionViewport,
+  type MessageActionAlign,
   type MessageActionPlacement,
 } from "@/lib/message-action-placement";
 
-/** One toolbar, moved without remounting its buttons or changing their semantics. */
-export function MessageActions({ children }: { children: ReactNode }) {
+/**
+ * One toolbar for every message kind, moved without remounting its buttons or
+ * changing their semantics.
+ */
+export function MessageActions({
+  align = "start",
+  children,
+}: {
+  align?: MessageActionAlign;
+  children: ReactNode;
+}) {
   const clearanceRef = useRef<HTMLDivElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -21,6 +32,10 @@ export function MessageActions({ children }: { children: ReactNode }) {
     const message = slot?.parentElement;
     const scroller = slot?.closest<HTMLElement>(".transcript");
     if (!slot || !toolbar || !message || !scroller) return;
+    // The composer overlays the transcript's bottom and grows with its draft.
+    const dock = scroller
+      .closest('[data-slot="chat"]')
+      ?.querySelector<HTMLElement>(':scope > [data-slot="composer-dock"]');
     let frame: number | undefined;
     const update = () => {
       frame = undefined;
@@ -51,28 +66,37 @@ export function MessageActions({ children }: { children: ReactNode }) {
         width: Math.max(...items.map((item) => item.width)),
         height: items.reduce((sum, item) => sum + item.height, 0) + gap * (items.length - 1),
       };
-      const viewportPlacement = messageActionPlacement({
-        message: {
-          top: Number.isFinite(bodyTop) ? bodyTop : messageBounds.top,
-          bottom: bodyBottom,
-          left: messageBounds.left,
-          right: messageBounds.right,
-        },
-        viewport: {
-          top: Math.max(0, bounds.top + scroller.clientTop),
-          bottom: Math.min(
-            window.innerHeight,
-            bounds.top + scroller.clientTop + scroller.clientHeight,
-          ),
-          left: Math.max(0, bounds.left + scroller.clientLeft),
-          right: Math.min(
-            window.innerWidth,
-            bounds.left + scroller.clientLeft + scroller.clientWidth,
-          ),
-        },
-        row,
-        column,
-      });
+      // Without layout (an empty message or transcript box) there is nothing to
+      // place against, so keep the in-flow footer rather than hiding the actions.
+      const laidOut =
+        messageBounds.height > 0 && scroller.clientWidth > 0 && scroller.clientHeight > 0;
+      const viewportPlacement: MessageActionPlacement = !laidOut
+        ? { kind: "footer" }
+        : messageActionPlacement({
+            message: {
+              top: Number.isFinite(bodyTop) ? bodyTop : messageBounds.top,
+              bottom: bodyBottom,
+              left: messageBounds.left,
+              right: messageBounds.right,
+            },
+            viewport: messageActionViewport({
+              scroller: {
+                top: bounds.top,
+                left: bounds.left,
+                clientTop: scroller.clientTop,
+                clientLeft: scroller.clientLeft,
+                clientWidth: scroller.clientWidth,
+                clientHeight: scroller.clientHeight,
+              },
+              window: { width: window.innerWidth, height: window.innerHeight },
+              composerTop: (
+                dock?.querySelector<HTMLElement>(".workbench-composer") ?? dock
+              )?.getBoundingClientRect().top,
+            }),
+            row,
+            column,
+            align,
+          });
       // Use the footer slot as the containing block. Fixed positioning would
       // instead be captured by the transcript's CSS query container.
       const slotBounds = slot.getBoundingClientRect();
@@ -103,7 +127,7 @@ export function MessageActions({ children }: { children: ReactNode }) {
     window.addEventListener("scroll", schedule, { capture: true, passive: true });
     window.addEventListener("resize", schedule);
     const observer = "ResizeObserver" in globalThis ? new ResizeObserver(schedule) : undefined;
-    for (const element of [message, scroller, scroller.firstElementChild, toolbar]) {
+    for (const element of [message, scroller, scroller.firstElementChild, toolbar, dock]) {
       if (element) observer?.observe(element);
     }
     return () => {
@@ -112,7 +136,7 @@ export function MessageActions({ children }: { children: ReactNode }) {
       observer?.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
-  }, [children]);
+  }, [align, children]);
 
   const floating = "top" in placement;
   const hidden = placement.kind === "hidden";
@@ -143,6 +167,7 @@ export function MessageActions({ children }: { children: ReactNode }) {
           className={cn(
             "flex min-h-7 items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100",
             placement.kind === "side" ? "flex-col" : "flex-wrap",
+            align === "end" && "justify-end",
             floating && "z-20 w-max rounded-md bg-background",
           )}
           style={

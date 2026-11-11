@@ -198,12 +198,15 @@ for (const state of ["default", "project", "reference"]) {
           fallback.getByRole("button", { name: "Untitled session", exact: true }),
         ).toBeVisible();
         await expect(fallback).toContainText("Historical report from a now-unavailable session.");
+        // Message actions, including Open session, are hidden while their message is offscreen.
+        await fallback.scrollIntoViewIfNeeded();
         await fallback.getByRole("link", { name: "Open session", exact: true }).click();
         await expect(
           page.getByText("Cake could not find Project Session missing-session", { exact: true }),
         ).toBeVisible();
         await expect(card).toBeVisible();
       }
+      await card.scrollIntoViewIfNeeded();
       const source = card.getByRole("link", {
         name: "Open session",
         exact: true,

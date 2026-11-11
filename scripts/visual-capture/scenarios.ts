@@ -257,17 +257,18 @@ const assistantMarkdownCode: VisualCaptureScenario = {
     if (state.startsWith("user-copy-")) {
       const copy = page.getByRole("button", { name: "Copy message", exact: true });
       const message = copy.locator("xpath=ancestor::article");
+      const toolbar = message.locator('[data-slot="message-action-toolbar"]');
       await message.scrollIntoViewIfNeeded();
       await page.mouse.move(1, 1);
-      await expect(copy).toHaveCSS("opacity", "0");
+      await expect(toolbar).toHaveCSS("opacity", "0");
       if (state === "user-copy-hover") {
         await message.hover();
-        await expect(copy).toHaveCSS("opacity", "1");
+        await expect(toolbar).toHaveCSS("opacity", "1");
       } else if (state === "user-copy-focus") {
         await message.getByRole("button", { name: "Render as Markdown", exact: true }).focus();
         await page.keyboard.press("Shift+Tab");
         await expect(copy).toBeFocused();
-        await expect(copy).toHaveCSS("opacity", "1");
+        await expect(toolbar).toHaveCSS("opacity", "1");
       }
       return;
     }
@@ -5883,6 +5884,168 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
+const longAssistantAnswer = [
+  "## Release review",
+  "",
+  ...Array.from({ length: 22 }, (_, index) =>
+    [
+      `### Area ${index + 1}`,
+      "",
+      "The change keeps the conversation primary and moves every message action into one shared group. " +
+        "Copy, reply and the fullscreen reader stay together, and the group floats to the nearest visible edge " +
+        "of the message while you read, so it never needs a separate control at the top of the message.",
+      "",
+    ].join("\n"),
+  ),
+].join("\n");
+
+/** Hovered message actions: one shared group for assistant and session messages. */
+const messageActionBarScenario: VisualCaptureScenario = {
+  name: "message-action-bar",
+  description:
+    "Shared hover action group on an assistant answer, minimized and expanded session updates, and a tall composer",
+  states: ["assistant", "session-minimized", "session-expanded", "tall-composer"],
+  async seed(paths, theme) {
+    await sessionUpdateReportsScenario.seed(paths, theme);
+    const directory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    // A long exact original makes the minimized update offer the fullscreen reader too.
+    const reports = join(directory, "1970-01-01T00-00-00-000Z_visual-session-update-reports.jsonl");
+    await writeFile(
+      reports,
+      (await readFile(reports, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => {
+          const entry = JSON.parse(line);
+          if (entry.id === "toasts")
+            entry.message.content = [
+              { type: "text", text: `${entry.message.content[0].text}\n\n${longAssistantAnswer}` },
+            ];
+          return JSON.stringify(entry);
+        })
+        .join("\n") + "\n",
+    );
+    const file = join(directory, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl");
+    const entries = (await readFile(file, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const [user, assistant] = entries.filter((entry) => entry.type === "message");
+    await writeFile(
+      file,
+      [
+        ...entries,
+        {
+          ...user,
+          id: "user-long",
+          parentId: assistant.id,
+          message: { ...user.message, content: [{ type: "text", text: "Review the release." }] },
+        },
+        {
+          ...assistant,
+          id: "assistant-long",
+          parentId: "user-long",
+          message: { ...assistant.message, content: [{ type: "text", text: longAssistantAnswer }] },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+  },
+  async prepare(page, state) {
+    const hoverVisible = async (message: Locator) => {
+      // Hover inside the part of the message the composer does not cover.
+      const point = await message.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const transcript = element.closest(".transcript")!.getBoundingClientRect();
+        return { x: box.left + 40, y: Math.max(box.top, transcript.top) + 24 };
+      });
+      await page.mouse.move(point.x, point.y);
+    };
+    if (state === "assistant" || state === "tall-composer") {
+      await openSeededSession(
+        page,
+        "visual-capture-project",
+        "How should agents capture Cake UI changes?",
+      );
+      const answer = page
+        .locator('[data-slot="message"]')
+        .filter({ has: page.getByRole("heading", { name: "Release review" }) });
+      await expect(answer).toHaveCount(1);
+      await page.waitForFunction(() => document.fonts.status === "loaded");
+      const toolbar = answer.locator('[data-slot="message-action-toolbar"]');
+      await expect(
+        toolbar.getByRole("button", { name: "View response fullscreen", exact: true }),
+      ).toBeAttached();
+      if (state === "tall-composer") {
+        // Grow the draft, then read slightly above the end so the tall composer
+        // covers the answer's last lines and its footer row.
+        const composer = page.getByRole("combobox", { name: "Message", exact: true }).first();
+        await composer.fill(
+          Array.from({ length: 16 }, (_, index) => `Draft line ${index + 1}`).join("\n"),
+        );
+        await composer.blur();
+        const transcript = page.locator(".transcript").first();
+        const box = (await transcript.boundingBox())!;
+        await page.mouse.move(box.x + box.width / 2, box.y + 80);
+        await page.mouse.wheel(0, -260);
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeGreaterThan(200);
+      }
+      await page.mouse.move(1, 1);
+      await hoverVisible(answer);
+      await expect(toolbar).toHaveCSS("opacity", "1");
+      if (state === "tall-composer") {
+        await expect(toolbar).not.toHaveAttribute("data-placement", "footer");
+        const [toolbarBottom, composerTop] = await Promise.all([
+          toolbar.evaluate((element) => element.getBoundingClientRect().bottom),
+          page
+            .locator(".workbench-composer")
+            .first()
+            .evaluate((element) => element.getBoundingClientRect().top),
+        ]);
+        expect(toolbarBottom).toBeLessThanOrEqual(composerTop);
+      } else await expect(toolbar).toHaveAttribute("data-placement", "footer");
+      return;
+    }
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
+    const batch = page.getByRole("status", { name: "Session results" });
+    await expect(batch.getByRole("button")).toHaveCount(6);
+    const title =
+      state === "session-expanded"
+        ? "Simplify Cake prompts with progressive disclosure across every chat surface"
+        : "Make toast notifications opaque";
+    const disclosure = batch.getByRole("button", { name: title, exact: true });
+    const card = page
+      .locator('[data-slot="session-message"]')
+      .filter({ has: page.getByRole("button", { name: title, exact: true }) });
+    // Opening reads the exact original, which enables Copy; minimized keeps it loaded.
+    await disclosure.click();
+    await expect(card.getByRole("button", { name: "Copy message", exact: true })).toBeAttached();
+    if (state === "session-minimized") await disclosure.click();
+    await disclosure.evaluate((button) => button.blur());
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+    await hoverVisible(card);
+    const toolbar = card.locator('[data-slot="message-action-toolbar"]');
+    await expect(toolbar).toHaveCSS("opacity", "1");
+    await expect(toolbar.getByRole("link", { name: "Open source", exact: true })).toBeVisible();
+    if (state === "session-minimized")
+      await expect(
+        toolbar.getByRole("button", { name: /^View message fullscreen:/ }),
+      ).toBeVisible();
+  },
+  region: (page) => page.locator(".transcript").first(),
+};
+
 const compactUpdateFixtures = [
   {
     sessionId: "e37674d0-0000-4000-8000-000000000001",
@@ -9147,6 +9310,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionMessageVariantsScenario,
   incomingReportRecapScenario,
   sessionUpdateReportsScenario,
+  messageActionBarScenario,
   sessionUpdateSpacingScenario,
   compactSessionReportsScenario,
   createIncomingMessageProposalsScenario({

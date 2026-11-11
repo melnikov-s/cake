@@ -55,10 +55,10 @@ function assertOrder(container: HTMLElement, file: boolean, annotation: boolean,
   expect(message.querySelectorAll('[data-slot="message-content"]')).toHaveLength(
     body.trim() ? 1 : 0,
   );
-  if (!body.trim()) {
-    const actions = message.querySelector('[aria-label="User actions"]');
-    if (actions) expect(actions.classList.contains("absolute")).toBe(true);
-  }
+  // Human actions, when offered, use the shared action bar along the message's right edge.
+  const toolbars = message.querySelectorAll('[data-slot="message-action-toolbar"]');
+  expect(toolbars.length).toBeLessThanOrEqual(1);
+  for (const toolbar of toolbars) expect(toolbar.classList.contains("justify-end")).toBe(true);
 }
 
 describe("shared human message content order", () => {

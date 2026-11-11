@@ -175,10 +175,12 @@ describe("exact response presentation", () => {
     expect(
       within(batch).getAllByRole("region", { name: "Message from another session" }),
     ).toHaveLength(3);
-    // Update summaries must not reserve the exterior action rows of full messages,
-    // including exact sources whose lazy copy button does not exist yet.
-    expect(batch.querySelector('[data-slot="message-actions"]')).toBeNull();
-    expect(batch.querySelector('[data-slot="message-action-clearance"]')).toBeNull();
+    // Update summaries are minimizable assistant messages: each card has the one
+    // shared action bar, even before an exact source's lazy copy button exists.
+    for (const card of within(batch).getAllByRole("region", {
+      name: "Message from another session",
+    }))
+      expect(card.querySelectorAll('[data-slot="message-action-toolbar"]')).toHaveLength(1);
     // Each card names its session once; the title is never repeated as a second header.
     for (const title of titles) expect(batch.textContent!.split(title)).toHaveLength(2);
     expect(screen.getAllByRole("status", { name: "Session results" })).toHaveLength(1);
@@ -197,8 +199,7 @@ describe("exact response presentation", () => {
     expect(fullResponse.getAttribute("href")).toBe(promptRef);
     await user.click(fullResponse);
     expect(openSession).toHaveBeenCalledWith(source.getSessionId(), promptId);
-    expect(batch.querySelector('[data-slot="message-actions"]')).toBeNull();
-    expect(batch.querySelector('[data-slot="message-action-clearance"]')).toBeNull();
+    expect(fullResponse.closest('[data-slot="message-action-toolbar"]')).not.toBeNull();
     await user.click(promptCard.getByRole("button", { name: "Copy message" }));
     expect(await navigator.clipboard.readText()).toBe(
       "Committed as d58aa9b5. Worktree clean; ready for review. No merge, resolution, or restart.",

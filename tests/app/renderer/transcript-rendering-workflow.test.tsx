@@ -57,7 +57,7 @@ describe("Projected transcript rendering workflows", () => {
         screen.getByRole("button", { name: "Render as " + (renderAs ? "plain text" : "Markdown") }),
       ).toBeDefined();
 
-      // jsdom has no viewport geometry; the assistant toolbar can be inert/offscreen.
+      // jsdom has no layout geometry, so the shared toolbar stays in its footer.
       await fixture.user.click(screen.getByLabelText("Copy response", { exact: true }));
       expect(copy).toHaveBeenLastCalledWith(answer.text);
       expect(screen.getByLabelText("Copied response", { exact: true })).toBeDefined();

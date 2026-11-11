@@ -315,7 +315,8 @@ function linkAnchor(
     showIcon: presentation === "icon" ? false : (allProps.showIcon ?? true),
     className: cn(
       presentation === "icon" &&
-        "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground no-underline hover:bg-muted/80 hover:text-foreground",
+        // Matches IconButton so an icon link reads as one more action in a toolbar.
+        "grid size-7 shrink-0 place-items-center rounded-md font-normal text-muted-foreground no-underline transition-colors hover:bg-muted/85 hover:text-foreground active:bg-muted",
       allProps.className,
     ),
   };
@@ -370,7 +371,11 @@ function linkAnchor(
     const reference = sessionLink(sessionId, session.messageId, session.attachmentId);
     const labelText = linkLabelText(label);
     const chip = presentation === "chip";
-    const purpose = showSessionPurpose ? actions?.sessionPurpose?.(sessionId) : undefined;
+    // An icon link is an action whose glyph is its only label; a purpose glyph would be a second icon.
+    const purpose =
+      showSessionPurpose && presentation !== "icon"
+        ? actions?.sessionPurpose?.(sessionId)
+        : undefined;
     return (
       <Link
         {...props}

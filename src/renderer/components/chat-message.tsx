@@ -226,8 +226,10 @@ export const ChatTextMessage = forwardRef<
       aria-label={report ? subagentReportHeading(report) : undefined}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      // A session message owns its action bar, including its own fullscreen reader.
       actions={!part.crossSession && !report && !agentSource ? actions : undefined}
-      fullscreen={fullscreen}
+      actionsAlign={agentMessage ? "start" : "end"}
+      fullscreen={!part.crossSession && !report && !agentSource ? fullscreen : undefined}
       className={cn(
         assistant || report || part.crossSession || agentSource
           ? "mr-auto w-full"

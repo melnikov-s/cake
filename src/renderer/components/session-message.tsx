@@ -15,7 +15,10 @@ import { Button } from "./ui/button";
 import { ChevronIcon, LinkIcon } from "./ui/icons";
 import { FullscreenSurface } from "./fullscreen-surface";
 
-/** An assistant message with source navigation, disclosure and linked to-dos. */
+/**
+ * An assistant message from another session that can be minimized. It shares the
+ * assistant action bar, adding an Open source link beside Copy.
+ */
 export const SessionMessage = observer(function SessionMessage({
   source,
   title: explicitTitle,
@@ -30,7 +33,6 @@ export const SessionMessage = observer(function SessionMessage({
   todo,
   messageActions,
   replyAction,
-  compact = false,
   children,
 }: {
   source?: { sessionId?: string; title?: string; href?: string };
@@ -51,8 +53,6 @@ export const SessionMessage = observer(function SessionMessage({
   todo?: ResultTodoLink;
   messageActions?: ReactNode;
   replyAction?: ReactNode;
-  /** Update summaries keep actions in the header, without exterior toolbar rows. */
-  compact?: boolean;
   children?: ReactNode;
 }) {
   const actions = useMarkdownLinkActions();
@@ -99,10 +99,16 @@ export const SessionMessage = observer(function SessionMessage({
   const reference = (sources[0] ?? originals[0])?.props.reference;
   const linkedTodos = todo?.origin ? (todo.todos?.itemsForResult(todo.origin) ?? []) : [];
   const href = reference ?? source?.href ?? (id ? `cake://session/${encodeURIComponent(id)}` : "");
+  const sourceLabel = reference || source?.href ? "Open source" : "Open session";
   const messageToolbar = (
     <>
       {messageActions}
       {sources[0] && <MessageSourceCopy store={sources[0]} />}
+      {href && actions && (
+        <MarkdownLink href={href} presentation="icon" aria-label={sourceLabel} title={sourceLabel}>
+          <LinkIcon />
+        </MarkdownLink>
+      )}
       {replyAction}
     </>
   );
@@ -121,7 +127,7 @@ export const SessionMessage = observer(function SessionMessage({
       aria-label={
         relation === "notice" ? "Notice about another session" : "Message from another session"
       }
-      actions={compact ? undefined : messageToolbar}
+      actions={messageToolbar}
       fullscreen={
         canOpenFullscreen
           ? {
@@ -136,9 +142,9 @@ export const SessionMessage = observer(function SessionMessage({
     >
       <div
         data-slot="session-message-card"
-        className="group/session-card min-w-0 rounded-lg border border-border bg-card text-card-foreground"
+        className="min-w-0 rounded-lg border border-border bg-card text-card-foreground"
       >
-        <div className="flex min-h-10 min-w-0 items-center gap-1 py-1 pr-10 pl-1">
+        <div className="flex min-h-10 min-w-0 items-center gap-1 p-1">
           <div
             data-slot="response-header"
             className="relative flex h-8 min-w-0 flex-1 items-center"
@@ -189,22 +195,6 @@ export const SessionMessage = observer(function SessionMessage({
                   {badge.label}
                 </span>
               ))}
-            </div>
-          )}
-          {href && actions && (
-            <MarkdownLink
-              href={href}
-              presentation="icon"
-              className="opacity-0 transition-opacity group-hover/session-card:opacity-100 group-focus-within/session-card:opacity-100"
-              aria-label={reference || source?.href ? "Open source" : "Open session"}
-              title={reference || source?.href ? "Open source" : "Open session"}
-            >
-              <LinkIcon />
-            </MarkdownLink>
-          )}
-          {compact && (
-            <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100">
-              {messageToolbar}
             </div>
           )}
         </div>

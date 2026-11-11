@@ -2,16 +2,21 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
+import type { MessageActionAlign } from "@/lib/message-action-placement";
 import { MessageActions } from "./message-actions";
 
 export function Message({
   className,
   children,
   actions,
+  actionsAlign,
   fullscreen,
   ...props
 }: ComponentProps<"article"> & {
   actions?: ReactNode;
+  /** Follows the message's own alignment; right-aligned messages keep actions on the right. */
+  actionsAlign?: MessageActionAlign;
+  /** Joins the action group; the floating toolbar keeps it reachable from anywhere in the message. */
   fullscreen?: { label: string; onClick(): void };
 }) {
   return (
@@ -21,12 +26,11 @@ export function Message({
       {...props}
     >
       {children}
-      {actions && <MessageActions>{actions}</MessageActions>}
-      {fullscreen && (
-        <FullscreenButton
-          className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
-          {...fullscreen}
-        />
+      {(actions || fullscreen) && (
+        <MessageActions align={actionsAlign}>
+          {actions}
+          {fullscreen && <FullscreenButton {...fullscreen} />}
+        </MessageActions>
       )}
     </article>
   );

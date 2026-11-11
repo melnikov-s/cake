@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Message } from "@/components/ai-elements/message";
 import { SkillIcon } from "./ui/icons";
@@ -7,12 +8,14 @@ import type { SourceLocation } from "../../contracts/editor/source-location";
 export function SkillMessage({
   part,
   onOpenSourceLocation,
+  actions,
 }: {
   part: Extract<UiPart, { kind: "skill" }>;
   onOpenSourceLocation?(location: SourceLocation): void;
+  actions?: ReactNode;
 }) {
   return (
-    <Message className="mr-auto w-[min(100%,42rem)]">
+    <Message className="mr-auto w-[min(100%,42rem)]" actions={actions}>
       <details className="group min-w-0">
         <summary
           className="inline-flex max-w-full items-center gap-[7px] rounded-[999px] border border-[color-mix(in_oklab,var(--accent)_30%,var(--border))] bg-[color-mix(in_oklab,var(--card)_88%,var(--accent))] px-[11px] py-[7px] font-mono text-xs leading-[normal] font-normal text-muted-foreground list-none cursor-pointer hover:border-[color-mix(in_oklab,var(--accent)_55%,var(--border))] hover:text-foreground [&::-webkit-details-marker]:hidden [&_svg]:flex-none [&_svg]:text-accent"

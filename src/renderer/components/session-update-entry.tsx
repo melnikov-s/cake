@@ -118,7 +118,6 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
   }
   return (
     <SessionMessage
-      compact
       source={entry.sessionId ? { sessionId: entry.sessionId, title: entry.title } : undefined}
       title={title}
       sources={source ? [source] : undefined}
