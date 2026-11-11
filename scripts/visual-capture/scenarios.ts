@@ -146,6 +146,9 @@ const assistantMarkdownCode: VisualCaptureScenario = {
     "selected",
     "quick-assistant",
     "assistant-chat",
+    "user-copy-rest",
+    "user-copy-hover",
+    "user-copy-focus",
     "resolved",
     "fullscreen",
   ],
@@ -244,6 +247,23 @@ const assistantMarkdownCode: VisualCaptureScenario = {
       ).some((token) => token.style.getPropertyValue("--sdm-c") !== "inherit"),
     );
 
+    if (state.startsWith("user-copy-")) {
+      const copy = page.getByRole("button", { name: "Copy message", exact: true });
+      const message = copy.locator("xpath=ancestor::article");
+      await message.scrollIntoViewIfNeeded();
+      await page.mouse.move(1, 1);
+      await expect(copy).toHaveCSS("opacity", "0");
+      if (state === "user-copy-hover") {
+        await message.hover();
+        await expect(copy).toHaveCSS("opacity", "1");
+      } else if (state === "user-copy-focus") {
+        await message.getByRole("button", { name: "Render as Markdown", exact: true }).focus();
+        await page.keyboard.press("Shift+Tab");
+        await expect(copy).toBeFocused();
+        await expect(copy).toHaveCSS("opacity", "1");
+      }
+      return;
+    }
     if (state === "fullscreen") {
       await page.mouse.move(1, 1);
       await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Alt+Enter");
@@ -303,6 +323,10 @@ const assistantMarkdownCode: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region(page, state) {
+    if (state.startsWith("user-copy-"))
+      return page
+        .getByRole("button", { name: "Copy message", exact: true })
+        .locator("xpath=ancestor::article");
     if (state === "fullscreen") return page.getByRole("dialog", { name: "Cake", exact: true });
     if (state === "selected")
       return page.locator('[data-slot="transcript-item"][aria-current="true"]');

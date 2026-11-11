@@ -38,6 +38,46 @@ afterEach(() => {
 // fullscreen readers belong to message-selection/side-chat-streaming Electron
 // suites. This suite does not fabricate those layout or native-event contracts.
 describe("Projected transcript rendering workflows", () => {
+  it.each([undefined, "markdown"] as const)(
+    "copies the original user text with renderAs=%s without changing its presentation",
+    async (renderAs) => {
+      const text = "  # Literal heading\n**Literal emphasis**\n\n`code`  ";
+      using fixture = renderTranscriptRendering([{ ...user, text, renderAs }, answer]);
+      const copy = vi.spyOn(navigator.clipboard, "writeText");
+      const body = fixture.container.querySelector('[data-slot="message-content"]');
+      if (!body) throw new Error("Missing user message content");
+      const originalBody = body.innerHTML;
+      expect(Boolean(body.querySelector("h1"))).toBe(renderAs === "markdown");
+
+      await fixture.user.click(screen.getByRole("button", { name: "Copy message" }));
+      expect(copy).toHaveBeenCalledWith(text);
+      expect(screen.getByRole("button", { name: "Copied message" })).toBeDefined();
+      expect(body.innerHTML).toBe(originalBody);
+      expect(
+        screen.getByRole("button", { name: "Render as " + (renderAs ? "plain text" : "Markdown") }),
+      ).toBeDefined();
+
+      // jsdom has no viewport geometry; the assistant toolbar can be inert/offscreen.
+      await fixture.user.click(screen.getByLabelText("Copy response", { exact: true }));
+      expect(copy).toHaveBeenLastCalledWith(answer.text);
+      expect(screen.getByLabelText("Copied response", { exact: true })).toBeDefined();
+      await waitFor(
+        () => expect(screen.getByRole("button", { name: "Copy message" })).toBeDefined(),
+        { timeout: 2_500 },
+      );
+    },
+  );
+
+  it("does not report a copied user message when the clipboard write fails", async () => {
+    using fixture = renderTranscriptRendering([user]);
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("Clipboard denied"));
+    await fixture.user.click(screen.getByRole("button", { name: "Copy message" }));
+    expect(screen.queryByRole("button", { name: "Copied message" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy message" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+  });
+
   it.each(["", " \n\t\n "])(
     "renders no empty assistant chrome for %j and reveals arriving prose",
     (text) => {

@@ -76,6 +76,9 @@ describe("shared human message content order", () => {
     async (_name, file, annotation, body) => {
       using fixture = renderTranscriptRendering(parts(body, file, annotation));
       assertOrder(fixture.container, file, annotation, body);
+      expect(screen.queryAllByRole("button", { name: "Copy message" })).toHaveLength(
+        body.trim() ? 1 : 0,
+      );
       if (annotation) {
         await fixture.user.click(screen.getByRole("button", { name: "View 1 annotation" }));
         expect(screen.getByText(orderingAnnotation.comment!)).toBeDefined();

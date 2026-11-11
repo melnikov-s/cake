@@ -11,6 +11,7 @@ import { AnnotationSummary } from "@/components/annotation-summary";
 import { Badge } from "@/components/ui/badge";
 import { AttachmentReference } from "./ui/attachment-reference";
 import { IconButton } from "@/components/ui/icon-button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { BrowserIcon, EditIcon, MarkdownIcon, TreeIcon } from "@/components/ui/icons";
 import { Interview } from "@/components/interview";
 import { ArtifactHost } from "@/components/artifact-host";
@@ -141,6 +142,12 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           }
           aria-label="User actions"
         >
+          {part.text.trim() && (
+            <CopyButton
+              getText={async () => part.text}
+              className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100"
+            />
+          )}
           {part.entryId &&
             behavior.store.transcriptInteraction.canToggleUserMessageMarkdown &&
             !hasArtifactReference &&
