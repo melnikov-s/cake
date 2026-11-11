@@ -154,14 +154,11 @@ export const ProjectRail = observer(function ProjectRail({
           </>
         }
         listHeading={
-          <NavigationRailSection
-            label="Projects"
-            action={
-              addProjectPlacement === "heading" ? (
-                <AddProjectHeadingButton onAdd={addProject} />
-              ) : undefined
-            }
-          />
+          addProjectPlacement === "heading" ? (
+            <AddProjectHeadingButton onAdd={addProject} />
+          ) : (
+            <NavigationRailSection label="Projects" />
+          )
         }
         footer={
           <>

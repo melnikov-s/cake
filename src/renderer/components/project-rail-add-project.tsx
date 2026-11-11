@@ -1,29 +1,23 @@
-import { useContext } from "react";
 import { IconButton } from "./ui/icon-button";
 import { FolderPlusIcon, PlusIcon } from "./ui/icons";
-import { NavigationRailLabelsContext } from "./ui/navigation-rail-labels";
+import { NavigationRailSection } from "./ui/navigation-rail-section";
 
 /**
  * Where the rail offers Add project:
- * - "heading": a small + on the Projects section label (default).
+ * - "heading": the Projects section label acts as Add project (default).
  * - "row": a quiet action row after the last project.
  * Change the default here to switch the whole app.
  */
 export type AddProjectPlacement = "heading" | "row";
 export const defaultAddProjectPlacement: AddProjectPlacement = "heading";
 
-/** Compact + beside the Projects label; the icon-only rail shows the folder glyph instead. */
+/** One Add project target across the full heading, with the same glyph at either width. */
 export function AddProjectHeadingButton({ onAdd }: { onAdd(): void }) {
-  const labelsVisible = useContext(NavigationRailLabelsContext) !== false;
   return (
-    <IconButton
-      tooltip="Add project"
-      iconSize={labelsVisible ? "inline" : "navigation"}
-      className={labelsVisible ? "size-6" : "size-7"}
-      onClick={onAdd}
-    >
-      {labelsVisible ? <PlusIcon /> : <FolderPlusIcon />}
-    </IconButton>
+    <NavigationRailSection
+      label="Projects"
+      action={{ label: "Add project", icon: <FolderPlusIcon />, onClick: onAdd }}
+    />
   );
 }
 

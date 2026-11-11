@@ -88,13 +88,21 @@ it("puts Add project on the Projects heading by default", async () => {
   const add = within(f.heading).getByRole("button", { name: "Add project" });
   expect(within(f.projects).queryByRole("button", { name: "Add project" })).toBeNull();
   expect(add.querySelector("svg")!.getAttribute("width")).toBe("18");
+  const glyph = add.querySelector("svg")!.outerHTML;
   const user = userEvent.setup();
   await user.tab();
-  // Preserve the new compact + beside the heading when names are disclosed.
   expect(f.rail.getAttribute("data-expanded")).toBe("true");
-  expect(add.querySelector("svg")!.getAttribute("width")).toBe("12");
-  await user.click(add);
+  expect(add.querySelector("svg")!.outerHTML).toBe(glyph);
+  expect(within(f.heading).getAllByRole("button")).toEqual([add]);
+  expect(add.querySelector("button, a, [tabindex]")).toBeNull();
+  await user.click(within(add).getByText("Projects"));
   expect(f.chooseProject).toHaveBeenCalledTimes(1);
+  await user.click(add.querySelector("svg")!);
+  expect(f.chooseProject).toHaveBeenCalledTimes(2);
+  await user.keyboard("{Enter}");
+  expect(f.chooseProject).toHaveBeenCalledTimes(3);
+  await user.keyboard(" ");
+  expect(f.chooseProject).toHaveBeenCalledTimes(4);
 });
 
 it("can instead end the project list with a quiet Add project row", async () => {
