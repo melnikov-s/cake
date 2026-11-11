@@ -49,6 +49,8 @@ async function queueAttentionClick() {
   const item = await f.runtime.runPromise(
     todos.create(scope, {
       title: "Review merge fix",
+      needsAttention: true,
+      attentionReason: "Review the merge fix",
       description: "Findings",
       associations: [{ kind: "session", sessionId: producer, title: "Worker" }],
     }),

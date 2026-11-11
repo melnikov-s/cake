@@ -115,6 +115,14 @@ function fixture(
         }),
     }),
     Layer.mock(CakeSessionRuntimes, {
+      catalogSnapshot: (query) =>
+        Effect.succeed({
+          directory: query.sessionDirectory,
+          workingDirectory: query.workingDirectory,
+          shared: false,
+          find: (id) =>
+            [a, b, root].includes(id) ? `${query.sessionDirectory}/${id}.jsonl` : undefined,
+        }),
       currentStatus: () => Effect.succeed(undefined),
       catalogEntry: (_query, sessionId) =>
         Effect.succeed({
@@ -183,6 +191,8 @@ it.effect(
       let task = yield* controls.create(project, {
         title: "One outcome",
         description: "Investigate then implement and review.",
+        needsAttention: true,
+        attentionReason: "Review the final outcome",
         associations: [
           { kind: "subagent", parentSessionId: a, handleId: worker.handleId, title: "Findings" },
         ],
@@ -229,16 +239,69 @@ it.effect(
       expect(removedBlocker.message).toContain("unresolved required sessions");
       f.resolved.add(root);
       yield* completeLinked(project);
-      expect((yield* todos.read(project, task.id)).state).toBe("open");
+      expect(yield* todos.read(project, task.id)).toMatchObject({
+        state: "open",
+        needsAttention: true,
+        remainingWork: "Independent review still needed",
+      });
       task = yield* controls.update(project, {
         id: task.id,
         expectedRevision: task.revision,
         remainingWork: null,
       });
-      expect(task).toMatchObject({ state: "done", completion: { by: "sessions" } });
+      expect(task).toMatchObject({
+        state: "done",
+        needsAttention: false,
+        attentionReason: "Review the final outcome",
+        completion: { by: "sessions" },
+      });
       expect(task).not.toHaveProperty("remainingWork");
       expect(task.associations).toHaveLength(3);
       expect((yield* todos.list(project)).items).toHaveLength(1);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
+  "clearing a satisfied hold still waits for every required session in %s",
+  (scope) => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      let task = yield* controls.create(scope, {
+        title: "Reviewed outcome",
+        description: "Review complete; second session still active.",
+        associations: [link(a), link(b)],
+        remainingWork: "Independent review",
+        needsAttention: true,
+        attentionReason: "Review final evidence",
+      });
+      f.resolved.add(a);
+      task = yield* controls.update(scope, {
+        id: task.id,
+        expectedRevision: task.revision,
+        remainingWork: null,
+      });
+      yield* completeLinked(scope);
+      expect(yield* controls.read(scope, task.id)).toMatchObject({
+        state: "open",
+        needsAttention: true,
+        sessions: [
+          { sessionId: a, resolved: true },
+          { sessionId: b, resolved: false },
+        ],
+      });
+      f.resolved.add(b);
+      yield* completeLinked(scope);
+      // A child’s own archive entry cannot bypass its unresolved family root.
+      expect((yield* todos.read(scope, task.id)).state).toBe("open");
+      f.resolved.add(root);
+      yield* completeLinked(scope);
+      expect(yield* todos.read(scope, task.id)).toMatchObject({
+        state: "done",
+        needsAttention: false,
+        completion: { by: "sessions" },
+      });
     }).pipe(Effect.provide(f.layer));
   },
 );

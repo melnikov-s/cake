@@ -50,6 +50,8 @@ it("admits existing duplicate pending originals once under concurrent activation
       todos.create(scope, {
         title: "Remove quadratic to-do classification",
         description: "Review findings",
+        needsAttention: true,
+        attentionReason: "Review findings",
         associations: [{ kind: "session", sessionId: producer, title: "Worker" }],
       }),
     );
@@ -190,6 +192,8 @@ it("failed source reads and canceled admissions retain both originals for a succ
       todos.create(scope, {
         title: "Review",
         description: "Result",
+        needsAttention: true,
+        attentionReason: "Review the result",
         associations: [{ kind: "session", sessionId: producer, title: "Worker" }],
       }),
     );

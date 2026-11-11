@@ -14,11 +14,7 @@ import {
   pendingReportPresentation,
 } from "../../contracts/conversations/reference-notification";
 import { ProjectError } from "../../contracts/projects/project-error";
-import {
-  isCakeChatTodoScope,
-  projectTodoResultAttentionReason,
-  projectTodoSessionIds,
-} from "../../contracts/projects/project-todos";
+import { isCakeChatTodoScope, projectTodoSessionIds } from "../../contracts/projects/project-todos";
 import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type { QueuedAttention } from "../../contracts/session-families/session-family-document";
@@ -38,7 +34,8 @@ const attentionRequestId = (sessionId: string, id: string, revision: number, att
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
-/** Called under notice delivery serialization. The existing durable report inbox owns the handoff. */
+/** Only explicit human-request attention holds reports. Arrival alone is not a request.
+ * Called under notice delivery serialization; the durable report inbox owns the handoff. */
 export const hold = Effect.fn("ProjectTodoAttention.hold")(function* (
   report: PendingReport,
   origin: {
@@ -66,6 +63,7 @@ export const hold = Effect.fn("ProjectTodoAttention.hold")(function* (
   const item = (yield* todos.list(scope)).items.find(
     (item) =>
       item.state === "open" &&
+      item.needsAttention &&
       (origin.subagent
         ? item.associations.some((link) => {
             const worker =
@@ -83,15 +81,6 @@ export const hold = Effect.fn("ProjectTodoAttention.hold")(function* (
   );
   if (!item) return false;
   const text = yield* prepareCoordinatorNotice(report.recipientSessionId, report.text);
-  // Worker labels can be entire prompts. Name the linked task, never the launch instructions.
-  const reason = projectTodoResultAttentionReason(item.title);
-  if (!item.needsAttention)
-    yield* todos.update(scope, {
-      id: item.id,
-      expectedRevision: item.revision,
-      needsAttention: true,
-      attentionReason: reason,
-    });
   yield* storage.deferReferenceNotice({ ...report, text, attentionTodoId: item.id }, turnIds);
   return true;
 });

@@ -510,8 +510,10 @@ is a refactoring signal, not precedent.
   heading, count and section spacing/divider are omitted. The other sections collapse independently. It presents the human action first, with quieter task identity and clickable
   work/source links, no attention bell. Row selection focuses the transcript view, never outgoing context.
   Explicit to-do mutations own human-request attention; background description refresh stays description-only.
-  Notification-mode completion reports linked to an open to-do in the recipient durable chat's own
-  list are held in the existing report inbox and flag that item. Composer pills sit beneath Activity,
+  Report arrival alone never flags attention. Notification-mode reports linked to an explicitly
+  flagged open to-do in the recipient durable chat's own list wait in the existing report inbox
+  under that request, preserving its reason. Other reports remain in the quiet inbox/digest;
+  structured blocked outcomes retain immediate escalation. Composer pills sit beneath Activity,
   above the input, independent of Workspace search or transcript focus. Opening a pill admits its held
   originals through the normal chat runtime as their own `AttentionItem` input, then clears only attention.
   While the agent runs, it queues as "Needs attention: <title>" with an attention marker. Canceling

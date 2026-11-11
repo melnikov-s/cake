@@ -119,6 +119,8 @@ it("late exact provenance does not revive X-dismissed attention; a later indepen
       todos.create(scope, {
         title: "Results",
         description: "Review",
+        needsAttention: true,
+        attentionReason: "Review the results",
         associations: [{ kind: "session", sessionId: producer, title: "Worker" }],
       }),
     );

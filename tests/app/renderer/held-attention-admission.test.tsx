@@ -46,10 +46,8 @@ it.each([
         todos.create(scope, {
           title: "Investigate merge",
           description: "Findings ready",
-          needsAttention: !held,
-          ...(!held
-            ? { attentionReason: "Review the architecture findings and priorities" }
-            : null),
+          needsAttention: true,
+          attentionReason: "Review the architecture findings and priorities",
           associations: [{ kind: "session", sessionId: producer, title: "Task session" }],
         }),
       );

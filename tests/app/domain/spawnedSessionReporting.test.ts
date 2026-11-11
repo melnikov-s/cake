@@ -2746,8 +2746,71 @@ describe("automatic spawned-session reporting", () => {
         )
         .pipe(Effect.provide(Layer.mock(TaskInputStorage, {})));
 
+    it.effect.each([CAKE_CHAT_TODO_SCOPE, "/project"])(
+      "routine linked completion stays quiet and deliverable without actionable attention in %s",
+      (scope) =>
+        Effect.gen(function* () {
+          const f = yield* fixture();
+          yield* f.run(
+            Effect.gen(function* () {
+              const recipient =
+                scope === CAKE_CHAT_TODO_SCOPE ? CAKE_CHAT_SESSION_ID : projectChatSessionId(scope);
+              yield* assembleCoordinator(recipient);
+              const sessionId = "20000000-0000-4000-8000-000000000099";
+              const item = yield* projectTodos.create(scope, {
+                title: "Routine readiness",
+                description: "Implementation in progress",
+                associations: [{ kind: "session", sessionId, title: "Implementation" }],
+              });
+              const ref = messageReference(sessionId, "final-ready-report");
+              const turn = {
+                sessionId,
+                senderSessionId: recipient,
+                turnId: crypto.randomUUID(),
+                requestMessageId: crypto.randomUUID(),
+                threadId: crypto.randomUUID(),
+                reported: false,
+                outcome: "complete" as const,
+                resultDelivery: "notification" as const,
+                report: {
+                  outcome: "completed" as const,
+                  text: "Ready; scoped checks passed.",
+                  resultMessageRef: ref,
+                },
+              };
+              yield* f.storage.recordTurn(turn);
+              yield* sessionFamilyCompletion.deliver(turn);
+              yield* sessionFamilyCompletion.deliver(turn);
+              assert.deepEqual(yield* projectTodos.read(scope, item.id), item);
+              assert.deepEqual(f.deliveries, []);
+              const state = yield* f.storage.state();
+              assert.deepEqual(state.turns, []);
+              assert.equal(state.coordinatorDigest?.length, 1);
+              assert.equal(state.coordinatorDigest?.[0]?.resultMessageRef, ref);
+              assert.equal(state.completionInbox?.length, 1);
+              yield* sessionChats
+                .deliver(
+                  {
+                    sessionId: recipient,
+                    text: "My next question",
+                    attachments: [],
+                    renderUserMessageAsMarkdown: false,
+                  },
+                  "prompt",
+                )
+                .pipe(Effect.provide(Layer.mock(TaskInputStorage, {})));
+              yield* Deferred.await(f.received);
+              const submitted = f.chatTranscripts.get(recipient)?.[0] ?? f.transcript[0] ?? "";
+              assert.ok(submitted.includes(ref));
+              assert.equal((yield* f.storage.state()).coordinatorDigest?.length, 0);
+              assert.equal((yield* projectTodos.read(scope, item.id)).needsAttention, false);
+            }),
+          );
+        }),
+    );
+
     it.effect.each([false, true])(
-      "holds linked completion until a pill click, preserving originals and clearing only attention (protected=%s)",
+      "holds completion for an explicit request until a pill click, preserving originals and clearing only attention (protected=%s)",
       (protectedInput) =>
         Effect.gen(function* () {
           const f = yield* fixture();
@@ -2763,6 +2826,8 @@ describe("automatic spawned-session reporting", () => {
               yield* projectTodos.create(CAKE_CHAT_TODO_SCOPE, {
                 title: "Research",
                 description: "Review the findings",
+                needsAttention: true,
+                attentionReason: "Choose a research direction",
                 associations: [
                   { kind: "session", sessionId: created.sessionId, title: "Research" },
                 ],
@@ -2818,7 +2883,7 @@ describe("automatic spawned-session reporting", () => {
               assert.equal(state.coordinatorDigest?.length ?? 0, 0);
               const todo = (yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items[0]!;
               assert.equal(todo.needsAttention, true);
-              assert.equal(todo.attentionReason, "Open result: Research");
+              assert.equal(todo.attentionReason, "Choose a research direction");
               assert.equal(todo.state, "open");
               assert.equal(state.deferredReferences?.[0]?.attentionTodoId, todo.id);
               assert.ok(
@@ -2898,6 +2963,17 @@ describe("automatic spawned-session reporting", () => {
         yield* f.run(
           Effect.gen(function* () {
             const created = yield* createFromChat([], "notification");
+            const originalTask = (yield* projectTodos.list("/project")).items[0]!;
+            yield* projectTodos.update("/project", {
+              id: originalTask.id,
+              expectedRevision: originalTask.revision,
+              associations: [],
+            });
+            yield* projectTodos.create(CAKE_CHAT_TODO_SCOPE, {
+              title: "Migration",
+              description: "Awaiting findings",
+              associations: [{ kind: "session", sessionId: created.sessionId, title: "Migration" }],
+            });
             yield* Deferred.await(f.entered);
             const recorded = yield* coordinatorMessageRouting.routeCoordinatorMessage(
               created.sessionId,

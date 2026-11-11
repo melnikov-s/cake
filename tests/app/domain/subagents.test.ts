@@ -1342,13 +1342,19 @@ describe("agent-owned context forks", () => {
       }),
   );
   for (const projectPath of [undefined, "/project", "/another"]) {
-    for (const { resultDelivery, attachTodo } of (
+    for (const { resultDelivery, attachTodo, actionable } of (
       ["notification", "reply", "ignore"] as const
     ).flatMap((resultDelivery) =>
-      [false, true].map((attachTodo) => ({ resultDelivery, attachTodo })),
+      [false, true].flatMap((attachTodo) =>
+        (attachTodo ? [false, true] : [false]).map((actionable) => ({
+          resultDelivery,
+          attachTodo,
+          actionable,
+        })),
+      ),
     )) {
       it.effect(
-        `inherits context and delivers ${resultDelivery} without a human thread or open pane (${projectPath ?? "global"}, linked=${attachTodo})`,
+        `inherits context and delivers ${resultDelivery} without a human thread or open pane (${projectPath ?? "global"}, linked=${attachTodo}, actionable=${actionable})`,
         () =>
           Effect.gen(function* () {
             const fixture = yield* makeFixture(
@@ -1418,6 +1424,10 @@ describe("agent-owned context forks", () => {
                   ? yield* projectTodos.create(root, {
                       title: "One outcome",
                       description: "Keep investigation and implementation together.",
+                      needsAttention: actionable,
+                      ...(actionable
+                        ? { attentionReason: "Choose the next investigation priority" }
+                        : null),
                     })
                   : undefined;
                 const started = yield* forkAgentContext(
@@ -1478,6 +1488,7 @@ describe("agent-owned context forks", () => {
                 assert.equal(tasks.length, attachTodo ? 1 : 0);
                 if (attachTodo) {
                   assert.equal(tasks[0]?.state, "open");
+                  assert.equal(tasks[0]?.needsAttention, actionable);
                   assert.equal(tasks[0]?.associations.length, 1);
                   const association = tasks[0]?.associations[0];
                   assert.ok(association?.kind === "subagent");
@@ -1496,7 +1507,7 @@ describe("agent-owned context forks", () => {
                   resultDelivery === "reply" ? 1 : 0,
                 );
                 assert.deepEqual(yield* Ref.get(fixture.parentMessages), []);
-                const held = attachTodo && projectPath !== undefined;
+                const held = attachTodo && actionable && projectPath !== undefined;
                 if (held && resultDelivery === "notification") {
                   assert.equal(notices[0]?.attentionTodoId, outcome?.id);
                   assert.equal(notices[0]?.source?.messageId, "answer");

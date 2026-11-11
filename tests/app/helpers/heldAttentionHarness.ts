@@ -69,6 +69,14 @@ export function heldAttentionHarness() {
   };
   const handles = Layer.mock(TestHandle, {
     profile: "CakeChatSession",
+    admittedDigestIds: () => Effect.succeed([]),
+    prompt: (text) =>
+      Effect.sync(() => {
+        const turnId = crypto.randomUUID();
+        submissions.push({ turnId, delivery: "prompt", text, attachments: [], markdown: false });
+        receipts.set(turnId, "pending");
+        return turnId;
+      }),
     snapshot: () => Effect.succeed({ ...snapshot, streaming: state.streaming }),
     inputReceipt: (id) => Effect.succeed(receipts.get(id)),
     // Follow-up admissions still pending in Pi are the queue; X withdraws one exactly.

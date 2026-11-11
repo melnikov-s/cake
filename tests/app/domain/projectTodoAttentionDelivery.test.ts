@@ -52,13 +52,15 @@ it.effect.each([CAKE_CHAT_TODO_SCOPE, "/project"])(
       const item = yield* todos.create(scope, {
         title: "Worker task",
         description: "In progress",
+        needsAttention: true,
+        attentionReason: "Choose the worker’s next step",
         associations: [{ kind: "session", sessionId: "worker", title: "Worker" }],
       });
       const held = report(recipient);
       expect(yield* attention.hold(report(other), { sessionId: "worker" })).toBe(false);
       expect(yield* attention.hold(held, { sessionId: "worker" })).toBe(true);
       const flagged = yield* todos.read(scope, item.id);
-      expect(flagged).toMatchObject({ needsAttention: true, state: "open", revision: 1 });
+      expect(flagged).toMatchObject({ needsAttention: true, state: "open", revision: 0 });
       expect((yield* reports.list(recipient, {})).total).toBe(0);
       expect((yield* Effect.result(reports.read(recipient, { id: held.id })))._tag).toBe("Failure");
       yield* todos.mutateUser(scope, {
@@ -71,7 +73,7 @@ it.effect.each([CAKE_CHAT_TODO_SCOPE, "/project"])(
       expect(yield* todos.read(scope, item.id)).toMatchObject({
         state: "open",
         needsAttention: false,
-        revision: 2,
+        revision: 1,
         associations: item.associations,
       });
       expect((yield* (yield* SessionFamilyStorage).state()).deferredReferences).toEqual([
@@ -81,7 +83,7 @@ it.effect.each([CAKE_CHAT_TODO_SCOPE, "/project"])(
 );
 
 it.effect(
-  "orders held results by actionable arrival, not task creation, without replaying dismissed reports",
+  "orders explicit requests, not report arrivals, without reviving dismissed attention",
   () =>
     Effect.gen(function* () {
       const scope = CAKE_CHAT_TODO_SCOPE;
@@ -94,6 +96,18 @@ it.effect(
         title: "First result",
         description: "Working",
         associations: [{ kind: "session", sessionId: "first-worker", title: "First" }],
+      });
+      yield* todos.update(scope, {
+        id: older.id,
+        expectedRevision: older.revision,
+        needsAttention: true,
+        attentionReason: "Choose the first worker’s next step",
+      });
+      yield* todos.update(scope, {
+        id: newer.id,
+        expectedRevision: newer.revision,
+        needsAttention: true,
+        attentionReason: "Choose the second worker’s next step",
       });
       const firstReport = report(CAKE_CHAT_SESSION_ID);
       const secondReport = report(CAKE_CHAT_SESSION_ID);
@@ -113,8 +127,18 @@ it.effect(
         needsAttention: false,
         attentionSequence: 1,
       });
-      yield* attention.hold(report(CAKE_CHAT_SESSION_ID), {
-        sessionId: "first-worker",
+      expect(
+        yield* attention.hold(report(CAKE_CHAT_SESSION_ID), {
+          sessionId: "first-worker",
+        }),
+      ).toBe(false);
+      const dismissed = yield* todos.read(scope, older.id);
+      expect(dismissed).toMatchObject({ needsAttention: false, attentionSequence: 1 });
+      yield* todos.update(scope, {
+        id: older.id,
+        expectedRevision: dismissed.revision,
+        needsAttention: true,
+        attentionReason: "Approve the revised scope",
       });
       expect(yield* todos.read(scope, older.id)).toMatchObject({
         needsAttention: true,
@@ -129,6 +153,8 @@ it.effect("holds public-worker reports by handle, not private Pi session identit
     const item = yield* todos.create(CAKE_CHAT_TODO_SCOPE, {
       title: "Research",
       description: "In progress",
+      needsAttention: true,
+      attentionReason: "Choose a research direction",
       associations: [
         {
           kind: "subagent",
@@ -161,7 +187,7 @@ it.effect("holds public-worker reports by handle, not private Pi session identit
       }),
     ).toBe(true);
     expect((yield* todos.read(CAKE_CHAT_TODO_SCOPE, item.id)).attentionReason).toBe(
-      "Open result: Research",
+      "Choose a research direction",
     );
     expect(
       (yield* (yield* SessionFamilyStorage).state()).deferredReferences?.[0]?.attentionTodoId,
@@ -174,6 +200,8 @@ it.effect("a failed activation retains the pill and original; stale clicks canno
     const item = yield* todos.create(CAKE_CHAT_TODO_SCOPE, {
       title: "Worker task",
       description: "In progress",
+      needsAttention: true,
+      attentionReason: "Choose the worker’s next step",
       associations: [{ kind: "session", sessionId: "worker", title: "Worker" }],
     });
     const held = report(CAKE_CHAT_SESSION_ID);
@@ -186,7 +214,7 @@ it.effect("a failed activation retains the pill and original; stale clicks canno
     );
     expect(yield* todos.read(CAKE_CHAT_TODO_SCOPE, item.id)).toMatchObject({
       needsAttention: true,
-      revision: 1,
+      revision: 0,
       state: "open",
     });
     expect((yield* (yield* SessionFamilyStorage).state()).deferredReferences?.[0]).toEqual({

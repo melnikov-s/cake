@@ -11,7 +11,7 @@ Sources and subagents are supporting evidence, not required Project Sessions. Su
 ## Edit and associate
 
 Read current revision before edits; preserve user decisions on conflict. Associations replace the whole list: retain required sessions and supporting subagent evidence. Sources do not affect closure. Use public worker handles, never private Pi IDs.
-needsAttention requires an action-oriented attentionReason. Do not revive/reword a dismissed request; only a new request reflags.
+needsAttention requires an action-oriented attentionReason for an explicit human request. Routine report arrival never flags attention; results remain in the quiet inbox/digest unless linked to an already flagged request. Do not revive/reword a dismissed request; only a new request reflags.
 snooze/unsnooze changes visibility only: id, expectedRevision, future UTC until. No work pause or agent wake.
 Reconcile with todos.list {state:"open",view:"reconciliation"}, then atomic update-many batches of at most 50. No per-session history reads.
 Side chats share the parent's list. messages.set-todo corrects requested historical attribution only; never rewrite transcript text.

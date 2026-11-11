@@ -20,57 +20,58 @@ it.effect.each(
       (title) => ({ kind, title }),
     ),
   ),
-)("names held $kind results from the task, not the worker prompt %#", ({ kind, title }) => {
-  const subagent = {
-    parentSessionId: CAKE_CHAT_TODO_SCOPE,
-    handleId: "00000000-0000-4000-8000-000000000002",
-  };
-  const item: ProjectTodo = {
-    id: "00000000-0000-4000-8000-000000000001",
-    title,
-    description: "Review investigation findings.",
-    status: "",
-    state: "open",
-    revision: 0,
-    associations: [
-      kind === "subagent"
-        ? { kind, ...subagent, title: "Worker" }
-        : { kind, sessionId: "worker", title: "Worker" },
-    ],
-  };
-  const storage = familyStorageHarness();
-  const layer = Layer.mergeAll(
-    storage.layer,
-    projectTodoLayer({ initialCakeChatTodos: { ...emptyProjectTodos(), items: [item] } }),
-    Layer.mock(TaskInputStorage, {}),
-  );
-  const report = {
-    id: "held-result",
-    recipientSessionId: CAKE_CHAT_TODO_SCOPE,
-    text: "Read-only contextual investigation. User just launched a human Side Chat. ".repeat(20),
-  };
-  return Effect.gen(function* () {
-    expect(
-      yield* attention.hold(report, {
-        sessionId: kind === "subagent" ? subagent.parentSessionId : "worker",
-        ...(kind === "subagent" ? { subagent } : {}),
-      }),
-    ).toBe(true);
-    const held = yield* todos.read(CAKE_CHAT_TODO_SCOPE, item.id);
-    expect(held.attentionReason).toBe(
-      title.length <= 67 ? `Open result: ${title}` : `Open result: ${title.slice(0, 66)}…`,
+)(
+  "preserves explicit $kind requests regardless of title or worker prompt %#",
+  ({ kind, title }) => {
+    const subagent = {
+      parentSessionId: CAKE_CHAT_TODO_SCOPE,
+      handleId: "00000000-0000-4000-8000-000000000002",
+    };
+    const item: ProjectTodo = {
+      id: "00000000-0000-4000-8000-000000000001",
+      title,
+      description: "Review investigation findings.",
+      status: "",
+      state: "open",
+      needsAttention: true,
+      attentionReason: "Choose the next investigation priority",
+      revision: 0,
+      associations: [
+        kind === "subagent"
+          ? { kind, ...subagent, title: "Worker" }
+          : { kind, sessionId: "worker", title: "Worker" },
+      ],
+    };
+    const storage = familyStorageHarness();
+    const layer = Layer.mergeAll(
+      storage.layer,
+      projectTodoLayer({ initialCakeChatTodos: { ...emptyProjectTodos(), items: [item] } }),
+      Layer.mock(TaskInputStorage, {}),
     );
-    expect(held.attentionReason).not.toBe("Open linked result");
-    expect(held.attentionReason?.length).toBeLessThanOrEqual(80);
-    // The reason only restates the title, so rows show the title alone.
-    expect(projectTodoAttentionDetail(held)).toBeUndefined();
-    expect(held.title).toBe(title);
-    expect(held.description).toBe(item.description);
-    expect(held.associations).toEqual(item.associations);
-    expect(held.needsAttention).toBe(true);
-    expect((yield* (yield* SessionFamilyStorage).state()).deferredReferences?.[0]).toMatchObject({
-      ...report,
-      attentionTodoId: item.id,
-    });
-  }).pipe(Effect.provide(layer));
-});
+    const report = {
+      id: "held-result",
+      recipientSessionId: CAKE_CHAT_TODO_SCOPE,
+      text: "Read-only contextual investigation. User just launched a human Side Chat. ".repeat(20),
+    };
+    return Effect.gen(function* () {
+      expect(
+        yield* attention.hold(report, {
+          sessionId: kind === "subagent" ? subagent.parentSessionId : "worker",
+          ...(kind === "subagent" ? { subagent } : {}),
+        }),
+      ).toBe(true);
+      const held = yield* todos.read(CAKE_CHAT_TODO_SCOPE, item.id);
+      expect(held.attentionReason).toBe(item.attentionReason);
+      expect(projectTodoAttentionDetail(held)).toBe(item.attentionReason);
+      expect(held.revision).toBe(item.revision);
+      expect(held.title).toBe(title);
+      expect(held.description).toBe(item.description);
+      expect(held.associations).toEqual(item.associations);
+      expect(held.needsAttention).toBe(true);
+      expect((yield* (yield* SessionFamilyStorage).state()).deferredReferences?.[0]).toMatchObject({
+        ...report,
+        attentionTodoId: item.id,
+      });
+    }).pipe(Effect.provide(layer));
+  },
+);

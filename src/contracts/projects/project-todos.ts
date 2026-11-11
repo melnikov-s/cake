@@ -98,34 +98,15 @@ export const PROJECT_TODO_DESCRIPTION_GUIDANCE = `Titles: short task names, max 
 export const PROJECT_TODO_LINK_GUIDANCE =
   "Link useful PRs, previews and exact findings originals; never invent refs or use ?message=last. Keep session/subagent associations: updates replace the whole list. Use public worker handles, not private Pi IDs. Sources do not affect closure; subagents are supporting evidence, not required Project Sessions; subagent-only items close explicitly. Set remainingWork before a known implementation/review handoff; clear with null only when satisfied. It holds automatic closure even when current sessions resolve. Reports/merge never authorize resolution. No extra report wake-ups.";
 
-/** Explicit human requests and held completion reports share the owning chat's attention queue. */
+/** Only explicit human requests own actionable attention; routine reports use the inbox. */
 export const PROJECT_TODO_ATTENTION_GUIDANCE =
-  "Set needsAttention with a short action-oriented attentionReason for a human request. Never revive/reword a dismissed request; only a new request reflags. Linked notification results wait in the owning chat’s attention pills until opened; X clears attention without delivering them. Attention never approves merging or changes lifecycle. Completion clears it; reopening starts Active.";
+  "Set needsAttention with an action-oriented attentionReason for a human request. Never revive/reword a dismissed request; only a new request reflags. Report arrival never flags attention. Results wait behind existing attention; others stay in the quiet inbox. X clears attention without delivering held reports. Attention never approves merging or changes lifecycle. Completion clears it; reopening starts Active.";
 
 const ProjectTodoAttentionReason = Schema.String.check(
   Schema.isTrimmed(),
   Schema.isMinLength(1),
   Schema.isMaxLength(512),
 );
-
-const RESULT_ATTENTION_PREFIX = "Open result: ";
-/** Short enough for a one-line pill, matching the input title limit. */
-const RESULT_ATTENTION_LIMIT = 80;
-
-/** Held linked results name their to-do. Long (legacy) titles are shortened, never omitted. */
-export const projectTodoResultAttentionReason = (title: string) => {
-  const characters = Array.from(title.trim());
-  const room = RESULT_ATTENTION_LIMIT - RESULT_ATTENTION_PREFIX.length;
-  return (
-    RESULT_ATTENTION_PREFIX +
-    (characters.length <= room
-      ? characters.join("")
-      : `${characters
-          .slice(0, room - 1)
-          .join("")
-          .trimEnd()}…`)
-  );
-};
 
 /**
  * The reason worth showing beneath a to-do's title. Automatic "open result" reasons only

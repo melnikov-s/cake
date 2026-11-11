@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 import { installLocalModelHttpGuard } from "./main-harness";
 
 function reply(response: ServerResponse, content: string | { name: string; arguments: object }) {
@@ -33,6 +34,7 @@ for (const timing of ["next-user", "timer"] as const)
     const root = await mkdtemp(join(tmpdir(), "cake-agent-attribution-"));
     const project = join(root, "project");
     const cakeHome = join(root, "cake");
+    const todoId = "00000000-0000-4000-8000-000000000099";
     const agentDir = join(cakeHome, "pi");
     const userData = join(root, "user-data");
     await Promise.all(
@@ -79,7 +81,12 @@ for (const timing of ["next-user", "timer"] as const)
           name: "cake",
           arguments: {
             command: "subagents.start",
-            input: { projectPath: project, task: "Investigate attribution", continuation: "none" },
+            input: {
+              projectPath: project,
+              task: "Investigate attribution",
+              continuation: "none",
+              todoId,
+            },
           },
         });
       } else reply(response, "Update processed.");
@@ -124,6 +131,21 @@ for (const timing of ["next-user", "timer"] as const)
               name: "Attribution project",
               addedAt: new Date(0).toISOString(),
               lastOpenedAt: new Date(0).toISOString(),
+              todos: {
+                ...emptyProjectTodos(),
+                items: [
+                  {
+                    id: todoId,
+                    title: "Investigate attribution",
+                    description: "Investigation in progress",
+                    status: "",
+                    state: "open",
+                    revision: 0,
+                    needsAttention: false,
+                    associations: [],
+                  },
+                ],
+              },
             },
           ],
           modelPresets: [
@@ -177,7 +199,16 @@ for (const timing of ["next-user", "timer"] as const)
         page
           .locator('[data-slot="session-message"]')
           .filter({ has: page.getByRole("heading", { name: heading, exact: true }) });
+      const expandIncoming = async (heading: string) => {
+        const update = page.locator('[data-slot="session-message"]').filter({ hasText: heading });
+        const disclosure = update.locator(
+          '[data-slot="response-header"] > [data-slot="response-disclosure"]',
+        );
+        await expect(disclosure).toBeVisible();
+        if ((await disclosure.getAttribute("aria-expanded")) === "false") await disclosure.click();
+      };
       const verifyProgress = async () => {
+        await expandIncoming("Investigation progress");
         const update = card("Investigation progress");
         await expect(update).toHaveCount(1);
         await expect(
@@ -205,7 +236,19 @@ for (const timing of ["next-user", "timer"] as const)
           }
         })
         .toBe(1);
+      await expandIncoming("Investigation findings");
       await expect(card("Investigation findings")).toHaveCount(1);
+      await expect(page.getByRole("region", { name: "Needs attention", exact: true })).toHaveCount(
+        0,
+      );
+      const taskState = JSON.parse(
+        await readFile(join(cakeHome, "state", "application.json"), "utf8"),
+      );
+      const task = taskState.data.projects[0].todos.items.find(
+        (item: { id: string }) => item.id === todoId,
+      );
+      expect(task).toMatchObject({ state: "open", needsAttention: false });
+      expect(task.associations[0].kind).toBe("subagent");
       const pendingReport = page
         .locator('[data-pending-incoming="true"]')
         .filter({ has: card("Investigation findings") });
@@ -214,6 +257,9 @@ for (const timing of ["next-user", "timer"] as const)
       await page.waitForTimeout(250);
       expect(requests).toHaveLength(pendingRequests);
       await mkdir(join(repository, ".visual-captures"), { recursive: true });
+      await card("Investigation findings")
+        .getByRole("heading", { name: "Investigation findings", exact: true })
+        .evaluate((element) => element.scrollIntoView({ block: "center" }));
       await page.screenshot({
         path: join(repository, ".visual-captures", `pending-incoming-${timing}.png`),
       });
@@ -234,6 +280,7 @@ for (const timing of ["next-user", "timer"] as const)
       await installLocalModelHttpGuard(app, origin);
       page = await app.firstWindow();
       await openChat();
+      await expandIncoming("Investigation findings");
       if (timing === "next-user") {
         await expect(card("Investigation findings")).toHaveCount(1);
         await expect(
@@ -245,6 +292,10 @@ for (const timing of ["next-user", "timer"] as const)
       }
       const verifyReport = async () => {
         await verifyProgress();
+        await expandIncoming("Investigation findings");
+        await expect(
+          page.getByRole("region", { name: "Needs attention", exact: true }),
+        ).toHaveCount(0);
         const update = card("Investigation findings");
         await expect(update).toHaveCount(1);
         await expect(
@@ -274,6 +325,9 @@ for (const timing of ["next-user", "timer"] as const)
           .locator('[data-pending-incoming="true"]')
           .filter({ has: card("Investigation findings") }),
       ).toHaveCount(0);
+      await card("Investigation findings")
+        .getByRole("heading", { name: "Investigation findings", exact: true })
+        .evaluate((element) => element.scrollIntoView({ block: "center" }));
       await page.screenshot({
         path: join(repository, ".visual-captures", `admitted-incoming-${timing}.png`),
       });
