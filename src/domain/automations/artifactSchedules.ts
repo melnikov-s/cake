@@ -7,6 +7,7 @@ import {
 } from "../../contracts/artifacts/artifact-schedules";
 import { AutomationRecords } from "../../services/automations/AutomationRecords";
 import { ClientEvents } from "../../services/clients/ClientEvents";
+import { WidgetRunGate } from "../../services/artifact-runtime/WidgetRunGate";
 import { automationError, nextScheduledAt } from "./automationDefinitions";
 
 const matches = (item: ArtifactSchedule, identity: ArtifactScheduleIdentity) =>
@@ -135,12 +136,15 @@ export const setArtifactSchedulesPaused = Effect.fn("ArtifactSchedules.setPaused
  * Advance accepted work past now before invoking outside the storage transaction:
  * a restart does one catch-up refresh, never a replay of every missed interval.
  * Callback admission captures the current source revision in ArtifactRuntime.
+ * Schedules of unattached widgets stay dormant: never invoked and never consumed, so a restart
+ * or re-attachment resumes only attached instances, with at most one catch-up.
  */
 export const runArtifactSchedulePass = Effect.fn("ArtifactSchedules.runPass")(function* <A, E, R>(
   invoke: (schedule: ArtifactSchedule) => Effect.Effect<A, E, R>,
 ) {
   const nowText = DateTime.formatIso(yield* DateTime.now);
   const records = yield* AutomationRecords;
+  const gate = yield* WidgetRunGate;
   const due = records
     .snapshot()
     .artifactSchedules.filter(
@@ -148,6 +152,7 @@ export const runArtifactSchedulePass = Effect.fn("ArtifactSchedules.runPass")(fu
         !item.paused && item.nextScheduledAt !== undefined && item.nextScheduledAt <= nowText,
     );
   for (const candidate of due) {
+    if ((yield* gate.attachedRevision(candidate.lineageId)) === undefined) continue;
     const admittedAt = yield* DateTime.now;
     const schedule = yield* records.transact((ledger) =>
       Effect.gen(function* () {

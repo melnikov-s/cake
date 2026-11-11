@@ -7,7 +7,7 @@ import { it } from "@effect/vitest";
 import { Effect, Layer, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { TestClock } from "effect/testing";
-import { runSchedulePass } from "../../../src/domain/automations/automationWorker";
+import { runArtifactSchedulePass } from "../../../src/domain/automations/artifactSchedules";
 import { ArtifactRuntimeHostLive } from "../../../src/layers/ArtifactRuntimeHostLive";
 import * as widgetAttachments from "../../../src/domain/widgets/widgetAttachments";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -22,12 +22,14 @@ import {
   decodeArtifactLineageId,
   decodeArtifactRevisionNumber,
 } from "../../../src/contracts/artifacts/artifact-lineage";
+import type { ArtifactSchedule } from "../../../src/contracts/artifacts/artifact-schedules";
 import type { ArtifactRuntimeDescriptor } from "../../../src/contracts/artifacts/artifact-runtime-descriptor";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
 import * as workflows from "../../../src/domain/artifacts/artifactWorkflows";
 import * as artifacts from "../../../src/domain/artifacts/globalArtifacts";
 import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
 import { ArtifactRuntimeLive } from "../../../src/services/artifact-runtime/ArtifactRuntimeLive";
+import { WidgetRunGate } from "../../../src/services/artifact-runtime/WidgetRunGate";
 import { ArtifactViewsLive } from "../../../src/services/artifacts/ArtifactViews";
 import { AutomationRecords } from "../../../src/services/automations/AutomationRecords";
 import {
@@ -139,7 +141,6 @@ const fixture = async () => {
       events.push(event.type);
     },
   });
-  const execution = ArtifactRuntimeLive.pipe(Layer.provide(Layer.merge(storage, clients)));
   const views = ArtifactViewsLive.pipe(Layer.provide(ClientConnectionsLive));
   const families = Layer.mock(SessionFamilyStorage, {
     withMemberLock: (_id, effect) => effect,
@@ -150,17 +151,24 @@ const fixture = async () => {
     connectionForSession: () => Effect.succeed(callingWindow),
   });
   const commands: Array<{ command: string; input: JsonValue; callingSessionId?: string }> = [];
+  // Attachments survive a simulated backend restart like the real application document.
+  let applicationDocument = defaultApplicationState();
   const application = ApplicationState.layer.pipe(
     Layer.provide(
       Layer.mock(ApplicationStorage, {
-        load: () =>
-          Effect.succeed({ state: defaultApplicationState(), source: "missing" as const }),
-        save: () => Effect.void,
+        load: () => Effect.sync(() => ({ state: applicationDocument, source: "current" as const })),
+        save: (next) =>
+          Effect.sync(() => {
+            applicationDocument = next;
+          }),
       }),
     ),
   );
+  const gate = WidgetRunGate.layer.pipe(Layer.provide(Layer.merge(application, storage)));
+  const execution = ArtifactRuntimeLive.pipe(Layer.provide(Layer.mergeAll(storage, clients, gate)));
   const layer = Layer.mergeAll(
     application,
+    gate,
     storage,
     records,
     clients,
@@ -170,12 +178,10 @@ const fixture = async () => {
     families,
     coordinator,
   );
-  const initialize = (bindFakeHost = true) =>
+  const startBackend = (bindFakeHost: boolean) =>
     Effect.gen(function* () {
       yield* (yield* AutomationRecords).initialize();
       yield* (yield* ApplicationState).initialize();
-      const connectionId = (yield* ClientConnections).desktop(17);
-      callingWindow = connectionId;
       if (bindFakeHost)
         yield* (yield* ArtifactRuntime).setHost({
           invokeCommand: (request) =>
@@ -199,6 +205,12 @@ const fixture = async () => {
               return { ok: true };
             }),
         });
+    });
+  const initialize = (bindFakeHost = true, attach = true) =>
+    Effect.gen(function* () {
+      yield* startBackend(bindFakeHost);
+      const connectionId = (yield* ClientConnections).desktop(17);
+      callingWindow = connectionId;
       yield* workflows.create({
         sessionId: "creator",
         lineageId,
@@ -236,12 +248,23 @@ const fixture = async () => {
           fallback: { markdown: "Ordinary documentation" },
         },
       });
+      // Backend logic runs only for an attached widget.
+      if (attach)
+        yield* widgetAttachments.attach({
+          id: "dashboard-tab",
+          lineageId,
+          target: { kind: "global" },
+          slot: "tab",
+        });
       return connectionId;
     });
   return {
     layer,
     initialize: initialize(),
     initializeWithoutHost: initialize(false),
+    initializeUnattached: initialize(true, false),
+    /** A fresh backend over the same persisted artifacts, ledger and attachments. */
+    restart: startBackend(true),
     commands,
     events,
     persisted: () => ledger,
@@ -523,6 +546,12 @@ describe("global artifact domain workflow", () => {
             workingDirectory: "/project",
             snapshot: { ...published.snapshot, id: other, revision: 1 },
           });
+          yield* widgetAttachments.attach({
+            id: "other-runtime-tab",
+            lineageId: other,
+            target: { kind: "global" },
+            slot: "tab",
+          });
           expect(
             yield* artifacts.callTool({
               lineageId,
@@ -541,7 +570,7 @@ describe("global artifact domain workflow", () => {
             schedule: { _tag: "Once", at: "2030-01-01T00:01:00.000Z" },
           });
           yield* TestClock.setTime(new Date("2030-01-01T00:01:00.000Z").getTime());
-          yield* runSchedulePass((schedule) =>
+          yield* runArtifactSchedulePass((schedule) =>
             artifacts.callTool({
               lineageId: schedule.lineageId,
               name: schedule.handler,
@@ -838,12 +867,6 @@ describe("global artifact domain workflow", () => {
         yield* artifacts.controlRuntime(lineageId, "pause", "creator");
         yield* artifacts.controlRuntime(lineageId, "start", "creator");
         expect((yield* (yield* ArtifactRuntime).status(lineageId)).running).toBe(true);
-        yield* widgetAttachments.attach({
-          id: "selected-tab",
-          lineageId,
-          target: { kind: "global" },
-          slot: "tab",
-        });
         yield* artifacts.deleteArtifact(lineageId);
         expect((yield* ApplicationState).snapshot().widgetAttachments).toEqual([]);
         expect((yield* (yield* ArtifactRuntime).status(lineageId)).running).toBe(false);
@@ -858,5 +881,118 @@ describe("global artifact domain workflow", () => {
         expect(f.events).toContain("artifact-catalog-invalidated");
       }).pipe(Effect.provide(f.layer));
     }),
+  );
+  it.effect(
+    "attachment gates views, calls and schedules; detach stops work; restart rehydrates only attachments",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* Effect.promise(fixture);
+        const invoke = (schedule: ArtifactSchedule) =>
+          artifacts.callTool({
+            lineageId: schedule.lineageId,
+            name: schedule.handler,
+            input: schedule.input,
+          });
+        const untilStopped = Effect.fn("GlobalArtifactTest.untilStopped")(function* () {
+          for (let attempt = 0; attempt < 200; attempt++) {
+            if (!(yield* (yield* ArtifactRuntime).status(lineageId)).running) return;
+            yield* Effect.promise(() => new Promise((resolve) => setImmediate(resolve)));
+          }
+          throw new Error("Detached widget runtime kept running");
+        });
+        const attachTab = widgetAttachments.attach({
+          id: "dashboard-tab",
+          lineageId,
+          target: { kind: "global" },
+          slot: "tab",
+        });
+        yield* Effect.gen(function* () {
+          const connectionId = yield* f.initializeUnattached;
+          // Not attached: an open inline view, an explicit call and a due schedule never run.
+          yield* artifacts.reportViewing(connectionId, {
+            navigation: null,
+            visible: [view(1)],
+            active: view(1),
+          });
+          expect((yield* refresh().pipe(Effect.flip)).message).toContain("is not attached");
+          yield* configure();
+          yield* TestClock.setTime(new Date("2030-01-01T00:01:00.000Z").getTime());
+          yield* runArtifactSchedulePass(invoke);
+          expect(yield* artifacts.executionStatus(lineageId)).toMatchObject({
+            running: false,
+            attachedRevision: null,
+            schedules: [{ nextScheduledAt: "2030-01-01T00:01:00.000Z" }],
+          });
+          expect(f.persisted().artifactSchedules[0]).not.toHaveProperty("lastRunAt");
+          expect(f.commands).toEqual([]);
+
+          // Attached: the dormant occurrence runs once, at the attached revision.
+          yield* attachTab;
+          yield* runArtifactSchedulePass(invoke);
+          expect(f.persisted().artifactSchedules[0]).toMatchObject({ lastOutcome: "completed" });
+          expect(yield* artifacts.executionStatus(lineageId)).toMatchObject({
+            running: true,
+            revision: 1,
+            attachedRevision: 1,
+          });
+          expect(f.commands.map((command) => command.command)).toEqual(["network.request"]);
+
+          // A newer published revision replaces the attached one; the old worker never overlaps it.
+          yield* artifacts.publishRuntime(
+            {
+              lineageId,
+              expectedRevision: revision(1),
+              runtime: {
+                ...runtime,
+                source: source.replace('version: "first"', 'version: "second"'),
+              },
+            },
+            "creator",
+          );
+          expect(yield* artifacts.executionStatus(lineageId)).toMatchObject({
+            running: true,
+            revision: 2,
+            attachedRevision: 2,
+          });
+
+          // Detach: the worker stops at once and later ticks stay dormant.
+          yield* widgetAttachments.detach("dashboard-tab");
+          yield* untilStopped();
+          yield* TestClock.adjust("5 minutes");
+          yield* runArtifactSchedulePass(invoke);
+          expect(f.commands.map((command) => command.command)).toEqual(["network.request"]);
+          expect(yield* artifacts.executionStatus(lineageId)).toMatchObject({
+            running: false,
+            attachedRevision: null,
+          });
+        }).pipe(Effect.provide(f.layer));
+
+        // Restart while detached: nothing comes back.
+        yield* Effect.gen(function* () {
+          yield* f.restart;
+          yield* runArtifactSchedulePass(invoke);
+          expect(f.commands.map((command) => command.command)).toEqual(["network.request"]);
+          expect((yield* (yield* ArtifactRuntime).status(lineageId)).running).toBe(false);
+          yield* attachTab;
+        }).pipe(Effect.provide(f.layer));
+
+        // Restart while attached: the schedule rehydrates at the attached (current) revision.
+        yield* Effect.gen(function* () {
+          yield* f.restart;
+          yield* runArtifactSchedulePass(invoke);
+          expect(f.commands.map((command) => command.command)).toEqual([
+            "network.request",
+            "network.request",
+          ]);
+          expect(yield* artifacts.executionStatus(lineageId)).toMatchObject({
+            running: true,
+            revision: 2,
+            attachedRevision: 2,
+          });
+          expect(
+            yield* artifacts.callTool({ lineageId, name: "readiness", input: {} }),
+          ).toMatchObject({ version: "second" });
+        }).pipe(Effect.provide(f.layer));
+      }),
   );
 });

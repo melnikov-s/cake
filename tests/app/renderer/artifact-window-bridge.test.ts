@@ -35,6 +35,7 @@ import {
 import { unusedEndpointServices } from "../ipc/rpc-endpoint-test-backend";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "../domain/projectSessionRuntimeTestLayer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { widgetRunGateFake } from "../helpers/widgetRunGate";
 
 const lineageId = decodeArtifactLineageId("unlinked-global-widget");
 const revision = Schema.decodeUnknownSync(ArtifactRevision)({
@@ -87,7 +88,9 @@ const fixture = Effect.gen(function* () {
   });
   const transport = Layer.merge(ClientConnectionsLive, clients);
   const storage = Layer.mock(ArtifactStorage, { read: () => Effect.succeed(revision) });
-  const runtime = ArtifactRuntimeLive.pipe(Layer.provide(Layer.merge(storage, clients)));
+  // The widget is attached; this suite tests window routing, not the run gate.
+  const gate = widgetRunGateFake([[lineageId, 1]]).layer;
+  const runtime = ArtifactRuntimeLive.pipe(Layer.provide(Layer.mergeAll(storage, clients, gate)));
   const context = yield* Layer.build(
     Layer.mergeAll(
       modelPresetPromptsTestLayer,
@@ -96,6 +99,7 @@ const fixture = Effect.gen(function* () {
       makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
       RendererRequestCoordinatorLive.pipe(Layer.provideMerge(transport)),
       storage,
+      gate,
       runtime,
       Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
     ),

@@ -24,6 +24,8 @@ export const ArtifactRuntimeStatus = Schema.Struct({
   lineageId: ArtifactLineageId,
   revision: Schema.NullOr(Schema.Int),
   running: Schema.Boolean,
+  /** The only revision allowed to run (WidgetRunGate); null when the widget has no attachment. */
+  attachedRevision: Schema.NullOr(Schema.Int),
   lastError: Schema.NullOr(Schema.String),
 });
 export interface ArtifactRuntimeStatus extends Schema.Schema.Type<typeof ArtifactRuntimeStatus> {}

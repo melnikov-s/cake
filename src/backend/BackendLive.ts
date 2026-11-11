@@ -55,6 +55,7 @@ import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatal
 import { makeMessageBoardStorageLive } from "../services/storage/MessageBoardStorageLive";
 import { makeArtifactStorageLive } from "../services/storage/ArtifactStorageLive";
 import { ArtifactRuntimeLive } from "../services/artifact-runtime/ArtifactRuntimeLive";
+import { WidgetRunGate } from "../services/artifact-runtime/WidgetRunGate";
 import { ArtifactViewsLive } from "../services/artifacts/ArtifactViews";
 import { ArtifactRuntimeHostLive } from "../layers/ArtifactRuntimeHostLive";
 import * as globalArtifacts from "../domain/artifacts/globalArtifacts";
@@ -193,6 +194,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     ClientEventsLive,
     ClientWorkspacesLive,
   );
+  const WidgetRunGateLive = WidgetRunGate.layer.pipe(Layer.provide(StorageLive));
   // Shared composites need their own memoization boundary: leaf Services alone
   // do not prevent repeated traversal and retained Scope bookkeeping in a diamond graph.
   const FoundationLive = Layer.suspend(() =>
@@ -202,7 +204,10 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       PiLive,
       makeAutomationMemoryLive(paths.state).pipe(Layer.provide(Layer.merge(PiLive, StorageLive))),
       ClientStateLive,
-      ArtifactRuntimeLive.pipe(Layer.provide(Layer.merge(StorageLive, ClientStateLive))),
+      WidgetRunGateLive,
+      ArtifactRuntimeLive.pipe(
+        Layer.provide(Layer.mergeAll(StorageLive, ClientStateLive, WidgetRunGateLive)),
+      ),
       ArtifactViewsLive.pipe(Layer.provide(ClientStateLive)),
       PreviewLeasesLive.pipe(Layer.provide(ClientStateLive)),
       GitLive,

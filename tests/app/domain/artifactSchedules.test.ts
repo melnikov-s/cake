@@ -20,7 +20,8 @@ import {
   runArtifactSchedulePass,
   setArtifactSchedulesPaused,
 } from "../../../src/domain/automations/artifactSchedules";
-import { runSchedulePass } from "../../../src/domain/automations/automationWorker";
+import { runSchedulePasses } from "../../../src/domain/automations/automationWorker";
+import { widgetRunGateFake } from "../helpers/widgetRunGate";
 import { automationFixture } from "../helpers/automationFixture";
 import { AutomationRecords } from "../../../src/services/automations/AutomationRecords";
 import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
@@ -52,6 +53,11 @@ const input = (
 
 const fixture = Effect.fn("ArtifactScheduleTest.fixture")(function* (
   persisted: Ref.Ref<AutomationLedger>,
+  // Schedule mechanics tests run attached widgets unless they test the gate itself.
+  gate: ReturnType<typeof widgetRunGateFake> = widgetRunGateFake([
+    [lineageId, 1],
+    [otherId, 1],
+  ]),
 ) {
   const recordsContext = yield* Layer.build(
     AutomationRecords.layer.pipe(
@@ -63,7 +69,10 @@ const fixture = Effect.fn("ArtifactScheduleTest.fixture")(function* (
       ),
     ),
   );
-  const context = Context.merge(recordsContext, yield* Layer.build(ClientEventsLive));
+  const context = Context.merge(
+    recordsContext,
+    yield* Layer.build(Layer.merge(ClientEventsLive, gate.layer)),
+  );
   const records = Context.get(context, AutomationRecords);
   yield* records.initialize();
   return { context, records };
@@ -84,7 +93,9 @@ describe("deterministic artifact schedules", () => {
         yield* configureArtifactSchedule(input());
         yield* TestClock.adjust("1 minute");
         const invoked = yield* Ref.make(0);
-        yield* runSchedulePass(() => Ref.update(invoked, (count) => count + 1));
+        yield* runSchedulePasses(() => Ref.update(invoked, (count) => count + 1)).pipe(
+          Effect.provide(widgetRunGateFake([[lineageId, 1]]).layer),
+        );
         expect(yield* Ref.get(invoked)).toBe(1);
         expect(f.captured).toEqual([]);
         expect(f.records.snapshot().runs).toEqual([]);
@@ -274,6 +285,42 @@ describe("deterministic artifact schedules", () => {
           expect((yield* listArtifactSchedules(otherId))[0]?.nextScheduledAt).toBeUndefined();
           expect((yield* listArtifactSchedules(otherId))[0]?.lastOutcome).toBe("completed");
         }).pipe(Effect.provide(f.context));
+      }),
+  );
+
+  it.effect(
+    "never runs or consumes schedules of unattached widgets; restart rehydrates only attachments",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(new Date("2030-01-01T00:00:00.000Z").getTime());
+        const persisted = yield* Ref.make(empty);
+        const gate = widgetRunGateFake([[lineageId, 4]]);
+        const calls = yield* Ref.make<ReadonlyArray<string>>([]);
+        const invoke = (schedule: ArtifactSchedule) =>
+          Ref.update(calls, (all) => [...all, schedule.lineageId]);
+        const f = yield* fixture(persisted, gate);
+        yield* Effect.gen(function* () {
+          yield* configureArtifactSchedule(input());
+          yield* configureArtifactSchedule(input({ lineageId: otherId }));
+        }).pipe(Effect.provide(f.context));
+        yield* TestClock.adjust("1 minute");
+        yield* runArtifactSchedulePass(invoke).pipe(Effect.provide(f.context));
+        expect(yield* Ref.get(calls)).toEqual([lineageId]);
+        const dormant = f.records.snapshot().artifactSchedules.find((s) => s.lineageId === otherId);
+        expect(dormant?.nextScheduledAt).toBe("2030-01-01T00:01:00.000Z");
+        expect(dormant).not.toHaveProperty("lastRunAt");
+
+        // Detach: later ticks of the formerly attached widget stay dormant too.
+        gate.set(lineageId, undefined);
+        yield* TestClock.adjust("5 minutes");
+        yield* runArtifactSchedulePass(invoke).pipe(Effect.provide(f.context));
+        expect(yield* Ref.get(calls)).toEqual([lineageId]);
+
+        // Restart with only the other widget attached: only it comes back, with one catch-up.
+        const restarted = yield* fixture(persisted, widgetRunGateFake([[otherId, 1]]));
+        yield* runArtifactSchedulePass(invoke).pipe(Effect.provide(restarted.context));
+        yield* runArtifactSchedulePass(invoke).pipe(Effect.provide(restarted.context));
+        expect(yield* Ref.get(calls)).toEqual([lineageId, otherId]);
       }),
   );
 

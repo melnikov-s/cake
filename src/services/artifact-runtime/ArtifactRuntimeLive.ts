@@ -1,5 +1,5 @@
 import Ajv, { type ValidateFunction } from "ajv";
-import { Effect, Exit, Layer, Option, Schema, Scope, ScopedCache, Semaphore } from "effect";
+import { Effect, Exit, Layer, Option, Schema, Scope, ScopedCache, Semaphore, Stream } from "effect";
 import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import {
   ArtifactRuntimeError,
@@ -14,6 +14,7 @@ import { ClientEvents } from "../clients/ClientEvents";
 import { makeArtifactRuntimeWorker } from "../pi/live/ArtifactRuntimeWorker";
 import { ArtifactRuntime, type ArtifactRuntimeHost } from "./ArtifactRuntime";
 import { rejectArtifactRuntimeReentry } from "./ArtifactRuntimeExecution";
+import { WidgetRunGate } from "./WidgetRunGate";
 
 const failure = (operation: string, cause: unknown) =>
   new ArtifactRuntimeError({
@@ -43,6 +44,11 @@ const compile = Effect.fn("ArtifactRuntime.compile")(function* (
     catch: (cause) => failure("definitions", cause),
   });
 });
+const notAttached = (target: ArtifactRuntimeTarget) =>
+  failure(
+    "attachment",
+    `Widget ${target.lineageId} revision ${target.revision} is not attached, so its backend logic does not run. Attach the widget (widgets.attach) to run its current revision.`,
+  );
 const validate = Effect.fn("ArtifactRuntime.validate")(function* (
   schema: ValidateFunction,
   value: Schema.Json,
@@ -55,12 +61,14 @@ const validate = Effect.fn("ArtifactRuntime.validate")(function* (
  * Backend-scoped resources, lazily keyed by artifact identity. Each artifact serializes calls,
  * lifecycle events and revision replacement. A running call finishes on its resolved revision;
  * the next admitted call reloads changed source. Unmount does not release the worker.
+ * WidgetRunGate admits every start, event and Cake call; attachment changes stop gated workers.
  */
 export const ArtifactRuntimeLive = Layer.effect(
   ArtifactRuntime,
   Effect.gen(function* () {
     const storage = yield* ArtifactStorage;
     const clientEvents = yield* ClientEvents;
+    const gate = yield* WidgetRunGate;
     const invalidateExecution = (lineageId: ArtifactLineageId) =>
       Effect.sync(() =>
         clientEvents.broadcast({ type: "artifact-execution-invalidated", lineageId }),
@@ -78,6 +86,8 @@ export const ArtifactRuntimeLive = Layer.effect(
         const semaphore = yield* Semaphore.make(1);
         const owner = yield* Effect.scope;
         let lastError: string | undefined;
+        // The stop/delete hook may finish its own cleanup after the gate closed.
+        let stopping = false;
         const record = <A>(effect: Effect.Effect<A, ArtifactRuntimeError>) =>
           effect.pipe(
             Effect.tap(() =>
@@ -113,6 +123,7 @@ export const ArtifactRuntimeLive = Layer.effect(
               yield* Scope.close(previous.scope, Exit.void);
               return;
             }
+            stopping = true;
             yield* previous.worker
               .send({
                 kind: "lifecycle",
@@ -121,22 +132,50 @@ export const ArtifactRuntimeLive = Layer.effect(
                 ...(callingSessionId === undefined ? null : { callingSessionId }),
                 ...(windowConnectionId === undefined ? null : { windowConnectionId }),
               })
-              .pipe(Effect.ensuring(Scope.close(previous.scope, Exit.void)));
+              .pipe(
+                Effect.ensuring(
+                  Scope.close(previous.scope, Exit.void).pipe(
+                    Effect.andThen(
+                      Effect.sync(() => {
+                        stopping = false;
+                      }),
+                    ),
+                  ),
+                ),
+              );
           }
+        });
+        /** Stops a worker whose revision is no longer the attached one. Never starts work. */
+        const reconcile = Effect.fn("ArtifactRuntime.controller.reconcile")(function* () {
+          if (!current) return;
+          if ((yield* gate.attachedRevision(current.target.lineageId)) !== current.target.revision)
+            yield* stop("stop");
         });
         const ensure = Effect.fn("ArtifactRuntime.controller.ensure")(function* (
           target: ArtifactRuntimeTarget,
           callingSessionId?: string,
           windowConnectionId?: number,
         ) {
+          if ((yield* gate.attachedRevision(target.lineageId)) !== target.revision) {
+            yield* reconcile();
+            return yield* notAttached(target);
+          }
           if (current?.target.revision === target.revision && current.worker.isRunning())
             return current;
           if (current) yield* stop("stop", callingSessionId, windowConnectionId);
           yield* compile(target.runtime);
           const scope = yield* Scope.fork(owner);
+          // A detached or superseded worker cannot reach Cake, even mid-call.
+          const gatedHost: ArtifactRuntimeHost = {
+            invokeCommand: Effect.fn("ArtifactRuntime.gatedInvokeCommand")(function* (input) {
+              if (!stopping && (yield* gate.attachedRevision(target.lineageId)) !== target.revision)
+                return yield* notAttached(target);
+              return yield* host.invokeCommand(input);
+            }),
+          };
           const worker = yield* makeArtifactRuntimeWorker(
             target,
-            host,
+            gatedHost,
             callingSessionId,
             windowConnectionId,
           ).pipe(
@@ -153,12 +192,43 @@ export const ArtifactRuntimeLive = Layer.effect(
           semaphore,
           ensure,
           stop,
+          reconcile,
           record,
           peek: () => current,
           lastError: () => current?.worker.lastError() ?? lastError,
         };
       }),
     });
+    const known = new Set<ArtifactLineageId>();
+    const controllerFor = (lineageId: ArtifactLineageId) =>
+      ScopedCache.get(controllers, lineageId).pipe(
+        Effect.tap(() => Effect.sync(() => known.add(lineageId))),
+      );
+    // Detach, delete or a superseding revision stops work now, not at the next admission.
+    yield* gate.changes().pipe(
+      Stream.runForEach(() =>
+        Effect.forEach(known, (lineageId) =>
+          ScopedCache.getOption(controllers, lineageId).pipe(
+            Effect.flatMap((cached) =>
+              Option.isNone(cached) || !cached.value.peek()
+                ? Effect.void
+                : cached.value
+                    .reconcile()
+                    .pipe(
+                      cached.value.record,
+                      Effect.uninterruptible,
+                      cached.value.semaphore.withPermit,
+                      Effect.ensuring(invalidateExecution(lineageId)),
+                    ),
+            ),
+            Effect.catch((error) =>
+              Effect.logWarning("Detached widget runtime stop failed", error),
+            ),
+          ),
+        ),
+      ),
+      Effect.forkScoped,
+    );
     const status = Effect.fn("ArtifactRuntime.status")(function* (lineageId: ArtifactLineageId) {
       const cached = yield* ScopedCache.getOption(controllers, lineageId);
       const current = Option.isSome(cached) ? cached.value.peek() : undefined;
@@ -166,6 +236,7 @@ export const ArtifactRuntimeLive = Layer.effect(
         lineageId,
         revision: current?.target.revision ?? null,
         running: current?.worker.isRunning() ?? false,
+        attachedRevision: (yield* gate.attachedRevision(lineageId)) ?? null,
         lastError: Option.isSome(cached) ? (cached.value.lastError() ?? null) : null,
       };
     });
@@ -201,7 +272,7 @@ export const ArtifactRuntimeLive = Layer.effect(
       stop,
       call: Effect.fn("ArtifactRuntime.call")(function* (input) {
         yield* rejectArtifactRuntimeReentry(input.target.lineageId, "call");
-        const controller = yield* ScopedCache.get(controllers, input.target.lineageId);
+        const controller = yield* controllerFor(input.target.lineageId);
         return yield* Effect.gen(function* () {
           const tools = yield* compile(input.target.runtime);
           const tool = tools.find((entry) => entry.definition.name === input.name);
@@ -246,8 +317,9 @@ export const ArtifactRuntimeLive = Layer.effect(
         const passiveView =
           input.event === "blur" || input.event === "unmount" || input.event === "context";
         if (passiveView && Option.isNone(cached)) return yield* status(input.target.lineageId);
-        const controller = yield* ScopedCache.get(controllers, input.target.lineageId);
+        const controller = yield* controllerFor(input.target.lineageId);
         yield* Effect.gen(function* () {
+          if (passiveView) yield* controller.reconcile();
           const current = passiveView
             ? controller.peek()
             : yield* controller.ensure(

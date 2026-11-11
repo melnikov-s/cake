@@ -143,7 +143,14 @@ describe("artifact lineage workflows", () => {
         const reloaded: ArtifactRuntimeTarget[] = [];
         const stopped: string[] = [];
         const runtime = Layer.mock(ArtifactRuntime, {
-          status: () => Effect.succeed({ lineageId: id, revision: null, running, lastError: null }),
+          status: () =>
+            Effect.succeed({
+              lineageId: id,
+              revision: null,
+              running,
+              attachedRevision: 2,
+              lastError: null,
+            }),
           lifecycle: (input) =>
             Effect.sync(() => {
               reloaded.push(input.target);
@@ -151,13 +158,20 @@ describe("artifact lineage workflows", () => {
                 lineageId: id,
                 revision: input.target.revision,
                 running: true,
+                attachedRevision: input.target.revision,
                 lastError: null,
               };
             }),
           stop: (lineage) =>
             Effect.sync(() => {
               stopped.push(lineage);
-              return { lineageId: lineage, revision: null, running: false, lastError: null };
+              return {
+                lineageId: lineage,
+                revision: null,
+                running: false,
+                attachedRevision: null,
+                lastError: null,
+              };
             }),
         });
         yield* Effect.gen(function* () {

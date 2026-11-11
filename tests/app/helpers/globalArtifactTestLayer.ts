@@ -13,7 +13,13 @@ export const globalArtifactTestLayer = Layer.mergeAll(
   }),
   Layer.mock(ArtifactRuntime, {
     status: (lineageId) =>
-      Effect.succeed({ lineageId, revision: null, running: false, lastError: null }),
+      Effect.succeed({
+        lineageId,
+        revision: null,
+        running: false,
+        attachedRevision: null,
+        lastError: null,
+      }),
   }),
   Layer.mock(ArtifactViews, {
     report: () => Effect.void,

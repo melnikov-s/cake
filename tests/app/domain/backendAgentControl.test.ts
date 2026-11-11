@@ -22,6 +22,7 @@ import * as sessionReferences from "../../../src/domain/project-sessions/session
 import * as sessionMetadata from "../../../src/domain/project-sessions/projectSessionMetadata";
 import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
 import { ArtifactRuntimeLive } from "../../../src/services/artifact-runtime/ArtifactRuntimeLive";
+import { widgetRunGateFake } from "../helpers/widgetRunGate";
 import { ArtifactRuntimeHostLive } from "../../../src/layers/ArtifactRuntimeHostLive";
 import { ArtifactRuntimeDescriptor } from "../../../src/contracts/artifacts/artifact-runtime-descriptor";
 import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
@@ -1441,9 +1442,12 @@ it.effect(
           onEvent: () => undefined,
         }),
       );
-      const runtimeContext = yield* Layer.build(ArtifactRuntimeLive).pipe(
-        Effect.provide(f.context),
-      );
+      // The artifact is attached; this test covers unattended dispatch, not the run gate.
+      const runtimeContext = yield* Layer.build(
+        ArtifactRuntimeLive.pipe(
+          Layer.provide(widgetRunGateFake([["unattended-tool-prune", 1]]).layer),
+        ),
+      ).pipe(Effect.provide(f.context));
       const context = Context.merge(f.context, runtimeContext);
       yield* Layer.build(ArtifactRuntimeHostLive).pipe(Effect.provide(context));
       const runtime = Context.get(context, ArtifactRuntime);

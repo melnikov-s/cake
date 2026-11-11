@@ -223,6 +223,7 @@ describe("Artifact library workflow", () => {
       lineageId: reportId,
       revision: 2,
       running: false,
+      attachedRevision: 2,
       lastError: null,
       executable: true,
       backgroundPaused: true,

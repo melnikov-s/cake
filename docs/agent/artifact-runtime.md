@@ -9,6 +9,10 @@ Inspect with `artifacts.inspect`, discover typed handlers with `artifacts.tools`
 `artifacts.set-global({lineageId,global:true})` retains any artifact kind independently of creator deletion. Global does not mean installed app: use Library, pinning and fullscreen.
 `artifacts.delete` stops execution, removes schedules and deletes Cake-owned artifact data, not arbitrary outside files. Titles/descriptions are metadata.
 
+## Attachment is the run gate
+
+Backend logic runs only for a widget attached to a slot (`widgets.attach`, any target/slot including `tab`), and only at the revision that attachment shows: the instance's current revision. Unattached instances, older revisions and freshly published or instantiated widgets that are not attached never start a runtime, run a schedule or reach the Cake bridge; `artifacts.call`/`artifacts.runtime.start` fail with a "not attached" error. Detach, delete or a newer revision stops the old worker immediately, without overlap. Schedule configuration of an unattached widget stays dormant until it is attached again. `artifacts.runtime.status` reports `attachedRevision` (`null` when unattached).
+
 ## Runtime and command bridge
 
 `artifacts.runtime.publish` publishes trusted independent QuickJS backend logic and typed tools. Disposable views do not own its lifetime; persistence is artifact-scoped and backend-owned.
@@ -25,7 +29,7 @@ Use a timeout for shell work inside admitted semantic handlers. Discover the act
 
 ## Durable schedules and lifecycle
 
-`artifacts.schedules.configure/list/remove` uses the durable automation worker to invoke handlers without an LLM or conversation message. Overdue work catches up once after restart; backend-off means no execution.
+`artifacts.schedules.configure/list/remove` uses the durable automation worker to invoke handlers without an LLM or conversation message. Overdue work of attached widgets catches up once after restart or re-attachment; backend-off means no execution.
 Runtime pause stops logic and pauses background until explicit resume. Opening/start/restart does not silently resume schedules; tools remain discoverable.
 Inspect runtime/schedule receipts, not configuration alone. Deterministic examples with fake network/chat do not demonstrate a live PR integration.
 Exact operation help supplies schemas. Repository developers can consult docs/development/global-artifact-authoring.md for source/lifecycle/SDK/persistence/schedule examples; that repository path is not part of the installed guide bundle.

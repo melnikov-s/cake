@@ -16,6 +16,7 @@ import { makeArtifactRuntimeWorker } from "../../../src/services/pi/live/Artifac
 import { ArtifactRuntimeLive } from "../../../src/services/artifact-runtime/ArtifactRuntimeLive";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
+import { widgetRunGateFake } from "../helpers/widgetRunGate";
 
 const lineageId = decodeArtifactLineageId("pr-dashboard");
 const objectInput = { type: "object", additionalProperties: false };
@@ -136,8 +137,10 @@ function fixture(hostOverride?: ArtifactRuntimeHost) {
     },
   });
   const dependencies = Layer.merge(storage, clients);
-  const layer = ArtifactRuntimeLive.pipe(Layer.provide(dependencies));
-  return { layer, dependencies, host, commands, invalidations: () => invalidations };
+  // Attached at revision 1 unless a test moves or removes the attachment.
+  const gate = widgetRunGateFake([[lineageId, 1]]);
+  const layer = ArtifactRuntimeLive.pipe(Layer.provide(Layer.merge(dependencies, gate.layer)));
+  return { layer, dependencies, gate, host, commands, invalidations: () => invalidations };
 }
 
 describe("Independent artifact runtime", () => {
@@ -279,6 +282,7 @@ describe("Independent artifact runtime", () => {
           source: source.replace("let refreshCount = 0", "let refreshCount = 100"),
         },
       };
+      f.gate.set(lineageId, 2);
       expect(
         yield* service.call({ target: revised, name: "refresh", input: { repo: "cake" } }),
       ).toEqual({ refreshCount: 101, count: 2 });
@@ -377,6 +381,7 @@ describe("Independent artifact runtime", () => {
             revision: 2,
             runtime: { ...waiting.runtime, source: "return { tools: { value: () => 2 } };" },
           };
+          f.gate.set(lineageId, 2);
           const second = yield* service
             .call({ target: revised, name: "value", input: {} })
             .pipe(Effect.forkScoped);
@@ -452,4 +457,156 @@ describe("Independent artifact runtime", () => {
       expect((yield* service.status(lineageId)).lastError).toBe(null);
     }).pipe(Effect.provide(f.layer));
   });
+});
+
+/** The watcher stops detached workers on its own fiber; wait on real sandbox I/O, bounded. */
+const untilStopped = Effect.fn("ArtifactRuntimeTest.untilStopped")(function* (
+  stopHookRan: () => boolean,
+) {
+  const service = yield* ArtifactRuntime;
+  for (let attempt = 0; attempt < 500; attempt++) {
+    if (!(yield* service.status(lineageId)).running && stopHookRan()) return;
+    yield* Effect.promise(() => new Promise((resolve) => setImmediate(resolve)));
+  }
+  throw new Error("Detached widget runtime kept running");
+});
+const lifecycleInputs = (commands: ReturnType<typeof fixture>["commands"]) =>
+  commands.filter((command) => command.command === "test.lifecycle").map((c) => c.input);
+const revisionMarked = (revision: number): ArtifactRuntimeTarget => ({
+  lineageId,
+  revision,
+  runtime: {
+    ...runtime,
+    source: source.replaceAll("{ event: ", `{ revision: ${revision}, event: `),
+  },
+});
+
+describe("Widget run gate: only the attached revision runs", () => {
+  it.effect("an unattached instance never starts, runs a tool or reaches Cake", () => {
+    const f = fixture();
+    f.gate.set(lineageId, undefined);
+    return Effect.gen(function* () {
+      const service = yield* ArtifactRuntime;
+      yield* service.setHost(f.host);
+      for (const attempt of [
+        service.call({ target, name: "refresh", input: { repo: "cake" } }),
+        service.lifecycle({ target, event: "start" }),
+        service.lifecycle({ target, event: "focus", viewId: "inline" }),
+      ]) {
+        const error = yield* attempt.pipe(Effect.flip);
+        expect(error.message).toContain("is not attached");
+      }
+      yield* service.lifecycle({ target, event: "blur", viewId: "inline" });
+      yield* service.lifecycle({ target, event: "unmount", viewId: "inline" });
+      expect(yield* service.status(lineageId)).toMatchObject({
+        running: false,
+        revision: null,
+        attachedRevision: null,
+      });
+      expect(f.commands).toEqual([]);
+    }).pipe(Effect.provide(f.layer));
+  });
+
+  it.effect("a published revision that is not the attached one never runs", () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      const service = yield* ArtifactRuntime;
+      yield* service.setHost(f.host);
+      yield* service.lifecycle({ target: revisionMarked(1), event: "start" });
+      const rejected = yield* service
+        .call({ target: revisionMarked(2), name: "refresh", input: { repo: "cake" } })
+        .pipe(Effect.flip);
+      expect(rejected.message).toContain("revision 2 is not attached");
+      yield* service.lifecycle({ target: revisionMarked(2), event: "start" }).pipe(Effect.flip);
+      expect(yield* service.status(lineageId)).toMatchObject({
+        running: true,
+        revision: 1,
+        attachedRevision: 1,
+      });
+      expect(lifecycleInputs(f.commands)).toEqual([{ revision: 1, event: "start" }]);
+      expect(f.commands.some((command) => command.command === "network.request")).toBe(false);
+    }).pipe(Effect.provide(f.layer));
+  });
+
+  it.effect("moving the attachment stops the old revision before the new one starts", () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      const service = yield* ArtifactRuntime;
+      yield* service.setHost(f.host);
+      yield* service.call({ target: revisionMarked(1), name: "refresh", input: { repo: "cake" } });
+      f.gate.set(lineageId, 2);
+      // The old worker stops on the attachment change itself, not at the next admission.
+      yield* untilStopped(() => lifecycleInputs(f.commands).length === 2);
+      expect(lifecycleInputs(f.commands)).toEqual([
+        { revision: 1, event: "start" },
+        { revision: 1, event: "stop" },
+      ]);
+      const stale = yield* service
+        .call({ target: revisionMarked(1), name: "readiness", input: {} })
+        .pipe(Effect.flip);
+      expect(stale.message).toContain("revision 1 is not attached");
+      yield* service.call({ target: revisionMarked(2), name: "readiness", input: {} });
+      expect(lifecycleInputs(f.commands)).toEqual([
+        { revision: 1, event: "start" },
+        { revision: 1, event: "stop" },
+        { revision: 2, event: "start" },
+      ]);
+      expect(yield* service.status(lineageId)).toMatchObject({ running: true, revision: 2 });
+    }).pipe(Effect.provide(f.layer));
+  });
+
+  it.effect("detaching cuts off an in-flight call's further Cake work and stops the worker", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const invoked: string[] = [];
+      const f = fixture({
+        invokeCommand: ({ command }) =>
+          Effect.gen(function* () {
+            invoked.push(command);
+            if (command === "test.wait") {
+              yield* Deferred.succeed(entered, undefined);
+              yield* Deferred.await(release);
+            }
+            return null;
+          }),
+      });
+      yield* Effect.gen(function* () {
+        const service = yield* ArtifactRuntime;
+        yield* service.setHost(f.host);
+        const slow: ArtifactRuntimeTarget = {
+          ...target,
+          runtime: {
+            source: `return {
+              lifecycle: { stop: () => cake("test.cleanup") },
+              tools: { refresh: async () => {
+                await cake("test.wait");
+                await cake("network.request", { url: "https://example.test/prs" });
+                return 1;
+              } },
+            };`,
+            tools: [
+              {
+                name: "refresh",
+                description: "Two-step refresh",
+                inputSchema: true,
+                outputSchema: true,
+              },
+            ],
+          },
+        };
+        const running = yield* service
+          .call({ target: slow, name: "refresh", input: {} })
+          .pipe(Effect.forkScoped);
+        yield* Deferred.await(entered);
+        f.gate.set(lineageId, undefined);
+        yield* Deferred.succeed(release, undefined);
+        const outcome = yield* Fiber.join(running).pipe(Effect.flip);
+        expect(outcome.message).toContain("is not attached");
+        yield* untilStopped(() => invoked.includes("test.cleanup"));
+        // The stop hook may clean up; the detached fetch never ran.
+        expect(invoked).toEqual(["test.wait", "test.cleanup"]);
+      }).pipe(Effect.provide(f.layer));
+    }),
+  );
 });

@@ -17,13 +17,15 @@ export const ArtifactRuntimeControls = observer(function ArtifactRuntimeControls
         <h2 className="text-xs font-semibold">Runtime</h2>
         {status?.executable && (
           <Badge variant="secondary">
-            {status.backgroundPaused
-              ? "Background paused"
-              : status.running
-                ? "Running"
-                : status.lastError
-                  ? "Failed"
-                  : "Stopped"}
+            {status.attachedRevision === null
+              ? "Not attached"
+              : status.backgroundPaused
+                ? "Background paused"
+                : status.running
+                  ? "Running"
+                  : status.lastError
+                    ? "Failed"
+                    : "Stopped"}
           </Badge>
         )}
       </div>

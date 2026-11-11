@@ -193,6 +193,12 @@ allowlist; read-only self-discovery, external calls and other artifacts remain
 supported. A reload failure is visible in runtime status, not a claim that an
 already-committed revision failed to publish.
 
+Attachment is the single run gate (`WidgetRunGate`): a runtime worker starts,
+receives events and reaches the Cake bridge only while the widget has an attachment
+and only at the revision attachments render (its current revision). Every start,
+event and bridge call is re-checked; attachment changes stop gated workers at once.
+Schedules of unattached widgets are skipped without being consumed.
+
 Named deterministic artifact schedules live in the existing automation ledger and
 worker. `artifacts.schedules.configure/list/remove` manage them without an LLM,
 Pi session or scheduled conversation message. Due work resolves current source and

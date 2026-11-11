@@ -32,6 +32,7 @@ import { ArtifactLibrary } from "../../../src/renderer/components/artifact-libra
 import { observeArtifactEvents } from "../../../src/renderer/observers/artifact-events";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { observerClient, observerRuntime } from "./observers/observer-test-runtime";
+import { widgetRunGateFake } from "../helpers/widgetRunGate";
 
 const lineageId = decodeArtifactLineageId("live-dashboard");
 const revision: ArtifactRevision = {
@@ -82,6 +83,7 @@ async function fixture(initiallyRunning = true) {
     lineageId,
     revision: 1,
     running: initiallyRunning,
+    attachedRevision: 1,
     lastError: null as string | null,
   };
   let failNextStart = false;
@@ -98,6 +100,7 @@ async function fixture(initiallyRunning = true) {
       ClientConnectionsLive,
       ArtifactViewsLive.pipe(Layer.provide(ClientConnectionsLive)),
       Layer.mock(ArtifactStorage, { read: () => Effect.succeed(revision) }),
+      widgetRunGateFake([[lineageId, 1]]).layer,
       AutomationRecords.layer.pipe(
         Layer.provide(
           Layer.succeed(AutomationStorage, {

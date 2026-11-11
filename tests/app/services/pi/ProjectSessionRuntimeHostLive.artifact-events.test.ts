@@ -97,7 +97,13 @@ const makeHarness = async (
   const dependencies = Layer.mergeAll(
     Layer.mock(ArtifactRuntime, {
       status: (lineageId) =>
-        Effect.succeed({ lineageId, running: false, revision: null, lastError: null }),
+        Effect.succeed({
+          lineageId,
+          running: false,
+          revision: null,
+          attachedRevision: null,
+          lastError: null,
+        }),
       ...artifactRuntime,
     }),
     makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
@@ -188,12 +194,19 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
         lineageId: input.target.lineageId,
         revision: input.target.revision,
         running: true,
+        attachedRevision: input.target.revision,
         lastError: null,
       }),
     );
     const { host, runtime, root } = await makeHarness(undefined, {
       status: (lineageId) =>
-        Effect.succeed({ lineageId, running: true, revision: 1, lastError: null }),
+        Effect.succeed({
+          lineageId,
+          running: true,
+          revision: 1,
+          attachedRevision: 1,
+          lastError: null,
+        }),
       lifecycle,
     });
     const prepared = await runtime.runPromise(host.prepare(root, "session-1"));

@@ -45,16 +45,7 @@ export const acceptEvent = Effect.fn("Automations.acceptEvent")(function* (
   }
 });
 
-export const runSchedulePass = Effect.fn("Automations.runSchedulePass")(function* <
-  A = void,
-  E = never,
-  R = never,
->(invokeArtifactSchedule?: (schedule: ArtifactSchedule) => Effect.Effect<A, E, R>) {
-  if (invokeArtifactSchedule)
-    yield* runArtifactSchedulePass(invokeArtifactSchedule).pipe(
-      Effect.tapError((error) => Effect.logError("Artifact schedule pass failed", error)),
-      Effect.ignore,
-    );
+export const runSchedulePass = Effect.fn("Automations.runSchedulePass")(function* () {
   const now = DateTime.formatIso(yield* DateTime.now);
   const records = yield* AutomationRecords;
   const due = records
@@ -145,9 +136,19 @@ export const recover = Effect.fn("Automations.recover")(function* () {
   }
 });
 
+/** One worker tick: gated artifact schedules first, then prompt automations. */
+export const runSchedulePasses = Effect.fn("Automations.runSchedulePasses")(function* <A, E, R>(
+  invokeArtifactSchedule: (schedule: ArtifactSchedule) => Effect.Effect<A, E, R>,
+) {
+  yield* runArtifactSchedulePass(invokeArtifactSchedule).pipe(
+    Effect.tapError((error) => Effect.logError("Artifact schedule pass failed", error)),
+    Effect.ignore,
+  );
+  yield* runSchedulePass();
+});
 export const runScheduleWorker = <A, E, R>(
   invokeArtifactSchedule: (schedule: ArtifactSchedule) => Effect.Effect<A, E, R>,
-) => runSchedulePass(invokeArtifactSchedule).pipe(Effect.repeat(Schedule.spaced("1 second")));
+) => runSchedulePasses(invokeArtifactSchedule).pipe(Effect.repeat(Schedule.spaced("1 second")));
 export const runEventWorker = Effect.gen(function* () {
   const events = yield* AutomationEvents;
   yield* events.events().pipe(Stream.runForEach(acceptEvent));

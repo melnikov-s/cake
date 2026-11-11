@@ -16,7 +16,10 @@ export const WidgetTarget = Schema.Union([
 ]);
 export type WidgetTarget = typeof WidgetTarget.Type;
 
-/** Placement references an existing instance; it never copies its state or starts a runtime. */
+/**
+ * Placement references an existing instance; it never copies its state or starts a runtime.
+ * Attachment is what permits the instance's backend runtime and schedules to run (WidgetRunGate).
+ */
 export const WidgetAttachment = Schema.Struct({
   id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   lineageId: ArtifactLineageId,
@@ -48,7 +51,8 @@ export const widgetAttachmentContracts = [
   },
   {
     command: "widgets.detach",
-    summary: "Remove a widget attachment without deleting its saved state or background jobs",
+    summary:
+      "Remove a widget attachment; its backend runtime and schedules stop until it is attached again (saved state and schedule configuration are kept)",
     inputSchema: Schema.Struct({ id: WidgetAttachment.fields.id }),
   },
   {
