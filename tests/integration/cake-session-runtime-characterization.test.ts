@@ -4,7 +4,15 @@ import type { AttachmentReferenceControl } from "../../src/contracts/conversatio
 import { cakeOperationImageResult } from "../../src/contracts/agent/cake-operation";
 import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { Effect } from "effect";
+import { Effect, Layer, ManagedRuntime, Stream } from "effect";
+import {
+  CakeSessionRuntimes,
+  makeCakeSessionRuntimesLayer,
+} from "../../src/services/pi/CakeSessionRuntimes";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  options as runtimeOptions,
+} from "../app/helpers/piRuntimeFixture";
 import { makeSubagentEnvironmentLive } from "../../src/layers/SubagentEnvironmentLive";
 import { SubagentEnvironment } from "../../src/services/subagents/SubagentEnvironment";
 import { createServer, type Server, type ServerResponse } from "node:http";
@@ -71,6 +79,7 @@ async function registerFixtureProvider(
   directory: string,
   respond: (requestIndex: number, response: ServerResponse) => void,
   observeRequest?: (body: Record<string, unknown>) => void,
+  secondModel = false,
 ) {
   let requestCount = 0;
   const server = createServer((request, response) => {
@@ -100,6 +109,19 @@ async function registerFixtureProvider(
       apiKey: "fixture",
       api: "openai-completions",
       models: [
+        ...(secondModel
+          ? [
+              {
+                id: "fixture-switched",
+                name: "Switched model",
+                reasoning: false,
+                input: ["text", "image"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 4096,
+                maxTokens: 1024,
+              },
+            ]
+          : []),
         {
           id: "fixture-model",
           name: "Fixture model",
@@ -126,6 +148,7 @@ async function createFixtureRuntime(
     onTurnResult?(turnId: string, result: PiTurnResult): void;
     attachmentReferenceControl?: AttachmentReferenceControl;
     requestUi?: CakeSessionRuntimeOptions["requestUi"];
+    onEvent?: CakeSessionRuntimeOptions["onEvent"];
   } = {},
 ) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
@@ -150,7 +173,10 @@ async function createFixtureRuntime(
     requestUi: options.requestUi ?? (async () => undefined),
     onInitialTranscriptPersisted: options.onInitialTranscriptPersisted,
     onTurnResult: options.onTurnResult,
-    onEvent: (event) => events.push(event),
+    onEvent: (event) => {
+      events.push(event);
+      options.onEvent?.(event);
+    },
   });
   runtimes.push(runtime);
   await runtime.setModel("fixture-provider", "fixture-model");
@@ -170,6 +196,88 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("joins Pi cancellation before model handoff and continues once with queued input retained", async () => {
+    const directory = await createTemporaryDirectory();
+    const firstStarted = deferred();
+    const requests: Record<string, unknown>[] = [];
+    await registerFixtureProvider(
+      directory,
+      (index, response) => {
+        if (index === 1) {
+          response.writeHead(200, { "content-type": "text/event-stream" });
+          response.write(sseChunk({ role: "assistant", content: "Working" }));
+          firstStarted.resolve();
+        } else finishTextResponse(response, "Continued under switched model");
+      },
+      (body) => requests.push(body),
+      true,
+    );
+    const continued = deferred();
+    const queuedReady = deferred();
+    const runtime = await createFixtureRuntime(directory, [], {
+      onEvent: (event) => {
+        if (event.type !== "part-updated" || event.part.kind !== "text") return;
+        if (event.part.text === "Queued human input" && event.part.deliveryState === "queued")
+          queuedReady.resolve();
+        if (
+          event.part.role === "assistant" &&
+          event.part.status === "complete" &&
+          event.part.text.includes("Continued under switched model")
+        )
+          continued.resolve();
+      },
+    });
+    const pending = runtime
+      .prompt("Original work", "prompt", [], false, "original")
+      .catch((error: unknown) => error);
+    await firstStarted.promise;
+    void runtime
+      .prompt("Queued human input", "follow-up", [], false, "queued")
+      .catch(() => undefined);
+    await queuedReady.promise;
+    expect((await runtime.listQueuedMessages()).followUp).toContain("Queued human input");
+    const handles = ManagedRuntime.make(
+      makeCakeSessionRuntimesLayer({
+        sessionIds: () => Stream.empty,
+        catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
+        inspect: () => Effect.succeed(undefined),
+        changelog: () => Effect.succeed(""),
+        createRuntime: () => Effect.succeed(runtime),
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+    );
+    try {
+      const result = await handles.runPromise(
+        Effect.gen(function* () {
+          const handle = yield* (yield* CakeSessionRuntimes).acquire(
+            runtimeOptions({ sessionId: runtime.sessionId }),
+          );
+          return yield* handle.switchModel({
+            provider: "fixture-provider",
+            modelId: "fixture-switched",
+            thinkingLevel: "off",
+            fastMode: false,
+          });
+        }).pipe(Effect.scoped),
+      );
+      expect(result.status).toBe("continued");
+      await pending;
+      await continued.promise;
+      expect(requests[0]?.model).toBe("fixture-model");
+      expect(requests.slice(1).every((request) => request.model === "fixture-switched")).toBe(true);
+      const final = await runtime.snapshot();
+      expect(final.model?.id).toBe("fixture-switched");
+      expect(
+        final.parts.filter(
+          (part) => part.kind === "text" && part.role === "user" && part.text === "Continue.",
+        ),
+      ).toHaveLength(1);
+      expect(JSON.stringify(final.parts)).toContain("Queued human input");
+    } finally {
+      await handles.dispose();
+    }
+  });
+
   it("loads a subfolder Project's own and repository resources without asking for trust", async () => {
     const repository = await createTemporaryDirectory();
     const project = join(repository, "src", "system", "agents");
@@ -964,10 +1072,27 @@ describe("CakeSessionRuntime characterization", () => {
       });
     });
     const events: CakeSessionRuntimeEvent[] = [];
-    const runtime = await createFixtureRuntime(directory, events);
+    let toolReceipt: Promise<void> | undefined;
+    const runtime = await createFixtureRuntime(directory, events, {
+      onEvent: (event) => {
+        if (
+          !toolReceipt &&
+          event.type === "part-updated" &&
+          event.part.kind === "tool" &&
+          event.part.id === "tool-fixture-tool-call" &&
+          event.part.state === "running"
+        )
+          toolReceipt = runtime.waitForToolReceipt?.(
+            "fixture-tool-call",
+            new AbortController().signal,
+          );
+      },
+    });
 
     const prompt = runtime.prompt("Inspect with a tool", "prompt", []);
     await finalResponseStarted.promise;
+    expect(toolReceipt).toBeDefined();
+    await toolReceipt;
     // A server write is not a client receipt; wait for Pi's projected delta.
     await vi.waitFor(() =>
       expect(events).toContainEqual(

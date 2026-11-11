@@ -17,6 +17,7 @@ import {
 } from "../../contracts/artifacts/global-artifact-control";
 import {
   CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
   isCakeChatSessionId,
   cakeChatSideChatConversationId,
 } from "../../contracts/cake-chats/cake-chat-identity";
@@ -52,6 +53,8 @@ import {
 } from "../../contracts/session-families/session-family-document";
 import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
+import { PiModels } from "../../services/pi/PiModels";
+import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import * as application from "./application";
 import * as automationControl from "../automations/automationControl";
 import {
@@ -90,6 +93,7 @@ export interface AgentControlCaller {
   readonly kind: "project-session" | "cake-chat";
   /** Trusted Pi tool-call origin, never a model-supplied argument. */
   readonly sourceEntryId?: string;
+  readonly toolCallId?: string;
   readonly sessionId: string;
   readonly title: string;
   readonly projectName?: string;
@@ -690,6 +694,63 @@ export const invoke: (
           return yield* (yield* SessionCoordination).withAdmission(
             agentSessionMessaging.invoke(invocation, caller),
           );
+        case "sessions.set-model":
+        case "sessions.model-switch-status": {
+          const sessionId = yield* sessionReferences.resolve(
+            invocation.arguments.sessionId,
+            caller?.sessionId,
+          );
+          if (sessionId === SESSION_ASSISTANT_ID)
+            return fail(
+              "The Companion follows the utility model configured in Settings; nothing was stopped.",
+            );
+          const sessions = yield* CakeSessionRuntimes;
+          if (invocation.name === "sessions.model-switch-status") {
+            const current = yield* sessions.acquireSession(sessionId).pipe(Effect.result);
+            if (current._tag === "Failure") return fail(current.failure.message);
+            return toJsonValue({
+              ok: true,
+              command,
+              sessionId,
+              receipt: (yield* current.success.modelSwitchStatus()) ?? null,
+            });
+          }
+          const model = invocation.arguments.model;
+          const catalog = cakeModelCatalog((yield* ApplicationState).snapshot());
+          const configuration = yield* Effect.try(() => resolveCakeModelSelection(model, catalog));
+          yield* (yield* PiModels).resolve(configuration);
+          const current = yield* sessions.acquireSession(sessionId).pipe(Effect.result);
+          const handle =
+            current._tag === "Success"
+              ? current.success
+              : cakeChatSideChatConversationId(sessionId) !== undefined
+                ? yield* discussionSessions.acquireBySessionId(sessionId)
+                : isCakeChatSessionId(sessionId)
+                  ? yield* chatTargets.acquireAvailable(sessionId)
+                  : yield* projectSessions.acquireTarget(
+                      yield* metadata.findLocation({ sessionId }),
+                      sessionId,
+                      false,
+                    );
+          if (handle.profile === "SubagentSession")
+            return fail(
+              "Private subagents are single-turn tasks owned by their launcher. Aborting would terminate the task; cancel/relaunch through its owner instead. Nothing was stopped.",
+            );
+          if (
+            !isCakeChatSessionId(sessionId) &&
+            !(yield* (yield* ProjectAccess).isAllowed((yield* handle.snapshot()).workspacePath))
+          )
+            return fail("The target is outside authorized project access; nothing was stopped.");
+          if (sessionId === caller?.sessionId && !caller.toolCallId)
+            return fail(
+              "Self-switch requires a trusted tool-call receipt; use a different session to switch this target. Nothing was stopped.",
+            );
+          const receipt = yield* handle.switchModel(
+            configuration,
+            sessionId === caller?.sessionId ? caller.toolCallId : undefined,
+          );
+          return toJsonValue({ ok: receipt.status !== "failed", command, sessionId, receipt });
+        }
         case "sessions.abort": {
           const sessionId = yield* sessionReferences.resolve(
             invocation.arguments.sessionId,

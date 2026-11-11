@@ -107,6 +107,7 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
     input: JsonObject,
     signal: AbortSignal,
     sourceEntryId?: string,
+    toolCallId?: string,
   ): Promise<JsonValue>;
   pendingMessages?(sessionId: string, signal: AbortSignal): Promise<PiPendingMessages>;
   reorderPendingMessage?(
@@ -119,7 +120,13 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
 export interface GlobalOperationControl {
   tools: readonly GlobalControlTool[];
   invoke(
-    input: { name: string; arguments: JsonValue; sourceEntryId?: string; anchorPartId?: string },
+    input: {
+      name: string;
+      arguments: JsonValue;
+      sourceEntryId?: string;
+      anchorPartId?: string;
+      toolCallId?: string;
+    },
     signal: AbortSignal,
   ): Promise<JsonValue>;
 }

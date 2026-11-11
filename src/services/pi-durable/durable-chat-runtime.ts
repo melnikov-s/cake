@@ -7,6 +7,7 @@ import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import {
   AgentDoc,
+  configure as configureDurableAgent,
   createRegistry,
   defineExtension,
   defineTool,
@@ -575,21 +576,30 @@ export async function createDurableCakeChatRuntime(
       unavailableModel = undefined;
       activePreset = undefined;
     }
+    // Publication reads AgentDoc back into the live selection. Snapshot the requested
+    // change before yielding, and commit preset + agent together: a preset-only
+    // publication must not restore the old model over an in-flight switch.
+    const next = { selected, unavailableModel, thinkingLevel, activePreset };
+    const change = {
+      model: next.unavailableModel ?? {
+        provider: next.selected.provider,
+        modelId: next.selected.id,
+      },
+      thinkingLevel: next.thinkingLevel,
+      // Saved coordinators predate some tools; the offered set is code-owned, not persisted policy.
+      tools,
+      instructions: instructions(),
+    };
     await engine.root.commit(async (tx) => {
       const state = await tx.doc(PresetContextDoc, engine.root.id);
-      if (activePreset) state.preset = activePreset;
+      if (next.activePreset) state.preset = next.activePreset;
       else delete state.preset;
+      await configureDurableAgent(tx, engine.root.id, change);
     }, BACKGROUND_CONTEXT);
-    await engine.root.configure(
-      {
-        model: unavailableModel ?? { provider: selected.provider, modelId: selected.id },
-        thinkingLevel,
-        // Saved coordinators predate some tools; the offered set is code-owned, not persisted policy.
-        tools,
-        instructions: instructions(),
-      },
-      BACKGROUND_CONTEXT,
-    );
+    selected = next.selected;
+    unavailableModel = next.unavailableModel;
+    thinkingLevel = next.thinkingLevel;
+    activePreset = next.activePreset;
   };
   const canceledScheduledInputs = new Set<string>();
   const admit = async (
@@ -953,6 +963,7 @@ export async function createDurableCakeChatRuntime(
       publish();
     },
     abort: turnStop.abort,
+    waitForStop: turnStop.waitForStop,
     async setModel(provider, modelId) {
       if (companion)
         throw new Error("The companion follows the utility model configured in Settings");

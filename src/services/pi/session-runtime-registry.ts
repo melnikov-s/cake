@@ -34,7 +34,10 @@ export const PiSessionCapabilityProfile = Schema.TaggedUnion({
   SubagentSession: {},
 });
 
+import type { SessionModelSwitchStatus } from "../../contracts/conversations/session-model-switch";
+
 export interface SharedRuntime {
+  modelSwitch?: SessionModelSwitchStatus;
   applicationLease: boolean;
   readonly fingerprint: string;
   readonly acquireOptions: CakeSessionRuntimeAcquireOptions;

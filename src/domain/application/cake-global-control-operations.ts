@@ -59,6 +59,9 @@ export function createGlobalControlOperations(
             {
               name: tool.command,
               arguments: argumentsValue,
+              ...(tool.command === "sessions.set-model"
+                ? { toolCallId: context.toolCallId }
+                : null),
               ...(tool.command === "sessions.fork"
                 ? { anchorPartId: `tool-${context.toolCallId}` }
                 : null),

@@ -53,6 +53,7 @@ export interface RuntimeOperationApi {
     input: JsonObject,
     signal: AbortSignal,
     sourceEntryId?: string,
+    toolCallId?: string,
   ): Promise<JsonValue>;
   pendingMessages(sessionId: string, signal: AbortSignal): Promise<PiPendingMessages>;
   reorderPendingMessage(

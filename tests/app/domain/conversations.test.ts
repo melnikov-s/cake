@@ -43,6 +43,8 @@ const snapshot = (streaming: boolean): ConversationSnapshot => ({
 
 const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessionHandle => ({
   currentTurnIds: () => Effect.succeed([]),
+  switchModel: () => Effect.die("Unexpected model switch"),
+  modelSwitchStatus: () => Effect.succeed(undefined),
   exportSideChatHistory: () => Effect.die("Unexpected history export"),
   importSideChatHistory: () => Effect.die("Unexpected history import"),
   recover: () => Effect.die("Unexpected recover"),

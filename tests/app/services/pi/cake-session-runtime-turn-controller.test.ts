@@ -109,13 +109,20 @@ describe("CakeSessionRuntime turn controller", () => {
     await controller.abort();
     expect(session.abort).toHaveBeenCalledOnce();
     expect(controller.cancellationPending()).toBe(true);
+    let joined = false;
+    const joining = controller.waitForStop().then(() => {
+      joined = true;
+    });
     const next = controller.prompt("Next input", "prompt", []);
     await Promise.resolve();
     expect(session.prompt).not.toHaveBeenCalled();
+    expect(joined).toBe(false);
 
     Object.assign(session, { isStreaming: false });
     cleanup.resolve();
     await abortSettled.promise;
+    await joining;
+    expect(joined).toBe(true);
     await delivered.promise;
     await next;
     expect(controller.cancellationPending()).toBe(false);
@@ -169,6 +176,7 @@ describe("CakeSessionRuntime turn controller", () => {
     await controller.abort();
     await abortSettled.promise;
     expect(onAbortSettled).toHaveBeenCalledWith(failure);
+    await expect(controller.waitForStop()).rejects.toBe(failure);
     await expect(controller.prompt("Unsafe next turn", "prompt", [])).rejects.toBe(failure);
     expect(session.prompt).not.toHaveBeenCalled();
     expect(controller.cancellationPending()).toBe(true);

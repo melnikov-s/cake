@@ -2,6 +2,7 @@ import { toDraft07JsonSchema } from "../serialization/json-contract";
 import { sessionParentGuidance } from "../project-sessions/session-reference";
 import { sessionMessageDeliveryGuidance } from "../conversations/session-message-delivery";
 import { promptFilesGuidance } from "../conversations/prompt-files";
+import { sessionModelSwitchDefinitions } from "../conversations/session-model-switch";
 import { sessionCompactionDefinitions } from "../project-sessions/session-compaction";
 import { resultDeliveryGuidance } from "../conversations/result-delivery";
 import { compactDiscoveryGuidance } from "../agent/discovery-result-text";
@@ -29,6 +30,13 @@ const definitions = [
         : [],
     },
   })),
+  ...sessionModelSwitchDefinitions.map(
+    ({ command, topic, summary, guidance, examples, result }) => ({
+      command,
+      scope: "global",
+      discovery: { topic, summary, guidance, examples, result },
+    }),
+  ),
   ...sessionCompactionDefinitions.map(
     ({ command, topic, summary, guidance, examples, result }) => ({
       command,

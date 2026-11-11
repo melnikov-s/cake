@@ -200,6 +200,8 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.completions",
   "sessions.completions.update",
   "sessions.abort",
+  "sessions.set-model",
+  "sessions.model-switch-status",
   "sessions.rename",
   "sessions.resolve",
   "sessions.pending",
@@ -1042,11 +1044,13 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                         backendAgentControl.invoke(forwarded.name, forwarded.arguments, {
                           kind: "cake-chat",
                           sourceEntryId: forwarded.sourceEntryId,
+                          toolCallId: forwarded.toolCallId,
                           sessionId: [
                             "sessions.send",
                             "sessions.reply",
                             "sessions.thread",
                             "sessions.close-thread",
+                            "sessions.set-model",
                           ].includes(forwarded.name)
                             ? senderSessionId
                             : target.sessionId,

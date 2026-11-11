@@ -1,3 +1,9 @@
+import { PiModels } from "../../../src/services/pi/PiModels";
+import {
+  UnknownPiModelError,
+  UnavailablePiModelError,
+  UnauthenticatedPiModelError,
+} from "../../../src/contracts/pi/model-data";
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -512,6 +518,27 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
         return Effect.runPromise(requests.requestProjectControl(source, invocation, abort));
       },
     }),
+    Layer.mock(PiModels, {
+      resolve: (selection) =>
+        selection.modelId === "valid"
+          ? Effect.succeed(selection)
+          : Effect.fail(
+              selection.modelId === "unavailable"
+                ? new UnavailablePiModelError({
+                    provider: selection.provider,
+                    modelId: selection.modelId,
+                  })
+                : selection.modelId === "unauthenticated"
+                  ? new UnauthenticatedPiModelError({
+                      provider: selection.provider,
+                      modelId: selection.modelId,
+                    })
+                  : new UnknownPiModelError({
+                      provider: selection.provider,
+                      modelId: selection.modelId,
+                    }),
+            ),
+    }),
     Layer.mock(ProjectAccess, {
       rememberSessionLocation: () => Effect.void,
       isAllowed: (path) => Effect.succeed(!deniedPaths.has(path)),
@@ -729,6 +756,95 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     protectedSessions,
   };
 });
+
+const switchSelection = {
+  provider: "fixture",
+  modelId: "valid",
+  thinkingLevel: "off",
+  fastMode: false,
+};
+it.effect("model switch validates model, identity and Companion before stopping work", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const before = [...f.runtimeCreates];
+    for (const input of [
+      { sessionId: target, model: { ...switchSelection, modelId: "invalid" } },
+      { sessionId: target, model: { ...switchSelection, modelId: "unavailable" } },
+      { sessionId: target, model: { ...switchSelection, modelId: "unauthenticated" } },
+      { sessionId: "not-a-session", model: switchSelection },
+      { sessionId: SESSION_ASSISTANT_ID, model: switchSelection },
+    ]) {
+      const result = yield* f.direct("sessions.set-model", input).pipe(Effect.result);
+      if (result._tag === "Success") expect(result.success).toMatchObject({ ok: false });
+      else expect(result.failure).toBeDefined();
+    }
+    expect(f.runtimeCreates).toEqual(before);
+  }),
+);
+
+it.effect("model switch rejects launcher-owned private subagents without stopping", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const prepared = yield* acquireOptions({ location, sessionId: target, newSession: false }).pipe(
+      Effect.provide(f.context),
+    );
+    yield* Context.get(f.context, CakeSessionRuntimes).acquire({
+      ...prepared,
+      profile: { _tag: "SubagentSession" },
+      runtime: {
+        ...prepared.runtime,
+        auxiliary: true,
+        globalControl: undefined,
+        sessionControl: undefined,
+        currentSessionControl: undefined,
+      },
+    });
+    expect(
+      yield* f.direct("sessions.set-model", { sessionId: target, model: switchSelection }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("single-turn tasks") });
+  }),
+);
+
+it.effect("model switch targets another Project Session and preserves queued input", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const events: string[] = [];
+    f.runtimeFactories.set(target, async () => ({
+      ...fakeRuntime(
+        {
+          onEvent: () => undefined,
+          cwd: "/project",
+          agentDir: "/agent",
+          sessionDir: "/sessions",
+          requestUi: async () => undefined,
+        },
+        () => undefined,
+      ),
+      sessionId: target,
+      streaming: true,
+      snapshot: async () => ({ ...snapshot, sessionId: target, streaming: true }),
+      abort: async () => {
+        events.push("stop");
+      },
+      waitForStop: async () => {
+        events.push("terminated");
+      },
+      applyConfiguration: async () => {
+        events.push("configure");
+      },
+      prompt: async (text) => {
+        events.push(text);
+      },
+      listQueuedMessages: async () => ({ steering: ["Human input"], followUp: [] }),
+    }));
+    const result = yield* f.direct("sessions.set-model", {
+      sessionId: target,
+      model: switchSelection,
+    });
+    expect(result).toMatchObject({ ok: true, sessionId: target, receipt: { status: "continued" } });
+    expect(events).toEqual(["stop", "terminated", "configure", "Continue."]);
+  }),
+);
 
 it.effect("trusted artifact bridge discovers canonical commands and validates help", () =>
   Effect.gen(function* () {

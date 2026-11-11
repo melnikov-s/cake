@@ -1,3 +1,8 @@
+import {
+  SessionModelSwitchInput,
+  SessionModelSwitchTarget,
+  sessionModelSwitchDefinitions,
+} from "../../contracts/conversations/session-model-switch";
 import { sessionMessageDeliveryGuidance } from "../../contracts/conversations/session-message-delivery";
 import {
   SessionMessageDelivery,
@@ -46,6 +51,23 @@ export function createSessionFamilyOperations(
         : api().invokeAppControl(command, input as JsonObject, context.signal);
     };
   return [
+    ...sessionModelSwitchDefinitions.map((definition): CakeOperationDefinition => ({
+      ...definition,
+      requires: "invokeAppControl",
+      inputSchema:
+        definition.command === "sessions.set-model"
+          ? SessionModelSwitchInput
+          : SessionModelSwitchTarget,
+      execute: (input, context) =>
+        api().invokeAppControl(
+          definition.command,
+          // SAFETY: the operation registry decoded the declared object input schema.
+          input as JsonObject,
+          context.signal,
+          undefined,
+          context.toolCallId,
+        ),
+    })),
     {
       command: "sessions.deliveries",
       requires: "invokeAppControl",

@@ -38,6 +38,7 @@ export interface CakeSessionRuntimeTurnController {
   readonly idleCompactionActive: () => boolean;
   readonly toolPruningActive: () => boolean;
   readonly cancellationPending: () => boolean;
+  readonly waitForStop: () => Promise<void>;
   readonly bashParts: () => UiPart[];
   readonly withToolPruning: <T>(compact: () => Promise<T>) => Promise<T>;
   readonly pendingRecoveryInputs: () => ReadonlyArray<{
@@ -802,6 +803,9 @@ export function createCakeSessionRuntimeTurnController(input: {
     idleCompactionActive: () => idleCompactionActive,
     toolPruningActive: () => toolPruningActive,
     cancellationPending: () => abortCleanup !== undefined,
+    waitForStop: async () => {
+      await abortCleanup;
+    },
     bashParts: () => (bashPart?.state === "running" ? [bashPart] : []),
     async withToolPruning(compact) {
       assertActive();

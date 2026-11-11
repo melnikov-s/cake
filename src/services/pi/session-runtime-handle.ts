@@ -3,6 +3,8 @@ import type { Clock, Semaphore } from "effect";
 import {
   Deferred,
   Effect,
+  Option,
+  Result,
   Exit,
   PubSub,
   Ref,
@@ -12,6 +14,8 @@ import {
   Struct,
   Schema,
 } from "effect";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
+import type { SessionModelSwitchStatus } from "../../contracts/conversations/session-model-switch";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
@@ -41,6 +45,10 @@ import {
   runtimeOperation,
   cancellableRuntimeOperation,
 } from "./session-runtime-operations";
+
+type MutableModelSwitchReceipt = {
+  -readonly [K in keyof SessionModelSwitchStatus]: SessionModelSwitchStatus[K];
+};
 
 export function createSessionRuntimeHandle(input: {
   readonly shared: SharedRuntime;
@@ -173,7 +181,7 @@ export function createSessionRuntimeHandle(input: {
     }),
   );
 
-  const startTurn = Effect.fn("CakeSessionRuntimes.startTurn")(function* (
+  const startTurnUnlocked = Effect.fn("CakeSessionRuntimes.startTurnUnlocked")(function* (
     delivery: "prompt" | "steer" | "follow-up",
     text: string,
     attachments: ReadonlyArray<Attachment>,
@@ -415,7 +423,9 @@ export function createSessionRuntimeHandle(input: {
         )
         .pipe(sessionError(delivery));
     return turnId;
-  }, shared.turnAdmissions.withPermit);
+  });
+  const startTurn = (...args: Parameters<typeof startTurnUnlocked>) =>
+    shared.turnAdmissions.withPermit(startTurnUnlocked(...args));
 
   const claimAbortedTurns = Effect.fn("CakeSessionRuntimes.claimAbortedTurns")(function* (
     turnIds: ReadonlyArray<string>,
@@ -536,6 +546,159 @@ export function createSessionRuntimeHandle(input: {
   }, shared.queueEdits.withPermit);
 
   return {
+    modelSwitchStatus: () =>
+      Effect.sync(() => (shared.modelSwitch ? { ...shared.modelSwitch } : undefined)),
+    switchModel: Effect.fn("CakeSessionRuntimes.switchModel")(
+      (configuration: ChatConfiguration, afterToolCallId?: string) =>
+        Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            if (!shared.runtime.waitForStop)
+              return yield* new PiSessionError({
+                operation: "switchModel",
+                message: "This runtime cannot join cancellation cleanup; nothing was stopped",
+              });
+            if (
+              shared.modelSwitch?.status === "accepted" ||
+              shared.modelSwitch?.status === "switching"
+            )
+              return yield* new PiSessionError({
+                operation: "switchModel",
+                message:
+                  "A model handoff is already pending for this session; read sessions.model-switch-status",
+              });
+            const receipt: MutableModelSwitchReceipt = {
+              operationId: crypto.randomUUID(),
+              status: "accepted",
+              stage: "receipt",
+            };
+            shared.modelSwitch = receipt;
+            const runningAtRequest =
+              shared.runtime.streaming ||
+              (shared.runtime.executingTurnIds?.().length ?? 0) > 0 ||
+              [...(yield* Ref.get(shared.activeTurns)).values()].some(
+                (delivery) => delivery !== "follow-up",
+              );
+            const finished = yield* Deferred.make<typeof receipt>();
+            const job = Effect.scoped(
+              Effect.gen(function* () {
+                yield* retain().pipe(sessionError("switchModel"));
+                if (afterToolCallId) {
+                  // The executor must return and Pi must record its result before we abort its run.
+                  if (shared.runtime.waitForToolReceipt) {
+                    yield* cancellableRuntimeOperation(
+                      "switchModel.receipt",
+                      (signal) =>
+                        shared.runtime.waitForToolReceipt?.(afterToolCallId, signal) ??
+                        Promise.reject(new Error("Tool receipt unavailable")),
+                    ).pipe(Effect.timeout("1 minute"));
+                  } else {
+                    const result = yield* updates.pipe(
+                      Stream.filterMap((update) =>
+                        update._tag === "Snapshot"
+                          ? Result.succeed(update.snapshot)
+                          : update.event.type === "snapshot-updated"
+                            ? Result.succeed(update.event.snapshot)
+                            : Result.fail(undefined),
+                      ),
+                      Stream.filter(
+                        (value) =>
+                          !value.streaming ||
+                          value.parts.some(
+                            (part) =>
+                              part.kind === "tool" &&
+                              part.id === `tool-${afterToolCallId}` &&
+                              part.state !== "running",
+                          ),
+                      ),
+                      Stream.runHead,
+                      Effect.timeout("1 minute"),
+                      sessionError("switchModel"),
+                    );
+                    if (
+                      Option.isNone(result) ||
+                      !result.value.parts.some(
+                        (part) =>
+                          part.kind === "tool" &&
+                          part.id === `tool-${afterToolCallId}` &&
+                          part.state === "success",
+                      )
+                    )
+                      return yield* new PiSessionError({
+                        operation: "switchModel",
+                        message:
+                          "The calling tool did not finish successfully; nothing was stopped",
+                      });
+                  }
+                }
+                yield* shared.queueEdits.withPermit(
+                  shared.turnAdmissions.withPermit(
+                    Effect.gen(function* () {
+                      receipt.status = "switching";
+                      const running =
+                        runningAtRequest ||
+                        shared.runtime.streaming ||
+                        (shared.runtime.executingTurnIds?.().length ?? 0) > 0 ||
+                        [...(yield* Ref.get(shared.activeTurns)).values()].some(
+                          (delivery) => delivery !== "follow-up",
+                        );
+                      receipt.stage = "stop";
+                      if (running) {
+                        const stoppingTurnIds = shared.runtime.executingTurnIds?.() ?? [];
+                        yield* call("switchModel.stop", (runtime) => runtime.abort());
+                        yield* call(
+                          "switchModel.join",
+                          (runtime) =>
+                            runtime.waitForStop?.() ??
+                            Promise.reject(new Error("Cancellation join unavailable")),
+                        );
+                        // Do not relinquish accepted-turn ownership if abort/join fails.
+                        const claimed = yield* claimAbortedTurns(stoppingTurnIds);
+                        yield* settleAbortedTurns(claimed, undefined);
+                      } else {
+                        // A previous Stop may already hide streaming while cleanup still owns Pi.
+                        yield* call(
+                          "switchModel.join",
+                          (runtime) =>
+                            runtime.waitForStop?.() ??
+                            Promise.reject(new Error("Cancellation join unavailable")),
+                        );
+                      }
+                      receipt.stage = "configure";
+                      yield* call("switchModel.configure", (runtime) =>
+                        runtime.applyConfiguration(configuration),
+                      );
+                      receipt.stage = "continue";
+                      if (running) {
+                        receipt.turnId = yield* startTurnUnlocked("prompt", "Continue.", [], false);
+                      }
+                      yield* (options.onSessionChanged ?? Effect.void).pipe(
+                        sessionError("switchModel.publish"),
+                      );
+                      receipt.stage = "complete";
+                      receipt.status = running ? "continued" : "changed";
+                    }),
+                  ),
+                );
+              }),
+            ).pipe(
+              Effect.catch((error) =>
+                Effect.sync(() => {
+                  receipt.status = "failed";
+                  receipt.error = messageOf(error);
+                }),
+              ),
+              Effect.ensuring(Deferred.succeed(finished, receipt)),
+            );
+            // The handoff belongs to the backend, not the soon-to-be-aborted tool executor.
+            yield* job.pipe(
+              Effect.forkIn(layerScope, { startImmediately: true, uninterruptible: false }),
+            );
+            return afterToolCallId
+              ? { ...receipt }
+              : { ...(yield* restore(Deferred.await(finished))) };
+          }),
+        ),
+    ),
     submit: (input) =>
       deliverInput(
         input.delivery,
@@ -769,9 +932,13 @@ export function createSessionRuntimeHandle(input: {
               .then(() => undefined),
           ),
     applyConfiguration: (configuration) =>
-      call("applyConfiguration", (runtime) => runtime.applyConfiguration(configuration)),
+      shared.queueEdits.withPermit(
+        call("applyConfiguration", (runtime) => runtime.applyConfiguration(configuration)),
+      ),
     setModel: (provider, modelId) =>
-      call("setModel", (runtime) => runtime.setModel(provider, modelId)),
+      shared.queueEdits.withPermit(
+        call("setModel", (runtime) => runtime.setModel(provider, modelId)),
+      ),
     setFastMode: (enabled) =>
       shared.runtime.setFastMode
         ? call("setFastMode", (runtime) => runtime.setFastMode?.(enabled) ?? Promise.resolve())

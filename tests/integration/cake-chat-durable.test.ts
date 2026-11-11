@@ -10,10 +10,18 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { Deferred, Effect, Layer, ManagedRuntime } from "effect";
+import { Deferred, Effect, Layer, ManagedRuntime, Stream } from "effect";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { makePiSettingsLive } from "../../src/services/pi/live/PiSettingsLive";
-import { CakeSessionRuntimes, PiSessionError } from "../../src/services/pi/CakeSessionRuntimes";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  options as runtimeOptions,
+} from "../app/helpers/piRuntimeFixture";
+import {
+  CakeSessionRuntimes,
+  makeCakeSessionRuntimesLayer,
+  PiSessionError,
+} from "../../src/services/pi/CakeSessionRuntimes";
 import { piSettingsHandlers } from "../../src/ipc/server/PiSettingsHandlers";
 import { makeTaskInputStorageLive } from "../../src/services/storage/TaskInputStorageLive";
 import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage";
@@ -37,7 +45,10 @@ import {
 } from "../../src/services/pi-durable/CakeChatDurable";
 import { projectChatSessionId } from "../../src/domain/cake-chats/cakeChatLocations";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
-import type { CakeSessionRuntime } from "../../src/services/pi/runtime/cake-session-runtime";
+import type {
+  CakeSessionRuntime,
+  CakeSessionRuntimeEvent,
+} from "../../src/services/pi/runtime/cake-session-runtime";
 import type { ConversationSnapshot } from "../../src/contracts/conversations/session-contract";
 import { durableAnswer, durableModel } from "../fixtures/durable-chat";
 import { TurnDetachedError } from "../../src/services/pi/runtime/RuntimeTurnCompletion";
@@ -67,6 +78,7 @@ async function fixture() {
   if (!provider) throw new Error("Missing fixture provider");
   const model = { ...durableModel, provider: "openai" };
   const requests: Context[] = [];
+  const selectedModels: string[] = [];
   const keys: Array<string | undefined> = [];
   const providerSessions: Array<string | undefined> = [];
   const started = Deferred.makeUnsafe<void>();
@@ -76,6 +88,7 @@ async function fixture() {
   let answer: (index: number) => ReturnType<typeof durableAnswer> = () => durableAnswer("Done");
   const streamSimple: Provider["streamSimple"] = (selected, request, options) => {
     requests.push(structuredClone(request));
+    selectedModels.push(selected.id);
     keys.push(options?.apiKey);
     providerSessions.push(options?.sessionId);
     const stream = createAssistantMessageEventStream();
@@ -117,8 +130,8 @@ async function fixture() {
   };
   legacy.registerNativeProvider({
     ...provider,
-    getModels: () => [model],
-    getAllModels: () => [model],
+    getModels: () => [model, { ...model, id: "switched", name: "Switched" }],
+    getAllModels: () => [model, { ...model, id: "switched", name: "Switched" }],
     streamSimple,
     stream: (selected, request, options) =>
       streamSimple(selected, request, { signal: options?.signal, apiKey: options?.apiKey }),
@@ -156,6 +169,7 @@ async function fixture() {
     globalControl?: CakeSessionRuntimeSetup["globalControl"],
     attachmentReferenceControl?: CakeSessionRuntimeSetup["attachmentReferenceControl"],
     scope?: Pick<CakeSessionRuntimeSetup, "sessionId" | "sessionDir" | "additionalSystemPrompt">,
+    onRuntimeEvent?: (event: CakeSessionRuntimeEvent) => void,
   ) => {
     const runtime = await serviceRuntime.runPromise(
       service.createRuntime({
@@ -189,6 +203,7 @@ async function fixture() {
         },
         onTurnResult: (_turnId, result) => results.push(result),
         onEvent(event) {
+          onRuntimeEvent?.(event);
           if (event.type === "snapshot") {
             snapshots.push(event.snapshot);
             for (const listener of watchers) listener(event.snapshot);
@@ -247,6 +262,7 @@ async function fixture() {
     openSideChat,
     serviceRuntime,
     requests,
+    selectedModels,
     keys,
     providerSessions,
     summarize,
@@ -701,6 +717,180 @@ it("saves and reloads global Pi settings while permanent Cake Chat is busy witho
   );
   expect(JSON.stringify(settled.parts)).toContain("Retain this active turn");
   expect(f.requests).toHaveLength(2);
+});
+
+it("self-switches through the real Durable Cake tool after recording its accepted receipt", async () => {
+  const f = await fixture();
+  const configuration = {
+    provider: "openai",
+    modelId: "switched",
+    thinkingLevel: "off" as const,
+    fastMode: false,
+  };
+  f.answer((index) =>
+    index === 1
+      ? {
+          ...durableAnswer("Switching"),
+          stopReason: "toolUse",
+          content: [
+            {
+              type: "toolCall",
+              id: "self-switch",
+              name: "cake",
+              arguments: {
+                command: "sessions.set-model",
+                input: { sessionId: CAKE_CHAT_SESSION_ID, model: configuration },
+              },
+            },
+          ],
+        }
+      : durableAnswer("Continued"),
+  );
+  const receipts: unknown[] = [];
+  const switchCompleted = Deferred.makeUnsafe<void>();
+  let openedRuntime: CakeSessionRuntime | undefined;
+  const control: NonNullable<CakeSessionRuntimeSetup["globalControl"]> = {
+    tools: backendAgentTools().filter((tool) => tool.command === "sessions.set-model"),
+    invoke: async (invocation) => {
+      expect(invocation.toolCallId).toBe("self-switch");
+      const result = await handles.runPromise(
+        Effect.gen(function* () {
+          const handle = yield* (yield* CakeSessionRuntimes).acquireSession(CAKE_CHAT_SESSION_ID);
+          return yield* handle.switchModel(configuration, invocation.toolCallId);
+        }).pipe(Effect.scoped),
+      );
+      receipts.push(result);
+      return {
+        ok: true,
+        command: "sessions.set-model",
+        sessionId: CAKE_CHAT_SESSION_ID,
+        receipt: result,
+      };
+    },
+  };
+  const handles = ManagedRuntime.make(
+    makeCakeSessionRuntimesLayer({
+      sessionIds: () => Stream.empty,
+      catalog: () => Stream.empty,
+      catalogEntry: () => Effect.succeed(undefined),
+      inspect: () => Effect.succeed(undefined),
+      changelog: () => Effect.succeed(""),
+      createRuntime: (options) =>
+        Effect.tryPromise({
+          try: async () => {
+            openedRuntime = (await f.open(control, undefined, undefined, options.onEvent)).runtime;
+            return openedRuntime;
+          },
+          catch: (cause) => new PiSessionError({ operation: "fixture", message: String(cause) }),
+        }),
+    }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+  );
+  cleanup.push(() => handles.dispose());
+  const handle = await handles.runPromise(
+    Effect.gen(function* () {
+      return yield* (yield* CakeSessionRuntimes).acquire({
+        ...runtimeOptions({ sessionId: CAKE_CHAT_SESSION_ID, globalControl: control }),
+        profile: { _tag: "CakeChatSession" },
+        onSessionChanged: Deferred.succeed(switchCompleted, undefined),
+      });
+    }).pipe(Effect.scoped),
+  );
+  await handles.runPromise(handle.prompt("Change your model and continue"));
+  const runtime = openedRuntime;
+  if (!runtime) throw new Error("Expected the opened permanent runtime");
+  const final = await f.waitSnapshot(
+    runtime,
+    (value) =>
+      !value.streaming &&
+      value.model?.id === "switched" &&
+      value.parts.some(
+        (part) => part.kind === "text" && part.text === "Continue." && !part.deliveryState,
+      ),
+  );
+  await Effect.runPromise(Deferred.await(switchCompleted));
+  expect(receipts).toEqual([expect.objectContaining({ status: "accepted", stage: "receipt" })]);
+  expect(await handles.runPromise(handle.modelSwitchStatus())).toMatchObject({
+    status: "continued",
+    stage: "complete",
+  });
+  expect(
+    final.parts.filter(
+      (part) => part.kind === "text" && part.role === "user" && part.text === "Continue.",
+    ),
+  ).toHaveLength(1);
+  expect(f.selectedModels).toContain("switched");
+});
+
+it("switches a running permanent chat only after Durable cleanup, retaining queued human input and persisted model", async () => {
+  const f = await fixture();
+  const { runtime, close } = await f.open();
+  f.hold(true);
+  const first = runtime
+    .prompt("Original work", "prompt", [], false, ids.first)
+    .catch((error: unknown) => error);
+  await Effect.runPromise(Deferred.await(f.started));
+  const queued = runtime.prompt("Queued human input", "follow-up", [], false, ids.second);
+  await f.waitSnapshot(runtime, (value) =>
+    value.parts.some(
+      (part) =>
+        part.kind === "text" &&
+        part.text === "Queued human input" &&
+        part.deliveryState === "queued",
+    ),
+  );
+  const handles = ManagedRuntime.make(
+    makeCakeSessionRuntimesLayer({
+      sessionIds: () => Stream.empty,
+      catalog: () => Stream.empty,
+      catalogEntry: () => Effect.succeed(undefined),
+      inspect: () => Effect.succeed(undefined),
+      changelog: () => Effect.succeed(""),
+      createRuntime: () => Effect.succeed(runtime),
+    }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+  );
+  cleanup.push(() => handles.dispose());
+  f.hold(false);
+  const result = await handles.runPromise(
+    Effect.gen(function* () {
+      const handle = yield* (yield* CakeSessionRuntimes).acquire({
+        ...runtimeOptions({
+          sessionId: CAKE_CHAT_SESSION_ID,
+          globalControl: { tools: [], invoke: async () => ({}) },
+        }),
+        profile: { _tag: "CakeChatSession" },
+      });
+      return yield* handle.switchModel({
+        provider: "openai",
+        modelId: "switched",
+        thinkingLevel: "off",
+        fastMode: false,
+      });
+    }).pipe(Effect.scoped),
+  );
+  expect(result.status).toBe("continued");
+  expect(await first).toBeInstanceOf(Error);
+  await queued;
+  const final = await f.waitSnapshot(
+    runtime,
+    (value) =>
+      !value.streaming &&
+      value.parts.some(
+        (part) => part.kind === "text" && part.text === "Continue." && !part.deliveryState,
+      ),
+  );
+  expect(final.model?.id).toBe("switched");
+  expect(f.selectedModels[0]).toBe("fixture");
+  expect(f.selectedModels.slice(1).every((id) => id === "switched")).toBe(true);
+  for (const text of ["Original work", "Queued human input", "Continue."])
+    expect(
+      final.parts.filter(
+        (part) =>
+          part.kind === "text" && part.role === "user" && part.text === text && !part.deliveryState,
+      ),
+    ).toHaveLength(1);
+  await close();
+  const reopened = await f.open();
+  expect((await reopened.runtime.snapshot()).model?.id).toBe("switched");
 });
 
 it("keeps attachment bytes out of provider input, originals, zoom and future memory across compaction and reopen", async () => {

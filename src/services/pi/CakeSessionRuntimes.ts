@@ -163,7 +163,14 @@ export interface CakeSessionRuntimeAcquireOptions {
 
 import type { SideChatHistory, SideChatHistoryImport } from "./side-chat-history";
 
+import type { SessionModelSwitchStatus } from "../../contracts/conversations/session-model-switch";
+
 export interface CakeSessionHandle {
+  readonly switchModel: (
+    configuration: ChatConfiguration,
+    afterToolCallId?: string,
+  ) => Effect.Effect<SessionModelSwitchStatus, PiSessionError>;
+  readonly modelSwitchStatus: () => Effect.Effect<SessionModelSwitchStatus | undefined>;
   readonly exportSideChatHistory: () => Effect.Effect<SideChatHistory, PiSessionError>;
   readonly importSideChatHistory: (
     input: SideChatHistoryImport,

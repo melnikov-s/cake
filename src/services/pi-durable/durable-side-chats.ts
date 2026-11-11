@@ -537,6 +537,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         await harness.waitForTask(job, BACKGROUND_CONTEXT);
       },
       abort: turnStop.abort,
+      waitForStop: turnStop.waitForStop,
       setModel: (provider, modelId) => configure({ model: { provider, modelId } }),
       setThinkingLevel: (thinkingLevel) => configure({ thinkingLevel }),
       applyConfiguration: (configuration) =>

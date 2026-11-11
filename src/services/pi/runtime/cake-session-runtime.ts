@@ -300,6 +300,9 @@ export interface CakeSessionRuntime {
   inspectSession(query: SessionInspectionQuery): Promise<JsonValue>;
   /** `stop` attributes a deliberate stop; omitted, the abort reads as an interruption. */
   abort(stop?: TurnStop): Promise<void>;
+  /** Join the cleanup initiated by abort; rejection fences runtime reuse. */
+  waitForStop?(): Promise<void>;
+  waitForToolReceipt?(toolCallId: string, signal: AbortSignal): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
   /** Applies a full chat configuration atomically, emitting a single snapshot. */
@@ -968,6 +971,52 @@ export async function createCakeSessionRuntime(
       await shutdownDiagnostics.promise("pi.turn.abort", shutdownResource(cakeSessionId), () =>
         turnController.abort(),
       );
+    },
+    waitForStop: turnController.waitForStop,
+    waitForToolReceipt(toolCallId, signal) {
+      return new Promise<void>((resolve, reject) => {
+        let unsubscribe: () => void = () => undefined;
+        const finish = (error?: Error) => {
+          unsubscribe();
+          signal.removeEventListener("abort", cancel);
+          if (error) reject(error);
+          else resolve();
+        };
+        const cancel = () => finish(new Error("Waiting for the calling tool was canceled"));
+        const check = () => {
+          const entry = session.sessionManager
+            .getBranch()
+            .find(
+              (item) =>
+                item.type === "message" &&
+                item.message.role === "toolResult" &&
+                item.message.toolCallId === toolCallId,
+            );
+          if (entry?.type === "message" && entry.message.role === "toolResult")
+            finish(
+              entry.message.isError
+                ? new Error("The calling tool failed; nothing was stopped")
+                : undefined,
+            );
+          else if (!session.isStreaming)
+            finish(
+              new Error("The calling turn ended before its tool receipt; nothing was stopped"),
+            );
+        };
+        unsubscribe = session.subscribe((event) => {
+          if (
+            (event.type === "message_end" &&
+              event.message.role === "toolResult" &&
+              event.message.toolCallId === toolCallId) ||
+            event.type === "agent_settled"
+          )
+            // Pi listeners run before the synchronous transcript append.
+            queueMicrotask(check);
+        });
+        signal.addEventListener("abort", cancel, { once: true });
+        if (signal.aborted) cancel();
+        else check();
+      });
     },
     setModel: configuration.setModel,
     setThinkingLevel: configuration.setThinkingLevel,

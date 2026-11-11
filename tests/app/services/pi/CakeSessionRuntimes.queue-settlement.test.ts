@@ -159,6 +159,7 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
           clearQueue: controller.clearQueue,
           sendQueuedMessageNow: controller.sendQueuedMessageNow,
           abort: controller.abort,
+          waitForStop: controller.waitForStop,
         }),
     }).pipe(Layer.provide(Layer.succeed(RuntimeRecoveryStorage, storage))),
   );
@@ -212,6 +213,31 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
 });
 
 describe("CakeSessionRuntimes queue settlement", () => {
+  it.effect("model handoff retains queued human turn IDs and recovery while continuing once", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.submit(input("active"));
+      yield* f.submit(input("human-next"));
+      const before = (yield* f.handle.pendingMessages()).items;
+      const result = yield* f.handle.switchModel({
+        provider: "fixture",
+        modelId: "new",
+        thinkingLevel: "off",
+        fastMode: false,
+      });
+      assert.equal(result.status, "continued");
+      yield* f.settled("active", "aborted");
+      assert.equal(yield* f.nextDelivery(), "Continue.");
+      const after = (yield* f.handle.pendingMessages()).items;
+      assert.deepEqual(
+        after.map((item) => [item.itemId, item.text]),
+        before.map((item) => [item.itemId, item.text]),
+      );
+      const record = yield* f.reopened();
+      assert.ok(record?.inputs.some((entry) => entry.turnId === "human-next"));
+      assert.ok(!record?.canceledInputIds?.includes("human-next"));
+    }).pipe(Effect.provide(platform)),
+  );
   for (const cancel of ["remove", "clear"] as const) {
     it.effect(
       `${cancel} queued input while active preserves settlement and future automatic admissions`,

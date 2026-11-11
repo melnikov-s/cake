@@ -1,5 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 import { AppWorkspaceView } from "../../contracts/application/app-workspace-view";
+import { SessionModelSwitchOutput } from "../../contracts/conversations/session-model-switch";
 import { SessionCompactionOutput } from "../../contracts/project-sessions/session-compaction";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
@@ -69,6 +70,7 @@ export const forwardTaskInputControl = Effect.fn("CakeChats.forwardTaskInputCont
     readonly name: string;
     readonly arguments: JsonValue;
     readonly sourceEntryId?: string;
+    readonly toolCallId?: string;
   },
 ) {
   if (invocation.name === "sessions.send" || invocation.name === "sessions.reply")
@@ -131,6 +133,8 @@ export const safeCoordinatorProjection = Effect.fn("CakeChats.safeCoordinatorPro
     // Generic recipient redaction would erase their outcome and add an invalid title.
     const compaction = Schema.decodeUnknownOption(SessionCompactionOutput)(value);
     if (Option.isSome(compaction)) return compaction.value;
+    const modelSwitch = Schema.decodeUnknownOption(SessionModelSwitchOutput)(value);
+    if (Option.isSome(modelSwitch)) return modelSwitch.value;
     const inputs = yield* TaskInputStorage;
     const pointer = Schema.decodeUnknownOption(SessionPointer)(value);
     if (Option.isSome(pointer) && (yield* inputs.isRecipient(pointer.value.sessionId))) {

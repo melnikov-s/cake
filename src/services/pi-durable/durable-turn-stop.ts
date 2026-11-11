@@ -47,6 +47,9 @@ export function createDurableTurnStop(options: {
   return {
     project,
     stopped: () => stopped,
+    waitForStop: async () => {
+      await cleanup;
+    },
     async beforeInput() {
       const admitted = generation;
       if (cleanup) await cleanup;

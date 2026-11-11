@@ -820,7 +820,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 ),
                 { signal },
               ),
-        invokeAppControl: async (command, input, signal, sourceEntryId) => {
+        invokeAppControl: async (command, input, signal, sourceEntryId, toolCallId) => {
           if (command === "sessions.send")
             input = {
               ...input,
@@ -874,12 +874,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     return yield* backendAgentControl.invoke(command, invocation.arguments, {
                       kind: "project-session",
                       sourceEntryId,
+                      toolCallId,
                       sessionId:
                         sideChatSessionId &&
                         (command === "sessions.send" ||
                           command === "sessions.reply" ||
                           command === "sessions.thread" ||
-                          command === "sessions.close-thread")
+                          command === "sessions.close-thread" ||
+                          command === "sessions.set-model")
                           ? sideChatSessionId
                           : sessionId,
                       title: sideChatSessionId

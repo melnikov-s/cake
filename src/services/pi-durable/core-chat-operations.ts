@@ -34,6 +34,10 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
       "delivery: steer corrects active work; prompt assigns now; queue orders future work; fyi is passive. Omission steers active/starts idle. resultDelivery controls the return, not outbound delivery; fyi cannot request reply or forward attachments. Receipt is intake, not execution.",
     );
   add("sessions.abort", ["reason"]);
+  if (add("sessions.set-model"))
+    lines.push(
+      "Idle: set only. Active: stop, join cleanup, set, Continue once. Self: accepted is not success; verify sessions.model-switch-status. Never send a second Continue.",
+    );
   if (add("sessions.tool-prune"))
     lines.push(
       "Only when asked: tool prune deterministically strips tool calls/results, preserves dialogue, and makes no model call. sessions.compact/compact-batch generate model summaries; never substitute them for tool prune.",

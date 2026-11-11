@@ -13,6 +13,10 @@ import { NoticeDeliveryRetry } from "../session-families/session-family-document
 import { ResultDelivery } from "../conversations/result-delivery";
 import { Schema } from "effect";
 import {
+  SessionModelSwitchInput,
+  SessionModelSwitchTarget,
+} from "../conversations/session-model-switch";
+import {
   AutomationAgentInvocation,
   automationToolDescriptions,
   automationMemoryToolDescriptions,
@@ -105,6 +109,8 @@ export const BackendAgentInvocation = Schema.Union([
   operation("sessions.list", AgentSessionListInput),
   operation("sessions.info", Schema.Struct(target)),
   operation("sessions.abort", AgentSessionAbortInput),
+  operation("sessions.set-model", SessionModelSwitchInput),
+  operation("sessions.model-switch-status", SessionModelSwitchTarget),
   operation("sessions.compact", SessionCompactInput),
   operation("sessions.tool-prune", SessionToolPruneInput),
   operation("sessions.compact-batch", SessionCompactBatchInput),
@@ -178,6 +184,8 @@ export const backendAgentCommands: ReadonlySet<string> = new Set([
   "sessions.set-labels",
   "sessions.info",
   "sessions.abort",
+  "sessions.set-model",
+  "sessions.model-switch-status",
   "sessions.compact",
   "sessions.tool-prune",
   "sessions.compact-batch",
