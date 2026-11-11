@@ -40,7 +40,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 min-w-0 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
+            className="h-6 shrink-0 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
             aria-current={!projectPath && lineage.length === 0 ? "page" : undefined}
             onClick={() => {
               root.appShellStore.recordConversationInteraction({
@@ -56,7 +56,10 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 min-w-0 max-w-full gap-2 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
+            className={cn(
+              "h-6 min-w-0 shrink-0 justify-start gap-2 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
+              lineage.length > 0 || previewTitle ? "max-w-1/2" : "max-w-full",
+            )}
             title={projectPath}
             aria-current={lineage.length === 0 && !previewTitle ? "page" : undefined}
             onClick={() => void root.navigationStore.openProjectChat(projectPath)}
@@ -94,7 +97,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               variant="ghost"
               size="sm"
               className={cn(
-                "h-6 min-w-0 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
+                "h-6 min-w-0 max-w-fit flex-1 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
                 index === lineage.length - 1 && "font-bold text-foreground",
               )}
               title={node.title}

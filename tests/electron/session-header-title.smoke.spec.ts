@@ -8,6 +8,10 @@ for (const [state, width, theme] of [
   ["long-title", 800, "dark"],
   ["long-title", 1440, "light"],
   ["short-title", 1000, "light"],
+  ["long-subagent-title", 1024, "light"],
+  ["long-subagent-title", 800, "dark"],
+  ["project-chat", 1024, "light"],
+  ["project-chat", 800, "light"],
 ] as const) {
   test(`session header ${state} at ${width}px (${theme})`, async () => {
     test.setTimeout(60_000);
