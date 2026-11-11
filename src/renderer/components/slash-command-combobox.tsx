@@ -504,6 +504,7 @@ export function SlashCommandCombobox({
             data-cake-hint-key={inputProps["data-cake-hint-key"]}
             data-composer-tab-completion={menuKind === "commands" ? "true" : undefined}
             spellCheck={!draft.startsWith("/")}
+            autoCorrect="off"
             onCursorChange={setCursor}
             aria-expanded={open}
             aria-controls={open ? listboxId : undefined}
@@ -548,6 +549,7 @@ export function SlashCommandCombobox({
           aria-controls={open ? listboxId : undefined}
           aria-activedescendant={open ? `${listboxId}-option-${selectedIndex}` : undefined}
           spellCheck={!draft.startsWith("/")}
+          autoCorrect="off"
           value={inputValue}
           onChange={(event) => {
             const nextValue = event.currentTarget.value;

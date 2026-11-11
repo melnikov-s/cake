@@ -248,6 +248,7 @@ describe("ElectronLive client state", () => {
           isEditable: true,
           selectionText: "word",
           misspelledWord: "wrod",
+          spellcheckEnabled: true,
           dictionarySuggestions: ["word", "rod", "wood", "road", "row", "sixth"],
           editFlags: { canCut: true, canCopy: false, canPaste: true },
         };
@@ -338,7 +339,25 @@ describe("ElectronLive client state", () => {
         ]);
         expect(native.menuIcon).toHaveBeenCalledWith(expect.any(Buffer), { scaleFactor: 2 });
         yield* electron.start(windowLifecycle);
+        Context.get(context, ClientWorkspaces).associateWorkspace(1, "/project");
+        const owner = electron.windowsForWorkspace("/project")[0]![1];
+        native.fromId.mockImplementation(() => {
+          queueMicrotask(() =>
+            owner.webContents.emit(
+              "context-menu",
+              {},
+              {
+                isEditable: true,
+                spellcheckEnabled: true,
+                misspelledWord: "wrod",
+                dictionarySuggestions: ["word"],
+              },
+            ),
+          );
+          return owner.webContents;
+        });
         native.popup.mockImplementation(({ callback }) => {
+          expect(native.template[0]?.label).toBe("word");
           const item = native.template.find((entry) => entry.label === "Insert model reference");
           if (!item?.click) throw new Error("Missing composer action");
           if (choice === "select") Reflect.apply(item.click, undefined, []);
@@ -362,6 +381,127 @@ describe("ElectronLive client state", () => {
         expect(
           native.template.find((item) => item.label === "Insert session reference")?.enabled,
         ).toBe(false);
+      }),
+  );
+
+  it.effect.each([
+    {
+      word: "wrod",
+      suggestions: ["word", "rod", "wood", "road", "row", "sixth"],
+      enabled: true,
+      labels: ["word", "rod", "wood", "road", "row"],
+    },
+    { word: "zzzzzzzzz", suggestions: [], enabled: true, labels: ["No Suggestions"] },
+    { word: "", suggestions: [], enabled: true, labels: [] },
+    { word: "wrod", suggestions: ["word"], enabled: false, labels: ["word"] },
+    { word: "", suggestions: [], enabled: false, labels: [] },
+  ])(
+    "composer spelling word=$word enabled=$enabled preserves native edits and Cake actions",
+    ({ word, suggestions, enabled, labels }) =>
+      Effect.gen(function* () {
+        native.destroyed = false;
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        yield* electron.start(windowLifecycle);
+        Context.get(context, ClientWorkspaces).associateWorkspace(1, "/project");
+        const owner = electron.windowsForWorkspace("/project")[0]![1];
+        native.fromWebContents.mockReturnValue(owner);
+        const destroyedListeners = owner.webContents.listenerCount("destroyed");
+        native.fromId.mockImplementation(() => {
+          queueMicrotask(() =>
+            owner.webContents.emit(
+              "context-menu",
+              {},
+              {
+                isEditable: true,
+                spellcheckEnabled: enabled,
+                misspelledWord: word,
+                dictionarySuggestions: suggestions,
+              },
+            ),
+          );
+          return owner.webContents;
+        });
+        native.popup.mockImplementation(({ callback }) => {
+          expect(native.template.slice(0, labels.length).map((item) => item.label)).toEqual(labels);
+          if (labels[0] === "No Suggestions") expect(native.template[0]?.enabled).toBe(false);
+          if (labels[0] === "word") {
+            Reflect.apply(native.template[0]!.click!, undefined, []);
+            expect(native.replaceMisspelling).toHaveBeenCalledExactlyOnceWith("word");
+          }
+          callback?.();
+        });
+        expect(
+          yield* electron.showComposerContextMenu(1, {
+            selection: "",
+            x: 24,
+            y: 48,
+            canInsertModel: true,
+            canInsertSession: true,
+            canMoveDraft: true,
+            canReword: false,
+          }),
+        ).toEqual({ action: undefined });
+        expect(native.popup).toHaveBeenCalledOnce();
+        expect(native.template.filter((item) => item.role).map((item) => item.role)).toEqual([
+          "cut",
+          "copy",
+          "paste",
+          "selectAll",
+        ]);
+        expect(
+          native.template
+            .filter((item) => item.label)
+            .slice(labels.length)
+            .map((item) => item.label),
+        ).toEqual([
+          "Insert model reference",
+          "Insert session reference",
+          "Move draft to session…",
+          "Reword",
+          "Reword with Prompt…",
+        ]);
+        expect(owner.webContents.listenerCount("destroyed")).toBe(destroyedListeners);
+      }),
+  );
+
+  it.effect.each(["stop", "destroy", "interrupt"] as const)(
+    "pending composer context-menu cleans up on %s before Chromium responds",
+    (reason) =>
+      Effect.gen(function* () {
+        native.destroyed = false;
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        yield* electron.start(windowLifecycle);
+        Context.get(context, ClientWorkspaces).associateWorkspace(1, "/project");
+        const owner = electron.windowsForWorkspace("/project")[0]![1];
+        const listeners = owner.webContents.listenerCount("destroyed");
+        native.fromWebContents.mockReturnValue(owner);
+        const waiting = yield* Queue.unbounded<void>();
+        native.fromId.mockImplementation(() => {
+          Queue.offerUnsafe(waiting, undefined);
+          return owner.webContents;
+        });
+        const showing = yield* electron
+          .showComposerContextMenu(1, {
+            selection: "",
+            x: 24,
+            y: 48,
+            canInsertModel: true,
+            canInsertSession: false,
+            canMoveDraft: false,
+            canReword: false,
+          })
+          .pipe(Effect.forkChild);
+        yield* Queue.take(waiting);
+        if (reason === "interrupt") yield* Fiber.interrupt(showing);
+        else {
+          if (reason === "stop") yield* electron.stop();
+          else owner.webContents.emit("destroyed");
+          expect(yield* Fiber.join(showing)).toEqual({ action: undefined });
+        }
+        expect(native.popup).not.toHaveBeenCalled();
+        expect(owner.webContents.listenerCount("destroyed")).toBeLessThanOrEqual(listeners);
       }),
   );
 

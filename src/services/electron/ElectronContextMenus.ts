@@ -6,6 +6,7 @@ import {
   Menu,
   nativeImage,
   type MenuItemConstructorOptions,
+  type ContextMenuParams,
   type WebContents,
 } from "electron";
 import type { cakeRpcSuccessSchemas } from "../../contracts/application/cake-rpc-contract";
@@ -40,6 +41,29 @@ const iconMenuEntry = ({ icon: iconPath, ...entry }: IconMenuEntry) => {
 /** Native context menus and their transient popups; the Electron service owns their lifetime. */
 export const makeElectronContextMenus = (options: ElectronContextMenuOptions) => {
   const openSessionContextMenus = new Set<Menu>();
+  const composerMenus = new Map<
+    number,
+    {
+      show(params: ContextMenuParams): void;
+      dismiss(): void;
+    }
+  >();
+  const spellingItems = (
+    sender: WebContents,
+    params: ContextMenuParams,
+  ): MenuItemConstructorOptions[] => {
+    // macOS can report spellcheckEnabled=false while supplying a native misspelling.
+    if (!params.misspelledWord) return [];
+    return [
+      ...(params.dictionarySuggestions.length
+        ? params.dictionarySuggestions.slice(0, 5).map((suggestion) => ({
+            label: suggestion,
+            click: () => sender.replaceMisspelling(suggestion),
+          }))
+        : [{ label: "No Suggestions", enabled: false }]),
+      { type: "separator" },
+    ];
+  };
   const copyText = (window: BrowserWindow, text: string): void => {
     void clipboard
       .writeText(text)
@@ -104,47 +128,65 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
         const owner = BrowserWindow.fromWebContents(sender);
         if (!owner) return {};
         return yield* Effect.tryPromise({
-          try: () =>
+          try: (signal) =>
             new Promise<SuccessComposerMenu>((resolve) => {
               let completed = false;
+              let menu: Menu | undefined;
               const finish = (action?: SuccessComposerMenu["action"]) => {
                 if (completed) return;
                 completed = true;
+                composerMenus.delete(sender.id);
+                sender.removeListener("destroyed", dismiss);
+                signal.removeEventListener("abort", dismiss);
+                menu?.closePopup();
                 resolve({ action });
               };
-              Menu.buildFromTemplate([
-                { role: "cut" },
-                { role: "copy" },
-                { role: "paste" },
-                { type: "separator" },
-                {
-                  label: "Insert model reference",
-                  enabled: request.canInsertModel,
-                  click: () => finish("insert-model"),
+              const dismiss = () => finish();
+              composerMenus.get(sender.id)?.dismiss();
+              sender.once("destroyed", dismiss);
+              signal.addEventListener("abort", dismiss, { once: true });
+              // The renderer sends this request before allowing Chromium's context-menu
+              // default action. Wait for its native params rather than opening two menus.
+              composerMenus.set(sender.id, {
+                dismiss,
+                show: (params) => {
+                  menu = Menu.buildFromTemplate([
+                    ...spellingItems(sender, params),
+                    { role: "cut" },
+                    { role: "copy" },
+                    { role: "paste" },
+                    { type: "separator" },
+                    {
+                      label: "Insert model reference",
+                      enabled: request.canInsertModel,
+                      click: () => finish("insert-model"),
+                    },
+                    {
+                      label: "Insert session reference",
+                      enabled: request.canInsertSession,
+                      click: () => finish("insert-session"),
+                    },
+                    {
+                      label: "Move draft to session…",
+                      enabled: request.canMoveDraft,
+                      click: () => finish("move-draft"),
+                    },
+                    {
+                      label: "Reword",
+                      enabled: request.canReword && options.canRewordSelection(),
+                      click: () => finish("reword"),
+                    },
+                    {
+                      label: "Reword with Prompt…",
+                      enabled: request.canReword && options.canRewordSelection(),
+                      click: () => finish("reword-with-prompt"),
+                    },
+                    { type: "separator" },
+                    { role: "selectAll" },
+                  ]);
+                  menu.popup({ window: owner, x: request.x, y: request.y, callback: dismiss });
                 },
-                {
-                  label: "Insert session reference",
-                  enabled: request.canInsertSession,
-                  click: () => finish("insert-session"),
-                },
-                {
-                  label: "Move draft to session…",
-                  enabled: request.canMoveDraft,
-                  click: () => finish("move-draft"),
-                },
-                {
-                  label: "Reword",
-                  enabled: request.canReword && options.canRewordSelection(),
-                  click: () => finish("reword"),
-                },
-                {
-                  label: "Reword with Prompt…",
-                  enabled: request.canReword && options.canRewordSelection(),
-                  click: () => finish("reword-with-prompt"),
-                },
-                { type: "separator" },
-                { role: "selectAll" },
-              ]).popup({ window: owner, x: request.x, y: request.y, callback: () => finish() });
+              });
             }),
           catch: electronError,
         });
@@ -286,6 +328,11 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
     operations,
     installEditMenu: (window: BrowserWindow) => {
       window.webContents.on("context-menu", (_event, params) => {
+        const composer = composerMenus.get(window.webContents.id);
+        if (composer) {
+          composer.show(params);
+          return;
+        }
         if (
           !params.isEditable &&
           !params.selectionText &&
@@ -293,17 +340,7 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
           !params.linkURL
         )
           return;
-        const template: MenuItemConstructorOptions[] = [];
-        if (params.misspelledWord) {
-          for (const suggestion of params.dictionarySuggestions.slice(0, 5))
-            template.push({
-              label: suggestion,
-              click: () => window.webContents.replaceMisspelling(suggestion),
-            });
-          if (!params.dictionarySuggestions.length)
-            template.push({ label: "No Suggestions", enabled: false });
-          template.push({ type: "separator" });
-        }
+        const template = spellingItems(window.webContents, params);
         if (params.linkURL)
           template.push(
             { label: "Copy Link", click: () => copyText(window, params.linkURL) },
@@ -323,6 +360,7 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
       });
     },
     stop: () => {
+      for (const composer of composerMenus.values()) composer.dismiss();
       for (const menu of openSessionContextMenus) menu.closePopup();
       openSessionContextMenus.clear();
     },

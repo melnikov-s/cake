@@ -248,7 +248,9 @@ export const ChatComposerInput = observer(function ChatComposerInput({
           if (!input) return;
           const start = input.selectionStart;
           const end = input.selectionEnd;
-          event.preventDefault();
+          // Desktop needs Chromium's default event to supply native spelling suggestions.
+          // Browser clients still replace the browser menu with Cake's menu.
+          if (!window.cake) event.preventDefault();
           const selection = {
             draft: input.value,
             start,

@@ -13,6 +13,8 @@ import {
   SlashCommandCombobox,
 } from "../../../src/renderer/components/slash-command-combobox";
 
+import { serializeModelReference } from "../../../src/contracts/model-presets/model-reference";
+
 type SlashCommand = ConversationSnapshot["commands"][number];
 
 function command(name: string): SlashCommand {
@@ -213,23 +215,39 @@ describe("SlashCommandCombobox", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("disables spellcheck while entering a slash command", () => {
-    const renderCombobox = (value: string) => (
-      <SlashCommandCombobox
-        aria-label="Message"
-        commands={[command("help")]}
-        value={value}
-        onValueChange={vi.fn()}
-        onSubmit={vi.fn()}
-      />
-    );
-    act(() => root.render(renderCombobox("hello")));
-    const input = container.querySelector<HTMLTextAreaElement>('[role="combobox"]')!;
+  it.each([false, true])(
+    "checks prose without autocorrect, excluding slash commands (references=%s)",
+    (references) => {
+      const renderCombobox = (value: string) => (
+        <SlashCommandCombobox
+          aria-label="Message"
+          commands={[command("help")]}
+          value={value}
+          onValueChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onEditReference={references ? vi.fn() : undefined}
+        />
+      );
+      const prefix = references
+        ? serializeModelReference({
+            provider: "fixture",
+            modelId: "model",
+            thinkingLevel: "off",
+            fastMode: false,
+          }) + " "
+        : "";
+      act(() => root.render(renderCombobox(prefix + "hello")));
+      const input = container.querySelector<HTMLElement>('[role="combobox"]')!;
 
-    expect(input.getAttribute("spellcheck")).toBe("true");
-    act(() => root.render(renderCombobox("  /help argument")));
-    expect(input.getAttribute("spellcheck")).toBe("false");
-  });
+      expect(input.getAttribute("spellcheck")).toBe("true");
+      expect(input.getAttribute("autocorrect")).toBe("off");
+      act(() => root.render(renderCombobox("  /help argument")));
+      expect(input.getAttribute("spellcheck")).toBe("false");
+      act(() => root.render(renderCombobox("ordinary prose")));
+      expect(input.getAttribute("spellcheck")).toBe("true");
+      expect(input.getAttribute("autocorrect")).toBe("off");
+    },
+  );
 
   it("submits with Enter when the command menu is closed", () => {
     const onSubmit = vi.fn();
