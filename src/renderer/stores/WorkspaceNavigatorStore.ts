@@ -26,22 +26,33 @@ export class WorkspaceNavigatorStore extends Store<{
   @snapshot accessoryVisible = true;
   @snapshot companionTab: "chat" | WorkspaceNavigatorMode = "chat";
   @snapshot mode: WorkspaceNavigatorMode = "todos";
-  private selectedWidgetId?: string;
+  /** The widget the tab is bound to; it outlives switches to To-dos/Sessions/Chat. */
+  @snapshot widgetId: string | null = null;
+  /** Whether the widget tab, rather than `mode`, fills the pane. */
+  private widgetActive = false;
 
+  /** Undefined when nothing is picked or the picked widget is no longer a tab. */
   get selectedWidget() {
-    return this.props.widgets().tabWidgets.find((entry) => entry.id === this.selectedWidgetId);
+    return this.props.widgets().tabWidgets.find((entry) => entry.id === this.widgetId);
   }
 
   get showingWidget() {
-    return Boolean(this.selectedWidget);
+    return this.widgetActive && Boolean(this.selectedWidget);
   }
 
-  showWidget(id: string) {
+  showWidget(id = this.widgetId) {
     if (!this.props.widgets().tabWidgets.some((entry) => entry.id === id)) return;
-    this.selectedWidgetId = id;
+    this.widgetId = id;
+    this.widgetActive = true;
     this.accessoryVisible = true;
     this.companionTab = this.mode;
     this.props.companionSession()?.showWorkspaceChatSidebar();
+  }
+
+  /** Unbinds the widget tab and returns the pane to the built-in view. */
+  clearWidget() {
+    this.widgetId = null;
+    this.widgetActive = false;
   }
   /** Preferred width across modes; layout clamps never overwrite it. */
   @snapshot width = 320;
@@ -62,6 +73,14 @@ export class WorkspaceNavigatorStore extends Store<{
           (current.sessionId !== previous?.sessionId || current.mode !== previous?.mode)
         )
           this.showChat();
+      },
+    );
+    // A detached/hidden widget leaves the built-in view showing, even if it later returns.
+    // The binding itself is kept: attachments load after startup hydration.
+    this.reaction(
+      () => Boolean(this.selectedWidget),
+      (present) => {
+        if (!present) this.widgetActive = false;
       },
     );
   }
@@ -89,7 +108,7 @@ export class WorkspaceNavigatorStore extends Store<{
   }
 
   showChat() {
-    this.selectedWidgetId = undefined;
+    this.widgetActive = false;
     this.companionTab = "chat";
     this.props.companionSession()?.showWorkspaceChatSidebar();
   }
@@ -110,7 +129,7 @@ export class WorkspaceNavigatorStore extends Store<{
   }
 
   show(mode: WorkspaceNavigatorMode) {
-    this.selectedWidgetId = undefined;
+    this.widgetActive = false;
     this.mode = mode;
     this.accessoryVisible = true;
     this.companionTab = mode;

@@ -2,6 +2,7 @@
 import { StrictMode } from "react";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -29,7 +30,7 @@ function request(frame: HTMLIFrameElement, type: string, value: unknown) {
   );
 }
 
-function setup() {
+function setup(snapshot?: StoreSnapshot) {
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -64,6 +65,7 @@ function setup() {
     url: `cake-widget://document/${token}`,
   }));
   const fixture = createRendererStoreFixture({
+    snapshot,
     client: {
       artifacts: {
         detail: async (id) => records.find((item) => item.revision.lineageId === id)!.detail,
@@ -126,7 +128,7 @@ it("filters global tab widgets, hides the empty picker, and falls back after rem
   ]);
   await user.click(screen.getByRole("menuitemradio", { name: "Activity monitor" }));
   expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(true);
-  await user.click(screen.getByRole("button", { name: "Widget tabs: Activity monitor" }));
+  await user.click(screen.getByRole("button", { name: "Widget tabs" }));
   expect(
     screen.getByRole("menuitemradio", { name: "Activity monitor" }).getAttribute("aria-checked"),
   ).toBe("true");
@@ -185,10 +187,11 @@ it("preserves one active view per global tab through keyboard/built-in/context/c
   await user.click(screen.getByRole("button", { name: /To-dos/ }));
   expect(fixture.root.workspaceNavigatorStore.mode).toBe("todos");
   await user.click(screen.getByRole("button", { name: "Widget tabs" }));
-  await user.keyboard("{End}{Enter}");
+  // Home/ArrowDown: End now lands on Clear.
+  await user.keyboard("{Home}{ArrowDown}{Enter}");
   expect(fixture.root.workspaceNavigatorStore.selectedWidget?.id).toBe("second");
   const title = f.records[1]!.revision.snapshot.title!;
-  expect(screen.getByRole("button", { name: `Widget tabs: ${title}` }).title).toBe(title);
+  expect(screen.getByRole("button", { name: `Widget tab: ${title}` }).title).toBe(title);
   const post = vi.spyOn(frames[1]!.contentWindow!, "postMessage");
   act(() => {
     fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
@@ -206,7 +209,7 @@ it("preserves one active view per global tab through keyboard/built-in/context/c
   act(() => fixture.root.workspaceNavigatorStore.close());
   view.rerender(layout(true));
   act(() => fixture.root.workspaceNavigatorStore.showWidget("second"));
-  expect(screen.getByRole("button", { name: `Widget tabs: ${title}` })).toBeDefined();
+  expect(screen.getByRole("button", { name: `Widget tab: ${title}` })).toBeDefined();
   await user.click(screen.getByRole("button", { name: "Chat" }));
   expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
   view.rerender(layout());
@@ -224,4 +227,116 @@ it("preserves one active view per global tab through keyboard/built-in/context/c
   act(() => f.publish([{ ...f.entries[0]!, hidden: true }]));
   expect(f.stops[0]).toHaveBeenCalledTimes(1);
   view.unmount();
+});
+
+function renderNavigator(fixture: ReturnType<typeof setup>["fixture"]) {
+  return render(
+    <StoreProvider store={fixture.root}>
+      <WidgetTabHost>
+        <WorkspaceNavigator />
+      </WidgetTabHost>
+    </StoreProvider>,
+  );
+}
+
+const pressed = (name: string | RegExp) =>
+  screen.getByRole("button", { name }).getAttribute("aria-pressed");
+
+it("keeps the picked widget on its tab across To-dos/Sessions switches until Clear", async () => {
+  const f = setup();
+  using fixture = f.fixture;
+  const user = userEvent.setup();
+  const view = renderNavigator(fixture);
+  await waitFor(() => expect(fixture.root.widgetAttachmentStore.artifacts.size).toBe(2));
+  await user.click(screen.getByRole("button", { name: "Widget tabs" }));
+  await user.click(screen.getByRole("menuitemradio", { name: "Activity monitor" }));
+  expect(pressed("Widget tab: Activity monitor")).toBe("true");
+
+  await user.click(screen.getByRole("button", { name: /To-dos/ }));
+  expect(screen.getByRole("searchbox", { name: "Search to-dos" })).toBeDefined();
+  // The tab still names the widget; one click shows it again, without the menu.
+  expect(pressed("Widget tab: Activity monitor")).toBe("false");
+  await user.click(screen.getByRole("button", { name: "Widget tab: Activity monitor" }));
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(true);
+  expect(pressed(/To-dos/)).toBe("false");
+  expect(view.container.querySelector('[data-slot="widget-tab-viewport"]')).not.toBeNull();
+
+  await user.click(screen.getByRole("button", { name: /^Sessions ·/ }));
+  await user.click(screen.getByRole("button", { name: "Widget tab: Activity monitor" }));
+  expect(fixture.root.workspaceNavigatorStore.selectedWidget?.id).toBe("first");
+
+  // The chevron still rebinds the tab.
+  const second = f.records[1]!.revision.snapshot.title!;
+  await user.click(screen.getByRole("button", { name: "Widget tabs" }));
+  await user.click(screen.getByRole("menuitemradio", { name: second }));
+  expect(pressed(`Widget tab: ${second}`)).toBe("true");
+
+  await user.click(screen.getByRole("button", { name: "Widget tabs" }));
+  await user.click(screen.getByRole("menuitem", { name: "Clear" }));
+  expect(fixture.root.workspaceNavigatorStore.widgetId).toBeNull();
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
+  expect(pressed(/^Sessions ·/)).toBe("true");
+  expect(screen.queryByRole("button", { name: /^Widget tab:/ })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Widget tabs" }));
+  // Nothing to clear in the default state.
+  expect(screen.queryByRole("menuitem", { name: "Clear" })).toBeNull();
+  expect(
+    screen.getAllByRole("menuitemradio").map((item) => item.getAttribute("aria-checked")),
+  ).toEqual(["false", "false"]);
+  view.unmount();
+});
+
+it("restores the picked widget after reload and falls back when it no longer exists", async () => {
+  let saved: StoreSnapshot;
+  {
+    const f = setup();
+    using fixture = f.fixture;
+    act(() => fixture.root.workspaceNavigatorStore.showWidget("second"));
+    saved = toSnapshot(fixture.root);
+  }
+  {
+    const f = setup(saved);
+    using fixture = f.fixture;
+    const user = userEvent.setup();
+    const view = renderNavigator(fixture);
+    const title = f.records[1]!.revision.snapshot.title!;
+    // Startup still opens To-dos, with the tab bound to the saved widget.
+    await screen.findByRole("button", { name: `Widget tab: ${title}` });
+    expect(pressed(/To-dos/)).toBe("true");
+    await user.click(screen.getByRole("button", { name: `Widget tab: ${title}` }));
+    expect(fixture.root.workspaceNavigatorStore.selectedWidget?.id).toBe("second");
+    expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(true);
+
+    // Detaching it while shown falls back to the built-in view and the default picker.
+    act(() => f.publish([f.entries[0]!]));
+    expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
+    expect(pressed(/To-dos/)).toBe("true");
+    expect(screen.queryByRole("button", { name: /^Widget tab:/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Widget tabs" }).textContent).toBe("Widgets");
+    act(() => fixture.root.workspaceNavigatorStore.showWidget());
+    expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
+    // A returning widget is not shown again uninvited.
+    act(() => f.publish(f.entries));
+    expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
+    view.unmount();
+  }
+  {
+    // A stale saved id from a deleted widget renders the default state without errors.
+    const navigator = saved.children.workspaceNavigatorStore as StoreSnapshot;
+    const f = setup({
+      ...saved,
+      children: {
+        ...saved.children,
+        workspaceNavigatorStore: { ...navigator, state: { ...navigator.state, widgetId: "gone" } },
+      },
+    });
+    using fixture = f.fixture;
+    const view = renderNavigator(fixture);
+    await screen.findByRole("button", { name: "Widget tabs" });
+    expect(screen.queryByRole("button", { name: /^Widget tab:/ })).toBeNull();
+    expect(fixture.root.workspaceNavigatorStore.selectedWidget).toBeUndefined();
+    expect(pressed(/To-dos/)).toBe("true");
+    view.unmount();
+  }
 });

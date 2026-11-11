@@ -7867,7 +7867,7 @@ export default function Dashboard() {
 export const widgetTabsScenario: VisualCaptureScenario = {
   name: "widget-tabs",
   description: "Global widget panes with persistent view state and background polling",
-  states: ["default", "menu"],
+  states: ["default", "menu", "switched"],
   async seed(paths, theme) {
     const source = `import { useState } from "react";
 import { useArtifactState, useCurrentSession, usePolling } from "@cake/artifact-sdk";
@@ -7994,8 +7994,11 @@ export default function Monitor() {
         .getByRole("button", { name: "Save count" }),
     ).toBeEnabled();
     if (state === "menu")
+      await page.getByRole("button", { name: "Widget tabs", exact: true }).click();
+    if (state === "switched")
       await page
-        .getByRole("button", { name: "Widget tabs: Activity monitor", exact: true })
+        .getByRole("complementary", { name: "Workspace", exact: true })
+        .getByRole("button", { name: /To-dos/ })
         .click();
   },
   region: (page) => page.locator('[data-slot="workspace-navigator"]'),

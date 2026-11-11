@@ -58,9 +58,7 @@ for (const theme of ["light", "dark"] as const) {
         paneBounds.y + paneBounds.height + 1,
       );
       await page.screenshot({ path: testInfo.outputPath(`widget-tab-selected-${theme}.png`) });
-      await page
-        .getByRole("button", { name: "Widget tabs: Activity monitor", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Widget tabs", exact: true }).click();
       const menu = page.getByRole("menu", { name: "Widget tabs", exact: true });
       await expect(menu.getByRole("menuitemradio")).toHaveText([
         "Activity monitor",
@@ -70,7 +68,9 @@ for (const theme of ["light", "dark"] as const) {
         menu.getByRole("menuitemradio", { name: "Activity monitor", exact: true }),
       ).toHaveAttribute("aria-checked", "true");
       await page.screenshot({ path: testInfo.outputPath(`widget-tab-menu-${theme}.png`) });
-      await page.keyboard.press("End");
+      // End would land on Clear.
+      await page.keyboard.press("Home");
+      await page.keyboard.press("ArrowDown");
       await page.keyboard.press("Enter");
       await expect(page.locator('[data-widget-attachment="second-tab"]')).toBeVisible();
       await expect(panel).not.toBeVisible();
@@ -82,6 +82,14 @@ for (const theme of ["light", "dark"] as const) {
       await workspace.getByRole("button", { name: /To-dos/ }).click();
       await expect(page.getByRole("searchbox", { name: "Search to-dos" })).toBeVisible();
       await expect(panel).not.toBeVisible();
+      // The tab keeps its widget: one click shows it again without the menu.
+      const secondTab = workspace.getByRole("button", {
+        name: "Widget tab: A second monitor with a long title for overflow inspection",
+        exact: true,
+      });
+      await expect(secondTab).toHaveAttribute("aria-pressed", "false");
+      await secondTab.click();
+      await expect(page.locator('[data-widget-attachment="second-tab"]')).toBeVisible();
       await workspace.getByRole("button", { name: /^Sessions ·/ }).click();
       await expect(page.getByRole("button", { name: "Widget tabs", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Widget tabs", exact: true }).click();

@@ -40,7 +40,7 @@ export const WidgetTabHost = observer(function WidgetTabHost({
     };
   }, [target]);
   const navigator = root.workspaceNavigatorStore;
-  const selected = navigator.selectedWidget;
+  const selected = navigator.showingWidget ? navigator.selectedWidget : undefined;
   const session = root.inlineWidgetStore.navigationContext?.session ?? null;
   return (
     <WidgetTabViewportContext value={setTarget}>
