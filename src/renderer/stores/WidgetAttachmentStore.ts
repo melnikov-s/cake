@@ -35,6 +35,22 @@ export class WidgetAttachmentStore extends Store {
       .sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
   }
 
+  get tabWidgets() {
+    const seen = new Set<ArtifactLineageId>();
+    return this.attachments
+      .filter((entry) => entry.slot === "tab" && entry.target.kind === "global" && !entry.hidden)
+      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+      .filter((entry) => {
+        if (seen.has(entry.lineageId)) return false;
+        seen.add(entry.lineageId);
+        return true;
+      });
+  }
+
+  title(attachment: WidgetAttachment) {
+    return this.artifacts.get(attachment.lineageId)?.title ?? attachment.id;
+  }
+
   async load(lineageId: ArtifactLineageId) {
     const pending = this.loading.get(lineageId);
     if (pending) return pending;

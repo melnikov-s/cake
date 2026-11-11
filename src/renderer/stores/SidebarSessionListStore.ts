@@ -369,7 +369,11 @@ export class SidebarSessionListStore extends Store<{
   get projectSessionCatalogQueries(): ReadonlyArray<ProjectSessionCatalogQuery> {
     const navigator = WorkspaceNavigatorContext.consume(this);
     const searchDemand = this.props.additionalCatalogDemand?.() ?? false;
-    if (!searchDemand && navigator && (!navigator.visible || navigator.mode !== "sessions"))
+    if (
+      !searchDemand &&
+      navigator &&
+      (!navigator.visible || navigator.showingWidget || navigator.mode !== "sessions")
+    )
       return [];
     const paths =
       !searchDemand && navigator?.projectPath
@@ -385,7 +389,9 @@ export class SidebarSessionListStore extends Store<{
 
   get cakeChatCatalogQueries(): ReadonlyArray<CakeChatCatalogQuery> {
     const navigator = WorkspaceNavigatorContext.consume(this);
-    const visible = !navigator || (navigator.visible && navigator.mode === "sessions");
+    const visible =
+      !navigator ||
+      (navigator.visible && !navigator.showingWidget && navigator.mode === "sessions");
     // Active permanent-chat summaries also serve Project Chat/to-do ownership and rail attention.
     // Only their archive lane is a list-only observation.
     return visible && this.activatedResolvedCakeChatCatalogs["cake-chat"]

@@ -78,6 +78,8 @@ describe("core coordinator calling reference", () => {
   it("exposes the unified attachment operations without a second plugin recipe", () => {
     expect(line("widgets.attach")).toContain("lineageId");
     expect(line("widgets.attach")).toContain("target");
+    expect(line("widgets.attach")).toContain('"tab"');
+    expect(reference).toContain("tab (target global only)");
     expect(line("widgets.detach")).toBe("widgets.detach {id}");
     expect(line("widgets.attachments")).toBe("widgets.attachments {}");
     expect(prompt).toContain("Moving keeps identity/state");

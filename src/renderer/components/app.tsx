@@ -1,3 +1,4 @@
+import { WidgetTabHost } from "./widget-tab-host";
 import { useState } from "react";
 import { usePhoneLayout } from "../lib/phone-layout";
 import { observer, useStore } from "r-state-tree/react";
@@ -45,29 +46,31 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   );
 
   return (
-    <AppShellLayout
-      overlays={overlays}
-      workspaceMode={mode}
-      commandPaneWidth={commandPaneWidth}
-      onCommandPaneWidthChange={setCommandPaneWidth}
-    >
-      {mode && session ? (
-        root.appShellStore.activeConversation?.kind === "cake-chat" ? (
-          <CakeChatWorkspaceSurface
-            session={root.cakeChatCollectionStore.registry.find(session.sessionId)!}
-            mode={mode}
-            browserMode={browserMode}
-          />
+    <WidgetTabHost>
+      <AppShellLayout
+        overlays={overlays}
+        workspaceMode={mode}
+        commandPaneWidth={commandPaneWidth}
+        onCommandPaneWidthChange={setCommandPaneWidth}
+      >
+        {mode && session ? (
+          root.appShellStore.activeConversation?.kind === "cake-chat" ? (
+            <CakeChatWorkspaceSurface
+              session={root.cakeChatCollectionStore.registry.find(session.sessionId)!}
+              mode={mode}
+              browserMode={browserMode}
+            />
+          ) : (
+            <ProjectWorkspaceSurface
+              session={workbench.activeSession!}
+              mode={mode}
+              browserMode={browserMode}
+            />
+          )
         ) : (
-          <ProjectWorkspaceSurface
-            session={workbench.activeSession!}
-            mode={mode}
-            browserMode={browserMode}
-          />
-        )
-      ) : (
-        <AppSurface browserMode={browserMode} />
-      )}
-    </AppShellLayout>
+          <AppSurface browserMode={browserMode} />
+        )}
+      </AppShellLayout>
+    </WidgetTabHost>
   );
 });

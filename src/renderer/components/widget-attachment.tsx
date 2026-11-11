@@ -21,7 +21,7 @@ export const WidgetAttachment = observer(function WidgetAttachment({
   attachment: Attachment;
   store: WidgetAttachmentStore;
   widgets: InlineWidgetStore;
-  session: NonNullable<ArtifactNavigationContext["session"]>;
+  session: ArtifactNavigationContext["session"];
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
@@ -40,7 +40,11 @@ export const WidgetAttachment = observer(function WidgetAttachment({
   const title = artifact?.title ?? attachment.id;
   return (
     <section
-      className="flex min-h-0 min-w-0 flex-col border-b border-border/65"
+      className={
+        attachment.slot === "tab"
+          ? "flex h-full min-h-0 min-w-0 flex-col"
+          : "flex min-h-0 min-w-0 flex-col border-b border-border/65"
+      }
       aria-label={title}
       data-widget-attachment={attachment.id}
     >
@@ -58,15 +62,17 @@ export const WidgetAttachment = observer(function WidgetAttachment({
         >
           {title}
         </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-expanded={!attachment.hidden}
-          disabled={pending}
-          onClick={() => perform(() => store.hide(attachment.id, !attachment.hidden))}
-        >
-          {attachment.hidden ? "Show" : "Hide"}
-        </Button>
+        {attachment.slot !== "tab" && (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-expanded={!attachment.hidden}
+            disabled={pending}
+            onClick={() => perform(() => store.hide(attachment.id, !attachment.hidden))}
+          >
+            {attachment.hidden ? "Show" : "Hide"}
+          </Button>
+        )}
         <Popover>
           <PopoverIconTrigger tooltip={`Widget options for ${title}`} disabled={pending}>
             <SettingsIcon size={14} />
@@ -84,7 +90,13 @@ export const WidgetAttachment = observer(function WidgetAttachment({
               disabled={pending}
               onChange={(event) => {
                 const slot = event.target.value;
-                if (slot === "top" || slot === "bottom" || slot === "left" || slot === "right")
+                if (
+                  slot === "top" ||
+                  slot === "bottom" ||
+                  slot === "left" ||
+                  slot === "right" ||
+                  (slot === "tab" && attachment.target.kind === "global")
+                )
                   perform(() => store.move(attachment, slot));
               }}
             >
@@ -92,6 +104,7 @@ export const WidgetAttachment = observer(function WidgetAttachment({
               <option value="bottom">Bottom</option>
               <option value="left">Left</option>
               <option value="right">Right</option>
+              {attachment.target.kind === "global" && <option value="tab">Tab</option>}
             </Select>
             <div className="flex gap-1">
               <Button
@@ -148,6 +161,7 @@ export const WidgetAttachment = observer(function WidgetAttachment({
         ) : artifact ? (
           <WidgetArtifact
             artifact={artifact}
+            fill={attachment.slot === "tab"}
             inlineWidgets={widgets}
             attachmentId={attachment.id}
             stateSessionId={

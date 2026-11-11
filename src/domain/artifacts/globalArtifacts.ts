@@ -25,6 +25,7 @@ import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { ArtifactRuntime } from "../../services/artifact-runtime/ArtifactRuntime";
 import { rejectArtifactRuntimeReentry } from "../../services/artifact-runtime/ArtifactRuntimeExecution";
 import { ArtifactViews } from "../../services/artifacts/ArtifactViews";
+import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -138,6 +139,12 @@ export const deleteArtifact = Effect.fn("GlobalArtifacts.deleteArtifact")(functi
     Effect.ignore,
   );
   yield* workflows.deleteArtifact(lineageId);
+  yield* (yield* ApplicationState).transact((state) =>
+    Effect.succeed({
+      ...state,
+      widgetAttachments: state.widgetAttachments.filter((entry) => entry.lineageId !== lineageId),
+    }),
+  );
   (yield* ClientEvents).broadcast({ type: "artifact-catalog-invalidated", lineageId });
 });
 

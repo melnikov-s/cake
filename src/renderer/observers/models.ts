@@ -858,7 +858,9 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
     projection,
     observeSessionSignals: true,
     navigationTargets: () =>
-      root.workspaceNavigatorStore.visible && root.workspaceNavigatorStore.mode === "sessions"
+      root.workspaceNavigatorStore.visible &&
+      !root.workspaceNavigatorStore.showingWidget &&
+      root.workspaceNavigatorStore.mode === "sessions"
         ? root.conversationNavigatorStore.metadataTargets(root.workspaceProjectPath)
         : [],
     focusedDiscussionOwners: () => root.discussionNavigationStore.ownerTargets,

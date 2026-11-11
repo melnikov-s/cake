@@ -992,6 +992,7 @@ export class RootStore extends Store<{
   @child
   get workspaceNavigatorStore(): WorkspaceNavigatorStore {
     return createStore(WorkspaceNavigatorStore, {
+      widgets: () => this.widgetAttachmentStore,
       projectPath: () => this.workspaceProjectPath,
       activeSessionId: () => this.appShellStore.activeConversation?.sessionId,
       companionSession: () => {

@@ -14,7 +14,7 @@ export const WidgetSlot = observer(function WidgetSlot({
   store,
   widgets,
 }: {
-  slot: Slot;
+  slot: Exclude<Slot, "tab">;
   session: NonNullable<ArtifactNavigationContext["session"]>;
   store: WidgetAttachmentStore;
   widgets: InlineWidgetStore;

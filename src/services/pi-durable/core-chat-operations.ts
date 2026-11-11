@@ -57,7 +57,7 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
     );
   if (add("widgets.attach"))
     lines.push(
-      "Attach an existing widget instance: targets are global, project-chats, project-sessions, or one session. Slots: top/bottom/left/right. Moving keeps identity/state; duplication uses widgets.instantiate.",
+      "Attach an existing widget instance: targets are global, project-chats, project-sessions, or one session. Slots: top/bottom/left/right, or tab (target global only) for a full Workspace pane selected beside To-dos/Sessions. Tab widgets remain active independently of selection. Moving keeps identity/state; duplication uses widgets.instantiate.",
     );
   add("widgets.detach");
   add("widgets.attachments");

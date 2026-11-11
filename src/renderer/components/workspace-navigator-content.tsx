@@ -1,4 +1,5 @@
 import { observer, useStore } from "r-state-tree/react";
+import { WidgetTabViewport } from "./widget-tab-viewport";
 import { RootStore } from "../stores/RootStore";
 import { ConversationNavigator } from "./conversation-navigator";
 import { ProjectTodosPanel } from "./project-todos-panel";
@@ -7,6 +8,7 @@ import { SearchInput } from "./ui/search-input";
 /** The same project-scoped navigation content in chat and tool workspaces. */
 export const WorkspaceNavigatorContent = observer(function WorkspaceNavigatorContent() {
   const navigator = useStore(RootStore).workspaceNavigatorStore;
+  if (navigator.showingWidget) return <WidgetTabViewport />;
   const todos = navigator.todos;
   return navigator.mode === "sessions" ? (
     <ConversationNavigator projectPath={navigator.projectPath} />

@@ -1,0 +1,227 @@
+/** @vitest-environment jsdom */
+import { StrictMode } from "react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { StoreProvider } from "r-state-tree/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import type { WidgetAttachment } from "../../../src/contracts/widgets/widget-attachment";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { WidgetTabHost } from "../../../src/renderer/components/widget-tab-host";
+import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
+import { WorkspaceCompanion } from "../../../src/renderer/components/workspace-companion";
+import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { widgetInstance } from "../helpers/widget-instance";
+import type { Client } from "../../../src/renderer/client/Client";
+
+const token = "00000000-0000-4000-8000-000000000010";
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+function request(frame: HTMLIFrameElement, type: string, value: unknown) {
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      source: frame.contentWindow,
+      data: { source: "cake-inline-widget", token, type, value },
+    }),
+  );
+}
+
+function setup() {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const records = [
+    ["first", "Activity monitor"],
+    ["second", "A long widget title that must remain inspectable without widening the pane"],
+  ].map(([id, title]) => {
+    const widget = widgetInstance(id);
+    return {
+      ...widget,
+      revision: { ...widget.revision, snapshot: { ...widget.revision.snapshot, title } },
+    };
+  });
+  const stops: Array<ReturnType<typeof vi.fn>> = [];
+  const events = vi.fn<Client["widgetUpdates"]["events"]>(() => {
+    const stop = vi.fn();
+    stops.push(stop);
+    return stop;
+  });
+  const poll = vi.fn<Client["widgetUpdates"]["poll"]>(() => {
+    const stop = vi.fn();
+    stops.push(stop);
+    return stop;
+  });
+  const open = vi.fn<Client["inlineWidgets"]["open"]>(async () => ({
+    token,
+    url: `cake-widget://document/${token}`,
+  }));
+  const fixture = createRendererStoreFixture({
+    client: {
+      artifacts: {
+        detail: async (id) => records.find((item) => item.revision.lineageId === id)!.detail,
+        readExact: async (id) => records.find((item) => item.revision.lineageId === id)!.revision,
+        stateRead: async (input) => ({
+          lineageId: input.lineageId,
+          version: 1,
+          value: { saved: true },
+        }),
+      },
+      inlineWidgets: { open },
+      widgetUpdates: { events, poll },
+    },
+  });
+  let revision = 0;
+  const entries: WidgetAttachment[] = records.map((item, index) => ({
+    id: item.revision.lineageId,
+    lineageId: item.revision.lineageId,
+    target: { kind: "global" },
+    slot: "tab",
+    order: index,
+    hidden: false,
+  }));
+  const publish = (attachments: WidgetAttachment[]) =>
+    fixture.root.widgetAttachmentStore.applyApplicationState(++revision, {
+      ...defaultApplicationState(),
+      widgetAttachments: attachments,
+    });
+  publish(entries);
+  return { fixture, entries, publish, events, poll, stops, open, records };
+}
+
+it("filters global tab widgets, hides the empty picker, and falls back after removal or hiding", async () => {
+  const f = setup();
+  using fixture = f.fixture;
+  const user = userEvent.setup();
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <WidgetTabHost>
+        <WorkspaceNavigator />
+      </WidgetTabHost>
+    </StoreProvider>,
+  );
+  await screen.findByRole("button", { name: "Widget tabs" });
+  await waitFor(() => expect(fixture.root.widgetAttachmentStore.artifacts.size).toBe(2));
+  const base = f.entries[0]!;
+  act(() =>
+    f.publish([
+      base,
+      { ...base, id: "other-slot", slot: "right" },
+      { ...base, id: "session-scoped", target: { kind: "session", sessionId: "one" } },
+      { ...base, id: "category-scoped", target: { kind: "project-chats" } },
+      { ...f.entries[1]!, hidden: true },
+      { ...base, id: "duplicate-lineage" },
+    ]),
+  );
+  await user.click(screen.getByRole("button", { name: "Widget tabs" }));
+  expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+    "Activity monitor",
+  ]);
+  await user.click(screen.getByRole("menuitemradio", { name: "Activity monitor" }));
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(true);
+  await user.click(screen.getByRole("button", { name: "Widget tabs: Activity monitor" }));
+  expect(
+    screen.getByRole("menuitemradio", { name: "Activity monitor" }).getAttribute("aria-checked"),
+  ).toBe("true");
+  await user.keyboard("{Escape}");
+  act(() => f.publish([]));
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
+  expect(screen.queryByRole("button", { name: /^Widget tabs/ })).toBeNull();
+  expect(screen.getByRole("button", { name: /To-dos/ }).getAttribute("aria-pressed")).toBe("true");
+  expect(view.container.querySelectorAll("iframe")).toHaveLength(0);
+  view.unmount();
+});
+
+it("preserves one active view per global tab through keyboard/built-in/context/companion switches without restarting subscriptions", async () => {
+  const f = setup();
+  using fixture = f.fixture;
+  const user = userEvent.setup();
+  const layout = (companion = false) => (
+    <StrictMode>
+      <StoreProvider store={fixture.root}>
+        <WidgetTabHost>
+          {companion ? (
+            <WorkspaceCompanion>
+              <div>Chat fixture</div>
+            </WorkspaceCompanion>
+          ) : (
+            <WorkspaceNavigator />
+          )}
+        </WidgetTabHost>
+      </StoreProvider>
+    </StrictMode>
+  );
+  const view = render(layout());
+  await waitFor(() => expect(view.container.querySelectorAll("iframe")).toHaveLength(2));
+  const frames = [...view.container.querySelectorAll("iframe")];
+  const opened = f.open.mock.calls.length;
+  // Both views are alive before ever being selected.
+  for (const frame of frames)
+    act(() =>
+      request(frame, "widget-subscribe", {
+        id: "poll",
+        subscriptionId: "poll",
+        kind: "poll",
+        options: { key: "sessions", command: "sessions.list", input: {}, intervalMs: 1000 },
+      }),
+    );
+  expect(f.poll).toHaveBeenCalledTimes(2);
+  expect(f.events).not.toHaveBeenCalled();
+  expect(f.poll.mock.calls.every(([input]) => input.sessionId === undefined)).toBe(true);
+  await user.click(screen.getByRole("button", { name: "Widget tabs" }));
+  await waitFor(() => expect(screen.getAllByRole("menuitemradio")).toHaveLength(2));
+  await user.keyboard("{Home}{Enter}");
+  expect(fixture.root.workspaceNavigatorStore.selectedWidget?.id).toBe("first");
+  await user.click(screen.getByRole("button", { name: /^Sessions ·/ }));
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
+  expect(fixture.root.workspaceNavigatorStore.mode).toBe("sessions");
+  await user.click(screen.getByRole("button", { name: /To-dos/ }));
+  expect(fixture.root.workspaceNavigatorStore.mode).toBe("todos");
+  await user.click(screen.getByRole("button", { name: "Widget tabs" }));
+  await user.keyboard("{End}{Enter}");
+  expect(fixture.root.workspaceNavigatorStore.selectedWidget?.id).toBe("second");
+  const title = f.records[1]!.revision.snapshot.title!;
+  expect(screen.getByRole("button", { name: `Widget tabs: ${title}` }).title).toBe(title);
+  const post = vi.spyOn(frames[1]!.contentWindow!, "postMessage");
+  act(() => {
+    fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+    request(frames[1]!, "ready", true);
+  });
+  expect(post).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "context",
+      value: expect.objectContaining({
+        session: { sessionId: CAKE_CHAT_SESSION_ID, kind: "cake-chat" },
+      }),
+    }),
+    "*",
+  );
+  act(() => fixture.root.workspaceNavigatorStore.close());
+  view.rerender(layout(true));
+  act(() => fixture.root.workspaceNavigatorStore.showWidget("second"));
+  expect(screen.getByRole("button", { name: `Widget tabs: ${title}` })).toBeDefined();
+  await user.click(screen.getByRole("button", { name: "Chat" }));
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
+  view.rerender(layout());
+  act(() => fixture.root.workspaceNavigatorStore.show("sessions"));
+  act(() => fixture.root.workspaceNavigatorStore.showWidget("second"));
+  act(() => f.publish([f.entries[0]!]));
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
+  expect(fixture.root.workspaceNavigatorStore.mode).toBe("sessions");
+  expect(view.container.querySelector("iframe")).toBe(frames[0]);
+  expect(frames[1]!.isConnected).toBe(false);
+  expect(f.open).toHaveBeenCalledTimes(opened);
+  expect(f.poll).toHaveBeenCalledTimes(2);
+  expect(f.stops[0]).not.toHaveBeenCalled();
+  expect(f.stops[1]).toHaveBeenCalledTimes(1);
+  act(() => f.publish([{ ...f.entries[0]!, hidden: true }]));
+  expect(f.stops[0]).toHaveBeenCalledTimes(1);
+  view.unmount();
+});

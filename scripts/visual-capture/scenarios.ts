@@ -7787,6 +7787,143 @@ export default function Dashboard() {
   region: (page) => page.locator('[data-slot="chat"]').first().locator("..").locator(".."),
 };
 
+export const widgetTabsScenario: VisualCaptureScenario = {
+  name: "widget-tabs",
+  description: "Global widget panes with persistent view state and background polling",
+  states: ["default", "menu"],
+  async seed(paths, theme) {
+    const source = `import { useState } from "react";
+import { useArtifactState, useCurrentSession, usePolling } from "@cake/artifact-sdk";
+export default function Monitor() {
+  const saved = useArtifactState({count: 0});
+  const session = useCurrentSession();
+  const [draft, setDraft] = useState(0);
+  const [updates, setUpdates] = useState(0);
+  usePolling({key: "sessions", command: "sessions.list", input: {limit: 5}, intervalMs: 1000}, () => setUpdates(n => n + 1));
+  return <main style={{color: "var(--foreground)", display: "grid", gap: 12, padding: 12}}>
+    <h2>Widget activity fixture</h2>
+    <p>Saved count: {saved.value.count}</p>
+    <button disabled={!saved.hydrated} onClick={() => saved.save({count: saved.value.count + 1})}>Save count</button>
+    <p>Local count: {draft}</p>
+    <button onClick={() => setDraft(n => n + 1)}>Change local count</button>
+    <output>Background updates: {updates}</output>
+    <small>Current session: {session?.sessionId ?? "None"}</small>
+  </main>;
+}`;
+    const browser = await retainArtifactBrowser(paths, "react", source);
+    const artifact: CakeArtifactV1 = {
+      protocol: "cake.artifact/v1",
+      id: "activity-monitor",
+      sessionId: "visual-widget-tabs",
+      revision: 1,
+      kind: "widget",
+      title: "Activity monitor",
+      payload: {
+        language: "react",
+        source,
+        brief: "State and background activity fixture",
+        browser,
+      },
+      fallback: { markdown: "Activity monitor" },
+    };
+    await seedArtifactScenario(paths, theme, artifact);
+    await seedArtifact(
+      paths,
+      {
+        ...artifact,
+        id: "second-monitor",
+        title: "A second monitor with a long title for overflow inspection",
+      },
+      new Date(0).toISOString(),
+    );
+    await seedArtifact(
+      paths,
+      {
+        ...artifact,
+        id: "chat-monitor",
+        title: "Chat-slot monitor",
+      },
+      new Date(0).toISOString(),
+    );
+    const otherProject = join(paths.project, "other");
+    await mkdir(otherProject, { recursive: true });
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        version: 11,
+        data: {
+          ...defaultApplicationState(),
+          projects: [
+            {
+              path: paths.project,
+              name: "Widget workspace",
+              addedAt: timestamp,
+              lastOpenedAt: timestamp,
+            },
+            {
+              path: otherProject,
+              name: "Other widget workspace",
+              addedAt: timestamp,
+              lastOpenedAt: timestamp,
+            },
+          ],
+          widgetAttachments: [
+            {
+              id: "activity-tab",
+              lineageId: "activity-monitor",
+              target: { kind: "global" },
+              slot: "tab",
+              order: 0,
+              hidden: false,
+            },
+            {
+              id: "second-tab",
+              lineageId: "second-monitor",
+              target: { kind: "global" },
+              slot: "tab",
+              order: 1,
+              hidden: false,
+            },
+            {
+              id: "chat-slot",
+              lineageId: "chat-monitor",
+              target: { kind: "global" },
+              slot: "bottom",
+              order: 0,
+              hidden: false,
+            },
+          ],
+        },
+      }),
+    );
+  },
+  async prepare(page, state, application) {
+    await page
+      .getByRole("combobox", { name: /^Message/ })
+      .first()
+      .waitFor();
+    if (application)
+      await emitRendererEvent(application, {
+        type: "session-open-requested",
+        sessionId: "visual-widget-tabs",
+      });
+    await page.getByRole("button", { name: "Widget tabs", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Activity monitor", exact: true }).click();
+    await expect(
+      page
+        .locator('[data-widget-attachment="activity-tab"] iframe')
+        .contentFrame()
+        .getByRole("button", { name: "Save count" }),
+    ).toBeEnabled();
+    if (state === "menu")
+      await page
+        .getByRole("button", { name: "Widget tabs: Activity monitor", exact: true })
+        .click();
+  },
+  region: (page) => page.locator('[data-slot="workspace-navigator"]'),
+};
+
 const widgetSpeechArticle =
   "Cake can read widgets aloud. Press Play to hear this article in your configured voice. Pause keeps your place, and Resume continues from the same word. Stop ends reading.";
 
@@ -8759,6 +8896,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   vscodeTerminalScenario,
   sourceSelectionScenario,
   widgetAttachmentsScenario,
+  widgetTabsScenario,
   widgetSpeechScenario,
   assistantMarkdownCode,
   assistantDiagrams,

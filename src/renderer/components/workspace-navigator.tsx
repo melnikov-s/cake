@@ -1,4 +1,5 @@
 import { observer, useStore } from "r-state-tree/react";
+import { WidgetTabPicker } from "./widget-tab-picker";
 import { RootStore } from "../stores/RootStore";
 import { WorkspaceNavigatorContent } from "./workspace-navigator-content";
 import { ActivityCount } from "./ui/activity-count";
@@ -17,14 +18,14 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
       aria-label="Workspace"
       className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-border/70 bg-sidebar text-sidebar-foreground select-none"
     >
-      <header className="@container box-content flex h-title-bar shrink-0 items-center gap-1 border-b border-border/65 pl-2 pr-11">
+      <header className="@container box-content flex h-title-bar shrink-0 items-center gap-1 border-b border-border/65 px-2">
         <SegmentedControlGroup
           className="grid min-w-0 flex-1 grid-cols-2"
           aria-label="Workspace content"
           size="sm"
         >
           <SegmentedControlButton
-            active={navigator.mode === "todos"}
+            active={!navigator.showingWidget && navigator.mode === "todos"}
             onClick={() => navigator.show("todos")}
             className="h-8 min-w-0 flex-col gap-0 whitespace-nowrap px-1 @min-[260px]:h-6 @min-[260px]:flex-row @min-[260px]:gap-1"
             size="sm"
@@ -35,7 +36,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
             </span>
           </SegmentedControlButton>
           <SegmentedControlButton
-            active={navigator.mode === "sessions"}
+            active={!navigator.showingWidget && navigator.mode === "sessions"}
             onClick={() => navigator.show("sessions")}
             aria-label={`Sessions · ${sessions.running} running · ${sessions.unread} unread`}
             title={`${sessions.running} running · ${sessions.unread} unread · ${sessions.total} total in ${navigator.projectPath ? "this project" : "all projects"}`}
@@ -49,6 +50,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
             </span>
           </SegmentedControlButton>
         </SegmentedControlGroup>
+        <WidgetTabPicker />
       </header>
       <WorkspaceNavigatorContent />
     </aside>

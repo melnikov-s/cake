@@ -1,4 +1,6 @@
 import { Effect, Queue, Stream } from "effect";
+import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
+import { decodeArtifactLineageId } from "../../../../src/contracts/artifacts/artifact-lineage";
 import { batch, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectSessionSignalsUpdate } from "../../../../src/contracts/project-sessions/project-session-signals";
@@ -299,8 +301,25 @@ describe("Project Session composition observer", () => {
       ).toBe("Current alpha");
       fixture.root.workspaceNavigatorStore.show("sessions");
       expect(catalogs).toHaveBeenCalledTimes(2);
-      fixture.root.workspaceNavigatorStore.show("todos");
+      fixture.root.widgetAttachmentStore.applyApplicationState(1, {
+        ...defaultApplicationState(),
+        widgetAttachments: [
+          {
+            id: "monitor",
+            lineageId: decodeArtifactLineageId("monitor"),
+            target: { kind: "global" },
+            slot: "tab",
+            order: 0,
+            hidden: false,
+          },
+        ],
+      });
+      fixture.root.workspaceNavigatorStore.showWidget("monitor");
+      expect(fixture.root.workspaceNavigatorStore.mode).toBe("sessions");
+      expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(true);
+      expect(fixture.root.sidebarStore.sessionListStore.projectSessionCatalogQueries).toEqual([]);
       await vi.waitFor(() => expect(ended).toHaveLength(2));
+      expect(fixture.models.projectConversations).toHaveLength(0);
       Queue.offerUnsafe(signals, {
         _tag: "Upserted",
         session: {

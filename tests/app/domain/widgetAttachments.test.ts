@@ -1,10 +1,11 @@
 import { it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { expect, describe } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import {
   assertWidgetCommand,
   widgetAppliesTo,
+  widgetAttachmentContracts,
 } from "../../../src/contracts/widgets/widget-attachment";
 import * as attachments from "../../../src/domain/widgets/widgetAttachments";
 import { forgetProjectSessions } from "../../../src/domain/application/application";
@@ -80,6 +81,53 @@ it.effect("forgets only exact-session attachments; broad category attachments su
     const forgotten = yield* forgetProjectSessions(["gone"]);
     expect(forgotten.widgetAttachments.map((entry) => entry.id)).toEqual(["attachment"]);
   }).pipe(Effect.provide(layer())),
+);
+
+it.effect.each([
+  { kind: "session" as const, sessionId: "one" },
+  { kind: "project-chats" as const },
+  { kind: "project-sessions" as const },
+])("rejects non-global tab placement at schema and domain boundaries: $kind", (target) =>
+  Effect.gen(function* () {
+    yield* (yield* ApplicationState).initialize();
+    yield* attachments.attach(request);
+    const input = { ...request, slot: "tab" as const, target };
+    expect(() => Schema.decodeUnknownSync(widgetAttachmentContracts[0].inputSchema)(input)).toThrow(
+      'tab slot requires target.kind "global"',
+    );
+    const error = yield* Effect.flip(attachments.attach(input));
+    expect(error.message).toContain('tab slot requires target.kind "global"');
+    expect((yield* (yield* ApplicationState).current()).widgetAttachments[0]?.slot).toBe("bottom");
+  }).pipe(Effect.provide(layer())),
+);
+
+it.effect(
+  "moves a global widget into and out of tab without duplication; forbids duplicate tab instances",
+  () =>
+    Effect.gen(function* () {
+      yield* (yield* ApplicationState).initialize();
+      yield* attachments.attach(request);
+      const tab = yield* attachments.attach({ ...request, slot: "tab" });
+      expect(tab.widgetAttachments).toHaveLength(1);
+      expect(tab.widgetAttachments[0]).toMatchObject({ ...request, slot: "tab" });
+      expect(() =>
+        Schema.decodeUnknownSync(widgetAttachmentContracts[0].inputSchema)({
+          ...request,
+          slot: "tab",
+        }),
+      ).not.toThrow();
+      const error = yield* Effect.flip(
+        attachments.attach({ ...request, id: "duplicate", slot: "tab" }),
+      );
+      expect(error.message).toContain("already has a tab attachment");
+      for (const slot of ["top", "bottom", "left", "right", "tab"] as const) {
+        const moved = yield* attachments.attach({ ...request, slot });
+        expect(moved.widgetAttachments).toHaveLength(1);
+        expect(moved.widgetAttachments[0]?.slot).toBe(slot);
+      }
+      yield* attachments.detach(request.id);
+      expect((yield* (yield* ApplicationState).current()).widgetAttachments).toEqual([]);
+    }).pipe(Effect.provide(layer())),
 );
 
 describe("widget applicability and authority", () => {

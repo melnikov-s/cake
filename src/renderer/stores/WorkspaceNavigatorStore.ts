@@ -2,12 +2,14 @@ import { Store, snapshot } from "r-state-tree";
 import { MIN_WORKSPACE_PANEL_WIDTH } from "../lib/workspace-panel-geometry";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import type { WidgetAttachmentStore } from "./WidgetAttachmentStore";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 
 export type WorkspaceNavigatorMode = "todos" | "sessions";
 
 /** Owns the one right-hand navigation accessory across chat and real tool surfaces. */
 export class WorkspaceNavigatorStore extends Store<{
+  widgets(): WidgetAttachmentStore;
   projectPath(): string | undefined;
   activeSessionId(): string | undefined;
   cakeChat(): CakeChatCollectionStore;
@@ -24,6 +26,23 @@ export class WorkspaceNavigatorStore extends Store<{
   @snapshot accessoryVisible = true;
   @snapshot companionTab: "chat" | WorkspaceNavigatorMode = "chat";
   @snapshot mode: WorkspaceNavigatorMode = "todos";
+  private selectedWidgetId?: string;
+
+  get selectedWidget() {
+    return this.props.widgets().tabWidgets.find((entry) => entry.id === this.selectedWidgetId);
+  }
+
+  get showingWidget() {
+    return Boolean(this.selectedWidget);
+  }
+
+  showWidget(id: string) {
+    if (!this.props.widgets().tabWidgets.some((entry) => entry.id === id)) return;
+    this.selectedWidgetId = id;
+    this.accessoryVisible = true;
+    this.companionTab = this.mode;
+    this.props.companionSession()?.showWorkspaceChatSidebar();
+  }
   /** Preferred width across modes; layout clamps never overwrite it. */
   @snapshot width = 320;
 
@@ -70,6 +89,7 @@ export class WorkspaceNavigatorStore extends Store<{
   }
 
   showChat() {
+    this.selectedWidgetId = undefined;
     this.companionTab = "chat";
     this.props.companionSession()?.showWorkspaceChatSidebar();
   }
@@ -90,6 +110,7 @@ export class WorkspaceNavigatorStore extends Store<{
   }
 
   show(mode: WorkspaceNavigatorMode) {
+    this.selectedWidgetId = undefined;
     this.mode = mode;
     this.accessoryVisible = true;
     this.companionTab = mode;
@@ -97,7 +118,7 @@ export class WorkspaceNavigatorStore extends Store<{
   }
 
   toggle(mode?: WorkspaceNavigatorMode) {
-    if (mode && (this.mode !== mode || !this.visible)) this.show(mode);
+    if (mode && (this.showingWidget || this.mode !== mode || !this.visible)) this.show(mode);
     else if (this.visible) this.close();
     else this.show(mode ?? this.mode);
   }
@@ -117,7 +138,11 @@ export class WorkspaceNavigatorStore extends Store<{
 
   todoPane(sessionId: string) {
     return {
-      visible: this.visible && this.mode === "todos" && this.todoSessionId === sessionId,
+      visible:
+        this.visible &&
+        !this.showingWidget &&
+        this.mode === "todos" &&
+        this.todoSessionId === sessionId,
       open: () => {
         if (this.todoSessionId === sessionId) this.show("todos");
       },

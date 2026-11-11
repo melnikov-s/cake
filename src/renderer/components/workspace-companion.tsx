@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
+import { WidgetTabPicker } from "./widget-tab-picker";
 import { RootStore } from "../stores/RootStore";
 import { cn } from "../lib/utils";
 import { SegmentedControlButton, SegmentedControlGroup } from "./ui/segmented-control";
@@ -18,11 +19,11 @@ export const WorkspaceCompanion = observer(function WorkspaceCompanion({
       data-slot="workspace-companion-content"
       className={cn("flex min-h-0 flex-1 flex-col", !chat && "bg-sidebar")}
     >
-      <div className="h-10 shrink-0 border-b border-border/65 bg-sidebar/30">
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border/65 bg-sidebar/30">
         <SegmentedControlGroup
           aria-label="Companion content"
           size="sm"
-          className="h-full w-full items-stretch"
+          className="h-full min-w-0 flex-1 items-stretch"
         >
           <SegmentedControlButton
             active={chat}
@@ -33,7 +34,7 @@ export const WorkspaceCompanion = observer(function WorkspaceCompanion({
             Chat
           </SegmentedControlButton>
           <SegmentedControlButton
-            active={navigator.companionTab === "todos"}
+            active={!navigator.showingWidget && navigator.companionTab === "todos"}
             onClick={() => navigator.show("todos")}
             className="h-auto min-w-0 flex-1 basis-0"
             size="sm"
@@ -41,7 +42,7 @@ export const WorkspaceCompanion = observer(function WorkspaceCompanion({
             Todos
           </SegmentedControlButton>
           <SegmentedControlButton
-            active={navigator.companionTab === "sessions"}
+            active={!navigator.showingWidget && navigator.companionTab === "sessions"}
             onClick={() => navigator.show("sessions")}
             className="h-auto min-w-0 flex-1 basis-0"
             size="sm"
@@ -49,6 +50,7 @@ export const WorkspaceCompanion = observer(function WorkspaceCompanion({
             Sessions
           </SegmentedControlButton>
         </SegmentedControlGroup>
+        <WidgetTabPicker />
       </div>
       <div className={cn("flex min-h-0 flex-1 flex-col", !chat && "hidden")}>{children}</div>
       {!chat && <WorkspaceNavigatorContent />}

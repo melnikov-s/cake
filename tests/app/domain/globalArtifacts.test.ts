@@ -9,7 +9,9 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import { TestClock } from "effect/testing";
 import { runSchedulePass } from "../../../src/domain/automations/automationWorker";
 import { ArtifactRuntimeHostLive } from "../../../src/layers/ArtifactRuntimeHostLive";
+import * as widgetAttachments from "../../../src/domain/widgets/widgetAttachments";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
@@ -148,7 +150,17 @@ const fixture = async () => {
     connectionForSession: () => Effect.succeed(callingWindow),
   });
   const commands: Array<{ command: string; input: JsonValue; callingSessionId?: string }> = [];
+  const application = ApplicationState.layer.pipe(
+    Layer.provide(
+      Layer.mock(ApplicationStorage, {
+        load: () =>
+          Effect.succeed({ state: defaultApplicationState(), source: "missing" as const }),
+        save: () => Effect.void,
+      }),
+    ),
+  );
   const layer = Layer.mergeAll(
+    application,
     storage,
     records,
     clients,
@@ -161,6 +173,7 @@ const fixture = async () => {
   const initialize = (bindFakeHost = true) =>
     Effect.gen(function* () {
       yield* (yield* AutomationRecords).initialize();
+      yield* (yield* ApplicationState).initialize();
       const connectionId = (yield* ClientConnections).desktop(17);
       callingWindow = connectionId;
       if (bindFakeHost)
@@ -825,7 +838,14 @@ describe("global artifact domain workflow", () => {
         yield* artifacts.controlRuntime(lineageId, "pause", "creator");
         yield* artifacts.controlRuntime(lineageId, "start", "creator");
         expect((yield* (yield* ArtifactRuntime).status(lineageId)).running).toBe(true);
+        yield* widgetAttachments.attach({
+          id: "selected-tab",
+          lineageId,
+          target: { kind: "global" },
+          slot: "tab",
+        });
         yield* artifacts.deleteArtifact(lineageId);
+        expect((yield* ApplicationState).snapshot().widgetAttachments).toEqual([]);
         expect((yield* (yield* ArtifactRuntime).status(lineageId)).running).toBe(false);
         const storage = yield* ArtifactStorage;
         expect(yield* storage.read(lineageId)).toBeUndefined();
