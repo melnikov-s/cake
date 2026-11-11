@@ -55,7 +55,7 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
     return (
       <div
         data-slot="session-system-update"
-        className="min-w-0 px-2 py-1 text-xs text-muted-foreground"
+        className="group/session-update min-w-0 px-2 py-1 text-xs text-muted-foreground"
       >
         <div className="flex w-full min-w-0 items-center gap-3">
           {item && todos ? (
@@ -94,6 +94,7 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
               <MarkdownLink
                 href={sessionHref}
                 presentation="icon"
+                className="opacity-0 transition-opacity group-hover/session-update:opacity-100 group-focus-within/session-update:opacity-100"
                 aria-label="Open session"
                 title="Open session"
               >

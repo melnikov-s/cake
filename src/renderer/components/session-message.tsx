@@ -136,7 +136,7 @@ export const SessionMessage = observer(function SessionMessage({
     >
       <div
         data-slot="session-message-card"
-        className="min-w-0 rounded-lg border border-border bg-card text-card-foreground"
+        className="group/session-card min-w-0 rounded-lg border border-border bg-card text-card-foreground"
       >
         <div className="flex min-h-10 min-w-0 items-center gap-1 py-1 pr-10 pl-1">
           <div
@@ -195,6 +195,7 @@ export const SessionMessage = observer(function SessionMessage({
             <MarkdownLink
               href={href}
               presentation="icon"
+              className="opacity-0 transition-opacity group-hover/session-card:opacity-100 group-focus-within/session-card:opacity-100"
               aria-label={reference || source?.href ? "Open source" : "Open session"}
               title={reference || source?.href ? "Open source" : "Open session"}
             >
