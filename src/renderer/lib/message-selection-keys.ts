@@ -14,7 +14,7 @@
  *   caret movement, multi-line editing, and slash/file menus keep their arrows.
  *   Escape is taken there whenever a selection exists.
  * - Any other text field, and widgets that navigate with arrows themselves
- *   (listbox, menu, tabs, radio groups, sliders, grids, trees), keep every key.
+ *   (listbox, menu, tabs, radio groups, sliders, grids, trees, inset disclosures), keep every key.
  * - Elsewhere in the pane (transcript content, the focused transcript scroller,
  *   buttons, the parked dictation focus anchor) the keys select messages.
  */
@@ -24,7 +24,7 @@ export type MessageSelectionKeyAction = "select-previous" | "select-next" | "cle
 
 const editableSelector = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 const arrowWidgetSelector =
-  '[role="listbox"], [role="menu"], [role="menubar"], [role="tablist"], [role="radiogroup"], [role="slider"], [role="grid"], [role="tree"], [role="combobox"], [role="spinbutton"]';
+  '[role="listbox"], [role="menu"], [role="menubar"], [role="tablist"], [role="radiogroup"], [role="slider"], [role="grid"], [role="tree"], [role="combobox"], [role="spinbutton"], [data-slot="inset-disclosures"]';
 
 export interface MessageSelectionKeyContext {
   /** The Chat pane root. Keys whose target is outside it, including portals, are ignored. */

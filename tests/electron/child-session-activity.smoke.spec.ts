@@ -219,12 +219,12 @@ test("background family children show running activity and only offer Mark as Un
             const input = dock.querySelector("form")!.getBoundingClientRect();
             const chat = element.closest('[data-slot="chat"]')!;
             return (
-              Math.abs(strip.bottom - input.top) < 2 &&
+              Math.abs(strip.bottom - input.top) < 5 &&
               Math.abs(
                 strip.top - element.parentElement!.parentElement!.getBoundingClientRect().top,
               ) < 2 &&
-              Math.abs(strip.left - input.left - 16) < 2 &&
-              Math.abs(input.right - strip.right - 16) < 2 &&
+              Math.abs(strip.left - input.left - 5) < 2 &&
+              Math.abs(input.right - strip.right - 5) < 2 &&
               parseFloat((chat as HTMLElement).style.getPropertyValue("--composer-dock-height")) >=
                 chat.getBoundingClientRect().bottom - strip.top - 2
             );
@@ -237,8 +237,12 @@ test("background family children show running activity and only offer Mark as Un
       activityMenu.getByRole("button", { name: "Open session: Background worker" }),
     ).toBeVisible();
     await expect(activityMenu.getByRole("heading")).toHaveCount(0);
-    await expect(activityMenu.getByRole("button")).toHaveCount(2);
-    for (const row of await activityMenu.getByRole("button").all()) {
+    await expect(
+      activityMenu.getByRole("button", { name: /^(Open session|Inspect subagent):/ }),
+    ).toHaveCount(2);
+    for (const row of await activityMenu
+      .getByRole("button", { name: /^(Open session|Inspect subagent):/ })
+      .all()) {
       const rowBounds = (await row.boundingBox())!;
       const dotBounds = (await row.locator(".bg-accent").boundingBox())!;
       expect(rowBounds.x + rowBounds.width - dotBounds.x - dotBounds.width).toBeLessThan(14);

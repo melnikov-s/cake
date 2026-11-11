@@ -208,7 +208,7 @@ it.each(["project", "cake-chat"] as const)(
     view.publishWorker("running");
     const trigger = screen.getByRole("button", { name: "Activity · 1 running" });
     expect(trigger.closest(".workbench-composer")).not.toBeNull();
-    expect(trigger.getAttribute("data-slot")).toBe("composer-activity");
+    expect(trigger.getAttribute("data-slot")).toBe("inset-disclosure-trigger");
     const dock = trigger.closest('[data-slot="composer-dock"]')!;
     const input = dock.querySelector('[data-slot="composer-input"]')!;
     expect(trigger.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -233,7 +233,7 @@ it.each(["project", "cake-chat"] as const)(
 );
 
 it.each(["project", "cake-chat"] as const)(
-  "%s activity toggles inline from the bar, chevron and keyboard without dismissing on composer input",
+  "%s inset activity toggles from its header and keyboard without dismissing on composer input",
   async (kind) => {
     using view = renderActivity(kind);
     view.publishWorker("running");
@@ -243,17 +243,16 @@ it.each(["project", "cake-chat"] as const)(
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
 
-    const bar = within(trigger.parentElement!);
-    const autoMerge = bar.getByRole("button", { name: "Auto-merge: off" });
-    const chevron = bar.getByRole("button", { name: "Toggle conversation activity" });
-    expect(bar.getAllByRole("button")).toEqual([trigger, autoMerge, chevron]);
-    expect(autoMerge.textContent).toBe("");
-    expect(chevron.getAttribute("aria-controls")).toBe(detailsId);
-    expect(chevron.getAttribute("aria-expanded")).toBe("false");
-    await view.user.click(chevron);
-    expect(chevron.getAttribute("aria-expanded")).toBe("true");
+    expect(within(trigger).getAllByText("1")).toHaveLength(2);
+    expect(trigger.getAttribute("aria-description")).toBe(
+      "0 Project Sessions and 1 Temporary subagents",
+    );
+    await view.user.click(trigger);
     const details = screen.getByRole("region", { name: "Conversation activity" });
     expect(details.id).toBe(detailsId);
+    if (kind === "project")
+      expect(within(details).getByRole("button", { name: "Auto-merge: off" }).textContent).toBe("");
+    else expect(within(details).queryByRole("button", { name: /^Auto-merge:/ })).toBeNull();
     expect(dock.contains(details)).toBe(true);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     const input = within(dock as HTMLElement).getByRole("combobox");
@@ -261,14 +260,14 @@ it.each(["project", "cake-chat"] as const)(
     await view.user.type(input, "Keep this draft");
     expect(screen.getByRole("region", { name: "Conversation activity" })).toBe(details);
 
-    await view.user.click(within(trigger).getByText("Activity ·"));
+    await view.user.click(within(trigger).getByText("Activity"));
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
     await view.user.keyboard("{Enter}");
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     await view.user.keyboard(" ");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    await view.user.click(chevron);
+    await view.user.click(trigger);
     await view.user.keyboard("{Escape}");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(trigger);
@@ -324,7 +323,7 @@ it("regular sessions show only running direct children and open the selected ses
   const menu = screen.getByRole("region", { name: "Conversation activity" });
   expect(
     within(menu)
-      .getAllByRole("button")
+      .getAllByRole("button", { name: /^(Open session|Inspect subagent):/ })
       .map((button) => button.getAttribute("aria-label")),
   ).toEqual(["Open session: Activity UI review"]);
   await view.user.click(
@@ -397,7 +396,7 @@ it.each(["project", "cake-chat"] as const)(
     );
     await view.user.click(screen.getByRole("button", { name: "Activity · 2 running" }));
     const menu = screen.getByRole("region", { name: "Conversation activity" });
-    const rows = within(menu).getAllByRole("button");
+    const rows = within(menu).getAllByRole("button", { name: /^(Open session|Inspect subagent):/ });
     expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
       "Open session: Activity UI review",
       "Inspect subagent: Worker running",
@@ -425,7 +424,9 @@ it.each(["project", "cake-chat"] as const)(
     expect(within(menu).queryByText("Inspect", { exact: true })).toBeNull();
     view.publishSessions(nonRunning);
     expect(screen.getByRole("button", { name: "Activity · 1 running" })).toBeTruthy();
-    expect(within(menu).getAllByRole("button")).toHaveLength(1);
+    expect(
+      within(menu).getAllByRole("button", { name: /^(Open session|Inspect subagent):/ }),
+    ).toHaveLength(1);
     view.publishWorker("complete");
     expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
     expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();

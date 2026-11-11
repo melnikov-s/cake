@@ -80,8 +80,13 @@ Admission identity, not text or queue position, links the receipt to the runtime
 [`ReadableData`](../../src/renderer/components/ui/readable-data.tsx) renders complete literal values as readable documents, ordered arrays and definition lists, with optional section disclosure and embedded raster-image previews. It never fetches remote image references or interprets strings as Markdown. Use it for literal attachment previews; syntax-highlighted source remains owned by AI Elements.
 
 [`ActivityDisclosure`](../../src/renderer/components/ui/activity-disclosure.tsx) composes
-Button and StatusDot into a compact pill or attached composer strip. Clicking the
-bar or its chevron toggles a bounded, scrollable inline list of inspect/open rows;
+Button and StatusDot into a compact header pill or an inset composer disclosure.
+The composer uses [`InsetDisclosures`](../../src/renderer/components/ui/inset-disclosures.tsx):
+equal compact rows, inline counts, session/subagent breakdown and indented bounded lists.
+Only one section expands; both may collapse without acknowledging work. Arrow keys,
+Home and End navigate headers; Escape inside the stack returns focus to its owner,
+never intercepting composer Escape. New counts do not expand sections or move focus.
+Auto-merge remains available inside expanded Activity. Clicking a header toggles its list;
 Enter and Space toggle it, and Escape collapses it and returns focus to the trigger.
 Per-row type icons retain accessible labels and tooltips, separate from status dots.
 Conversation owners supply only currently running work and derive the summary/count

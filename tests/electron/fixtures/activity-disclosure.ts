@@ -1,37 +1,27 @@
 import { expect, type Locator } from "@playwright/test";
 
-/** Exercise the shared disclosure in real conversation workflows, not a synthetic mount. */
+/** Exercise the inset disclosure in real conversation workflows, not a synthetic mount. */
 export async function verifyInlineActivity(activity: Locator, composer: Locator) {
   const dock = activity.locator('xpath=ancestor::*[@data-slot="composer-dock"]');
   const details = dock.getByRole("region", { name: "Conversation activity" });
   const form = dock.locator("form");
   const collapsedInput = (await form.boundingBox())!;
   await expect(activity).toHaveAttribute("aria-expanded", "false");
-
-  const bar = activity.locator("..");
-  const chevron = bar.getByRole("button", { name: "Toggle conversation activity", exact: true });
-  await chevron.click();
-  await expect(chevron).toHaveAttribute("aria-expanded", "true");
+  await activity.click();
   await expect(activity).toHaveAttribute("aria-expanded", "true");
   await expect(details).toHaveAttribute("id", (await activity.getAttribute("aria-controls"))!);
   const strip = (await activity.boundingBox())!;
   const expanded = (await details.boundingBox())!;
   const expandedInput = (await form.boundingBox())!;
-  expect(Math.abs(strip.y + strip.height - expanded.y)).toBeLessThan(2);
-  expect(Math.abs(expanded.y + expanded.height - expandedInput.y)).toBeLessThan(2);
+  expect(expanded.y).toBeGreaterThanOrEqual(strip.y + strip.height - 1);
+  expect(expanded.y + expanded.height).toBeLessThanOrEqual(expandedInput.y);
   expect(Math.abs(expandedInput.y - collapsedInput.y)).toBeLessThan(2);
+  expect(expanded.height).toBeLessThanOrEqual(168);
   expect(expanded.y).toBeGreaterThan(0);
 
-  const autoMerge = bar.getByRole("button", { name: "Auto-merge: off", exact: true });
+  const autoMerge = details.getByRole("button", { name: "Auto-merge: off", exact: true });
   await expect(autoMerge).toBeVisible();
   await expect(autoMerge).toHaveText("");
-  const iconBounds = (await autoMerge.boundingBox())!;
-  const chevronBounds = (await chevron.boundingBox())!;
-  expect(iconBounds.x + iconBounds.width).toBeLessThanOrEqual(chevronBounds.x);
-  for (const bounds of [iconBounds, chevronBounds]) {
-    expect(bounds.width).toBeGreaterThanOrEqual(28);
-    expect(bounds.height).toBeGreaterThanOrEqual(28);
-  }
   const offColor = await autoMerge.evaluate((button) => getComputedStyle(button).color);
   const mergedColor = await autoMerge.evaluate((button) => {
     const sample = document.createElement("span");
@@ -44,11 +34,8 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   const page = activity.page();
   const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
   await autoMerge.click();
-  await expect(bar.getByRole("button", { name: "Auto-merge: on", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  const enabled = bar.getByRole("button", { name: "Auto-merge: on", exact: true });
+  const enabled = details.getByRole("button", { name: "Auto-merge: on", exact: true });
+  await expect(enabled).toHaveAttribute("aria-pressed", "true");
   await expect(enabled).toHaveCSS("color", mergedColor);
   await enabled.hover();
   await expect(enabled).toHaveCSS("color", mergedColor);
@@ -58,24 +45,20 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   await expect(details).toBeVisible();
   await rail.getByRole("button", { name: "Auto-merge: on", exact: true }).click();
   await expect(autoMerge).toHaveAttribute("aria-pressed", "false");
-  await details.getByRole("button").first().focus();
-  await details.getByRole("button").first().press("Shift+Tab");
-  await expect(chevron).toBeFocused();
-  await chevron.press("Shift+Tab");
-  await expect(autoMerge).toBeFocused();
-  await autoMerge.press("Shift+Tab");
+  const firstItem = details
+    .getByRole("button", { name: /^(Open session|Inspect subagent):/ })
+    .first();
+  await firstItem.focus();
+  await firstItem.press("Shift+Tab");
   await expect(activity).toBeFocused();
-  await activity.press("Tab");
-  await expect(autoMerge).toBeFocused();
-  await autoMerge.press("Tab");
-  await expect(chevron).toBeFocused();
   await composer.click();
   await expect(composer).toBeFocused();
   await composer.pressSequentially("Keep activity draft");
   await expect(composer).toHaveValue("Keep activity draft");
   await expect(dock.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  await composer.press("Escape");
+  await expect(composer).toBeFocused();
   await expect(details).toBeVisible();
-
   await activity.click();
   await expect(activity).toHaveAttribute("aria-expanded", "false");
   await expect(details).toHaveCount(0);
@@ -87,6 +70,6 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   await expect(composer).toHaveValue("Keep activity draft");
   await activity.press("Enter");
   await expect(details).toBeVisible();
-  await details.getByRole("button").first().focus();
+  await firstItem.focus();
   return details;
 }

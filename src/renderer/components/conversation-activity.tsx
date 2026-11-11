@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { InsetDisclosureSection } from "./ui/inset-disclosures";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
@@ -15,14 +15,14 @@ export const ConversationActivity = observer(function ConversationActivity({
   sideChat,
   onOpen,
   placement = "header",
-  composerFooter,
+  composerSections = [],
 }: {
   sessionId: string;
   subagents: SubagentActivityStore;
   sideChat: SideChatStore;
   onOpen?(): void;
   placement?: "header" | "composer" | "strip";
-  composerFooter?: ReactNode;
+  composerSections?: readonly InsetDisclosureSection[];
 }) {
   const root = useStore(RootStore);
   const conversationActivity = root.conversationActivityStore;
@@ -31,10 +31,14 @@ export const ConversationActivity = observer(function ConversationActivity({
     .filter((session) => session.status === "running");
   const runs = subagents.activeRuns.filter((run) => run.status === "running");
   const running = sessions.length + runs.length;
-  if (running === 0 && !composerFooter) return null;
+  if (running === 0 && composerSections.length === 0) return null;
   const activity = (
     <ActivityDisclosure
-      presentation={placement === "header" ? "pill" : "strip"}
+      key={sessionId}
+      presentation={placement === "header" ? "pill" : "inset"}
+      sessionCount={sessions.length}
+      subagentCount={runs.length}
+      sections={composerSections}
       summary={`${running} running`}
       status="running"
       onOpen={onOpen}
@@ -81,12 +85,5 @@ export const ConversationActivity = observer(function ConversationActivity({
       ]}
     />
   );
-  return placement === "composer" ? (
-    <ComposerCap className={composerFooter ? undefined : "pb-5"}>
-      {running > 0 && activity}
-      {composerFooter}
-    </ComposerCap>
-  ) : (
-    activity
-  );
+  return placement === "composer" ? <ComposerCap>{activity}</ComposerCap> : activity;
 });

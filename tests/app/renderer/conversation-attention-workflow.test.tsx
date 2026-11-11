@@ -17,6 +17,12 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 afterEach(cleanup);
 
+function expandAttention() {
+  const trigger = screen.getByRole("button", { name: /^Needs attention ·/ });
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(trigger);
+}
+
 const item: ProjectTodo = {
   id: "00000000-0000-4000-8000-000000000011",
   title: "Choose shortcut",
@@ -216,6 +222,7 @@ it("shows every own attention item even when focused or filtered; X never activa
       <CakeChatComposerHeader session={session} />
     </StoreProvider>,
   );
+  expandAttention();
   const queue = screen.getByRole("region", { name: "Needs attention" });
   expect(within(queue).getAllByRole("button")).toHaveLength(4);
   expect(screen.queryByText("Review")).toBeNull();
@@ -271,8 +278,11 @@ it.each([1, 3, 10])("keeps all %i attention items in the inner list and in order
       <CakeChatComposerHeader session={session} />
     </StoreProvider>,
   );
+  expandAttention();
   const queue = screen.getByRole("region", { name: "Needs attention" });
-  expect(within(queue).getByRole("heading").textContent).toBe(`Needs attention${count}`);
+  expect(screen.getByRole("button", { name: /^Needs attention ·/ }).textContent).toBe(
+    `Needs attention${count}to-dos`,
+  );
   const list = within(queue).getByRole("list", { name: "Needs attention items" });
   expect(within(list).getAllByRole("listitem")).toHaveLength(count);
   expect(
@@ -307,6 +317,7 @@ it("labels attention pills by title and shows only informative reasons beneath",
       <CakeChatComposerHeader session={fixture.root.cakeChatCollectionStore.registry.load(chat)} />
     </StoreProvider>,
   );
+  expandAttention();
   expect(
     items.map(
       (todo) => screen.getByRole("button", { name: `Open attention: ${todo.title}` }).textContent,
@@ -371,6 +382,7 @@ it("queues authoritative attention occurrences FIFO, not task creation or edit a
         <CakeChatComposerHeader session={session} />
       </StoreProvider>,
     );
+    expandAttention();
     const expectOrder = (titles: string[]) => {
       const list = screen.getByRole("list", { name: "Needs attention items" });
       expect(
@@ -448,6 +460,7 @@ it.each([undefined, "2026-01-01T00:00:00.000Z"])(
         <CakeChatComposerHeader session={session} />
       </StoreProvider>,
     );
+    expandAttention();
     expect(
       screen
         .getAllByRole("button", { name: /^Open attention:/ })
@@ -498,6 +511,7 @@ it("never borrows the global chat's list and keeps a failed activation visible",
       <CakeChatComposerHeader session={session} />
     </StoreProvider>,
   );
+  expandAttention();
   await act(async () =>
     fireEvent.click(screen.getByRole("button", { name: "Open attention: Choose shortcut" })),
   );

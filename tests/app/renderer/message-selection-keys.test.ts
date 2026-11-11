@@ -63,6 +63,21 @@ describe("messageSelectionKeyAction", () => {
       expect(messageSelectionKeyAction(key(get(id), "ArrowUp"), context)).toBeUndefined();
   });
 
+  it("leaves inset header navigation and panel Escape to their disclosure, even with a transcript selection", () => {
+    const { pane: root, composer } = pane();
+    const stack = document.createElement("div");
+    stack.dataset.slot = "inset-disclosures";
+    stack.innerHTML =
+      '<button>Activity</button><div role="region"><button>Open work</button></div>';
+    root.append(stack);
+    for (const hasSelection of [false, true]) {
+      const context = { pane: root, composerInput: composer, hasSelection };
+      for (const target of stack.querySelectorAll("button"))
+        for (const name of ["ArrowUp", "ArrowDown", "Escape"])
+          expect(messageSelectionKeyAction(key(target, name), context)).toBeUndefined();
+    }
+  });
+
   it("never takes modified, composing, or already handled keys", () => {
     const { pane: root, composer, get } = pane();
     const context = { pane: root, composerInput: composer, hasSelection: true };

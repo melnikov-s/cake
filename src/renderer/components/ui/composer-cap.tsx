@@ -7,7 +7,7 @@ export function ComposerCap({ className, ...props }: ComponentProps<"div">) {
     <div
       {...props}
       className={cn(
-        "@container/worktree mx-4 -mb-5 flex min-w-0 flex-col rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8 empty:hidden",
+        "@container/worktree mx-4 -mb-5 flex min-w-0 flex-col rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8 empty:hidden has-[[data-slot=inset-disclosures]]:mx-0 has-[[data-slot=inset-disclosures]]:mb-0 has-[[data-slot=inset-disclosures]]:rounded-t-md has-[[data-slot=inset-disclosures]]:px-1 has-[[data-slot=inset-disclosures]]:pt-0.5 has-[[data-slot=inset-disclosures]]:pb-0.5",
         className,
       )}
     />

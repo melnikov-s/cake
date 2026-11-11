@@ -126,6 +126,7 @@ it.each([
           <CakeChatComposerHeader session={session} />
         </StoreProvider>,
       );
+      fireEvent.click(screen.getByRole("button", { name: /^Needs attention ·/ }));
       const open = () => screen.getByRole("button", { name: "Open attention: Investigate merge" });
       backend.state.reject = !held;
       backend.state.sourceAvailable = !held;
