@@ -17,9 +17,10 @@ import type { AttachmentContent } from "../../src/contracts/conversations/attach
 import { createRendererStoreFixture } from "../app/renderer/renderer-store-fixture";
 import { projectRecord, sessionSummary } from "../app/renderer/fixtures/catalog-fixtures";
 import { applyConversationUpdate } from "../../src/renderer/reducers/ConversationReducer";
-import type {
-  ConversationSnapshot,
-  UiPart,
+import {
+  builtinSlashCommands,
+  type ConversationSnapshot,
+  type UiPart,
 } from "../../src/contracts/conversations/session-contract";
 
 import type { CompiledInlineWidget } from "../../src/contracts/widgets/inline-widget-contract";
@@ -172,6 +173,9 @@ let releaseRecognition: ((text: string) => void) | undefined;
 let releaseSubmission: (() => void) | undefined;
 let submissionReady: Promise<void> | undefined;
 let submittedText: string | undefined;
+let renamedTitle: string | undefined;
+let rejectSubmission = false;
+let queueSubmission = false;
 const fixture = createRendererStoreFixture({
   microphone: {
     devices: async () => [],
@@ -207,6 +211,11 @@ const fixture = createRendererStoreFixture({
     },
     workspaces: { postProcessDictation: async (text) => text },
     ...client,
+    projectSessions: {
+      rename: async ({ name }) => {
+        renamedTitle = name;
+      },
+    },
     projectTodos: {
       activateAttention: async () => {
         if (!deferAttentionProjection) projectAttentionQueue();
@@ -247,9 +256,33 @@ const fixture = createRendererStoreFixture({
         submittedText = text;
         await submissionReady;
         submissionReady = undefined;
+        if (rejectSubmission) {
+          rejectSubmission = false;
+          throw new Error("Fixture admission rejected");
+        }
+        const queued = queueSubmission;
+        queueSubmission = false;
         parts = [
           ...parts,
-          { kind: "text", id: `sent-${revision}`, role: "user", status: "complete", text },
+          {
+            kind: "text",
+            id: `sent-${revision}`,
+            role: "user",
+            status: "complete",
+            text,
+            ...(queued
+              ? {
+                  deliveryState: "queued" as const,
+                  queuedInput: {
+                    itemId: "20000000-0000-4000-8000-000000000003",
+                    turnId: "10000000-0000-4000-8000-000000000001",
+                    text,
+                    attachments: [],
+                    renderUserMessageAsMarkdown: false,
+                  },
+                }
+              : {}),
+          },
         ];
         publish();
         render();
@@ -347,7 +380,7 @@ const snapshot: ConversationSnapshot = {
   availableThinkingLevels: ["off"],
   streaming: false,
   diagnostics: [],
-  commands: [],
+  commands: builtinSlashCommands,
   compatibility: { resources: [], diagnostics: [] },
   extensionUi: { statuses: [] },
   tree: [],
@@ -448,9 +481,13 @@ export interface TranscriptOwnershipFixture {
   dictate(): void;
   finishRecognition(): boolean;
   submittedText(): string | undefined;
+  renamedTitle(): string | undefined;
   /** Schedule real reminder rows through the observer, leaving mount/measurement to React/the list. */
   sessionUpdates(batch: string): void;
   delaySubmission(): void;
+  rejectNextSubmission(): void;
+  queueNextSubmission(): void;
+  submitProgrammatically(text: string): Promise<void>;
   admitSubmission(): void;
   queueAttentionProjection(defer: boolean): void;
   projectAttentionQueue(): void;
@@ -507,6 +544,9 @@ Reflect.set(window, "transcriptFixture", {
   submittedText() {
     return submittedText;
   },
+  renamedTitle() {
+    return renamedTitle;
+  },
   sessionUpdates(batch) {
     parts = [
       ...parts,
@@ -528,6 +568,15 @@ Reflect.set(window, "transcriptFixture", {
       })),
     ];
     publish();
+  },
+  rejectNextSubmission() {
+    rejectSubmission = true;
+  },
+  queueNextSubmission() {
+    queueSubmission = true;
+  },
+  async submitProgrammatically(text) {
+    await store.submit(text);
   },
   delaySubmission() {
     submissionReady = new Promise<void>((resolve) => {

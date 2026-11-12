@@ -716,6 +716,8 @@ export class ChatStore extends Store<ChatStoreProps> {
     options?: {
       renderUserMessageAsMarkdown?: boolean;
       enterContinuation?: number;
+      /** Only supplied by the composer's actual keyboard Enter-submit path. */
+      composerEnter?: AbortSignal;
     },
   ) {
     // A cleared in-flight draft or an unread image is not an intentional empty
@@ -737,6 +739,7 @@ export class ChatStore extends Store<ChatStoreProps> {
       await this.steerQueuedPrompt(own.id);
       return true;
     }
+    const conversationId = this.id;
     this.submittingLocally = true;
     let submission: DictationSubmission | undefined;
     let accepted = false;
@@ -752,6 +755,15 @@ export class ChatStore extends Store<ChatStoreProps> {
           this.cancelEnterContinuation();
         return false;
       }
+      // Capture the actual admitted input after final recognition, before delivery
+      // can clear the draft/attachments or end an edit. Only Enter carries this signal.
+      const enterSubmission =
+        options?.composerEnter &&
+        (value.trim() || this.attachments.length || this.annotations.length) &&
+        !this.editingMessage &&
+        !this.submitsAsDraft &&
+        // Slash commands can succeed without submitting a user message.
+        !value.trimStart().startsWith("/");
       // Record composer sends without changing the reader's transcript position.
       // Editing an earlier message rewrites history in place instead.
       if (!this.editingMessage) this.transcriptInteraction.noteSentMessage();
@@ -775,6 +787,15 @@ export class ChatStore extends Store<ChatStoreProps> {
           this.enterContinuation = { ...continuation, turnId: submitted.turnId };
         else this.cancelEnterContinuation();
       }
+      if (
+        accepted &&
+        submitted !== undefined &&
+        enterSubmission &&
+        !options?.composerEnter?.aborted &&
+        !this.signal.aborted &&
+        this.id === conversationId
+      )
+        this.transcriptInteraction.acceptComposerEnterSubmission();
       return submitted !== false;
     } finally {
       dictation?.completeSubmission(submission, accepted);

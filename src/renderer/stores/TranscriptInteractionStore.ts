@@ -81,10 +81,11 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   sentMessageRevision = 0;
   /**
    * Counts the reader's requests for the newest content: the jump-to-bottom
-   * control or arrowing past the newest message. These are the
-   * only times the transcript scrolls to the bottom for the reader.
+   * control or arrowing past the newest message. Composer Enter is separate.
    */
   bottomRequestRevision = 0;
+  /** Counts accepted submissions carrying keyboard provenance, never generic sends. */
+  composerEnterRequestRevision = 0;
   private messageSelectionRevision = 0;
   /** Explicit attention navigation only; late receipts cannot revive a superseded request. */
   resultReveal:
@@ -244,6 +245,14 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
     this.sentMessageRevision++;
     // A send supersedes pending attention navigation, not the reader's position or selection.
     this.cancelResultReveal();
+  }
+
+  /** Accepted user input carrying the actual composer's keyboard Enter provenance. */
+  acceptComposerEnterSubmission() {
+    this.cancelResultReveal();
+    this.clearMessageSelection();
+    this.composerEnterRequestRevision++;
+    this.transcriptScrollPosition = { kind: "bottom" };
   }
 
   /** The reader asked for the newest content; the transcript follows it again. */

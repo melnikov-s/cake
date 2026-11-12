@@ -54,7 +54,7 @@ interface SlashCommandComboboxProps extends Omit<
   inputHistoryRevision?: number;
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   onValueChange(value: string): void;
-  onSubmit(value?: string): void | Promise<void>;
+  onSubmit(value?: string, origin?: "composer-enter"): void | Promise<void>;
   onEscape?(): void;
   inputRef?(input: ComposerInputElement | null): void;
   onContextMenu?(event: MouseEvent<HTMLElement>): void;
@@ -352,7 +352,7 @@ export function SlashCommandCombobox({
   const restoreFocusAfterSubmit = async (submittedValue?: string) => {
     const focusAtSubmit = document.activeElement;
     try {
-      await onSubmit(submittedValue);
+      await onSubmit(submittedValue, "composer-enter");
     } finally {
       // A deferred dictation send must not take focus back after the user moves on.
       const movedOn =
@@ -404,10 +404,22 @@ export function SlashCommandCombobox({
     } else if (open && event.key === "ArrowUp") {
       event.preventDefault();
       flushSync(() => setActiveIndex((index) => (index - 1 + menuItems.length) % menuItems.length));
-    } else if (menuKind === "files" && event.key === "Enter" && !event.nativeEvent.isComposing) {
+    } else if (
+      menuKind === "files" &&
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing &&
+      event.keyCode !== 229
+    ) {
       event.preventDefault();
       chooseFile(fileResults.items[selectedIndex]!);
-    } else if (menuKind === "commands" && event.key === "Enter" && !event.nativeEvent.isComposing) {
+    } else if (
+      menuKind === "commands" &&
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing &&
+      event.keyCode !== 229
+    ) {
       event.preventDefault();
       executeCommand(filteredCommands[selectedIndex]!);
     } else if (
@@ -432,7 +444,12 @@ export function SlashCommandCombobox({
       event.preventDefault();
       event.stopPropagation();
       onEscape();
-    } else if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    } else if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing &&
+      event.keyCode !== 229
+    ) {
       event.preventDefault();
       void restoreFocusAfterSubmit(inputValue);
     }

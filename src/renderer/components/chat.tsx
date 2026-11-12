@@ -215,14 +215,24 @@ export const Chat = observer(function Chat({
     composerInputRef,
     composerFocusRef,
   );
-  const submitMessage = async (value?: string) => {
+  // An in-flight Enter belongs to this mounted conversation, not a later visit.
+  const composerLifetime = useRef<AbortController | undefined>(undefined);
+  useLayoutEffect(() => {
+    const lifetime = new AbortController();
+    composerLifetime.current = lifetime;
+    return () => lifetime.abort();
+  }, [store, store.id]);
+  const submitMessage = async (value?: string, origin?: "composer-enter") => {
     const canSend = store.canSubmitValue(value) && !store.editingMessage;
     const focusAtSubmit = document.activeElement;
     const continuation =
       canSend && composerFocusRef.current?.shouldParkFocus()
         ? store.beginEnterContinuation()
         : undefined;
-    await store.submit(value, { enterContinuation: continuation });
+    await store.submit(value, {
+      enterContinuation: continuation,
+      composerEnter: origin === "composer-enter" ? composerLifetime.current?.signal : undefined,
+    });
     if (
       continuation !== undefined &&
       store.hasEnterContinuation &&
@@ -364,7 +374,7 @@ export const Chat = observer(function Chat({
                 parkFocusWhileDictating={parkComposerFocusWhileDictating}
                 onReword={(selection) => void reword(selection)}
                 onPromptedReword={setPromptedSelection}
-                onSubmit={(value) => submitMessage(value)}
+                onSubmit={submitMessage}
               />
             )
           }

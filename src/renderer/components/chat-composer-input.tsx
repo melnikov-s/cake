@@ -43,7 +43,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   parkFocusWhileDictating: boolean;
   onReword(selection: ComposerSelection): void;
   onPromptedReword(selection: ComposerSelection): void;
-  onSubmit(value: string): Promise<void>;
+  onSubmit(value: string, origin?: "composer-enter"): Promise<void>;
 }) {
   const [reference, setReference] = useState<
     ComposerSelection & {

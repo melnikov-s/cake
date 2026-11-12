@@ -306,7 +306,12 @@ describe("Chat optional presentation capability", () => {
 
 // All composer paths record sends without changing the reader's saved position.
 describe("Sent message transcript signal", () => {
-  function chatStore(options: { canSubmit: boolean; editing?: boolean }) {
+  function chatStore(options: {
+    canSubmit: boolean;
+    editing?: boolean;
+    saved?: boolean;
+    result?: "void" | "false";
+  }) {
     return mount(
       createStore(ChatStore, {
         id: () => "sent-message",
@@ -318,7 +323,8 @@ describe("Sent message transcript signal", () => {
         placeholder: () => "Message",
         inputLabel: () => "Message",
         canSubmit: () => options.canSubmit,
-        submit: async () => true,
+        submit: async () => (options.result === "void" ? undefined : options.result !== "false"),
+        sessionCreationChoice: () => ({ kind: options.saved ? "draft" : "current" }),
         editingMessage: () => options.editing ?? false,
       }),
     );
@@ -332,7 +338,26 @@ describe("Sent message transcript signal", () => {
     expect(store.transcriptInteraction.sentMessageRevision).toBe(2);
     expect(store.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "top" });
     expect(store.transcriptInteraction.bottomRequestRevision).toBe(0);
+    expect(store.transcriptInteraction.composerEnterRequestRevision).toBe(0);
   });
+
+  it.each(["empty", "edit", "aborted", "slash", "saved", "void", "false"] as const)(
+    "does not consume an Enter intent for %s submission",
+    async (kind) => {
+      using store = chatStore({
+        canSubmit: true,
+        editing: kind === "edit",
+        saved: kind === "saved",
+        result: kind === "void" || kind === "false" ? kind : undefined,
+      });
+      const lifetime = new AbortController();
+      if (kind === "aborted") lifetime.abort();
+      await store.submit(kind === "empty" ? "   " : kind === "slash" ? "/tree" : "User input", {
+        composerEnter: lifetime.signal,
+      });
+      expect(store.transcriptInteraction.composerEnterRequestRevision).toBe(0);
+    },
+  );
 
   it("does not move the transcript for rejected sends or edits of an earlier message", async () => {
     using rejected = chatStore({ canSubmit: false });

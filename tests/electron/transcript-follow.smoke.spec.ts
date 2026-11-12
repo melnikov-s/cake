@@ -315,7 +315,7 @@ const streamFor = async (page: Page, milliseconds: number, mode = "text+tool+arr
 };
 
 test.describe("transcript follow rules", () => {
-  test("rule 1: sending preserves the reader; explicit navigation scrolls to the bottom", async ({
+  test("rule 1: only accepted composer Enter forces the bottom; other sends preserve the reader", async ({
     fixturePage: page,
   }) => {
     const transcript = page.locator(".transcript");
@@ -329,12 +329,13 @@ test.describe("transcript follow rules", () => {
     }
     expect(await gap(transcript)).toBeGreaterThan(400);
 
-    // Both composer paths submit without moving the reading anchor.
-    for (const method of ["Enter", "button"]) {
+    // Neither a button nor a programmatic send carries keyboard provenance.
+    for (const method of ["button", "programmatic"]) {
       const text = `Keep my place (${method}).`;
-      await input.fill(text);
-      if (method === "Enter") await input.press("Enter");
-      else await page.getByRole("button", { name: "Send", exact: true }).click();
+      if (method === "button") {
+        await input.fill(text);
+        await page.getByRole("button", { name: "Send", exact: true }).click();
+      } else await fixtureCall(page, "submitProgrammatically", text);
       await expect.poll(() => fixtureCall(page, "submittedText")).toBe(text);
       await expect(input).toHaveValue("");
       await settle(page);
@@ -348,7 +349,7 @@ test.describe("transcript follow rules", () => {
     await jump.click();
     await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
     await expect(jump).toHaveCount(0);
-    await expect(transcript.getByText("Keep my place (button).")).toBeVisible();
+    await expect(transcript.getByText("Keep my place (programmatic).")).toBeVisible();
 
     // Sending while already at the bottom keeps normal following.
     await input.fill("Keep following.");
@@ -378,7 +379,7 @@ test.describe("transcript follow rules", () => {
     await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
   });
 
-  test("writing clears keyboard selection but sending preserves the reading position", async ({
+  test("writing clears keyboard selection and accepted Enter goes to the bottom", async ({
     fixturePage: page,
   }) => {
     const transcript = page.locator(".transcript");
@@ -391,14 +392,12 @@ test.describe("transcript follow rules", () => {
     // Writing intentionally ends keyboard message selection, not the reading position.
     await expect(selected).toHaveCount(0);
     await settle(page);
-    const reading = await anchor(transcript);
     await input.press("Enter");
     await expect
       .poll(() => fixtureCall(page, "submittedText"))
       .toBe("Send without moving the reading position.");
-    await settle(page);
+    await expect.poll(() => gap(transcript)).toBeLessThan(1);
     await expect(selected).toHaveCount(0);
-    expect(await anchor(transcript)).toEqual(reading);
   });
 
   test("Cmd+Down uses the focused chat's arrow but preserves composer caret navigation", async ({
@@ -654,6 +653,198 @@ test.describe("Project Chat transcript", () => {
   });
 });
 
+for (const scenario of [
+  { title: "normal", chatMode: "full", messageCount: 48, withImages: false },
+  { title: "far virtualized", chatMode: "full", messageCount: 180, withImages: false },
+  { title: "compact", chatMode: "compact", messageCount: 8, withImages: false },
+  { title: "Project Chat with images", chatMode: "project", messageCount: 40, withImages: true },
+]) {
+  test.describe(`composer Enter scroll: ${scenario.title}`, () => {
+    test.use(scenario);
+    test("repeated accepted Enter submissions settle at actual bottom after draft and dock layout", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const input = page.locator('[data-slot="composer-input"] [role="combobox"]');
+      const measurements: unknown[] = [];
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await wheel(page, transcript, -5000);
+        expect(await gap(transcript)).toBeGreaterThan(100);
+        await input.focus();
+        await page.keyboard.type(
+          `Attempt ${attempt}. ${"Long draft changes composer height. ".repeat(25)}`,
+        );
+        await expect(input).toBeFocused();
+        await expect(input).not.toHaveValue("");
+        await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+        await fixtureCall(page, "delaySubmission");
+        if (attempt === 1) await fixtureCall(page, "queueNextSubmission");
+        const reading = await anchor(transcript);
+        const before = await gap(transcript);
+        await input.press("Enter");
+        await settle(page);
+        expect(await anchor(transcript)).toEqual(reading);
+        expect(await gap(transcript)).toBeGreaterThan(100);
+        await fixtureCall(page, "setDockHeight", 100 + attempt * 40);
+        await fixtureCall(page, "admitSubmission");
+        await expect(input).toHaveValue("");
+        await expect.poll(() => gap(transcript)).toBeLessThan(1);
+        // Late dock/list/viewport layouts belong to normal following after acceptance.
+        await fixtureCall(page, "setDockHeight", 10);
+        await page.setViewportSize({ width: 780 + attempt * 37, height: 650 });
+        await fixtureCall(page, "arrive");
+        await settle(page);
+        await expect.poll(() => gap(transcript)).toBeLessThan(1);
+        const footerGap = await transcript
+          .locator('[data-slot="transcript-footer"]')
+          .evaluate(
+            (element) =>
+              element.getBoundingClientRect().bottom -
+              element.closest(".transcript")!.getBoundingClientRect().bottom,
+          );
+        expect(footerGap).toBeLessThan(1);
+        measurements.push({
+          footerGap,
+          attempt,
+          before,
+          after: await transcript.evaluate((element) => ({
+            top: element.scrollTop,
+            height: element.scrollHeight,
+            viewport: element.clientHeight,
+            gap: element.scrollHeight - element.clientHeight - element.scrollTop,
+          })),
+        });
+        // A single upward gesture releases following; no lingering Enter pin.
+        await wheel(page, transcript, -300);
+        const released = await anchor(transcript);
+        for (const operation of ["insert", "stream", "arrive", "activity", "update"] as const)
+          await fixtureCall(page, operation);
+        await settle(page);
+        expect(await anchor(transcript)).toEqual(released);
+      }
+      const evidenceDirectory = join(repositoryRoot, ".visual-captures/composer-enter-scroll");
+      await mkdir(evidenceDirectory, { recursive: true });
+      const evidence = join(
+        evidenceDirectory,
+        `${scenario.chatMode}-${scenario.messageCount}-measurements.json`,
+      );
+      await writeFile(evidence, JSON.stringify(measurements, null, 2));
+      await test.info().attach("scroll-measurements.json", {
+        path: evidence,
+        contentType: "application/json",
+      });
+    });
+  });
+}
+
+test.describe("short transcript boundary", () => {
+  test.use({ messageCount: 1 });
+  test("Enter stays at the end when a short transcript becomes scrollable", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const input = page.getByRole("combobox", { name: "Message", exact: true });
+    await input.fill("A newly long user message. ".repeat(140));
+    await input.press("Enter");
+    await expect(input).toHaveValue("");
+    await expect.poll(() => gap(transcript)).toBeLessThan(1);
+    expect(await transcript.evaluate((element) => element.scrollHeight)).toBeGreaterThan(
+      await transcript.evaluate((element) => element.clientHeight),
+    );
+  });
+});
+
+test("slash completion and successful application commands never synthesize user-submit scrolling", async ({
+  fixturePage: page,
+}) => {
+  const transcript = page.locator(".transcript");
+  const input = page.getByRole("combobox", { name: "Message", exact: true });
+  await wheel(page, transcript, -2500);
+  const reading = await anchor(transcript);
+  await input.fill("/na");
+  await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
+  await input.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+  await input.dispatchEvent("keydown", { key: "Enter", keyCode: 229 });
+  expect(await fixtureCall(page, "submittedText")).toBeUndefined();
+  await input.press("Shift+Enter");
+  expect(await fixtureCall(page, "submittedText")).toBeUndefined();
+  await input.fill("/na");
+  await input.press("Tab");
+  await expect(input).toHaveValue("/name ");
+  await page.keyboard.type("Renamed fixture");
+  await expect(input).toHaveValue("/name Renamed fixture");
+  await input.press("Escape");
+  await input.press("Enter");
+  await expect.poll(() => fixtureCall(page, "renamedTitle")).toBe("Renamed fixture");
+  await expect(input).toHaveValue("");
+  await settle(page);
+  expect(await anchor(transcript)).toEqual(reading);
+  expect(await fixtureCall(page, "submittedText")).toBeUndefined();
+});
+
+test("reference-chip composer Enter retains its keyboard provenance", async ({
+  fixturePage: page,
+}) => {
+  const transcript = page.locator(".transcript");
+  await wheel(page, transcript, -3000);
+  const input = page.getByRole("combobox", { name: "Message", exact: true });
+  const message = "[Session](cake://session/ownership) Please continue here.";
+  await input.fill(message);
+  await expect(input).toHaveAttribute("contenteditable", "true");
+  await input.focus();
+  await expect(input).toBeFocused();
+  await input.press(process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End");
+  await page.keyboard.type(" More.");
+  await expect
+    .poll(() => input.evaluate((element) => Reflect.get(element, "value")))
+    .toBe(message + " More.");
+  await input.press("Enter");
+  await expect.poll(() => fixtureCall(page, "submittedText")).toBe(message + " More.");
+  await expect.poll(() => gap(transcript)).toBeLessThan(1);
+});
+
+test("non-submit Enter, failed admission and conversation switches never leak force-bottom", async ({
+  fixturePage: page,
+}) => {
+  const transcript = page.locator(".transcript");
+  const input = page.getByRole("combobox", { name: "Message", exact: true });
+  await wheel(page, transcript, -3000);
+  const reading = await anchor(transcript);
+  await input.focus();
+  await input.press("Enter");
+  await input.fill("Unfinished message");
+  await input.press("Shift+Enter");
+  await input.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+  await input.dispatchEvent("keydown", { key: "Enter", keyCode: 229 });
+  await transcript.focus();
+  await transcript.press("Enter");
+  await settle(page);
+  expect(await anchor(transcript)).toEqual(reading);
+  expect(await fixtureCall(page, "submittedText")).toBeUndefined();
+
+  await fixtureCall(page, "rejectNextSubmission");
+  await input.fill("Rejected message");
+  await input.press("Enter");
+  await expect(page.getByText("Fixture admission rejected", { exact: true })).toBeAttached();
+  await settle(page);
+  expect(await anchor(transcript)).toEqual(reading);
+
+  await fixtureCall(page, "delaySubmission");
+  await input.fill("Accepted after switching away");
+  await input.press("Enter");
+  await expect.poll(() => fixtureCall(page, "submittedText")).toBe("Accepted after switching away");
+  await fixtureCall(page, "switchConversation");
+  await fixtureCall(page, "admitSubmission");
+  await settle(page);
+  await expect(transcript.getByText("Accepted after switching away")).toHaveCount(0);
+  await fixtureCall(page, "switchConversation");
+  await settle(page);
+  expect(await anchor(transcript)).toEqual(reading);
+  await fixtureCall(page, "arrive");
+  await settle(page);
+  expect(await anchor(transcript)).toEqual(reading);
+});
+
 test("reopening a conversation restores the reader's position", async ({ fixturePage: page }) => {
   const transcript = page.locator(".transcript");
   await wheel(page, transcript, -1500);
@@ -665,7 +856,7 @@ test("reopening a conversation restores the reader's position", async ({ fixture
   await expect.poll(() => anchor(transcript)).toEqual(reading);
 });
 
-test("evidence: sending holds the reading position; explicit navigation follows again", async ({
+test("evidence: accepted Enter returns to bottom; explicit navigation also follows again", async ({
   fixturePage: page,
 }) => {
   test.skip(!capture, "Recording only: CAKE_TRANSCRIPT_CAPTURE=1.");
@@ -690,8 +881,9 @@ test("evidence: sending holds the reading position; explicit navigation follows 
   await input.press("Enter");
   await expect.poll(() => fixtureCall(page, "submittedText")).toBe("Please summarize.");
   await settle(page);
-  expect(await anchor(transcript)).toEqual(reading);
-  await shot("4-sent-still-reading");
+  await expect.poll(() => gap(transcript)).toBeLessThan(1);
+  await shot("4-enter-submitted-at-bottom");
+  await wheel(page, transcript, -1600);
   const jump = page.getByRole("button", { name: "Scroll to bottom", exact: true });
   await jump.hover();
   await expect(page.getByRole("tooltip")).toContainText(

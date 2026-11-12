@@ -84,11 +84,17 @@ projections needed by a surface. References do not transfer ownership.
   `maintainVisibleContentPosition` keeps visible content still otherwise
   (streaming, arriving messages, tool cards, images, prepended history). Cake's
   follow rules live in one place, `src/renderer/lib/transcript-follow.ts`:
-  1. Only explicit navigation scrolls to the bottom: the jump-to-bottom control
+  1. Explicit navigation scrolls to the bottom: the jump-to-bottom control
      (also ⌘↓ in the focused chat on Mac) or arrowing past the newest message.
      Both go through `TranscriptInteractionStore.returnToBottom()`
-     (`bottomRequestRevision`). Sending preserves the reading position, selection,
-     and existing follow state. Text editors retain their navigation keys.
+     (`bottomRequestRevision`). Accepted user messages submitted by keyboard Enter
+     in the shared composer carry a separate `composerEnterRequestRevision`; after
+     admission (including queued admission), that mounted conversation follows the
+     end through list/draft/dock layout. Other sends preserve the reading position,
+     selection, and follow state. Button, voice, programmatic and incoming messages,
+     blank/newline/IME Enter, failed submissions and slash commands cannot create
+     this intent. Leaving the conversation invalidates pending Enter intents.
+     Text editors retain their navigation keys.
   2. Any upward reader input stops following at once and keeps it stopped
      (wheel, keys, touch, scrollbar; embedded widget frames forward theirs as
      `transcript-reader-input`). The list alone would resume within a pixel.
@@ -97,8 +103,8 @@ projections needed by a surface. References do not transfer ownership.
      stops following, and pauses it until the selection ends. A fullscreen
      reader over the transcript pauses it too.
   5. While following at the bottom, streaming output stays pinned.
-  6. Only the reader scrolling back to the very end (or the jump control)
-     resumes following; the list's own corrections never do.
+  6. The reader scrolling back to the very end, explicit bottom navigation or an
+     accepted composer Enter resumes following; the list's own corrections never do.
      Earlier history pages load on the reader's approach to the top, or to retrieve
      the complete conversation for an explicitly focused to-do. Rules
      are verified in `tests/electron/transcript-follow.smoke.spec.ts`. Do not add

@@ -428,16 +428,23 @@ export const ChatTranscript = observer(function ChatTranscript({
               }
             : { atEnd: true };
   }
-  // The jump-to-bottom control and arrowing past the newest message are
-  // explicit requests for the newest content; sending preserves the reading position.
+  // Manual navigation and accepted composer Enter are separate explicit intents.
+  // Neither transcript arrivals nor generic sends can request this movement.
   const bottomRequest = store.transcriptInteraction.bottomRequestRevision;
+  const enterRequest = store.transcriptInteraction.composerEnterRequestRevision;
   const handledBottomRequest = useRef(bottomRequest);
+  const handledEnterRequest = useRef(enterRequest);
   useLayoutEffect(() => {
-    if (handledBottomRequest.current === bottomRequest) return;
+    if (
+      handledBottomRequest.current === bottomRequest &&
+      handledEnterRequest.current === enterRequest
+    )
+      return;
     handledBottomRequest.current = bottomRequest;
+    handledEnterRequest.current = enterRequest;
     // A covered transcript must keep the row that owns the fullscreen reader mounted.
     if (!covered) followEnd();
-  }, [bottomRequest, covered, followEnd]);
+  }, [bottomRequest, enterRequest, covered, followEnd]);
   const jumpVisible = follow.jumpVisible && !covered;
   useEffect(() => {
     if (!jumpVisible || !scroller) return;

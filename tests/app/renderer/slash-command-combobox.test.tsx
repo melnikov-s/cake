@@ -266,6 +266,7 @@ describe("SlashCommandCombobox", () => {
 
     act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onSubmit).toHaveBeenCalledWith("hello", "composer-enter");
   });
 
   it("restores focus after an Enter submission finishes", async () => {
@@ -293,7 +294,7 @@ describe("SlashCommandCombobox", () => {
     input.focus();
 
     act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-    expect(onSubmit).toHaveBeenCalledWith("hello");
+    expect(onSubmit).toHaveBeenCalledWith("hello", "composer-enter");
     elsewhere.focus();
 
     await act(async () => finishSubmission());

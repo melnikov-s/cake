@@ -8,8 +8,8 @@
  *
  * Cake's rules, all here:
  *
- * 1. Only explicit navigation scrolls to the end: the jump-to-bottom control
- *    or arrowing past the newest message (`followEnd`). Sending leaves following unchanged.
+ * 1. Explicit navigation or an accepted composer keyboard Enter submission scrolls
+ *    to the end (`followEnd`). Other sends leave following unchanged.
  * 2. Upward reader input stops following for good (`released`). The list alone
  *    would start again within a pixel of the end; Cake requires the reader to
  *    actually return to the end.
