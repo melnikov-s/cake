@@ -63,6 +63,7 @@ async function seedDeltaPrs(
     reviewRequests: JsonObject[];
     refreshedAt: string;
     mergeOverrides?: JsonObject;
+    fixRequests?: JsonObject;
   },
 ) {
   const source = await readFile(
@@ -177,8 +178,12 @@ export function createWidgetComposerAttachScenario(
 }
 
 // Synthetic rows whose status text matches what the Delta PRs runtime writes for each group.
-function groupRows(now: number) {
+// Rows belong to the fixture's registered project (the chat in view), except #48141, which is in
+// another project and hidden by the project scope.
+function groupRows(now: number, projectPath: string) {
   const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
+  const project = { path: projectPath, name: "Cake architecture" };
+  const fixable = ["blocked", "binks_comments", "ci_failing"];
   const row = (
     number: number,
     prTitle: string,
@@ -186,11 +191,30 @@ function groupRows(now: number) {
     status: string,
     minutes: number,
     extra: JsonObject = {},
-  ) => ({ number, title: prTitle, group, status, updatedAt: ago(minutes), ...extra });
+  ) => ({
+    number,
+    title: prTitle,
+    group,
+    status,
+    updatedAt: ago(minutes),
+    projects: [project],
+    fixKey: fixable.includes(group) ? `key-${number}` : null,
+    ...extra,
+  });
   return {
     refreshedAt: ago(4),
     // #48170 had /merge posted from the widget after the last pull: shown as Merging (requested).
     mergeOverrides: { "48170": { at: ago(1), pull: 1 } },
+    // #48140 had Fix sent to its Project Chat 3 minutes ago: shown as fix requested.
+    fixRequests: {
+      "48140": {
+        at: ago(3),
+        until: new Date(now + 117 * 60_000).toISOString(),
+        key: "key-48140",
+        group: "blocked",
+        project,
+      },
+    },
     authored: [
       row(
         48170,
@@ -228,6 +252,14 @@ function groupRows(now: number) {
         "Blocked: restricted-merges check missing, reviews check missing · Approved by carlos.corvaia, ryan.wilsonperkin · Binks clear · CI not run",
         60 * 26,
         { blockedBy: ["restricted-merges check missing", "reviews check missing"] },
+      ),
+      row(
+        48141,
+        "Send client overrides with Server Intent requests",
+        "blocked",
+        "Blocked: Conflict · Approved by matt.dentremont · Binks clear · CI passed",
+        70,
+        { blockedBy: ["Conflict"], projects: [{ path: "/visual/admin-web", name: "admin-web" }] },
       ),
       row(
         48107,
@@ -285,9 +317,18 @@ export function createDeltaPrsGroupsScenario(dependencies: Dependencies): Visual
       "merge-ready",
       "merge-requested",
       "merge-error",
+      // Whole widget: Blocked shows a Fix at rest (#48133), a requested Fix (#48140) and Fix all.
+      "fix-rest",
+      "fix-error",
     ],
     async seed(paths, theme) {
-      await seedDeltaPrs(dependencies, paths, theme, "delta-prs-groups", groupRows(Date.now()));
+      await seedDeltaPrs(
+        dependencies,
+        paths,
+        theme,
+        "delta-prs-groups",
+        groupRows(Date.now(), paths.project),
+      );
     },
     async prepare(page, state) {
       await dependencies.openSession(page, "Cake architecture", "Explain how Cake");
@@ -299,7 +340,26 @@ export function createDeltaPrsGroupsScenario(dependencies: Dependencies): Visual
       if (state === "lower")
         await widget.getByRole("region", { name: "Waiting on my review" }).scrollIntoViewIfNeeded();
       await expect(widget.getByText("River", { exact: true })).toBeAttached();
+      // Scoped to the chat's project: #48141 (admin-web) is hidden.
+      await expect(widget.getByText("Cake architecture", { exact: true })).toBeVisible();
+      await expect(widget.locator('a[data-pr="48141"]')).toHaveCount(0);
       await page.mouse.move(1, 1);
+      const blocked = widget.locator("#sec-blocked");
+      if (state.startsWith("fix-")) {
+        await expect(
+          blocked.getByRole("button", { name: "Fix all in Blocked: 1 PR" }),
+        ).toBeVisible();
+        await expect(blocked.getByText("fix requested", { exact: true })).toBeVisible();
+      }
+      // No backend runtime in the capture fixture: Fix fails like an unavailable chat, and the
+      // row keeps its Fix button with the error. No Project Chat is ever messaged.
+      if (state === "fix-error") {
+        await blocked
+          .getByRole("button", { name: "Fix #48133: ask the Cake architecture chat" })
+          .click();
+        await expect(blocked.getByRole("alert")).toContainText("Couldn't send Fix");
+        await page.mouse.move(1, 1);
+      }
       // Row states: the attach button is hidden at rest, shown on row hover and on keyboard focus.
       const attach = widget.getByRole("button", { name: "Add #48121 to chat composer" });
       if (state === "row-rest") await expect(attach).toHaveCSS("opacity", "0");

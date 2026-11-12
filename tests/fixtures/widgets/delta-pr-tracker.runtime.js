@@ -53,11 +53,26 @@ const MERGE_POST_TIMEOUT = 30;
 // After an unanswered /merge (no Merge Garden reply yet), hide the Merge button this long so a
 // second click cannot post a duplicate while Merge Garden is still picking it up.
 const MERGE_REPLY_WAIT_MINUTES = 10;
+// ---- Projects: which registered Cake project (and so which Project Chat) owns a PR. --------
+// A registered project inside a shop/world checkout (…/world/trees/<tree>/src/<repo path>) owns a
+// PR when one of Delta's zone labels ("//system/self-healing") is its repo path or lies inside it.
+// Zone labels come with the PR search results, so this costs no extra Delta calls.
+const WORLD_CHECKOUT = /^\/Users\/user\/world\/trees\/[^/]+\/src\/(.+?)\/*$/;
+// One of my PRs without a matching zone label: read its changed paths (one dt call per such PR).
+const CHANGED_FILES_FALLBACK = true;
+// Still nothing: a title prefix ("self-healing: …", "[admin-web] …") naming a project.
+const TITLE_PREFIX_FALLBACK = true;
+// ---- Fix button: asks the PR's project's Project Chat to fix it. Posts nothing to Delta. -----
+const FIX_GROUPS = ["blocked", "binks_comments", "ci_failing"];
+// A sent Fix is not sent again for the same PR until its fixable state (group, head commit,
+// blockers, failing checks, Binks findings) changes, or this long has passed.
+const FIX_REQUEST_HOLD_MINUTES = 120;
+const FIX_BATCH_MAX = 50;
 // ------------------------------------------------------------------------------------------
 
 // jq filters (no single quotes) that slim dt JSON below shell.run's 50 KiB stdout cap.
 const PR_FIELDS =
-  "{number,title,draft,updated_at,created_at,user:{login:.user.login,service_brand:.user.service_brand},assignees:[.assignees[]?|{login}],requested_reviewers:[.requested_reviewers[]?|{login}],requested_teams:[.requested_teams[]?|{slug,name}]}";
+  '{number,title,draft,updated_at,created_at,user:{login:.user.login,service_brand:.user.service_brand},assignees:[.assignees[]?|{login}],requested_reviewers:[.requested_reviewers[]?|{login}],requested_teams:[.requested_teams[]?|{slug,name}],labels:[.labels[]?.name|select(startswith("//"))]}';
 const SEARCH_FILTER = `{total_count,items:[.items[]|${PR_FIELDS}]}`;
 const CHECKS_FILTER =
   "{check_runs:[.check_runs[]?|{name,status,conclusion,output:{title:.output.title}}],statuses:{state:.statuses.state,statuses:[.statuses.statuses[]?|{context,state,description,creator:{login:.creator.login,service_brand:.creator.service_brand}}]}}";
@@ -172,6 +187,75 @@ const shortLogin = (login) => String(login || "unknown").replace(/@.*$/, "");
 
 const isImported = (n) => n >= 2000000 && n < 2200000;
 const contextName = (ctx) => String(ctx || "").replace(/^.*:/, "");
+
+// Registered Cake projects with their Project Chat and shop/world repo path (null outside world).
+async function loadProjects() {
+  const out = [];
+  let offset = 0;
+  for (let page = 0; page < 20; page++) {
+    const r = await cake("projects.list", { limit: 50, offset });
+    for (const p of (r && r.projects) || []) {
+      const m = WORLD_CHECKOUT.exec(String(p.path || ""));
+      out.push({
+        path: p.path,
+        name: p.name,
+        chatId: p.projectChatId || null,
+        repoPath: m ? m[1] : null,
+      });
+    }
+    if (!r || r.nextOffset == null || r.nextOffset <= offset) break;
+    offset = r.nextOffset;
+  }
+  return out;
+}
+
+const normName = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, "-");
+function titlePrefix(title) {
+  const t = String(title || "");
+  const m = /^\s*\[([^\]]{1,40})\]/.exec(t) || /^\s*([^:[\]]{1,40}):\s/.exec(t);
+  return m ? normName(m[1]) : null;
+}
+const within = (path, root) => path === root || path.startsWith(root + "/");
+
+// The registered projects that own a PR, primary first (the one its title names, else the first
+// zone label's), and how they were found: "label" | "files" | "title" | null (no project).
+function matchProjects(pr, projects, files) {
+  const world = projects.filter((p) => p.repoPath);
+  const prefix = TITLE_PREFIX_FALLBACK ? titlePrefix(pr.title) : null;
+  const named = (p) =>
+    !!prefix && (normName(p.name) === prefix || normName(p.repoPath.split("/").pop()) === prefix);
+  const zones = (pr.labels || [])
+    .filter((l) => String(l).startsWith("//"))
+    .map((l) => l.slice(2).replace(/\/+$/, ""));
+  let matched = [];
+  for (const zone of zones)
+    for (const p of world) if (within(zone, p.repoPath) && !matched.includes(p)) matched.push(p);
+  let source = matched.length ? "label" : null;
+  if (!source && files && files.length) {
+    const touched = (p) => files.filter((f) => within(f, p.repoPath)).length;
+    matched = world.filter((p) => touched(p) > 0).sort((a, b) => touched(b) - touched(a));
+    if (matched.length) source = "files";
+  }
+  if (!source) {
+    matched = world.filter(named);
+    if (matched.length) source = "title";
+  }
+  matched = matched.filter(named).concat(matched.filter((p) => !named(p)));
+  return { projects: matched.map((p) => ({ path: p.path, name: p.name })), projectSource: source };
+}
+
+async function changedFiles(n) {
+  return dtJson(
+    `api -R ${REPO} 'repos/shop/world/pulls/${n}/files?per_page=100'`,
+    PR_TIMEOUT,
+    [0],
+    "[.[].filename]",
+  );
+}
 
 function ciPhrase(requiredCi) {
   if (!requiredCi) return "CI not run";
@@ -496,7 +580,7 @@ function classifyOwn(pr, details, notes, ownership, previous) {
   if (isImported(pr.number)) bits.unshift("Imported from Meteorite (read-only)");
   for (const n of notes) bits.push(n);
 
-  return {
+  const row = {
     number: pr.number,
     title: pr.title,
     url: prUrl(pr.number),
@@ -532,6 +616,38 @@ function classifyOwn(pr, details, notes, ownership, previous) {
     ci: requiredCi ? { state: requiredCi.state, description: requiredCi.description || "" } : null,
     blockers: blockers.map((b) => (b.context ? `${b.context}:${b.code}` : b.code)),
   };
+  const fixable = FIX_GROUPS.includes(group);
+  // What a Fix message tells the Project Chat, and the state a sent Fix is held against.
+  row.fixReason = fixable ? fixReasonOf(row) : null;
+  row.fixKey = fixable ? fixKeyOf(row) : null;
+  return row;
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function fixReasonOf(row) {
+  const parts = [];
+  if (row.group === "blocked" && row.blockedBy.length)
+    parts.push(`Blocked by ${row.blockedBy.join(", ")}`);
+  if (row.binks.state === "failure") parts.push(plural(row.binks.findings, "open Binks finding"));
+  if (row.failingChecks.length) parts.push(`Failing checks: ${row.failingChecks.join(", ")}`);
+  if (row.merge.state === "stopped")
+    parts.push(`Merge Garden stopped the merge: ${row.merge.reason}`);
+  if (row.unresolvedThreads > 0)
+    parts.push(plural(row.unresolvedThreads, "unresolved review thread"));
+  if (row.imported) parts.push("Imported from Meteorite (read-only)");
+  return parts.join("; ");
+}
+
+function fixKeyOf(row) {
+  return JSON.stringify([
+    row.group,
+    row.head,
+    row.blockedBy,
+    row.failingChecks,
+    row.binks.state === "failure" ? row.binks.findings : 0,
+    row.merge.state === "stopped" ? row.merge.reason : null,
+  ]);
 }
 
 function classifyReviewRequest(pr, me) {
@@ -695,6 +811,9 @@ function emptyState(prev) {
     // {"<number>": {at, pull}}: /merge posted from the widget; shown as Merging until a refresh
     // that started after the post resolves it. `pull` is the refreshStarts count at posting time.
     mergeOverrides: {},
+    // {"<number>": {at, until, key, group, project: {path, name}, chatId, turnId}}: a Fix sent to
+    // a Project Chat. Held (no resend) while `key` matches the row's fixKey and before `until`.
+    fixRequests: {},
     refreshStarts: 0,
     ...(prev && prev.schema === SCHEMA ? prev : {}),
   };
@@ -717,12 +836,16 @@ async function doRefresh(source) {
   try {
     const me = await dtJson(`api -R ${REPO} /api/v3/user`, LIST_TIMEOUT, [0], "{login,email}");
     const meInfo = { login: me.login, email: me.email || null };
-    const [mine, assigned, reviewing] = await Promise.all([
+    const [mine, assigned, reviewing, projectList] = await Promise.all([
       searchPrs("author:@me"),
       searchPrs("assignee:@me"),
       searchPrs("review-requested:@me"),
+      settle(loadProjects()),
     ]);
     const warnings = [];
+    // Without Cake's project list, rows keep projects: null (unknown) and the view is not scoped.
+    const projects = projectList.ok ? projectList.v : null;
+    if (!projectList.ok) warnings.push(`Could not read Cake projects: ${projectList.e}`);
     if (mine.total > mine.items.length)
       warnings.push(`Only the first ${mine.items.length} of ${mine.total} authored PRs are shown.`);
     if (assigned.total > assigned.items.length)
@@ -738,10 +861,17 @@ async function doRefresh(source) {
     const previous = new Map((state.authored || []).map((r) => [r.number, r]));
     const details = await pool(own, CONCURRENCY, async ({ pr, ownership }) => {
       const d = await loadDetails(pr.number);
-      return {
-        row: classifyOwn(pr, d.details, d.notes, ownership, previous.get(pr.number) || null),
-        errors: d.errors,
-      };
+      const row = classifyOwn(pr, d.details, d.notes, ownership, previous.get(pr.number) || null);
+      if (projects) {
+        let match = matchProjects(pr, projects, null);
+        if (match.projectSource !== "label" && CHANGED_FILES_FALLBACK) {
+          // Imported Meteorite PRs answer 404 here; they fall through to the title prefix.
+          const files = await settle(changedFiles(pr.number));
+          if (files.ok && Array.isArray(files.v)) match = matchProjects(pr, projects, files.v);
+        }
+        Object.assign(row, match);
+      } else Object.assign(row, { projects: null, projectSource: null });
+      return { row, errors: d.errors };
     });
 
     const authored = [];
@@ -759,7 +889,10 @@ async function doRefresh(source) {
     });
     authored.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
     const reviewRequests = requests
-      .map((pr) => classifyReviewRequest(pr, meInfo))
+      .map((pr) => ({
+        ...classifyReviewRequest(pr, meInfo),
+        ...(projects ? matchProjects(pr, projects, null) : { projects: null, projectSource: null }),
+      }))
       .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
 
     const finished = Date.now();
@@ -792,6 +925,13 @@ async function doRefresh(source) {
       refreshStarts: Math.max(state.refreshStarts || 0, pull),
       mergeOverrides: Object.fromEntries(
         Object.entries(state.mergeOverrides || {}).filter(([, o]) => o && o.pull >= pull),
+      ),
+      // A sent Fix is held while the PR's fixable state is unchanged and the hold has not expired.
+      fixRequests: Object.fromEntries(
+        Object.entries(state.fixRequests || {}).filter(([n, req]) => {
+          const r = authored.find((x) => String(x.number) === n);
+          return !!r && fixHeld(req, r);
+        }),
       ),
     };
     await data.write(next);
@@ -876,6 +1016,159 @@ async function postMerge(n) {
   return { posted: true, number: n, comment: MERGE_COMMENT, at, url: prUrl(n) };
 }
 
+// ---- Fix: ask the PR's project's Project Chat to fix it (chat.prompt). Nothing goes to Delta. --
+const GROUP_LABELS = {
+  merging: "Merging",
+  ready_to_merge: "Ready to merge",
+  blocked: "Blocked",
+  binks_comments: "Binks comments",
+  ci_failing: "CI failing",
+  waiting_on_review: "Waiting on review",
+  draft: "Draft",
+  waiting_on_my_review: "Waiting on my review",
+};
+
+function fixHeld(req, row) {
+  return !!req && !!row.fixKey && req.key === row.fixKey && Date.now() < Date.parse(req.until);
+}
+const fixRequestOf = (state, row) => {
+  const req = (state.fixRequests || {})[String(row.number)];
+  return fixHeld(req, row) ? req : null;
+};
+
+// The Project Chat a Fix goes to: the viewed project when the PR belongs to it, else its primary.
+function fixProject(row, projectPath) {
+  const owners = Array.isArray(row.projects) ? row.projects : [];
+  return (projectPath && owners.find((p) => p.path === projectPath)) || owners[0] || null;
+}
+
+// Why a Fix cannot be sent for a row: {code, reason}, or null when it may be sent.
+function fixRefusal(state, row) {
+  const group = effectiveGroup(state, row);
+  if (!FIX_GROUPS.includes(group))
+    return {
+      code: "group",
+      reason: `it is not in Blocked, Binks comments or CI failing (group: ${group})`,
+    };
+  if (fixing.has(row.number)) return { code: "sending", reason: "a Fix for it is being sent" };
+  const held = fixRequestOf(state, row);
+  if (held)
+    return {
+      code: "requested",
+      reason: `a Fix was already sent to the ${held.project.name} chat at ${held.at}`,
+    };
+  if (!fixProject(row, null))
+    return {
+      code: "no_project",
+      reason: Array.isArray(row.projects)
+        ? "no registered Cake project matches it, so there is no Project Chat to ask"
+        : "its project is unknown until a refresh can read Cake's projects",
+    };
+  return null;
+}
+
+function fixMessage(project, rows, source) {
+  const these = rows.length === 1 ? "this PR" : `these ${rows.length} PRs`;
+  const intro =
+    source === "agent"
+      ? `An agent asked, through the Delta PRs widget's request_fix tool, for ${these} in ${project.name} to be fixed.`
+      : `Sergey clicked ${source === "fix_all" ? "Fix all" : "Fix"} in the Delta PRs widget. Treat this as his request: please fix ${these} in ${project.name}.`;
+  const items = rows.map(
+    (r) =>
+      `- #${r.number} ${r.title}\n  ${r.url}\n  ${GROUP_LABELS[r.group] || r.group}: ${r.fixReason || "see the PR"}`,
+  );
+  return `${intro}\n\n${items.join("\n")}\n\nThe widget posted nothing to Delta.`;
+}
+
+const fixing = new Set();
+
+// Sends one chat.prompt per target project. Returns per-PR outcomes; never throws for a PR.
+async function requestFix(input) {
+  const numbers = [...new Set((input && input.numbers) || [])];
+  if (!numbers.length || numbers.length > FIX_BATCH_MAX)
+    throw new Error(`Give 1-${FIX_BATCH_MAX} PR numbers`);
+  for (const n of numbers)
+    if (!Number.isInteger(n) || n <= 0) throw new Error(`Invalid PR number: ${n}`);
+  const source = (input && input.source) || "agent";
+  const projectPath = (input && input.projectPath) || null;
+  const state = await readState();
+  const requested = [];
+  const skipped = [];
+  const failed = [];
+  const batches = new Map();
+  // Checked and claimed without awaiting in between, so concurrent calls cannot both send a PR.
+  for (const n of numbers) {
+    const row = (state.authored || []).find((r) => r.number === n);
+    const refusal = row
+      ? fixRefusal(state, row)
+      : { code: "untracked", reason: "it is not one of the tracked PRs" };
+    if (refusal) {
+      skipped.push({ number: n, ...refusal });
+      continue;
+    }
+    const project = fixProject(row, projectPath);
+    if (!batches.has(project.path)) batches.set(project.path, { project, rows: [] });
+    batches.get(project.path).rows.push(row);
+    fixing.add(n);
+  }
+  try {
+    if (!batches.size) return { requested, skipped, failed };
+    let chats;
+    try {
+      chats = await loadProjects();
+    } catch (e) {
+      const error = `Could not read Cake projects: ${String((e && e.message) || e)}`;
+      for (const b of batches.values())
+        for (const r of b.rows) failed.push({ number: r.number, error });
+      return { requested, skipped, failed };
+    }
+    const recorded = {};
+    for (const { project, rows } of batches.values()) {
+      const chat = chats.find((p) => p.path === project.path);
+      if (!chat || !chat.chatId) {
+        const error = `${project.name} is no longer a registered Cake project`;
+        for (const r of rows) failed.push({ number: r.number, error });
+        continue;
+      }
+      let admitted;
+      try {
+        admitted = await cake("chat.prompt", {
+          sessionId: chat.chatId,
+          text: fixMessage(project, rows, source),
+        });
+      } catch (e) {
+        const error = `Could not message the ${project.name} chat: ${String((e && e.message) || e)}`;
+        for (const r of rows) failed.push({ number: r.number, error });
+        continue;
+      }
+      const at = new Date().toISOString();
+      const until = new Date(Date.now() + FIX_REQUEST_HOLD_MINUTES * 60000).toISOString();
+      for (const r of rows) {
+        recorded[String(r.number)] = {
+          at,
+          until,
+          key: r.fixKey,
+          group: r.group,
+          project,
+          chatId: chat.chatId,
+          turnId: (admitted && admitted.turnId) || null,
+        };
+        requested.push({ number: r.number, project, chatId: chat.chatId, at, until });
+      }
+    }
+    if (requested.length) {
+      const latest = await readState();
+      await data.write({
+        ...latest,
+        fixRequests: { ...latest.fixRequests, ...recorded },
+      });
+    }
+    return { requested, skipped, failed };
+  } finally {
+    for (const b of batches.values()) for (const r of b.rows) fixing.delete(r.number);
+  }
+}
+
 function countsOf(state) {
   const counts = {};
   for (const g of GROUPS) counts[g] = 0;
@@ -891,6 +1184,8 @@ const slim = (r, state) => ({
   url: r.url,
   group: state ? effectiveGroup(state, r) : r.group,
   mergeRequestedAt: state && overrideOf(state, r) ? overrideOf(state, r).at : null,
+  fixRequestedAt: state && fixRequestOf(state, r) ? fixRequestOf(state, r).at : null,
+  projects: Array.isArray(r.projects) ? r.projects.map((p) => p.name) : null,
   status: r.status,
   draft: r.draft,
   author: r.author,
@@ -973,6 +1268,8 @@ return {
     },
     // Posts exactly "/merge" as a PR comment (Merge Garden then queues it). Only for Ready to merge rows.
     merge_pr: async (input) => postMerge(input.number),
+    // Asks each PR's project's Project Chat to fix it; one message per project. Posts nothing to Delta.
+    request_fix: async (input) => requestFix(input),
     get_pr: async (input) => {
       const state = await readState();
       const n = input.number;

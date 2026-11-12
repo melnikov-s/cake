@@ -43,6 +43,10 @@ type Pr = {
   // Merge Garden comments and /merge commands (already slimmed like the runtime's jq filter).
   comments?: { at: string; brand?: string | null; login?: string; body: string }[];
   ci?: "success" | "pending";
+  // Delta zone labels ("//system/self-healing") and changed paths (undefined: the files read 404s).
+  labels?: string[];
+  files?: string[];
+  failingCheck?: string;
 };
 
 function searchItem(pr: Pr) {
@@ -56,11 +60,19 @@ function searchItem(pr: Pr) {
     assignees: [],
     requested_reviewers: [],
     requested_teams: [],
+    labels: pr.labels ?? [],
   };
 }
 
 function checksFor(pr: Pr) {
   const statuses: unknown[] = [];
+  if (pr.failingCheck)
+    statuses.push({
+      context: pr.failingCheck,
+      state: "failure",
+      description: "Failed",
+      creator: { login: CI_CTX, service_brand: null },
+    });
   if (pr.binks && pr.binks !== "missing")
     statuses.push({
       context: "PR Review Bot Comments Addressed",
@@ -122,9 +134,29 @@ type PostStub = {
   result?: () => Promise<{ exitCode: number; stderr: string }>;
 };
 
+// Registered Cake projects (projects.list) and a chat.prompt stub that records every message
+// instead of reaching a real Project Chat.
+const WORLD = "/Users/user/world/trees";
+const PROJECTS = [
+  { path: `${WORLD}/self-healing/src/system/self-healing`, name: "self-healing" },
+  { path: `${WORLD}/system-agents/src/system/agents`, name: "system-agents" },
+  { path: `${WORLD}/root/src/areas/clients/admin-web`, name: "admin-web" },
+  { path: "/Users/user/cake", name: "cake" },
+].map((p) => ({ ...p, projectChatId: `project-chat:${p.name}` }));
+type ChatStub = {
+  prompts: { sessionId: string; text: string }[];
+  result?: (input: { sessionId: string; text: string }) => Promise<unknown>;
+  projects?: () => Promise<unknown>;
+  // PR numbers whose changed files were read.
+  filesRead?: number[];
+  // Every shell command run.
+  shell?: string[];
+};
+
 function fakeDelta(
   scenario: { authored: Pr[]; assigned?: Pr[]; requested?: Pr[] },
   post?: PostStub,
+  chat?: ChatStub,
 ) {
   const all = new Map<number, Pr>();
   for (const pr of [
@@ -155,7 +187,27 @@ function fakeDelta(
     return pr.pull ?? { mergeable: null, mergeable_state: "unknown" };
   };
   return async (name: string, input: { command: string }) => {
+    if (name === "projects.list") {
+      if (chat?.projects) return chat.projects();
+      return { ok: true, total: PROJECTS.length, offset: 0, nextOffset: null, projects: PROJECTS };
+    }
+    if (name === "chat.prompt") {
+      const prompt = input as unknown as { sessionId: string; text: string };
+      if (!chat) throw new Error(`Unexpected chat.prompt to ${prompt.sessionId}`);
+      chat.prompts.push(prompt);
+      return chat.result
+        ? chat.result(prompt)
+        : { ok: true, sessionId: prompt.sessionId, turnId: `turn-${chat.prompts.length}` };
+    }
     expect(name).toBe("shell.run");
+    chat?.shell?.push(input.command);
+    if (input.command.includes("/files?")) {
+      const pr = all.get(Number(/pulls\/(\d+)\/files/.exec(input.command)?.[1]));
+      if (pr) chat?.filesRead?.push(pr.number);
+      return pr?.files
+        ? { exitCode: 0, stdout: JSON.stringify(pr.files), stderr: "", timedOut: false }
+        : { exitCode: 1, stdout: "", stderr: "Error: 404: recorded head is not available" };
+    }
     if (input.command.includes("pr comment")) {
       if (!post) throw new Error(`Unexpected post: ${input.command}`);
       post.commands.push(input.command);
@@ -183,11 +235,17 @@ type Row = {
   authorBrand: string | null;
   ignoredApprovals: { by: string; reason: string }[];
   mergeRequestPendingUntil: string | null;
+  projects: { path: string; name: string }[] | null;
+  projectSource: string | null;
+  fixReason: string | null;
+  fixKey: string | null;
 };
 type State = {
   authored: Row[];
-  reviewRequests: { number: number }[];
+  reviewRequests: { number: number; projects: { name: string }[] | null }[];
   mergeOverrides: Record<string, { at: string }>;
+  fixRequests: Record<string, { at: string; until: string; project: { name: string } }>;
+  warnings: string[];
 };
 
 async function loadRuntime(cake: ReturnType<typeof fakeDelta>) {
@@ -210,6 +268,8 @@ async function loadRuntime(cake: ReturnType<typeof fakeDelta>) {
       cake = next;
     },
     mergePr: (number: number) => runtime.tools.merge_pr({ number }),
+    requestFix: (input: { numbers: number[]; projectPath?: string; source?: string }) =>
+      runtime.tools.request_fix(input),
     listPrs: (group: string) => runtime.tools.list_prs({ group }),
     state: () => saved as State,
   };
@@ -738,5 +798,292 @@ describe("Delta PRs runtime grouping", () => {
       const state = await refreshing;
       expect(Object.keys(state.mergeOverrides)).toEqual(["30"]);
     });
+  });
+});
+
+describe("Delta PRs projects and Fix (chat.prompt stubbed)", () => {
+  const projectPath = (name: string) => {
+    const project = PROJECTS.find((p) => p.name === name);
+    if (!project) throw new Error(`No project ${name}`);
+    return project.path;
+  };
+  const approvedReview = [
+    { state: "APPROVED", at: "2026-11-11T20:00:00Z", by: human("aaron.casanova") },
+  ];
+  // Blocked by a conflict, in self-healing and system/agents; the title names self-healing.
+  const blockedPr: Pr = {
+    number: 41,
+    title: "Self-Healing: give every goal an owner",
+    labels: ["//system/agents", "//system/self-healing"],
+    ci: "success",
+    binks: "success",
+    reviews: approvedReview,
+    blockers: [{ code: "conflict" }],
+  };
+  const ciPr: Pr = {
+    number: 42,
+    title: "Goals search: match every word",
+    labels: ["//system/self-healing"],
+    binks: "success",
+    failingCheck: "Required CI",
+    reviews: approvedReview,
+  };
+  const binksPr: Pr = {
+    number: 43,
+    title: "Recover reactive queries after network errors",
+    labels: ["//areas/clients/admin-web"],
+    binks: "failure",
+    reviews: approvedReview,
+  };
+  const readyPr: Pr = {
+    number: 44,
+    labels: ["//system/self-healing"],
+    ci: "success",
+    binks: "success",
+    reviews: approvedReview,
+  };
+  const waitingPr: Pr = { number: 45, labels: ["//system/self-healing"], binks: "success" };
+  const draftPr: Pr = { number: 46, labels: ["//system/self-healing"], draft: true };
+  const scenario = { authored: [blockedPr, ciPr, binksPr, readyPr, waitingPr, draftPr] };
+
+  async function fixRuntime(chat: ChatStub, authored: Pr[] = scenario.authored) {
+    const runtime = await loadRuntime(fakeDelta({ authored }, undefined, chat));
+    await runtime.refresh();
+    return runtime;
+  }
+
+  it("maps PRs to registered projects by zone label, then changed paths, then title prefix", async () => {
+    const chat: ChatStub = { prompts: [], filesRead: [] };
+    const runtime = await loadRuntime(
+      fakeDelta(
+        {
+          authored: [
+            blockedPr,
+            // No labels: changed paths decide, most-touched project first.
+            {
+              number: 50,
+              files: [
+                "areas/clients/admin-web/app/a.ts",
+                "areas/clients/admin-web/app/b.ts",
+                "system/agents/dist/skill.md",
+              ],
+            },
+            // Imported (files 404) and unlabeled: the title prefix decides.
+            { number: 2189563, title: "self-healing: request Binks alongside re-reviews" },
+            // Nothing matches a registered project.
+            { number: 51, title: "Rollouts: simplify discount lookup", files: ["areas/core/x.ts"] },
+          ],
+          requested: [{ number: 60, labels: ["//areas/clients/admin-web"] }],
+        },
+        undefined,
+        chat,
+      ),
+    );
+    const state = await runtime.refresh();
+    const projects = (n: number) => row(state, n).projects?.map((p) => p.name);
+    expect(projects(41)).toEqual(["self-healing", "system-agents"]);
+    expect(row(state, 41).projectSource).toBe("label");
+    expect(projects(50)).toEqual(["admin-web", "system-agents"]);
+    expect(row(state, 50).projectSource).toBe("files");
+    expect(projects(2189563)).toEqual(["self-healing"]);
+    expect(row(state, 2189563).projectSource).toBe("title");
+    expect(projects(51)).toEqual([]);
+    expect(row(state, 51).projectSource).toBeNull();
+    expect(state.reviewRequests[0]?.projects?.map((p) => p.name)).toEqual(["admin-web"]);
+    // Labeled PRs cost no extra Delta call.
+    expect(chat.filesRead?.toSorted((a, b) => a - b)).toEqual([50, 51, 2189563]);
+  });
+
+  it("keeps refreshing with unknown projects when Cake's project list fails", async () => {
+    const chat: ChatStub = {
+      prompts: [],
+      projects: async () => {
+        throw new Error("bridge unavailable");
+      },
+    };
+    const runtime = await fixRuntime(chat, [blockedPr]);
+    expect(row(runtime.state(), 41).projects).toBeNull();
+    expect(runtime.state().warnings).toContain("Could not read Cake projects: bridge unavailable");
+    expect(await runtime.requestFix({ numbers: [41], source: "row" })).toMatchObject({
+      skipped: [{ number: 41, code: "no_project" }],
+    });
+    expect(chat.prompts).toEqual([]);
+  });
+
+  it("offers Fix only for Blocked, Binks comments and CI failing rows", async () => {
+    const chat: ChatStub = { prompts: [] };
+    const runtime = await fixRuntime(chat);
+    const groups = Object.fromEntries(runtime.state().authored.map((r) => [r.number, r.group]));
+    expect(groups).toEqual({
+      41: "blocked",
+      42: "ci_failing",
+      43: "binks_comments",
+      44: "ready_to_merge",
+      45: "waiting_on_review",
+      46: "draft",
+    });
+    expect(row(runtime.state(), 44).fixKey).toBeNull();
+    const result = await runtime.requestFix({ numbers: [44, 45, 46, 99], source: "fix_all" });
+    expect(result.requested).toEqual([]);
+    expect(result.skipped.map((s: { number: number; code: string }) => [s.number, s.code])).toEqual(
+      [
+        [44, "group"],
+        [45, "group"],
+        [46, "group"],
+        [99, "untracked"],
+      ],
+    );
+    // A Ready to merge row with /merge just requested from the widget shows as Merging: no Fix.
+    expect(chat.prompts).toEqual([]);
+  });
+
+  it("sends one message per project with each PR's link, group and concrete reason", async () => {
+    const chat: ChatStub = { prompts: [] };
+    const runtime = await fixRuntime(chat);
+    const result = await runtime.requestFix({ numbers: [41, 42, 43], source: "fix_all" });
+    expect(result.failed).toEqual([]);
+    expect(result.skipped).toEqual([]);
+    expect(chat.prompts.map((p) => p.sessionId)).toEqual([
+      "project-chat:self-healing",
+      "project-chat:admin-web",
+    ]);
+    const [selfHealing, adminWeb] = chat.prompts.map((p) => p.text);
+    expect(selfHealing).toBe(
+      [
+        "Sergey clicked Fix all in the Delta PRs widget. Treat this as his request: please fix these 2 PRs in self-healing.",
+        "",
+        "- #41 Self-Healing: give every goal an owner",
+        "  https://delta.shopify.io/shop/world/pull/41",
+        "  Blocked: Blocked by Conflict",
+        "- #42 Goals search: match every word",
+        "  https://delta.shopify.io/shop/world/pull/42",
+        "  CI failing: Failing checks: Required CI",
+        "",
+        "The widget posted nothing to Delta.",
+      ].join("\n"),
+    );
+    expect(adminWeb).toContain("Sergey clicked Fix all");
+    expect(adminWeb).toContain("this PR in admin-web");
+    expect(adminWeb).toContain("- #43 Recover reactive queries after network errors");
+    expect(adminWeb).toContain("Binks comments: 1 open Binks finding");
+    expect(
+      result.requested.map((q: { number: number; chatId: string }) => [q.number, q.chatId]),
+    ).toEqual([
+      [41, "project-chat:self-healing"],
+      [42, "project-chat:self-healing"],
+      [43, "project-chat:admin-web"],
+    ]);
+    expect(Object.keys(runtime.state().fixRequests).toSorted()).toEqual(["41", "42", "43"]);
+    expect((await runtime.listPrs("blocked")).prs[0].fixRequestedAt).toBe(result.requested[0].at);
+  });
+
+  it("sends a PR in several projects to the viewed project's chat", async () => {
+    const chat: ChatStub = { prompts: [] };
+    const runtime = await fixRuntime(chat);
+    await runtime.requestFix({
+      numbers: [41],
+      projectPath: projectPath("system-agents"),
+      source: "row",
+    });
+    expect(chat.prompts.map((p) => p.sessionId)).toEqual(["project-chat:system-agents"]);
+    expect(chat.prompts[0]?.text).toMatch(/^Sergey clicked Fix in the Delta PRs widget\./);
+    // A project the PR does not belong to falls back to its primary project.
+    await runtime.requestFix({
+      numbers: [43],
+      projectPath: projectPath("self-healing"),
+      source: "row",
+    });
+    expect(chat.prompts[1]?.sessionId).toBe("project-chat:admin-web");
+  });
+
+  it("never sends a PR twice: repeats, double clicks and Fix all after a single Fix", async () => {
+    let admit: (value: unknown) => void = () => {};
+    const chat: ChatStub = {
+      prompts: [],
+      result: () => new Promise((done) => (admit = done)),
+    };
+    const runtime = await fixRuntime(chat);
+    const first = runtime.requestFix({ numbers: [41], source: "row" });
+    await vi.waitFor(() => expect(chat.prompts).toHaveLength(1));
+    // A second click while the first message is still being admitted.
+    expect(await runtime.requestFix({ numbers: [41], source: "row" })).toMatchObject({
+      requested: [],
+      skipped: [{ number: 41, code: "sending" }],
+    });
+    admit({ ok: true, turnId: "t1" });
+    await first;
+    // Fix all afterwards sends only the PRs not already requested.
+    chat.result = undefined;
+    const all = await runtime.requestFix({ numbers: [41, 42], source: "fix_all" });
+    expect(all.skipped).toMatchObject([{ number: 41, code: "requested" }]);
+    expect(all.requested.map((q: { number: number }) => q.number)).toEqual([42]);
+    expect(chat.prompts).toHaveLength(2);
+    expect(chat.prompts[1]?.text).toContain("#42");
+    expect(chat.prompts[1]?.text).not.toContain("#41");
+    // A refresh with unchanged state keeps the hold.
+    await runtime.refresh();
+    expect(Object.keys(runtime.state().fixRequests).toSorted()).toEqual(["41", "42"]);
+    expect(await runtime.requestFix({ numbers: [41, 42], source: "fix_all" })).toMatchObject({
+      requested: [],
+    });
+    expect(chat.prompts).toHaveLength(2);
+  });
+
+  it("allows Fix again once the PR's state changes or the hold expires", async () => {
+    const chat: ChatStub = { prompts: [] };
+    const runtime = await fixRuntime(chat);
+    await runtime.requestFix({ numbers: [41, 42], source: "fix_all" });
+    expect(chat.prompts).toHaveLength(1);
+    // #41 gets a new head commit (still conflicting): its hold is dropped on refresh.
+    runtime.swap(
+      fakeDelta({ authored: [{ ...blockedPr, head: "pushed" }, ciPr] }, undefined, chat),
+    );
+    const state = await runtime.refresh();
+    expect(Object.keys(state.fixRequests)).toEqual(["42"]);
+    await runtime.requestFix({ numbers: [41], source: "row" });
+    expect(chat.prompts).toHaveLength(2);
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 121 * 60_000);
+      const late = await runtime.requestFix({ numbers: [42], source: "row" });
+      expect(late.requested.map((q: { number: number }) => q.number)).toEqual([42]);
+      expect(chat.prompts).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("records nothing when a send fails, and reports which PRs failed", async () => {
+    const chat: ChatStub = {
+      prompts: [],
+      result: async ({ sessionId }) => {
+        if (sessionId === "project-chat:admin-web") throw new Error("Chat is unavailable");
+        return { ok: true, turnId: "t1" };
+      },
+    };
+    const runtime = await fixRuntime(chat);
+    const result = await runtime.requestFix({ numbers: [41, 43], source: "fix_all" });
+    expect(result.requested.map((q: { number: number }) => q.number)).toEqual([41]);
+    expect(result.failed).toEqual([
+      { number: 43, error: "Could not message the admin-web chat: Chat is unavailable" },
+    ]);
+    expect(Object.keys(runtime.state().fixRequests)).toEqual(["41"]);
+    // The failed PR can be retried.
+    chat.result = undefined;
+    const retry = await runtime.requestFix({ numbers: [43], source: "row" });
+    expect(retry.requested.map((q: { number: number }) => q.number)).toEqual([43]);
+  });
+
+  it("does not post anything to Delta", async () => {
+    const post: PostStub = { commands: [] };
+    const chat: ChatStub = { prompts: [], shell: [] };
+    const runtime = await loadRuntime(fakeDelta(scenario, post, chat));
+    await runtime.refresh();
+    const reads = chat.shell?.length;
+    await runtime.requestFix({ numbers: [41, 42, 43], source: "fix_all" });
+    expect(chat.prompts).toHaveLength(2);
+    expect(chat.shell?.length).toBe(reads);
+    expect(post.commands).toEqual([]);
   });
 });
