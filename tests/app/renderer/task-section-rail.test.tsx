@@ -50,6 +50,13 @@ it("updates a section's title and completion live and inspects it without select
   try {
     const section = screen.getByRole("region", { name: "Conversation section" });
     expect(within(section).getAllByRole("button")).toHaveLength(3);
+    const rails = section.querySelectorAll('[data-slot="margin-rail"]');
+    expect(rails).toHaveLength(2);
+    for (const rail of rails) {
+      expect(rail.classList.contains("border-border/30")).toBe(true);
+      expect(rail.classList.contains("border-l-4")).toBe(true);
+      expect(rail.classList.contains("pointer-events-none")).toBe(true);
+    }
     expect(
       within(section)
         .getByRole("button", { name: `Focus to-do: ${item.title}` })
