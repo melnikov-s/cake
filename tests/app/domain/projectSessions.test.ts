@@ -990,6 +990,7 @@ describe("Project Sessions domain", () => {
           initial.sessions.map((session) => session.sessionId),
           ["failed", "idle"],
         );
+        assert.deepEqual(initial.resolvedSessionIds, ["archived"]);
         assert.equal(initial.sessions[0]?.latestTurnOutcome, "failed");
         assert.equal(initial.sessions[0]?.unread, true);
         assert.equal("title" in initial.sessions[0]!, false);
@@ -1016,7 +1017,7 @@ describe("Project Sessions domain", () => {
           resolved: true,
           unread: false,
         });
-        assert.deepEqual(yield* Queue.take(received), { _tag: "Removed", sessionId: "idle" });
+        assert.deepEqual(yield* Queue.take(received), { _tag: "Resolved", sessionId: "idle" });
         yield* changes.publish({
           _tag: "ProjectSessionTitleChanged",
           sessionId: "failed",
@@ -2178,7 +2179,7 @@ describe("Project Sessions domain", () => {
   );
 
   it.effect(
-    "UI resolve completes linked to-dos and cancels passive context without agent turns; restore preserves completion",
+    "UI resolve completes linked to-dos and cancels passive context without agent turns; restore reopens automatic completion",
     () => {
       const transitions: string[] = [];
       return Effect.gen(function* () {
@@ -2230,7 +2231,7 @@ describe("Project Sessions domain", () => {
         assert.equal((yield* projectTodos.read("/project", item.id)).revision, 1);
         yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, false);
         current = yield* projectTodos.list("/project");
-        assert.equal(current.items[0]?.state, "done");
+        assert.equal(current.items[0]?.state, "open");
         assert.ok(
           current.pending.some(
             (change) =>
@@ -2304,7 +2305,8 @@ describe("Project Sessions domain", () => {
           0,
         );
         yield* projectSessionLifecycle.restore({ sessionId: "session-1" });
-        assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
+        assert.equal((yield* projectTodos.read("/project", mixed.id)).state, "open");
       }).pipe(Effect.provide(makeLayer())),
   );
 
@@ -2345,7 +2347,7 @@ describe("Project Sessions domain", () => {
         const done = yield* projectTodos.read(scope, item.id);
         assert.equal(done.state, "done");
         assert.equal(done.remainingWork, undefined);
-        if (remainingWork) assert.equal(done.completion?.by, "user");
+        assert.equal(done.completion?.by, "user");
         assert.equal(done.revision, 1);
         yield* projectTodoHandlers["projectTodos.mutateUser"](request);
         assert.equal((yield* projectTodos.read(scope, item.id)).revision, done.revision);

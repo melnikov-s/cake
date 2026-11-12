@@ -73,16 +73,22 @@ const snapshot = Effect.fn("ProjectSessions.signalsSnapshot")(function* () {
   const families = yield* (yield* SessionFamilyStorage).state();
   const registered = new Set(locations.map((location) => location.projectPath));
   const resolvedFamilies = new Set<string>();
+  const resolution = yield* archive.resolutionSnapshot();
+  const resolvedSessionIds = new Set(Object.values(resolution.directories).flat());
   // A family can outlive its retired checkout's registration.
   for (const family of families.families) {
-    if (!registered.has(family.projectPath)) continue;
     const namespace = yield* archive.locate(family.parentSessionId, {
       cwd: family.workingDirectory,
       activeRoot: configuration.sessionDirectory,
       resolvedRoot: configuration.resolvedSessionDirectory,
     });
-    if (namespace === "resolved")
-      for (const id of familyMemberIds(family)) resolvedFamilies.add(id);
+    for (const id of familyMemberIds(family)) {
+      if (namespace === "resolved") {
+        resolvedFamilies.add(id);
+        resolvedSessionIds.add(id);
+      } else resolvedSessionIds.delete(id);
+    }
+    if (!registered.has(family.projectPath)) continue;
     for (const id of familyMemberIds(family)) {
       const member = familyMember(family, id);
       if (
@@ -119,6 +125,7 @@ const snapshot = Effect.fn("ProjectSessions.signalsSnapshot")(function* () {
         .map((item) => [item.sessionId, item.purpose]),
     ),
     sessions: [...signals.values()],
+    resolvedSessionIds: [...resolvedSessionIds],
   } satisfies ProjectSessionSignalsUpdate;
 });
 
@@ -158,7 +165,7 @@ export const observeSignals = Effect.fn("ProjectSessions.observeSignals")(functi
             title: change.title,
           } as const;
         if (change._tag === "ProjectSessionStatusChanged" && change.resolved)
-          return { _tag: "Removed", sessionId: change.sessionId } as const;
+          return { _tag: "Resolved", sessionId: change.sessionId } as const;
         if (
           change._tag === "ProjectSessionActivityChanged" ||
           change._tag === "ProjectSessionStatusChanged"
@@ -171,7 +178,7 @@ export const observeSignals = Effect.fn("ProjectSessions.observeSignals")(functi
               resolvedRoot: configuration.resolvedSessionDirectory,
             })) === "resolved"
           )
-            return { _tag: "Removed", sessionId: change.sessionId } as const;
+            return { _tag: "Resolved", sessionId: change.sessionId } as const;
           return {
             _tag: "Upserted" as const,
             session: yield* signalFor(change.sessionId, {

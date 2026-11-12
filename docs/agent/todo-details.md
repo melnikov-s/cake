@@ -10,7 +10,7 @@ Historical duplicate links remain readable and editable, without automatic delet
 Follow the creation rules in [To-dos](chat-todos.md): durable work, not routine actions or administrative umbrella items. The assistant maintains the list; it is not chores for the user.
 Descriptions are one or two short sentences on latest outcome/state, blockers and readiness gaps, not task restatements or routine hashes/test diaries.
 Non-session items close when checked done/user satisfied. Research reports remain open awaiting review, with exact findings linked; report arrival alone is not completion.
-All required Project Sessions resolved automatically closes linked items in any list, including snoozed items, newly added already-resolved links and startup reconciliation. Restore never reopens. Report/source links do not veto or cause closure.
+All required Project Sessions resolved automatically closes linked items in any list, including snoozed items, newly added already-resolved links and persisted-state repair on list/detail access. Restore reopens session-completed items; explicit completion is preserved. Report/source links do not veto or cause closure.
 Agents close session-linked items via resolution, not manual done. Human Mark done resolves all required linked sessions through the backend first, including family-root lifecycle checks; blockers keep truthful open state and expose the reason. Subagent-only/source-only items need explicit done. Completion never merges, stops or deletes work; attention dismissal and snoozing never resolve anything.
 
 ## Revisions and reconciliation

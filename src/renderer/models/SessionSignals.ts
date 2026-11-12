@@ -7,6 +7,16 @@ export class SessionSignals extends Model {
   loaded = false;
   purposes: Readonly<Record<string, SessionPurpose>> = {};
   sessions: readonly ProjectSessionSignal[] = [];
+  resolvedSessionIds: readonly string[] = [];
+
+  @computed
+  private get resolvedIds() {
+    return new Set(this.resolvedSessionIds);
+  }
+
+  isResolved(sessionId: string) {
+    return this.resolvedIds.has(sessionId);
+  }
 
   @computed
   private get byId() {

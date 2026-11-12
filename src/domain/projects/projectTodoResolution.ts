@@ -105,15 +105,18 @@ export const join = Effect.fn("ProjectTodos.joinResolution")(
   ),
 );
 
-/** Application policy, including legacy items: completion is monotonic; restore never reopens.
- * Revision checks prevent a join from overwriting a concurrent edit or explicit user closure.
+/** Repair persisted state as well as lifecycle events. Required sessions own automatic
+ * completion; prose and readiness are not blockers. Restore reopens only session-completed
+ * items. Revision checks preserve concurrent edits and explicit completion.
  */
 export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function* (
   scope: string,
   itemIds?: ReadonlySet<string>,
 ) {
   const candidates = (yield* todos.list(scope)).items.filter(
-    (item) => item.state === "open" && (!itemIds || itemIds.has(item.id)),
+    (item) =>
+      (item.state === "open" || item.completion?.by === "sessions") &&
+      (!itemIds || itemIds.has(item.id)),
   );
   const joined = yield* join(scope, candidates);
   yield* todos.completeResolved(
@@ -121,9 +124,18 @@ export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function*
     joined
       .filter(
         ({ item, sessions }) =>
-          !item.remainingWork &&
+          item.state === "open" &&
           sessions.length > 0 &&
           sessions.every((session) => session.resolved === true),
+      )
+      .map(({ item }) => item),
+  );
+  yield* todos.reopenRestored(
+    scope,
+    joined
+      .filter(
+        ({ item, sessions }) =>
+          item.state === "done" && sessions.some((session) => session.resolved === false),
       )
       .map(({ item }) => item),
   );

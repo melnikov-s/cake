@@ -39,7 +39,7 @@ export class SessionMetadataStore extends Store<{
   }
 
   isResolved(sessionId: string) {
-    return this.props.catalog.find(sessionId)?.resolved === true;
+    return this.props.catalog.isResolved(sessionId);
   }
 
   projectLabels(projectPath: string) {

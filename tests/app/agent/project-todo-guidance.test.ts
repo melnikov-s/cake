@@ -138,7 +138,7 @@ it("preserves evidence, closure, association replacement and dismissed requests"
   expect(PROJECT_TODO_ATTENTION_GUIDANCE).toContain("Never revive/reword a dismissed request");
   for (const rule of [
     "Session-linked items close through session resolution",
-    "Restore never reopens",
+    "Restore reopens session-completed items",
     "Associations replace the whole list",
     "Snooze",
     "Side chats share",

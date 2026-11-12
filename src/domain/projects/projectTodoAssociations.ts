@@ -199,8 +199,11 @@ export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(f
     const candidate = joined.find(({ item }) => item.id === input.id);
     if (
       candidate &&
-      ((input.remainingWork === undefined ? candidate.item.remainingWork : input.remainingWork) ||
-        (candidate.sessions.length > 0 && !resolved.has(input.id)))
+      (candidate.sessions.length > 0
+        ? !resolved.has(input.id)
+        : input.remainingWork === undefined
+          ? candidate.item.remainingWork
+          : input.remainingWork)
     )
       return yield* new ProjectError({
         operation: "projectTodoAssociations",

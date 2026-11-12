@@ -122,6 +122,12 @@ export class SessionCatalogStore extends Store<{
     return this.props.model.find(sessionId) ?? this.pendingSessionIndex.get(sessionId);
   }
 
+  isResolved(sessionId: string) {
+    return (
+      this.props.model.signals.isResolved(sessionId) || this.find(sessionId)?.resolved === true
+    );
+  }
+
   /** Reconcile one explicit identity without reloading the Project catalog or a transcript. */
   async lookup(sessionId: string) {
     const existing = this.find(sessionId);

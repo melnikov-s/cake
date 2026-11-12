@@ -206,7 +206,7 @@ it("keeps specialist detail behind discoverable task-specific doors", async () =
       "Never silently regenerate",
     ],
     "todo-details": [
-      "Restore never reopens",
+      "Restore reopens session-completed items",
       "Associations replace",
       "genuinely new request",
       "Snooze changes visibility only",

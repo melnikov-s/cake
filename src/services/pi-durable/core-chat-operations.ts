@@ -27,7 +27,7 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
     ])
   )
     lines.push(
-      "Standalone completion/reopening: state done/open. remainingWork holds closure; null clears satisfied handoffs. Revision conflict: reread before retrying.",
+      "Standalone completion/reopening: state done/open. Clear remainingWork with null before standalone agent completion; it never vetoes resolved session-linked closure. Revision conflict: reread before retrying.",
     );
   if (add("sessions.send", ["delivery", "resultDelivery"]))
     lines.push(

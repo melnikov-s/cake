@@ -175,8 +175,10 @@ const restoreAuthority = Effect.fn("ProjectSessions.restoreAuthority")(function*
     yield* publishCatalogStatus(sessionId, restored, false).pipe(asError(operation));
     yield* publishCatalogChange(sessionId, restored, false).pipe(asError(operation));
   }
-  if (namespace === "resolved")
+  if (namespace === "resolved") {
     yield* recordLifecycle(location.projectPath, sessionId, false).pipe(asError(operation));
+    yield* completeLinkedForProject(location.projectPath).pipe(asError(operation));
+  }
   return restored;
 });
 

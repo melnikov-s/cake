@@ -32,6 +32,7 @@ import { ProjectRail } from "../../../src/renderer/components/project-rail";
 import { ConversationActivity } from "../../../src/renderer/components/conversation-activity";
 import { SidebarNavigationControls } from "../../../src/renderer/components/sidebar-navigation-controls";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
+import { applySessionSignalsUpdate } from "../../../src/renderer/reducers/SessionSignalsReducer";
 import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -284,6 +285,9 @@ function renderTodos(
         }),
       );
     },
+    async updateSignals(update: Parameters<typeof applySessionSignalsUpdate>[1]) {
+      await act(async () => applySessionSignalsUpdate(fixture.models.sessionCatalog, update));
+    },
     async updateSessions(next: ReturnType<typeof sessionSummary>[]) {
       await act(async () =>
         applySnapshot(fixture.models.sessionCatalog, {
@@ -442,6 +446,7 @@ it("repairs only the opened list through the real backend and projection, never 
       projectTodos.create("/cake", {
         title: "Interrupted completion",
         description: "Resolved while closed.",
+        remainingWork: "Landing hold; fresh readiness required",
         associations: [{ kind: "session", sessionId: "first", title: "Work" }],
       }),
     );
@@ -478,7 +483,7 @@ it("repairs only the opened list through the real backend and projection, never 
     await fixture.user.click(screen.getAllByRole("button", { name: "Close Workspace" })[0]!);
     await fixture.user.click(screen.getByRole("button", { name: "Open Workspace" }));
     await waitFor(() => expect(fixture.reconciliationScopes).toEqual(["/cake", "/cake"]));
-    expect(indexReads).toBe(1); // Already done: reopening needs no session discovery.
+    expect(indexReads).toBe(2); // Recheck automatic completion in case a required session was restored.
   } finally {
     await runtime.dispose();
   }
@@ -708,16 +713,80 @@ it("keeps blocked and failed landings visible and reports partial resolution wit
     expect(screen.queryByRole("region", { name: "Done" })).toBeNull();
   }
   await fixture.updateSessions([{ ...sessions[0]!, resolved: true }, sessions[1]!]);
-  expect(screen.getByLabelText("Merge status for ready").textContent).toBe(
-    "Merged; resolution failed: Family resolution failed",
+  expect(screen.queryByLabelText("Merge status for ready")).toBeNull();
+  expect(screen.getByRole("status", { name: "Session status for ready" }).textContent).toBe(
+    "Resolved",
   );
   expect(
-    todoSection("Ready to Merge to-dos").getByRole("button", {
+    todoSection("Active to-dos").getByRole("button", {
       name: item.title,
     }),
   ).toBeDefined();
   expect(fixture.todos().items[0]!.state).toBe("open");
   expect(fixture.mutations).toEqual([]);
+});
+
+it.each([
+  { state: "pending" as const, message: "Owning project is unavailable; fresh readiness required" },
+  { state: "failed" as const, message: "Stale readiness failure" },
+  { state: "landing" as const },
+])(
+  "resolved session presentation overrides stale $state readiness and restores reactively",
+  async (request) => {
+    const item = todo(229, undefined, ["ready"]);
+    const session = sessionSummary({ sessionId: "ready", projectPath: "/cake", resolved: true });
+    using fixture = renderTodos(false, {
+      todos: { ...emptyProjectTodos(), items: [{ ...item, state: "done" }] },
+      sessions: [session],
+      autoMergeRequests: [mergeRequest("ready", request)],
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+    expect(screen.getByRole("status", { name: "Session status for ready" }).textContent).toBe(
+      "Resolved",
+    );
+    expect(screen.queryByLabelText("Merge status for ready")).toBeNull();
+    const icon = fixture.container.querySelector('[data-slot="resolved-session-icon"] svg');
+    expect(icon?.getAttribute("aria-hidden")).toBe("true");
+    expect(icon?.querySelector("path")).not.toBeNull();
+    await fixture.updateSessions([{ ...session, resolved: false }]);
+    expect(screen.queryByRole("status", { name: "Session status for ready" })).toBeNull();
+    expect(fixture.container.querySelector('[data-slot="resolved-session-icon"]')).toBeNull();
+    expect(screen.getByLabelText("Merge status for ready").textContent).toBeTruthy();
+    expect(fixture.mutations).toEqual([]);
+  },
+);
+
+it("shows resolved cold links without loading archived session details, and follows restore/resolve signals", async () => {
+  const item = { ...todo(230, undefined, ["cold"]), state: "done" as const };
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [item] },
+    sessions: [],
+    autoMergeRequests: [mergeRequest("cold", { state: "failed", message: "Stale readiness" })],
+  });
+  await fixture.updateSignals({ _tag: "Snapshot", sessions: [], resolvedSessionIds: ["cold"] });
+  await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+  expect(screen.getByRole("status", { name: "Session status for cold" }).textContent).toBe(
+    "Resolved",
+  );
+  expect(screen.queryByLabelText("Merge status for cold")).toBeNull();
+  expect(fixture.root.sessionCatalogStore.find("cold")).toBeUndefined();
+  await fixture.updateSignals({
+    _tag: "Upserted",
+    session: {
+      sessionId: "cold",
+      projectPath: "/cake",
+      workingDirectory: "/cake",
+      running: false,
+      unread: false,
+    },
+  });
+  expect(screen.queryByRole("status", { name: "Session status for cold" })).toBeNull();
+  expect(screen.getByLabelText("Merge status for cold").textContent).toContain("Stale readiness");
+  await fixture.updateSignals({ _tag: "Resolved", sessionId: "cold" });
+  expect(screen.getByRole("status", { name: "Session status for cold" }).textContent).toBe(
+    "Resolved",
+  );
+  expect(fixture.root.sessionCatalogStore.find("cold")).toBeUndefined();
 });
 
 it("waits for every associated session and removes successful work only through authoritative to-do resolution", async () => {
@@ -1500,9 +1569,12 @@ it("keeps each associated session link and projects readiness across read, new w
   await fixture.status({ running: false, recoveryIssue: "Needs a decision", unread: false });
   expect(screen.getByRole("img", { name: "Needs your input" }).className).toContain("bg-attention");
   await fixture.status({ running: false, unread: false, resolved: true });
-  expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(2);
+  expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(1);
+  expect(
+    screen.getByRole("status", { name: "Session status for First investigation" }).textContent,
+  ).toBe("Resolved");
   expect(screen.getByRole("button", { name: "Mark done: Investigate startup" })).toBeDefined();
-  await fixture.status({ latestTurnOutcome: "failed" });
+  await fixture.status({ resolved: false, latestTurnOutcome: "failed" });
   expect(screen.getByRole("img", { name: "Error" }).className).toContain("bg-destructive");
   await fixture.status({ latestTurnOutcome: "aborted" });
   expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(1);

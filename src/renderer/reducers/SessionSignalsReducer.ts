@@ -28,6 +28,15 @@ export function applySessionSignalsUpdate(
     if (update._tag === "Snapshot") {
       signals.loaded = true;
       signals.purposes = update.purposes ?? {};
+      signals.resolvedSessionIds = update.resolvedSessionIds ?? [];
+    } else if (update._tag === "Resolved") {
+      if (!signals.isResolved(update.sessionId))
+        signals.resolvedSessionIds = [...signals.resolvedSessionIds, update.sessionId];
+    } else {
+      const id = update._tag === "Upserted" ? update.session.sessionId : update.sessionId;
+      signals.resolvedSessionIds = signals.resolvedSessionIds.filter(
+        (sessionId) => sessionId !== id,
+      );
     }
     const affected =
       update._tag === "Snapshot"
@@ -41,12 +50,16 @@ export function applySessionSignalsUpdate(
       const signal = signals.find(session.sessionId);
       session.purpose = signals.purposes[session.sessionId] ?? signal?.purpose ?? session.purpose;
       if (signal) {
+        session.resolved = false;
         session.running = signal.running;
         session.workingStartedAt = signal.workingStartedAt;
         session.unread = signal.unread;
         session.recoveryIssue = signal.recoveryIssue;
         session.latestTurnOutcome = signal.latestTurnOutcome;
-      } else if (!session.resolved) model.sessions.splice(index, 1);
+      } else if (signals.isResolved(session.sessionId)) {
+        session.resolved = true;
+        session.running = false;
+      } else if (update._tag === "Removed" || !session.resolved) model.sessions.splice(index, 1);
     }
   });
 }

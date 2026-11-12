@@ -120,7 +120,10 @@ export class ProjectTodosStore extends Store<{
         const lookup = (readiness ??=
           SessionMetadataContext.consume(this)!.createMergeReadinessLookup());
         return item.associations.some(
-          (link) => link.kind === "session" && lookup(link.sessionId)?.readyToMerge === true,
+          (link) =>
+            link.kind === "session" &&
+            !SessionMetadataContext.consume(this)!.isResolved(link.sessionId) &&
+            lookup(link.sessionId)?.readyToMerge === true,
         );
       },
     );
@@ -145,6 +148,7 @@ export class ProjectTodosStore extends Store<{
     return item.associations.some(
       (link) =>
         link.kind === "session" &&
+        !SessionMetadataContext.consume(this)!.isResolved(link.sessionId) &&
         SessionMetadataContext.consume(this)!.sessionMergeReadiness(link.sessionId)
           ?.readyToMerge === true,
     );

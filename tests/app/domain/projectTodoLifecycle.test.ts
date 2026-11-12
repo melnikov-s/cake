@@ -94,10 +94,16 @@ it.effect(
     return Effect.gen(function* () {
       const ids = yield* Effect.gen(function* () {
         yield* upsertProject(project, "Project");
-        const canonical = yield* create([a]);
+        const canonical = yield* todos.create(project, {
+          title: "Stale landing hold",
+          description: "Resolved while Cake was closed.",
+          remainingWork: "Fresh readiness required; owning project unavailable",
+          associations: [link(a)],
+        });
         const suffix = yield* seedHistoricalTodo(project, {
           title: "Legacy work",
           description: "Historical suffix link.",
+          remainingWork: "Independent review still needed",
           associations: [link("00000011")],
         });
         const source = yield* todos.create(project, {
@@ -194,6 +200,46 @@ it.effect(
 );
 
 it.effect(
+  "restart reconciles restored required sessions without reopening explicit completion",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      const ids = yield* Effect.gen(function* () {
+        yield* upsertProject(project, "Project");
+        const automatic = yield* create([a]);
+        const explicit = yield* create([b]);
+        f.resolved.add(a);
+        yield* completeLinked(project);
+        yield* todos.mutateUser(project, {
+          _tag: "SetState",
+          id: explicit.id,
+          expectedRevision: 0,
+          state: "done",
+        });
+        return { automatic: automatic.id, explicit: explicit.id };
+      }).pipe(Effect.provide(f.app, { local: true }));
+      f.resolved.clear(); // Restored while the owning list was not observed.
+      yield* Effect.gen(function* () {
+        yield* (yield* ApplicationState).initialize();
+        yield* list(project, {});
+        expect(yield* todos.read(project, ids.automatic)).toMatchObject({
+          state: "open",
+          revision: 2,
+        });
+        expect(yield* todos.read(project, ids.explicit)).toMatchObject({
+          state: "done",
+          revision: 1,
+          completion: { by: "user" },
+        });
+        const writes = f.reads.writes;
+        yield* list(project, {});
+        expect(f.reads.writes).toBe(writes);
+      }).pipe(Effect.provide(f.app, { local: true }));
+    }).pipe(Effect.provide(f.metadata));
+  },
+);
+
+it.effect(
   "requires every actual association resolved; unknown/ambiguous refs and mere report success stay open, source links cannot veto",
   () => {
     const f = fixture();
@@ -235,10 +281,25 @@ it.effect(
       f.resolved.add(b);
       yield* completeLinked(project);
       expect((yield* todos.read(project, multiple.id)).state).toBe("done");
-      f.resolved.clear(); // Restoring sessions is not a to-do reopen.
+      f.resolved.delete(b); // Restoring one required session reopens only its automatic outcome.
       yield* completeLinked(project);
       expect((yield* todos.read(project, mixed.id)).state).toBe("done");
-      expect((yield* todos.read(project, multiple.id)).state).toBe("done");
+      expect(yield* todos.read(project, multiple.id)).toMatchObject({
+        state: "open",
+        revision: 2,
+        needsAttention: false,
+      });
+      expect((yield* todos.read(project, multiple.id)).completion).toBeUndefined();
+      const writes = f.reads.writes;
+      yield* completeLinked(project);
+      expect(f.reads.writes).toBe(writes);
+      f.resolved.add(b);
+      yield* completeLinked(project);
+      expect(yield* todos.read(project, multiple.id)).toMatchObject({
+        state: "done",
+        revision: 3,
+        completion: { by: "sessions" },
+      });
     }).pipe(Effect.provide(Layer.merge(f.app, f.metadata)));
   },
 );

@@ -29,11 +29,61 @@ describe("Session catalog derivation integration", () => {
       _tag: "Snapshot",
       sessions: [],
       purposes: { cached: "user", "cold-archive": "delegated" },
+      resolvedSessionIds: ["cached", "cold-archive"],
     });
     expect(fixture.root.sessionCatalogStore.find("cold-archive")).toBeUndefined();
+    expect(fixture.root.sessionMetadataStore.isResolved("cold-archive")).toBe(true);
+    applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+      _tag: "Upserted",
+      session: {
+        sessionId: "cold-archive",
+        projectPath: "/project",
+        workingDirectory: "/project",
+        running: false,
+        unread: false,
+      },
+    });
+    expect(fixture.root.sessionMetadataStore.isResolved("cold-archive")).toBe(false);
+    applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+      _tag: "Resolved",
+      sessionId: "cold-archive",
+    });
+    expect(fixture.root.sessionMetadataStore.isResolved("cold-archive")).toBe(true);
+    applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+      _tag: "Removed",
+      sessionId: "cold-archive",
+    });
+    expect(fixture.root.sessionMetadataStore.isResolved("cold-archive")).toBe(false);
     expect(fixture.root.sessionCatalogStore.sessionPurpose("cold-archive")).toBe("delegated");
     expect(fixture.root.sessionCatalogStore.find("cached")?.purpose).toBe("user");
     expect(fixture.root.sidebarStore.sessionListStore.projectSessionCatalogQueries).toEqual([]);
+  });
+
+  it("updates cached resolution through background resolve, restore and removal", () => {
+    using fixture = createRendererStoreFixture({
+      sessions: [sessionSummary({ sessionId: "cached", projectPath: "/project" })],
+    });
+    const model = fixture.models.sessionCatalog;
+    const metadata = fixture.root.sessionMetadataStore;
+    applySessionSignalsUpdate(model, { _tag: "Resolved", sessionId: "cached" });
+    expect(metadata.isResolved("cached")).toBe(true);
+    expect(model.find("cached")?.resolved).toBe(true);
+    applySessionSignalsUpdate(model, {
+      _tag: "Upserted",
+      session: {
+        sessionId: "cached",
+        projectPath: "/project",
+        workingDirectory: "/project",
+        running: false,
+        unread: false,
+      },
+    });
+    expect(metadata.isResolved("cached")).toBe(false);
+    expect(model.find("cached")?.resolved).toBe(false);
+    applySessionSignalsUpdate(model, { _tag: "Resolved", sessionId: "cached" });
+    applySessionSignalsUpdate(model, { _tag: "Removed", sessionId: "cached" });
+    expect(metadata.isResolved("cached")).toBe(false);
+    expect(model.find("cached")).toBeUndefined();
   });
 
   it("derives landed worktrees without loading an archive lane and respects restore/resolve", () => {

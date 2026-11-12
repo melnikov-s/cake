@@ -22,11 +22,14 @@ export interface ProjectSessionSignal extends Schema.Schema.Type<typeof ProjectS
 export const ProjectSessionSignalsUpdate = Schema.TaggedUnion({
   Snapshot: {
     sessions: Schema.Array(ProjectSessionSignal),
+    /** Resolution metadata remains available without loading archived list details. */
+    resolvedSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
     /** Explicit relationship metadata includes archives without loading list pages/transcripts. */
     purposes: Schema.optionalKey(Schema.Record(Schema.String, SessionPurpose)),
   },
   Upserted: { session: ProjectSessionSignal },
   Removed: { sessionId: Schema.String },
+  Resolved: { sessionId: Schema.String },
   TitleChanged: { sessionId: Schema.String, title: Schema.String },
 });
 export type ProjectSessionSignalsUpdate = Schema.Schema.Type<typeof ProjectSessionSignalsUpdate>;

@@ -9,6 +9,7 @@ import { MarkdownLink } from "./ai-elements/markdown";
 import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 import { SessionActivityIndicator } from "./session-activity-indicator";
 import { CommitChangeStatsText } from "./ui/commit-change-stats";
+import { CheckIcon } from "./ui/icons";
 
 /** Typed work and reference rows keep public identity separate from private Pi session IDs. */
 export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
@@ -26,8 +27,10 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
         ? "user"
         : undefined))
     : undefined;
+  const resolved =
+    association.kind === "session" && root.sessionMetadataStore.isResolved(association.sessionId);
   const readiness =
-    association.kind === "session"
+    association.kind === "session" && !resolved
       ? root.sessionMetadataStore.sessionMergeReadiness(association.sessionId)
       : undefined;
   const mergeStatus = readiness
@@ -49,13 +52,22 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
       )}
     >
       <span className="flex h-4 shrink-0 items-center gap-1.5">
-        {association.kind === "session" && (
+        {association.kind === "session" && !resolved && (
           <SessionActivityIndicator
             activity={root.sessionMetadataStore.sessionWorkActivity(association.sessionId)}
           />
         )}
-        <span className="text-muted-foreground [&>svg]:size-3">
-          {purpose ? <SessionPurposeIndicator purpose={purpose} /> : <Icon />}
+        <span
+          data-slot={resolved ? "resolved-session-icon" : undefined}
+          className={cn("[&>svg]:size-3", resolved ? "text-success" : "text-muted-foreground")}
+        >
+          {resolved ? (
+            <CheckIcon />
+          ) : purpose ? (
+            <SessionPurposeIndicator purpose={purpose} />
+          ) : (
+            <Icon />
+          )}
         </span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 [&>a]:max-w-full [&>a]:min-w-0 [&>a]:[overflow-wrap:anywhere] [&>a]:font-normal [&>a]:leading-4 [&>a]:no-underline [&>a:hover]:text-foreground [&>a:hover]:underline">
@@ -79,6 +91,15 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
             className="text-muted-foreground"
             stats={root.sessionMetadataStore.sessionCommitStats(association.sessionId)}
           />
+        )}
+        {resolved && (
+          <span
+            role="status"
+            aria-label={`Session status for ${association.title}`}
+            className="text-muted-foreground"
+          >
+            Resolved
+          </span>
         )}
         {mergeStatus && (
           <span

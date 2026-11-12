@@ -182,10 +182,10 @@ const worker: SubagentRecord = {
   pendingInputs: [],
 };
 
-it.effect(
-  "investigation → implementation → review → authorized resolution stays one outcome with a handoff hold",
-  () => {
-    const f = fixture([worker]);
+it.effect.each(["running", "complete", "error"] as const)(
+  "all required sessions own completion despite remaining work and supporting %s subagents",
+  (status) => {
+    const f = fixture([{ ...worker, status }]);
     return Effect.gen(function* () {
       yield* upsertProject(project, "Project");
       let task = yield* controls.create(project, {
@@ -208,6 +208,8 @@ it.effect(
         expectedRevision: task.revision,
         remainingWork: "Independent review still needed",
       });
+      // Required follow-up work must be linked, not expressed as a prose closure veto.
+      yield* todos.attachExisting(project, task.id, link(root));
       f.resolved.add(a); // actual lifecycle authority, not a report or merge
       yield* completeLinked(project);
       expect((yield* controls.list(project, { view: "reconciliation" })).items[0]).toMatchObject({
@@ -215,8 +217,6 @@ it.effect(
         state: "open",
         remainingWork: "Independent review still needed",
       });
-      // The implementation may resolve before the review is launched; no close/reopen gap.
-      yield* todos.attachExisting(project, task.id, link(root));
       task = yield* todos.read(project, task.id);
       const denied = yield* controls
         .update(project, {
@@ -239,16 +239,7 @@ it.effect(
       expect(removedBlocker.message).toContain("unresolved required sessions");
       f.resolved.add(root);
       yield* completeLinked(project);
-      expect(yield* todos.read(project, task.id)).toMatchObject({
-        state: "open",
-        needsAttention: true,
-        remainingWork: "Independent review still needed",
-      });
-      task = yield* controls.update(project, {
-        id: task.id,
-        expectedRevision: task.revision,
-        remainingWork: null,
-      });
+      task = yield* todos.read(project, task.id);
       expect(task).toMatchObject({
         state: "done",
         needsAttention: false,
@@ -258,6 +249,102 @@ it.effect(
       expect(task).not.toHaveProperty("remainingWork");
       expect(task.associations).toHaveLength(3);
       expect((yield* todos.list(project)).items).toHaveLength(1);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect.each(["create", "update", "done", "read", "list"] as const)(
+  "%s completes a single resolved session despite remainingWork",
+  (access) => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const request = {
+        title: "Resolved work",
+        description: "Old landing hold is not required work.",
+        associations: [link(a)],
+        remainingWork: "Owning project is unavailable; fresh readiness required",
+      };
+      let task;
+      if (access === "create") {
+        f.resolved.add(a);
+        task = yield* controls.create(project, request);
+      } else {
+        task = yield* todos.create(project, request);
+        f.resolved.add(a);
+        if (access === "update" || access === "done")
+          task = yield* controls.update(project, {
+            id: task.id,
+            expectedRevision: task.revision,
+            ...(access === "done" ? { state: "done" as const } : { status: "Still held" }),
+          });
+        else if (access === "read") task = yield* controls.read(project, task.id);
+        else {
+          yield* controls.list(project, { state: "done" });
+          task = yield* todos.read(project, task.id);
+        }
+      }
+      expect(task.state).toBe("done");
+      expect(task.remainingWork).toBeUndefined();
+      const writes = f.reads.writes;
+      yield* completeLinked(project);
+      expect(f.reads.writes).toBe(writes);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
+  "retained resolution closes global stale work without an owning project or checkout",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      const item = yield* todos.create(CAKE_CHAT_TODO_SCOPE, {
+        title: "Unavailable owner",
+        description: "Persisted required session outlives its project and worktree.",
+        associations: [link(a)],
+        remainingWork: "Landing hold",
+      });
+      f.resolved.add(a);
+      expect(yield* controls.read(CAKE_CHAT_TODO_SCOPE, item.id)).toMatchObject({
+        state: "done",
+        completion: { by: "sessions" },
+      });
+      expect(f.reads.identities).toBe(0);
+      const writes = f.reads.writes;
+      yield* controls.list(CAKE_CHAT_TODO_SCOPE, {});
+      expect(f.reads.writes).toBe(writes);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
+  "standalone remaining work still blocks agent completion, not explicit human completion",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const item = yield* controls.create(project, {
+        title: "Standalone decision",
+        description: "No required sessions.",
+        remainingWork: "Review the findings",
+      });
+      yield* completeLinked(project);
+      expect((yield* todos.read(project, item.id)).state).toBe("open");
+      const denied = yield* controls
+        .update(project, {
+          id: item.id,
+          expectedRevision: item.revision,
+          state: "done",
+        })
+        .pipe(Effect.flip);
+      expect(denied.message).toContain("remaining work");
+      yield* todos.mutateUser(project, {
+        _tag: "SetState",
+        id: item.id,
+        expectedRevision: item.revision,
+        state: "done",
+      });
+      expect((yield* todos.read(project, item.id)).completion?.by).toBe("user");
     }).pipe(Effect.provide(f.layer));
   },
 );
@@ -774,6 +861,7 @@ it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
         title: "Interrupted reconciliation",
         description: "Resolved while Cake was closed.",
         associations: [link(a)],
+        remainingWork: "Landing hold; stale readiness requires owning project",
       });
       const other = yield* todos.create("/other", {
         title: "Do not sweep me",
@@ -806,6 +894,7 @@ it.effect(
         title: "Read me",
         description: "Resolved while Cake was closed.",
         associations: [link(a)],
+        remainingWork: "Stale readiness; fresh readiness required",
       });
       const other = yield* todos.create(project, {
         title: "Not accessed",

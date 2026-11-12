@@ -293,17 +293,17 @@ export const create = Effect.fn("ProjectTodos.create")(function* (
   resolved = false,
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoCreate)(request).pipe(mapError);
+  const { remainingWork, ...content } = input;
   const item = {
-    ...input,
+    ...content,
+    ...(!resolved && remainingWork ? { remainingWork } : null),
     status: input.status ?? "",
-    needsAttention: resolved && !input.remainingWork ? false : (input.needsAttention ?? false),
+    needsAttention: resolved ? false : (input.needsAttention ?? false),
     associations: input.associations ?? [],
     id: randomUUID(),
-    state: resolved && !input.remainingWork ? ("done" as const) : ("open" as const),
+    state: resolved ? ("done" as const) : ("open" as const),
     revision: 0,
-    ...(resolved && !input.remainingWork
-      ? { completion: { revision: 0, by: "sessions" as const } }
-      : null),
+    ...(resolved ? { completion: { revision: 0, by: "sessions" as const } } : null),
   };
   if (input.needsAttention && !input.attentionReason)
     return yield* error("Needs attention requires an attention reason");
@@ -359,8 +359,24 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           JSON.stringify(associations) === JSON.stringify(item.associations)
         )
           continue;
-        // Already done and nothing else changes: idempotent, no new revision.
-        if (alreadyDone && !edits) continue;
+        // Human Done may have just resolved the last required session. Preserve that
+        // explicit decision at the same completion revision, so restore cannot undo it.
+        if (alreadyDone && !edits) {
+          if (
+            user &&
+            item.completion?.by === "sessions" &&
+            onlyCompletedSince(item, input.expectedRevision)
+          )
+            result = {
+              ...result,
+              items: result.items.map((candidate) =>
+                candidate.id === item.id
+                  ? { ...item, completion: { revision: item.revision, by: "user" } }
+                  : candidate,
+              ),
+            };
+          continue;
+        }
         // A completion changes only state. A stale "done" edit that raced exactly that completion
         // agrees with it, so its other fields overwrite nothing newer; anything else conflicts.
         if (
@@ -394,7 +410,7 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           return yield* error("Needs attention requires an attention reason");
         const remainingWork =
           input.remainingWork === null ? undefined : (input.remainingWork ?? item.remainingWork);
-        const automatic = input.state === undefined && !remainingWork && resolved.has(item.id);
+        const automatic = input.state === undefined && resolved.has(item.id);
         const updated = commit(
           item,
           {
@@ -450,13 +466,7 @@ export const completeResolved = Effect.fn("ProjectTodos.completeResolved")(funct
     let result = value;
     for (const candidate of candidates) {
       const item = result.items.find((item) => item.id === candidate.id);
-      if (
-        !item ||
-        item.state !== "open" ||
-        item.remainingWork ||
-        item.revision !== candidate.revision
-      )
-        continue;
+      if (!item || item.state !== "open" || item.revision !== candidate.revision) continue;
       const updated = commit(item, { state: "done" }, "sessions");
       result = enqueue(
         { ...result, items: result.items.map((other) => (other.id === item.id ? updated : other)) },
@@ -465,6 +475,40 @@ export const completeResolved = Effect.fn("ProjectTodos.completeResolved")(funct
           id: item.id,
           title: item.title,
           state: "done",
+          sequence: result.sequence + 1,
+        },
+      );
+    }
+    return Effect.succeed(result);
+  });
+});
+
+/** Only session-driven completion follows a restored required session back to Active.
+ * Explicit completion and newer edits win over a stale resolution join. */
+export const reopenRestored = Effect.fn("ProjectTodos.reopenRestored")(function* (
+  scope: string,
+  candidates: readonly Pick<ProjectTodo, "id" | "revision">[],
+) {
+  if (!candidates.length) return;
+  yield* change(scope, (value) => {
+    let result = value;
+    for (const candidate of candidates) {
+      const item = result.items.find((item) => item.id === candidate.id);
+      if (
+        !item ||
+        item.state !== "done" ||
+        item.completion?.by !== "sessions" ||
+        item.revision !== candidate.revision
+      )
+        continue;
+      const updated = commit(item, { state: "open" }, "sessions");
+      result = enqueue(
+        { ...result, items: result.items.map((other) => (other.id === item.id ? updated : other)) },
+        {
+          _tag: "ItemState",
+          id: item.id,
+          title: item.title,
+          state: "open",
           sequence: result.sequence + 1,
         },
       );
