@@ -7,6 +7,7 @@ import { cakeChatTranscriptBehaviorFor } from "../lib/cake-chat-transcript-behav
 import { InlineArtifactContext } from "./inline-artifact-context";
 import { ArtifactPresentationChatContext } from "./artifact-presentation-chat-context";
 import { FullscreenSurface } from "./fullscreen-surface";
+import { ArtifactAttachmentMenu } from "./artifact-attachment-menu";
 import { WorkspacePanelToggle } from "./ui/workspace-panel-toggle";
 import { Chat } from "./chat";
 import { SideChatLayout } from "./side-chat-layout";
@@ -107,12 +108,17 @@ export const ArtifactPresentationSurface = observer(function ArtifactPresentatio
       title={artifact.title ?? artifact.id}
       onClose={onClose}
       toolbar={
-        chat && (
-          <WorkspacePanelToggle
-            panel="chat"
-            visible={store.chatVisible}
-            onToggle={() => store.toggleChat()}
-          />
+        (artifact.kind === "widget" || chat) && (
+          <>
+            <ArtifactAttachmentMenu artifact={artifact} sessionId={ownerId ?? artifact.sessionId} />
+            {chat && (
+              <WorkspacePanelToggle
+                panel="chat"
+                visible={store.chatVisible}
+                onToggle={() => store.toggleChat()}
+              />
+            )}
+          </>
         )
       }
       chatSidebar={{

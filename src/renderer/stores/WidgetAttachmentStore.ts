@@ -6,6 +6,7 @@ import {
   widgetAppliesTo,
   type WidgetAttachment,
   type WidgetSlot,
+  type WidgetTarget,
 } from "../../contracts/widgets/widget-attachment";
 import { ClientContext } from "./context/ClientContext";
 
@@ -18,6 +19,9 @@ export class WidgetAttachmentStore extends Store {
   );
   readonly errors = observable(new Map<string, string>());
   private readonly loading = new Map<string, Promise<void>>();
+  readonly placementRequests = observable(
+    new Map<ArtifactLineageId, { pending: boolean; error?: string; slot?: WidgetSlot }>(),
+  );
 
   get client() {
     return ClientContext.consume(this)!;
@@ -93,12 +97,56 @@ export class WidgetAttachmentStore extends Store {
     );
   }
 
-  async move(attachment: WidgetAttachment, slot: WidgetSlot, order = attachment.order) {
+  /** Place the displayed instance, never instantiate or replace its saved state. */
+  async attachViewedWidget(lineageId: ArtifactLineageId, slot: WidgetSlot, sessionId?: string) {
+    if (this.placementRequests.get(lineageId)?.pending) return;
+    this.placementRequests.set(lineageId, { pending: true });
+    try {
+      let target: WidgetTarget;
+      if (slot === "tab") target = { kind: "global" };
+      else {
+        if (!sessionId) throw new Error("Open a conversation to attach this widget to a chat slot");
+        target = { kind: "session", sessionId };
+      }
+      // Prefer the unique Workspace placement, then this conversation's placement.
+      // Reuse another existing placement rather than silently duplicating the widget.
+      const placements = this.attachments.filter((entry) => entry.lineageId === lineageId);
+      const existing =
+        placements.find((entry) => entry.slot === "tab") ??
+        placements.find(
+          (entry) => entry.target.kind === "session" && entry.target.sessionId === sessionId,
+        ) ??
+        placements[0];
+      if (existing) {
+        await this.move(existing, slot, existing.order, target);
+        if (!this.signal.aborted && existing.hidden) await this.hide(existing.id, false);
+      } else {
+        await this.client.application.attachWidget(
+          { id: crypto.randomUUID(), lineageId, slot, target },
+          { signal: this.signal },
+        );
+      }
+      if (!this.signal.aborted) this.placementRequests.set(lineageId, { pending: false, slot });
+    } catch (error) {
+      if (!this.signal.aborted)
+        this.placementRequests.set(lineageId, {
+          pending: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+    }
+  }
+
+  async move(
+    attachment: WidgetAttachment,
+    slot: WidgetSlot,
+    order = attachment.order,
+    target = attachment.target,
+  ) {
     await this.client.application.attachWidget(
       {
         id: attachment.id,
         lineageId: attachment.lineageId,
-        target: attachment.target,
+        target,
         slot,
         order,
       },

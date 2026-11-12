@@ -60,7 +60,7 @@ export function FullscreenSurface({
     document.body.style.overflow = "hidden";
     if (!surfaceRef.current?.contains(document.activeElement)) closeButton.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       // Fullscreen surfaces sit directly below the shared overlay band, so
       // nested layers (diagram/table fullscreen, image preview, dialogs) stack
       // above and handle Escape themselves. Only dismiss when this surface owns

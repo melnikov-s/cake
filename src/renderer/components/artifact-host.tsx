@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Markdown, fencedCode } from "@/components/ai-elements/markdown";
 import { ArtifactPresentationSurface } from "./artifact-presentation-surface";
+import { ArtifactAttachmentMenu } from "./artifact-attachment-menu";
 import { SidePanel } from "./ui/side-panel";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { ResizableSurface } from "@/components/ui/resizable-surface";
@@ -108,10 +109,16 @@ export const ArtifactHost = observer(function ArtifactHost({
         title={title}
         onClose={() => onClose?.()}
         headerActions={
-          <FullscreenButton
-            label={`View ${title} fullscreen`}
-            onClick={() => setFullscreen(true)}
-          />
+          <>
+            <ArtifactAttachmentMenu
+              artifact={artifact}
+              sessionId={stateSessionId ?? artifact.sessionId}
+            />
+            <FullscreenButton
+              label={`View ${title} fullscreen`}
+              onClick={() => setFullscreen(true)}
+            />
+          </>
         }
       >
         <ResizableSurface
