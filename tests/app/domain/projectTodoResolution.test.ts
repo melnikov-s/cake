@@ -285,10 +285,19 @@ it.effect.each(["create", "update", "done", "read", "list"] as const)(
         }
       }
       expect(task.state).toBe("done");
+      expect(task.completion?.by).toBe("sessions");
       expect(task.remainingWork).toBeUndefined();
       const writes = f.reads.writes;
       yield* completeLinked(project);
       expect(f.reads.writes).toBe(writes);
+      const completedRevision = task.revision;
+      f.resolved.delete(a);
+      const restored = yield* controls.read(project, task.id);
+      expect(restored).toMatchObject({ state: "open", revision: completedRevision + 1 });
+      expect(restored.completion).toBeUndefined();
+      const restoredWrites = f.reads.writes;
+      yield* completeLinked(project);
+      expect(f.reads.writes).toBe(restoredWrites);
     }).pipe(Effect.provide(f.layer));
   },
 );

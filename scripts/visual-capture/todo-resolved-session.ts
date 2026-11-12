@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
@@ -22,12 +22,36 @@ export function createTodoResolvedSessionScenario(
       item.description = "Header fix is complete. The linked Project Session is resolved.";
       item.remainingWork = "Landing hold; owning project is unavailable; fresh readiness required";
       item.associations[0].title = "Header logo correction";
+      const originalSessionId = item.associations[0].sessionId;
+      const sessionId = "00000000-0000-4000-8000-000000000011";
+      item.associations[0].sessionId = sessionId;
+      application.data.projects[0].todos.items.push({
+        ...item,
+        id: "00000000-0000-4000-8000-000000000014",
+        title: "Legacy suffix session link",
+        associations: [
+          {
+            kind: "session",
+            sessionId: "00000011",
+            title: "Header logo correction (legacy suffix)",
+          },
+        ],
+      });
       await writeFile(file, JSON.stringify(application));
-      const sessionId = item.associations[0].sessionId;
       const directory = cakeWorkspaceSessionDirectory(
         paths.project,
         join(paths.cakeHome, "pi", "sessions"),
       );
+      const originalTranscript = join(
+        directory,
+        `1970-01-01T00-00-00-000Z_${originalSessionId}.jsonl`,
+      );
+      const transcript = await readFile(originalTranscript, "utf8");
+      await writeFile(
+        join(directory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+        transcript.replaceAll(originalSessionId, sessionId),
+      );
+      await rm(originalTranscript);
       const metadata = join(paths.cakeHome, "state", "resolved-project-metadata");
       await mkdir(metadata, { recursive: true });
       await writeFile(
@@ -59,7 +83,7 @@ export function createTodoResolvedSessionScenario(
     async prepare(page) {
       await base.prepare(page, "open");
       const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
-      const done = workspace.getByRole("button", { name: "Done (2)", exact: true });
+      const done = workspace.getByRole("button", { name: "Done (3)", exact: true });
       await expect(done).toBeVisible();
       if ((await done.getAttribute("aria-expanded")) !== "true") await done.click();
       const row = workspace.locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]');
@@ -69,6 +93,14 @@ export function createTodoResolvedSessionScenario(
       ).toHaveText("Resolved");
       await expect(row.locator('[data-slot="resolved-session-icon"] svg')).toBeVisible();
       await expect(row.getByLabel("Merge status for Header logo correction")).toHaveCount(0);
+      const legacy = workspace.locator('[data-todo-id="00000000-0000-4000-8000-000000000014"]');
+      await expect(legacy).toHaveAttribute("data-todo-section", "Done");
+      await expect(
+        legacy.getByRole("status", {
+          name: "Session status for Header logo correction (legacy suffix)",
+        }),
+      ).toHaveText("Resolved");
+      await expect(legacy.locator('[data-slot="resolved-session-icon"] svg')).toBeVisible();
       await page.mouse.move(1, 1);
     },
     region: (page) => page.getByRole("complementary", { name: "Workspace", exact: true }),

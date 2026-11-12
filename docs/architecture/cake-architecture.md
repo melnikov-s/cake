@@ -512,7 +512,7 @@ is a refactoring signal, not precedent.
   existing worker chat/report and use a distinct type icon. Subagents have no resolve lifecycle:
   reports, execution completion, abort and resource release do not close a subagent-only item;
   explicitly mark it done after review. Mixed items retain the all-Project-Sessions-resolved rule.
-  Session restore reopens session-completed items, but preserves explicit user/agent completion. Human Mark done, from lists or linked chat controls,
+  Session restore reopens linked agent/session completion, but preserves Human Done and standalone completion. Human Mark done, from lists or linked chat controls,
   resolves all required session associations through the backend lifecycle before committing Done.
   Children use their family root once, preserving whole-family safety checks; already-resolved
   links are skipped. Unknown links, active turns/workers, pending input and other lifecycle blockers

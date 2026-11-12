@@ -106,8 +106,8 @@ export const join = Effect.fn("ProjectTodos.joinResolution")(
 );
 
 /** Repair persisted state as well as lifecycle events. Required sessions own automatic
- * completion; prose and readiness are not blockers. Restore reopens only session-completed
- * items. Revision checks preserve concurrent edits and explicit completion.
+ * completion; prose and readiness are not blockers. Restore reopens session-linked agent
+ * completion too. Revision checks preserve concurrent edits and explicit Human Done.
  */
 export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function* (
   scope: string,
@@ -115,7 +115,9 @@ export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function*
 ) {
   const candidates = (yield* todos.list(scope)).items.filter(
     (item) =>
-      (item.state === "open" || item.completion?.by === "sessions") &&
+      (item.state === "open" ||
+        item.completion?.by === "sessions" ||
+        item.completion?.by === "agent") &&
       (!itemIds || itemIds.has(item.id)),
   );
   const joined = yield* join(scope, candidates);

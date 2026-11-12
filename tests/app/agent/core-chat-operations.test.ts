@@ -128,7 +128,7 @@ describe("core coordinator calling reference", () => {
       "resolved:false restores",
       "Execution/report arrival is not resolution",
       "Session-linked to-dos close through session resolution",
-      "Restore reopens session-completed items",
+      "Restore reopens session-linked Done, except Human Done",
       "replaced as a whole",
       "Reuse existing/session-created items",
       "dismissed request",

@@ -789,6 +789,76 @@ it("shows resolved cold links without loading archived session details, and foll
   expect(fixture.root.sessionCatalogStore.find("cold")).toBeUndefined();
 });
 
+it.each(["unique", "resolved collision", "active collision"] as const)(
+  "resolves a persisted suffix against canonical metadata without guessing (%s)",
+  async (variant) => {
+    const canonical = "00000000-0000-4000-8000-000000000011";
+    const collision = "11111111-1111-4111-8111-000000000011";
+    const suffix = "00000011";
+    using fixture = renderTodos(false, {
+      todos: {
+        ...emptyProjectTodos(),
+        items: [{ ...todo(228, undefined, [suffix]), state: "done" }],
+      },
+      sessions: [],
+      autoMergeRequests: [mergeRequest(suffix, { state: "failed", message: "Stale readiness" })],
+    });
+    await fixture.updateSignals({
+      _tag: "Snapshot",
+      sessions:
+        variant === "active collision"
+          ? [
+              {
+                sessionId: collision,
+                projectPath: "/other",
+                workingDirectory: "/other",
+                running: false,
+                unread: false,
+              },
+            ]
+          : [],
+      resolvedSessionIds: variant === "resolved collision" ? [canonical, collision] : [canonical],
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+    expect(screen.getByRole("link", { name: suffix }).getAttribute("href")).toBe(
+      `cake://session/${suffix}`,
+    );
+    expect(fixture.todos().items[0]?.associations[0]).toMatchObject({ sessionId: suffix });
+    expect(fixture.root.sessionCatalogStore.find(canonical)).toBeUndefined();
+    if (variant !== "unique") {
+      expect(screen.queryByRole("status", { name: `Session status for ${suffix}` })).toBeNull();
+      expect(fixture.container.querySelector('[data-slot="resolved-session-icon"]')).toBeNull();
+      expect(fixture.root.sessionMetadataStore.isResolved(canonical)).toBe(true);
+      return;
+    }
+    expect(screen.getByRole("status", { name: `Session status for ${suffix}` }).textContent).toBe(
+      "Resolved",
+    );
+    expect(
+      fixture.container
+        .querySelector('[data-slot="resolved-session-icon"] svg')
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(screen.queryByLabelText(`Merge status for ${suffix}`)).toBeNull();
+    await fixture.updateSignals({
+      _tag: "Upserted",
+      session: {
+        sessionId: canonical,
+        projectPath: "/cake",
+        workingDirectory: "/cake",
+        running: false,
+        unread: false,
+      },
+    });
+    expect(screen.queryByRole("status", { name: `Session status for ${suffix}` })).toBeNull();
+    await fixture.updateSignals({ _tag: "Resolved", sessionId: canonical });
+    expect(screen.getByRole("status", { name: `Session status for ${suffix}` }).textContent).toBe(
+      "Resolved",
+    );
+    expect(fixture.mutations).toEqual([]);
+  },
+);
+
 it("waits for every associated session and removes successful work only through authoritative to-do resolution", async () => {
   const item = todo(231, undefined, ["first", "second"]);
   const sessions = ["first", "second"].map((sessionId) =>

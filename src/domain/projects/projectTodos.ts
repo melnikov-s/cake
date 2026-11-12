@@ -411,6 +411,12 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
         const remainingWork =
           input.remainingWork === null ? undefined : (input.remainingWork ?? item.remainingWork);
         const automatic = input.state === undefined && resolved.has(item.id);
+        // Agent Done cannot exempt required sessions from future restore reconciliation.
+        const sessionCompletion =
+          automatic ||
+          (input.state === "done" &&
+            projectTodoSessionIds({ associations: input.associations ?? item.associations })
+              .length > 0);
         const updated = commit(
           item,
           {
@@ -423,7 +429,7 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
             state: input.state ?? (automatic && item.state === "open" ? "done" : item.state),
             associations: input.associations ?? item.associations,
           },
-          automatic ? "sessions" : user ? "user" : "agent",
+          user ? "user" : sessionCompletion ? "sessions" : "agent",
           deadline,
         );
         result = {
@@ -483,8 +489,8 @@ export const completeResolved = Effect.fn("ProjectTodos.completeResolved")(funct
   });
 });
 
-/** Only session-driven completion follows a restored required session back to Active.
- * Explicit completion and newer edits win over a stale resolution join. */
+/** Session-linked agent completion also follows restore, including older persisted Done.
+ * Human Done, standalone completion and newer edits win over a stale resolution join. */
 export const reopenRestored = Effect.fn("ProjectTodos.reopenRestored")(function* (
   scope: string,
   candidates: readonly Pick<ProjectTodo, "id" | "revision">[],
@@ -497,7 +503,8 @@ export const reopenRestored = Effect.fn("ProjectTodos.reopenRestored")(function*
       if (
         !item ||
         item.state !== "done" ||
-        item.completion?.by !== "sessions" ||
+        (item.completion?.by !== "sessions" && item.completion?.by !== "agent") ||
+        projectTodoSessionIds(item).length === 0 ||
         item.revision !== candidate.revision
       )
         continue;

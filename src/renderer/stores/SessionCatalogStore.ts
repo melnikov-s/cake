@@ -7,6 +7,7 @@ import type {
   WorktreeCatalogEntry,
 } from "../../contracts/worktrees/managed-worktree-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
+import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import { ClientContext } from "./context/ClientContext";
 import { applySessionCatalogGroupUpdate } from "../reducers/CatalogReducer";
 
@@ -122,9 +123,23 @@ export class SessionCatalogStore extends Store<{
     return this.props.model.find(sessionId) ?? this.pendingSessionIndex.get(sessionId);
   }
 
-  isResolved(sessionId: string) {
+  @computed
+  private get resolutionSessionIds() {
+    return [
+      ...new Set([
+        ...this.authoritativeSessionIds,
+        ...this.props.model.signals.resolvedSessionIds,
+        ...this.pendingSessionIndex.keys(),
+      ]),
+    ];
+  }
+
+  isResolved(reference: string) {
+    const identity = resolveSessionReference(reference, this.resolutionSessionIds);
     return (
-      this.props.model.signals.isResolved(sessionId) || this.find(sessionId)?.resolved === true
+      identity.ok &&
+      (this.props.model.signals.isResolved(identity.sessionId) ||
+        this.find(identity.sessionId)?.resolved === true)
     );
   }
 

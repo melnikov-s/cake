@@ -199,24 +199,53 @@ it.effect(
   },
 );
 
-it.effect(
-  "restart reconciles restored required sessions without reopening explicit completion",
-  () => {
+it.effect.each(["sessions", "agent"] as const)(
+  "restart reconciles restored required sessions after persisted %s completion, preserving Human Done and standalone agent completion",
+  (by) => {
     const f = fixture();
     return Effect.gen(function* () {
       const ids = yield* Effect.gen(function* () {
         yield* upsertProject(project, "Project");
         const automatic = yield* create([a]);
         const explicit = yield* create([b]);
+        const standalone = yield* todos.create(project, {
+          title: "Standalone",
+          description: "Reviewed decision.",
+        });
+        yield* todos.update(project, { id: standalone.id, expectedRevision: 0, state: "done" });
         f.resolved.add(a);
         yield* completeLinked(project);
+        if (by === "agent") {
+          // Older versions saved linked agent Done with by:agent. Reproduce that on disk.
+          yield* (yield* ApplicationState).transact((state) =>
+            Effect.succeed({
+              ...state,
+              projects: state.projects.map((registered) =>
+                registered.path === project && registered.todos
+                  ? {
+                      ...registered,
+                      todos: {
+                        ...registered.todos,
+                        items: registered.todos.items.map((item) =>
+                          item.id === automatic.id
+                            ? { ...item, completion: { revision: item.revision, by } }
+                            : item,
+                        ),
+                      },
+                    }
+                  : registered,
+              ),
+            }),
+          );
+        }
         yield* todos.mutateUser(project, {
           _tag: "SetState",
           id: explicit.id,
           expectedRevision: 0,
           state: "done",
         });
-        return { automatic: automatic.id, explicit: explicit.id };
+        expect((yield* todos.read(project, automatic.id)).completion?.by).toBe(by);
+        return { automatic: automatic.id, explicit: explicit.id, standalone: standalone.id };
       }).pipe(Effect.provide(f.app, { local: true }));
       f.resolved.clear(); // Restored while the owning list was not observed.
       yield* Effect.gen(function* () {
@@ -231,9 +260,21 @@ it.effect(
           revision: 1,
           completion: { by: "user" },
         });
+        expect(yield* todos.read(project, ids.standalone)).toMatchObject({
+          state: "done",
+          revision: 1,
+          completion: { by: "agent" },
+        });
         const writes = f.reads.writes;
         yield* list(project, {});
         expect(f.reads.writes).toBe(writes);
+        f.resolved.add(a);
+        yield* completeLinked(project);
+        expect(yield* todos.read(project, ids.automatic)).toMatchObject({
+          state: "done",
+          revision: 3,
+          completion: { by: "sessions" },
+        });
       }).pipe(Effect.provide(f.app, { local: true }));
     }).pipe(Effect.provide(f.metadata));
   },

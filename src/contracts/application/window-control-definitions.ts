@@ -418,7 +418,7 @@ export const windowControlDefinitions = {
       topic: "sessions",
       summary: "Resolve/restore explicit targets",
       guidance: [
-        `${PROJECT_TODO_AUTO_COMPLETION_RULE} Resolving all actual session associations completes linked to-dos in Project Chat and global Cake Chat lists. Source/report links do not block completion; source-only items stay open. Restore reopens session-completed items; explicit completion is preserved. Human Mark done resolves required linked sessions first; agent to-do edits never resolve sessions.`,
+        `${PROJECT_TODO_AUTO_COMPLETION_RULE} Resolving all actual session associations completes linked to-dos in Project Chat and global Cake Chat lists. Source/report links do not block completion; source-only items stay open. Restore reopens session-linked Done, except Human Done. Human Mark done resolves required linked sessions first; agent to-do edits never resolve sessions.`,
       ],
     },
   },
