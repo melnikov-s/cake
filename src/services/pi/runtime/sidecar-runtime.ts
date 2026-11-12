@@ -15,6 +15,7 @@ import type { WidgetCandidate } from "../../../contracts/widgets/widget-candidat
 import type { WidgetConversationTarget } from "../../../contracts/widgets/widget-conversation";
 import type { WidgetGenerationProgress } from "../../../contracts/widgets/widget-generation";
 import { prepareWidgetConversation } from "./widget-conversation";
+import { endedInContextOverflow, fitWidgetBuildSession } from "./widget-build-context";
 
 export const inlineWidgetLayoutRequirements =
   "Transparent outer shell; no card/banner. Responsive 320px–desktop, no overlap/horizontal page scroll. Use flex/grid, wrapping and min-width:0; absolute geometry only inside canvases. Viewport editors use height:100%, min-height:0 and flex:1 canvas; resize without remount/state loss. Text widgets use natural flow; avoid nested scrollbars.";
@@ -128,7 +129,9 @@ const candidateSnapshot = (candidate: WidgetCandidate) =>
 
 /**
  * Runs one side-chat turn. A reply that stops at the model's output limit gets
- * one continuation in the same branch; written files are kept.
+ * one continuation in the same branch; written files are kept. A revision first fits
+ * its reopened build session to the model; if the request still overflows because
+ * auto-compaction could not fit it, the same session is tool-pruned and retried once.
  */
 async function runWidgetTurn(
   options: WidgetBranchOptions,
@@ -144,11 +147,28 @@ async function runWidgetTurn(
       files: Object.keys(candidate.files).toSorted(),
       characters: Object.values(candidate.files).reduce((total, text) => total + text.length, 0),
     });
-  const run = async (conversation: WidgetConversationTarget, text: string, attach: boolean) =>
-    runIsolatedSession({
+  const run = async (
+    conversation: WidgetConversationTarget,
+    text: string,
+    attach: boolean,
+    forcePrune = false,
+  ) => {
+    const sessionManager = await prepareWidgetConversation({ ...options, conversation });
+    const result = await runIsolatedSession({
       cwd: options.cwd,
       agentDir: options.agentDir,
-      sessionManager: await prepareWidgetConversation({ ...options, conversation }),
+      sessionManager,
+      prepareSession:
+        conversation.type === "revision"
+          ? ({ model, reserveTokens }) => {
+              fitWidgetBuildSession(sessionManager, {
+                model,
+                reserveTokens,
+                now: Date.now(),
+                force: forcePrune,
+              });
+            }
+          : undefined,
       widgetBranch: {
         candidate,
         allowState: options.allowState,
@@ -167,8 +187,16 @@ async function runWidgetTurn(
       modelPurpose: "widget generation",
       cancellationMessage: "Widget generation was cancelled",
     });
+    const retryPruned =
+      conversation.type === "revision" &&
+      !forcePrune &&
+      !!result.error &&
+      endedInContextOverflow(sessionManager);
+    return { ...result, retryPruned };
+  };
   report();
   let result = await run(options.conversation, prompt, true);
+  if (result.retryPruned) result = await run(options.conversation, prompt, true, true);
   if (result.stopReason === "length") {
     result = await run(
       { type: "continue", sessionId: result.sessionId },
@@ -206,7 +234,8 @@ export async function runInlineWidgetGeneration(
 export async function runInlineWidgetRepair(
   options: InlineWidgetRepairOptions,
 ): Promise<InlineWidgetTurnResult> {
-  // A revision forks an accepted branch later, so it restates the whole assignment.
+  // A revision resumes the build session long after acceptance, possibly compacted or
+  // pruned, so it restates the whole assignment.
   const assignment =
     options.conversation.type === "revision"
       ? `${widgetAssignment(options.language, options.allowState, options.capability)}\n\nThe widget files already hold the accepted widget. Change them as requested.\n\n`

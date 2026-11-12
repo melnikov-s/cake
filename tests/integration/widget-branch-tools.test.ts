@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 it.each(["react", "html"] as const)(
-  "revises %s widget files and state in a fork of the accepted branch, rejecting escapes and invalid JSON without partial writes",
+  "revises %s widget files and state in the accepted build session, rejecting escapes and invalid JSON without partial writes",
   async (language) => {
     const path = language === "html" ? "widget/widget.html" : "widget/widget.tsx";
     const source =
@@ -77,8 +77,12 @@ it.each(["react", "html"] as const)(
     });
 
     expect(revised.changed).toBe(true);
-    expect(revised.sessionId).not.toBe(generated.sessionId);
-    expect(SessionManager.open(generated.sessionFile!).getLeafId()).toBe(acceptedLeaf);
+    expect(revised.sessionId).toBe(generated.sessionId);
+    expect(
+      SessionManager.open(generated.sessionFile!)
+        .getBranch()
+        .some((entry) => entry.id === acceptedLeaf),
+    ).toBe(true);
     expect(candidate.files[path]).toContain("Revised");
     expect(candidate.state).toEqual({ scene: "edited" });
     const results = fixture.requests

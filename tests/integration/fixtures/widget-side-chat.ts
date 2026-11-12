@@ -107,11 +107,24 @@ const usage = (output: number) => ({
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 });
 
+/** Like Anthropic, reject a request whose rough size exceeds the model's context window. */
+const promptTokens = (context: { messages: Message[]; tools?: unknown }) =>
+  Math.ceil(
+    (JSON.stringify(context.messages).length + JSON.stringify(context.tools ?? []).length) / 4,
+  );
+
 /**
  * A parent Cake conversation plus a scripted provider that records every
- * request the widget side chat makes through the real Pi runtime.
+ * request the widget side chat makes through the real Pi runtime. The provider
+ * rejects requests larger than the model's context window, as Anthropic does.
  */
-export async function widgetSideChatFixture(script: (request: number) => ScriptedReply) {
+export async function widgetSideChatFixture(
+  script: (request: number, captured: CapturedRequest) => ScriptedReply,
+  model: { readonly provider?: string; readonly id?: string; readonly contextWindow?: number } = {},
+) {
+  const provider = model.provider ?? "widget-fixture";
+  const modelId = model.id ?? "vision";
+  const contextWindow = model.contextWindow ?? 1_000_000;
   const cwd = await mkdtemp(join(tmpdir(), "cake-widget-side-chat-"));
   const agentDir = join(cwd, "agent");
   const skillDir = join(agentDir, "skills", "fixture");
@@ -131,18 +144,18 @@ export async function widgetSideChatFixture(script: (request: number) => Scripte
     modelsStorePath: join(agentDir, "models-cache.json"),
     refreshOnCreate: false,
   });
-  runtime.registerProvider("widget-fixture", {
+  runtime.registerProvider(provider, {
     api: "openai-responses",
     baseUrl: "https://widget-fixture.invalid",
     apiKey: "fixture",
     models: [
       {
-        id: "vision",
+        id: modelId,
         name: "Fixture vision",
         reasoning: false,
         input: ["text", "image"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 1_000_000,
+        contextWindow,
         maxTokens: 128_000,
       },
     ],
@@ -150,12 +163,30 @@ export async function widgetSideChatFixture(script: (request: number) => Scripte
       const stream = createAssistantMessageEventStream();
       void (async () => {
         const payload = await options?.onPayload?.({ prompt_cache_key: options.sessionId }, model);
-        requests.push({
+        const captured = {
           messages: structuredClone(context.messages),
           payload,
           sessionId: options?.sessionId,
-        });
-        const reply = script(requests.length);
+        };
+        requests.push(captured);
+        const tokens = promptTokens(context);
+        if (tokens > contextWindow) {
+          const error: AssistantMessage = {
+            role: "assistant",
+            content: [],
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            usage: usage(0),
+            stopReason: "error",
+            errorMessage: `400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: ${tokens} tokens > ${contextWindow} maximum"}}`,
+            timestamp: requests.length,
+          };
+          stream.push({ type: "error", reason: "error", error });
+          stream.end();
+          return;
+        }
+        const reply = script(requests.length, captured);
         const stopReason =
           reply.stopReason ??
           (reply.content.some((block) => block.type === "toolCall") ? "toolUse" : "stop");
@@ -184,7 +215,7 @@ export async function widgetSideChatFixture(script: (request: number) => Scripte
   vi.spyOn(ModelRuntime, "create").mockResolvedValue(runtime);
 
   const parent = SessionManager.create(cwd, parentDir);
-  parent.appendModelChange("widget-fixture", "vision");
+  parent.appendModelChange(provider, modelId);
   parent.appendMessage({
     role: "system",
     content: "",
@@ -208,8 +239,8 @@ export async function widgetSideChatFixture(script: (request: number) => Scripte
     role: "assistant",
     content: [{ type: "text", text: "Agreed: Q1 to Q4." }],
     api: "openai-responses",
-    provider: "widget-fixture",
-    model: "vision",
+    provider,
+    model: modelId,
     usage: usage(0),
     stopReason: "stop",
     timestamp: 1,
@@ -227,7 +258,7 @@ export async function widgetSideChatFixture(script: (request: number) => Scripte
       agentDir,
       sessionDir,
       sessionRoots: [parentDir, sessionDir],
-      model: { provider: "widget-fixture", id: "vision" },
+      model: { provider, id: modelId },
     },
     dispose: () => rm(cwd, { recursive: true, force: true }),
   };

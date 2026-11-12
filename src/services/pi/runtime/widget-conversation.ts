@@ -49,7 +49,7 @@ function completePrefix(manager: SessionManager): string {
   return leaf;
 }
 
-/** Forks a separate manager; never branches or writes the live caller's manager. */
+/** Parent targets fork a separate manager; never branches or writes the live caller's manager. */
 export async function prepareWidgetConversation(options: {
   readonly cwd: string;
   readonly sessionDir: string;
@@ -82,12 +82,12 @@ export async function prepareWidgetConversation(options: {
   const expectedId = target.type === "parent" ? target.origin.sessionId : target.sessionId;
   if (manager.getSessionId() !== expectedId)
     throw new Error("Widget conversation identity does not match its source");
-  if (target.type === "continue") return manager;
-  if (target.type === "parent") {
-    if (!manager.getEntry(target.origin.entryId))
-      throw new Error("The widget conversation branch point is no longer available");
-    manager.branch(target.origin.entryId);
-  }
+  // A revision keeps the build session's identity and prompt cache; it is never forked,
+  // so its context is fitted in place (see widget-build-context.ts) instead of copied.
+  if (target.type === "continue" || target.type === "revision") return manager;
+  if (!manager.getEntry(target.origin.entryId))
+    throw new Error("The widget conversation branch point is no longer available");
+  manager.branch(target.origin.entryId);
   const sourceSessionId = manager.getSessionId();
   const requestedEntryId = manager.getLeafId();
   const entryId = completePrefix(manager);

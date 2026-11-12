@@ -199,7 +199,7 @@ describe("widget conversation branches", () => {
     expect(JSON.stringify(expected)).not.toContain("Original retained instruction");
   });
 
-  it("resumes private work after restart and forks revisions without changing the accepted baseline", async () => {
+  it("resumes private work after restart and revises in the same build session", async () => {
     const options = await fixture();
     const first = await prepareWidgetConversation({
       ...options,
@@ -222,10 +222,11 @@ describe("widget conversation branches", () => {
       cwd: join(options.cwd, "another-worktree"),
       conversation: { type: "revision", sessionId: first.getSessionId() },
     });
+    expect(second.getSessionId()).toBe(first.getSessionId());
+    expect(second.getSessionFile()).toBe(firstFile);
+    expect(second.getLeafId()).toBe(firstLeaf);
     user(second, "Change the labels");
-    expect(second.getSessionId()).not.toBe(first.getSessionId());
     expect(JSON.stringify(second.buildSessionContext().messages)).toContain("Accepted Artifact A");
-    expect(SessionManager.open(firstFile).getLeafId()).toBe(firstLeaf);
     await expect(
       resolvePromptCacheLineageKey({ sessionManager: second, sessionRoots: options.sessionRoots }),
     ).resolves.toBe(options.parent.getSessionId());

@@ -157,7 +157,7 @@ describe("widget side chat turns", () => {
     }
   });
 
-  it("restates the whole assignment when a revision forks an accepted branch", async () => {
+  it("restates the whole assignment when a revision resumes the build session", async () => {
     const candidate: WidgetCandidate = {
       files: { "widget/widget.tsx": "export default function A(){return null}" },
       state: { scene: "latest" },

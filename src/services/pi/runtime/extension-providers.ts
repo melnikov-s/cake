@@ -123,17 +123,18 @@ export function requireRegisteredModel(
   return model;
 }
 
+/** Returns the model a session without an explicit selection starts with, if any. */
 export function assertInitialModelRegistered(
   runtime: Pick<ModelRuntime, "getModel">,
   settings: SettingsManager,
   session?: SessionManager,
-): void {
+) {
   // An assistant's physical model is not an explicit selection (for example
   // after a virtual-model route). Only enforce persisted model-change intent.
   const selection = session?.getBranch().findLast((entry) => entry.type === "model_change");
   const provider = selection?.provider ?? settings.getDefaultProvider();
   const modelId = selection?.modelId ?? settings.getDefaultModel();
-  if (provider && modelId) requireRegisteredModel(runtime, { provider, modelId });
+  return provider && modelId ? requireRegisteredModel(runtime, { provider, modelId }) : undefined;
 }
 
 /**

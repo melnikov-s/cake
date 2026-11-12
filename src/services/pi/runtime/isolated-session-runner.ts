@@ -1,4 +1,9 @@
-import { getCurrentSystemMessage, getCurrentTools } from "@earendil-works/pi-ai";
+import {
+  getCurrentSystemMessage,
+  getCurrentTools,
+  type Api,
+  type Model,
+} from "@earendil-works/pi-ai";
 import {
   DefaultResourceLoader,
   ModelRuntime,
@@ -41,6 +46,7 @@ import {
   toolResultDiff,
 } from "./tool-projection";
 import { createLiveMessageProjector } from "./message-projection";
+import { keepAutoCompactionEnabled } from "./settings-translation";
 
 export interface IsolatedSessionOptions {
   cwd: string;
@@ -64,6 +70,15 @@ export interface IsolatedSessionOptions {
   };
   /** Explicit roots that may contain this session's cache ancestors. */
   promptCacheSessionRoots?: ReadonlyArray<string>;
+  /**
+   * Runs after model resolution and before Pi loads the session, so it may rewrite the
+   * session tree (for example a tool prune) or reject the run.
+   */
+  prepareSession?(input: {
+    readonly sessionManager: SessionManager;
+    readonly model: Model<Api>;
+    readonly reserveTokens: number;
+  }): void;
   prompt: string;
   images?: ReadonlyArray<{
     readonly type: "image";
@@ -156,6 +171,9 @@ export async function runIsolatedSession(
   const settingsManager = SettingsManager.create(options.cwd, options.agentDir, {
     projectTrusted: options.projectTrusted,
   });
+  // Widget build sessions are private and persist across revisions; nobody can compact
+  // them by hand, so the user's project-session auto-compaction preference does not apply.
+  if (widgetBranch) keepAutoCompactionEnabled(settingsManager);
   const modelRuntime = await ModelRuntime.create({
     authPath: `${options.agentDir}/auth.json`,
     modelsPath: `${options.agentDir}/models.json`,
@@ -231,8 +249,15 @@ export async function runIsolatedSession(
         modelId: options.model.id,
       })
     : undefined;
-  if (!selectedModel)
+  const initialModel =
+    selectedModel ??
     assertInitialModelRegistered(modelRuntime, settingsManager, options.sessionManager);
+  if (initialModel && options.prepareSession)
+    options.prepareSession({
+      sessionManager: options.sessionManager,
+      model: initialModel,
+      reserveTokens: settingsManager.getCompactionSettings(initialModel).reserveTokens,
+    });
   const agentSessionOptions = {
     model: selectedModel,
     cwd: options.cwd,
