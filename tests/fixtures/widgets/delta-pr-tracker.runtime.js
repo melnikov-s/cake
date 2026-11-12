@@ -21,8 +21,16 @@ const APPROVALS_ON_OLDER_COMMITS_COUNT = true;
 // A human changes-requested review newer than the latest counting approval sends the PR back
 // to Waiting on review with status "Changes requested".
 const NEWER_CHANGES_REQUEST_OVERRIDES_APPROVAL = true;
-// Required CI that has not run yet / is still running does not block: Merge Garden runs full CI on /merge.
-const REQUIRED_CI_NOT_RUN_BLOCKS = false;
+// ---- Lanes. Blocked: anything that stops the PR getting through (conflict, failing CI, Binks
+// findings, a current Merge Garden stop, unresolved threads, another merge-readiness blocker).
+// A pending or missing required check/status is never a block: it puts an approved PR in CI
+// pending. Blocked wins over CI pending. A PR without a counting human approval is in Waiting
+// on review, and in Blocked too when something blocks it (the only PR listed in two lanes).
+// Required CI that has not run yet keeps an approved PR in Ready to merge: on shop/world,
+// /merge runs full CI. When true, "CI not run" puts it in CI pending instead.
+const CI_NOT_RUN_IS_PENDING = false;
+// Unresolved review threads block the PR.
+const UNRESOLVED_THREADS_BLOCK = true;
 // Delta recomputes mergeability whenever main moves; until it finishes, merge readiness drops its
 // "conflict" blocker and reports mergeability unknown. A conflict is read from merge readiness or the
 // PR's mergeable_state "dirty"; while both say unknown, a conflict the previous pull saw on the same
@@ -63,9 +71,10 @@ const CHANGED_FILES_FALLBACK = true;
 // Still nothing: a title prefix ("self-healing: …", "[admin-web] …") naming a project.
 const TITLE_PREFIX_FALLBACK = true;
 // ---- Fix button: asks the PR's project's Project Chat to fix it. Posts nothing to Delta. -----
-const FIX_GROUPS = ["blocked", "binks_comments", "ci_failing"];
+const FIX_GROUPS = ["blocked"];
 // A sent Fix is not sent again for the same PR until its fixable state (group, head commit,
-// blockers, failing checks, Binks findings) changes, or this long has passed.
+// blockers, failing checks, Binks findings, Merge Garden stop, unresolved threads) changes, or
+// this long has passed.
 const FIX_REQUEST_HOLD_MINUTES = 120;
 const FIX_BATCH_MAX = 50;
 // ------------------------------------------------------------------------------------------
@@ -88,8 +97,7 @@ const GROUPS = [
   "merging",
   "ready_to_merge",
   "blocked",
-  "binks_comments",
-  "ci_failing",
+  "ci_pending",
   "waiting_on_review",
   "draft",
   "waiting_on_my_review",
@@ -399,19 +407,17 @@ function mergeStateOf(readiness, pull) {
   return "unknown";
 }
 
-// Plain-words merge blockers, excluding ones another part of the status already explains.
+// A required check/status that has not reported yet or is still running: pending, never a block.
+const isPendingBlocker = (b) => /^required_(check|status)_(pending|missing)$/.test(b.code || "");
+
+// Plain-words merge blockers, excluding pending checks and ones another part of the status
+// already explains.
 function mergeBlockers(blockers, mergeState, failing, verdict) {
   const out = [];
   if (mergeState === "conflict") out.push("Conflict");
   else if (mergeState === "conflict_last_pull") out.push("Conflict (as of last pull)");
   for (const b of blockers) {
-    if (b.code === "draft" || b.code === "conflict") continue;
-    if (
-      b.context === "Required CI" &&
-      /_(pending|missing)$/.test(b.code) &&
-      !REQUIRED_CI_NOT_RUN_BLOCKS
-    )
-      continue;
+    if (b.code === "draft" || b.code === "conflict" || isPendingBlocker(b)) continue;
     if (failing.includes(b.context)) continue;
     // Without a counting approval, the reviews check is explained by "Needs approval".
     if (b.context === "reviews" && verdict.review !== "approved") continue;
@@ -419,6 +425,34 @@ function mergeBlockers(blockers, mergeState, failing, verdict) {
   }
   for (const who of verdict.olderChangesRequestedBy) out.push(`Changes requested by ${who}`);
   return out;
+}
+
+// What has not run yet or is still running (each item a short phrase). Required CI and Binks
+// come first, in the words the status line already uses for them.
+function pendingChecks(blockers, requiredCi, binks, verdict) {
+  const out = [];
+  const ci = ciPhrase(requiredCi);
+  if (ci === "CI running" || (ci === "CI not run" && CI_NOT_RUN_IS_PENDING)) out.push(ci);
+  if (binks.state === "pending") out.push("Binks reviewing");
+  for (const b of blockers) {
+    if (!isPendingBlocker(b) || b.context === "Required CI") continue;
+    if (b.context === BINKS_CONTEXT && binks.state === "pending") continue;
+    // Without a counting approval, the reviews check is explained by "Needs approval".
+    if (b.context === "reviews" && verdict.review !== "approved") continue;
+    out.push(blockerPhrase(b));
+  }
+  return out;
+}
+
+// The lanes a PR is listed in. Only an unapproved, blocked PR is in two: Blocked and Waiting on
+// review. Blocked wins over CI pending; CI pending only applies to approved PRs.
+function lanesOf({ draft, merging, blocked, approved, pending }) {
+  if (draft) return ["draft"];
+  if (merging) return ["merging"];
+  if (blocked) return approved ? ["blocked"] : ["blocked", "waiting_on_review"];
+  if (!approved) return ["waiting_on_review"];
+  if (pending) return ["ci_pending"];
+  return ["ready_to_merge"];
 }
 
 // Merge Garden state from its comments and /merge, /cancel-merge commands (oldest first).
@@ -547,36 +581,52 @@ function classifyOwn(pr, details, notes, ownership, previous) {
   )
     blockedBy.push("Merge queue conflict");
 
-  let group;
-  if (pr.draft) group = "draft";
-  else if (merge.state === "merging") group = "merging";
-  else if (binks.state === "failure") group = "binks_comments";
-  else if (failing.length > 0) group = "ci_failing";
-  else if (verdict.review !== "approved") group = "waiting_on_review";
-  else if (blockedBy.length > 0) group = "blocked";
-  else group = "ready_to_merge";
+  // A Merge Garden stop blocks until a new /merge, unless a push since then answered it.
+  const pushedSince = !!(merge.conflictHead && head && !head.startsWith(merge.conflictHead));
+  const stopPhrase = `Merge stopped: ${merge.reason}`;
+  const stopBlocks =
+    merge.state === "stopped" && !pushedSince && !blockedBy.includes("Merge queue conflict");
+  // Every reason the PR cannot get through, in the order the Blocked line shows them.
+  const blockReasons = [...blockedBy];
+  if (failing.length) blockReasons.push(`Failing: ${failing.join(", ")}`);
+  if (binks.state === "failure") blockReasons.push(plural(binks.findings, "open Binks finding"));
+  if (stopBlocks) blockReasons.push(stopPhrase);
+  if (unresolvedThreads > 0 && UNRESOLVED_THREADS_BLOCK)
+    blockReasons.push(plural(unresolvedThreads, "unresolved thread"));
+  const pending = pendingChecks(blockers, requiredCi, binks, verdict);
+  const lanes = lanesOf({
+    draft: !!pr.draft,
+    merging: merge.state === "merging",
+    blocked: blockReasons.length > 0,
+    approved: verdict.review === "approved",
+    pending: pending.length > 0,
+  });
+  const group = lanes[0];
+  const inBlocked = lanes.includes("blocked");
 
   const bits = [];
   if (group === "merging") bits.push(`Merging: ${merge.phase}`);
-  if (group === "blocked") bits.push(`Blocked: ${blockedBy.join(", ")}`);
+  if (inBlocked) bits.push(`Blocked: ${blockReasons.join(", ")}`);
   if (merge.state === "stopped") {
-    const pushedSince = merge.conflictHead && head && !head.startsWith(merge.conflictHead);
-    bits.push(`Merge stopped: ${merge.reason}${pushedSince ? " (before the latest push)" : ""}`);
+    if (!(inBlocked && stopBlocks))
+      bits.push(`${stopPhrase}${pushedSince ? " (before the latest push)" : ""}`);
   } else if (merge.state === "cancelled") bits.push("Merge cancelled (/cancel-merge)");
   else if (merge.state === "requested") bits.push("/merge sent, no Merge Garden reply");
   else if (merge.state === "other") bits.push(`Merge Garden: ${merge.reason}`);
-  if (failing.length) bits.push(`Failing: ${failing.join(", ")}`);
-  if (binks.state === "failure")
-    bits.push(`${binks.findings} open Binks finding${binks.findings === 1 ? "" : "s"}`);
+  if (failing.length && !inBlocked) bits.push(`Failing: ${failing.join(", ")}`);
+  if (binks.state === "failure" && !inBlocked)
+    bits.push(plural(binks.findings, "open Binks finding"));
   const rp = reviewPhrase(verdict, pr.draft);
   if (rp) bits.push(rp);
   if (binks.state === "success") bits.push("Binks clear");
   else if (binks.state === "pending") bits.push("Binks reviewing");
   if (!failing.includes("Required CI")) bits.push(ciPhrase(requiredCi));
-  if (group !== "blocked" && group !== "draft" && group !== "merging" && blockedBy.length)
-    bits.push(`Also blocked: ${blockedBy.join(", ")}`);
-  if (unresolvedThreads > 0)
-    bits.push(`${unresolvedThreads} unresolved thread${unresolvedThreads === 1 ? "" : "s"}`);
+  const otherPending = pending.filter(
+    (p) => p !== "Binks reviewing" && p !== "CI running" && p !== "CI not run",
+  );
+  if (otherPending.length) bits.push(`Pending: ${otherPending.join(", ")}`);
+  if (unresolvedThreads > 0 && !(inBlocked && UNRESOLVED_THREADS_BLOCK))
+    bits.push(plural(unresolvedThreads, "unresolved thread"));
   if (isImported(pr.number)) bits.unshift("Imported from Meteorite (read-only)");
   for (const n of notes) bits.push(n);
 
@@ -584,7 +634,9 @@ function classifyOwn(pr, details, notes, ownership, previous) {
     number: pr.number,
     title: pr.title,
     url: prUrl(pr.number),
+    // The primary lane; lanes lists every lane the PR is shown in (Blocked first when two).
     group,
+    lanes,
     status: bits.join(" · "),
     draft: !!pr.draft,
     imported: isImported(pr.number),
@@ -602,6 +654,9 @@ function classifyOwn(pr, details, notes, ownership, previous) {
     deltaApprovals: Number(readinessReviews.approved || 0),
     reviewsCheck: reviewsRun ? reviewsRun.conclusion || reviewsRun.status || null : null,
     blockedBy,
+    // Everything that keeps it in Blocked, and what has not run yet / is still running.
+    blockReasons,
+    pending,
     merge,
     // Until this time the Merge button stays hidden: a /merge is already waiting for Merge Garden.
     mergeRequestPendingUntil:
@@ -616,7 +671,7 @@ function classifyOwn(pr, details, notes, ownership, previous) {
     ci: requiredCi ? { state: requiredCi.state, description: requiredCi.description || "" } : null,
     blockers: blockers.map((b) => (b.context ? `${b.context}:${b.code}` : b.code)),
   };
-  const fixable = FIX_GROUPS.includes(group);
+  const fixable = lanes.some((l) => FIX_GROUPS.includes(l));
   // What a Fix message tells the Project Chat, and the state a sent Fix is held against.
   row.fixReason = fixable ? fixReasonOf(row) : null;
   row.fixKey = fixable ? fixKeyOf(row) : null;
@@ -647,6 +702,7 @@ function fixKeyOf(row) {
     row.failingChecks,
     row.binks.state === "failure" ? row.binks.findings : 0,
     row.merge.state === "stopped" ? row.merge.reason : null,
+    row.unresolvedThreads,
   ]);
 }
 
@@ -965,6 +1021,8 @@ async function doRefresh(source) {
 // A /merge posted from the widget shows the row as Merging until the next refresh resolves it.
 const overrideOf = (state, row) => (state.mergeOverrides || {})[String(row.number)] || null;
 const effectiveGroup = (state, row) => (overrideOf(state, row) ? "merging" : row.group);
+const effectiveLanes = (state, row) =>
+  overrideOf(state, row) ? ["merging"] : row.lanes || [row.group];
 
 // Why the Merge button is unavailable for a row, or null when /merge may be posted.
 function mergeBlockedReason(state, row) {
@@ -1021,8 +1079,7 @@ const GROUP_LABELS = {
   merging: "Merging",
   ready_to_merge: "Ready to merge",
   blocked: "Blocked",
-  binks_comments: "Binks comments",
-  ci_failing: "CI failing",
+  ci_pending: "CI pending",
   waiting_on_review: "Waiting on review",
   draft: "Draft",
   waiting_on_my_review: "Waiting on my review",
@@ -1044,12 +1101,9 @@ function fixProject(row, projectPath) {
 
 // Why a Fix cannot be sent for a row: {code, reason}, or null when it may be sent.
 function fixRefusal(state, row) {
-  const group = effectiveGroup(state, row);
-  if (!FIX_GROUPS.includes(group))
-    return {
-      code: "group",
-      reason: `it is not in Blocked, Binks comments or CI failing (group: ${group})`,
-    };
+  const lanes = effectiveLanes(state, row);
+  if (!lanes.some((l) => FIX_GROUPS.includes(l)))
+    return { code: "group", reason: `it is not in Blocked (lane: ${lanes.join(", ")})` };
   if (fixing.has(row.number)) return { code: "sending", reason: "a Fix for it is being sent" };
   const held = fixRequestOf(state, row);
   if (held)
@@ -1172,8 +1226,9 @@ async function requestFix(input) {
 function countsOf(state) {
   const counts = {};
   for (const g of GROUPS) counts[g] = 0;
+  // A PR in Blocked and Waiting on review counts in both.
   for (const r of state.authored || [])
-    counts[effectiveGroup(state, r)] = (counts[effectiveGroup(state, r)] || 0) + 1;
+    for (const l of effectiveLanes(state, r)) counts[l] = (counts[l] || 0) + 1;
   counts.waiting_on_my_review = (state.reviewRequests || []).length;
   return counts;
 }
@@ -1183,6 +1238,7 @@ const slim = (r, state) => ({
   title: r.title,
   url: r.url,
   group: state ? effectiveGroup(state, r) : r.group,
+  lanes: state ? effectiveLanes(state, r) : [r.group],
   mergeRequestedAt: state && overrideOf(state, r) ? overrideOf(state, r).at : null,
   fixRequestedAt: state && fixRequestOf(state, r) ? fixRequestOf(state, r).at : null,
   projects: Array.isArray(r.projects) ? r.projects.map((p) => p.name) : null,
@@ -1197,7 +1253,7 @@ function rowsFor(state, group) {
   if (group === "waiting_on_my_review")
     return (state.reviewRequests || []).map((r) => slim(r, null));
   return (state.authored || [])
-    .filter((r) => effectiveGroup(state, r) === group)
+    .filter((r) => effectiveLanes(state, r).includes(group))
     .map((r) => slim(r, state));
 }
 
@@ -1237,12 +1293,13 @@ return {
       const ageMin = state.refreshedAt
         ? Math.round((Date.now() - Date.parse(state.refreshedAt)) / 60000)
         : null;
+      const both = (state.authored || []).filter((r) => effectiveLanes(state, r).length > 1);
       return {
         ...meta(state),
         ageMinutes: ageMin,
         counts,
         text: state.refreshedAt
-          ? `${(state.authored || []).length} open PRs of mine: ${parts.join(", ") || "none"}. Pulled ${ageMin} min ago${state.lastError ? `; last refresh failed: ${state.lastError.message}` : ""}.`
+          ? `${(state.authored || []).length} open PRs of mine: ${parts.join(", ") || "none"}${both.length ? ` (${both.length} both blocked and waiting on review)` : ""}. Pulled ${ageMin} min ago${state.lastError ? `; last refresh failed: ${state.lastError.message}` : ""}.`
           : `Never refreshed${state.lastError ? `; last refresh failed: ${state.lastError.message}` : ""}.`,
         recentRuns: (state.history || []).slice(0, 5),
       };

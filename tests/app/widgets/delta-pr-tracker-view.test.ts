@@ -175,7 +175,7 @@ const fixRow = (
 ) =>
   row(number, group, {
     projects,
-    fixKey: ["blocked", "binks_comments", "ci_failing"].includes(group) ? `key-${number}` : null,
+    fixKey: group === "blocked" ? `key-${number}` : null,
     ...extra,
   });
 const fixState = {
@@ -183,13 +183,16 @@ const fixState = {
   authored: [
     fixRow(11, "blocked", [SELF_HEALING]),
     fixRow(12, "blocked", [SELF_HEALING, ADMIN_WEB]),
-    fixRow(13, "binks_comments", [ADMIN_WEB]),
-    fixRow(14, "ci_failing", [SELF_HEALING]),
-    fixRow(15, "ci_failing", []),
+    fixRow(13, "blocked", [ADMIN_WEB]),
+    fixRow(14, "blocked", [SELF_HEALING]),
+    fixRow(15, "blocked", []),
     fixRow(16, "ready_to_merge", [SELF_HEALING]),
     fixRow(17, "waiting_on_review", [SELF_HEALING]),
     fixRow(18, "draft", [SELF_HEALING]),
     fixRow(19, "merging", [SELF_HEALING]),
+    // Unapproved and blocked: listed in Blocked and in Waiting on review.
+    fixRow(20, "blocked", [SELF_HEALING], { lanes: ["blocked", "waiting_on_review"] }),
+    fixRow(21, "ci_pending", [SELF_HEALING], { lanes: ["ci_pending"] }),
   ],
   reviewRequests: [
     row(30, "waiting_on_my_review", { projects: [ADMIN_WEB] }),
@@ -228,45 +231,74 @@ describe("Delta PRs view Fix and project scope", () => {
     vi.restoreAllMocks();
   });
 
-  it("puts Fix on Blocked, Binks comments and CI failing rows with a project, and Fix all in their headers", async () => {
+  it("puts Fix on Blocked rows with a project, and Fix all in the Blocked header only", async () => {
     mountWidget(async () => ({}), fixState);
     await settle();
+    expect(
+      Array.from(document.querySelectorAll("section h2")).map((h) => h.firstChild?.textContent),
+    ).toEqual([
+      "Merging",
+      "Ready to merge",
+      "Blocked",
+      "CI pending",
+      "Waiting on review",
+      "Draft",
+      "Waiting on my review",
+    ]);
+    // #20 is shown in Blocked and in Waiting on review, with its Fix in both places.
     expect(fixButtons()).toEqual([
       "Fix #11: ask the self-healing chat",
       "Fix #12: ask the self-healing chat",
       "Fix #13: ask the admin-web chat",
       "Fix #14: ask the self-healing chat",
+      "Fix #20: ask the self-healing chat",
+      "Fix #20: ask the self-healing chat",
     ]);
-    expect(fixAll("blocked")?.getAttribute("aria-label")).toBe("Fix all in Blocked: 2 PRs");
-    expect(fixAll("binks_comments")?.getAttribute("aria-label")).toBe(
-      "Fix all in Binks comments: 1 PR",
-    );
     // #15 matches no project: no Fix, and Fix all does not count it.
-    expect(fixAll("ci_failing")?.getAttribute("aria-label")).toBe("Fix all in CI failing: 1 PR");
-    for (const group of ["ready_to_merge", "waiting_on_review", "draft", "merging"])
+    expect(fixAll("blocked")?.getAttribute("aria-label")).toBe("Fix all in Blocked: 5 PRs");
+    for (const group of ["ready_to_merge", "ci_pending", "waiting_on_review", "draft", "merging"])
       expect(fixAll(group)).toBeNull();
+    expect(numbersIn("ci_pending")).toEqual([21]);
+    expect(numbersIn("waiting_on_review")).toEqual([17, 20]);
+  });
+
+  it("sends a PR in two lanes once and shows it requested in both", async () => {
+    const callTool = vi.fn<CallTool>(async () => sent([20]));
+    mountWidget(callTool, fixState);
+    await settle();
+    const inWaiting = document.querySelector<HTMLButtonElement>(
+      '#sec-waiting_on_review button.fixbtn[aria-label^="Fix #20"]',
+    );
+    inWaiting?.click();
+    expect(callTool).toHaveBeenCalledWith("request_fix", { numbers: [20], source: "row" });
+    await settle();
+    expect(requestedNumbers()).toEqual([20, 20]);
+    // Fix all in Blocked then leaves #20 out.
+    fixAll("blocked")?.click();
+    expect(callTool).toHaveBeenLastCalledWith("request_fix", {
+      numbers: [11, 12, 13, 14],
+      source: "fix_all",
+    });
+    expect(callTool).toHaveBeenCalledTimes(2);
   });
 
   it("scopes to the viewed project, can show all, and re-scopes when the chat changes", async () => {
     const widget = mountWidget(async () => ({}), fixState, { project: SELF_HEALING });
     await settle();
-    expect(numbersIn("blocked")).toEqual([11, 12]);
-    expect(numbersIn("binks_comments")).toEqual([]);
-    expect(numbersIn("ci_failing")).toEqual([14]);
+    expect(numbersIn("blocked")).toEqual([11, 12, 14, 20]);
     expect(numbersIn("waiting_on_my_review")).toEqual([31]);
     expect(document.querySelector(".scope")?.textContent).toBe(
-      "self-healing · 8 of 11 PRsShow all projects",
+      "self-healing · 10 of 13 PRsShow all projects",
     );
 
     (document.querySelector(".scope button") as HTMLButtonElement).click();
-    expect(numbersIn("ci_failing")).toEqual([14, 15]);
+    expect(numbersIn("blocked")).toEqual([11, 12, 13, 14, 15, 20]);
     expect(document.querySelector(".scope")?.textContent).toBe(
-      "All projects · 11 PRsOnly self-healing",
+      "All projects · 13 PRsOnly self-healing",
     );
 
     widget.setContext({ project: ADMIN_WEB });
-    expect(numbersIn("blocked")).toEqual([12]);
-    expect(numbersIn("binks_comments")).toEqual([13]);
+    expect(numbersIn("blocked")).toEqual([12, 13]);
     expect(fixButtons()).toEqual([
       "Fix #12: ask the admin-web chat",
       "Fix #13: ask the admin-web chat",
@@ -274,7 +306,7 @@ describe("Delta PRs view Fix and project scope", () => {
 
     // No project in view (Cake Chat, Home): everything, without a scope line.
     widget.setContext({ project: null });
-    expect(numbersIn("ci_failing")).toEqual([14, 15]);
+    expect(numbersIn("blocked")).toEqual([11, 12, 13, 14, 15, 20]);
     expect(document.querySelector(".scope")).toBeNull();
   });
 
@@ -286,17 +318,17 @@ describe("Delta PRs view Fix and project scope", () => {
   });
 
   it("Fix all covers only the rows shown, with the viewed project", async () => {
-    const callTool = vi.fn<CallTool>(async () => sent([11, 12]));
+    const callTool = vi.fn<CallTool>(async () => sent([11, 12, 14, 20]));
     mountWidget(callTool, fixState, { project: SELF_HEALING });
     await settle();
     fixAll("blocked")?.click();
     expect(callTool).toHaveBeenCalledWith("request_fix", {
-      numbers: [11, 12],
+      numbers: [11, 12, 14, 20],
       source: "fix_all",
       projectPath: SELF_HEALING.path,
     });
     await settle();
-    expect(requestedNumbers()).toEqual([11, 12]);
+    expect(requestedNumbers()).toEqual([11, 12, 14, 20, 20]);
     expect(fixAll("blocked")).toBeNull();
   });
 
@@ -313,14 +345,17 @@ describe("Delta PRs view Fix and project scope", () => {
     expect(callTool).toHaveBeenCalledWith("request_fix", { numbers: [11], source: "row" });
     expect(fixButtonOf(11)?.disabled).toBe(true);
     expect(rowOf(11).textContent).toContain("Fix: asking the self-healing chat…");
-    // Fix all while #11 is in flight covers only #12.
+    // Fix all while #11 is in flight leaves it out.
     fixAll("blocked")?.click();
-    expect(callTool).toHaveBeenLastCalledWith("request_fix", { numbers: [12], source: "fix_all" });
+    expect(callTool).toHaveBeenLastCalledWith("request_fix", {
+      numbers: [12, 13, 14, 20],
+      source: "fix_all",
+    });
 
     replies[0]?.(sent([11]));
-    replies[1]?.(sent([12]));
+    replies[1]?.(sent([12, 13, 14, 20]));
     await settle();
-    expect(requestedNumbers()).toEqual([11, 12]);
+    expect(requestedNumbers()).toEqual([11, 12, 13, 14, 20, 20]);
     expect(fixButtonOf(11)).toBeNull();
     expect(rowOf(11).textContent).toContain("Fix: asked the self-healing chat");
 

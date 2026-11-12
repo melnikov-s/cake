@@ -23,12 +23,7 @@ const prs = [
     "ready_to_merge",
     "Approved · CI green",
   ],
-  [
-    48107,
-    "Cache shipping zone lookups per request",
-    "binks_comments",
-    "3 unresolved Binks comments",
-  ],
+  [48107, "Cache shipping zone lookups per request", "blocked", "Blocked: 3 open Binks findings"],
   [
     48093,
     "Move tax rounding into the money value object",
@@ -183,7 +178,6 @@ export function createWidgetComposerAttachScenario(
 function groupRows(now: number, projectPath: string) {
   const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
   const project = { path: projectPath, name: "Cake architecture" };
-  const fixable = ["blocked", "binks_comments", "ci_failing"];
   const row = (
     number: number,
     prTitle: string,
@@ -198,19 +192,20 @@ function groupRows(now: number, projectPath: string) {
     status,
     updatedAt: ago(minutes),
     projects: [project],
-    fixKey: fixable.includes(group) ? `key-${number}` : null,
+    lanes: [group],
+    fixKey: group === "blocked" ? `key-${number}` : null,
     ...extra,
   });
   return {
     refreshedAt: ago(4),
     // #48170 had /merge posted from the widget after the last pull: shown as Merging (requested).
     mergeOverrides: { "48170": { at: ago(1), pull: 1 } },
-    // #48140 had Fix sent to its Project Chat 3 minutes ago: shown as fix requested.
+    // #48107 had Fix sent to its Project Chat 3 minutes ago: shown as fix requested.
     fixRequests: {
-      "48140": {
+      "48107": {
         at: ago(3),
         until: new Date(now + 117 * 60_000).toISOString(),
-        key: "key-48140",
+        key: "key-48107",
         group: "blocked",
         project,
       },
@@ -241,17 +236,16 @@ function groupRows(now: number, projectPath: string) {
         48133,
         "Review activity feed with optimistic actions",
         "blocked",
-        "Blocked: Conflict · Merge stopped: Merge conflict · Approved by aaron.casanova · Binks clear · CI passed · 4 unresolved threads",
+        "Blocked: Conflict, 4 unresolved threads · Merge stopped: Merge conflict (before the latest push) · Approved by aaron.casanova · Binks clear · CI passed",
         52,
         { blockedBy: ["Conflict"] },
       ),
       row(
         48140,
         "Recover reactive queries after network errors",
-        "blocked",
-        "Blocked: restricted-merges check missing, reviews check missing · Approved by carlos.corvaia, ryan.wilsonperkin · Binks clear · CI not run",
+        "ci_pending",
+        "Approved by carlos.corvaia, ryan.wilsonperkin · Binks reviewing · CI not run · Pending: restricted-merges check missing, reviews check missing",
         60 * 26,
-        { blockedBy: ["restricted-merges check missing", "reviews check missing"] },
       ),
       row(
         48141,
@@ -264,9 +258,11 @@ function groupRows(now: number, projectPath: string) {
       row(
         48107,
         "Cache shipping zone lookups per request",
-        "binks_comments",
-        "1 open Binks finding · Needs approval · CI not run",
+        "blocked",
+        "Blocked: Conflict (as of last pull), Failing: Required CI, 1 open Binks finding · Needs approval",
         95,
+        // Unapproved and blocked: listed in Blocked and in Waiting on review.
+        { lanes: ["blocked", "waiting_on_review"] },
       ),
       row(
         48093,
@@ -307,7 +303,7 @@ export function createDeltaPrsGroupsScenario(dependencies: Dependencies): Visual
   return {
     name: "delta-prs-groups",
     description:
-      "Delta PRs groups: human-approved PRs that are still blocked, review waits, and River PRs assigned to you",
+      "Delta PRs lanes: Blocked (incl. an unapproved PR also in Waiting on review), CI pending, review waits, and River PRs assigned to you",
     states: [
       "groups",
       "lower",
@@ -317,7 +313,7 @@ export function createDeltaPrsGroupsScenario(dependencies: Dependencies): Visual
       "merge-ready",
       "merge-requested",
       "merge-error",
-      // Whole widget: Blocked shows a Fix at rest (#48133), a requested Fix (#48140) and Fix all.
+      // Whole widget: Blocked shows a Fix at rest (#48133), a requested Fix (#48107) and Fix all.
       "fix-rest",
       "fix-error",
     ],

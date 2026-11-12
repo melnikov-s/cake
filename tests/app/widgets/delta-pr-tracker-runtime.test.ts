@@ -39,10 +39,13 @@ type Pr = {
   blockersByRead?: { code: string; context?: string }[][];
   readinessMergeable?: boolean | null;
   pull?: { mergeable: boolean | null; mergeable_state: string };
-  binks?: "success" | "failure" | "missing";
+  binks?: "success" | "failure" | "pending" | "missing";
   // Merge Garden comments and /merge commands (already slimmed like the runtime's jq filter).
   comments?: { at: string; brand?: string | null; login?: string; body: string }[];
-  ci?: "success" | "pending";
+  // pending: "CI not yet run."; running: Required CI is running.
+  ci?: "success" | "pending" | "running";
+  // Unresolved review threads (merge readiness).
+  threads?: number;
   // Delta zone labels ("//system/self-healing") and changed paths (undefined: the files read 404s).
   labels?: string[];
   files?: string[];
@@ -77,14 +80,20 @@ function checksFor(pr: Pr) {
     statuses.push({
       context: "PR Review Bot Comments Addressed",
       state: pr.binks,
-      description: pr.binks === "failure" ? "❌ 1 open Binks finding" : "No unresolved findings",
+      description:
+        pr.binks === "failure"
+          ? "❌ 1 open Binks finding"
+          : pr.binks === "pending"
+            ? "Binks is reviewing"
+            : "No unresolved findings",
       creator: { login: BINKS.login, service_brand: { display_name: "Binks" } },
     });
   if (pr.ci)
     statuses.push({
       context: "Required CI",
-      state: pr.ci,
-      description: pr.ci === "success" ? "Passed" : "CI not yet run.",
+      state: pr.ci === "running" ? "pending" : pr.ci,
+      description:
+        pr.ci === "success" ? "Passed" : pr.ci === "running" ? "Running" : "CI not yet run.",
       creator: { login: CI_CTX, service_brand: null },
     });
   return { check_runs: [], statuses: { state: "pending", statuses } };
@@ -111,7 +120,7 @@ function readinessFor(pr: Pr, read: number) {
     reviews: {
       approved: stances.filter((s) => s.state === "approved" && s.counts).length,
       changes_requested: 0,
-      unresolved_threads: 0,
+      unresolved_threads: pr.threads ?? 0,
       stances,
     },
     status_check_rollup: { state: "pending", contexts: [] },
@@ -227,10 +236,13 @@ function fakeDelta(
 type Row = {
   number: number;
   group: string;
+  lanes: string[];
   status: string;
   review: string;
   approvedBy: string[];
   blockedBy: string[];
+  blockReasons: string[];
+  pending: string[];
   ownership: string;
   authorBrand: string | null;
   ignoredApprovals: { by: string; reason: string }[];
@@ -271,6 +283,8 @@ async function loadRuntime(cake: ReturnType<typeof fakeDelta>) {
     requestFix: (input: { numbers: number[]; projectPath?: string; source?: string }) =>
       runtime.tools.request_fix(input),
     listPrs: (group: string) => runtime.tools.list_prs({ group }),
+    listAll: () => runtime.tools.list_prs({}),
+    summary: () => runtime.tools.summary({}),
     state: () => saved as State,
   };
 }
@@ -286,7 +300,7 @@ const row = (state: State, number: number) => {
 };
 
 describe("Delta PRs runtime grouping", () => {
-  it("moves a human-approved PR with missing required checks out of Waiting on review (#2189563)", async () => {
+  it("puts a human-approved PR with missing required checks in CI pending, not Blocked (#2189563)", async () => {
     const state = await refresh({
       authored: [
         {
@@ -305,18 +319,22 @@ describe("Delta PRs runtime grouping", () => {
       ],
     });
     const pr = row(state, 2189563);
-    expect(pr.group).toBe("blocked");
+    expect(pr.lanes).toEqual(["ci_pending"]);
     expect(pr.approvedBy).toEqual(["aaron.casanova"]);
-    expect(pr.blockedBy).toEqual([
+    expect(pr.blockedBy).toEqual([]);
+    expect(pr.pending).toEqual([
       "restricted-merges check missing",
       "reviews check missing",
       "Binks comments status missing",
     ]);
+    expect(pr.status).toContain(
+      "Pending: restricted-merges check missing, reviews check missing, Binks comments status missing",
+    );
     expect(pr.status).toContain("Approved by aaron.casanova");
     expect(pr.status).not.toContain("Needs approval");
   });
 
-  it("puts a PR with two human approvals on an older commit and a missing reviews check in Blocked (#2306172)", async () => {
+  it("puts a PR with two human approvals on an older commit and a missing reviews check in CI pending (#2306172)", async () => {
     const state = await refresh({
       authored: [
         {
@@ -353,9 +371,10 @@ describe("Delta PRs runtime grouping", () => {
       ],
     });
     const pr = row(state, 2306172);
-    expect(pr.group).toBe("blocked");
+    expect(pr.lanes).toEqual(["ci_pending"]);
     expect(pr.approvedBy).toEqual(["carlos.corvaia", "ryan.wilsonperkin"]);
-    expect(pr.blockedBy).toEqual(["restricted-merges check missing", "reviews check missing"]);
+    expect(pr.blockedBy).toEqual([]);
+    expect(pr.pending).toEqual(["restricted-merges check missing", "reviews check missing"]);
     expect(pr.ignoredApprovals).toEqual([{ by: "Binks", reason: "bot" }]);
   });
 
@@ -546,6 +565,191 @@ describe("Delta PRs runtime grouping", () => {
     expect(state.reviewRequests.map((r) => r.number)).toEqual([2140846]);
   });
 
+  describe("lanes", () => {
+    const approved = {
+      binks: "success" as const,
+      ci: "success" as const,
+      reviews: [{ state: "APPROVED", at: "2026-11-11T20:00:00Z", by: human("aaron.casanova") }],
+    };
+    const gardenStop = {
+      at: "2026-11-11T22:30:00Z",
+      brand: "Merge Garden",
+      body: "❌ **Waiting for CI failed**\n\nThis pull request has been ejected.",
+    };
+
+    it("puts every real blocker in Blocked and names it on the row", async () => {
+      const state = await refresh({
+        authored: [
+          { number: 1, ...approved, ci: undefined, failingCheck: "Required CI" },
+          { number: 2, ...approved, binks: "failure" },
+          { number: 3, ...approved, blockers: [{ code: "conflict" }] },
+          { number: 4, ...approved, comments: [gardenStop] },
+          { number: 5, ...approved, threads: 2 },
+          { number: 6, ...approved, blockers: [{ code: "restricted_merge_window" }] },
+        ],
+      });
+      const reasons = Object.fromEntries(
+        state.authored.map((r) => [r.number, [r.lanes, r.blockReasons]]),
+      );
+      expect(reasons).toEqual({
+        1: [["blocked"], ["Failing: Required CI"]],
+        2: [["blocked"], ["1 open Binks finding"]],
+        3: [["blocked"], ["Conflict"]],
+        4: [["blocked"], ["Merge stopped: Waiting for CI failed"]],
+        5: [["blocked"], ["2 unresolved threads"]],
+        6: [["blocked"], ["Restricted merge window"]],
+      });
+      for (const r of state.authored) {
+        expect(r.status).toMatch(/^Blocked: /);
+        expect(r.fixKey).not.toBeNull();
+      }
+    });
+
+    it("counts a conflict as of the last pull as a blocker (#2391479, #2362902)", async () => {
+      const base = { number: 2391479, head: "58a67ba", ...approved, ci: "pending" as const };
+      const runtime = await loadRuntime(
+        fakeDelta({ authored: [{ ...base, blockers: [{ code: "conflict" }] }] }),
+      );
+      await runtime.refresh();
+      runtime.swap(fakeDelta({ authored: [base] }));
+      const pr = row(await runtime.refresh(), 2391479);
+      expect(pr.lanes).toEqual(["blocked"]);
+      expect(pr.blockReasons).toEqual(["Conflict (as of last pull)"]);
+    });
+
+    it("puts a pending check in CI pending, never in Blocked", async () => {
+      const state = await refresh({
+        authored: [
+          // Binks still reviewing and CI running.
+          {
+            number: 10,
+            ...approved,
+            binks: "pending",
+            ci: "running",
+            blockers: [
+              {
+                code: "required_status_pending",
+                context: `${BINKS_CTX}:PR Review Bot Comments Addressed`,
+              },
+              { code: "required_status_pending", context: `${CI_CTX}:Required CI` },
+            ],
+          },
+          // Required CI has not run yet and nothing else is pending: /merge runs it.
+          {
+            number: 11,
+            ...approved,
+            ci: "pending",
+            blockers: [{ code: "required_status_pending", context: `${CI_CTX}:Required CI` }],
+          },
+        ],
+      });
+      const pending = row(state, 10);
+      expect(pending.lanes).toEqual(["ci_pending"]);
+      expect(pending.blockedBy).toEqual([]);
+      expect(pending.blockReasons).toEqual([]);
+      expect(pending.pending).toEqual(["CI running", "Binks reviewing"]);
+      expect(pending.status).not.toContain("Blocked");
+      expect(pending.status).toContain("Binks reviewing · CI running");
+      expect(pending.fixKey).toBeNull();
+      expect(row(state, 11).lanes).toEqual(["ready_to_merge"]);
+      expect(row(state, 11).status).toContain("CI not run");
+    });
+
+    it("lets Blocked win over CI pending (#2393754: conflict, Binks pending, CI not run)", async () => {
+      const state = await refresh({
+        authored: [
+          {
+            number: 2393754,
+            ...approved,
+            binks: "pending",
+            ci: "running",
+            blockers: [
+              { code: "conflict" },
+              {
+                code: "required_status_pending",
+                context: `${BINKS_CTX}:PR Review Bot Comments Addressed`,
+              },
+              { code: "required_status_pending", context: `${CI_CTX}:Required CI` },
+            ],
+          },
+        ],
+      });
+      const pr = row(state, 2393754);
+      expect(pr.lanes).toEqual(["blocked"]);
+      expect(pr.blockReasons).toEqual(["Conflict"]);
+      expect(pr.pending).toEqual(["CI running", "Binks reviewing"]);
+      expect(pr.status).toMatch(/^Blocked: Conflict · Approved by aaron\.casanova/);
+    });
+
+    it("lists an unapproved, blocked PR in Blocked and Waiting on review, and nothing else twice (#2407660)", async () => {
+      const runtime = await loadRuntime(
+        fakeDelta({
+          authored: [
+            {
+              number: 2407660,
+              binks: "failure",
+              failingCheck: "Required CI",
+              threads: 1,
+              blockers: [{ code: "conflict" }],
+            },
+            // Unapproved and only pending: Waiting on review alone.
+            { number: 2407467, ci: "running", binks: "pending" },
+            { number: 2417300, ...approved, reviews: [] },
+            { number: 30, ...approved },
+            { number: 31, ...approved, ci: "running" },
+            { number: 32, ...approved, draft: true, binks: "failure" },
+          ],
+        }),
+      );
+      const state = await runtime.refresh();
+      const lanes = Object.fromEntries(state.authored.map((r) => [r.number, r.lanes]));
+      expect(lanes).toEqual({
+        2407660: ["blocked", "waiting_on_review"],
+        2407467: ["waiting_on_review"],
+        2417300: ["waiting_on_review"],
+        30: ["ready_to_merge"],
+        31: ["ci_pending"],
+        32: ["draft"],
+      });
+      const dual = row(state, 2407660);
+      expect(dual.group).toBe("blocked");
+      expect(dual.blockReasons).toEqual([
+        "Conflict",
+        "Failing: Required CI",
+        "1 open Binks finding",
+        "1 unresolved thread",
+      ]);
+      expect(dual.status).toContain("Needs approval");
+
+      const numbers = (prs: { number: number }[]) => prs.map((r) => r.number);
+      const all = await runtime.listAll();
+      expect(Object.keys(all.groups)).toEqual([
+        "merging",
+        "ready_to_merge",
+        "blocked",
+        "ci_pending",
+        "waiting_on_review",
+        "draft",
+        "waiting_on_my_review",
+      ]);
+      expect(numbers(all.groups.blocked)).toEqual([2407660]);
+      expect(numbers(all.groups.waiting_on_review)).toEqual([2407660, 2407467, 2417300]);
+      expect(numbers(all.groups.ci_pending)).toEqual([31]);
+      expect(all.groups.blocked[0].lanes).toEqual(["blocked", "waiting_on_review"]);
+      const summary = await runtime.summary();
+      expect(summary.counts).toEqual({
+        merging: 0,
+        ready_to_merge: 1,
+        blocked: 1,
+        ci_pending: 1,
+        waiting_on_review: 3,
+        draft: 1,
+        waiting_on_my_review: 0,
+      });
+      expect(summary.text).toContain("(1 both blocked and waiting on review)");
+    });
+  });
+
   describe("merging", () => {
     const garden = (at: string, body: string) => ({ at, brand: "Merge Garden", body });
     const command = (at: string, body: string) => ({ at, body });
@@ -632,9 +836,10 @@ describe("Delta PRs runtime grouping", () => {
       expect(row(state, 11).status).toContain(
         "Merge stopped: Merge conflict (before the latest push)",
       );
-      expect(row(state, 12).group).toBe("ready_to_merge");
+      // Any other current stop blocks until a new /merge.
+      expect(row(state, 12).lanes).toEqual(["blocked"]);
       expect(row(state, 12).status).toContain(
-        "Merge stopped: Could not enqueue pull request: Pull request contents are too old",
+        "Blocked: Merge stopped: Could not enqueue pull request: Pull request contents are too old",
       );
     });
 
@@ -910,14 +1115,14 @@ describe("Delta PRs projects and Fix (chat.prompt stubbed)", () => {
     expect(chat.prompts).toEqual([]);
   });
 
-  it("offers Fix only for Blocked, Binks comments and CI failing rows", async () => {
+  it("offers Fix only for Blocked rows", async () => {
     const chat: ChatStub = { prompts: [] };
     const runtime = await fixRuntime(chat);
     const groups = Object.fromEntries(runtime.state().authored.map((r) => [r.number, r.group]));
     expect(groups).toEqual({
       41: "blocked",
-      42: "ci_failing",
-      43: "binks_comments",
+      42: "blocked",
+      43: "blocked",
       44: "ready_to_merge",
       45: "waiting_on_review",
       46: "draft",
@@ -957,7 +1162,7 @@ describe("Delta PRs projects and Fix (chat.prompt stubbed)", () => {
         "  Blocked: Blocked by Conflict",
         "- #42 Goals search: match every word",
         "  https://delta.shopify.io/shop/world/pull/42",
-        "  CI failing: Failing checks: Required CI",
+        "  Blocked: Failing checks: Required CI",
         "",
         "The widget posted nothing to Delta.",
       ].join("\n"),
@@ -965,7 +1170,7 @@ describe("Delta PRs projects and Fix (chat.prompt stubbed)", () => {
     expect(adminWeb).toContain("Sergey clicked Fix all");
     expect(adminWeb).toContain("this PR in admin-web");
     expect(adminWeb).toContain("- #43 Recover reactive queries after network errors");
-    expect(adminWeb).toContain("Binks comments: 1 open Binks finding");
+    expect(adminWeb).toContain("Blocked: 1 open Binks finding");
     expect(
       result.requested.map((q: { number: number; chatId: string }) => [q.number, q.chatId]),
     ).toEqual([
@@ -1073,6 +1278,17 @@ describe("Delta PRs projects and Fix (chat.prompt stubbed)", () => {
     chat.result = undefined;
     const retry = await runtime.requestFix({ numbers: [43], source: "row" });
     expect(retry.requested.map((q: { number: number }) => q.number)).toEqual([43]);
+  });
+
+  it("sends a PR in Blocked and Waiting on review once from Fix all", async () => {
+    const chat: ChatStub = { prompts: [] };
+    const dual: Pr = { ...blockedPr, reviews: [] };
+    const runtime = await fixRuntime(chat, [dual]);
+    expect(row(runtime.state(), 41).lanes).toEqual(["blocked", "waiting_on_review"]);
+    const result = await runtime.requestFix({ numbers: [41, 41], source: "fix_all" });
+    expect(result.requested.map((q: { number: number }) => q.number)).toEqual([41]);
+    expect(chat.prompts).toHaveLength(1);
+    expect(chat.prompts[0]?.text.match(/#41 /g)).toHaveLength(1);
   });
 
   it("does not post anything to Delta", async () => {

@@ -483,14 +483,11 @@
       .ready {
         --c: var(--w-success);
       }
-      .binks {
+      .cipending {
         --c: var(--w-attention);
       }
-      .fail {
-        --c: var(--w-destructive);
-      }
       .blocked {
-        --c: var(--w-warning);
+        --c: var(--w-destructive);
       }
       .merging {
         --c: var(--w-merging);
@@ -566,7 +563,7 @@
         // Fix: asks the PR's project's Project Chat to fix it (backend request_fix). fixLocal[n] =
         // {kind:"sending"} while in flight, then {kind:"requested", at, until, key, project} until
         // the backend's saved fixRequests entry arrives.
-        var FIX_GROUPS = ["blocked", "binks_comments", "ci_failing"];
+        var FIX_GROUPS = ["blocked"];
         var fixLocal = {};
         var fixErr = {};
         var fixErrTimers = {};
@@ -585,8 +582,7 @@
           { key: "merging", label: "Merging", cls: "merging" },
           { key: "ready_to_merge", label: "Ready to merge", cls: "ready" },
           { key: "blocked", label: "Blocked", cls: "blocked" },
-          { key: "binks_comments", label: "Binks comments", cls: "binks" },
-          { key: "ci_failing", label: "CI failing", cls: "fail" },
+          { key: "ci_pending", label: "CI pending", cls: "cipending" },
           { key: "waiting_on_review", label: "Waiting on review", cls: "wait" },
           { key: "draft", label: "Draft", cls: "draft" },
           { key: "waiting_on_my_review", label: "Waiting on my review", cls: "mine" },
@@ -676,13 +672,14 @@
           "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z";
         var CROSS = "M6 6l12 12M18 6 6 18";
 
-        function attachKey(row) {
-          return String(row.group || "") + ":" + String(row.number);
+        // A PR in two lanes has a button in each section, so the key names the section too.
+        function attachKey(row, secKey) {
+          return String(secKey || row.group || "") + ":" + String(row.number);
         }
 
-        function attachButton(row) {
+        function attachButton(row, secKey) {
           if (!composerApi()) return null;
-          var key = attachKey(row);
+          var key = attachKey(row, secKey);
           var st = attachState[key];
           var label = "Add #" + row.number + " to chat composer";
           var title = st ? st.message : "Add to the current chat's composer (not sent)";
@@ -700,7 +697,7 @@
               onclick: function (ev) {
                 ev.preventDefault();
                 ev.stopPropagation();
-                attachRow(row);
+                attachRow(row, secKey);
               },
             },
             [icon(st && st.kind === "ok" ? CHECK : st && st.kind === "error" ? CROSS : PAPERCLIP)],
@@ -723,10 +720,11 @@
           render();
         }
 
-        async function attachRow(row) {
+        async function attachRow(row, secKey) {
           var composer = composerApi();
           if (!composer) return;
-          var key = attachKey(row);
+          var key = attachKey(row, secKey);
+          var secName = secKey || row.group;
           if (attachState[key] && attachState[key].kind === "pending") return;
           var n = Number(row.number);
           var title = String(row.title || "(untitled)");
@@ -739,10 +737,10 @@
             section:
               (
                 SECTIONS.filter(function (s) {
-                  return s.key === row.group;
+                  return s.key === secName;
                 })[0] || {}
               ).label ||
-              row.group ||
+              secName ||
               null,
             status: cleanStatus(row).slice(0, 500) || null,
             updatedAt: row.updatedAt || null,
@@ -878,8 +876,10 @@
         }
 
         // ---- Fix ------------------------------------------------------------------------------
-        function effectiveGroup(row) {
-          return mergeOverride(row) ? "merging" : row.group;
+        // Every lane the row is shown in (an unapproved, blocked PR is in Blocked and Waiting on review).
+        function effectiveLanes(row) {
+          if (mergeOverride(row)) return ["merging"];
+          return Array.isArray(row.lanes) && row.lanes.length ? row.lanes : [row.group];
         }
         function fixTarget(row) {
           var owners = arr(row.projects);
@@ -910,7 +910,10 @@
         }
         function canFix(row) {
           if (!api || typeof api.callTool !== "function") return false;
-          if (FIX_GROUPS.indexOf(effectiveGroup(row)) < 0) return false;
+          var fixable = effectiveLanes(row).some(function (l) {
+            return FIX_GROUPS.indexOf(l) >= 0;
+          });
+          if (!fixable) return false;
           return !!fixTarget(row) && !fixStatus(row);
         }
         function setFixErr(n, msg) {
@@ -1085,7 +1088,7 @@
           return kids;
         }
 
-        function rowEl(row) {
+        function rowEl(row, secKey) {
           var brand =
             row.ownership === "assigned" && row.authorBrand ? String(row.authorBrand) : "";
           var url =
@@ -1136,7 +1139,7 @@
                 : null,
               mergeButton(row),
               fixButton(row),
-              attachButton(row),
+              attachButton(row, secKey),
             ]),
             el(
               "div",
@@ -1201,8 +1204,9 @@
             groups[sec.key] = [];
           });
           authored.forEach(function (r) {
-            var g = mergeOverride(r) ? "merging" : r.group;
-            (groups[g] || (groups[g] = [])).push(r);
+            effectiveLanes(r).forEach(function (g) {
+              (groups[g] || (groups[g] = [])).push(r);
+            });
           });
           groups.waiting_on_my_review = reviews;
 
@@ -1381,7 +1385,18 @@
                     class: sec.cls + (rows.length ? "" : " empty"),
                     "aria-label": sec.label,
                   },
-                  [head, rows.length ? el("ul", { class: "rows" }, rows.map(rowEl)) : null],
+                  [
+                    head,
+                    rows.length
+                      ? el(
+                          "ul",
+                          { class: "rows" },
+                          rows.map(function (r) {
+                            return rowEl(r, sec.key);
+                          }),
+                        )
+                      : null,
+                  ],
                 ),
               );
             });
