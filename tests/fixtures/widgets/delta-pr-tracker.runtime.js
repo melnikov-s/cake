@@ -47,6 +47,12 @@ const MERGE_STOPPED = /has been ejected|^Could not|^Merge conflict|failed|cancel
 // A merge-queue conflict ejection blocks the PR until a new commit is pushed (the comment names
 // the PR head it conflicted on).
 const MERGE_CONFLICT_EJECTION_BLOCKS = true;
+// ---- Merge button: posts exactly this comment, nothing else. -------------------------------
+const MERGE_COMMENT = "/merge";
+const MERGE_POST_TIMEOUT = 30;
+// After an unanswered /merge (no Merge Garden reply yet), hide the Merge button this long so a
+// second click cannot post a duplicate while Merge Garden is still picking it up.
+const MERGE_REPLY_WAIT_MINUTES = 10;
 // ------------------------------------------------------------------------------------------
 
 // jq filters (no single quotes) that slim dt JSON below shell.run's 50 KiB stdout cap.
@@ -513,6 +519,11 @@ function classifyOwn(pr, details, notes, ownership, previous) {
     reviewsCheck: reviewsRun ? reviewsRun.conclusion || reviewsRun.status || null : null,
     blockedBy,
     merge,
+    // Until this time the Merge button stays hidden: a /merge is already waiting for Merge Garden.
+    mergeRequestPendingUntil:
+      merge.state === "requested" && merge.at
+        ? new Date(Date.parse(merge.at) + MERGE_REPLY_WAIT_MINUTES * 60000).toISOString()
+        : null,
     head,
     mergeState,
     unresolvedThreads,
@@ -681,6 +692,10 @@ function emptyState(prev) {
     authored: [],
     reviewRequests: [],
     history: [],
+    // {"<number>": {at, pull}}: /merge posted from the widget; shown as Merging until a refresh
+    // that started after the post resolves it. `pull` is the refreshStarts count at posting time.
+    mergeOverrides: {},
+    refreshStarts: 0,
     ...(prev && prev.schema === SCHEMA ? prev : {}),
   };
 }
@@ -693,7 +708,12 @@ async function doRefresh(source) {
   const started = Date.now();
   const startedIso = new Date(started).toISOString();
   let state = await readState();
-  await data.write({ ...state, refreshing: { startedAt: startedIso, source } });
+  const pull = (state.refreshStarts || 0) + 1;
+  await data.write({
+    ...state,
+    refreshStarts: pull,
+    refreshing: { startedAt: startedIso, source },
+  });
   try {
     const me = await dtJson(`api -R ${REPO} /api/v3/user`, LIST_TIMEOUT, [0], "{login,email}");
     const meInfo = { login: me.login, email: me.email || null };
@@ -768,6 +788,11 @@ async function doRefresh(source) {
       authored,
       reviewRequests,
       history: [entry, ...(state.history || [])].slice(0, 20),
+      // This pull resolves every override posted before it started; later posts wait for the next.
+      refreshStarts: Math.max(state.refreshStarts || 0, pull),
+      mergeOverrides: Object.fromEntries(
+        Object.entries(state.mergeOverrides || {}).filter(([, o]) => o && o.pull >= pull),
+      ),
     };
     await data.write(next);
     return next;
@@ -797,19 +822,75 @@ async function doRefresh(source) {
   }
 }
 
+// A /merge posted from the widget shows the row as Merging until the next refresh resolves it.
+const overrideOf = (state, row) => (state.mergeOverrides || {})[String(row.number)] || null;
+const effectiveGroup = (state, row) => (overrideOf(state, row) ? "merging" : row.group);
+
+// Why the Merge button is unavailable for a row, or null when /merge may be posted.
+function mergeBlockedReason(state, row) {
+  if (overrideOf(state, row))
+    return "a /merge from this widget is already waiting for the next refresh";
+  if (row.group !== "ready_to_merge") return `it is not in Ready to merge (group: ${row.group})`;
+  if (row.mergeRequestPendingUntil && Date.now() < Date.parse(row.mergeRequestPendingUntil))
+    return "a /merge is already waiting for Merge Garden's reply";
+  return null;
+}
+
+const posting = new Set();
+
+async function postMerge(n) {
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`Invalid PR number: ${n}`);
+  if (posting.has(n)) throw new Error(`#${n}: /merge is already being posted`);
+  const state = await readState();
+  const row = (state.authored || []).find((r) => r.number === n);
+  if (!row) throw new Error(`#${n} is not one of the tracked PRs`);
+  const blocked = mergeBlockedReason(state, row);
+  if (blocked) throw new Error(`Not posting /merge on #${n}: ${blocked}`);
+  posting.add(n);
+  let r;
+  try {
+    r = await dt(`pr comment ${n} -R ${REPO} --body '${MERGE_COMMENT}'`, MERGE_POST_TIMEOUT);
+  } catch (e) {
+    const message = String((e && e.message) || e);
+    throw new Error(
+      /timed out/.test(message)
+        ? `${message}. The comment may have been posted; check the PR before trying again.`
+        : message,
+    );
+  } finally {
+    posting.delete(n);
+  }
+  if (r.exitCode !== 0) {
+    const why = stderrSummary(r.stderr);
+    throw new Error(`Could not post /merge on #${n}: exit ${r.exitCode}${why ? ` — ${why}` : ""}`);
+  }
+  const at = new Date().toISOString();
+  const latest = await readState();
+  await data.write({
+    ...latest,
+    mergeOverrides: {
+      ...(latest.mergeOverrides || {}),
+      [String(n)]: { at, pull: latest.refreshStarts || 0 },
+    },
+  });
+  return { posted: true, number: n, comment: MERGE_COMMENT, at, url: prUrl(n) };
+}
+
 function countsOf(state) {
   const counts = {};
   for (const g of GROUPS) counts[g] = 0;
-  for (const r of state.authored || []) counts[r.group] = (counts[r.group] || 0) + 1;
+  for (const r of state.authored || [])
+    counts[effectiveGroup(state, r)] = (counts[effectiveGroup(state, r)] || 0) + 1;
   counts.waiting_on_my_review = (state.reviewRequests || []).length;
   return counts;
 }
 
-const slim = (r) => ({
+const slim = (r, state) => ({
   number: r.number,
   title: r.title,
   url: r.url,
-  group: r.group,
+  group: state ? effectiveGroup(state, r) : r.group,
+  mergeRequestedAt: state && overrideOf(state, r) ? overrideOf(state, r).at : null,
   status: r.status,
   draft: r.draft,
   author: r.author,
@@ -818,8 +899,11 @@ const slim = (r) => ({
 });
 
 function rowsFor(state, group) {
-  if (group === "waiting_on_my_review") return (state.reviewRequests || []).map(slim);
-  return (state.authored || []).filter((r) => r.group === group).map(slim);
+  if (group === "waiting_on_my_review")
+    return (state.reviewRequests || []).map((r) => slim(r, null));
+  return (state.authored || [])
+    .filter((r) => effectiveGroup(state, r) === group)
+    .map((r) => slim(r, state));
 }
 
 const meta = (state) => ({
@@ -887,6 +971,8 @@ return {
         );
       return { opened: true, url };
     },
+    // Posts exactly "/merge" as a PR comment (Merge Garden then queues it). Only for Ready to merge rows.
+    merge_pr: async (input) => postMerge(input.number),
     get_pr: async (input) => {
       const state = await readState();
       const n = input.number;

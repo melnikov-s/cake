@@ -58,7 +58,12 @@ async function seedDeltaPrs(
   paths: Parameters<Seed>[0],
   theme: Parameters<Seed>[1],
   sessionId: string,
-  rows: { authored: JsonObject[]; reviewRequests: JsonObject[]; refreshedAt: string },
+  rows: {
+    authored: JsonObject[];
+    reviewRequests: JsonObject[];
+    refreshedAt: string;
+    mergeOverrides?: JsonObject;
+  },
 ) {
   const source = await readFile(
     resolve(import.meta.dirname, "../../tests/fixtures/widgets/delta-pr-tracker.html"),
@@ -184,7 +189,16 @@ function groupRows(now: number) {
   ) => ({ number, title: prTitle, group, status, updatedAt: ago(minutes), ...extra });
   return {
     refreshedAt: ago(4),
+    // #48170 had /merge posted from the widget after the last pull: shown as Merging (requested).
+    mergeOverrides: { "48170": { at: ago(1), pull: 1 } },
     authored: [
+      row(
+        48170,
+        "Retire bot PRs main already made obsolete",
+        "ready_to_merge",
+        "Approved by aaron.casanova · Binks clear · CI not run",
+        20,
+      ),
       row(
         48160,
         "Say who commented at the top of rapid review",
@@ -262,7 +276,16 @@ export function createDeltaPrsGroupsScenario(dependencies: Dependencies): Visual
     name: "delta-prs-groups",
     description:
       "Delta PRs groups: human-approved PRs that are still blocked, review waits, and River PRs assigned to you",
-    states: ["groups", "lower", "row-rest", "row-hover", "row-focus"],
+    states: [
+      "groups",
+      "lower",
+      "row-rest",
+      "row-hover",
+      "row-focus",
+      "merge-ready",
+      "merge-requested",
+      "merge-error",
+    ],
     async seed(paths, theme) {
       await seedDeltaPrs(dependencies, paths, theme, "delta-prs-groups", groupRows(Date.now()));
     },
@@ -287,14 +310,29 @@ export function createDeltaPrsGroupsScenario(dependencies: Dependencies): Visual
       if (state === "row-focus") {
         await widget.locator('a[data-pr="48121"]').focus();
         await page.keyboard.press("Tab");
+        await expect(
+          widget.getByRole("button", { name: "Merge #48121: post /merge" }),
+        ).toBeFocused();
+        await page.keyboard.press("Tab");
         await expect(attach).toBeFocused();
         await expect(attach).toHaveCSS("opacity", "1");
       }
+      // The capture fixture has no backend runtime, so clicking Merge fails like a refused post:
+      // the row returns to Ready to merge with the error. Nothing is ever posted to Delta.
+      if (state === "merge-error") {
+        await widget.getByRole("button", { name: "Merge #48121: post /merge" }).click();
+        await expect(widget.locator("#sec-ready_to_merge").getByRole("alert")).toContainText(
+          "Couldn't post /merge",
+        );
+        await page.mouse.move(1, 1);
+      }
     },
     region(page, state) {
-      return state.startsWith("row-")
-        ? widgetFrame(page).locator("#sec-ready_to_merge")
-        : page.locator('[data-slot="artifact-disclosure"]').first();
+      return state === "merge-requested"
+        ? widgetFrame(page).locator("#sec-merging")
+        : state.startsWith("row-") || state.startsWith("merge-")
+          ? widgetFrame(page).locator("#sec-ready_to_merge")
+          : page.locator('[data-slot="artifact-disclosure"]').first();
     },
   };
 }

@@ -294,6 +294,37 @@
         border: 1px solid var(--border);
         color: var(--muted-foreground);
       }
+      .pill.req {
+        border-style: dashed;
+        color: var(--w-merging);
+        border-color: color-mix(in srgb, var(--w-merging) 60%, var(--border));
+      }
+      .mergebtn {
+        flex: none;
+        align-self: center;
+        margin: -2px 0;
+        padding: 1px 10px;
+        border-radius: 5px;
+        border: 1px solid color-mix(in srgb, var(--w-merging) 55%, var(--border));
+        background: color-mix(in srgb, var(--w-merging) 10%, transparent);
+        color: var(--foreground);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .mergebtn:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--w-merging) 22%, transparent);
+      }
+      .mergebtn:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .row-err {
+        color: var(--w-destructive);
+        font-size: 12px;
+        margin-top: 2px;
+        overflow-wrap: anywhere;
+      }
       .pill.brand {
         color: var(--foreground);
         border-color: color-mix(in srgb, var(--w-primary) 45%, var(--border));
@@ -441,6 +472,11 @@
         var openErr = "";
         var openErrTimer = null;
         var pendingOpen = {};
+        // Merge button: local view of "/merge" posts. mergeLocal[n] = {kind:"posting"} while the
+        // post is in flight, then {kind:"posted", at, refreshedAt} until the next refresh lands.
+        var mergeLocal = {};
+        var mergeErr = {};
+        var mergeErrTimers = {};
         // Composer attach (cake.composer.attach). Hidden when the host does not provide it.
         var attachState = {};
         var attachTimers = {};
@@ -640,6 +676,86 @@
           }
         }
 
+        // A /merge posted from this widget shows the row as Merging (requested) until the next
+        // refresh resolves it from Delta / Merge Garden. The saved override comes from the backend.
+        function mergeOverride(row) {
+          var n = String(row.number);
+          var saved = state && state.mergeOverrides && state.mergeOverrides[n];
+          if (saved) return { kind: "posted", at: saved.at };
+          var local = mergeLocal[n];
+          if (local && local.kind === "posting") return local;
+          if (
+            local &&
+            local.kind === "posted" &&
+            (state && state.refreshedAt) === local.refreshedAt
+          )
+            return local;
+          return null;
+        }
+
+        function canRequestMerge(row) {
+          if (row.group !== "ready_to_merge" || mergeOverride(row)) return false;
+          if (!api || typeof api.callTool !== "function") return false;
+          var until = ts(row.mergeRequestPendingUntil);
+          return until == null || Date.now() >= until;
+        }
+
+        function setMergeErr(n, msg) {
+          if (mergeErrTimers[n]) clearTimeout(mergeErrTimers[n]);
+          delete mergeErrTimers[n];
+          if (msg == null) {
+            delete mergeErr[n];
+            return;
+          }
+          mergeErr[n] = msg;
+          mergeErrTimers[n] = setTimeout(function () {
+            delete mergeErr[n];
+            delete mergeErrTimers[n];
+            render();
+          }, 20000);
+        }
+
+        async function requestMerge(row) {
+          var n = String(row.number);
+          if (mergeOverride(row)) return; // already posting or posted: never post twice
+          setMergeErr(n, null);
+          mergeLocal[n] = { kind: "posting" };
+          render();
+          try {
+            var result = await api.callTool("merge_pr", { number: Number(row.number) });
+            mergeLocal[n] = {
+              kind: "posted",
+              at: (result && result.at) || new Date().toISOString(),
+              refreshedAt: state && state.refreshedAt,
+            };
+          } catch (e) {
+            delete mergeLocal[n];
+            setMergeErr(n, (e && e.message) || String(e));
+          }
+          render();
+        }
+
+        function mergeButton(row) {
+          if (!canRequestMerge(row)) return null;
+          return el(
+            "button",
+            {
+              type: "button",
+              class: "mergebtn",
+              "aria-label": "Merge #" + row.number + ": post /merge",
+              title:
+                "Post /merge as a comment on #" + row.number + " (Merge Garden then queues it)",
+              disabled: !!mergeLocal[String(row.number)],
+              onclick: function (ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                requestMerge(row);
+              },
+            },
+            ["Merge"],
+          );
+        }
+
         // Status line: the "Blocked: …" part is emphasized; the time is the PR's last update on Delta.
         function line2Kids(row) {
           var parts = cleanStatus(row)
@@ -647,6 +763,13 @@
             .filter(function (p) {
               return p;
             });
+          var override = mergeOverride(row);
+          if (override)
+            parts.unshift(
+              override.kind === "posting"
+                ? "Merging: posting /merge…"
+                : "Merging: /merge posted " + rel(override.at) + ", confirmed on next refresh",
+            );
           if (row.updatedAt) parts.push("Updated " + rel(row.updatedAt));
           var kids = [];
           parts.forEach(function (p, i) {
@@ -691,6 +814,14 @@
                     text: brand,
                   })
                 : null,
+              mergeOverride(row)
+                ? el("span", {
+                    class: "pill req",
+                    title: "Requested from this widget; Merge Garden has not confirmed it yet",
+                    text: "requested",
+                  })
+                : null,
+              mergeButton(row),
               attachButton(row),
             ]),
             el(
@@ -701,6 +832,13 @@
               },
               line2Kids(row),
             ),
+            mergeErr[String(row.number)]
+              ? el("div", {
+                  class: "row-err",
+                  role: "alert",
+                  text: "Couldn't post /merge: " + mergeErr[String(row.number)],
+                })
+              : null,
           ]);
         }
 
@@ -736,7 +874,8 @@
             groups[sec.key] = [];
           });
           authored.forEach(function (r) {
-            (groups[r.group] || (groups[r.group] = [])).push(r);
+            var g = mergeOverride(r) ? "merging" : r.group;
+            (groups[g] || (groups[g] = [])).push(r);
           });
           groups.waiting_on_my_review = reviews;
 

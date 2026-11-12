@@ -49,7 +49,7 @@
   },
   {
     "name": "list_prs",
-    "description": "List tracked PRs from the last refresh (does not call Delta). With `group`, returns that group's rows; without it, returns every group. Sergey's own PRs (authored, or River-authored and assigned to him; ownership author|assigned): merging (Merge Garden accepted /merge and the PR is in flight: waiting for CI or in the merge queue), ready_to_merge (human-approved, nothing blocking), blocked (human-approved but blocked by a conflict or a required check/status), binks_comments, ci_failing, waiting_on_review (no counting human approval, or a newer human change request), draft. waiting_on_my_review: PRs requesting his review. Each row has number, title, url, status, author, ownership, updatedAt (last update on Delta).",
+    "description": "List tracked PRs from the last refresh (does not call Delta). With `group`, returns that group's rows; without it, returns every group. Sergey's own PRs (authored, or River-authored and assigned to him; ownership author|assigned): merging (Merge Garden accepted /merge and the PR is in flight: waiting for CI or in the merge queue), ready_to_merge (human-approved, nothing blocking), blocked (human-approved but blocked by a conflict or a required check/status), binks_comments, ci_failing, waiting_on_review (no counting human approval, or a newer human change request), draft. waiting_on_my_review: PRs requesting his review. Each row has number, title, url, status, author, ownership, updatedAt (last update on Delta). Rows with a /merge posted from the widget since the last refresh are listed under merging with mergeRequestedAt set.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -200,6 +200,43 @@
       "properties": {
         "opened": {
           "type": "boolean"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "merge_pr",
+    "description": "Post exactly the comment \"/merge\" on one of Sergey's PRs in Delta (as his dt identity), which asks Merge Garden to merge it. Only allowed for a tracked PR currently in Ready to merge, without a pending /merge. Nothing else is done (no approval, CI trigger or rebase). On success the PR shows as Merging (requested) until the next refresh resolves its real state. Throws without posting when not allowed; throws when the post fails.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number"],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["posted", "number", "comment", "at", "url"],
+      "properties": {
+        "posted": {
+          "type": "boolean"
+        },
+        "number": {
+          "type": "integer"
+        },
+        "comment": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
         },
         "url": {
           "type": "string"

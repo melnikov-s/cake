@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // The Delta PRs widget's published backend runtime (async factory body with lexical cake/data).
 // These tests drive its real refresh path with canned, already-jq-slimmed Delta responses.
@@ -116,7 +116,16 @@ function reviewsFor(pr: Pr) {
   }));
 }
 
-function fakeDelta(scenario: { authored: Pr[]; assigned?: Pr[]; requested?: Pr[] }) {
+// Stub for `dt pr comment`: records the command and never reaches Delta.
+type PostStub = {
+  commands: string[];
+  result?: () => Promise<{ exitCode: number; stderr: string }>;
+};
+
+function fakeDelta(
+  scenario: { authored: Pr[]; assigned?: Pr[]; requested?: Pr[] },
+  post?: PostStub,
+) {
   const all = new Map<number, Pr>();
   for (const pr of [
     ...scenario.authored,
@@ -147,6 +156,12 @@ function fakeDelta(scenario: { authored: Pr[]; assigned?: Pr[]; requested?: Pr[]
   };
   return async (name: string, input: { command: string }) => {
     expect(name).toBe("shell.run");
+    if (input.command.includes("pr comment")) {
+      if (!post) throw new Error(`Unexpected post: ${input.command}`);
+      post.commands.push(input.command);
+      const result = post.result ? await post.result() : { exitCode: 0, stderr: "" };
+      return { ...result, stdout: "", timedOut: false, stdoutTruncated: false };
+    }
     return {
       exitCode: 0,
       stdout: JSON.stringify(respond(input.command)),
@@ -167,8 +182,13 @@ type Row = {
   ownership: string;
   authorBrand: string | null;
   ignoredApprovals: { by: string; reason: string }[];
+  mergeRequestPendingUntil: string | null;
 };
-type State = { authored: Row[]; reviewRequests: { number: number }[] };
+type State = {
+  authored: Row[];
+  reviewRequests: { number: number }[];
+  mergeOverrides: Record<string, { at: string }>;
+};
 
 async function loadRuntime(cake: ReturnType<typeof fakeDelta>) {
   let saved: unknown = null;
@@ -189,6 +209,9 @@ async function loadRuntime(cake: ReturnType<typeof fakeDelta>) {
     swap(next: ReturnType<typeof fakeDelta>) {
       cake = next;
     },
+    mergePr: (number: number) => runtime.tools.merge_pr({ number }),
+    listPrs: (group: string) => runtime.tools.list_prs({ group }),
+    state: () => saved as State,
   };
 }
 
@@ -580,6 +603,140 @@ describe("Delta PRs runtime grouping", () => {
       expect(row(state, 21).status).toContain("Merge cancelled (/cancel-merge)");
       expect(row(state, 22).group).toBe("ready_to_merge");
       expect(row(state, 22).status).toContain("Merge Garden: Something new");
+    });
+  });
+
+  describe("merge button (/merge post, stubbed)", () => {
+    const ready: Pr = {
+      number: 30,
+      ci: "success",
+      binks: "success",
+      reviews: [{ state: "APPROVED", at: "2026-11-11T20:00:00Z", by: human("aaron.casanova") }],
+    };
+    const blockedPr: Pr = { ...ready, number: 31, blockers: [{ code: "conflict" }] };
+    const scenario = { authored: [ready, blockedPr] };
+
+    async function readyRuntime(post: PostStub) {
+      const runtime = await loadRuntime(fakeDelta(scenario, post));
+      await runtime.refresh();
+      return runtime;
+    }
+
+    it("posts exactly /merge and shows the row as Merging until the next refresh", async () => {
+      const post: PostStub = { commands: [] };
+      const runtime = await readyRuntime(post);
+      expect(row(runtime.state(), 30).group).toBe("ready_to_merge");
+
+      const result = await runtime.mergePr(30);
+      expect(post.commands).toEqual([
+        "/Users/user/.local/state/tec/toolchain/base_profile/bin/dt pr comment 30 -R shop/world --body '/merge'",
+      ]);
+      expect(result).toMatchObject({ posted: true, number: 30, comment: "/merge" });
+      expect(Object.keys(runtime.state().mergeOverrides)).toEqual(["30"]);
+      const merging = await runtime.listPrs("merging");
+      expect(merging.prs.map((r: { number: number }) => r.number)).toEqual([30]);
+      expect(merging.prs[0].mergeRequestedAt).toBe(result.at);
+      expect((await runtime.listPrs("ready_to_merge")).prs).toEqual([]);
+      // The override is local: live grouping is untouched.
+      expect(row(runtime.state(), 30).group).toBe("ready_to_merge");
+    });
+
+    it("refuses rows outside Ready to merge, untracked PRs and repeats, without posting", async () => {
+      const post: PostStub = { commands: [] };
+      const runtime = await readyRuntime(post);
+      await expect(runtime.mergePr(31)).rejects.toThrow(/not in Ready to merge \(group: blocked\)/);
+      await expect(runtime.mergePr(99)).rejects.toThrow(/not one of the tracked PRs/);
+      await runtime.mergePr(30);
+      await expect(runtime.mergePr(30)).rejects.toThrow(/already waiting for the next refresh/);
+      expect(post.commands).toHaveLength(1);
+    });
+
+    it("posts once when clicked twice while the first post is in flight", async () => {
+      let finish: (value: { exitCode: number; stderr: string }) => void = () => {};
+      const post: PostStub = {
+        commands: [],
+        result: () => new Promise((resolve) => (finish = resolve)),
+      };
+      const runtime = await readyRuntime(post);
+      const first = runtime.mergePr(30);
+      await vi.waitFor(() => expect(post.commands).toHaveLength(1));
+      await expect(runtime.mergePr(30)).rejects.toThrow(/already being posted/);
+      finish({ exitCode: 0, stderr: "" });
+      await expect(first).resolves.toMatchObject({ posted: true });
+      expect(post.commands).toHaveLength(1);
+    });
+
+    it("keeps no override when the post fails", async () => {
+      const post: PostStub = {
+        commands: [],
+        result: async () => ({ exitCode: 1, stderr: "Error: 403 Forbidden" }),
+      };
+      const runtime = await readyRuntime(post);
+      await expect(runtime.mergePr(30)).rejects.toThrow(
+        "Could not post /merge on #30: exit 1 — Error: 403 Forbidden",
+      );
+      expect(runtime.state().mergeOverrides).toEqual({});
+      expect(
+        (await runtime.listPrs("ready_to_merge")).prs.map((r: { number: number }) => r.number),
+      ).toEqual([30]);
+    });
+
+    it("drops the override on the next refresh and shows live Merge Garden state", async () => {
+      const garden = (at: string, body: string) => ({ at, brand: "Merge Garden", body });
+      const now = () => new Date().toISOString();
+      const outcomes: [string, Pr["comments"], string][] = [
+        [
+          "merging",
+          [{ at: now(), body: "/merge" }, garden(now(), "👀 **Waiting for CI**")],
+          "merging",
+        ],
+        [
+          "ejected",
+          [
+            { at: now(), body: "/merge" },
+            garden(
+              now(),
+              "❌ **Merge conflict**\n\n- PR head: [`abc1234`](x)\n\nThis pull request has been ejected.",
+            ),
+          ],
+          "blocked",
+        ],
+        ["no reply yet", [{ at: now(), body: "/merge" }], "ready_to_merge"],
+      ];
+      for (const [, comments, group] of outcomes) {
+        const post: PostStub = { commands: [] };
+        const runtime = await readyRuntime(post);
+        await runtime.mergePr(30);
+        runtime.swap(fakeDelta({ authored: [{ ...ready, head: "abc1234def", comments }] }, post));
+        const state = await runtime.refresh();
+        expect(state.mergeOverrides).toEqual({});
+        expect(row(state, 30).group).toBe(group);
+        if (group === "ready_to_merge") {
+          // An unanswered /merge keeps the button hidden for a while: no duplicate post.
+          expect(Date.parse(row(state, 30).mergeRequestPendingUntil ?? "")).toBeGreaterThan(
+            Date.now(),
+          );
+          await expect(runtime.mergePr(30)).rejects.toThrow(/waiting for Merge Garden's reply/);
+        }
+        expect(post.commands).toHaveLength(1);
+      }
+    });
+
+    it("keeps an override posted while a refresh was already running", async () => {
+      const post: PostStub = { commands: [] };
+      const runtime = await readyRuntime(post);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const base = fakeDelta(scenario, post);
+      runtime.swap(async (name, input) => {
+        if (input.command.includes("author:@me")) await gate;
+        return base(name, input);
+      });
+      const refreshing = runtime.refresh();
+      await runtime.mergePr(30);
+      release();
+      const state = await refreshing;
+      expect(Object.keys(state.mergeOverrides)).toEqual(["30"]);
     });
   });
 });
