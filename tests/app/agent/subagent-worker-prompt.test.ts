@@ -22,12 +22,23 @@ describe.each([
       "Mutation mode: allowMutations: true",
       "only assigned operational changes",
       "Confirm targets",
-      "No shared-branch Git mutations unless that exact action is assigned",
+      "No shared-branch Git mutations unless assigned",
       "Report changed files/settings/packages",
+      "explicitly authorized non-project file/config edits",
+      "Never edit Cake/Pi managed settings or credentials",
+      "stopped processes (PID/command)",
     ])
       expect(text).toContain(rule);
   });
 });
+it("keeps project-free paths on the backend and clarifies ambiguous local targets", () => {
+  for (const allowMutations of [false, true]) {
+    expect(researchSystemPrompt({ allowMutations })).toContain(
+      "Backend paths, not frontend files; clarify ambiguous local config",
+    );
+  }
+});
+
 it("keeps investigator non-recursive", () => {
   for (const allowMutations of [false, true])
     expect(projectInvestigationSystemPrompt({ allowMutations })).toContain(

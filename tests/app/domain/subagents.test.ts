@@ -1770,7 +1770,11 @@ describe("Cake Chat project investigators", () => {
           yield* Queue.take(fixture.reports);
 
           yield* subagents.start(
-            { continuation: "resume", task: "Remove a stale temp directory", allowMutations: true },
+            {
+              continuation: "resume",
+              task: "Update only /tmp/example.conf: set enabled=true, preserve other keys; verify the diff. Explicitly authorized by the user.",
+              allowMutations: true,
+            },
             cakeChatParent(fixture),
           );
           const researchSession = yield* Queue.take(fixture.childStarted);
@@ -1783,7 +1787,19 @@ describe("Cake Chat project investigators", () => {
           assert.match(researchOptions.isolatedSystemPrompt ?? "", /Mutation mode/);
           assert.match(
             researchOptions.isolatedSystemPrompt ?? "",
-            /Report changed files\/settings\/packages, side-effecting commands, stopped processes \(PID\/command\), failures and omissions/,
+            /explicitly authorized non-project file\/config edits/,
+          );
+          assert.match(
+            researchOptions.isolatedSystemPrompt ?? "",
+            /Never edit Cake\/Pi managed settings or credentials/,
+          );
+          assert.equal(researchOptions.projectInvestigation, undefined);
+          assert.equal(researchOptions.newSession, true);
+          assert.equal(researchOptions.cwd, "/home");
+          assert.equal(researchOptions.slashCommands?.length, 0);
+          assert.match(
+            researchOptions.isolatedSystemPrompt ?? "",
+            /Report changed files\/settings\/packages, commands, stopped processes \(PID\/command\), failures and omissions/,
           );
           assert.doesNotMatch(researchOptions.isolatedSystemPrompt ?? "", /Investigations only/);
           yield* completeChild(fixture, researchSession);

@@ -90,10 +90,9 @@ import {
   loadAgentDirectoryExtensions,
   requireRegisteredModel,
 } from "../pi/runtime/extension-providers";
-import { createCakeChatBashTool, createCakeChatReadTool } from "./cake-chat-local-tools";
+import { createCakeChatLocalTools } from "./cake-chat-local-tools";
 import { cakeChatScratchDirectory } from "./cake-chat-directories";
 import { sideSessionExecutionEnv } from "./durable-side-session";
-import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./cake-chat-mcp";
 import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { AssistantContextDoc, transitionAssistantContext } from "./durable-assistant-context";
@@ -164,6 +163,7 @@ export async function createDurableCakeChatRuntime(
         cakeDocsDirectory,
         companion,
         companion ? "" : coreChatOperations(operations),
+        sessionId === CAKE_CHAT_SESSION_ID,
       ),
       durableArchiveRecallInstructions(sessionId),
       options.additionalSystemPrompt,
@@ -413,7 +413,8 @@ export async function createDurableCakeChatRuntime(
   });
   await mkdir(dirname(sessionFile), { recursive: true });
   const storage = await openNodeSqliteStorage(sessionFile);
-  // Direct quick-check tools. No edit/write: project changes belong to Project Sessions.
+  // Only Global Chat offers direct non-project edits. Project Chat stays read-only.
+  const localTools = createCakeChatLocalTools(sessionId);
   const tools: ToolRegistration[] = [
     cake,
     zoom,
@@ -430,11 +431,10 @@ export async function createDurableCakeChatRuntime(
         return conversation.entries.bind(conversation);
       },
     }),
-    createCakeChatReadTool(),
-    createCakeChatBashTool(),
+    ...localTools.active,
     createCakeChatMcpTool(mcp),
   ];
-  const registeredTools: ToolRegistration[] = [...tools, createEditTool(), createWriteTool()];
+  const registeredTools: ToolRegistration[] = [...tools, ...localTools.inactive];
   registry.install(
     defineExtension({
       name: "cake-coordinator",

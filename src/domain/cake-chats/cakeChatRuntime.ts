@@ -699,7 +699,15 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       sessionId: target.sessionId,
       // Pin the complete Cake Chat toolset instead of relying on Pi's default-tool
       // selection, which does not necessarily activate extension tools.
-      tools: ["cake", "zoom", "date", "read", "bash", "mcp"],
+      tools: [
+        "cake",
+        "zoom",
+        "date",
+        "read",
+        "bash",
+        "mcp",
+        ...(target.sessionId === CAKE_CHAT_SESSION_ID ? ["edit", "write"] : []),
+      ],
       // A Project Chat never writes shared Cake Chat guidance; projects.settings.* is
       // restricted to its own Project by the backend handler.
       allowedCakeOperations: project

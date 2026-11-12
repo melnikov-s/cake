@@ -1,6 +1,6 @@
 # Settings
 
-Use tools, never settings files. Change settings/instructions only when authorized. Gateway/UI share validation, persistence and live updates; read effective results, not just requested values.
+Cake/Pi managed settings: use supported controls, never edit their files or credentials directly. Global Cake Chat may edit ordinary external user configuration only for an explicitly authorized non-project task with exact targets. This is not blanket settings permission. Change settings/instructions only when authorized. Gateway/UI share validation, persistence and live updates; read effective results, not just requested values.
 
 ## Discover and update
 

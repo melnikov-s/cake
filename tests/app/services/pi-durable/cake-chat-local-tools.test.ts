@@ -8,8 +8,14 @@ import {
   cakeChatBashTimeout,
   createCakeChatBashTool,
   createCakeChatReadTool,
+  createCakeChatMutationTools,
+  createCakeChatLocalTools,
 } from "../../../../src/services/pi-durable/cake-chat-local-tools";
 import { cakeChatScratchDirectory } from "../../../../src/services/pi-durable/cake-chat-directories";
+import {
+  CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
+} from "../../../../src/contracts/cake-chats/cake-chat-identity";
 
 function fakeApi(task = false) {
   const calls: Array<{ command: unknown; cwd?: string; timeout?: number }> = [];
@@ -30,6 +36,69 @@ function fakeApi(task = false) {
   } as unknown as Parameters<ReturnType<typeof createCakeChatBashTool>["execute"]>[1];
   return { api, calls };
 }
+
+describe("Cake Chat mutation exposure", () => {
+  it("activates native edit/write only for Global Chat; Project Chat and companion keep read/bash", () => {
+    expect(createCakeChatLocalTools(CAKE_CHAT_SESSION_ID).active.map((tool) => tool.name)).toEqual([
+      "read",
+      "bash",
+      "edit",
+      "write",
+    ]);
+    for (const sessionId of [`project-chat:${"a".repeat(64)}`, SESSION_ASSISTANT_ID]) {
+      const { active, inactive } = createCakeChatLocalTools(sessionId);
+      expect(active.map((tool) => tool.name)).toEqual(["read", "bash"]);
+      expect(inactive.map((tool) => tool.name)).toEqual(["edit", "write"]);
+    }
+  });
+
+  it.each(["edit", "write"])(
+    "rejects %s for Project Chat even if inherited declarations name it",
+    async (name) => {
+      const { api, calls } = fakeApi();
+      const tools = createCakeChatMutationTools(`project-chat:${"a".repeat(64)}`);
+      const tool = tools.find((item) => item.name === name)!;
+      await expect(
+        tool.execute(
+          { path: "/outside/file", content: "change", edits: [{ oldText: "old", newText: "new" }] },
+          api,
+          BACKGROUND_CONTEXT,
+        ),
+      ).rejects.toThrow("Project Chat cannot edit files");
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it.each(["edit", "write"])("rejects %s for legacy managed investigation forks", async (name) => {
+    const { api, calls } = fakeApi(true);
+    const tool = createCakeChatMutationTools(CAKE_CHAT_SESSION_ID).find(
+      (item) => item.name === name,
+    )!;
+    await expect(
+      tool.execute(
+        {
+          path: "/managed/task/file",
+          content: "change",
+          edits: [{ oldText: "old", newText: "new" }],
+        },
+        api,
+        BACKGROUND_CONTEXT,
+      ),
+    ).rejects.toThrow("Investigation forks remain read-only");
+    expect(calls).toEqual([]);
+  });
+
+  it("retains explicit task authorization, protected-file policy, and unsafe replay", () => {
+    for (const tool of createCakeChatMutationTools(CAKE_CHAT_SESSION_ID)) {
+      expect(tool.replay).toBe("unsafe");
+      expect(tool.description).toContain("explicitly user-authorized non-project edits");
+      expect(tool.description).toContain(
+        "Never modify project checkouts, Cake/Pi managed settings or credentials",
+      );
+      expect(tool.description).toContain("not sandboxes");
+    }
+  });
+});
 
 describe("Cake Chat bash guards", () => {
   it("applies a short default timeout when the model omits one", async () => {
@@ -58,7 +127,9 @@ describe("Cake Chat bash guards", () => {
         api,
         BACKGROUND_CONTEXT,
       ),
-    ).rejects.toThrow("Delegate code changes to a fresh Project Session via sessions.create");
+    ).rejects.toThrow(
+      "Delegate project code changes to a fresh Project Session via sessions.create",
+    );
     expect(calls).toEqual([]);
     expect(() => cakeChatBashTimeout(0)).toThrow("Invalid timeout");
   });

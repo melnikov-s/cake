@@ -8,6 +8,35 @@ import delegation from "../../../docs/agent/delegation.md?raw";
 const prompt = coordinatorSystemPrompt("", "/cake/docs");
 
 describe("compact Cake Chat guidance", () => {
+  it("distinguishes Global non-project execution from read-only Project Chat and companion", () => {
+    const global = coordinatorSystemPrompt("", "/docs", false, "", true);
+    for (const rule of [
+      "Small, explicitly user-authorized non-project edits",
+      "read, then edit/write with exact target paths",
+      "No project registration required",
+      "backend host, not necessarily the user",
+      "clarify ambiguous remote/local-config requests before writing",
+      "Authorization is task/target-specific, never blanket permission",
+      "allowMutations:true",
+      "omit projectPath for a fresh bounded worker",
+      "Do not reuse a read-only research handle or fork for writes",
+      "Shell tools are not sandboxes",
+      "Standalone conversations are optional",
+      "Never edit Cake/Pi managed settings files or credentials",
+      "Project code changes: sessions.create",
+    ])
+      expect(global).toContain(rule);
+    expect(global).not.toContain("Never edit settings files.");
+    for (const scoped of [
+      coordinatorSystemPrompt("", "/docs"),
+      coordinatorSystemPrompt("", "/docs", true, "", true),
+    ]) {
+      expect(scoped).toContain("Never edit settings files.");
+      expect(scoped).not.toContain("Small, explicitly user-authorized non-project edits");
+      expect(scoped).not.toContain("allowMutations:true");
+    }
+    expect(prompt).toContain("Project Chat stays read-only");
+  });
   it("keeps authority, mutation and delivery boundaries inline", () => {
     for (const rule of [
       "Pi owns execution/history",
@@ -18,7 +47,7 @@ describe("compact Cake Chat guidance", () => {
       "agent-owned read-only subagent",
       "Side Chats belong exclusively to humans",
       "fork means context inheritance, never a human Side Chat",
-      "Code changes: sessions.create",
+      "Project code changes: sessions.create",
       "Context-dependent investigations: sessions.fork inherits settled context",
       "exact authorized registered project root",
       "Choose resultDelivery at launch",
@@ -46,7 +75,7 @@ describe("compact Cake Chat guidance", () => {
     {
       scenario: "pure coding / do work -> create, never fork",
       rules: [
-        "Code changes: sessions.create, a fresh independent Project Session",
+        "Project code changes: sessions.create, a fresh independent Project Session",
         "initialPrompt: context/constraints and acceptance checks",
         "supply a new worktreeName",
         "Never sessions.fork for coding delegation",

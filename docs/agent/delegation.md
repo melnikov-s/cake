@@ -4,7 +4,8 @@
 
 From permanent chats, select by task; never use family children. Fresh-context subagents require an explicit request; context-forked subagents are allowed. Side Chats belong exclusively to humans:
 
-- Implementation/code changes -> sessions.create: a fresh independent Project Session, normally the default for "do work". Give it its own scoped task, managed worktree, relevant findings/constraints and acceptance checks. It does not inherit conversation history. Never use sessions.fork for coding delegation.
+- [Non-project tasks](nonproject-execution.md) -> Global read/edit/write; longer work: fresh allowMutations: true worker, no projectPath.
+- Project implementation/code changes -> sessions.create: a fresh independent Project Session, normally the default for "do work". Give it its own scoped task, managed worktree, relevant findings/constraints and acceptance checks. It does not inherit conversation history. Never use sessions.fork for coding delegation.
 - Investigation/research with useful existing context, where implementation is not yet clear -> sessions.fork: an agent-owned context-forked subagent for read-only investigation. If code changes become needed, return findings for handoff to a fresh Project Session via sessions.create; never silently expand research into coding.
 - Investigation with an explicitly requested different model -> private subagent directly with the requested model, not sessions.fork or sessions.create as a research workaround.
 - Investigation where existing context is not helpful -> private subagent only when explicitly authorized. Otherwise use the contextual fork for investigation.
@@ -12,15 +13,15 @@ From permanent chats, select by task; never use family children. Fresh-context s
 For sessions.create/fork pass the authorized registered root as workspacePath, worktreeName, name and focused initialPrompt. Project Chat targets only its own project; global Cake Chat can target authorized registered projects.
 [Context fork details](sessions.md#permanent-chat-context-forks) explains settled context, source lifetime and continuation.
 
-Default to a fresh scoped session for each distinct implementation task. Fresh independent Project Sessions need meaningful task context, not whole transcripts. Sessions are cheap; never grow/revive a session merely to conserve session count or preserve it. Sharing a broad feature label such as navigation is not enough reason: panel placement, tree aggregation and a separate Back to project chat control can be distinct tasks.
+Default to a fresh scoped session for each distinct implementation task. Fresh independent Project Sessions need meaningful task context, not whole transcripts. Never revive sessions merely to conserve their count. Sharing a broad feature label such as navigation is not enough reason: panel placement, tree aggregation and a separate Back to project chat control can be distinct tasks.
 Reuse only for genuine continuation of the same task when its accumulated context is materially useful; do not fragment a single task gratuitously. Creating a fresh session for already-authorized work needs no extra user permission.
 Keep project scoping, safety boundaries and authorized worktree/concurrency limits. Cheap sessions do not authorize uncontrolled recursive spawning, redundant inter-agent communication or unrelated work. A fresh session does not implicitly merge worktrees, delete sessions or resolve old work.
 
 ## Private investigators
 
-Fresh-context subagents require an explicit request; sessions.fork is an allowed context-inheriting subagent. Once authorized, use the requested model or investigate without useful existing context. Otherwise use sessions.fork for useful-context investigation. Repository implementation requires sessions.create, never a private investigator.
+Repository implementation requires sessions.create, never a private investigator.
 Project investigator: exact registered projectPath. General researcher: omit projectPath; no project resources or guaranteed web.
-Investigators stay read-only; never turn research into code changes. Bounded user-requested non-code operations may use allowMutations: true with exact operational targets; it is not an implementation workaround. Existing handles cannot gain mutation mode. This flag is not a filesystem sandbox.
+Investigators stay read-only; never turn research into code changes. Bounded explicitly authorized operations, including non-project file/config edits, may use a fresh allowMutations: true worker with exact targets and limits; never use it for project implementation. Existing handles cannot gain mutation mode. This flag is not a filesystem sandbox.
 Project investigators inherit instructions/skills/extensions/MCP but omit edit/write. General workers have read/bash/message_parent; distinguish retrieval from prior knowledge and disclose access failures.
 
 ## Launch and follow up

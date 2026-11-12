@@ -205,7 +205,9 @@ export async function createCakeSessionRuntimeCapabilities(input: {
     options.isolatedSystemPrompt || options.projectInvestigation
       ? undefined
       : renderPromptTemplate(projectPromptTemplate, {
-          commonPrompt: renderPromptTemplate(commonPromptTemplate),
+          commonPrompt: renderPromptTemplate(commonPromptTemplate, {
+            settingsFilePolicy: "Never edit settings files.",
+          }),
           cakeDocsDirectory: await cakeAgentDocumentationDirectory(agentDir),
         });
   const detectedWorktree = await detectGitWorktree(options.cwd);

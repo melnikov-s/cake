@@ -15,6 +15,7 @@ import interactions from "../../../../docs/agent/interactions.md?raw";
 import application from "../../../../docs/agent/application.md?raw";
 import chatTodos from "../../../../docs/agent/chat-todos.md?raw";
 import delegation from "../../../../docs/agent/delegation.md?raw";
+import nonprojectExecution from "../../../../docs/agent/nonproject-execution.md?raw";
 import communication from "../../../../docs/agent/communication.md?raw";
 import reports from "../../../../docs/agent/reports.md?raw";
 import settings from "../../../../docs/agent/settings.md?raw";
@@ -67,6 +68,7 @@ const documents = {
   application,
   "chat-todos": chatTodos,
   delegation,
+  "nonproject-execution": nonprojectExecution,
   communication,
   reports,
   settings,

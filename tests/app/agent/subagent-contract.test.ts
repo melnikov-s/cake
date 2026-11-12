@@ -76,7 +76,7 @@ describe("subagent contract", () => {
           "Private subagents require an explicit request",
           "only when explicitly authorized",
           "otherwise use sessions.fork for useful-context investigation",
-          "Implementation/code changes default to sessions.create",
+          "Project implementation/code changes default to sessions.create",
           "never sessions.fork or family children",
           "never silently expand research into coding",
           "continuation: none (notification) by default",

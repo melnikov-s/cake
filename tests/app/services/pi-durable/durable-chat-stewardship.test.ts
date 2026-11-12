@@ -20,19 +20,36 @@ it.each([
     const storage = new MemoryStorage();
     const harness = await Harness.open(storage, { models, registry: createRegistry() }, context);
     try {
-      // Global and project coordinators use the same shared prompt; project-local
-      // scope is appended separately by cakeChatRuntime, not a project opt-in.
+      // Stewardship is shared; only the Global identity gets non-project execution.
+      // Project-local instructions are appended separately by cakeChatRuntime.
       const root = await harness.root(context, {
         agent: {
           model: { provider: "fixture", modelId: "fixture" },
-          instructions: coordinatorSystemPrompt("", "/cake/docs"),
+          instructions: coordinatorSystemPrompt(
+            "",
+            "/cake/docs",
+            false,
+            "",
+            sessionId === CAKE_CHAT_SESSION_ID,
+          ),
         },
       });
       await (
         await root.submit({ type: "input", content: "Review incoming work" }, context)
       ).wait(context);
       const parentSystem = getCurrentSystemMessage(requests[0]!.messages);
+      if (!parentSystem?.sections) throw new Error("Expected a coordinator system message");
       expect(parentSystem?.sections.instructions).toContain("own outcomes, not just delegation");
+      if (sessionId === CAKE_CHAT_SESSION_ID) {
+        expect(parentSystem?.sections.instructions).toContain(
+          "Small, explicitly user-authorized non-project edits",
+        );
+      } else {
+        expect(parentSystem?.sections.instructions).toContain("Project Chat stays read-only");
+        expect(parentSystem?.sections.instructions).not.toContain(
+          "Small, explicitly user-authorized non-project edits",
+        );
+      }
       expect(parentSystem?.sections.instructions).toContain(
         "take the next already-authorized step",
       );

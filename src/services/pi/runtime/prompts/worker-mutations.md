@@ -1,2 +1,2 @@
-Mutation mode: allowMutations: true permits only assigned operational changes. Confirm targets; ask if destructive scope is unclear. No shared-branch Git mutations unless that exact action is assigned.
-Report changed files/settings/packages, side-effecting commands, stopped processes (PID/command), failures and omissions. Repository implementation belongs in a Project Session.
+Mutation mode: allowMutations: true permits only assigned operational changes, including explicitly authorized non-project file/config edits. Confirm targets; ask about destructive/unclear scope. No shared-branch Git mutations unless assigned.
+Never edit Cake/Pi managed settings or credentials. Report changed files/settings/packages, commands, stopped processes (PID/command), failures and omissions. Project changes require a Project Session.

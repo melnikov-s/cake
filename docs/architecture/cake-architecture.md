@@ -289,16 +289,27 @@ projections needed by a surface. References do not transfer ownership.
   must not retire a checkout still used by another active Session.
 - Private Subagent Sessions are not selectable Project Sessions or Session Family
   children. Project agents use private delegation only on explicit user request.
-  Cake Chat has direct read, bash and mcp tools (no edit/write) for quick checks,
-  bounded by a scratch working directory, a short bash timeout and capped output;
-  its prompt policy keeps project changes in Project Sessions and never mutates a
-  project root checkout. It delegates deeper project-dependent investigations to
+  Permanent chats have direct read, bash and mcp for quick checks, with a neutral
+  scratch working directory, short bash timeout and capped output (not filesystem
+  confinement). Global Cake Chat additionally activates native edit/write for small,
+  explicitly user-authorized non-project tasks, including ordinary external user
+  configuration, without project registration. Project Chat does not activate these
+  tools; their runtime wrappers reject Project Chat and legacy investigation-fork
+  bindings even if a saved/inherited declaration names them. Project changes still
+  require independent Project Sessions and managed worktrees. Cake/Pi managed settings
+  and credentials remain protected by instruction policy and supported settings controls;
+  this feature does not sandbox unrestricted shell/MCP tools or infer blanket task authority. It delegates deeper project-dependent investigations to
   an explicitly selected registered project root. These workers retain normal project
   instructions, skills, extensions and MCP, excluding edit/write tools and adding
   an investigation-only system policy. `allowMutations: true` on a worker's start
-  replaces that policy with scoped mutation mode for bounded non-code operational work
-  (scripts, process cleanup, installs): stay in assignment scope, report every
-  change, and avoid shared-branch Git mutations unless instructed. Both policies
+  replaces that policy with scoped mutation mode for bounded explicitly authorized
+  operational work, including non-project file/config edits: supply the exact task,
+  absolute targets, limits and checks; report every change, and avoid shared-branch Git
+  mutations unless instructed. Non-project workers omit projectPath and start with
+  fresh bounded context; no project registration, catch-all worker or standalone-session
+  product is needed. Tools and the worker's default home directory belong to the backend
+  host, which may differ from the frontend machine; ambiguous local-config requests must
+  clarify the machine and absolute path before writes. Existing read-only handles/forks never acquire mutation mode. Both policies
   are prompt policy, not an enforced sandbox. General research omits projectPath and uses
   isolated instructions and read/bash/message_parent, without repository
   resources or guaranteed web/search access. Explicitly forwarded attachment/message

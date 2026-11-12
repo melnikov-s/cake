@@ -110,7 +110,7 @@ describe("core coordinator calling reference", () => {
   it("keeps security/workflow distinctions once, alongside existing baseline policy", () => {
     const assembled = `${prompt}\n${projectTodoBaseline(emptyProjectTodos())}`;
     for (const rule of [
-      "Code changes: sessions.create",
+      "Project code changes: sessions.create",
       "supply a new worktreeName",
       "Context-dependent investigations: sessions.fork",
       "Private subagents require an explicit request",

@@ -31,7 +31,7 @@ export const subagentTaskSchema = Schema.Struct({
   allowMutations: Schema.optionalKey(
     Schema.Boolean.annotate({
       description:
-        "Cake Chat only: true lets this worker run scripts, kill processes, install packages and make other changes within the stated assignment, reporting exactly what it changed and avoiding shared-branch Git mutations unless explicitly instructed. Omit or false keeps the default investigation-only policy.",
+        "Cake Chat only: true permits explicitly user-authorized operational changes, including non-project file/config edits without projectPath. State the exact task, backend-host absolute targets, limits and checks; clarify ambiguous remote/local machine requests first. This flag is not authorization by itself or a sandbox; never touch Cake/Pi managed settings or credentials. Repository implementation still requires a Project Session. Omit or false keeps investigation-only policy; existing handles cannot gain mutation mode.",
     }),
   ),
   model: Schema.optionalKey(CakeModelSelection),
