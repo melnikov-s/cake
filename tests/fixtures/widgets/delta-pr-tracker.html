@@ -11,6 +11,9 @@
         --w-attention: var(--attention, #c98a12);
         --w-destructive: var(--destructive, #d64545);
         --w-primary: var(--primary, #4a7bd6);
+        --w-warning: var(--warning, #d9822b);
+        /* Merge purple: a data color for "merging", mixed with the live foreground for contrast. */
+        --w-merging: color-mix(in srgb, #8957e5 78%, var(--foreground));
       }
       * {
         box-sizing: border-box;
@@ -291,11 +294,20 @@
         border: 1px solid var(--border);
         color: var(--muted-foreground);
       }
+      .pill.brand {
+        color: var(--foreground);
+        border-color: color-mix(in srgb, var(--w-primary) 45%, var(--border));
+        background: color-mix(in srgb, var(--w-primary) 10%, transparent);
+      }
       .line2 {
         color: var(--muted-foreground);
         font-size: 12px;
         margin-top: 1px;
         overflow-wrap: anywhere;
+      }
+      .line2 .blk {
+        color: var(--foreground);
+        font-weight: 550;
       }
       .attach {
         flex: none;
@@ -312,11 +324,19 @@
         background: transparent;
         color: var(--w-muted-fg);
         cursor: pointer;
-        opacity: 0.55;
+        /* Hidden at rest but keeps its space; shown on row hover, keyboard focus, or while busy/done/failed. */
+        opacity: 0;
       }
       ul.rows li:hover .attach,
-      .attach:focus-visible {
+      ul.rows li:has(:focus-visible) .attach,
+      .attach:focus-visible,
+      .attach:disabled {
         opacity: 1;
+      }
+      @media (hover: none) {
+        .attach {
+          opacity: 1;
+        }
       }
       .attach:hover:not(:disabled) {
         background: color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -351,6 +371,12 @@
       }
       .fail {
         --c: var(--w-destructive);
+      }
+      .blocked {
+        --c: var(--w-warning);
+      }
+      .merging {
+        --c: var(--w-merging);
       }
       .wait {
         --c: var(--w-primary);
@@ -424,7 +450,9 @@
         }
 
         var SECTIONS = [
+          { key: "merging", label: "Merging", cls: "merging" },
           { key: "ready_to_merge", label: "Ready to merge", cls: "ready" },
+          { key: "blocked", label: "Blocked", cls: "blocked" },
           { key: "binks_comments", label: "Binks comments", cls: "binks" },
           { key: "ci_failing", label: "CI failing", cls: "fail" },
           { key: "waiting_on_review", label: "Waiting on review", cls: "wait" },
@@ -459,11 +487,11 @@
           var s = Math.round((Date.now() - t) / 1000);
           if (s < 45) return "just now";
           var m = Math.round(s / 60);
-          if (m < 60) return m + " min ago";
+          if (m < 60) return m + "m ago";
           var h = Math.round(m / 60);
-          if (h < 36) return h + " h ago";
+          if (h < 36) return h + "h ago";
           var d = Math.round(h / 24);
-          return d + " d ago";
+          return d + "d ago";
         }
         function abs(iso) {
           var t = ts(iso);
@@ -585,6 +613,7 @@
             status: cleanStatus(row).slice(0, 500) || null,
             updatedAt: row.updatedAt || null,
           };
+          if (row.ownership === "assigned") data.ownership = "assigned to you";
           if (row.author) data.author = String(row.author).slice(0, 100);
           if (row.draft != null) data.draft = !!row.draft;
           setAttachState(key, { kind: "pending", message: "Adding…" });
@@ -611,11 +640,25 @@
           }
         }
 
+        // Status line: the "Blocked: …" part is emphasized; the time is the PR's last update on Delta.
+        function line2Kids(row) {
+          var parts = cleanStatus(row)
+            .split(" · ")
+            .filter(function (p) {
+              return p;
+            });
+          if (row.updatedAt) parts.push("Updated " + rel(row.updatedAt));
+          var kids = [];
+          parts.forEach(function (p, i) {
+            if (i) kids.push(" · ");
+            kids.push(/^(Blocked|Merging): /.test(p) ? el("span", { class: "blk", text: p }) : p);
+          });
+          return kids;
+        }
+
         function rowEl(row) {
-          var status = cleanStatus(row);
-          var bits = [];
-          if (status) bits.push(status);
-          if (row.updatedAt) bits.push("updated " + rel(row.updatedAt));
+          var brand =
+            row.ownership === "assigned" && row.authorBrand ? String(row.authorBrand) : "";
           var url =
             "https://delta.shopify.io/shop/world/pull/" + encodeURIComponent(String(row.number));
           return el("li", null, [
@@ -641,13 +684,23 @@
                     text: "imported",
                   })
                 : null,
+              brand
+                ? el("span", {
+                    class: "pill brand",
+                    title: "Authored by " + brand + ", assigned to you",
+                    text: brand,
+                  })
+                : null,
               attachButton(row),
             ]),
-            el("div", {
-              class: "line2",
-              title: row.updatedAt ? abs(row.updatedAt) : null,
-              text: bits.join(" · "),
-            }),
+            el(
+              "div",
+              {
+                class: "line2",
+                title: row.updatedAt ? "Last updated on Delta: " + abs(row.updatedAt) : null,
+              },
+              line2Kids(row),
+            ),
           ]);
         }
 
@@ -706,8 +759,8 @@
               el("div", { class: "actions" }, [
                 el("span", {
                   class: "refreshed",
-                  title: abs(s.refreshedAt) || null,
-                  text: s.refreshedAt ? "Refreshed " + rel(s.refreshedAt) : "Never refreshed",
+                  title: s.refreshedAt ? "Last pulled from Delta: " + abs(s.refreshedAt) : null,
+                  text: s.refreshedAt ? "Pulled " + rel(s.refreshedAt) : "Never pulled",
                 }),
                 el(
                   "button",
@@ -752,7 +805,7 @@
                 el("div", {
                   class: "note",
                   text: s.refreshedAt
-                    ? "PRs below are from the last successful refresh, " + rel(s.refreshedAt) + "."
+                    ? "PRs below are from the last successful pull, " + rel(s.refreshedAt) + "."
                     : "No successful refresh yet.",
                 }),
               ]),
@@ -775,9 +828,7 @@
           if (!hydrated) {
             nodes.push(el("div", { class: "emptystate", text: "Loading…" }));
           } else if (!s.refreshedAt && !authored.length && !reviews.length) {
-            nodes.push(
-              el("div", { class: "emptystate", text: "Not refreshed yet — press Refresh." }),
-            );
+            nodes.push(el("div", { class: "emptystate", text: "Not pulled yet — press Refresh." }));
           } else {
             nodes.push(
               el(

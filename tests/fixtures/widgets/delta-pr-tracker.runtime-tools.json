@@ -1,0 +1,210 @@
+[
+  {
+    "name": "refresh",
+    "description": "Refresh now: re-run dt against Delta (shop/world) for Sergey's open PRs \u2014 authored by him, plus River-authored PRs assigned to him \u2014 (checks, merge readiness, reviews, mergeability and Merge Garden comments per PR) and PRs requesting his review, persist the result, and return group counts. Takes ~10-40 s. Throws with the failure message if the refresh fails (previous data is kept).",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["agent", "view", "schedule"],
+          "description": "Who triggered the refresh (default agent)."
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "required": ["ok", "refreshedAt", "counts"],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "refreshedAt": {
+          "type": ["string", "null"]
+        },
+        "lastError": {
+          "type": ["string", "null"]
+        },
+        "lastErrorAt": {
+          "type": ["string", "null"]
+        },
+        "durationMs": {
+          "type": ["integer", "null"]
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "list_prs",
+    "description": "List tracked PRs from the last refresh (does not call Delta). With `group`, returns that group's rows; without it, returns every group. Sergey's own PRs (authored, or River-authored and assigned to him; ownership author|assigned): merging (Merge Garden accepted /merge and the PR is in flight: waiting for CI or in the merge queue), ready_to_merge (human-approved, nothing blocking), blocked (human-approved but blocked by a conflict or a required check/status), binks_comments, ci_failing, waiting_on_review (no counting human approval, or a newer human change request), draft. waiting_on_my_review: PRs requesting his review. Each row has number, title, url, status, author, ownership, updatedAt (last update on Delta).",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "type": "string",
+          "enum": [
+            "merging",
+            "ready_to_merge",
+            "blocked",
+            "binks_comments",
+            "ci_failing",
+            "waiting_on_review",
+            "draft",
+            "waiting_on_my_review"
+          ]
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "required": ["refreshedAt"],
+      "properties": {
+        "refreshedAt": {
+          "type": ["string", "null"]
+        },
+        "lastError": {
+          "type": ["string", "null"]
+        },
+        "lastErrorAt": {
+          "type": ["string", "null"]
+        },
+        "group": {
+          "type": "string"
+        },
+        "prs": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "groups": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "summary",
+    "description": "One-line summary of Sergey's Delta PRs from the last pull: counts per group, data age in minutes, last error, and the 5 most recent refresh runs (source schedule/view/agent, ok, duration).",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "required": ["counts", "text"],
+      "properties": {
+        "refreshedAt": {
+          "type": ["string", "null"]
+        },
+        "lastError": {
+          "type": ["string", "null"]
+        },
+        "lastErrorAt": {
+          "type": ["string", "null"]
+        },
+        "ageMinutes": {
+          "type": ["integer", "null"]
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "text": {
+          "type": "string"
+        },
+        "recentRuns": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "get_pr",
+    "description": "Full tracked detail for one PR number from the last refresh: group, status, review verdict (approved/changes_requested/needs_approval/unknown), counting human approvers (approvedBy), ignored approvals with reasons (bot, dismissed, not counted by Delta), plain-words blockers (blockedBy), Merge Garden state (merge: merging/stopped/requested/cancelled with phase or reason), ownership (author/assigned) and authorBrand, Binks state/findings, failing checks, CI, raw merge blockers.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number"],
+      "properties": {
+        "number": {
+          "type": "integer"
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "required": ["found"],
+      "properties": {
+        "refreshedAt": {
+          "type": ["string", "null"]
+        },
+        "lastError": {
+          "type": ["string", "null"]
+        },
+        "lastErrorAt": {
+          "type": ["string", "null"]
+        },
+        "found": {
+          "type": "boolean"
+        },
+        "pr": {
+          "type": ["object", "null"]
+        }
+      }
+    }
+  },
+  {
+    "name": "open_pr",
+    "description": "Open https://delta.shopify.io/shop/world/pull/<number> in the default browser on Sergey's Mac (used by the widget's row links, since the widget sandbox blocks pop-ups).",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number"],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "required": ["opened", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "opened": {
+          "type": "boolean"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    }
+  }
+]
