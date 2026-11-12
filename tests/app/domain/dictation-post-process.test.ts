@@ -1,8 +1,12 @@
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer } from "effect";
+import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { describe, expect } from "vitest";
 import { postProcessDictation } from "../../../src/domain/dictation/post-process";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  ApplicationState as ApplicationStateSchema,
+} from "../../../src/contracts/application/application-data";
+import { cakeRpcPayloadSchemas } from "../../../src/contracts/application/cake-rpc-contract";
 import { makePiModelsLayer, type PiModels } from "../../../src/services/pi/PiModels";
 import { TestClock } from "effect/testing";
 import {
@@ -17,12 +21,14 @@ const run = <A, E>(
   complete: PiModels["Service"]["complete"],
   configured = true,
   prompt?: string,
+  minimumCharacters = 0,
 ) =>
   effect.pipe(
     Effect.provide(
       Layer.mock(ApplicationState, {
         snapshot: () => ({
           ...defaultApplicationState(),
+          dictationCleanupMinimumCharacters: minimumCharacters,
           ...(configured ? { utilityModel } : {}),
           ...(prompt ? { cakePrompts: { dictationCleanup: prompt } } : {}),
         }),
@@ -56,6 +62,54 @@ const run = <A, E>(
   );
 
 describe("dictation light post-processing", () => {
+  it.effect("defaults old persisted application data to 280 characters", () =>
+    Effect.sync(() => {
+      const { dictationCleanupMinimumCharacters: minimum, ...old } = defaultApplicationState();
+      expect(minimum).toBe(280);
+      expect(
+        Schema.decodeUnknownSync(ApplicationStateSchema)(old).dictationCleanupMinimumCharacters,
+      ).toBe(280);
+      const request = cakeRpcPayloadSchemas["set-dictation-cleanup-minimum-characters"];
+      for (const value of [-1, 1.5, "280", NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])
+        expect(() => Schema.decodeUnknownSync(request)({ minimumCharacters: value })).toThrow();
+      for (const value of [0, 280, 500])
+        expect(
+          Schema.decodeUnknownSync(request)({ minimumCharacters: value }).minimumCharacters,
+        ).toBe(value);
+    }),
+  );
+
+  for (const [name, raw, minimum, eligible] of [
+    ["below", "x".repeat(279), 280, false],
+    ["at", "x".repeat(280), 280, true],
+    ["above", "x".repeat(281), 280, true],
+    ["zero", "Hi", 0, true],
+    ["Unicode below", "😀".repeat(279), 280, false],
+    ["Unicode at", "😀".repeat(280), 280, true],
+    ["whitespace counts", " x ", 3, true],
+  ] as const) {
+    it.effect(`applies the shared cleanup minimum: ${name}`, () => {
+      let calls = 0;
+      return run(
+        postProcessDictation(raw).pipe(
+          Effect.tap((result) => {
+            expect(result.text).toBe(eligible ? "Cleaned" : raw);
+            expect(calls).toBe(eligible ? 1 : 0);
+            return Effect.void;
+          }),
+        ),
+        (input) => {
+          calls++;
+          expect(input.instructions).toContain("Custom cleanup stays unchanged.");
+          return Effect.succeed('{"text":"Cleaned"}');
+        },
+        true,
+        "Custom cleanup stays unchanged.",
+        minimum,
+      );
+    });
+  }
+
   it.effect("uses only the configured utility model with bounded text and cleanup guidance", () =>
     run(
       Effect.gen(function* () {

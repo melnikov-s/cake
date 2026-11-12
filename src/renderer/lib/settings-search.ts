@@ -256,6 +256,12 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
               "recognition streaming revisions punctuation capitalization utility cleanup fillers",
           },
           {
+            label: "Minimum characters for post-processing",
+            targetId: "setting-cleanup-minimum-characters",
+            keywords:
+              "dictation voice speech utility cleanup threshold length short transcripts bypass Unicode",
+          },
+          {
             label: "Utility cleanup prompt",
             targetId: "setting-prompt-dictation-cleanup",
             keywords: "dictation voice speech instructions summarize rambling post processing",

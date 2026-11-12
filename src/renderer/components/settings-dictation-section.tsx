@@ -2,6 +2,7 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { DictationStore } from "../stores/DictationStore";
 import type { CakePromptSettingsStore } from "../stores/CakePromptSettingsStore";
+import type { SpeechCleanupSettingsStore } from "../stores/SpeechCleanupSettingsStore";
 import { defaultCakePrompts } from "../../contracts/application/cake-prompt-defaults";
 import { SettingsDictationVocabulary } from "./settings-dictation-vocabulary";
 import { SettingsPromptField } from "./settings/settings-prompt-field";
@@ -16,12 +17,20 @@ import { LoadingSpinner } from "./ui/loading-state";
 export const SettingsDictationSection = observer(function SettingsDictationSection({
   store,
   prompts,
+  cleanup,
 }: {
   store: DictationStore;
   prompts: CakePromptSettingsStore;
+  cleanup: SpeechCleanupSettingsStore;
 }) {
   const state = store.state;
   const [testDraft, setTestDraft] = useState("");
+  const [minimumDraft, setMinimumDraft] = useState<string>();
+  const invalidMinimum =
+    minimumDraft !== undefined &&
+    (!minimumDraft.trim() ||
+      !Number.isSafeInteger(Number(minimumDraft)) ||
+      Number(minimumDraft) < 0);
   const installing = store.busy || state?.status === "installing";
   return (
     <section className="grid gap-1.5" aria-labelledby="dictation-title">
@@ -78,6 +87,46 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
             <option value="raw">Recognition · local live revisions</option>
             <option value="utility">Utility model · customizable cleanup</option>
           </Select>
+        </div>
+        <div
+          id="setting-cleanup-minimum-characters"
+          className="flex items-center justify-between gap-4 px-3.5 py-2.5"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <label
+              htmlFor="cleanup-minimum-characters"
+              className="text-xs font-medium text-foreground"
+            >
+              Minimum characters for post-processing
+            </label>
+            <small id="cleanup-minimum-description" className="text-xs text-muted-foreground">
+              Dictation and voice mode skip utility cleanup for shorter transcripts. Counts Unicode
+              code points, including spaces. 0 always cleans up; raw mode is unchanged.
+            </small>
+            {invalidMinimum && (
+              <small role="alert" className="text-xs text-destructive">
+                Enter a nonnegative whole number.
+              </small>
+            )}
+          </div>
+          <Input
+            id="cleanup-minimum-characters"
+            type="number"
+            min={0}
+            max={Number.MAX_SAFE_INTEGER}
+            step={1}
+            className="h-8 w-24 rounded-sm text-xs"
+            aria-describedby="cleanup-minimum-description"
+            aria-invalid={invalidMinimum}
+            value={minimumDraft ?? cleanup.minimumCharacters}
+            onChange={(event) => {
+              const value = event.target.value;
+              setMinimumDraft(value);
+              if (value.trim() && event.target.validity.valid)
+                void cleanup.setMinimumCharacters(event.target.valueAsNumber);
+            }}
+            onBlur={() => setMinimumDraft(undefined)}
+          />
         </div>
         {store.textProcessingMode === "utility" && prompts.prompts && (
           <SettingsPromptField

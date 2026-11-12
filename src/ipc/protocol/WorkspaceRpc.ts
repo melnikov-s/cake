@@ -20,6 +20,10 @@ export const WorkspaceRpc = RpcGroup.make(
   workspaceRpc("workspaces.reword-composer-selection", "reword-composer-selection"),
   workspaceRpc("workspaces.generate-session-title", "generate-session-title"),
   workspaceRpc("workspaces.set-utility-model", "set-utility-model"),
+  workspaceRpc(
+    "workspaces.set-dictation-cleanup-minimum-characters",
+    "set-dictation-cleanup-minimum-characters",
+  ),
   workspaceRpc("workspaces.set-left-toolbar-preferences", "set-left-toolbar-preferences"),
   workspaceRpc("workspaces.set-cake-prompts", "set-cake-prompts"),
   workspaceRpc("workspaces.set-cake-chat-preferences", "set-cake-chat-preferences"),

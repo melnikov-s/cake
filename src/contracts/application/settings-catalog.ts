@@ -4,7 +4,11 @@ import { piSettingUpdateSchema, type PiSettingUpdate } from "../conversations/se
 import { CakeModelChoice } from "../model-presets/cake-model-selection";
 import { NonChatModelReference } from "../models/non-chat-model-data";
 import { CakePrompts } from "./cake-prompt-data";
-import { CakeChatPreferences, UtilityModel } from "./application-data";
+import {
+  CakeChatPreferences,
+  UtilityModel,
+  DictationCleanupMinimumCharacters,
+} from "./application-data";
 import {
   CAKE_CHAT_CONTEXT_LIMIT_CHOICES,
   CAKE_CHAT_MEMORY_VIEW_CHOICES,
@@ -318,6 +322,14 @@ export const settingsCatalog: readonly SettingDefinition[] = [
     description:
       "Preset ID (from settings.models.get) used for new chats and sessions; null restores Pi's default model.",
     value: Schema.NullOr(Schema.String.check(Schema.isUUID(4))),
+  }),
+  setting({
+    key: "dictation.cleanupMinimumCharacters",
+    category: "Instructions & prompts",
+    label: "Minimum characters for post-processing",
+    description:
+      "Dictation and voice mode: shorter transcripts bypass utility cleanup unchanged. Counts Unicode code points, including whitespace; cleanup starts at this minimum. 0 always cleans up. Does not affect recognition or raw mode.",
+    value: DictationCleanupMinimumCharacters,
   }),
   setting({
     key: "models.utility",

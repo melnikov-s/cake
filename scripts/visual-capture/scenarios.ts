@@ -2518,6 +2518,31 @@ const requestExplanationScenario: VisualCaptureScenario = {
   },
 };
 
+const speechCleanupSettingsScenario: VisualCaptureScenario = {
+  name: "speech-cleanup-settings",
+  description: "Shared dictation and voice cleanup minimum beside the unchanged utility prompt",
+  states: ["default"],
+  seed: (paths, theme) => cakePromptsSettingsScenario.seed(paths, theme),
+  async prepare(page) {
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await page.getByRole("combobox", { name: "Text processing" }).selectOption("utility");
+    const minimum = page.getByRole("spinbutton", {
+      name: "Minimum characters for post-processing",
+    });
+    await expect(minimum).toHaveValue("280");
+    await expect(
+      page.getByRole("textbox", { name: "Utility cleanup prompt", exact: true }),
+    ).toBeVisible();
+    await minimum.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.locator("#settings-content-scroll");
+  },
+};
+
 const cakePromptsSettingsScenario: VisualCaptureScenario = {
   name: "cake-prompts-settings",
   description: "Universal and scoped instructions plus Cake workflow prompts in Settings",
@@ -9340,6 +9365,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   modelPickerScenario,
   conversationCountdownScenario,
   speechOutputSettingsScenario,
+  speechCleanupSettingsScenario,
   speechInputSettingsScenario,
   screenCaptureSettingsScenario,
   agentNavigationSettingsScenario,

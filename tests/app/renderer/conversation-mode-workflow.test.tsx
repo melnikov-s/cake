@@ -23,6 +23,7 @@ import { ToastHost } from "../../../src/renderer/components/toast-host";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { speechCleanupFixture } from "../helpers/speechCleanup";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -230,6 +231,37 @@ afterEach(() => {
 });
 
 describe("Project Session conversation mode", () => {
+  for (const [mode, minimum, length, cleaned] of [
+    ["utility", 280, 279, false],
+    ["utility", 280, 280, true],
+    ["utility", 280, 281, true],
+    ["utility", 0, 2, true],
+    ["raw", 0, 281, false],
+  ] as const) {
+    it(`voice uses shared cleanup policy: ${mode}, minimum ${minimum}, length ${length}`, async () => {
+      const cleanup = speechCleanupFixture(minimum);
+      const raw = "x".repeat(length);
+      using f = fixture({
+        transcribe: async () => raw,
+        postProcess: cleanup.postProcess,
+        snapshot: {
+          state: {},
+          children: { dictationStore: { state: { textProcessingMode: mode }, children: {} } },
+        },
+      });
+      await f.enter();
+      await f.frames(0.1, 4);
+      await f.frames(0, 33);
+      await waitFor(() =>
+        expect(f.prompt).toHaveBeenCalledWith(
+          expect.objectContaining({ text: cleaned ? "Cleaned speech." : raw }),
+          expect.any(Object),
+        ),
+      );
+      expect(cleanup.complete).toHaveBeenCalledTimes(cleaned ? 1 : 0);
+    });
+  }
+
   it("uses revised recognition directly and waits for final words before auto-send", async () => {
     const result = deferred<string>();
     const postProcess = vi.fn<Client["workspaces"]["postProcessDictation"]>();
@@ -1530,6 +1562,7 @@ describe("Project Session conversation mode", () => {
       <SettingsDictationSection
         store={f.root.dictationStore}
         prompts={f.root.settingsStore.cakePrompts}
+        cleanup={f.root.settingsStore.speechCleanup}
       />,
     );
     const toggle = screen.getByRole("switch", { name: "Dictation mode" });
@@ -1564,6 +1597,7 @@ describe("Project Session conversation mode", () => {
       <SettingsDictationSection
         store={f.root.dictationStore}
         prompts={f.root.settingsStore.cakePrompts}
+        cleanup={f.root.settingsStore.speechCleanup}
       />,
     );
     await f.enter();

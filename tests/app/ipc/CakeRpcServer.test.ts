@@ -377,6 +377,11 @@ describe("Cake RPC endpoint", () => {
           const cases = [
             { tag: "set-utility-model", payload: { model }, expected: { utilityModel: model } },
             {
+              tag: "set-dictation-cleanup-minimum-characters",
+              payload: { minimumCharacters: 0 },
+              expected: { dictationCleanupMinimumCharacters: 0 },
+            },
+            {
               tag: "set-cake-chat-preferences",
               payload: { preferences },
               expected: { cakeChatPreferences: preferences },
@@ -427,7 +432,7 @@ describe("Cake RPC endpoint", () => {
               ],
             },
           });
-          expect(backend.stats).toMatchObject({ acquisitions: 1, saves: 5 });
+          expect(backend.stats).toMatchObject({ acquisitions: 1, saves: 6 });
         }),
     );
 
@@ -466,6 +471,11 @@ describe("Cake RPC endpoint", () => {
         const host = yield* openEndpoint(backend, 7, server);
         const cases = [
           { tag: "set-utility-model", operation: "setUtilityModel", payload: {} },
+          {
+            tag: "set-dictation-cleanup-minimum-characters",
+            operation: "setDictationCleanupMinimumCharacters",
+            payload: { minimumCharacters: 500 },
+          },
           {
             tag: "set-cake-chat-preferences",
             operation: "setCakeChatPreferences",

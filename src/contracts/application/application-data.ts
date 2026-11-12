@@ -27,6 +27,11 @@ export const LeftToolbarChange = Schema.Struct({
   layout: Schema.optionalKey(LeftToolbarLayout),
 });
 
+export const DEFAULT_DICTATION_CLEANUP_MINIMUM_CHARACTERS = 280;
+export const DictationCleanupMinimumCharacters = Schema.Int.check(
+  Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+);
+
 export const UtilityModel = Schema.Struct({
   provider: nonEmptyBoundedString(256),
   modelId: nonEmptyBoundedString(512),
@@ -270,6 +275,9 @@ const RendererApplicationFields = {
   modelPresets: boundedArray(ModelPreset, 100),
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   cakePrompts: CakePromptOverrides,
+  dictationCleanupMinimumCharacters: DictationCleanupMinimumCharacters.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DICTATION_CLEANUP_MINIMUM_CHARACTERS)),
+  ),
   cakeChatPreferences: Schema.optionalKey(CakeChatPreferences),
   assistantPreferences: Schema.optionalKey(CakeChatPreferences),
   /** Global Cake Chat's own to-do list, separate from every Project's list. */
@@ -359,6 +367,7 @@ export const defaultApplicationState = (): ApplicationState => ({
   fastModeSessionIds: [],
   modelPresets: [],
   cakePrompts: {},
+  dictationCleanupMinimumCharacters: DEFAULT_DICTATION_CLEANUP_MINIMUM_CHARACTERS,
   globalCustomInstructions: "",
   widgetAttachments: [],
   userSessionInstructions: "",

@@ -3,7 +3,11 @@ import {
   normalizeLeftToolbarPreferences,
   defaultLeftToolbarPreferences,
 } from "../../utils/left-toolbar-preferences";
-import { LeftToolbarLayout } from "../../contracts/application/application-data";
+import {
+  LeftToolbarLayout,
+  DictationCleanupMinimumCharacters,
+  DEFAULT_DICTATION_CLEANUP_MINIMUM_CHARACTERS,
+} from "../../contracts/application/application-data";
 import {
   CakePromptKey,
   settingTypeSummary,
@@ -109,6 +113,8 @@ function applicationValue(state: ApplicationStateValue, key: string) {
       return chat.subagentDefaultModel ?? cakeChatModelSettingDefaults.subagentDefaultModel;
     case "models.defaultPreset":
       return state.defaultModelPresetId ?? null;
+    case "dictation.cleanupMinimumCharacters":
+      return state.dictationCleanupMinimumCharacters;
     case "models.utility":
       return state.utilityModel ?? null;
     case "models.imagePreference":
@@ -152,6 +158,8 @@ function defaultValue(key: string, piDefaults: PiSettingsValue | undefined) {
     case "instructions.durableChats":
     case "companion.instructions":
       return "";
+    case "dictation.cleanupMinimumCharacters":
+      return DEFAULT_DICTATION_CLEANUP_MINIMUM_CHARACTERS;
     case "companion.memoryViewBytes":
       return defaultAssistantPreferences().memoryViewBytes;
     case "companion.contextLimitTokens":
@@ -369,6 +377,11 @@ const write = Effect.fn("SettingsCatalog.write")(function* (key: string, value: 
       yield* modelPresets.setDefault(id ?? undefined);
       return;
     }
+    case "dictation.cleanupMinimumCharacters":
+      yield* application.setDictationCleanupMinimumCharacters(
+        yield* typed(DictationCleanupMinimumCharacters, key, value),
+      );
+      return;
     case "models.utility": {
       const model = yield* typed(Schema.NullOr(UtilityModel), key, value);
       yield* application.setUtilityModel(model ?? undefined);

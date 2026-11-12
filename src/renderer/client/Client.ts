@@ -307,6 +307,10 @@ interface WorkspaceCommands {
     model: UtilityModel | undefined,
     options?: ClientCommandOptions,
   ): Promise<ApplicationState>;
+  setDictationCleanupMinimumCharacters(
+    minimumCharacters: number,
+    options?: ClientCommandOptions,
+  ): Promise<ApplicationState>;
   setLeftToolbarPreferences(
     change: LeftToolbarChange,
     options?: ClientCommandOptions,

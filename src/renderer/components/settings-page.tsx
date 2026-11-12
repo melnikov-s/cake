@@ -988,6 +988,7 @@ export const SettingsPage = observer(function SettingsPage({
                 <SettingsDictationSection
                   store={settings.dictation}
                   prompts={settings.cakePrompts}
+                  cleanup={settings.speechCleanup}
                 />
                 <SettingsSpeechSection speech={settings.speech} />
                 <SettingsSpeechInputSection store={settings.speechInput} />

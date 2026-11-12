@@ -19,6 +19,7 @@ import * as application from "../../../src/domain/application/application";
 import * as backendSettings from "../../../src/domain/application/agentSettings";
 import { createCakeSettingsOperations } from "../../../src/domain/application/cake-settings-operations";
 import { withChatContextLimit } from "../../../src/domain/cake-chats/cake-chat-context-limit-setting";
+import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
 import { SettingsCakeChatSection } from "../../../src/renderer/components/settings-cake-chat-section";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
@@ -93,6 +94,8 @@ async function fixture() {
   const root = createRendererStoreFixture({
     client: {
       workspaces: {
+        setDictationCleanupMinimumCharacters: (minimum, options) =>
+          runtime.runPromise(application.setDictationCleanupMinimumCharacters(minimum), options),
         setCakeChatPreferences: (preferences, options) =>
           runtime.runPromise(application.setCakeChatPreferences(preferences), options),
       },
@@ -167,6 +170,48 @@ const Rows = Schema.Struct({
 });
 
 describe("settings catalog through the cake tool", () => {
+  it("shares the cleanup minimum between tools, UI and persistence without changing the prompt", async () => {
+    await using h = await fixture();
+    expect(
+      await h.call("settings.get", { key: "dictation.cleanupMinimumCharacters" }),
+    ).toMatchObject({
+      value: 280,
+      default: 280,
+    });
+    await h.call("settings.update", {
+      key: "prompts.dictationCleanup",
+      value: "Keep my custom prompt.",
+    });
+    render(
+      <SettingsDictationSection
+        store={h.settings.dictation}
+        prompts={h.settings.cakePrompts}
+        cleanup={h.settings.speechCleanup}
+      />,
+    );
+    const input = screen.getByRole("spinbutton", {
+      name: "Minimum characters for post-processing",
+    });
+    expect((input as HTMLInputElement).value).toBe("280");
+    await h.call("settings.update", { key: "dictation.cleanupMinimumCharacters", value: 500 });
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe("500"));
+    const user = userEvent.setup();
+    await user.clear(input);
+    expect(screen.getByRole("alert").textContent).toContain("nonnegative whole number");
+    await user.type(input, "-1");
+    expect(h.saved().dictationCleanupMinimumCharacters).toBe(500);
+    await user.clear(input);
+    await user.type(input, "1.5");
+    await user.tab();
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe("1"));
+    await user.clear(input);
+    await user.type(input, "0");
+    await user.tab();
+    await waitFor(() => expect(h.saved().dictationCleanupMinimumCharacters).toBe(0));
+    expect(h.saved().cakePrompts.dictationCleanup).toBe("Keep my custom prompt.");
+    expect(screen.getByText(/shorter transcripts/).textContent).toContain("Unicode code points");
+  });
+
   it("discloses progressively: categories first, then one category's compact rows", async () => {
     await using h = await fixture();
     await h.call("settings.update", {
@@ -178,7 +223,7 @@ describe("settings catalog through the cake tool", () => {
     expect(overview.categories).toContainEqual({ category: "Cake Chat", settings: 7, changed: 0 });
     expect(overview.categories).toContainEqual({
       category: "Instructions & prompts",
-      settings: 10,
+      settings: 11,
       changed: 1,
     });
     expect(overview.categories.map(({ category, settings }) => ({ category, settings }))).toEqual(
@@ -390,6 +435,9 @@ describe("settings catalog through the cake tool", () => {
       { key: "cakeChat.contextLimitTokens", value: 400_000 },
       { key: "cakeChat.contextLimitTokens", value: "500000" },
       { key: "pi.codemodeInlineBudget", value: -1 },
+      { key: "dictation.cleanupMinimumCharacters", value: -1 },
+      { key: "dictation.cleanupMinimumCharacters", value: 1.5 },
+      { key: "dictation.cleanupMinimumCharacters", value: "280" },
       { key: "pi.transport", value: "carrier-pigeon" },
       { key: "experimental.dynamicWorkflows", value: true },
       { key: "cakeChat.summarizationModel", value: { source: "telepathy" } },

@@ -460,6 +460,12 @@ export const setCakePrompts = Effect.fn("Application.setCakePrompts")(function* 
   }));
 });
 
+export const setDictationCleanupMinimumCharacters = Effect.fn(
+  "Application.setDictationCleanupMinimumCharacters",
+)(function* (dictationCleanupMinimumCharacters: number) {
+  return yield* update((current) => ({ ...current, dictationCleanupMinimumCharacters }));
+});
+
 export const setUtilityModel = Effect.fn("Application.setUtilityModel")(function* (
   model: UtilityModel | undefined,
 ) {

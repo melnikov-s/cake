@@ -231,6 +231,13 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.workspaces["set-utility-model"]({ model }),
           options,
         ).then((response) => response.state),
+      setDictationCleanupMinimumCharacters: (minimumCharacters, options) =>
+        execute(
+          "workspaces.set-dictation-cleanup-minimum-characters",
+          (client) =>
+            client.workspaces["set-dictation-cleanup-minimum-characters"]({ minimumCharacters }),
+          options,
+        ).then((response) => response.state),
       setLeftToolbarPreferences: (change, options) =>
         execute(
           "workspaces.set-left-toolbar-preferences",

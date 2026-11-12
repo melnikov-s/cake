@@ -28,6 +28,7 @@ import { GlobalLabelSettingsStore } from "./GlobalLabelSettingsStore";
 import { CakeChatSettingsStore } from "./CakeChatSettingsStore";
 import { CakeChatOverlaySettingsStore } from "./CakeChatOverlaySettingsStore";
 import { CakePromptSettingsStore } from "./CakePromptSettingsStore";
+import { SpeechCleanupSettingsStore } from "./SpeechCleanupSettingsStore";
 import { GlobalInstructionsStore } from "./GlobalInstructionsStore";
 import { NonChatModelSettingsStore } from "./NonChatModelSettingsStore";
 import { settingsSectionError, type SettingsError } from "../lib/settings-error";
@@ -116,6 +117,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   @child get cakeChatOverlay(): CakeChatOverlaySettingsStore {
     return createStore(CakeChatOverlaySettingsStore);
   }
+  @child get speechCleanup(): SpeechCleanupSettingsStore {
+    return createStore(SpeechCleanupSettingsStore);
+  }
   @child get cakePrompts(): CakePromptSettingsStore {
     return createStore(CakePromptSettingsStore);
   }
@@ -179,6 +183,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       ...settingsSectionError("models", this.utilityModel),
       ...settingsSectionError("models", this.modelPresets),
       ...settingsSectionError(this.cakePrompts.errorSection, this.cakePrompts),
+      ...settingsSectionError("voice", this.speechCleanup),
       ...settingsSectionError("prompts", this.globalInstructions),
       ...settingsSectionError("prompts", this.userInstructions),
       ...settingsSectionError("prompts", this.delegatedInstructions),
@@ -269,6 +274,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     this.nonChatModels.applyApplicationState(revision, state);
     this.modelPresets.applyApplicationState(revision, state);
     this.cakePrompts.applyApplicationState(revision, state);
+    this.speechCleanup.applyApplicationState(revision, state);
     this.cakeChat.applyApplicationState(revision, state);
     this.companion.applyApplicationState(revision, state);
     this.globalInstructions.applyApplicationState(revision, state);

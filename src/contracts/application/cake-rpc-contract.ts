@@ -36,7 +36,12 @@ import {
   inlineWidgetSourceSchema,
 } from "../widgets/inline-widget-contract";
 import { jsonValueSchema } from "../serialization/json-contract";
-import { LeftToolbarChange, CakeChatPreferences, ProjectSettings } from "./application-data";
+import {
+  LeftToolbarChange,
+  CakeChatPreferences,
+  ProjectSettings,
+  DictationCleanupMinimumCharacters,
+} from "./application-data";
 import { CakePromptOverrides } from "./cake-prompt-data";
 import { ProjectSessionControlRequest } from "../project-sessions/project-session-data";
 import {
@@ -715,6 +720,9 @@ export const cakeRpcPayloadSchemas = {
   "set-utility-model": Schema.Struct({
     model: Schema.optional(utilityModelSchema),
   }),
+  "set-dictation-cleanup-minimum-characters": Schema.Struct({
+    minimumCharacters: DictationCleanupMinimumCharacters,
+  }),
   "set-left-toolbar-preferences": LeftToolbarChange,
   "set-cake-chat-preferences": Schema.Struct({
     preferences: CakeChatPreferences,
@@ -993,6 +1001,7 @@ export const cakeRpcSuccessSchemas = {
   "reword-composer-selection": cakeRpcResultSchemas["composer-selection-reworded"],
   "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
   "set-utility-model": cakeRpcResultSchemas["application-state-updated"],
+  "set-dictation-cleanup-minimum-characters": cakeRpcResultSchemas["application-state-updated"],
   "set-left-toolbar-preferences": cakeRpcResultSchemas["application-state-updated"],
   "set-cake-chat-preferences": cakeRpcResultSchemas["application-state-updated"],
   "set-cake-prompts": cakeRpcResultSchemas["application-state-updated"],

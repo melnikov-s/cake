@@ -38,6 +38,7 @@ import { installedDictationState } from "../../helpers/dictation";
 import { detectFixtureSpeech } from "../../helpers/speech-detection";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { speechCleanupFixture } from "../helpers/speechCleanup";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -276,6 +277,7 @@ function renderDictation(
       <SettingsDictationSection
         store={fixture.root.settingsStore.dictation}
         prompts={fixture.root.settingsStore.cakePrompts}
+        cleanup={fixture.root.settingsStore.speechCleanup}
       />
       <Chat
         key={composerKey}
@@ -2982,6 +2984,36 @@ describe("Dictation writing-field workflow", () => {
     await fixture.recognize(0, "Fresh speech");
     expect(trial().value).toBe("Fresh speech");
   });
+
+  for (const [mode, minimum, length, cleaned] of [
+    ["utility", 280, 279, false],
+    ["utility", 280, 280, true],
+    ["utility", 280, 281, true],
+    ["utility", 0, 2, true],
+    ["raw", 0, 281, false],
+  ] as const) {
+    it(`dictation uses shared cleanup policy: ${mode}, minimum ${minimum}, length ${length}`, async () => {
+      const cleanup = speechCleanupFixture(minimum);
+      using f = renderDictation({
+        client: { workspaces: { postProcessDictation: cleanup.postProcess } },
+      });
+      await f.user.selectOptions(screen.getByRole("combobox", { name: "Text processing" }), mode);
+      await f.user.click(screen.getByRole("switch", { name: "Dictation mode" }));
+      await f.user.click(message());
+      await f.audio.push(new Float32Array(12_800));
+      const raw = "x".repeat(length);
+      await f.recognize(0, raw);
+      await f.user.keyboard("{Enter}");
+      await f.recognize(1, raw);
+      await waitFor(() =>
+        expect(f.prompt).toHaveBeenCalledWith(
+          expect.objectContaining({ text: cleaned ? "Cleaned speech." : raw }),
+          expect.any(Object),
+        ),
+      );
+      expect(cleanup.complete).toHaveBeenCalledTimes(cleaned ? 1 : 0);
+    });
+  }
 
   it("cleans the current insertion before submission without rewriting typed text", async () => {
     const result = deferred<string>();

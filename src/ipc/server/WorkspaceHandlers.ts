@@ -32,6 +32,11 @@ export const workspaceHandlers = WorkspaceRpc.of({
     withConnection((connectionId) => projects.generateSessionTitle(connectionId, request)),
   "workspaces.set-utility-model": ({ model }) =>
     settingsResult("setUtilityModel", application.setUtilityModel(model)),
+  "workspaces.set-dictation-cleanup-minimum-characters": ({ minimumCharacters }) =>
+    settingsResult(
+      "setDictationCleanupMinimumCharacters",
+      application.setDictationCleanupMinimumCharacters(minimumCharacters),
+    ),
   "workspaces.set-left-toolbar-preferences": (change) =>
     settingsResult("setLeftToolbarPreferences", application.setLeftToolbarPreferences(change)),
   "workspaces.set-cake-chat-preferences": ({ preferences, companion }) =>

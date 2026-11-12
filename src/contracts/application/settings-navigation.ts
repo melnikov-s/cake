@@ -25,6 +25,10 @@ export type SettingsPageId = typeof SettingsPageId.Type;
 export const settingsDestinations = {
   "dictation.enabled": { page: "voice", targetId: "dictation-title" },
   "dictation.textProcessingMode": { page: "voice", targetId: "setting-text-processing" },
+  "dictation.cleanupMinimumCharacters": {
+    page: "voice",
+    targetId: "setting-cleanup-minimum-characters",
+  },
   "dictation.voiceSubmit": { page: "voice", targetId: "setting-dictation-voice-submit" },
   "dictation.submitPhrase": { page: "voice", targetId: "setting-dictation-voice-submit" },
   "dictation.discardFilters": { page: "voice", targetId: "setting-dictation-discard-filters" },

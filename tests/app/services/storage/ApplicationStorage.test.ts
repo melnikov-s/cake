@@ -457,6 +457,7 @@ describe("ApplicationStorage", () => {
                   },
                 },
               },
+              { key: "dictation.cleanupMinimumCharacters", value: 0 },
               { key: "models.defaultPreset", value: preset.id },
               {
                 key: "models.utility",

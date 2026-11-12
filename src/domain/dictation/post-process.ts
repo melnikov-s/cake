@@ -13,7 +13,10 @@ export const postProcessDictation = Effect.fn("Dictation.postProcess")(function*
   const application = yield* ApplicationState;
   const state = application.snapshot();
   const model = state.utilityModel;
-  if (!model || !text.trim()) return { text };
+  // Count Unicode code points (including whitespace), not UTF-16 code units.
+  // Both dictation and voice mode enter here before any utility-model call.
+  if (!model || !text.trim() || Array.from(text).length < state.dictationCleanupMinimumCharacters)
+    return { text };
   const models = yield* PiModels;
   return yield* models
     .complete({
