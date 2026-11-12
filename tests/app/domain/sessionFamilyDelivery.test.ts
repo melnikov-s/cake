@@ -258,6 +258,124 @@ describe("Session Family outcome delivery", () => {
       }),
   );
 
+  describe("one report settling several request turns", () => {
+    const report = {
+      outcome: "completed" as const,
+      text: "Delta PRs grouped by human approval.",
+      resultMessageRef: `cake://session/${childId}?message=final-answer`,
+    };
+    const turns = [
+      "5b1f3a52-8f0e-4d8a-9a51-1f8f2f6f0a01",
+      "5b1f3a52-8f0e-4d8a-9a51-1f8f2f6f0a02",
+      "5b1f3a52-8f0e-4d8a-9a51-1f8f2f6f0a03",
+    ].map((id, index) => ({
+      ...outcome,
+      turnId: id,
+      // The launch request, then follow-ups (e.g. "continue") Pi consumed into the same run.
+      requestMessageId: index === 0 ? childId : id,
+      threadId: id,
+      report,
+    }));
+
+    it.effect("a quiet Project Chat result is retained once, however often it is retried", () => {
+      const coordinator = "ca4ec4a7-0000-4000-8000-000000000001";
+      const quiet = turns.map((turn) => ({
+        ...turn,
+        senderSessionId: coordinator,
+        resultDelivery: "notification" as const,
+      }));
+      return Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        yield* storage.registerSpawn({
+          sessionId: childId,
+          projectPath: "/project",
+          workingDirectory: "/project",
+          requester: { sessionId: coordinator, kind: "cake-chat", title: "Requester" },
+          reportDelivered: false,
+          handoffSettled: false,
+        });
+        for (const turn of quiet) yield* storage.recordTurn(turn);
+        // The worker delivers a pass concurrently; a later pass may retry a stale snapshot.
+        yield* Effect.forEach(quiet, (turn) => Effect.scoped(deliver(turn)), {
+          concurrency: "unbounded",
+        });
+        for (const turn of quiet) yield* Effect.scoped(deliver(turn));
+        const state = yield* storage.state();
+        assert.deepEqual(
+          state.completionInbox?.map((item) => item.id),
+          [quiet[0]!.turnId],
+        );
+        assert.deepEqual(
+          state.coordinatorDigest?.map((item) => item.id),
+          [quiet[0]!.turnId],
+        );
+        assert.deepEqual(state.turns, []);
+        assert.ok(state.spawnedSessions[0]?.handoffSettled);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            environment,
+            familyStorageHarness().layer,
+            Layer.mock(CakeSessionRuntimes, {}),
+            Layer.mock(SessionArchiveStorage, {
+              locate: () => Effect.succeed("active" as const),
+            }),
+          ),
+        ),
+      );
+    });
+
+    it.effect("an immediate parent report is prompted once, including on retry passes", () =>
+      Effect.gen(function* () {
+        const received: string[] = [];
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionFamilyStorage;
+          yield* storage.addChild(reservation);
+          for (const turn of turns) yield* storage.recordTurn(turn);
+          yield* Effect.forEach(turns, (turn) => Effect.scoped(deliver(turn)), {
+            concurrency: "unbounded",
+          });
+          for (const turn of turns) yield* Effect.scoped(deliver(turn));
+          assert.equal(received.length, 1);
+          assert.match(received[0] ?? "", /Delta PRs grouped by human approval/);
+          const state = yield* storage.state();
+          assert.equal(state.completionInbox?.length, 1);
+          // Only the delivered obligation awaits its transcript receipt.
+          assert.deepEqual(
+            state.turns.map((turn) => turn.turnId),
+            [turns[0]!.turnId],
+          );
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              familyStorageHarness().layer,
+              environment,
+              Layer.mock(SessionArchiveStorage, {
+                locate: () => Effect.succeed("active" as const),
+              }),
+              makeCakeSessionRuntimesLayer({
+                sessionIds: () => Stream.empty,
+                catalog: () => Stream.empty,
+                catalogEntry: () => Effect.succeed(undefined),
+                inspect: () => Effect.succeed(undefined),
+                changelog: () => Effect.succeed(""),
+                createRuntime: (runtimeOptions) =>
+                  Effect.succeed({
+                    ...fakeRuntime(runtimeOptions, () => undefined),
+                    snapshot: async () => ({ ...snapshot, streaming: true }),
+                    listQueuedMessages: async () => ({ steering: [], followUp: [...received] }),
+                    prompt: async (text: string) => {
+                      received.push(text);
+                    },
+                  }),
+              }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+            ),
+          ),
+        );
+      }),
+    );
+  });
+
   it.effect("an aborted turn with a pending obligation sends exactly one canceled notice", () =>
     Effect.gen(function* () {
       const received: string[] = [];

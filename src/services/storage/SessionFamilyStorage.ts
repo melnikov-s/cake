@@ -124,6 +124,11 @@ export class SessionFamilyStorage extends Context.Service<
       id: string,
       state: CompletionDecisionState,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Resolution supersedes every open decision these sessions reported, with its digest line.
+     * Restoring never reopens them: later work reports again with fresh decisions. */
+    readonly closeResolvedCompletions: (
+      sessionIds: ReadonlyArray<string>,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     /** Serializes one create request through admission, independently of family turn admission. */
     readonly withCreationLock: <A, E, R>(
       key: string,
@@ -179,6 +184,11 @@ export class SessionFamilyStorage extends Context.Service<
       deliveryTurnId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly completeNotice: (turnId: string) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** False when a finished turn owes nothing: it is already settled, or its exact report (same
+     * source message, same recipient) belongs to an earlier turn, which settles it now. */
+    readonly claimReportDelivery: (
+      turnId: string,
+    ) => Effect.Effect<boolean, SessionFamilyStorageError>;
     /** Settles a Cake Chat obligation into the digest inbox instead of starting a turn. */
     readonly digestNotice: (
       turnId: string,
@@ -788,6 +798,29 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                   ),
           })),
       );
+      const closeResolvedCompletions = Effect.fn("SessionFamilyStorage.closeResolvedCompletions")(
+        (sessionIds: ReadonlyArray<string>) =>
+          update((document) => {
+            const closed = new Set(
+              (document.completionInbox ?? [])
+                .filter(
+                  (item) =>
+                    sessionIds.includes(item.sessionId) &&
+                    (item.state === "pending" || item.state === "deferred"),
+                )
+                .map((item) => item.id),
+            );
+            if (!closed.size) return document;
+            // Same effect as handling each decision; the auto-merge outcome line stays.
+            return {
+              ...document,
+              completionInbox: document.completionInbox?.map((item) =>
+                closed.has(item.id) ? { ...item, state: "handled" as const } : item,
+              ),
+              coordinatorDigest: document.coordinatorDigest?.filter((item) => !closed.has(item.id)),
+            };
+          }),
+      );
       const recordTurn = Effect.fn("SessionFamilyStorage.recordTurn")((turn: FamilyTurn) =>
         update((document) => ({
           ...document,
@@ -1167,6 +1200,48 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       const completeNotice = Effect.fn("SessionFamilyStorage.completeNotice")((turnId: string) =>
         update((document) => withoutNotice(document, turnId)),
       );
+      const claimReportDelivery = Effect.fn("SessionFamilyStorage.claimReportDelivery")(function* (
+        turnId: string,
+      ) {
+        let owed = false;
+        yield* update((document) => {
+          const index = document.turns.findIndex(
+            (item) => item.turnId === turnId && item.outcome !== undefined && !item.reported,
+          );
+          const turn = document.turns[index];
+          if (!turn) return document;
+          const ref = turn.report?.resultMessageRef;
+          const same = (item: { readonly sessionId: string }) => item.sessionId === turn.sessionId;
+          // One Pi answer can settle several request turns consumed into the same run, and
+          // the worker delivers them concurrently. Its message identity, not the turn, is what
+          // the recipient sees once: the earliest journal turn or an existing completion owns it.
+          const duplicate =
+            ref !== undefined &&
+            (document.completionInbox?.some(
+              (item) =>
+                item.id !== turnId &&
+                same(item) &&
+                item.coordinatorSessionId === turn.senderSessionId &&
+                item.resultMessageRef === ref,
+            ) ||
+              document.turns
+                .slice(0, index)
+                .some(
+                  (item) =>
+                    same(item) &&
+                    item.senderSessionId === turn.senderSessionId &&
+                    item.outcome !== undefined &&
+                    !item.reported &&
+                    item.report?.resultMessageRef === ref,
+                ));
+          if (!duplicate) {
+            owed = true;
+            return document;
+          }
+          return withoutNotice(document, turnId);
+        });
+        return owed;
+      });
       const digestNotice = Effect.fn("SessionFamilyStorage.digestNotice")(
         (turnId: string, item: CoordinatorDigestItem) =>
           update((document) => {
@@ -1597,6 +1672,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         invalidateAutoMerge,
         recordCompletion,
         updateCompletion,
+        closeResolvedCompletions,
         list,
         familyForMember,
         addChild,
@@ -1616,6 +1692,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         confirmResponse,
         markNoticeAttempt,
         completeNotice,
+        claimReportDelivery,
         digestNotice,
         deferReferenceNotice,
         deferPassiveNotice,

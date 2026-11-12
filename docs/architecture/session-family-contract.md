@@ -240,6 +240,19 @@ ready work, with merge suggestions only for ready isolated sessions. `sessions.c
 pages pending/deferred records; update changes only decision metadata, never executes actions
 or rearms notices.
 
+Resolution closes decisions in the same transition: every resolution entry point (auto-merge,
+`worktrees.merge-and-resolve`, `sessions.resolve`, to-do Done) commits through one archive step
+that marks every pending/deferred completion of the resolved sessions (a family resolves all its
+members) `handled` and drops its digest line. The auto-merge outcome line remains. Restoring
+(`resolved: false`) deliberately does not reopen them: they asked about work that already landed
+or was settled; new work after the restore reports again with fresh decisions.
+
+A report reaches its recipient once per exact source message, not once per request turn. One Pi
+answer can settle several request turns consumed into the same run (for example an assignment
+plus a follow-up "continue"). Before any delivery mode runs, `claimReportDelivery` atomically
+settles a turn as covered when an earlier journal turn or an existing completion for the same
+recipient carries the same `resultMessageRef`; settled turns and stale pass snapshots owe nothing.
+
 `recordCompletion` atomically deduplicates the retained decision and, for notification mode or board results, its one-time coordinator
 digest. Reply mode retains decisions without a second quiet notice. Both ordinary Project Sessions and permanent chats attach at most twenty new result
 notices to the next real user input or batched turn. Linked reports retain exact references in the same group,

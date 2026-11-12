@@ -56,6 +56,7 @@ import * as projectSessionLocations from "../../../src/domain/project-sessions/p
 import { SessionCatalog } from "../../../src/renderer/models/SessionCatalog";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
+import * as completionInbox from "../../../src/domain/conversations/completionInbox";
 import type { SessionCatalogUpdate } from "../../../src/contracts/application/catalog-data";
 import {
   ArtifactDigest,
@@ -494,6 +495,7 @@ const makeLayer = (
       setBoardDeliveryPaused: () => Effect.void,
       recordCompletion: () => Effect.void,
       updateCompletion: () => Effect.void,
+      closeResolvedCompletions: () => Effect.void,
       list: () => Effect.succeed(family ? [family] : []),
       familyForMember: (sessionId) =>
         Effect.succeed(
@@ -542,6 +544,7 @@ const makeLayer = (
       confirmResponse: () => Effect.void,
       markNoticeAttempt: () => Effect.void,
       completeNotice: () => Effect.void,
+      claimReportDelivery: () => Effect.succeed(true),
       digestNotice: () => Effect.void,
       recordLaunchReport: () => Effect.void,
       removeDigest: () => Effect.void,
@@ -5446,6 +5449,113 @@ describe("Project Sessions domain", () => {
           onArchive: (sessionId) => events.push(`archive:${sessionId}`),
         }),
       ),
+    );
+  });
+
+  describe("resolution closes reported decisions", () => {
+    const coordinator = projectChatSessionId("/project");
+    const report = (sessionId: string, id: string, entry = "final") =>
+      completionInbox.queue({
+        id,
+        coordinatorSessionId: coordinator,
+        sessionId,
+        title: `Task ${sessionId}`,
+        summary: "Ready to merge",
+        resultMessageRef: `cake://session/${sessionId}?message=${entry}`,
+        reportedAt: "2026-01-01T00:00:00.000Z",
+        status: "completed",
+        kind: "ready",
+        isolated: true,
+      });
+    const open = Effect.gen(function* () {
+      const state = yield* (yield* SessionFamilyStorage).state();
+      return {
+        decisions: (yield* completionInbox.list(coordinator)).items.map(
+          (item) => `${item.sessionId}:${item.decisions.join("/")}`,
+        ),
+        digest: (state.coordinatorDigest ?? []).map((item) => item.sessionId),
+      };
+    });
+
+    it.effect(
+      "the landing resolution (auto-merge, merge-and-resolve) leaves no pending decision; restore keeps them closed",
+      () =>
+        Effect.gen(function* () {
+          yield* report("worktree-1", "turn-1");
+          yield* report("other-1", "turn-other");
+          assert.deepEqual(yield* open, {
+            decisions: [
+              "worktree-1:review/merge/resolve/next-step",
+              "other-1:review/merge/resolve/next-step",
+            ],
+            digest: ["worktree-1", "other-1"],
+          });
+          // WorktreeLandingCompletion resolves landed work through exactly this operation.
+          const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/worktree");
+          assert.deepEqual(result.resolvedSessionIds, ["worktree-1"]);
+          const afterResolve = {
+            decisions: ["other-1:review/merge/resolve/next-step"],
+            digest: ["other-1"],
+          };
+          assert.deepEqual(yield* open, afterResolve);
+          const storage = yield* SessionFamilyStorage;
+          assert.equal(
+            (yield* storage.state()).completionInbox?.find((item) => item.id === "turn-1")?.state,
+            "handled",
+          );
+          // Restoring reopens the conversation, not decisions about already-landed work.
+          yield* projectSessionLifecycle.restore({
+            sessionId: "worktree-1",
+            workingDirectory: "/worktree",
+          });
+          assert.deepEqual(yield* open, afterResolve);
+          // Work after the restore reports with fresh decisions.
+          yield* report("worktree-1", "turn-2", "after-restore");
+          assert.deepEqual((yield* open).decisions, [
+            "other-1:review/merge/resolve/next-step",
+            "worktree-1:review/merge/resolve/next-step",
+          ]);
+        }).pipe(
+          Effect.provide(
+            Layer.merge(
+              makeLayer(defaultApplicationState(), {
+                locations: [
+                  {
+                    projectPath: "/project",
+                    projectName: "Project",
+                    workingDirectory: "/worktree",
+                    sessionDirectory: "/worktree-sessions",
+                    resolvedSessionDirectory: "/resolved-sessions",
+                  },
+                ],
+                sessionIds: (workingDirectory) =>
+                  workingDirectory === "/worktree" ? Stream.make("worktree-1") : Stream.empty,
+              }),
+              familyStorageHarness().layer,
+            ),
+          ),
+        ),
+    );
+
+    it.effect("sessions.resolve on a family root closes every member's decisions", () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        yield* storage.addChild({
+          familyId: "family-1",
+          parentSessionId: "parent",
+          parentWorkingDirectory: "/project",
+          childSessionId: "child",
+          childWorkingDirectory: "/project",
+          requestId: "request-1",
+          projectPath: "/project",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* report("parent", "parent-turn");
+        yield* report("child", "child-turn");
+        yield* storage.updateCompletion(coordinator, "child-turn", "deferred");
+        yield* projectSessionLifecycle.resolve({ sessionId: "parent" });
+        assert.deepEqual(yield* open, { decisions: [], digest: [] });
+      }).pipe(Effect.provide(Layer.merge(makeLayer(), familyStorageHarness().layer))),
     );
   });
 

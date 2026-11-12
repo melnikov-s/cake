@@ -56,6 +56,8 @@ const reportCorrelationId = (id: string) =>
 export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (turn: FamilyTurn) {
   const storage = yield* SessionFamilyStorage;
   if (!turn.outcome || turn.reported) return;
+  // Retries, stale pass snapshots and further turns settled by the same Pi answer owe nothing.
+  if (!(yield* storage.claimReportDelivery(turn.turnId))) return;
   // Retain quiet results before touching either runtime or the source checkout.
   // A dead requester (including legacy Side Chats) must not hold this handoff open.
   if (

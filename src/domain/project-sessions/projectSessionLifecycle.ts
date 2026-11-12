@@ -122,6 +122,7 @@ const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function*
   operation: string,
   publish = true,
   afterCommit?: Effect.Effect<void, ProjectSessionError>,
+  resolvedSessionIds: readonly string[] = [sessionId],
 ) {
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
@@ -143,6 +144,9 @@ const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function*
       )
     )
       yield* families.setBoardDeliveryPaused(sessionId, true).pipe(asError(operation));
+    // Every entry point (merge-and-resolve, auto-merge, sessions.resolve, Done) commits here, so
+    // no review/merge/resolve/next-step decision outlives the work it asked about.
+    yield* families.closeResolvedCompletions(resolvedSessionIds).pipe(asError(operation));
     yield* setSessionUnread(sessionId, false).pipe(asError(operation));
     if (publish) yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
     if (afterCommit) yield* afterCommit;
@@ -242,6 +246,7 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
             operation,
             false,
             publishResolution,
+            members.map(({ sessionId }) => sessionId),
           );
           if (preserveWork) return;
           for (const location of [...members]
