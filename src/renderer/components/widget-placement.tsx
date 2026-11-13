@@ -307,11 +307,13 @@ export function WidgetPlacement({ children }: { children: ReactNode }) {
                 )}
                 style={target.rect}
               >
-                {target.slot === "tab"
-                  ? "Workspace"
-                  : root.workspaceNavigatorStore.inCompanion
-                    ? `Chat · ${target.slot}`
-                    : target.slot}
+                <span className="max-w-full truncate rounded-sm border border-border bg-popover/95 px-2 py-1 text-xs text-popover-foreground shadow-xs">
+                  {target.slot === "tab"
+                    ? "Workspace"
+                    : root.workspaceNavigatorStore.inCompanion
+                      ? `Chat · ${target.slot}`
+                      : target.slot}
+                </span>
               </div>
             ))}
             {preview.marker && (
