@@ -19,7 +19,9 @@ async function openWorkerChat(user: ReturnType<typeof renderSubagentActivity>["u
   if (!summary) throw new Error("Missing work log disclosure");
   await user.click(summary);
   await user.click(await screen.findByRole("button", { name: "Open subagent chat" }));
-  return screen.getByRole("complementary", { name: "Subagent" });
+  const panel = screen.getByRole("complementary", { name: "Subagent" });
+  expect(panel.classList.contains("side-chat-panel")).toBe(false);
+  return panel;
 }
 
 describe("Subagent activity workflow", () => {
@@ -33,6 +35,7 @@ describe("Subagent activity workflow", () => {
       expect(fixture.models.discussionConversations).toHaveLength(0);
       expect(fixture.sideChatStore.target).toBeUndefined();
       expect(fixture.sideChatStore.tabs).toEqual([]);
+      expect(document.querySelector(".side-chat-panel")).toBeNull();
       expect(screen.queryByRole("button", { name: "Merge into main chat" })).toBeNull();
       expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(parentSessionId);
     };

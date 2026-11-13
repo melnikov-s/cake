@@ -330,6 +330,31 @@
   }
 }
 
+/* Human Side Chats stay identifiable beside their parent without moving focus.
+   Only the chrome intensifies on focus; the conversation keeps its reading surface. */
+.side-chat-panel {
+  border: 2px solid color-mix(in oklab, var(--accent) 45%, var(--border));
+}
+
+.side-chat-panel:focus-within {
+  border-color: var(--accent);
+}
+
+.side-chat-panel > header {
+  height: 3rem;
+  border-bottom-color: color-mix(in oklab, var(--accent) 35%, var(--border));
+  background: color-mix(in oklab, var(--accent) 12%, var(--background));
+}
+
+.side-chat-panel:focus-within > header {
+  background: color-mix(in oklab, var(--accent) 22%, var(--background));
+}
+
+.side-chat-panel [data-slot="side-chat-actions"] {
+  border-top-color: color-mix(in oklab, var(--accent) 30%, var(--border));
+  background: color-mix(in oklab, var(--accent) 8%, var(--background));
+}
+
 @keyframes pixel-on {
   0%,
   100% {

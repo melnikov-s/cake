@@ -44,7 +44,9 @@ test("a single Side Chat keeps its heading and pane close action without a redun
     const pane = page.getByRole("complementary", { name: sideChatTabTitles[0], exact: true });
     await expect(pane).toBeVisible();
     await expect(page.getByRole("tablist", { name: "Side chats", exact: true })).toHaveCount(0);
-    await pane.getByRole("button", { name: "Close side chat", exact: true }).click();
+    const close = pane.getByRole("button", { name: "Close side chat", exact: true });
+    await close.focus();
+    await close.press("Enter");
     await expect(pane).toHaveCount(0);
     await expect(
       page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
@@ -91,7 +93,9 @@ for (const action of ["Merge into main chat", "Close and resolve"] as const) {
         .click();
       const strip = page.getByRole("tablist", { name: "Side chats", exact: true });
       await expect(strip.getByRole("tab")).toHaveCount(3);
-      await page.getByRole("button", { name: action, exact: true }).click();
+      const exitAction = page.getByRole("button", { name: action, exact: true });
+      await exitAction.focus();
+      await exitAction.press("Enter");
       await expect(strip.getByRole("tab")).toHaveCount(2);
       await expect(
         strip.getByRole("tab", { name: sideChatTabTitles[0], exact: true }),
@@ -158,6 +162,47 @@ for (const theme of ["dark", "light"] as const) {
       const layout = page.locator('[data-slot="side-chat-layout"]');
       const pane = strip.locator("..");
       await expect(layout).toHaveAttribute("data-presentation", "side-by-side");
+      const sideChat = page.getByRole("complementary", {
+        name: sideChatTabTitles[0],
+        exact: true,
+      });
+      const header = sideChat.locator(":scope > header");
+      const parentInput = page.getByRole("combobox", {
+        name: "Message Project Chat",
+        exact: true,
+      });
+      const sideInput = sideChat.getByRole("combobox");
+      const output = join(repositoryRoot, ".visual-captures");
+      await mkdir(output, { recursive: true });
+      await expect(header.getByText("Side Chat", { exact: true })).toBeVisible();
+      await expect(sideChat).toHaveCSS("border-left-width", "2px");
+      await parentInput.click();
+      await expect(parentInput).toBeFocused();
+      expect(await parentInput.evaluate((el) => el.closest(".side-chat-panel") === null)).toBe(
+        true,
+      );
+      const restingBorder = await sideChat.evaluate((el) => getComputedStyle(el).borderColor);
+      const restingHeader = await header.evaluate((el) => getComputedStyle(el).backgroundColor);
+      await layout.screenshot({ path: join(output, `side-chat-main-focus-${theme}.png`) });
+      await sideInput.click();
+      await expect(sideInput).toBeFocused();
+      await expect(sideChat).not.toHaveCSS("border-color", restingBorder);
+      await expect(header).not.toHaveCSS("background-color", restingHeader);
+      await layout.screenshot({ path: join(output, `side-chat-side-focus-${theme}.png`) });
+      // Shift+Tab retains sequential control navigation; plain Tab is Cake's writing shortcut.
+      const closePane = sideChat.getByRole("button", { name: "Close side chat", exact: true });
+      await tabs.first().focus();
+      await page.keyboard.press("Shift+Tab");
+      await expect(closePane).toBeFocused();
+      await expect(closePane).toHaveCSS("outline-style", "solid");
+      await expect(closePane).toHaveCSS("outline-width", "2px");
+      const merge = sideChat.getByRole("button", { name: "Merge into main chat", exact: true });
+      const resolve = sideChat.getByRole("button", { name: "Close and resolve", exact: true });
+      await resolve.focus();
+      await page.keyboard.press("Shift+Tab");
+      await expect(merge).toBeFocused();
+      await expect(merge).toBeEnabled();
+      await layout.screenshot({ path: join(output, `side-chat-action-focus-${theme}.png`) });
       const first = tabs.first();
       await expect(first).toHaveAttribute("title", sideChatTabTitles[0]);
       await expect(first).toHaveCSS("border-top-width", "1px");
@@ -168,8 +213,6 @@ for (const theme of ["dark", "light"] as const) {
         .poll(() => first.evaluate((el) => getComputedStyle(el, "::after").height))
         .toBe("2px");
       await expect.poll(() => strip.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
-      const output = join(repositoryRoot, ".visual-captures");
-      await mkdir(output, { recursive: true });
       await pane.screenshot({ path: join(output, `tabs-after-${theme}.png`) });
       const inactiveBackground = await tabs
         .nth(1)
@@ -209,6 +252,9 @@ for (const theme of ["dark", "light"] as const) {
       }
       await resize(640);
       await expect(layout).toHaveAttribute("data-presentation", "replacement");
+      await expect(header.getByText("Side Chat", { exact: true })).toBeVisible();
+      await expect(closePane).toBeVisible();
+      await layout.screenshot({ path: join(output, `side-chat-replacement-${theme}.png`) });
       await expect.poll(() => strip.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
       await pane.screenshot({ path: join(output, `tabs-narrow-${theme}.png`) });
       await first.focus();

@@ -319,7 +319,9 @@ describe("Session Changes review", () => {
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
-    expect(screen.getByRole("complementary", { name: "Changes" })).toBeDefined();
+    expect(
+      screen.getByRole("complementary", { name: "Changes" }).classList.contains("side-chat-panel"),
+    ).toBe(false);
     await act(async () => complete());
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Changes" })).toBeNull(),

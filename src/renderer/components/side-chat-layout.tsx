@@ -115,7 +115,8 @@ export const SideChatLayout = observer(function SideChatLayout({
             <SidePanel
               title={title}
               compact={isSideChat}
-              eyebrow={isSideChat ? undefined : target.eyebrow?.()}
+              className={isSideChat ? "side-chat-panel" : undefined}
+              eyebrow={isSideChat ? "Side Chat" : target.eyebrow?.()}
               closeLabel={isSideChat ? "Close side chat" : undefined}
               onClose={() => store.close()}
               headerActions={

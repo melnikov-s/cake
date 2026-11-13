@@ -296,11 +296,21 @@ describe("Secondary conversation workflows", () => {
       within(screen.getByRole("complementary", { name: "Side chat" })).getByRole("status")
         .textContent,
     ).toBe("Side chat exists. Opening…");
+    const opening = screen.getByRole("complementary", { name: "Side chat" });
+    expect(opening.classList.contains("side-chat-panel")).toBe(true);
+    expect(within(opening).getByText("Side Chat", { exact: true })).toBeDefined();
     // The explicit read recovers a missing catalog; linking still precedes the live snapshot.
     await act(async () => listing.resolve([existing]));
     expect(screen.queryByRole("combobox", { name: "Reply to side chat" })).toBeNull();
     fixture.publishSidecars([existing]);
     const reply = await screen.findByRole("combobox", { name: "Reply to side chat" });
+    const panel = screen.getByRole("complementary", { name: "Question" });
+    expect(panel.classList.contains("side-chat-panel")).toBe(true);
+    expect(within(panel).getByText("Side Chat", { exact: true })).toBeDefined();
+    expect(within(panel).getByRole("button", { name: "Close side chat" })).toBeDefined();
+    expect(
+      screen.getByRole("combobox", { name: "Message" }).closest(".side-chat-panel"),
+    ).toBeNull();
     await fixture.user.type(reply, "Here is my response");
     await fixture.user.click(
       within(screen.getByRole("complementary", { name: "Question" })).getByRole("button", {
