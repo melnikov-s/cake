@@ -317,7 +317,7 @@ describe("Worktree operation workflows", () => {
     "keeps explicit Merge & resolve available after %s automatic intent without readiness",
     async (phase) => {
       const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async (input) =>
-        operation("waiting", { ...input, automatic: undefined }),
+        operation("waiting", { operationId: input.operationId, resolveAfterLanding: true }),
       );
       using fixture = renderWorktree({
         status: status({
@@ -341,6 +341,23 @@ describe("Worktree operation workflows", () => {
           commitBeforeLanding: true,
           resolveAfterLanding: true,
         }),
+      );
+    },
+  );
+
+  it.each(["streaming", "canceling"] as const)(
+    "does not enable manual takeover of an automatic pause while %s",
+    async (blocked) => {
+      using fixture = renderWorktree({
+        streaming: blocked === "streaming",
+        operation: operation("stalled", {
+          automatic: true,
+          cancellationRequested: blocked === "canceling" ? true : undefined,
+        }),
+      });
+      expect(await screen.findByRole("button", { name: "Merge & resolve" })).toHaveProperty(
+        "disabled",
+        true,
       );
     },
   );

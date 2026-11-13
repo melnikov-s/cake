@@ -166,6 +166,17 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
   }
 
+  /** Presentation only: main also verifies that the automatic worker has exited. */
+  get canReplaceAutomaticPause() {
+    const operation = this.props.operation();
+    return (
+      this.stalled &&
+      operation?.automatic === true &&
+      operation.phase === "stalled" &&
+      !operation.cancellationRequested
+    );
+  }
+
   get canRetryLanding() {
     return this.stalled && !this.props.operation()?.automatic;
   }
@@ -239,7 +250,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   async commitAndMerge(allowDirtyTarget = false, resolveAfterLanding = false): Promise<void> {
-    this.assertCanStart();
+    this.assertCanStart(true);
     const workspacePath = this.requiredWorkspacePath();
     const sessionId = this.requiredSessionId();
     this.phase = (this.status?.dirtyCount ?? 0) > 0 ? "committing" : "landing";
@@ -534,8 +545,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     });
   }
 
-  private assertCanStart() {
-    if (this.isBusy || this.stalled)
+  private assertCanStart(allowAutomaticPause = false) {
+    if (this.isBusy || (this.stalled && !(allowAutomaticPause && this.canReplaceAutomaticPause)))
       throw new Error("A worktree operation is already in progress.");
     if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
   }

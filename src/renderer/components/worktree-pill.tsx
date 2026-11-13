@@ -258,7 +258,9 @@ export const WorktreePill = observer(function WorktreePill({
         ? "A worktree operation is already in progress."
         : undefined);
   const mergeDisabledReason =
-    operationDisabledReason ??
+    (actions.canReplaceAutomaticPause && !creation.isPreparing(sessionId)
+      ? sessionDisabledReason
+      : operationDisabledReason) ??
     statusDisabledReason ??
     (!hasWorkToMerge ? "There are no changes or commits to merge." : undefined);
   const rebaseDisabledReason =
