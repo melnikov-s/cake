@@ -6,6 +6,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { runInlineWidgetRepair } from "../../src/services/pi/runtime/sidecar-runtime";
 import { prepareWidgetConversation } from "../../src/services/pi/runtime/widget-conversation";
 import { toolPruneEntryType } from "../../src/services/pi/runtime/tool-prune-provenance";
+import { widgetBuildReplacementEntryType } from "../../src/services/pi/runtime/widget-build-context";
 import type { WidgetCandidate } from "../../src/contracts/widgets/widget-candidate";
 import { call, text, widgetSideChatFixture, type ScriptedReply } from "./fixtures/widget-side-chat";
 
@@ -138,17 +139,15 @@ async function fixtureWithCompactionDisabled(contextWindow: number) {
   return fixture;
 }
 
+const acceptedSource = "export default function Accepted(){return <div>Accepted</div>}";
+
 const revise = (
   fixture: Awaited<ReturnType<typeof widgetSideChatFixture>>,
   sessionId: string,
   context = "Show blocked CI as its own lane.",
+  source = acceptedSource,
 ) => {
-  const candidate: WidgetCandidate = {
-    files: {
-      "widget/widget.tsx": "export default function Accepted(){return <div>Accepted</div>}",
-    },
-    state: null,
-  };
+  const candidate: WidgetCandidate = { files: { "widget/widget.tsx": source }, state: null };
   return {
     candidate,
     result: runInlineWidgetRepair({
@@ -290,19 +289,81 @@ describe("widget revision build-session context", () => {
     });
   });
 
-  it("fails clearly, without a replacement session, when pruned dialogue is still over budget", async () => {
-    const fixture = await fixtureWithCompactionDisabled(120_000);
-    const build = await buildSession(fixture, {
-      revisions: 3,
-      promptCharacters: 160_000,
-      writesPerRevision: 1,
-      writeCharacters: 1_000,
-      lastReplyAt: Date.now() - 3 * 60 * 60_000,
-    });
-    await expect(revise(fixture, build.sessionId).result).rejects.toThrow(
-      `Widget build session ${build.sessionId} still needs about`,
+  describe("a build session whose pruned dialogue alone exceeds a 250k model", () => {
+    // Like delta-pr-tracker rev18: ~469k tokens after pruning against a 233,616-token budget.
+    const oversized = {
+      revisions: 17,
+      promptCharacters: 110_000,
+      writesPerRevision: 2,
+      writeCharacters: 56_000,
+    };
+
+    it.each([
+      // Cold: pruning shows it cannot fit before anything is sent.
+      ["cold", 22 * 60_000, false],
+      // Warm: auto-compaction is tried first and overflows, then the forced prune.
+      ["warm", 60_000, true],
+    ])(
+      "moves a %s revision to a fresh build session seeded with the current widget",
+      async (_cache, age, triedOldSession) => {
+        const fixture = await fixtureWithCompactionDisabled(250_000);
+        const build = await buildSession(fixture, { ...oversized, lastReplyAt: Date.now() - age });
+        const { candidate, result } = revise(fixture, build.sessionId);
+        const revised = await result;
+
+        expect(revised.sessionId).not.toBe(build.sessionId);
+        expect(revised.changed).toBe(true);
+        expect(fixture.requests.some((request) => request.sessionId === build.sessionId)).toBe(
+          triedOldSession,
+        );
+        expect(candidate.files["widget/widget.tsx"]).toContain("Revised");
+        const [seeded, ...rest] = fixture.requests.filter(
+          (request) => request.sessionId === revised.sessionId,
+        );
+        const seed = JSON.stringify(seeded!.messages);
+        // Seeded from the current source plus the unchanged revision request and brief.
+        expect(seed).toContain(acceptedSource.replaceAll('"', '\\"'));
+        expect(seed).toContain("say Revised");
+        expect(seed).toContain("Show blocked CI as its own lane.");
+        expect(seed).toContain(build.sessionId);
+        expect(seed).not.toContain("Revision 1 assignment and brief.");
+        expect(rest.length).toBeGreaterThan(0);
+        expect(rejected(revised.sessionFile!)).toEqual([]);
+        const replacement = SessionManager.open(revised.sessionFile!);
+        expect(replacement.getEntries()).toContainEqual(
+          expect.objectContaining({
+            type: "custom",
+            customType: widgetBuildReplacementEntryType,
+            data: expect.objectContaining({ replacedSessionId: build.sessionId }),
+          }),
+        );
+        // The old build session is kept, not rewritten into the replacement.
+        expect(SessionManager.open(build.sessionFile).getSessionId()).toBe(build.sessionId);
+        expect(await readdir(fixture.options.sessionDir)).toHaveLength(2);
+
+        // The next revision reopens the replacement on the normal path.
+        const next = await revise(fixture, revised.sessionId).result;
+        expect(next.sessionId).toBe(revised.sessionId);
+        expect(await readdir(fixture.options.sessionDir)).toHaveLength(2);
+      },
     );
-    expect(fixture.requests).toEqual([]);
-    expect(await readdir(fixture.options.sessionDir)).toHaveLength(1);
+
+    it("fails with a caller-actionable error when even the seeded session cannot fit", async () => {
+      const fixture = await fixtureWithCompactionDisabled(250_000);
+      const build = await buildSession(fixture, {
+        ...oversized,
+        lastReplyAt: Date.now() - 3 * 60 * 60_000,
+      });
+      const huge = filler("export default function Huge(){return <div>", 1_200_000);
+      const { candidate, result } = revise(fixture, build.sessionId, undefined, huge);
+
+      await expect(result).rejects.toThrow(
+        /Widget revision did not fit: a fresh build session seeded with only the current widget source.*about [\d,]+ tokens, over the 233,616-token budget of anthropic\/claude-fixture\. Nothing was published/,
+      );
+      expect(fixture.requests).toEqual([]);
+      expect(candidate.files["widget/widget.tsx"]).toBe(huge);
+      // No replacement session was persisted.
+      expect(await readdir(fixture.options.sessionDir)).toHaveLength(1);
+    });
   });
 });

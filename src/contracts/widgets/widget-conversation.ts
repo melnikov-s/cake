@@ -15,7 +15,9 @@ export interface WidgetConversationOrigin extends Schema.Schema.Type<
 /**
  * Private generator runtime policy; only scalar references cross composition.
  * `revision` reopens a published widget's own build session (same Session ID) and
- * fits its context to the model first; `continue` resumes one build's repair/review loop.
+ * fits its context to the model first; if it cannot fit, the revision runs in a fresh
+ * session seeded with the current widget instead. `continue` resumes one build's
+ * repair/review loop.
  */
 export type WidgetConversationTarget =
   | { readonly type: "new" }

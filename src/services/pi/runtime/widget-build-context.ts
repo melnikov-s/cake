@@ -61,7 +61,10 @@ function latestTextReply(manager: SessionManager) {
  *    sessions) compacts before the request when it would cross the threshold.
  * 2. Cold cache, or `force` after compaction failed: run the deterministic tool prune
  *    on this same session (dialogue kept, no model call).
- * 3. Still over budget: fail clearly. Cake never substitutes a fresh session.
+ * 3. Still over budget: throw {@link WidgetBuildSessionOverBudget}. Pruning keeps every
+ *    user and assistant message, so a long-lived build session (forked parent history,
+ *    restated assignments, briefs and state) can outgrow the model even with no tools;
+ *    the caller then starts a replacement session seeded with the current widget.
  */
 export function fitWidgetBuildSession(
   manager: SessionManager,
@@ -84,7 +87,8 @@ export function fitWidgetBuildSession(
     return { route: "warm", tokens: tokensBefore };
   const source = latestTextReply(manager);
   if (!source || (!options.force && tokensBefore <= COLD_PRUNE_FLOOR_TOKENS)) {
-    if (tokensBefore > budget) throw overBudget(manager, tokensBefore, budget, options.model);
+    if (tokensBefore > budget)
+      throw new WidgetBuildSessionOverBudget(manager, tokensBefore, budget, options.model);
     return { route: "unchanged", tokens: tokensBefore };
   }
   appendToolPrunedBranch(manager, source, {
@@ -93,7 +97,8 @@ export function fitWidgetBuildSession(
     thinkingLevel: manager.buildSessionContext().thinkingLevel,
   });
   const tokens = estimateBuildContextTokens(manager);
-  if (tokens > budget) throw overBudget(manager, tokens, budget, options.model);
+  if (tokens > budget)
+    throw new WidgetBuildSessionOverBudget(manager, tokens, budget, options.model);
   return { route: "pruned", tokensBefore, tokens };
 }
 
@@ -109,8 +114,46 @@ export function endedInContextOverflow(manager: SessionManager) {
   );
 }
 
-function overBudget(manager: SessionManager, tokens: number, budget: number, model: Model<Api>) {
+/** A reopened build session cannot fit its model even after tool pruning. */
+export class WidgetBuildSessionOverBudget extends Error {
+  readonly sessionId: string;
+  readonly tokens: number;
+  readonly budget: number;
+
+  constructor(manager: SessionManager, tokens: number, budget: number, model: Model<Api>) {
+    super(
+      `Widget build session ${manager.getSessionId()} still needs about ${tokens.toLocaleString("en-US")} tokens after tool pruning, over its ${budget.toLocaleString("en-US")}-token budget for ${model.provider}/${model.id}.`,
+    );
+    this.name = "WidgetBuildSessionOverBudget";
+    this.sessionId = manager.getSessionId();
+    this.tokens = tokens;
+    this.budget = budget;
+  }
+}
+
+/** Custom entry that links a replacement build session to the one it replaced. */
+export const widgetBuildReplacementEntryType = "cake.widget-build-replacement/v1";
+
+/**
+ * Checks that a fresh build session seeded with only the current widget and the
+ * revision request fits the model. Nothing is sent or persisted when it does not.
+ */
+export function assertSeededWidgetBuildFits(
+  seed: string,
+  options: { readonly model: Model<Api>; readonly reserveTokens: number },
+) {
+  const budget = options.model.contextWindow - options.reserveTokens;
+  const tokens = estimateTokens({ role: "user", content: seed, timestamp: 0 });
+  if (tokens > budget) throw seededOverBudget(tokens, budget, options.model);
+}
+
+/** The caller-actionable failure when even a seeded replacement session cannot fit. */
+export function seededOverBudget(tokens: number | undefined, budget: number, model: Model<Api>) {
+  const size =
+    tokens === undefined
+      ? "more tokens than"
+      : `about ${tokens.toLocaleString("en-US")} tokens, over`;
   return new Error(
-    `Widget build session ${manager.getSessionId()} still needs about ${tokens.toLocaleString("en-US")} tokens after tool pruning, over its ${budget.toLocaleString("en-US")}-token budget for ${model.provider}/${model.id}. Cake did not start a replacement build session; retry with a larger-context model.`,
+    `Widget revision did not fit: a fresh build session seeded with only the current widget source, brief, state and this request needs ${size} the ${budget.toLocaleString("en-US")}-token budget of ${model.provider}/${model.id}. Nothing was published and the current revision is unchanged. Shorten the widget source, its state or the request (for example split the widget), or run the revision from a session whose model has a larger context window.`,
   );
 }
