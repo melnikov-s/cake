@@ -8,6 +8,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -119,7 +120,7 @@ for (const retainedAutomaticIntent of [false, true]) {
     );
     await writeFile(
       join(userData, "window-state.json"),
-      windowState({ project: worktreePath, sessionId: parent, theme: "system" }),
+      windowState({ project, workingDirectory: worktreePath, sessionId: parent, theme: "system" }),
     );
     await writeFile(
       join(cakeHome, "state", "application.json"),
@@ -152,6 +153,8 @@ for (const retainedAutomaticIntent of [false, true]) {
       const page = await application.firstWindow();
       const panes = page.locator('[data-slot="session-pane"]');
       await expect(panes).toHaveCount(1, { timeout: 20_000 });
+      await showSessions(page);
+      await page.locator(`.session-item[data-session-id="${parent}"] .session-row`).click();
       const parentPane = page.locator(`[data-slot="session-pane"][data-session-id="${parent}"]`);
       await expect(parentPane).toBeVisible();
       await parentPane.getByRole("combobox", { name: "Message", exact: true }).click();
