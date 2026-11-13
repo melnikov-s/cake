@@ -822,7 +822,7 @@ describe("Worktree operation workflows", () => {
         status: status({ dirtyCount: 1, rebasing: true }),
       });
       const label = automatic
-        ? "Paused — conflict repair and fresh validation required."
+        ? "Auto-merge paused — conflict repair and fresh validation required."
         : "Paused — conflict repair required.";
       expect(await screen.findByText(label)).toBeDefined();
       expect(screen.queryByRole("button", { name: "Resolving conflicts…" })).toBeNull();
@@ -831,7 +831,9 @@ describe("Worktree operation workflows", () => {
       const store = fixture.root.sessionRegistry.load("session-1", "/worktree").worktreeStore;
       await act(async () => store.refresh());
       expect(
-        await screen.findByText(automatic ? "Paused — fresh validation required." : label),
+        await screen.findByText(
+          automatic ? "Auto-merge paused — fresh validation required." : label,
+        ),
       ).toBeDefined();
       expect(store.isBusy).toBe(false);
       expect(store.phase).toBe("paused");
@@ -846,9 +848,14 @@ describe("Worktree operation workflows", () => {
     const store = fixture.root.sessionRegistry.load("session-1", "/worktree").worktreeStore;
     await waitFor(() => expect(store.phase).toBe("validating"));
     expect(store.isBusy).toBe(true);
+    expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", true);
     expect(screen.queryByRole("button", { name: "Resolving conflicts…" })).toBeNull();
     await fixture.publish({ ...validating, phase: "stalled" }, status({ dirtyCount: 1 }));
-    expect(await screen.findByText("Paused — fresh validation required.")).toBeDefined();
+    expect(await screen.findByText("Auto-merge paused — fresh validation required.")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Commit & merge" })).toHaveProperty(
+      "disabled",
+      false,
+    );
     expect(screen.queryByText(/conflict repair/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });

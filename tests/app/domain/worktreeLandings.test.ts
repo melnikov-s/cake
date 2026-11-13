@@ -603,7 +603,7 @@ describe("WorktreeLandings", () => {
       },
     );
 
-    it.effect.each(["waiting", "queued", "landing", "resolving", "stalled"] as const)(
+    it.effect.each(["waiting", "queued", "landing", "resolving", "validating", "stalled"] as const)(
       `manual ${entry} cannot replace a live automatic worker (%s)`,
       (phase) => {
         const events: string[] = [];

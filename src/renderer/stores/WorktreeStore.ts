@@ -187,8 +187,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (operation?.automatic)
       return operation.pauseReason === "clean-rebase" ||
         (this.status && !this.status.dirtyCount && !this.status.merging && !this.status.rebasing)
-        ? "Paused — fresh validation required."
-        : "Paused — conflict repair and fresh validation required.";
+        ? "Auto-merge paused — fresh validation required."
+        : "Auto-merge paused — conflict repair and fresh validation required.";
     if (operation?.pauseReason === "commit") return "Paused — commit required.";
     if (operation?.pauseReason === "squash-message") return "Paused — squash message required.";
     return "Paused — conflict repair required.";
