@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -164,12 +164,17 @@ for (const retainedAutomaticIntent of [false, true]) {
       await page.screenshot({ path: testInfo.outputPath("manual-merge-before.png") });
       await mergeAndResolve.click();
 
-      await expect(page.getByRole("button", { name: "Current checkout", exact: true })).toBeVisible(
-        {
-          timeout: 20_000,
-        },
+      await expect.poll(() => existsSync(worktreePath), { timeout: 20_000 }).toBe(false);
+      const worktrees = JSON.parse(
+        await readFile(join(cakeHome, "state", "worktrees.json"), "utf8"),
       );
-      await expect.poll(() => existsSync(worktreePath)).toBe(false);
+      expect(worktrees.records).toEqual([
+        expect.objectContaining({
+          worktreePath,
+          state: "resolved",
+          resolvedFrom: "landed",
+        }),
+      ]);
       const toasts = page.locator('[aria-live="polite"] > [role="status"]');
       await expect(toasts).toHaveCount(0);
       expect((await git(["log", "-1", "--format=%s"])).stdout.trim()).toBe("family work");
