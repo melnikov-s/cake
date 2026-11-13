@@ -81,8 +81,18 @@ for (const scenario of ["session", "project-chats", "mixed"] as const) {
       await viewer.getByRole("button", { name: "Attach Shared dashboard to", exact: true }).click();
       await page.getByRole("menuitem", { name: "Workspace tab", exact: true }).click();
       if (scenario !== "mixed") {
-        await expect(viewer.getByRole("alert")).toContainText("Widget scope conflict");
-        await expect(viewer.getByRole("alert")).toContainText("Nothing was changed");
+        const error = page.getByRole("menu", { name: "Attach to", exact: true }).getByRole("alert");
+        await expect(error).toBeVisible();
+        await expect(error).toContainText("Widget scope conflict");
+        await expect(error).toContainText("Nothing was changed");
+        const errorBounds = (await error.boundingBox())!;
+        const menuBounds = (await page
+          .getByRole("menu", { name: "Attach to", exact: true })
+          .boundingBox())!;
+        expect(errorBounds.y).toBeGreaterThanOrEqual(menuBounds.y);
+        expect(errorBounds.y + errorBounds.height).toBeLessThanOrEqual(
+          menuBounds.y + menuBounds.height,
+        );
         await expect(page.getByRole("status").filter({ hasText: "Attached to" })).toHaveCount(0);
         expect(await attachments()).toEqual(before);
         await expect(
@@ -96,12 +106,12 @@ for (const scenario of ["session", "project-chats", "mixed"] as const) {
         await expect(
           page.getByRole("status").filter({ hasText: "Attached to Workspace tab." }),
         ).toBeVisible();
-        await expect(viewer.getByRole("alert")).toHaveCount(0);
+        await expect(page.getByRole("alert")).toHaveCount(0);
         await expect
           .poll(async () =>
             (await attachments()).find((entry: { id: string }) => entry.id === compatible.id),
           )
-          .toMatchObject({ ...compatible, slot: "tab", hidden: false });
+          .toMatchObject({ ...compatible, slot: "tab", order: 0, hidden: false });
         expect(
           (await attachments()).find((entry: { id: string }) => entry.id === outside.id),
         ).toEqual(outside);

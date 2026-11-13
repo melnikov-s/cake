@@ -34,11 +34,6 @@ export const ArtifactAttachmentMenu = observer(function ArtifactAttachmentMenu({
           Attaching…
         </span>
       )}
-      {request?.error && (
-        <Callout role="alert" variant="error" className="max-w-64">
-          {request.error}
-        </Callout>
-      )}
       <Popover>
         <PopoverTrigger
           size="sm"
@@ -52,9 +47,14 @@ export const ArtifactAttachmentMenu = observer(function ArtifactAttachmentMenu({
           role="menu"
           aria-label="Attach to"
           align="end"
-          className="w-44 p-1"
+          className={request?.error ? "w-72 p-1" : "w-44 p-1"}
           dismissOnEscapeCapture
         >
+          {request?.error && (
+            <Callout role="alert" variant="error" className="m-1">
+              {request.error}
+            </Callout>
+          )}
           {destinations.map(([slot, label]) => (
             <Button
               key={slot}
