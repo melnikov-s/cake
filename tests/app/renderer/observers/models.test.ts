@@ -1,7 +1,7 @@
 import { Effect, Queue, Stream } from "effect";
 import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
 import { decodeArtifactLineageId } from "../../../../src/contracts/artifacts/artifact-lineage";
-import { batch, observable } from "r-state-tree";
+import { batch, effect as reactiveEffect, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectSessionSignalsUpdate } from "../../../../src/contracts/project-sessions/project-session-signals";
 import type {
@@ -660,6 +660,48 @@ describe("Project Session composition observer", () => {
         expect(projection.projectConversation("current", "/project").sessionFile).not.toBe(""),
       );
       expect(projection.projectConversation("stale", "/project").sessionFile).toBe("");
+    } finally {
+      observer.stop();
+      projection[Symbol.dispose]();
+    }
+  });
+
+  it("clears every evicted parent's subagent state in one notification", async () => {
+    const client = baseClient({
+      subagents: {
+        observe: (parentSessionId: string) =>
+          Stream.make({
+            _tag: "Snapshot" as const,
+            revision: 1,
+            parentSessionId,
+            activities: [],
+            backgroundActive: false,
+          }).pipe(Stream.concat(Stream.never)),
+      },
+    });
+    const projection = RootProjection.create();
+    const observer = createModelObserver(runtimeFor(client));
+    const sessionIds = Array.from({ length: 5 }, (_, index) => `parent-${index}`);
+    const catalogs = sessionIds.map((sessionId) => projection.subagentCatalog(sessionId));
+    try {
+      observer.sync({
+        ...baseInput(projection),
+        projectSessions: sessionIds.flatMap(
+          (sessionId) => baseInput(projection, sessionId).projectSessions,
+        ),
+      });
+      await vi.waitFor(() => expect(catalogs.every((catalog) => catalog.loaded)).toBe(true));
+      const notifications: boolean[][] = [];
+      const stopReading = reactiveEffect(() => {
+        notifications.push(catalogs.map((catalog) => catalog.loaded));
+      });
+      // One demand change evicts all five parents (the retention trim's eviction).
+      observer.sync({ ...baseInput(projection), projectSessions: [] });
+      stopReading();
+      expect(notifications).toEqual([
+        [true, true, true, true, true],
+        [false, false, false, false, false],
+      ]);
     } finally {
       observer.stop();
       projection[Symbol.dispose]();

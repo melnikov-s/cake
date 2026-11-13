@@ -27,8 +27,8 @@ export function nestedTranscriptBehaviorFor(
   const subagents = [
     ...(parent.subagents ? [parent.subagents] : []),
     ...root.discussionNavigationStore.subagents,
-  ].find((owner) => owner.runs.some((run) => owner.chatStore(run.key) === chat));
-  const worker = subagents?.runs.find((run) => subagents.chatStore(run.key) === chat);
+  ].find((owner) => owner.runForChat(chat));
+  const worker = subagents?.runForChat(chat);
   const workerContext = worker && subagents?.resourceContext(worker.key);
   const workspacePath = discussion?.thread.workingDirectory ?? workerContext?.workspacePath;
   return {

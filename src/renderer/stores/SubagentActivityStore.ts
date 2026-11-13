@@ -1,4 +1,11 @@
-import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
+import {
+  Store,
+  child,
+  computed,
+  createStore,
+  effect as reactiveEffect,
+  type ReadonlySignal,
+} from "r-state-tree";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import { toolOperationName } from "../../utils/cake-tool";
@@ -17,6 +24,36 @@ import type { SideChatModel } from "./SideChatStore";
 
 type ToolPart = Extract<UiPart, { kind: "tool" }>;
 
+interface WorkerChat {
+  handleId: string;
+  queued: boolean;
+  messageable: boolean;
+}
+
+interface WorkerChildren {
+  attachments: string[];
+  chats: WorkerChat[];
+}
+
+/**
+ * A parent report with a handle but no live worker. Its explanation is read
+ * lazily, so a loading-state flip never invalidates run identity or chat lists.
+ */
+function unmappedRun(run: SubagentRun, model: SubagentCatalog): SubagentRun {
+  return {
+    ...run,
+    parts: [],
+    get error() {
+      return (
+        model.observationError ??
+        (model.loaded
+          ? "The full subagent conversation is unavailable: Cake has no retained handle-to-Pi mapping for this worker. A parent report cannot safely recover its identity."
+          : "The saved subagent conversation is still loading.")
+      );
+    },
+  };
+}
+
 /** Owns live and historical subagent chats belonging to one parent session. */
 export class SubagentActivityStore extends Store<{
   sessionId: string;
@@ -26,6 +63,8 @@ export class SubagentActivityStore extends Store<{
   focusedTodos?(): readonly ProjectTodo[];
 }> {
   private commandErrors: Record<string, string | undefined> = {};
+  /** Last child element per worker chat, reused while its chat is unchanged. */
+  private readonly chatElements = new Map<string, { signature: string; element: ChatStore }>();
 
   get client() {
     return ClientContext.consume(this)!;
@@ -51,24 +90,28 @@ export class SubagentActivityStore extends Store<{
     };
   }
 
+  /** Parsing the parent transcript depends only on its parts. */
+  @computed
+  private get historicalRuns(): readonly SubagentRun[] {
+    return historicalSubagentRuns(this.props.parts());
+  }
+
+  @computed
   get runs(): SubagentRun[] {
-    const runs = new Map(
-      historicalSubagentRuns(this.props.parts()).map((run) => [run.key, run] as const),
-    );
-    for (const run of runs.values()) {
-      if (run.handleId && this.props.model.releasedHandleIds.includes(run.handleId))
-        run.released = true;
+    const { model } = this.props;
+    const released = new Set(model.releasedHandleIds);
+    const runs = new Map<string, SubagentRun>();
+    for (const historical of this.historicalRuns) {
+      let run =
+        historical.handleId && released.has(historical.handleId)
+          ? { ...historical, released: true }
+          : historical;
       // Parent reports establish navigation/labels, never a substitute transcript.
-      if (run.handleId && !run.failurePhase) {
-        run.parts = [];
-        run.error =
-          this.props.model.observationError ??
-          (this.props.model.loaded
-            ? "The full subagent conversation is unavailable: Cake has no retained handle-to-Pi mapping for this worker. A parent report cannot safely recover its identity."
-            : "The saved subagent conversation is still loading.");
-      }
+      if (run.handleId && !run.failurePhase) run = unmappedRun(run, model);
+      runs.set(run.key, run);
     }
-    for (const activity of this.props.model.activities) {
+    for (const activity of model.activities) {
+      const isReleased = released.has(activity.handleId);
       runs.set(activity.handleId, {
         key: activity.handleId,
         anchorPartId: activity.anchorPartId,
@@ -86,13 +129,19 @@ export class SubagentActivityStore extends Store<{
         usage: activity.usage,
         error: activity.error,
         failurePhase: activity.failurePhase,
-        released: this.props.model.releasedHandleIds.includes(activity.handleId),
-        available: !this.props.model.releasedHandleIds.includes(activity.handleId),
+        released: isReleased,
+        available: !isReleased,
       });
     }
     return [...runs.values()];
   }
 
+  @computed
+  private get runsByKey(): ReadonlyMap<string, SubagentRun> {
+    return new Map(this.runs.map((run) => [run.key, run]));
+  }
+
+  @computed
   get activeRuns() {
     return this.runs.filter(
       (run) => run.available && (run.status === "queued" || run.status === "running"),
@@ -125,7 +174,7 @@ export class SubagentActivityStore extends Store<{
   }
 
   run(key: string) {
-    return this.runs.find((run) => run.key === key);
+    return this.runsByKey.get(key);
   }
 
   /** The model the worker was started on, as resolved by the backend. */
@@ -166,9 +215,19 @@ export class SubagentActivityStore extends Store<{
     return run ? [run] : this.runs.filter((candidate) => candidate.anchorPartId === anchorPartId);
   }
 
+  /** Memoized per worker: one run's change never re-notifies other workers' composers. */
+  private readonly messageable = new Map<string, ReadonlySignal<boolean>>();
+
   private canMessage(key: string) {
-    const run = this.run(key);
-    return Boolean(run?.handleId && run.available && !run.failurePhase);
+    let messageable = this.messageable.get(key);
+    if (!messageable) {
+      messageable = computed(() => {
+        const run = this.run(key);
+        return Boolean(run?.handleId && run.available && !run.failurePhase);
+      });
+      this.messageable.set(key, messageable);
+    }
+    return messageable.value;
   }
 
   private async command<T>(key: string, run: (handleId: SubagentHandleId) => Promise<T>) {
@@ -212,134 +271,196 @@ export class SubagentActivityStore extends Store<{
     });
   }
 
+  /**
+   * Child Store lists depend on this summary, not on every run update. A JSON
+   * signature makes an unchanged summary an equal value, so streaming parts or a
+   * running→complete status never re-create or re-prop the child Stores.
+   */
+  @computed
+  private get workerChildrenSignature(): string {
+    const children: WorkerChildren = {
+      attachments: this.runs.flatMap((run) => (run.handleId ? [run.handleId] : [])),
+      chats: this.runs.flatMap((run) =>
+        run.handleId && !run.failurePhase
+          ? [
+              {
+                handleId: run.handleId,
+                queued: run.status === "queued",
+                messageable: this.canMessage(run.key),
+              },
+            ]
+          : [],
+      ),
+    };
+    return JSON.stringify(children);
+  }
+
+  @computed
+  private get workerChildren(): WorkerChildren {
+    // SAFETY: the signature is JSON.stringify of a WorkerChildren value built above.
+    return JSON.parse(this.workerChildrenSignature) as WorkerChildren;
+  }
+
   @child
   get attachmentImageStores(): TranscriptAttachmentImagesStore[] {
-    return this.runs
-      .filter((run) => run.handleId)
-      .map((run) =>
-        createStore(TranscriptAttachmentImagesStore, {
-          key: run.key,
-          read: (reference, signal) =>
-            this.client.subagents.readAttachment(
-              {
-                parentSessionId: this.parentSessionId,
-                handleId: SubagentHandleId.make(run.handleId!),
-                reference: reference.id,
-              },
-              { signal },
-            ),
-        }),
-      );
+    return this.workerChildren.attachments.map((handleId) =>
+      createStore(TranscriptAttachmentImagesStore, {
+        key: handleId,
+        read: (reference, signal) =>
+          this.client.subagents.readAttachment(
+            {
+              parentSessionId: this.parentSessionId,
+              handleId: SubagentHandleId.make(handleId),
+              reference: reference.id,
+            },
+            { signal },
+          ),
+      }),
+    );
+  }
+
+  @computed
+  private get attachmentImageStoresByKey(): ReadonlyMap<string, TranscriptAttachmentImagesStore> {
+    // Tracking membership reconciles new Stores synchronously, even inside a batch.
+    void this.workerChildren.attachments;
+    return new Map(this.attachmentImageStores.map((store) => [String(store.key), store]));
   }
 
   @child
   get chatStores(): ChatStore[] {
-    return this.runs
-      .filter((run) => run.handleId && !run.failurePhase)
-      .map((run) =>
-        createStore(ChatStore, {
-          key: run.key,
-          id: () => `subagent:${run.key}`,
-          parts: () => this.run(run.key)?.parts ?? [],
-          attachmentImages: () =>
-            this.attachmentImageStores[
-              this.runs.filter((run) => run.handleId).findIndex((entry) => entry.key === run.key)
-            ]!,
-          streaming: () => {
-            const current = this.run(run.key);
-            return Boolean(
-              current &&
-              !current.released &&
-              (current.status === "running" || current.status === "queued"),
-            );
-          },
-          submitting: () => false,
-          stoppable: () => {
-            const current = this.run(run.key);
-            return Boolean(
-              current &&
-              !current.released &&
-              (current.status === "queued" || current.status === "running"),
-            );
-          },
-          configuration: () => undefined,
-          commands: () => [],
-          placeholder: () =>
-            this.run(run.key)?.status === "running" || this.run(run.key)?.status === "queued"
-              ? "Queue a message…"
-              : this.canMessage(run.key)
-                ? "Message this subagent…"
-                : "Subagent unavailable",
-          inputLabel: () => "Message subagent",
-          canSubmit: (draft) => this.canMessage(run.key) && Boolean(draft.trim()),
-          submit: (draft, options) =>
-            this.command(run.key, (handleId) =>
-              this.client.subagents.submit(
+    const chats = this.workerChildren.chats;
+    const keys = new Set(chats.map(({ handleId }) => handleId));
+    for (const key of this.chatElements.keys()) if (!keys.has(key)) this.chatElements.delete(key);
+    return chats.map((chat) => {
+      // Reusing an unchanged chat's element keeps its props identical, so one
+      // worker's queued/messaging change never re-notifies the other workers' chats.
+      const signature = JSON.stringify(chat);
+      const cached = this.chatElements.get(chat.handleId);
+      if (cached?.signature === signature) return cached.element;
+      const element = this.chatElement(chat);
+      this.chatElements.set(chat.handleId, { signature, element });
+      return element;
+    });
+  }
+
+  private chatElement(chat: WorkerChat): ChatStore {
+    // Historical and live runs with a handle are keyed by that handle.
+    const run = { ...chat, key: chat.handleId };
+    return createStore(ChatStore, {
+      key: run.key,
+      id: () => `subagent:${run.key}`,
+      parts: () => this.run(run.key)?.parts ?? [],
+      attachmentImages: () => this.attachmentImageStoresByKey.get(run.key)!,
+      streaming: () => {
+        const current = this.run(run.key);
+        return Boolean(
+          current &&
+          !current.released &&
+          (current.status === "running" || current.status === "queued"),
+        );
+      },
+      submitting: () => false,
+      stoppable: () => {
+        const current = this.run(run.key);
+        return Boolean(
+          current &&
+          !current.released &&
+          (current.status === "queued" || current.status === "running"),
+        );
+      },
+      configuration: () => undefined,
+      commands: () => [],
+      placeholder: () =>
+        this.run(run.key)?.status === "running" || this.run(run.key)?.status === "queued"
+          ? "Queue a message…"
+          : this.canMessage(run.key)
+            ? "Message this subagent…"
+            : "Subagent unavailable",
+      inputLabel: () => "Message subagent",
+      canSubmit: (draft) => this.canMessage(run.key) && Boolean(draft.trim()),
+      submit: (draft, options) =>
+        this.command(run.key, (handleId) =>
+          this.client.subagents.submit(
+            {
+              parentSessionId: this.props.sessionId,
+              handleId,
+              text: draft.trim(),
+              renderUserMessageAsMarkdown: options?.renderUserMessageAsMarkdown ?? false,
+            },
+            { signal: this.signal },
+          ),
+        ),
+      userMessagePresentation: run.messageable
+        ? {
+            setMarkdown: (entryId, renderAsMarkdown) =>
+              this.client.subagents.setUserMessageMarkdown(
                 {
                   parentSessionId: this.props.sessionId,
-                  handleId,
-                  text: draft.trim(),
-                  renderUserMessageAsMarkdown: options?.renderUserMessageAsMarkdown ?? false,
+                  handleId: SubagentHandleId.make(run.handleId),
+                  entryId,
+                  renderAsMarkdown,
                 },
                 { signal: this.signal },
               ),
-            ),
-          userMessagePresentation: this.canMessage(run.key)
-            ? {
-                setMarkdown: (entryId, renderAsMarkdown) =>
-                  this.client.subagents.setUserMessageMarkdown(
-                    {
-                      parentSessionId: this.props.sessionId,
-                      handleId: SubagentHandleId.make(run.handleId!),
-                      entryId,
-                      renderAsMarkdown,
-                    },
-                    { signal: this.signal },
-                  ),
-              }
-            : undefined,
-          queuedPrompts: () =>
-            this.canMessage(run.key) ? queuedPrompts(this.run(run.key)?.parts ?? []) : [],
-          steerQueuedPrompt:
-            run.status === "queued"
-              ? undefined
-              : async (id) => {
-                  await this.editQueue(run.key, id, "steer");
-                },
-          stopAndSendQueuedPrompt:
-            run.status === "queued"
-              ? undefined
-              : async (id) => {
-                  await this.editQueue(run.key, id, "send-now");
-                },
-          reorderQueuedPrompt:
-            run.status === "queued"
-              ? undefined
-              : async (id, position) => {
-                  await this.editQueue(run.key, id, "reorder", position);
-                },
-          removeQueuedPrompt: (id) => {
-            void this.editQueue(run.key, id, "remove");
+          }
+        : undefined,
+      queuedPrompts: () =>
+        this.canMessage(run.key) ? queuedPrompts(this.run(run.key)?.parts ?? []) : [],
+      steerQueuedPrompt: run.queued
+        ? undefined
+        : async (id) => {
+            await this.editQueue(run.key, id, "steer");
           },
-          editQueuedPrompt: (id, text) => this.editQueue(run.key, id, "update", undefined, text),
-          abort: async () => {
-            const current = this.run(run.key);
-            if (!current?.handleId || current.released) return;
-            await this.command(run.key, (handleId) =>
-              this.client.subagents.abort(
-                { parentSessionId: this.props.sessionId, handleId },
-                { signal: this.signal },
-              ),
-            );
+      stopAndSendQueuedPrompt: run.queued
+        ? undefined
+        : async (id) => {
+            await this.editQueue(run.key, id, "send-now");
           },
-          composerVisible: () => this.canMessage(run.key),
-          usage: () => this.run(run.key)?.usage,
-          error: () => ({ message: this.commandErrors[run.key] ?? this.run(run.key)?.error }),
-        }),
-      );
+      reorderQueuedPrompt: run.queued
+        ? undefined
+        : async (id, position) => {
+            await this.editQueue(run.key, id, "reorder", position);
+          },
+      removeQueuedPrompt: (id) => {
+        void this.editQueue(run.key, id, "remove");
+      },
+      editQueuedPrompt: (id, text) => this.editQueue(run.key, id, "update", undefined, text),
+      abort: async () => {
+        const current = this.run(run.key);
+        if (!current?.handleId || current.released) return;
+        await this.command(run.key, (handleId) =>
+          this.client.subagents.abort(
+            { parentSessionId: this.props.sessionId, handleId },
+            { signal: this.signal },
+          ),
+        );
+      },
+      composerVisible: () => this.canMessage(run.key),
+      usage: () => this.run(run.key)?.usage,
+      error: () => ({ message: this.commandErrors[run.key] ?? this.run(run.key)?.error }),
+    });
+  }
+
+  /** Chat membership only; another worker's messaging flip leaves it equal. */
+  @computed
+  private get chatKeySignature(): string {
+    return JSON.stringify(this.workerChildren.chats.map(({ handleId }) => handleId));
+  }
+
+  @computed
+  private get chatStoresByKey(): ReadonlyMap<string, ChatStore> {
+    // Tracking membership reconciles new chats synchronously, even inside a batch.
+    void this.chatKeySignature;
+    return new Map(this.chatStores.map((chat) => [String(chat.key), chat]));
   }
 
   chatStore(key: string) {
-    return this.chatStores.find((chat) => chat.id === `subagent:${key}`);
+    return this.chatStoresByKey.get(key);
+  }
+
+  /** The worker run displayed by one of this parent's chats. */
+  runForChat(chat: ChatStore) {
+    const key = chat.key === undefined ? undefined : String(chat.key);
+    return key !== undefined && this.chatStoresByKey.get(key) === chat ? this.run(key) : undefined;
   }
 }

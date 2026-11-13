@@ -611,18 +611,21 @@ export const createModelObserver = (
       );
     }
 
-    for (const [key, observation] of observations) {
-      if (active.has(key)) continue;
-      const hasReplacement =
-        observation.replacementGroup !== undefined &&
-        [...observations.entries()].some(
-          ([candidateKey, candidate]) =>
-            active.has(candidateKey) &&
-            candidate.model === observation.model &&
-            candidate.replacementGroup === observation.replacementGroup,
-        );
-      stop(key, !hasReplacement);
-    }
+    // One demand change can evict several parents; their clears notify readers once.
+    batch(() => {
+      for (const [key, observation] of observations) {
+        if (active.has(key)) continue;
+        const hasReplacement =
+          observation.replacementGroup !== undefined &&
+          [...observations.entries()].some(
+            ([candidateKey, candidate]) =>
+              active.has(candidateKey) &&
+              candidate.model === observation.model &&
+              candidate.replacementGroup === observation.replacementGroup,
+          );
+        stop(key, !hasReplacement);
+      }
+    });
   };
 
   const observe = (source: ModelSource) => {
