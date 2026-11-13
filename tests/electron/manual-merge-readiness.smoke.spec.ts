@@ -165,19 +165,25 @@ for (const retainedAutomaticIntent of [false, true]) {
       await mergeAndResolve.click();
 
       await expect.poll(() => existsSync(worktreePath), { timeout: 20_000 }).toBe(false);
-      const worktrees = JSON.parse(
-        await readFile(join(cakeHome, "state", "worktrees.json"), "utf8"),
-      );
-      expect(worktrees.records).toEqual([
-        expect.objectContaining({
-          worktreePath,
-          state: "resolved",
-          resolvedFrom: "landed",
-        }),
-      ]);
+      // Checkout removal precedes publication of the durable resolved record.
+      await expect
+        .poll(async () => {
+          const worktrees = JSON.parse(
+            await readFile(join(cakeHome, "state", "worktrees.json"), "utf8"),
+          );
+          return worktrees.records;
+        })
+        .toEqual([
+          expect.objectContaining({
+            worktreePath,
+            state: "resolved",
+            resolvedFrom: "landed",
+          }),
+        ]);
       const toasts = page.locator('[aria-live="polite"] > [role="status"]');
       await expect(toasts).toHaveCount(0);
       expect((await git(["log", "-1", "--format=%s"])).stdout.trim()).toBe("family work");
+      await expect(parentPane.getByText("Resolved session", { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("manual-merge-after.png") });
     } finally {
       await application.close();
