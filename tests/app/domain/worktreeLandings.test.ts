@@ -671,7 +671,7 @@ describe("WorktreeLandings", () => {
                   commit: "validated",
                   authorize: Effect.void,
                   onLanded: Effect.void,
-                  repair: () => Effect.void,
+                  revalidate: () => Effect.void,
                 },
               })
               .pipe(Effect.result),
