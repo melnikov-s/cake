@@ -3,6 +3,8 @@ import { StrictMode } from "react";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { applySnapshot } from "r-state-tree";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ArtifactRecord } from "../../../src/contracts/artifacts/artifact-contract";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -27,13 +29,26 @@ function setup(initial: WidgetAttachment[] = []) {
   const attach = vi.fn<Client["application"]["attachWidget"]>(async (input) => {
     publish([
       ...fixture.root.widgetAttachmentStore.attachments.filter((entry) => entry.id !== input.id),
-      { ...input, order: input.order ?? 0, hidden: false },
+      {
+        ...input,
+        order: input.order ?? 0,
+        hidden:
+          fixture.root.widgetAttachmentStore.attachments.find((entry) => entry.id === input.id)
+            ?.hidden ?? false,
+      },
     ]);
+  });
+  const hide = vi.fn<Client["application"]["setWidgetAttachmentHidden"]>(async ({ id, hidden }) => {
+    publish(
+      fixture.root.widgetAttachmentStore.attachments.map((entry) =>
+        entry.id === id ? { ...entry, hidden } : entry,
+      ),
+    );
   });
   const stateReplace = vi.fn<Client["artifacts"]["stateReplace"]>();
   const fixture = createRendererStoreFixture({
     client: {
-      application: { attachWidget: attach },
+      application: { attachWidget: attach, setWidgetAttachmentHidden: hide },
       electron: { setFullscreenSurfaceOpen: async () => undefined },
       artifacts: {
         stateRead: async () => ({
@@ -78,6 +93,7 @@ function setup(initial: WidgetAttachment[] = []) {
   return {
     fixture,
     attach,
+    hide,
     close,
     show,
     stateReplace,
@@ -276,6 +292,201 @@ it.each(["side-panel", "fullscreen"] as const)(
     expect(screen.queryByRole("button", { name: /Attach .* to/ })).toBeNull();
   },
 );
+
+it.each(["left", "tab"] as const)(
+  "rejects session A -> B reuse of a hidden %s placement without writes or stale success",
+  async (slot) => {
+    const initial: WidgetAttachment[] = [
+      {
+        id: "session-a",
+        lineageId: widget.revision.lineageId,
+        target: { kind: "session", sessionId: "session-a" },
+        slot,
+        order: 2,
+        hidden: true,
+      },
+    ];
+    using f = setup(initial);
+    const user = userEvent.setup();
+    f.show();
+    act(() =>
+      f.fixture.root.widgetAttachmentStore.placementRequests.set(widget.revision.lineageId, {
+        pending: false,
+        slot: "left",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Attach Fixture widget to" }));
+    expect(screen.getByRole("status").textContent).toBe("Attached to Left.");
+    await user.click(screen.getByRole("menuitem", { name: "Workspace tab" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Widget scope conflict");
+    expect(f.attach).not.toHaveBeenCalled();
+    expect(f.hide).not.toHaveBeenCalled();
+    expect(f.stateReplace).not.toHaveBeenCalled();
+    expect(f.fixture.root.widgetAttachmentStore.attachments).toEqual(initial);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(
+      f.fixture.root.widgetAttachmentStore.placementRequests.get(widget.revision.lineageId),
+    ).toEqual({ pending: false, error: expect.stringContaining("Nothing was changed") });
+  },
+);
+
+it.each(["project-chats", "project-sessions"] as const)(
+  "rejects a %s category placement in Cake Chat without moving or unhiding it",
+  async (kind) => {
+    const initial: WidgetAttachment[] = [
+      {
+        id: "category",
+        lineageId: widget.revision.lineageId,
+        target: { kind },
+        slot: "right",
+        order: 1,
+        hidden: true,
+      },
+    ];
+    using f = setup(initial);
+    act(() => f.fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID));
+    render(
+      <StoreProvider store={f.fixture.root}>
+        <ArtifactAttachmentMenu artifact={record.artifact} sessionId={CAKE_CHAT_SESSION_ID} />
+      </StoreProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Attach Fixture widget to" }));
+    await user.click(screen.getByRole("menuitem", { name: "Workspace tab" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Widget scope conflict");
+    expect(f.attach).not.toHaveBeenCalled();
+    expect(f.hide).not.toHaveBeenCalled();
+    expect(f.stateReplace).not.toHaveBeenCalled();
+    expect(f.fixture.root.widgetAttachmentStore.attachments).toEqual(initial);
+    expect(screen.queryByRole("status")).toBeNull();
+  },
+);
+
+it.each(["session", "global"] as const)(
+  "prefers a compatible %s placement over an incompatible tab, preserving the other conversation",
+  async (kind) => {
+    const outside: WidgetAttachment = {
+      id: "outside",
+      lineageId: widget.revision.lineageId,
+      target: { kind: "session", sessionId: "session-a" },
+      slot: "tab",
+      order: 0,
+      hidden: true,
+    };
+    const compatible: WidgetAttachment = {
+      ...outside,
+      id: "compatible",
+      slot: "bottom",
+      order: 1,
+      target: kind === "session" ? { kind, sessionId: "viewing-session" } : { kind },
+    };
+    using f = setup([outside, compatible]);
+    f.show();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Attach Fixture widget to" }));
+    await user.click(screen.getByRole("menuitem", { name: "Left" }));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Attached to Left."));
+    expect(f.attach).toHaveBeenCalledTimes(1);
+    expect(f.attach.mock.calls[0]?.[0]).toMatchObject({
+      id: compatible.id,
+      lineageId: compatible.lineageId,
+      target: compatible.target,
+      slot: "left",
+    });
+    expect(f.hide).toHaveBeenCalledTimes(1);
+    expect(f.hide.mock.calls[0]?.[0]).toEqual({ id: compatible.id, hidden: false });
+    expect(
+      f.fixture.root.widgetAttachmentStore.attachments.find((entry) => entry.id === outside.id),
+    ).toEqual(outside);
+    expect(f.fixture.root.widgetAttachmentStore.attachments).toHaveLength(2);
+    expect(f.stateReplace).not.toHaveBeenCalled();
+  },
+);
+
+it("moves only the compatible exact-session placement to Workspace among mixed scopes", async () => {
+  const outside: WidgetAttachment = {
+    id: "outside",
+    lineageId: widget.revision.lineageId,
+    target: { kind: "session", sessionId: "session-a" },
+    slot: "left",
+    order: 0,
+    hidden: true,
+  };
+  const compatible: WidgetAttachment = {
+    ...outside,
+    id: "compatible",
+    slot: "bottom",
+    order: 1,
+    target: { kind: "session", sessionId: "viewing-session" },
+  };
+  using f = setup([outside, compatible]);
+  f.show();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Attach Fixture widget to" }));
+  await user.click(screen.getByRole("menuitem", { name: "Workspace tab" }));
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("Attached to Workspace tab."),
+  );
+  expect(f.attach.mock.calls[0]?.[0]).toMatchObject({
+    id: compatible.id,
+    lineageId: compatible.lineageId,
+    target: compatible.target,
+    slot: "tab",
+  });
+  expect(f.hide.mock.calls[0]?.[0]).toEqual({ id: compatible.id, hidden: false });
+  expect(
+    f.fixture.root.widgetAttachmentStore.attachments.find((entry) => entry.id === outside.id),
+  ).toEqual(outside);
+  expect(f.fixture.root.widgetAttachmentStore.attachments).toHaveLength(2);
+  expect(f.stateReplace).not.toHaveBeenCalled();
+});
+
+it("reuses an applicable category without globalizing it or reusing another session's tab", async () => {
+  const sessionId = `project-chat:${"a".repeat(64)}`;
+  const outside: WidgetAttachment = {
+    id: "outside",
+    lineageId: widget.revision.lineageId,
+    target: { kind: "session", sessionId: "session-a" },
+    slot: "tab",
+    order: 0,
+    hidden: true,
+  };
+  const compatible: WidgetAttachment = {
+    ...outside,
+    id: "category",
+    target: { kind: "project-chats" },
+    slot: "bottom",
+    order: 1,
+  };
+  using f = setup([outside, compatible]);
+  act(() => {
+    applySnapshot(f.fixture.models.cakeChatCatalog, {
+      loaded: true,
+      sessions: [{ sessionId, title: "Project Chat" }],
+    });
+    f.fixture.root.navigationStore.selectCakeChat(sessionId);
+  });
+  render(
+    <StoreProvider store={f.fixture.root}>
+      <ArtifactAttachmentMenu artifact={record.artifact} sessionId={sessionId} />
+    </StoreProvider>,
+  );
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Attach Fixture widget to" }));
+  await user.click(screen.getByRole("menuitem", { name: "Top" }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Attached to Top."));
+  expect(f.attach.mock.calls[0]?.[0]).toMatchObject({
+    id: compatible.id,
+    lineageId: compatible.lineageId,
+    target: compatible.target,
+    slot: "top",
+  });
+  expect(f.hide.mock.calls[0]?.[0]).toEqual({ id: compatible.id, hidden: false });
+  expect(
+    f.fixture.root.widgetAttachmentStore.attachments.find((entry) => entry.id === outside.id),
+  ).toEqual(outside);
+  expect(f.stateReplace).not.toHaveBeenCalled();
+});
 
 it("allows only the global Workspace tab when no conversation scope is available", async () => {
   using f = setup();

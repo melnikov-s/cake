@@ -116,15 +116,27 @@ export class WidgetAttachmentStore extends Store {
       if (!sessionId && slot !== "tab")
         throw new Error("Open a conversation to attach this widget to a chat slot");
       const target: WidgetTarget = sessionId ? { kind: "session", sessionId } : { kind: "global" };
-      // Prefer the unique Workspace placement, then this conversation's placement.
-      // Reuse another existing placement rather than silently duplicating the widget.
       const placements = this.attachments.filter((entry) => entry.lineageId === lineageId);
+      const destination = ArtifactNavigationContext.consume(this)?.()?.session;
+      const applicable = placements.filter(({ target }) => {
+        if (target.kind === "global") return true;
+        if (target.kind === "session") return target.sessionId === sessionId;
+        return (
+          destination &&
+          destination.sessionId === sessionId &&
+          widgetAppliesTo(target, destination.sessionId, destination.kind)
+        );
+      });
+      if (placements.length > 0 && applicable.length === 0)
+        throw new Error(
+          "Widget scope conflict: no existing placement applies to this conversation. Nothing was changed.",
+        );
+      // Prefer a compatible Workspace placement, then an exact conversation placement.
+      // Never move, unhide, retarget or duplicate a placement belonging to another scope.
       const existing =
-        placements.find((entry) => entry.slot === "tab") ??
-        placements.find(
-          (entry) => entry.target.kind === "session" && entry.target.sessionId === sessionId,
-        ) ??
-        placements[0];
+        applicable.find((entry) => entry.slot === "tab") ??
+        applicable.find((entry) => entry.target.kind === "session") ??
+        applicable[0];
       if (existing) {
         await this.move(existing, slot);
         if (!this.signal.aborted && existing.hidden) await this.hide(existing.id, false);

@@ -58,6 +58,7 @@ for (const theme of ["light", "dark"] as const)
         "Workspace tab",
       ]);
       await page.screenshot({
+        scale: "css",
         path: testInfo.outputPath(`artifact-attach-side-panel-${theme}.png`),
       });
       await page.keyboard.press("Escape");
@@ -72,6 +73,7 @@ for (const theme of ["light", "dark"] as const)
         );
       });
       await page.screenshot({
+        scale: "css",
         path: testInfo.outputPath(`artifact-attach-fullscreen-${theme}.png`),
       });
       await page.getByRole("menuitem", { name: "Workspace tab", exact: true }).click();
@@ -95,6 +97,7 @@ for (const theme of ["light", "dark"] as const)
         tab.locator("iframe").contentFrame().getByText("Shared count: 1", { exact: true }),
       ).toBeVisible();
       await page.screenshot({
+        scale: "css",
         path: testInfo.outputPath(`artifact-attached-workspace-${theme}.png`),
       });
       const application = () =>
@@ -129,7 +132,7 @@ for (const theme of ["light", "dark"] as const)
           id: "dashboard-top",
           lineageId: "shared-dashboard",
           slot: "bottom",
-          target: { kind: "session", sessionId: "visual-widget-attachments" },
+          target: { kind: "global" },
         });
       await page.keyboard.press("Escape");
       await viewer.getByRole("button", { name: "Close Shared dashboard", exact: true }).click();
