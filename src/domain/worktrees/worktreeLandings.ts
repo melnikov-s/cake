@@ -631,6 +631,20 @@ const run = Effect.fn("WorktreeLandings.run")(function* (
   yield* FiberMap.run(coordinator.fibers, operation.workspacePath, supervised);
 });
 
+/** A retained automatic pause is intent, not a live landing. Never replace an
+ * owner repair turn or a worker that is still releasing its reservation. Called
+ * under the coordinator lock shared by manual and automatic admission. */
+const isParkedAutomatic = Effect.fn("WorktreeLandings.isParkedAutomatic")(function* (
+  operation: WorktreeLandingOperation,
+) {
+  const coordinator = yield* WorktreeLandingCoordinator;
+  return (
+    operation.automatic === true &&
+    operation.phase === "stalled" &&
+    !(yield* FiberMap.has(coordinator.fibers, operation.workspacePath))
+  );
+});
+
 const insert = Effect.fn("WorktreeLandings.insert")(function* (
   operation: WorktreeLandingOperation,
   recovery?: WorktreeStatus["record"],
@@ -644,7 +658,12 @@ const insert = Effect.fn("WorktreeLandings.insert")(function* (
       if (
         current &&
         !isTerminal(current) &&
-        !(current.phase === "stalled" && current.automatic && operation.automatic)
+        !(current.phase === "stalled" && current.automatic && operation.automatic) &&
+        !(
+          operation.kind === "landing" &&
+          !operation.automatic &&
+          (yield* isParkedAutomatic(current))
+        )
       )
         return [false, state] as const;
       if (recovery) {
@@ -688,10 +707,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
 }) {
   const status = yield* requireStatus(input.workspacePath);
   yield* worktreeLifecycle.requireDirectMerge(status.record.projectPath);
-  if (
-    (status.record.pendingAutomaticLanding && !input.automatic) ||
-    (input.automatic && input.commitBeforeLanding)
-  )
+  if (input.automatic && input.commitBeforeLanding)
     return yield* new WorktreeLandingError({
       operation: "start",
       message: "Auto-merge requires fresh validated readiness; ordinary retry is unavailable.",
@@ -741,10 +757,10 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
           operation: "mergeAndResolve",
           message: "Finish cancellation before starting another landing.",
         });
-      if (current?.automatic && !isTerminal(current))
+      if (current?.automatic && !isTerminal(current) && !(yield* isParkedAutomatic(current)))
         return yield* new WorktreeLandingError({
           operation: "mergeAndResolve",
-          message: "Auto-merge requires fresh validated readiness; ordinary retry is unavailable.",
+          message: "An automatic worktree operation is already in progress.",
         });
       if (current && !isTerminal(current) && current.kind !== "landing")
         return yield* new WorktreeLandingError({
@@ -760,11 +776,6 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
           (record?.state === "resolved" && record.resolvedFrom === "landed")) &&
         (!status || (!gitBlocked(status) && status.aheadCount === 0));
       if (record) yield* worktreeLifecycle.requireDirectMerge(record.projectPath);
-      if (record?.pendingAutomaticLanding)
-        return yield* new WorktreeLandingError({
-          operation: "mergeAndResolve",
-          message: "Auto-merge requires fresh validated readiness; ordinary retry is unavailable.",
-        });
       if (
         alreadyLanded &&
         current?.phase === "landed" &&
@@ -780,7 +791,9 @@ export const mergeAndResolve = Effect.fn("WorktreeLandings.mergeAndResolve")(fun
       yield* worktrees
         .setResolveAfterLanding(input.workspacePath, true)
         .pipe(asError("mergeAndResolve"));
-      const joining = current && !isTerminal(current);
+      // Explicit manual intent replaces a parked automatic pause; it must not
+      // inherit automatic authorization, readiness or the old operation ID.
+      const joining = current && !current.automatic && !isTerminal(current);
       const operation = normalizeOperation(
         joining
           ? { ...current, resolveAfterLanding: true }

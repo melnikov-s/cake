@@ -313,6 +313,38 @@ describe("manual worktree prompt confirmation", () => {
 });
 
 describe("Worktree operation workflows", () => {
+  it.each(["failed", "stalled"] as const)(
+    "keeps explicit Merge & resolve available after %s automatic intent without readiness",
+    async (phase) => {
+      const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async (input) =>
+        operation("waiting", { ...input, automatic: undefined }),
+      );
+      using fixture = renderWorktree({
+        status: status({
+          record: {
+            ...status().record,
+            pendingAutomaticLanding: true,
+            pendingStrategy: "preserve",
+          },
+        }),
+        operation: operation(phase, { automatic: true }),
+        client: { managedWorktrees: { startLanding } },
+      });
+      const button = await screen.findByRole("button", { name: "Merge & resolve" });
+      expect(button).toHaveProperty("disabled", false);
+      await fixture.user.click(button);
+      expect(startLanding).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          workspacePath: "/worktree",
+          sessionId: "session-1",
+          strategy: "preserve",
+          commitBeforeLanding: true,
+          resolveAfterLanding: true,
+        }),
+      );
+    },
+  );
+
   it("keeps manual Merge and Merge & resolve when project auto-merge is off", async () => {
     using fixture = renderWorktree();
     expect(fixture.root.autoMergeForProject("/project")?.enabled ?? false).toBe(false);

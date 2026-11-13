@@ -286,10 +286,19 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
     if (
       record.pendingAutomaticLanding &&
       !(request.strategy === "preserve" && request.expectedSourceCommit)
-    )
-      return yield* internalError(
-        "Auto-merge requires fresh validated readiness before continuing",
-      );
+    ) {
+      // Admission belongs to the coordinator/landing queue, not this durable
+      // recovery marker. An explicit manual attempt needs no agent readiness.
+      // Clear automatic recovery intent under the same locks as Git execution;
+      // a later automatic attempt still supplies and validates its own HEAD.
+      yield* updateRecord(record, (current) => {
+        const next = { ...current };
+        Reflect.deleteProperty(next, "pendingAutomaticLanding");
+        return next;
+      });
+      record = { ...record };
+      Reflect.deleteProperty(record, "pendingAutomaticLanding");
+    }
     if (
       request.strategy === "preserve" &&
       request.expectedSourceCommit &&

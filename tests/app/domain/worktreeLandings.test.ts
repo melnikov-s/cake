@@ -537,6 +537,170 @@ describe("WorktreeLandings manual prompt confirmation", () => {
 });
 
 describe("WorktreeLandings", () => {
+  for (const entry of ["start", "mergeAndResolve"] as const) {
+    it.effect.each(["none", "failed", "parked"] as const)(
+      `explicit manual ${entry} needs no readiness after %s automatic intent`,
+      (previous) => {
+        const events: string[] = [];
+        return Effect.gen(function* () {
+          const coordinator = yield* WorktreeLandingCoordinator;
+          if (previous === "parked")
+            yield* worktreeLandings.inspect({ workspacePath, sessionId: "owner" });
+          if (previous === "failed")
+            yield* SubscriptionRef.update(coordinator.state, (state) => ({
+              ...state,
+              operations: new Map(state.operations).set(workspacePath, {
+                operationId: "failed-auto",
+                workspacePath,
+                sessionId: "owner",
+                kind: "landing",
+                phase: "failed",
+                automatic: true,
+                allowDirtyTarget: false,
+              }),
+            }));
+          const operation = yield* entry === "start"
+            ? worktreeLandings.start({
+                operationId: "manual",
+                workspacePath,
+                sessionId: "owner",
+                strategy: "preserve",
+                allowDirtyTarget: false,
+                commitBeforeLanding: true,
+                resolveAfterLanding: true,
+              })
+            : worktreeLandings.mergeAndResolve({ workspacePath, sessionId: "owner" });
+          expect(operation.automatic).toBeUndefined();
+          expect(operation.autoMergeRequestId).toBeUndefined();
+          yield* FiberMap.awaitEmpty(coordinator.fibers);
+          expect(events.filter((item) => item === "land")).toHaveLength(1);
+          expect(events.filter((item) => item === "resolve")).toHaveLength(1);
+          expect(
+            (yield* SubscriptionRef.get(coordinator.state)).operations.get(workspacePath),
+          ).toMatchObject({ phase: "landed", resolveAfterLanding: true });
+        }).pipe(
+          Effect.provide(
+            services({
+              events,
+              status: () => ({
+                ...baseStatus(),
+                record: { ...record, pendingAutomaticLanding: true, pendingStrategy: "preserve" },
+              }),
+              resolve: () =>
+                Effect.sync(() => {
+                  events.push("resolve");
+                  return {
+                    projectPath: "/project",
+                    workingDirectory: workspacePath,
+                    resolvedSessionIds: ["owner"],
+                    failures: [],
+                    cleanupFailures: [],
+                  };
+                }),
+            }),
+          ),
+        );
+      },
+    );
+
+    it.effect.each(["waiting", "queued", "landing", "resolving", "stalled"] as const)(
+      `manual ${entry} cannot replace a live automatic worker (%s)`,
+      (phase) => {
+        const events: string[] = [];
+        return Effect.gen(function* () {
+          const coordinator = yield* WorktreeLandingCoordinator;
+          yield* SubscriptionRef.update(coordinator.state, (state) => ({
+            ...state,
+            operations: new Map(state.operations).set(workspacePath, {
+              operationId: "active-auto",
+              workspacePath,
+              sessionId: "owner",
+              kind: "landing",
+              phase,
+              automatic: true,
+              allowDirtyTarget: false,
+            }),
+          }));
+          yield* FiberMap.run(coordinator.fibers, workspacePath, Effect.never);
+          const result = yield* (
+            entry === "start"
+              ? worktreeLandings.start({
+                  operationId: "manual",
+                  workspacePath,
+                  sessionId: "owner",
+                  strategy: "preserve",
+                  allowDirtyTarget: false,
+                  commitBeforeLanding: true,
+                  resolveAfterLanding: true,
+                })
+              : worktreeLandings.mergeAndResolve({ workspacePath, sessionId: "owner" })
+          ).pipe(Effect.result);
+          expect(result._tag).toBe("Failure");
+          expect(
+            (yield* SubscriptionRef.get(coordinator.state)).operations.get(workspacePath),
+          ).toMatchObject({ operationId: "active-auto", phase, automatic: true });
+          expect(yield* FiberMap.has(coordinator.fibers, workspacePath)).toBe(true);
+          expect(events).toEqual([]);
+        }).pipe(Effect.provide(services({ events, status: baseStatus })));
+      },
+    );
+  }
+
+  it.effect("serializes manual takeover against a fresh automatic attempt", () => {
+    const events: string[] = [];
+    return Effect.gen(function* () {
+      const gate = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        yield* worktreeLandings.inspect({ workspacePath, sessionId: "owner" });
+        const base = {
+          workspacePath,
+          sessionId: "owner",
+          strategy: "preserve" as const,
+          allowDirtyTarget: false,
+          commitBeforeLanding: false,
+        };
+        const results = yield* Effect.all(
+          [
+            worktreeLandings.start({ ...base, operationId: "manual" }).pipe(Effect.result),
+            worktreeLandings
+              .start({
+                ...base,
+                operationId: "automatic",
+                automatic: {
+                  requestId: "fresh",
+                  commit: "validated",
+                  authorize: Effect.void,
+                  onLanded: Effect.void,
+                  repair: () => Effect.void,
+                },
+              })
+              .pipe(Effect.result),
+          ],
+          { concurrency: "unbounded" },
+        );
+        expect(results.filter((item) => item._tag === "Success")).toHaveLength(1);
+        yield* Deferred.succeed(gate, undefined);
+        yield* FiberMap.awaitEmpty((yield* WorktreeLandingCoordinator).fibers);
+        expect(events.filter((item) => item === "land")).toHaveLength(1);
+      }).pipe(
+        Effect.provide(
+          services({
+            events,
+            prepare: Deferred.await(gate),
+            status: () => ({
+              ...baseStatus(),
+              record: {
+                ...record,
+                pendingStrategy: "preserve",
+                pendingAutomaticLanding: true,
+              },
+            }),
+          }),
+        ),
+      );
+    });
+  });
+
   it.effect.each([true, false])(
     "recovers automatic repair as a validation-only pause (rebasing=%s)",
     (rebasing) => {

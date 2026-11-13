@@ -161,9 +161,6 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await git(first.worktreePath, "add", "README.md");
     await git(first.worktreePath, "-c", "core.editor=true", "rebase", "--continue");
     await expect(
-      worktrees.land(first.worktreePath, { request: { strategy: "preserve" } }),
-    ).rejects.toThrow(/fresh validated readiness/);
-    await expect(
       worktrees.land(first.worktreePath, {
         request: { strategy: "preserve", expectedSourceCommit: validated },
       }),
@@ -194,6 +191,53 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
       (await worktrees.records()).find((item) => item.worktreePath === first.worktreePath)
         ?.pendingAutomaticLanding,
     ).toBeUndefined();
+  });
+
+  it("allows manual landing after automatic failure without bypassing dirty source or target checks", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const source = await worktrees.create(repo);
+    await writeFile(join(source.worktreePath, "feature.txt"), "feature\n");
+    await commitAll(source.worktreePath, "feature");
+    const validated = (await git(source.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    await writeFile(join(repo, "personal.txt"), "unfinished target\n");
+    const targetBefore = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
+    await expect(
+      worktrees.land(source.worktreePath, {
+        operationId: "failed-auto",
+        request: { strategy: "preserve", expectedSourceCommit: validated },
+      }),
+    ).rejects.toThrow(/landing target has uncommitted changes/);
+    expect((await worktrees.status(source.worktreePath))?.record.pendingAutomaticLanding).toBe(
+      true,
+    );
+    expect((await worktrees.status(source.worktreePath))?.landingState).toBeUndefined();
+    await writeFile(join(source.worktreePath, "dirty.txt"), "uncommitted source\n");
+    await expect(
+      worktrees.land(source.worktreePath, {
+        request: { strategy: "preserve" },
+      }),
+    ).rejects.toThrow(/worktree has uncommitted changes/);
+    await rm(join(source.worktreePath, "dirty.txt"));
+    await expect(
+      worktrees.land(source.worktreePath, {
+        request: { strategy: "preserve" },
+      }),
+    ).rejects.toThrow(/landing target has uncommitted changes/);
+    expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(targetBefore);
+    expect(await readFile(join(repo, "personal.txt"), "utf8")).toBe("unfinished target\n");
+    await rm(join(repo, "personal.txt"));
+    expect(
+      await worktrees.land(source.worktreePath, {
+        operationId: "explicit-manual",
+        request: { strategy: "preserve" },
+      }),
+    ).toMatchObject({ outcome: "landed", commit: validated });
+    expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(validated);
+    expect(
+      (await worktrees.status(source.worktreePath))?.record.pendingAutomaticLanding,
+    ).toBeUndefined();
+    await worktrees.discard(source.worktreePath, false);
   });
 
   it("creates a managed worktree outside the repository on an agent branch", async () => {
@@ -819,7 +863,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await git(repo, "checkout", "main");
   });
 
-  it("releases automatic conflict admission while repair runs and requires a fresh validated commit", async () => {
+  it("allows explicit manual takeover of automatic conflict intent but preserves Git and stale-HEAD checks", async () => {
     const repo = await repository();
     const worktrees = service();
     const first = await worktrees.create(repo);
@@ -841,6 +885,17 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
       rebasing: true,
       record: { pendingStrategy: "preserve", pendingAutomaticLanding: true },
     });
+    // Explicit manual intent can take over, but cannot land unresolved conflicts.
+    await expect(
+      worktrees.land(first.worktreePath, {
+        operationId: "manual-conflict-attempt",
+        request: { strategy: "preserve" },
+      }),
+    ).resolves.toEqual({ outcome: "resolving", files: ["shared.txt"] });
+    expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(target);
+    expect(
+      (await worktrees.status(first.worktreePath))?.record.pendingAutomaticLanding,
+    ).toBeUndefined();
     // A second landing completes before the first repair, proving no retained slot.
     await writeFile(join(second.worktreePath, "second.txt"), "second\n");
     await commitAll(second.worktreePath, "second change");
@@ -858,10 +913,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await git(first.worktreePath, "rebase", "main");
     const repaired = (await git(first.worktreePath, "rev-parse", "HEAD")).stdout.trim();
     expect(repaired).not.toBe(validated);
-    // Repair does not imply permission to retry with either manual or stale authority.
-    await expect(
-      worktrees.land(first.worktreePath, { request: { strategy: "preserve" } }),
-    ).rejects.toThrow(/fresh validated readiness/);
+    // Automatic authority still cannot reuse the pre-repair HEAD.
     await expect(
       worktrees.land(first.worktreePath, {
         request: { strategy: "preserve", expectedSourceCommit: validated },
@@ -869,8 +921,8 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     ).rejects.toThrow(/readiness is stale/);
     await expect(
       worktrees.land(first.worktreePath, {
-        operationId: "fresh-validated-retry",
-        request: { strategy: "preserve", expectedSourceCommit: repaired },
+        operationId: "explicit-manual-retry",
+        request: { strategy: "preserve" },
       }),
     ).resolves.toMatchObject({ outcome: "landed", commit: repaired });
     expect(await readFile(join(repo, "shared.txt"), "utf8")).toBe("resolved version\n");

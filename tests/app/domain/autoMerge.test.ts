@@ -2184,6 +2184,35 @@ it.effect(
     }),
 );
 
+it.effect.each(["absent", "revoked"] as const)(
+  "manual Merge & Resolve can replace failed automatic intent with %s readiness",
+  (readinessState) => {
+    const options = { conflict: true, manual: false, executingTurns: ["turn"] };
+    const test = fixture(options);
+    return Effect.gen(function* () {
+      yield* runPass();
+      expect(test.events).not.toContain("land");
+      if (readinessState === "revoked") {
+        yield* ready;
+        yield* runPass();
+        yield* terminal;
+        yield* runPass();
+        expect((yield* requests)[0]).toMatchObject({ state: "failed", readyToMerge: false });
+        yield* FiberMap.awaitEmpty((yield* WorktreeLandingCoordinator).fibers);
+      }
+      options.conflict = false;
+      options.manual = true;
+      yield* mergeAndResolve({ workspacePath: "/tree", sessionId: "owner" });
+      yield* terminal;
+      yield* runPass();
+      expect(test.events.filter((item) => item === "land")).toHaveLength(
+        readinessState === "revoked" ? 2 : 1,
+      );
+      expect(test.events.filter((item) => item === "resolve")).toHaveLength(1);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
 it.effect(
   "requires fresh validation after conflict, never ordinary Retry or toggle-only replay",
   () => {
@@ -2199,10 +2228,6 @@ it.effect(
       yield* inspect({ workspacePath: "/tree", sessionId: "owner" });
       expect(
         (yield* retry({ workspacePath: "/tree", sessionId: "owner" }).pipe(Effect.result))._tag,
-      ).toBe("Failure");
-      expect(
-        (yield* mergeAndResolve({ workspacePath: "/tree", sessionId: "owner" }).pipe(Effect.result))
-          ._tag,
       ).toBe("Failure");
       yield* setEnabled("/project", false);
       yield* setEnabled("/project", true);
