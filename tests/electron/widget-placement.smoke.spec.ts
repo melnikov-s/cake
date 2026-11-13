@@ -16,11 +16,16 @@ async function beginDrag(page: Page, header: Locator) {
   await page.mouse.move(rect.x + rect.width / 2 + 8, rect.y + rect.height / 2 + 8);
   await expect(page.locator("[data-widget-placement-overlay]")).toBeVisible();
 }
+async function expectPlacement(page: Page, slot: string) {
+  const parent = slot === "tab" ? '[data-slot="widget-tab-host"]' : `[data-widget-slot="${slot}"]`;
+  await expect(page.locator(`${parent} [data-widget-attachment="dashboard-left"]`)).toBeVisible();
+}
 async function drop(page: Page, slot: string) {
   const rect = (await page.locator(`[data-widget-drop-target="${slot}"]`).boundingBox())!;
   await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2, { steps: 8 });
   await page.mouse.up();
   await expect(page.locator("[data-widget-placement-overlay]")).toHaveCount(0);
+  await expectPlacement(page, slot);
 }
 
 for (const scope of ["global", "session", "project-sessions", "project-chats"] as const) {
@@ -247,6 +252,7 @@ for (const scope of ["global", "session", "project-sessions", "project-chats"] a
         await page.keyboard.press("ArrowRight");
         await page.keyboard.press("Enter");
         for (const edge of ["top", "bottom", "left"] as const) {
+          await expectPlacement(page, "right");
           const rightHandle = page.getByRole("separator", {
             name: "Resize right widgets",
             exact: true,
@@ -261,6 +267,7 @@ for (const scope of ["global", "session", "project-sessions", "project-chats"] a
           await page.keyboard.press("ArrowRight");
           await page.keyboard.press("Enter");
           await expect.poll(async () => (await savedAttachment()).slot).toBe("right");
+          await expectPlacement(page, "right");
         }
         await beginDrag(page, header);
         await drop(page, "tab");
