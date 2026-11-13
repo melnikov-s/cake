@@ -8,12 +8,12 @@ export function SessionChangeFile({
   file,
   store,
   commit,
-  outstanding = false,
+  contribution = false,
 }: {
   file: ChangedFile;
   store: SessionChangesStore;
   commit?: string;
-  outstanding?: boolean;
+  contribution?: boolean;
 }) {
   return (
     <Button
@@ -21,7 +21,7 @@ export function SessionChangeFile({
       size="sm"
       className="h-auto w-full justify-start gap-2 rounded-none px-4 py-1.5 text-xs font-normal text-foreground"
       title={`${file.path} · ${commit && !file.deleted && file.workingTreeExists ? "Open file in VS Code" : "Open changes in VS Code"}`}
-      onClick={() => void store.openFile(file, commit, outstanding)}
+      onClick={() => void store.openFile(file, commit, contribution)}
     >
       <span className="shrink-0 text-muted-foreground">
         <FileIcon />

@@ -7,6 +7,7 @@ import type {
 import type { WorktreeStorageError } from "../storage/WorktreeStorage";
 import type { ManagedWorktrees } from "./ManagedWorktrees";
 import type { WorktreeRepository } from "./WorktreeRepository";
+import { makeContributionRepository, retainContribution } from "./WorktreeContribution";
 
 interface SquashProposal {
   readonly message: string;
@@ -136,9 +137,21 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
     record: WorktreeRecord,
     target = record.baseBranch,
   ) {
-    const current =
+    let current =
       (yield* Ref.get(recordsRef)).find((entry) => entry.worktreePath === record.worktreePath) ??
       record;
+    current = yield* retainContribution(
+      current,
+      (next) => updateRecord(current, () => next),
+      repository.gitService,
+    );
+    const contribution = makeContributionRepository(current.projectPath, repository.gitService);
+    if (current.contributionRef)
+      yield* contribution.prepareImport(
+        current.contributionRef,
+        target,
+        current.landedSourceCommit,
+      );
     const targetHead = (yield* git(record.worktreePath, "rev-parse", target)).trim();
     const result = yield* Effect.result(
       gitMutation(
@@ -160,7 +173,11 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
         }
         return next;
       });
-    if (result._tag === "Success") return null;
+    if (result._tag === "Success") {
+      if (current.contributionRef)
+        yield* contribution.finishImport(current.contributionRef, `refs/heads/${current.branch}`);
+      return null;
+    }
     if (resolving) return yield* unmergedFiles(record.worktreePath);
     return yield* internalError(
       `Cake could not replay the worktree commits onto the target branch: ${messageOf(result.failure)}`,
@@ -341,6 +358,11 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
         "The landing target has uncommitted changes. Commit or stash them first.",
       );
     record = yield* withLandingCheckpoint(record);
+    record = yield* retainContribution(
+      record,
+      (next) => updateRecord(record, () => next),
+      repository.gitService,
+    );
     const sourceCommit = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
     if ((yield* newCommitCount(record, sourceCommit)) === 0) {
       if (prepareOnly) return { outcome: "ready" };

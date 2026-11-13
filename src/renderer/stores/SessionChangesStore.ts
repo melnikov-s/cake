@@ -117,9 +117,9 @@ export class SessionChangesStore extends Store<SessionChangesStoreProps> {
     }
   }
 
-  async openFile(file: ChangedFile, commit?: string, outstanding = false) {
+  async openFile(file: ChangedFile, commit?: string, contribution = false) {
     const location = workingDirectoryEditorLocation(
-      outstanding && this.data?.baseRevision
+      contribution && this.data?.baseRevision
         ? {
             path: file.path,
             view: "changes",

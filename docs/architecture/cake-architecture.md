@@ -353,6 +353,64 @@ projections needed by a surface. References do not transfer ownership.
   to that input yields a factual stop notice instead of forwarding its text. Requester provenance and the pending delivery journal are Cake metadata; Pi remains transcript
   and run authority.
 
+### Worktree contribution provenance
+
+Contribution means the worktree's **net committed** additions/removals, not the
+outstanding landing range or the sum of historical commit edits. Uncommitted
+staged/unstaged/untracked edits remain separate; their numstats are not added to
+contribution, nor summed into a purported net uncommitted total. Binary files
+remain inspectable without fabricated line counts.
+
+`WorktreeContribution` maintains a counterfactual baseline: the source tree with
+this worktree's own edits absent. It starts at the recorded creation commit.
+Local first-parent commits change the source, not that baseline. For an upstream
+merge, Git must reproduce the exact merge tree without conflicts or extra
+resolution edits. Only its first-parent import delta is applied to the baseline
+using an explicit-base three-way merge. Baseline → actual source HEAD supplies
+both aggregate numstats and file revision diffs. An overlapping counterfactual
+merge is unavailable, not an estimate of authorship.
+
+Managed rebase first checkpoints source/baseline and records a pending import.
+It precomputes the clean source+target merge tree and transforms the baseline by
+that same import delta. An acknowledged squash source is the explicit merge base:
+its tree is already present on the target even though its commit is not an ancestor. The rewritten source must contain that exact tree on the
+target's first-parent lineage before adopting the transformed baseline. Conflict
+resolution or an unexplained rewritten tree makes attribution unavailable; abort
+retains the original evidence. Pending evidence also supports recovery after a
+crash before or after Git finishes, including subsequent local commits. Pending
+observations bypass revision-only caches because attachment/rebase state is live.
+
+A worktree record's optional `contributionRef` points into
+`refs/cake/contributions/`. One compare-and-swap ref update atomically publishes a
+versioned checkpoint; synthetic commits retain the origin, source, counterfactual
+and pending objects as parents. Git GC therefore cannot erase provenance after
+rebase or branch retirement. Newly computed review-only counterfactuals are rooted
+separately under `refs/cake/contribution-views/`; their parent chain retains earlier
+exposed diff revisions without mutating pending lifecycle evidence. Concurrent
+observers of the same tree reuse the winning view root. Checkpoints precede target landing mutations and
+checkout/branch removal; landing never advances the contribution baseline to the
+landing target. Only a recorded retirement permits fallback to a retained source when its branch
+is absent; an unexplained missing branch is unavailable, not stale checkpoint totals.
+Restore clears that retirement evidence. Retired records can use their retained source, and managed branch
+recreation uses the same verified-import procedure. Git roots are created before
+metadata references them; failed metadata persistence prevents the history
+mutation. A failed new checkout removes its provisional root. Retained record
+roots are intentionally retained across retirement/restore.
+
+No storage rewrite invents evidence for legacy records. Their preserved creation
+commit plus a clean first-parent graph may recover attribution. Inline commits
+already on the target without an acknowledged provenance boundary, unobserved
+rewrites, absent/corrupt checkpoints, non-target merges, and manual merge/rebase
+resolution edits produce specific unavailable reasons and null totals. Neither
+commit authors nor patch IDs can prove missing provenance. This is intentionally
+conservative: overlapping upstream edits may make attribution unavailable even
+when a human could assign ownership. Unmanaged checkouts expose historical
+comparison and working edits, but have no claimed contribution baseline.
+
+Landing/readiness continue to use the separate outstanding range and landing
+checkpoints. The Changes panel labels unlanded per-commit history separately from
+contribution; landing or committing does not erase the worktree's contribution.
+
 ## Process boundaries
 
 Cake is one logical application with privilege-separated hosts. Electron main and

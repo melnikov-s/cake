@@ -44,7 +44,7 @@ export const sessionChangesScenario = {
         .getByRole("button", { name: state === "todos" ? /^To-dos / : /^Sessions / })
         .click();
       await expect(
-        workspace.getByRole("img", { name: "3 commits, +4 −1", exact: true }),
+        workspace.getByRole("img", { name: "Contribution: +4 −1", exact: true }),
       ).toBeVisible();
       await expect(workspace.getByText("Worktree commit history", { exact: true })).toHaveCount(0);
       if (state === "grouped-global") {
@@ -73,7 +73,7 @@ export const sessionChangesScenario = {
         const centers = await line.evaluate((element) =>
           Array.from(
             element.querySelectorAll(
-              'time, [data-slot="commit-change-stats"], [data-slot="session-worktree"]',
+              'time, [data-slot="contribution-stats"], [data-slot="session-worktree"]',
             ),
           ).map((child) => {
             const rect = child.getBoundingClientRect();

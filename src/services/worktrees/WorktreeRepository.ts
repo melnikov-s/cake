@@ -121,6 +121,7 @@ export const makeWorktreeRepository = Effect.fn("ManagedWorktrees.makeRepository
   });
 
   return {
+    gitService,
     git,
     gitMutation,
     gitOptional,

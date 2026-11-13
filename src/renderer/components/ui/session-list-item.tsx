@@ -17,7 +17,7 @@ import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon, TrashIcon } from "./ic
 import { LabelSwatch } from "./label-swatch";
 import { associationHighlightClassName, NavItem, type NavItemProps } from "./nav-item";
 import { SessionActivityTime } from "./session-activity-time";
-import { CommitChangeStatsText } from "./commit-change-stats";
+import { ContributionStatsText } from "./contribution-stats";
 
 export interface SessionListItemProps {
   session: {
@@ -34,7 +34,7 @@ export interface SessionListItemProps {
   };
   managedWorktree?: Pick<
     WorktreeCatalogEntry,
-    "branch" | "baseBranch" | "defaultBranch" | "parentWorktreePath" | "state" | "commitStats"
+    "branch" | "baseBranch" | "defaultBranch" | "parentWorktreePath" | "state" | "contributionStats"
   >;
   selected: boolean;
   /** Sidebar navigation opens on press; destination pickers retain click activation. */
@@ -134,8 +134,13 @@ export const SessionListItem = observer(function SessionListItem({
       ? managedWorktree?.baseBranch !== defaultBranch
       : managedWorktree?.baseBranch !== "main" && managedWorktree?.baseBranch !== "master");
   const hasActivityTime = isActiveSessionActivity(activity) || Boolean(activityTime.trim());
-  const commitStats = session.draft ? undefined : managedWorktree?.commitStats;
-  const hasStats = Boolean(commitStats?.commitCount);
+  const contributionStats = session.draft ? undefined : managedWorktree?.contributionStats;
+  const hasStats = Boolean(
+    contributionStats &&
+    (contributionStats.unavailableReason ||
+      contributionStats.additions ||
+      contributionStats.deletions),
+  );
   const hasDescription = Boolean(source || hasActivityTime || branch || hasStats);
   return (
     <div
@@ -305,7 +310,7 @@ export const SessionListItem = observer(function SessionListItem({
                 {hasStats && (
                   <>
                     {hasActivityTime && <span aria-hidden="true">·</span>}
-                    <CommitChangeStatsText compact stats={commitStats} />
+                    <ContributionStatsText stats={contributionStats} />
                   </>
                 )}
                 {branch && (

@@ -75,6 +75,19 @@ describe("WorktreeStorage", () => {
     ),
   );
 
+  it.effect("round-trips contribution refs without inventing provenance for legacy records", () =>
+    fixture((storagePath) =>
+      Effect.gen(function* () {
+        const storage = yield* WorktreeStorage;
+        const legacy = record(0);
+        const tracked = { ...record(1), contributionRef: "refs/cake/contributions/test" };
+        yield* storage.save([legacy, tracked]);
+        expect(yield* storage.load()).toEqual([legacy, tracked]);
+        expect((yield* storage.load())[0]).not.toHaveProperty("contributionRef");
+      }),
+    ),
+  );
+
   it.effect.each(invalidCatalogs)(
     "rejects $name, preserves its bytes, and prevents creation from saving a replacement catalog",
     ({ content }) =>

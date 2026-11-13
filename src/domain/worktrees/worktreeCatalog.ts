@@ -7,7 +7,7 @@ import type {
 import type { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import type { Git } from "../../services/git/Git";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
-import { makeCommitStatsReader } from "./worktreeCommitStats";
+import { makeContributionStatsReader } from "./worktreeContributionStats";
 import { localDefaultBranch } from "../../services/git/default-branch";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 
@@ -17,7 +17,7 @@ const entry = (record: WorktreeRecord, defaultBranch: string | undefined): Workt
 /** Enrich at the backend observation boundary, once per Project in each update, not per row. */
 const projectUpdate = Effect.fn("WorktreeCatalog.projectUpdate")(function* (
   update: ManagedWorktreeCatalogUpdate,
-  readStats: Effect.Success<ReturnType<typeof makeCommitStatsReader>>,
+  readStats: Effect.Success<ReturnType<typeof makeContributionStatsReader>>,
 ): Effect.fn.Return<ManagedWorktreeCatalogUpdate, never, Git> {
   if (update._tag === "Snapshot") {
     const defaults = new Map(
@@ -32,9 +32,9 @@ const projectUpdate = Effect.fn("WorktreeCatalog.projectUpdate")(function* (
         update.worktrees,
         (record) =>
           readStats(record).pipe(
-            Effect.map((commitStats) => ({
+            Effect.map((contributionStats) => ({
               ...entry(record, defaults.get(record.projectPath)),
-              commitStats,
+              contributionStats,
             })),
           ),
         { concurrency: 4 },
@@ -49,7 +49,7 @@ const projectUpdate = Effect.fn("WorktreeCatalog.projectUpdate")(function* (
       _tag: "Upserted" as const,
       worktree: {
         ...entry(worktree, defaultBranch),
-        commitStats: yield* readStats(worktree),
+        contributionStats: yield* readStats(worktree),
       },
     },
   };
@@ -65,7 +65,7 @@ export const observe = (): Stream.Stream<
     Effect.gen(function* () {
       const worktrees = yield* ManagedWorktrees;
       const changes = yield* SessionCatalogChanges;
-      const readStats = yield* makeCommitStatsReader();
+      const readStats = yield* makeContributionStatsReader();
       // Existing activity notifications cover turn start/settlement (including abort).
       // Refresh the source and worktrees landing there: target advancement changes outstanding
       // stats even when a child's HEAD is unchanged. Title/read changes do no Git work.

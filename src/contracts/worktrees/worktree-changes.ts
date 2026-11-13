@@ -2,13 +2,13 @@ import { Schema } from "effect";
 
 const count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
-/** Outstanding committed changes relative to the current configured landing target. */
-export const CommitChangeStats = Schema.Struct({
-  commitCount: count,
-  additions: count,
-  deletions: count,
+/** Committed net contribution; null counts mean attribution is unavailable, never zero. */
+export const ContributionStats = Schema.Struct({
+  additions: Schema.NullOr(count),
+  deletions: Schema.NullOr(count),
+  unavailableReason: Schema.NullOr(Schema.String),
 });
-export interface CommitChangeStats extends Schema.Schema.Type<typeof CommitChangeStats> {}
+export interface ContributionStats extends Schema.Schema.Type<typeof ContributionStats> {}
 
 /** Git numstat uses null counts for binary files. */
 export const ChangedFile = Schema.Struct({
@@ -41,11 +41,12 @@ export const WorktreeChanges = Schema.Struct({
   /** Configured landing target for managed worktrees; inferred parent otherwise. */
   base: Schema.NullOr(Schema.String),
   baseAlternatives: Schema.Array(BaseAlternative),
-  /** Immutable revisions used for the net committed diff; null without a comparison target. */
+  /** Immutable counterfactual baseline -> actual HEAD, shared by files and aggregate counts. */
   baseRevision: Schema.NullOr(Schema.String),
   headRevision: Schema.String,
+  contributionUnavailableReason: Schema.NullOr(Schema.String),
   files: Schema.Array(ChangedFile),
-  /** Per-commit historical edits, not the net outstanding line/file totals. */
+  /** Unlanded per-commit historical edits, not the net contribution totals. */
   commits: Schema.Array(BranchCommit),
   totalCommits: count,
   staged: Schema.Array(ChangedFile),

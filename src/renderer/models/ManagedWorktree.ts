@@ -1,6 +1,6 @@
 import { Model, id } from "r-state-tree";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
-import type { CommitChangeStats } from "../../contracts/worktrees/worktree-changes";
+import type { ContributionStats } from "../../contracts/worktrees/worktree-changes";
 
 /** Passive renderer projection of one main-owned Managed Worktree record. */
 export class ManagedWorktree extends Model {
@@ -10,8 +10,9 @@ export class ManagedWorktree extends Model {
   branch = "";
   baseBranch = "";
   defaultBranch: string | undefined;
-  commitStats: CommitChangeStats | undefined;
+  contributionStats: ContributionStats | undefined;
   baseCommit: string | undefined;
+  contributionRef: string | undefined;
   parentWorktreePath: string | undefined;
   state: WorktreeRecord["state"];
   resolvedFrom: WorktreeRecord["resolvedFrom"];

@@ -67,13 +67,49 @@ const makeCommandsLayer = (
     Effect.void,
 ) => Layer.succeed(WorktreeCommands, { run: (request) => Effect.asVoid(run(request)) });
 
-const makeLiveLayer = (initial: ReadonlyArray<WorktreeRecord>, runner: GitRunner) =>
-  Layer.mergeAll(
+/** Native provenance plumbing only. Attribution itself is covered with real Git fixtures. */
+const contributionGit = () => {
+  const refs = new Map<string, string>();
+  const messages = new Map<string, string>();
+  let sequence = 0;
+  return (args: ReadonlyArray<string>): string | Error | undefined => {
+    if (args[0] === "rev-parse" && args.at(-1)?.endsWith("^{commit}")) {
+      const ref = args.at(-1)!.replace(/\^\{commit\}$/, "");
+      return ref.startsWith("refs/cake/contributions/")
+        ? (refs.get(ref) ?? new Error("Missing contribution ref"))
+        : messages.has(ref)
+          ? ref
+          : "head";
+    }
+    if (args[0] === "rev-parse" && args.at(-1)?.endsWith("^{tree}")) return "tree";
+    if (args[0] === "show" && args.includes("--format=%B"))
+      return messages.get(args.at(-1)!) ?? new Error("Missing checkpoint");
+    if (args.includes("commit-tree")) {
+      const revision = `snapshot-${++sequence}`;
+      messages.set(revision, args.at(-1)!);
+      return revision;
+    }
+    if (args[0] === "update-ref" && args[1]?.startsWith("refs/cake/contributions/")) {
+      refs.set(args[1], args[2]!);
+      return "";
+    }
+    if (args[0] === "merge-tree" && !args.includes("--name-only")) return "tree";
+    return undefined;
+  };
+};
+const makeLiveLayer = (initial: ReadonlyArray<WorktreeRecord>, runner: GitRunner) => {
+  const provenance = contributionGit();
+  return Layer.mergeAll(
     makeStorageLayer(initial),
-    makeGitLive(runner),
+    makeGitLive(async (cwd, args) => {
+      const response = provenance(args);
+      if (response instanceof Error) throw response;
+      return response ?? runner(cwd, args);
+    }),
     BootstrapLive,
     makeCommandsLayer(),
   );
+};
 
 const makeLayer = (
   initial: ReadonlyArray<WorktreeRecord>,
@@ -114,6 +150,7 @@ const makeLayer = (
       });
     }),
   );
+  const provenance = contributionGit();
   const git = Layer.succeed(
     Git,
     Git.of({
@@ -121,6 +158,19 @@ const makeLayer = (
         const respond = <A, E>(effect: Effect.Effect<A, E>) =>
           (options?.onRun?.(workingDirectory, arguments_) ?? Effect.void).pipe(
             Effect.andThen(effect),
+          );
+        const contribution = provenance(arguments_);
+        if (contribution !== undefined)
+          return respond(
+            contribution instanceof Error
+              ? Effect.fail(
+                  new GitError({
+                    operation: "contribution",
+                    workingDirectory,
+                    message: contribution.message,
+                  }),
+                )
+              : Effect.succeed(contribution),
           );
         const overridden = options?.run?.(workingDirectory, arguments_);
         if (overridden) return respond(overridden);
@@ -806,7 +856,14 @@ describe("ManagedWorktrees Effect service", () => {
             ).toMatchObject({
               _tag: "Failure",
             });
-            expect(yield* worktrees.records()).toEqual([initial]);
+            expect(yield* worktrees.records()).toEqual([
+              scenario === "dirty" || scenario === "ahead"
+                ? initial
+                : {
+                    ...initial,
+                    contributionRef: expect.stringMatching(/^refs\/cake\/contributions\//),
+                  },
+            ]);
             if (scenario === "dirty" || scenario === "ahead") expect(mutations).toEqual([]);
             if (scenario === "remove-failure") expect(mutations).toEqual(["worktree"]);
           }).pipe(Effect.provide(layer));

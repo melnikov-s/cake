@@ -8,7 +8,7 @@ import { RootStore } from "../stores/RootStore";
 import { MarkdownLink } from "./ai-elements/markdown";
 import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 import { SessionActivityIndicator } from "./session-activity-indicator";
-import { CommitChangeStatsText } from "./ui/commit-change-stats";
+import { ContributionStatsText } from "./ui/contribution-stats";
 import { CheckIcon } from "./ui/icons";
 
 /** Typed work and reference rows keep public identity separate from private Pi session IDs. */
@@ -87,9 +87,9 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
           {association.title}
         </MarkdownLink>
         {association.kind === "session" && (
-          <CommitChangeStatsText
+          <ContributionStatsText
             className="text-muted-foreground"
-            stats={root.sessionMetadataStore.sessionCommitStats(association.sessionId)}
+            stats={root.sessionMetadataStore.sessionContributionStats(association.sessionId)}
           />
         )}
         {resolved && (

@@ -33,6 +33,7 @@ import type { WorktreeCommands } from "./WorktreeCommands";
 import { makeWorktreeRepository } from "./WorktreeRepository";
 import { makeWorktreeCheckout } from "./WorktreeCheckout";
 import { makeWorktreeLanding } from "./WorktreeLanding";
+import { makeContributionRepository, retainContribution } from "./WorktreeContribution";
 import { makeWorktreeLandingQueue } from "./WorktreeLandingQueue";
 import { measureLanding } from "../diagnostics/responsiveness-diagnostics";
 
@@ -190,6 +191,30 @@ export const ManagedWorktreesLive: Layer.Layer<
             "Remove child worktrees before removing their landing target.",
           );
       yield* landing.clearProposal(record);
+      if (yield* revParseExists(record.projectPath, `refs/heads/${record.branch}`))
+        record = yield* withRepositoryLock(
+          record.projectPath,
+          retainContribution(
+            record,
+            (next) => updateRecord(record, () => next),
+            repository.gitService,
+            true,
+          ),
+        );
+      else if (record.contributionRef)
+        yield* withRepositoryLock(
+          record.projectPath,
+          makeContributionRepository(record.projectPath, repository.gitService)
+            .clearRetirement(record.contributionRef)
+            .pipe(
+              Effect.catch((error) =>
+                Effect.logWarning(
+                  "Cake could not clear stale contribution retirement evidence",
+                  error,
+                ),
+              ),
+            ),
+        );
       const facts = factsOf(record);
       if (yield* exists(facts.checkoutPath))
         yield* removeCheckout(facts, options.lifecycle, options.reason);

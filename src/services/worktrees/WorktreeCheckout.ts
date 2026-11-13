@@ -9,6 +9,7 @@ import type {
 import { WorktreeCommands, type WorktreeCommandRequest } from "./WorktreeCommands";
 import { renderWorktreeCommand } from "./worktree-command-template";
 import type { WorktreeRepository } from "./WorktreeRepository";
+import { makeContributionRepository } from "./WorktreeContribution";
 
 /** Where one checkout lives and what it checks out, as substituted into lifecycle commands. */
 interface CheckoutFacts {
@@ -216,6 +217,7 @@ export const makeWorktreeCheckout = Effect.fn("ManagedWorktrees.makeCheckout")(f
       plan.checkoutPath,
       plan.projectSubpath,
     );
+    const contributionRef = `refs/cake/contributions/${crypto.randomUUID()}`;
     return yield* Effect.gen(function* () {
       const located = yield* materializeCheckout(facts, plan.lifecycle, plan.projectSubpath);
       const record: WorktreeRecord = {
@@ -224,6 +226,7 @@ export const makeWorktreeCheckout = Effect.fn("ManagedWorktrees.makeCheckout")(f
         branch: plan.branch,
         baseBranch: plan.baseBranch,
         baseCommit: plan.baseCommit,
+        contributionRef,
         state: "active",
         createdAt: DateTime.formatIso(yield* DateTime.now),
       };
@@ -231,13 +234,27 @@ export const makeWorktreeCheckout = Effect.fn("ManagedWorktrees.makeCheckout")(f
         Object.assign(record, { checkoutPath: located.checkoutPath });
       if (plan.parentWorktreePath)
         Object.assign(record, { parentWorktreePath: plan.parentWorktreePath });
+      const contribution = makeContributionRepository(record.projectPath, repository.gitService);
+      if (record.contributionRef)
+        yield* contribution.initialize(record.contributionRef, plan.baseCommit);
       if (!backgroundSetup) yield* runSetup(record, plan.lifecycle);
       yield* mutateRecords((current) => [...current, record]);
       return record;
     }).pipe(
       Effect.onExit((exit) =>
         Exit.isFailure(exit)
-          ? rollbackCreation(root, facts, plan.projectSubpath, plan.lifecycle)
+          ? rollbackCreation(root, facts, plan.projectSubpath, plan.lifecycle).pipe(
+              Effect.ensuring(
+                gitMutation(root, "update-ref", "-d", contributionRef).pipe(
+                  Effect.catch((error) =>
+                    Effect.logWarning(
+                      "Cake could not remove a provisional contribution root",
+                      error,
+                    ),
+                  ),
+                ),
+              ),
+            )
           : Effect.void,
       ),
     );
@@ -281,6 +298,17 @@ export const makeWorktreeCheckout = Effect.fn("ManagedWorktrees.makeCheckout")(f
           Effect.gen(function* () {
             if (yield* revParseExists(record.projectPath, `refs/heads/${record.branch}`))
               return false;
+            if (record.contributionRef) {
+              const contribution = makeContributionRepository(
+                record.projectPath,
+                repository.gitService,
+              );
+              yield* contribution.prepareImport(
+                record.contributionRef,
+                record.baseBranch,
+                record.landedSourceCommit,
+              );
+            }
             yield* gitMutation(
               record.projectPath,
               "branch",
@@ -288,6 +316,16 @@ export const makeWorktreeCheckout = Effect.fn("ManagedWorktrees.makeCheckout")(f
               record.branch,
               record.baseBranch,
             );
+            if (record.contributionRef) {
+              const contribution = makeContributionRepository(
+                record.projectPath,
+                repository.gitService,
+              );
+              yield* contribution.finishImport(
+                record.contributionRef,
+                `refs/heads/${record.branch}`,
+              );
+            }
             return true;
           }),
         );
@@ -342,6 +380,13 @@ export const makeWorktreeCheckout = Effect.fn("ManagedWorktrees.makeCheckout")(f
         resolvedFrom: undefined,
       } satisfies WorktreeRecord;
       if (recreatedSourceCommit) restored.landedSourceCommit = recreatedSourceCommit;
+      if (record.contributionRef)
+        yield* withRepositoryLock(
+          record.projectPath,
+          makeContributionRepository(record.projectPath, repository.gitService).clearRetirement(
+            record.contributionRef,
+          ),
+        );
       yield* updateRecord(record, () => restored);
       return restored;
     });

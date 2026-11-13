@@ -17,6 +17,7 @@ const changes: WorktreeChanges = {
   totalCommits: 2,
   baseRevision: "fork-sha",
   headRevision: "head-sha",
+  contributionUnavailableReason: null,
   files: [],
   commits: [
     {
@@ -108,6 +109,7 @@ function renderChanges(
             totalCommits: 0,
             baseRevision: "other-fork",
             headRevision: "other-head",
+            contributionUnavailableReason: null,
             files: [],
             staged: [],
             unstaged: [],
@@ -289,6 +291,7 @@ describe("Session Changes review", () => {
           {
             workspacePath: editorWorkingDirectory,
             originatingDirectory: editorWorkingDirectory,
+            sessionId: "editor-session",
             location,
           },
           expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -349,7 +352,8 @@ describe("Session Changes review", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Search sessions" }));
     await fixture.user.click(screen.getByRole("option", { name: /^Other session / }));
     const toggle = await screen.findByRole("button", { name: "Review changes · 0 commits" });
-    expect(within(toggle).getByText("0").classList.contains("bg-card")).toBe(true);
+    expect(toggle.getAttribute("aria-label")).toBe("Review changes · 0 commits");
+    expect(within(toggle).queryByText("0")).toBeNull();
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(screen.queryByRole("complementary", { name: "Changes" })).toBeNull();
     await fixture.user.click(toggle);
@@ -390,7 +394,7 @@ describe("Session Changes review", () => {
     await waitFor(() => expect((picker as HTMLSelectElement).value).toBe("main"));
   });
 
-  it("shows net outstanding totals separately from historical commit edits and opens the exact revision diff", async () => {
+  it("shows net contribution totals separately from historical commit edits and opens the exact revision diff", async () => {
     using fixture = renderChanges({
       ...changes,
       files: [
@@ -398,7 +402,7 @@ describe("Session Changes review", () => {
       ],
     });
     const pane = await openChanges(fixture);
-    const outstanding = within(pane).getByRole("region", { name: "Outstanding changes" });
+    const outstanding = within(pane).getByRole("region", { name: "Contribution" });
     expect(within(outstanding).getAllByText("+2")).toHaveLength(2);
     expect(within(outstanding).queryByText("+22")).toBeNull();
     await fixture.user.click(within(outstanding).getByRole("button", { name: /net.ts/ }));
@@ -414,6 +418,27 @@ describe("Session Changes review", () => {
       },
       expect.anything(),
     );
+  });
+
+  it("shows an unavailable reason without zero totals, retaining commit and uncommitted inspection", async () => {
+    using fixture = renderChanges({
+      ...changes,
+      baseRevision: null,
+      contributionUnavailableReason: "History was rewritten without a checkpoint",
+    });
+    const pane = await openChanges(fixture);
+    const contribution = within(pane).getByRole("region", { name: "Contribution" });
+    expect(
+      within(contribution).getByText(/Contribution unavailable: History was rewritten/),
+    ).toBeDefined();
+    expect(within(contribution).queryByText("+0")).toBeNull();
+    expect(within(contribution).queryByText("No net committed contribution")).toBeNull();
+    expect(within(pane).getByRole("button", { name: /Unlanded commit history/ })).toBeDefined();
+    expect(within(pane).getByRole("button", { name: /Add review pane/ })).toBeDefined();
+    // Staged and unstaged deltas are separate views, not an additive net summary.
+    const uncommitted = within(pane).getByRole("button", { name: /Uncommitted/ });
+    expect(within(uncommitted).queryByText("+17")).toBeNull();
+    expect(within(pane).getByRole("region", { name: "Staged" })).toBeDefined();
   });
 
   it("explains a capped commit list", async () => {

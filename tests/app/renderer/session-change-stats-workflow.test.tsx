@@ -30,7 +30,7 @@ it("shares live stats across session lists and distinct to-do session links, hid
     baseBranch: "main",
     state: "active",
     createdAt: "",
-    commitStats: { commitCount: 3, additions: 120, deletions: 35 },
+    contributionStats: { unavailableReason: null, additions: 120, deletions: 35 },
   };
   applyManagedWorktreeCatalogUpdate(fixture.models.worktrees, {
     _tag: "Snapshot",
@@ -40,13 +40,13 @@ it("shares live stats across session lists and distinct to-do session links, hid
         ...record,
         worktreePath: "/other",
         branch: "agent/other",
-        commitStats: { commitCount: 1, additions: 4, deletions: 2 },
+        contributionStats: { unavailableReason: null, additions: 4, deletions: 2 },
       },
       {
         ...record,
         worktreePath: "/empty",
         branch: "agent/empty",
-        commitStats: { commitCount: 0, additions: 0, deletions: 0 },
+        contributionStats: { unavailableReason: null, additions: 0, deletions: 0 },
       },
     ],
   });
@@ -74,17 +74,20 @@ it("shares live stats across session lists and distinct to-do session links, hid
   );
   const row = view.container.querySelector<HTMLElement>('[data-session-id="committed"]')!;
   const todo = view.container.querySelector<HTMLElement>('[data-todo-id="todo"]')!;
-  expect(within(row).getByRole("img", { name: "3 commits, +120 −35" })).toBeDefined();
-  expect(within(todo).getAllByRole("img", { name: "3 commits, +120 −35" })).toHaveLength(1);
-  expect(within(todo).getByRole("img", { name: "1 commit, +4 −2" })).toBeDefined();
-  expect(todo.querySelectorAll('[data-slot="commit-change-stats"]')).toHaveLength(2);
-  // One shared component: same green/red deltas in both places; to-dos spell out the count.
-  const todoStats = within(todo).getByRole("img", { name: "3 commits, +120 −35" });
-  for (const stats of [within(row).getByRole("img", { name: "3 commits, +120 −35" }), todoStats]) {
+  expect(within(row).getByRole("img", { name: "Contribution: +120 −35" })).toBeDefined();
+  expect(within(todo).getAllByRole("img", { name: "Contribution: +120 −35" })).toHaveLength(1);
+  expect(within(todo).getByRole("img", { name: "Contribution: +4 −2" })).toBeDefined();
+  expect(todo.querySelectorAll('[data-slot="contribution-stats"]')).toHaveLength(2);
+  // One shared component: the same contribution deltas in both places.
+  const todoStats = within(todo).getByRole("img", { name: "Contribution: +120 −35" });
+  for (const stats of [
+    within(row).getByRole("img", { name: "Contribution: +120 −35" }),
+    todoStats,
+  ]) {
     expect(within(stats).getByText("+120").classList.contains("text-success")).toBe(true);
     expect(within(stats).getByText("−35").classList.contains("text-destructive")).toBe(true);
   }
-  expect(within(todoStats).getByText("3 commits")).toBeDefined();
+  expect(within(todoStats).queryByText(/commits/)).toBeNull();
   // Plain session title (no prose chip) with the stats on their own line beneath it.
   const committedLink = within(todo).getByRole("link", { name: "committed" });
   expect(todoStats.previousElementSibling).toBe(committedLink);
@@ -98,19 +101,22 @@ it("shares live stats across session lists and distinct to-do session links, hid
       _tag: "Event",
       event: {
         _tag: "Upserted",
-        worktree: { ...record, commitStats: { commitCount: 4, additions: 130, deletions: 36 } },
+        worktree: {
+          ...record,
+          contributionStats: { unavailableReason: null, additions: 130, deletions: 36 },
+        },
       },
     });
   });
-  expect(within(row).getByRole("img", { name: "4 commits, +130 −36" })).toBeDefined();
-  expect(within(todo).getByRole("img", { name: "4 commits, +130 −36" })).toBeDefined();
+  expect(within(row).getByRole("img", { name: "Contribution: +130 −36" })).toBeDefined();
+  expect(within(todo).getByRole("img", { name: "Contribution: +130 −36" })).toBeDefined();
   await act(async () => {
     applyManagedWorktreeCatalogUpdate(fixture.models.worktrees, {
       _tag: "Event",
-      event: { _tag: "Upserted", worktree: { ...record, commitStats: undefined } },
+      event: { _tag: "Upserted", worktree: { ...record, contributionStats: undefined } },
     });
   });
-  expect(row.querySelector('[data-slot="commit-change-stats"]')).toBeNull();
-  expect(todo.querySelectorAll('[data-slot="commit-change-stats"]')).toHaveLength(1);
+  expect(row.querySelector('[data-slot="contribution-stats"]')).toBeNull();
+  expect(todo.querySelectorAll('[data-slot="contribution-stats"]')).toHaveLength(1);
   view.unmount();
 });

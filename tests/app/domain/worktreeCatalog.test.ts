@@ -55,18 +55,33 @@ it.effect(
         {
           _tag: "Snapshot",
           worktrees: [
-            { ...record, defaultBranch: "trunk" },
-            { ...sibling, defaultBranch: "trunk" },
+            {
+              ...record,
+              defaultBranch: "trunk",
+              contributionStats: { additions: null, deletions: null, unavailableReason: "No refs" },
+            },
+            {
+              ...sibling,
+              defaultBranch: "trunk",
+              contributionStats: { additions: null, deletions: null, unavailableReason: "No refs" },
+            },
           ],
         },
         {
           _tag: "Event",
-          event: { _tag: "Upserted", worktree: { ...landed, defaultBranch: "trunk" } },
+          event: {
+            _tag: "Upserted",
+            worktree: {
+              ...landed,
+              defaultBranch: "trunk",
+              contributionStats: { additions: null, deletions: null, unavailableReason: "No refs" },
+            },
+          },
         },
       ]);
       expect(calls).toEqual(["/project", "/project"]);
       expect(record).not.toHaveProperty("defaultBranch");
-      expect(record).not.toHaveProperty("commitStats");
+      expect(record).not.toHaveProperty("contributionStats");
     }),
 );
 
@@ -80,6 +95,7 @@ it.effect(
         branch: "agent/change",
         baseBranch: "main",
         baseCommit: "base",
+        contributionRef: "refs/cake/contributions/test",
         createdAt: "",
       };
       let tip: string | undefined = "first";
@@ -113,12 +129,52 @@ it.effect(
                         message: "Missing branch",
                       }),
                     );
-                  if (args[0] === "rev-parse") return Effect.succeed(tip);
-                  if (args[0] === "merge-base") return Effect.succeed(targetLanded ? tip : "base");
+                  if (args[0] === "rev-parse") {
+                    const ref = args.at(-1)?.replace(/\^\{commit\}$/, "") ?? "";
+                    return Effect.succeed(
+                      ref === "refs/heads/agent/change"
+                        ? tip
+                        : ref === "refs/heads/main"
+                          ? targetLanded
+                            ? "target"
+                            : "base"
+                          : ref === "refs/cake/contributions/test"
+                            ? targetLanded
+                              ? "checkpoint-landed"
+                              : "checkpoint"
+                            : ref,
+                    );
+                  }
+                  if (args[0] === "show")
+                    return Effect.succeed(
+                      JSON.stringify({
+                        version: 1,
+                        origin: "base",
+                        source: targetLanded ? tip : "base",
+                        baseline: "base",
+                      }),
+                    );
+                  if (args[0] === "merge-base")
+                    return Effect.fail(
+                      new GitError({
+                        operation: "ancestor",
+                        workingDirectory: cwd,
+                        message: "not ancestor",
+                      }),
+                    );
                   if (args[0] === "rev-list")
-                    return Effect.succeed(targetLanded ? "0" : tip === "first" ? "1" : "3");
-                  diffCalls++;
-                  return Effect.succeed(targetLanded ? "" : "120\t35\tcode.ts\0");
+                    return Effect.succeed(
+                      args.includes(`^${tip}`)
+                        ? ""
+                        : tip === "first"
+                          ? "first base"
+                          : "next first\nfirst base",
+                    );
+                  if (args[0] === "diff") {
+                    diffCalls++;
+                    return Effect.succeed("120\t35\tcode.ts\0");
+                  }
+                  return Effect.die(`Unexpected Git command: ${args.join(" ")}`);
                 },
               }),
             ),
@@ -127,7 +183,11 @@ it.effect(
         Effect.forkScoped,
       );
       const initial = yield* Queue.take(updates);
-      expect(initial._tag === "Snapshot" && initial.worktrees[0]?.commitStats?.commitCount).toBe(1);
+      expect(initial._tag === "Snapshot" && initial.worktrees[0]?.contributionStats).toEqual({
+        additions: 120,
+        deletions: 35,
+        unavailableReason: null,
+      });
       tip = "next";
       const activity = {
         _tag: "ProjectSessionActivityChanged" as const,
@@ -138,8 +198,8 @@ it.effect(
       };
       yield* changes.publish(activity);
       const refreshed = yield* Queue.take(updates);
-      expect(refreshed._tag === "Event" && refreshed.event.worktree.commitStats).toEqual({
-        commitCount: 3,
+      expect(refreshed._tag === "Event" && refreshed.event.worktree.contributionStats).toEqual({
+        unavailableReason: null,
         additions: 120,
         deletions: 35,
       });
@@ -150,10 +210,10 @@ it.effect(
       targetLanded = true;
       yield* changes.publish({ ...activity, workingDirectory: "/project" });
       const landed = yield* Queue.take(updates);
-      expect(landed._tag === "Event" && landed.event.worktree.commitStats).toEqual({
-        commitCount: 0,
-        additions: 0,
-        deletions: 0,
+      expect(landed._tag === "Event" && landed.event.worktree.contributionStats).toEqual({
+        unavailableReason: null,
+        additions: 120,
+        deletions: 35,
       });
       tip = undefined;
       yield* Queue.offer(lifecycle, {
@@ -161,6 +221,10 @@ it.effect(
         event: { _tag: "Upserted", worktree: { ...record, state: "missing" } },
       });
       const missing = yield* Queue.take(updates);
-      expect(missing._tag === "Event" && missing.event.worktree.commitStats).toBeUndefined();
+      expect(missing._tag === "Event" && missing.event.worktree.contributionStats).toEqual({
+        additions: null,
+        deletions: null,
+        unavailableReason: "Missing branch",
+      });
     }).pipe(Effect.provide(SessionCatalogChanges.layer)),
 );

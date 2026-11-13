@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { CommitChangeStats } from "./worktree-changes";
+import { ContributionStats } from "./worktree-changes";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -15,6 +15,10 @@ export const WorktreeRecord = Schema.Struct({
   baseBranch: bounded(1, 512),
   parentWorktreePath: Schema.optional(bounded(1, 4_096)),
   baseCommit: Schema.optional(bounded(1, 256)),
+  /** Git ref containing atomic, GC-rooted contribution provenance; independent of landing. */
+  contributionRef: Schema.optionalKey(
+    bounded(1, 512).check(Schema.isPattern(/^refs\/cake\/contributions\/[a-zA-Z0-9-]+$/)),
+  ),
   // Source history already acknowledged by landing (or its new base after Cake rebases it).
   landedSourceCommit: Schema.optionalKey(bounded(1, 256)),
   // Adopt this replay base only after conflict resolution completes, never after rebase --abort.
@@ -51,7 +55,7 @@ export interface ManagedWorktreeContext extends Schema.Schema.Type<typeof Manage
 export const WorktreeCatalogEntry = WorktreeRecord.pipe(
   Schema.fieldsAssign({
     defaultBranch: Schema.optional(bounded(1, 512)),
-    commitStats: Schema.optional(CommitChangeStats),
+    contributionStats: Schema.optional(ContributionStats),
   }),
 );
 export interface WorktreeCatalogEntry extends Schema.Schema.Type<typeof WorktreeCatalogEntry> {}

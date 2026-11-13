@@ -70,22 +70,32 @@ export const SessionChangesPanel = observer(function SessionChangesPanel({
               Open in VS Code
             </Button>
           </div>
-          <section aria-label="Outstanding changes" className="pb-3">
+          <section aria-label="Contribution" className="pb-3">
             <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground">
-              <span>Outstanding changes</span>
-              <span>{data.files.length}</span>
+              <span title="Net committed edits attributable to this worktree; uncommitted edits excluded">
+                Committed contribution
+              </span>
+              {!data.contributionUnavailableReason && <span>{data.files.length}</span>}
               <span className="flex-1" />
-              <ChangeStats {...changeTotals(data.files)} />
+              {!data.contributionUnavailableReason && <ChangeStats {...changeTotals(data.files)} />}
             </div>
             {data.files.map((file) => (
-              <SessionChangeFile key={file.path} file={file} store={store} outstanding />
+              <SessionChangeFile key={file.path} file={file} store={store} contribution />
             ))}
-            {data.files.length === 0 && (
-              <p className="px-4 py-3 text-xs text-muted-foreground">No outstanding changes</p>
+            {data.contributionUnavailableReason ? (
+              <p className="px-4 py-3 text-xs text-muted-foreground">
+                Contribution unavailable: {data.contributionUnavailableReason}
+              </p>
+            ) : (
+              data.files.length === 0 && (
+                <p className="px-4 py-3 text-xs text-muted-foreground">
+                  No net committed contribution
+                </p>
+              )
             )}
           </section>
           <DisclosureTrigger
-            title="Commits"
+            title="Unlanded commit history"
             open={store.commitsExpanded}
             chevronPosition="start"
             className="px-4 py-2 hover:bg-muted/55"
@@ -114,7 +124,6 @@ export const SessionChangesPanel = observer(function SessionChangesPanel({
               chevronPosition="start"
               className="px-4 py-2 hover:bg-muted/55"
               subtitle={dirtyCount}
-              trailing={<ChangeStats {...changeTotals(dirty)} />}
               onClick={() => store.toggleUncommitted()}
             />
             {store.uncommittedExpanded && (

@@ -6,11 +6,12 @@ import { parseNumstat } from "../../services/git/git-numstat";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { inferBase } from "./worktreeChangesBase";
+import { makeContributionRepository } from "../../services/worktrees/WorktreeContribution";
 import { outstandingRange } from "./worktreeOutstandingRange";
 
 /**
- * Read-only review against the current landing target. Unmanaged checkouts retain graph-based
- * parent selection; a view preference must never override a managed worktree's landing target.
+ * Contribution review plus separate unlanded commit history and uncommitted edits.
+ * Parent inference alone is never treated as durable contribution evidence.
  */
 export const inspect = Effect.fn("WorktreeChanges.inspect")(
   function* (workspacePath: string, options: { readonly base?: string | undefined }) {
@@ -35,16 +36,23 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
       ? yield* outstandingRange(workspacePath, "HEAD", base, record?.landedSourceCommit)
       : null;
     const headRevision = range?.tip ?? (yield* run(["rev-parse", "HEAD"])).trim();
+    const contribution = record
+      ? yield* makeContributionRepository(workspacePath, git).inspect(record, headRevision)
+      : {
+          baseline: null,
+          tip: headRevision,
+          unavailableReason: "This checkout has no recorded worktree creation baseline",
+        };
     const revisions = range ? [range.tip, `^${range.targetTip}`, `^${range.base}`] : [];
-    const filesOutput = range
+    const filesOutput = contribution.baseline
       ? yield* run([
           "diff",
           "--raw",
           "--numstat",
           "-z",
           "--no-renames",
-          range.base,
-          range.tip,
+          contribution.baseline,
+          contribution.tip,
           "--",
         ])
       : "";
@@ -143,8 +151,9 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
         branch: name,
         distance,
       })),
-      baseRevision: range?.base ?? null,
+      baseRevision: contribution.baseline,
       headRevision,
+      contributionUnavailableReason: contribution.unavailableReason,
       files: withExistence(tracked.files),
       commits: commits.map((commit) => ({ ...commit, files: withExistence(commit.files) })),
       totalCommits,

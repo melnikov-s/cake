@@ -204,6 +204,7 @@ describe("Worktree Changes Git projection", () => {
         baseAlternatives: [],
         baseRevision: null,
         headRevision: "tip",
+        contributionUnavailableReason: "This checkout has no recorded worktree creation baseline",
         files: [],
         commits: [],
         totalCommits: 0,
