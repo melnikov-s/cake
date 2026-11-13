@@ -68,6 +68,39 @@ function draw(store: ScreenCaptureOverlayStore) {
 }
 
 describe("Screen capture overlay", () => {
+  it("retains the capture's initial default and explicit selection across routing updates", async () => {
+    using fixture = await renderOverlay();
+    const picker = fixture.store.destinationPicker!;
+    const other = { kind: "cake-chat" as const, sessionId: "other" };
+    act(() => {
+      fixture.store.snapshot = {
+        ...snapshot,
+        routing: {
+          ...captureRouting,
+          defaultDestination: other,
+          cakeChats: [
+            { ...captureRouting.cakeChats[0]!, title: "Renamed initial destination" },
+            { ...captureRouting.cakeChats[0]!, sessionId: other.sessionId, title: "Other chat" },
+          ],
+        },
+      };
+    });
+    expect(fixture.store.destinationPicker).toBe(picker);
+    expect(picker.destination).toEqual(captureRouting.defaultDestination);
+    expect(screen.getByRole("button", { name: "Screenshot destination" }).textContent).toContain(
+      "Renamed initial destination",
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Screenshot destination" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Other chat" }));
+    expect(picker.destination).toEqual(other);
+    await fixture.user.click(screen.getByRole("button", { name: "Attach full display" }));
+    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ destination: other }),
+      "yellow",
+      expect.anything(),
+    );
+  });
+
   it("allows Copy but requires a destination to attach when none are available", async () => {
     using fixture = await renderOverlay(undefined, {
       ...captureRouting,

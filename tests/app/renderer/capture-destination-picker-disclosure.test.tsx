@@ -45,7 +45,8 @@ const routing = {
 function renderPicker(destination?: CaptureDestination) {
   const store = mount(
     createStore(CaptureDestinationPickerStore, {
-      routing: () => (destination ? { ...routing, defaultDestination: destination } : routing),
+      routing: () => routing,
+      initialDestination: destination,
     }),
   );
   mounted.push(store);

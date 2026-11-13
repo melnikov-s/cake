@@ -83,8 +83,6 @@ describe("composer routing catalog isolation", () => {
     // @child reads reconcile props even when the descriptor itself is cached.
     const picker = fixture.chat.sessionReferencePicker!;
     const movePicker = fixture.chat.draftMovePicker!;
-    expect(picker.routing.projects.flatMap((project) => project.sessions)).toHaveLength(100);
-    expect(labels.mock.calls.length).toBeGreaterThanOrEqual(100);
     const clearCounts = () => {
       destinations.mockClear();
       labels.mockClear();
@@ -97,7 +95,14 @@ describe("composer routing catalog isolation", () => {
       expect(labelIds).not.toHaveBeenCalled();
       expect(projectLabels).not.toHaveBeenCalled();
     };
-    clearCounts();
+    // Include initial ChatComposerInput rendering and child construction, not just
+    // the warm path after routing has already been consumed.
+    expectNoCatalogWork();
+    expect(fixture.chat.sessionReferencePicker).toBe(picker);
+    expect(fixture.chat.draftMovePicker).toBe(movePicker);
+    expect(picker.destination).toBeUndefined();
+    expect(movePicker.destination).toBeUndefined();
+    expectNoCatalogWork();
     await fixture.user.type(input, "Ordinary draft typing");
     expect(input.value).toBe("Ordinary draft typing");
     expect(fixture.chat.draft).toBe(input.value);
@@ -106,12 +111,20 @@ describe("composer routing catalog isolation", () => {
 
     fireEvent.contextMenu(input);
     await screen.findByRole("dialog", { name: "Session reference" });
+    expect(destinations).toHaveBeenCalled();
+    expect(labels.mock.calls.length).toBeGreaterThanOrEqual(100);
+    expect(picker.routing.projects.flatMap((project) => project.sessions)).toHaveLength(100);
     await fixture.user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    clearCounts();
+    // Capability checks can materialize/reconcile the move picker without consuming routing.
+    expect(fixture.chat.canMoveDraft).toBe(true);
+    expectNoCatalogWork();
     // Exercise the move picker's real filtered routing too, without moving the draft.
     expect(
       movePicker.routing.projects[0]!.sessions.some((item) => item.sessionId === fixture.chat.id),
     ).toBe(false);
+    expect(destinations).toHaveBeenCalled();
     clearCounts();
     await fixture.user.type(input, " after closing");
     expectNoCatalogWork();

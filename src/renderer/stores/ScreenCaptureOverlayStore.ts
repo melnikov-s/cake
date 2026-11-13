@@ -52,7 +52,10 @@ export class ScreenCaptureOverlayStore extends Store<{
   get destinationPicker(): CaptureDestinationPickerStore | undefined {
     const snapshot = this.snapshot;
     return snapshot
-      ? createStore(CaptureDestinationPickerStore, { routing: () => snapshot.routing })
+      ? createStore(CaptureDestinationPickerStore, {
+          routing: () => snapshot.routing,
+          initialDestination: snapshot.routing.defaultDestination,
+        })
       : undefined;
   }
 

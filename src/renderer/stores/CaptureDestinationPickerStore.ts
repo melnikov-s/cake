@@ -7,12 +7,13 @@ import type {
 
 /** One native capture's destination and disclosures. No catalog observations or sidebar UI state. */
 export class CaptureDestinationPickerStore extends Store<{
-  routing(): CapturePreferences;
+  routing(): Omit<CapturePreferences, "defaultDestination">;
+  /** Captured once, independently of the lazy destination catalog. */
+  initialDestination?: CaptureDestination;
   currentDestination?(): CaptureDestination | undefined;
   onSelect?(destination: CaptureDestination): void;
 }> {
-  private selectedDestination: CaptureDestination | undefined =
-    this.props.routing().defaultDestination;
+  private selectedDestination: CaptureDestination | undefined = this.props.initialDestination;
 
   get destination() {
     return this.props.currentDestination
