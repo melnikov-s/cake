@@ -42,7 +42,7 @@ export class WidgetAttachmentStore extends Store {
   get tabWidgets() {
     const seen = new Set<ArtifactLineageId>();
     return this.attachments
-      .filter((entry) => entry.slot === "tab" && entry.target.kind === "global" && !entry.hidden)
+      .filter((entry) => entry.slot === "tab" && entry.target.kind === "global")
       .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
       .filter((entry) => {
         if (seen.has(entry.lineageId)) return false;

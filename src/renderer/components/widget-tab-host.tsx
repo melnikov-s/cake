@@ -3,6 +3,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { WidgetTabViewportContext } from "../lib/widget-tab-viewport-context";
 import { WidgetAttachment } from "./widget-attachment";
+import { WidgetPlacement } from "./widget-placement";
 import { cn } from "../lib/utils";
 
 /** One stable host per window, outside conversation and accessory lifetimes.
@@ -43,32 +44,34 @@ export const WidgetTabHost = observer(function WidgetTabHost({
   const selected = navigator.showingWidget ? navigator.selectedWidget : undefined;
   const session = root.inlineWidgetStore.navigationContext?.session ?? null;
   return (
-    <WidgetTabViewportContext value={setTarget}>
-      {children}
-      <div
-        data-slot="widget-tab-host"
-        className={cn(
-          "fixed z-20 min-h-0 min-w-0 overflow-hidden bg-sidebar text-sidebar-foreground",
-          (!target || !bounds || !selected) && "hidden",
-        )}
-        style={bounds}
-      >
-        {root.widgetAttachmentStore.tabWidgets.map((attachment) => (
-          <div
-            key={attachment.id}
-            className={cn("h-full min-h-0 min-w-0", selected?.id !== attachment.id && "hidden")}
-            aria-hidden={selected?.id !== attachment.id}
-            inert={selected?.id !== attachment.id}
-          >
-            <WidgetAttachment
-              attachment={attachment}
-              store={root.widgetAttachmentStore}
-              widgets={root.inlineWidgetStore}
-              session={session}
-            />
-          </div>
-        ))}
-      </div>
-    </WidgetTabViewportContext>
+    <WidgetPlacement>
+      <WidgetTabViewportContext value={setTarget}>
+        {children}
+        <div
+          data-slot="widget-tab-host"
+          className={cn(
+            "fixed z-20 min-h-0 min-w-0 overflow-hidden bg-sidebar text-sidebar-foreground",
+            (!target || !bounds || !selected) && "hidden",
+          )}
+          style={bounds}
+        >
+          {root.widgetAttachmentStore.tabWidgets.map((attachment) => (
+            <div
+              key={attachment.id}
+              className={cn("h-full min-h-0 min-w-0", selected?.id !== attachment.id && "hidden")}
+              aria-hidden={selected?.id !== attachment.id}
+              inert={selected?.id !== attachment.id}
+            >
+              <WidgetAttachment
+                attachment={attachment}
+                store={root.widgetAttachmentStore}
+                widgets={root.inlineWidgetStore}
+                session={session}
+              />
+            </div>
+          ))}
+        </div>
+      </WidgetTabViewportContext>
+    </WidgetPlacement>
   );
 });

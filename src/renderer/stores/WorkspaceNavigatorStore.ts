@@ -75,7 +75,8 @@ export class WorkspaceNavigatorStore extends Store<{
           this.showChat();
       },
     );
-    // A detached/hidden widget leaves the built-in view showing, even if it later returns.
+    // A detached widget leaves the built-in view showing, even if it later returns.
+    // Hidden widgets retain their header/options so Show remains reachable.
     // The binding itself is kept: attachments load after startup hydration.
     this.reaction(
       () => Boolean(this.selectedWidget),

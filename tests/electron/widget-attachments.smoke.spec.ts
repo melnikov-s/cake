@@ -64,18 +64,45 @@ for (const theme of ["light", "dark"] as const)
       await composer.fill("The conversation remains usable");
       await expect(composer).toHaveValue("The conversation remains usable");
       const oldFrame = await left.locator("iframe").elementHandle();
-      await left
-        .getByRole("button", { name: "Widget options for Shared dashboard", exact: true })
-        .click();
-      await page.getByLabel("Move Shared dashboard", { exact: true }).selectOption("right");
+      await left.getByRole("button", { name: "Move Shared dashboard", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("Enter");
       await expect(page.locator('[data-widget-slot="left"]')).toHaveCount(0);
       await expect(
         left.locator("iframe").contentFrame().getByText("Shared count: 1"),
       ).toBeVisible();
       expect(await oldFrame!.evaluate((element) => element.isConnected)).toBe(false);
-      await left.getByRole("button", { name: "Hide", exact: true }).click();
+      // Drag within a populated slot replaces the obsolete Up/Down controls.
+      const header = left.getByRole("button", { name: "Move Shared dashboard", exact: true });
+      const headerBounds = (await header.boundingBox())!;
+      await page.mouse.move(headerBounds.x + 20, headerBounds.y + headerBounds.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(headerBounds.x + 28, headerBounds.y + headerBounds.height / 2);
+      const firstSibling = (await page
+        .locator('[data-widget-attachment="dashboard-right"]')
+        .boundingBox())!;
+      await page.mouse.move(firstSibling.x + firstSibling.width / 2, firstSibling.y + 10, {
+        steps: 8,
+      });
+      await page.mouse.up();
+      await expect
+        .poll(async () =>
+          page
+            .locator('[data-widget-slot="right"] [data-widget-attachment]')
+            .evaluateAll((elements) =>
+              elements.map((element) => element.getAttribute("data-widget-attachment")),
+            ),
+        )
+        .toEqual(["dashboard-left", "dashboard-right"]);
+      await expect(page.locator("[data-widget-placement-overlay]")).toHaveCount(0);
+      await left
+        .getByRole("button", { name: "Widget options for Shared dashboard", exact: true })
+        .click();
+      await page.getByRole("button", { name: "Hide", exact: true }).click();
       await expect(left.locator("iframe")).toHaveCount(0);
-      await left.getByRole("button", { name: "Show", exact: true }).click();
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await page.keyboard.press("Escape");
       await expect(
         left.locator("iframe").contentFrame().getByText("Shared count: 1"),
       ).toBeVisible();

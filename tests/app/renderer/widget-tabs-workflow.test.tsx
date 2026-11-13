@@ -98,7 +98,7 @@ function setup(snapshot?: StoreSnapshot) {
   return { fixture, entries, publish, events, poll, stops, open, records };
 }
 
-it("filters global tab widgets, hides the empty picker, and falls back after removal or hiding", async () => {
+it("filters global tab widgets, keeps hidden widgets reachable, and falls back after removal", async () => {
   const f = setup();
   using fixture = f.fixture;
   const user = userEvent.setup();
@@ -125,6 +125,7 @@ it("filters global tab widgets, hides the empty picker, and falls back after rem
   await user.click(screen.getByRole("button", { name: "Widget tabs" }));
   expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
     "Activity monitor",
+    f.records[1]!.revision.snapshot.title,
   ]);
   await user.click(screen.getByRole("menuitemradio", { name: "Activity monitor" }));
   expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(true);

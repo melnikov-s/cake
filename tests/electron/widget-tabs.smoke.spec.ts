@@ -149,7 +149,7 @@ for (const theme of ["light", "dark"] as const) {
       await panel
         .getByRole("button", { name: "Widget options for Activity monitor", exact: true })
         .click();
-      await page.getByRole("button", { name: "Detach Activity monitor", exact: true }).click();
+      await page.getByRole("button", { name: "Close Activity monitor", exact: true }).click();
       await expect(panel).toHaveCount(0);
       await expect(workspace.getByRole("button", { name: /^Sessions ·/ })).toHaveAttribute(
         "aria-pressed",
@@ -162,7 +162,7 @@ for (const theme of ["light", "dark"] as const) {
         .locator('[data-widget-attachment="second-tab"]')
         .getByRole("button", { name: `Widget options for ${secondTitle}`, exact: true })
         .click();
-      await page.getByRole("button", { name: `Detach ${secondTitle}`, exact: true }).click();
+      await page.getByRole("button", { name: `Close ${secondTitle}`, exact: true }).click();
       await expect(page.getByRole("button", { name: /^Widget tabs/ })).toHaveCount(0);
       await expect(page.locator('[data-slot="widget-tab-host"] iframe')).toHaveCount(0);
     } finally {

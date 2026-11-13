@@ -352,12 +352,7 @@ export const Chat = observer(function Chat({
           className={embedded ? "chat-embedded-workbench-composer" : undefined}
           configuration={composerConfiguration}
           inline={inlineComposer}
-          header={
-            <>
-              {widgets?.bottom}
-              {composerHeader}
-            </>
-          }
+          header={composerHeader}
           onSubmit={(event) => {
             event.preventDefault();
             if (activatingDraft) void store.activateDraft();
@@ -493,7 +488,10 @@ export const Chat = observer(function Chat({
     </div>
   );
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
+    <div
+      data-widget-chat={widgets ? "" : undefined}
+      className="flex h-full min-h-0 min-w-0 flex-col"
+    >
       {widgets?.top}
       <div className="flex min-h-0 min-w-0 flex-1">
         {widgets?.left}
@@ -551,6 +549,7 @@ export const Chat = observer(function Chat({
         </div>
         {widgets?.right}
       </div>
+      {widgets?.bottom}
     </div>
   );
 });

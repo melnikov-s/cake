@@ -254,14 +254,17 @@ test("Project Chat generates a unified widget paginator with durable pages, expl
     await frame().getByRole("button", { name: "Next", exact: true }).click();
     await expect(frame().getByText("Added live", { exact: true })).toBeVisible();
     const attachment = page.locator('[data-widget-attachment="open-todos"]');
-    await attachment.getByRole("button", { name: "Hide", exact: true }).click();
+    await attachment.getByRole("button", { name: /^Widget options for / }).click();
+    await page.getByRole("button", { name: "Hide", exact: true }).click();
     await expect(attachment.locator("iframe")).toHaveCount(0);
     await page.reload();
     await page
       .getByRole("button", { name: /^Open Project Chat for / })
       .first()
       .click();
-    await attachment.getByRole("button", { name: "Show", exact: true }).click();
+    await attachment.getByRole("button", { name: /^Widget options for / }).click();
+    await page.getByRole("button", { name: "Show", exact: true }).click();
+    await page.keyboard.press("Escape");
     await expect(frame().getByText("Page 3 / 3")).toBeVisible();
     // Explicit duplication reuses the definition but creates independent saved state.
     await call(CAKE_CHAT_SESSION_ID, "artifacts.link", {

@@ -6,7 +6,7 @@ import type { WidgetAttachmentStore } from "../stores/WidgetAttachmentStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { WidgetArtifact } from "./widget-artifact";
 import { Button } from "./ui/button";
-import { Select } from "./ui/select";
+import { useWidgetPlacement } from "./widget-placement";
 import { Callout } from "./ui/callout";
 import { LoadingState } from "./ui/loading-state";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
@@ -23,6 +23,7 @@ export const WidgetAttachment = observer(function WidgetAttachment({
   widgets: InlineWidgetStore;
   session: ArtifactNavigationContext["session"];
 }) {
+  const placement = useWidgetPlacement();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const artifact = store.artifacts.get(attachment.lineageId);
@@ -49,101 +50,71 @@ export const WidgetAttachment = observer(function WidgetAttachment({
       data-widget-attachment={attachment.id}
     >
       <div
-        className="flex items-center gap-1 px-2 py-1"
+        className="flex cursor-grab touch-none items-center gap-1 px-2 py-1 [app-region:no-drag]"
+        onPointerDown={(event) => {
+          const target = event.target;
+          if (
+            target instanceof HTMLElement &&
+            !pending &&
+            event.currentTarget.contains(target) &&
+            !target.closest("[data-widget-options]")
+          )
+            placement?.pointer(event, attachment);
+        }}
         style={
-          attachment.slot === "top"
+          attachment.slot === "top" || attachment.slot === "left"
             ? { paddingLeft: "var(--session-home-control-inset, 0.5rem)" }
             : undefined
         }
       >
-        <span
-          className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground"
-          title={title}
+        <button
+          type="button"
+          className="min-w-0 flex-1 cursor-grab touch-none truncate text-left text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [app-region:no-drag]"
+          title={`${title} — drag to move, or press Enter for keyboard placement`}
+          aria-label={`Move ${title}`}
+          aria-description="Drag to a chat edge or Workspace. Press Enter for keyboard placement."
+          disabled={pending}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            placement?.keyboard(attachment);
+          }}
         >
-          {title}
-        </span>
-        {attachment.slot !== "tab" && (
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-expanded={!attachment.hidden}
-            disabled={pending}
-            onClick={() => perform(() => store.hide(attachment.id, !attachment.hidden))}
-          >
-            {attachment.hidden ? "Show" : "Hide"}
-          </Button>
-        )}
-        <Popover>
-          <PopoverIconTrigger tooltip={`Widget options for ${title}`} disabled={pending}>
-            <SettingsIcon size={14} />
-          </PopoverIconTrigger>
-          <PopoverContent
-            align="end"
-            className="w-52 space-y-2 p-2"
-            aria-label={`Options for ${title}`}
-          >
-            <span className="text-xs text-muted-foreground">Position</span>
-            <Select
-              size="sm"
-              aria-label={`Move ${title}`}
-              value={attachment.slot}
-              disabled={pending}
-              onChange={(event) => {
-                const slot = event.target.value;
-                if (
-                  slot === "top" ||
-                  slot === "bottom" ||
-                  slot === "left" ||
-                  slot === "right" ||
-                  (slot === "tab" && attachment.target.kind === "global")
-                )
-                  perform(() => store.move(attachment, slot));
-              }}
+          <span>{title}</span>
+        </button>
+        <div data-widget-options className="flex shrink-0 cursor-default">
+          <Popover>
+            <PopoverIconTrigger tooltip={`Widget options for ${title}`} disabled={pending}>
+              <SettingsIcon size={14} />
+            </PopoverIconTrigger>
+            <PopoverContent
+              align="end"
+              className="w-52 space-y-2 p-2"
+              aria-label={`Options for ${title}`}
             >
-              <option value="top">Top</option>
-              <option value="bottom">Bottom</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-              {attachment.target.kind === "global" && <option value="tab">Tab</option>}
-            </Select>
-            <div className="flex gap-1">
               <Button
                 size="sm"
                 variant="ghost"
-                className="flex-1"
-                aria-label={`Move ${title} earlier`}
-                disabled={pending || attachment.order === 0}
-                onClick={() =>
-                  perform(() => store.move(attachment, attachment.slot, attachment.order - 1))
-                }
-              >
-                Up
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="flex-1"
-                aria-label={`Move ${title} later`}
+                className="w-full justify-start"
+                aria-expanded={!attachment.hidden}
                 disabled={pending}
-                onClick={() =>
-                  perform(() => store.move(attachment, attachment.slot, attachment.order + 1))
-                }
+                onClick={() => perform(() => store.hide(attachment.id, !attachment.hidden))}
               >
-                Down
+                {attachment.hidden ? "Show" : "Hide"}
               </Button>
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="w-full"
-              aria-label={`Detach ${title}`}
-              disabled={pending}
-              onClick={() => perform(() => store.detach(attachment.id))}
-            >
-              Detach
-            </Button>
-          </PopoverContent>
-        </Popover>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+                aria-label={`Close ${title}`}
+                disabled={pending}
+                onClick={() => perform(() => store.detach(attachment.id))}
+              >
+                Close
+              </Button>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
       {error && <Callout variant="error">{error}</Callout>}
       {!attachment.hidden &&

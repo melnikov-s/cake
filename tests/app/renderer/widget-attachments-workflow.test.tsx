@@ -12,6 +12,8 @@ import {
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { WidgetSlot } from "../../../src/renderer/components/widget-slot";
+import { WidgetPlacement } from "../../../src/renderer/components/widget-placement";
+import { StoreProvider } from "r-state-tree/react";
 import * as attachments from "../../../src/domain/widgets/widgetAttachments";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
@@ -146,17 +148,21 @@ it("moves and remounts the same instance with saved state, and hiding releases e
   const user = userEvent.setup();
   const session = { sessionId: "session-a", kind: "project-session" as const };
   const view = render(
-    <div>
-      {(["top", "bottom", "left", "right"] as const).map((slot) => (
-        <WidgetSlot
-          key={slot}
-          slot={slot}
-          session={session}
-          store={f.fixture.root.widgetAttachmentStore}
-          widgets={f.fixture.root.inlineWidgetStore}
-        />
-      ))}
-    </div>,
+    <StoreProvider store={f.fixture.root}>
+      <WidgetPlacement>
+        <div data-widget-chat>
+          {(["top", "bottom", "left", "right"] as const).map((slot) => (
+            <WidgetSlot
+              key={slot}
+              slot={slot}
+              session={session}
+              store={f.fixture.root.widgetAttachmentStore}
+              widgets={f.fixture.root.inlineWidgetStore}
+            />
+          ))}
+        </div>
+      </WidgetPlacement>
+    </StoreProvider>,
   );
   await waitFor(() => expect(view.container.querySelectorAll("iframe")).toHaveLength(1));
   let frame = view.container.querySelector("iframe")!;
@@ -168,8 +174,15 @@ it("moves and remounts the same instance with saved state, and hiding releases e
     }),
   );
   await waitFor(() => expect(f.current().value).toEqual({ selected: "edited" }));
-  await user.click(screen.getByRole("button", { name: "Widget options for Fixture widget" }));
-  await user.selectOptions(screen.getByLabelText("Move Fixture widget"), "left");
+  const chat = view.container.querySelector("[data-widget-chat]")!;
+  vi.spyOn(chat, "getBoundingClientRect").mockReturnValue({
+    left: 0,
+    top: 0,
+    width: 1000,
+    height: 800,
+  } as DOMRect);
+  act(() => screen.getByRole("button", { name: "Move Fixture widget" }).focus());
+  await user.keyboard("{Enter}{ArrowLeft}{Enter}");
   await waitFor(() =>
     expect(view.container.querySelector('[data-widget-slot="left"] iframe')).not.toBeNull(),
   );
@@ -214,16 +227,66 @@ it("moves and remounts the same instance with saved state, and hiding releases e
     expect.any(Function),
   );
   expect(f.poll.mock.calls[0]?.[0].sessionId).toBeUndefined();
+  await user.click(screen.getByRole("button", { name: "Widget options for Fixture widget" }));
   await user.click(screen.getByRole("button", { name: "Hide" }));
   await waitFor(() => expect(view.container.querySelector("iframe")).toBeNull());
   expect(f.stops.every((stop) => stop.mock.calls.length === 1)).toBe(true);
   expect(f.persisted().widgetAttachments[0]?.hidden).toBe(true);
   await user.click(screen.getByRole("button", { name: "Show" }));
+  await user.keyboard("{Escape}");
   await waitFor(() => expect(view.container.querySelector("iframe")).not.toBeNull());
   await user.click(screen.getByRole("button", { name: "Widget options for Fixture widget" }));
-  await user.click(screen.getByRole("button", { name: "Detach Fixture widget" }));
+  await user.click(screen.getByRole("button", { name: "Close Fixture widget" }));
   await waitFor(() => expect(view.container.querySelector("iframe")).toBeNull());
   expect(f.current().value).toEqual({ selected: "edited" });
+  view.unmount();
+});
+
+it("cancels keyboard placement and reorders in place without replacing the iframe", async () => {
+  await using f = await setup();
+  await f.add("second-view", "bottom");
+  const user = userEvent.setup();
+  const view = render(
+    <StoreProvider store={f.fixture.root}>
+      <WidgetPlacement>
+        <div data-widget-chat>
+          <WidgetSlot
+            slot="bottom"
+            session={{ sessionId: "one", kind: "project-session" }}
+            store={f.fixture.root.widgetAttachmentStore}
+            widgets={f.fixture.root.inlineWidgetStore}
+          />
+        </div>
+      </WidgetPlacement>
+    </StoreProvider>,
+  );
+  const chat = view.container.querySelector("[data-widget-chat]")!;
+  vi.spyOn(chat, "getBoundingClientRect").mockReturnValue({
+    left: 0,
+    top: 0,
+    width: 1000,
+    height: 800,
+  } as DOMRect);
+  const panel = view.container.querySelector('[data-widget-attachment="shared"]')!;
+  await waitFor(() => expect(panel.querySelector("iframe")).not.toBeNull());
+  const iframe = panel.querySelector("iframe");
+  const before = f.persisted().widgetAttachments;
+  const header = panel.querySelector<HTMLButtonElement>(
+    'button[aria-label="Move Fixture widget"]',
+  )!;
+  act(() => header.focus());
+  await user.keyboard("{Enter}{ArrowLeft}{Escape}");
+  expect(f.persisted().widgetAttachments).toEqual(before);
+  expect(document.querySelector("[data-widget-placement-overlay]")).toBeNull();
+  await user.keyboard("{Enter}{PageDown}{Enter}");
+  await waitFor(() =>
+    expect(f.persisted().widgetAttachments.map((entry) => entry.id)).toEqual([
+      "second-view",
+      "shared",
+    ]),
+  );
+  expect(panel.querySelector("iframe")).toBe(iframe);
+  expect(iframe?.isConnected).toBe(true);
   view.unmount();
 });
 
