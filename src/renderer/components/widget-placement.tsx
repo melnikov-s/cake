@@ -307,7 +307,7 @@ export function WidgetPlacement({ children }: { children: ReactNode }) {
                 )}
                 style={target.rect}
               >
-                <span className="max-w-full truncate rounded-sm border border-border bg-popover/95 px-2 py-1 text-xs text-popover-foreground shadow-xs">
+                <span className="max-w-full rounded-sm border border-border bg-popover/95 px-2 py-1 text-center text-xs text-popover-foreground shadow-xs">
                   {target.slot === "tab"
                     ? "Workspace"
                     : root.workspaceNavigatorStore.inCompanion
