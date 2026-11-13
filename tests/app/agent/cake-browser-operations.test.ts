@@ -62,7 +62,7 @@ describe("Cake browser operations", () => {
         { command: "browser.cdp", input: { method: "Runtime.evaluate", timeoutMs } },
         context,
       );
-      expect(cdp).toHaveBeenCalledWith("Runtime.evaluate", {}, context.signal, timeoutMs);
+      expect(cdp).toHaveBeenCalledWith("Runtime.evaluate", {}, expect.any(AbortSignal), timeoutMs);
     },
   );
 

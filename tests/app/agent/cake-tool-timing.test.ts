@@ -104,7 +104,7 @@ describe("Cake SDK execution timing diagnostics", () => {
     expect(JSON.stringify(warning.mock.calls)).not.toContain("PRIVATE");
   });
 
-  it("does not apply browser deadlines to deliberate long-running Cake workflows", async () => {
+  it("allows workflows beyond browser deadlines but within Cake's five-minute budget", async () => {
     vi.useFakeTimers();
     let finish: (value: string) => void = () => {};
     const signal = new AbortController().signal;
@@ -136,7 +136,7 @@ describe("Cake SDK execution timing diagnostics", () => {
         settled = true;
         return value;
       });
-    await vi.advanceTimersByTimeAsync(3 * 60 * 60_000);
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
     expect(settled).toBe(false);
     expect(signal.aborted).toBe(false);
     finish("completed deliberately");

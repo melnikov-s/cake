@@ -291,10 +291,28 @@ Backend cancellation currently does not send a cross-host cancellation event to
 an already-dispatched desktop request; that desktop work remains bounded by its
 native deadline. Timers also cannot fire while the host event loop is blocked.
 
-These are browser-boundary deadlines, not a gateway-wide policy. Bash, scripts,
-merges/session workflows, interviews and other user-driven waits keep their own
-cancellation/deadline semantics. The interactive element picker intentionally
-waits for a user selection or Escape; it is not a stuck CDP command.
+All Cake commands also have a **five-minute maximum caller wait** at
+`CakeOperationRegistry.invoke`, shared by registered Pi tools, Durable chats and
+internal/direct Cake dispatch. This includes execution and result projection;
+earlier caller cancellation and shorter native deadlines still win. There are
+no command exemptions or automatic retries. Even handlers that ignore cancellation
+cannot hold the caller indefinitely. As with native deadlines, a blocked host
+event loop can delay the timer; this is not process preemption.
+
+Expiry raises `TimeoutError` naming the command and limit and requests cooperative
+cancellation, but does not wait for cleanup or guarantee rollback. A timed-out
+merge, write or session launch may still commit: inspect authoritative state
+before deciding whether to retry. Durable Cake calls remain unsafe to replay.
+Nested dispatch sharing the caller signal inherits its remaining budget; each
+independent invocation is capped too. Late rejection is consumed, not replayed.
+
+The budget is for the call, not work already handed to a background owner.
+Asynchronous launch/follow-up returns a receipt; the worker continues with its
+existing result-delivery policy after the call settles. Explicit blocking
+subagent calls and human-driven Cake waits (including `interview.open` and the
+browser element picker) are capped as well. Browser UI interactions outside Cake
+dispatch retain their native/user-selection lifetimes. Bash and non-Cake scripts
+retain their own deadlines.
 
 The service must listen on backend `127.0.0.1`, on a port from 1024–9999. Cake forwards
 it through `/preview/` on the existing endpoint to an isolated device-loopback origin;

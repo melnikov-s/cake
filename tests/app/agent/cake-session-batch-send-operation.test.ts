@@ -150,27 +150,43 @@ describe("sessions.send-batch operation", () => {
     });
   });
 
-  it("stops on cancellation without discarding prior or remaining outcomes", async () => {
+  it("retains prior and remaining outcomes in the batch handler on cancellation", async () => {
     const controller = new AbortController();
     const send = vi.fn(async () => {
       controller.abort();
       return receipt("a");
     });
-    const result = await registry(send).invoke(
-      { command: "sessions.send-batch", input: { sessionIds: ["a", "b", "c"], text: "message" } },
+    const result = await createSessionSendBatchOperation(send).execute(
+      { sessionIds: ["a", "b", "c"], text: "message" },
       { ...context, signal: controller.signal },
     );
     expect(send).toHaveBeenCalledTimes(1);
-    expect(result.structuredContent).toMatchObject({
-      result: {
-        status: "partial",
-        outcomes: [
-          { sessionId: "a", ok: true },
-          { sessionId: "b", ok: false, status: "not-sent" },
-          { sessionId: "c", ok: false, status: "not-sent" },
-        ],
-      },
+    expect(result).toMatchObject({
+      status: "partial",
+      outcomes: [
+        { sessionId: "a", ok: true },
+        { sessionId: "b", ok: false, status: "not-sent" },
+        { sessionId: "c", ok: false, status: "not-sent" },
+      ],
     });
+  });
+
+  it("returns caller cancellation without replaying or undoing a committed batch send", async () => {
+    const controller = new AbortController();
+    const committed: string[] = [];
+    const send = vi.fn(async (input: JsonObject) => {
+      committed.push(String(input.sessionId));
+      controller.abort();
+      return receipt(String(input.sessionId));
+    });
+    await expect(
+      registry(send).invoke(
+        { command: "sessions.send-batch", input: { sessionIds: ["a", "b", "c"], text: "message" } },
+        { ...context, signal: controller.signal },
+      ),
+    ).rejects.toBe(controller.signal.reason);
+    expect(committed).toEqual(["a"]);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it("preserves every outcome in model-facing text beyond the ordinary result limit", async () => {

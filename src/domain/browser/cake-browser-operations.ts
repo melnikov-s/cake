@@ -95,7 +95,7 @@ export function createCakeBrowserOperations(control: BrowserControl): CakeOperat
         "Enable a CDP domain before relying on its events or domain-specific state.",
         "Runtime.evaluate may execute arbitrary JavaScript in the loaded page.",
         "Page.captureScreenshot is returned as image content rather than a large JSON string.",
-        "CDP has a 30s deadline. Set timeoutMs (1–600000ms) for a shorter budget or a deliberate long evaluation/wait. Earlier cancellation and Chromium deadlines still apply.",
+        "CDP has a 30s native deadline. Set timeoutMs (1–600000ms) for a shorter budget or a deliberate long evaluation/wait; Cake calls are always capped at 5 minutes. Earlier cancellation and Chromium deadlines still apply.",
         "Expiry/abort detaches the debugger, cancelling other pending commands and resetting enabled domains. Page side effects may already have happened: do not automatically retry.",
       ],
       inputSchema: browserCdpInputSchema,

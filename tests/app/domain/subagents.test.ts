@@ -46,6 +46,7 @@ import {
 import type { SubagentAttachmentFactory } from "../../../src/contracts/subagents/subagent-attachments";
 import { createAgentControlOperations } from "../../../src/domain/subagents/cake-subagent-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import type { SubagentControlRequirements } from "../../../src/domain/subagents/subagentControl";
 import { makeSubagentControl } from "../../../src/domain/subagents/subagentControl";
@@ -3047,9 +3048,14 @@ describe("Subagents", () => {
     }),
   );
 
-  it.effect.each(["project", "cake-chat"])(
-    "public %s launch and follow-up return before worker completion",
-    (profile) =>
+  it.effect.each([
+    { profile: "project", command: "subagents.prompt" },
+    { profile: "project", command: "subagents.follow-up" },
+    { profile: "cake-chat", command: "subagents.prompt" },
+    { profile: "cake-chat", command: "subagents.follow-up" },
+  ])(
+    "registered $profile $command returns a receipt before worker completion and detaches launch cancellation",
+    ({ profile, command }) =>
       Effect.gen(function* () {
         const fixture = yield* makeFixture();
         yield* Effect.gen(function* () {
@@ -3072,14 +3078,36 @@ describe("Subagents", () => {
           const child = yield* Queue.take(fixture.childStarted);
           yield* completeChild(fixture, child);
           yield* Queue.take(fixture.reports);
-          yield* Effect.promise(() =>
-            control.prompt(
-              { handleId: receipt.handleId, text: "Continue investigation", delivery: "prompt" },
-              caller.parentSessionId,
-              signal,
+          const tool = createCakeToolDefinition(
+            createAgentControlOperations(
+              control,
+              () => caller.parentSessionId,
+              () => ({ provider: "test", modelId: "model", thinkingLevel: "off", fastMode: false }),
+              profile === "cake-chat",
             ),
           );
+          const launch = new AbortController();
+          const result = yield* Effect.promise(() =>
+            tool.execute(
+              "follow-up",
+              { command, input: { handleId: receipt.handleId, text: "Continue investigation" } },
+              launch.signal,
+              undefined,
+              {
+                sessionManager: {
+                  getSessionId: () => caller.parentSessionId,
+                  getSessionFile: () => undefined,
+                  getLeafId: () => null,
+                  getBranch: () => [],
+                },
+              } as never,
+            ),
+          );
+          assert.ok(JSON.stringify(result.details).includes('"status":"queued"'));
+          launch.abort();
           assert.equal(yield* Queue.take(fixture.childStarted), child);
+          // The launch receipt must not impose its five-minute caller lifetime on the worker.
+          yield* TestClock.adjust("6 minutes");
           yield* completeChild(fixture, child);
           yield* Queue.take(fixture.reports);
         }).pipe(Effect.provide(Layer.merge(fixture.layer, Layer.mock(TaskInputStorage, {}))));

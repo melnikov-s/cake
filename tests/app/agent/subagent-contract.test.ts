@@ -137,14 +137,14 @@ describe("subagent contract", () => {
     expect(control.run).toHaveBeenCalledWith(
       expect.objectContaining({ inputRefs: [first], messageRefs: [messageRef] }),
       "cake-chat",
-      context.signal,
+      expect.any(AbortSignal),
       undefined,
       "tool-attachments",
     );
     expect(control.start).toHaveBeenCalledWith(
       expect.objectContaining({ inputRefs: [first], messageRefs: [messageRef] }),
       "cake-chat",
-      context.signal,
+      expect.any(AbortSignal),
       "tool-attachments",
     );
     await registry.invoke(
@@ -167,7 +167,7 @@ describe("subagent contract", () => {
         ],
       },
       "cake-chat",
-      context.signal,
+      expect.any(AbortSignal),
       undefined,
       "tool-attachments",
     );
@@ -196,7 +196,7 @@ describe("subagent contract", () => {
           delivery,
         },
         "cake-chat",
-        context.signal,
+        expect.any(AbortSignal),
       );
     }
     await expect(

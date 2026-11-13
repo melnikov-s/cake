@@ -41,6 +41,7 @@ import type {
   CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
 import { CakeOperationRegistry } from "../pi/runtime/cake-operation-registry";
+import { withCakeOperationDeadline } from "../pi/runtime/cake-operation-deadline";
 import { scheduledInputReceipt } from "./durable-scheduled-inputs";
 import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
@@ -312,28 +313,36 @@ export async function createDurableCakeChatRuntime(
     // Mutations (notably session spawning) must never be blindly replayed after a crash.
     replay: "unsafe",
     executionMode: "sequential",
-    async execute(input, api, context) {
-      // Forks inherit the declaration, but execute with their own identity and
-      // originating conversation's controls, never the root's runtime bridge.
-      if (api.conversationId !== engine.root.id) {
-        const envelope = Schema.decodeUnknownOption(cakeToolEnvelopeSchema)(input);
-        if (Option.isSome(envelope) && envelope.value.command === "interview.open")
-          return sideChats.executeInterview(input, api, context);
-        return sideChats.executeCake(input, api, context);
-      }
-      const result = await operations.invoke(input, {
-        signal: context.abortSignal ?? new AbortController().signal,
-        toolCallId: api.callId,
-        runtime: {
-          sessionId,
-          assistantEntryId: await durableAssistantEntryId(api, context),
-          model: { provider: selected.provider, id: selected.id },
+    async execute(input, api, callerContext) {
+      const envelope = Schema.decodeUnknownSync(cakeToolEnvelopeSchema)(input);
+      // Include Durable's asynchronous identity/history lookup before registry dispatch.
+      return withCakeOperationDeadline(
+        envelope.command ?? "help",
+        callerContext.abortSignal ?? new AbortController().signal,
+        async (signal) => {
+          const context = { ...callerContext, abortSignal: signal };
+          // Forks inherit the declaration, but execute with their own identity and
+          // originating conversation's controls, never the root's runtime bridge.
+          if (api.conversationId !== engine.root.id) {
+            if (envelope.command === "interview.open")
+              return sideChats.executeInterview(input, api, context);
+            return sideChats.executeCake(input, api, context);
+          }
+          const result = await operations.invoke(input, {
+            signal,
+            toolCallId: api.callId,
+            runtime: {
+              sessionId,
+              assistantEntryId: await durableAssistantEntryId(api, context),
+              model: { provider: selected.provider, id: selected.id },
+            },
+            onUpdate: (value) => {
+              void api.details(copyJson(value), context).catch(() => undefined);
+            },
+          });
+          return { output: result.content, details: copyJson(result.details) };
         },
-        onUpdate: (value) => {
-          void api.details(copyJson(value), context).catch(() => undefined);
-        },
-      });
-      return { output: result.content, details: copyJson(result.details) };
+      );
     },
   });
   const zoom = defineTool({

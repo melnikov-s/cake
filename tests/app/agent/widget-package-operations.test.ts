@@ -72,7 +72,7 @@ describe("Widget package operations", () => {
       ["settings.widgets.remove", { name: "d3" }],
     ] as const) {
       await registry.invoke({ command, input }, context);
-      expect(invoke).toHaveBeenLastCalledWith(command, input, signal);
+      expect(invoke).toHaveBeenLastCalledWith(command, input, expect.any(AbortSignal));
     }
     expect(registry.operationHelp("settings.widgets.install")).toContain("Otherwise ask first");
   });

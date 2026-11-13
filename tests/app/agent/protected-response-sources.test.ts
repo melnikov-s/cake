@@ -157,7 +157,7 @@ describe("protected response sources", () => {
       expect(invokeAppControl).toHaveBeenLastCalledWith(
         command,
         expect.any(Object),
-        context.signal,
+        expect.any(AbortSignal),
         assistantEntryId,
       );
     }
@@ -171,7 +171,7 @@ describe("protected response sources", () => {
     expect(invokeAppControl).toHaveBeenLastCalledWith(
       "sessions.send",
       expect.objectContaining({ sessionId: "two" }),
-      context.signal,
+      expect.any(AbortSignal),
       assistantEntryId,
     );
     const original = readMessageReference(sessionManager, { entryId: assistantEntryId });
@@ -220,7 +220,7 @@ describe("protected response sources", () => {
         arguments: { text: "Report", sourceEntryId: "forged" },
         sourceEntryId: "exact",
       },
-      context.signal,
+      expect.any(AbortSignal),
     );
   });
 });

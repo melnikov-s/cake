@@ -121,7 +121,7 @@ describe("Backend-owned Cake operation composition", () => {
         name: "artifacts.call",
         arguments: { lineageId: "pr-dashboard", name: "readiness", input: {} },
       },
-      context.signal,
+      expect.any(AbortSignal),
     );
   });
 
@@ -321,7 +321,7 @@ describe("Backend-owned Cake operation composition", () => {
         fastMode: true,
       }),
       "coordinator",
-      context.signal,
+      expect.any(AbortSignal),
       expect.anything(),
     );
   });
@@ -363,13 +363,13 @@ describe("Backend-owned Cake operation composition", () => {
     expect(registry.operationHelp("settings.cake-chat.update")).toContain("next Cake Chat message");
     const read = await registry.invoke({ command: "settings.cake-chat.get" }, context);
     expect(read.details).toMatchObject({ result: { instructions: "Existing guidance." } });
-    expect(get).toHaveBeenCalledWith(context.signal);
+    expect(get).toHaveBeenCalledWith(expect.any(AbortSignal));
     const input = {
       expectedInstructions: "Existing guidance.",
       instructions: "Existing guidance.\nNew guidance.",
     };
     const saved = await registry.invoke({ command: "settings.cake-chat.update", input }, context);
-    expect(update).toHaveBeenCalledWith(input, context.signal);
+    expect(update).toHaveBeenCalledWith(input, expect.any(AbortSignal));
     expect(saved.details).toMatchObject({ result: { instructions: input.instructions } });
     for (const invalid of [
       { instructions: "Missing read." },
@@ -432,7 +432,7 @@ describe("Backend-owned Cake operation composition", () => {
         )
       ).details,
     ).toMatchObject({ result: { instructions: "Existing guidance." } });
-    expect(get).toHaveBeenCalledWith({ projectPath: "/project" }, context.signal);
+    expect(get).toHaveBeenCalledWith({ projectPath: "/project" }, expect.any(AbortSignal));
   });
 
   it("validates explicit Project Chat targets and reports only successful committed writes", async () => {
@@ -494,7 +494,7 @@ describe("Backend-owned Cake operation composition", () => {
     expect(saved.details).toMatchObject({
       result: { projectPath: "/zombies", instructions: "Merged." },
     });
-    expect(update).toHaveBeenCalledWith(input, context.signal);
+    expect(update).toHaveBeenCalledWith(input, expect.any(AbortSignal));
     const readback = await registry.invoke(
       { command: "settings.project-chat.get", input: { projectPath: "/zombies" } },
       context,
@@ -581,7 +581,7 @@ describe("Backend-owned Cake operation composition", () => {
       { command: "worktrees.merge", input: { sessionId: "1a2b3c4d" } },
       context,
     );
-    expect(merge).toHaveBeenCalledWith("1a2b3c4d", context.signal);
+    expect(merge).toHaveBeenCalledWith("1a2b3c4d", expect.any(AbortSignal));
     expect(registry.operationHelp("worktrees.merge-and-resolve")).toContain("persisted");
     expect(registry.operationOutputSchema("worktrees.merge-and-resolve")).toContain(
       "resolutionError",
@@ -590,7 +590,7 @@ describe("Backend-owned Cake operation composition", () => {
       { command: "worktrees.merge-and-resolve", input: { sessionId: "1a2b3c4d" } },
       context,
     );
-    expect(mergeAndResolve).toHaveBeenCalledWith("1a2b3c4d", context.signal);
+    expect(mergeAndResolve).toHaveBeenCalledWith("1a2b3c4d", expect.any(AbortSignal));
     expect(resolved.details).toMatchObject({ result: { landed: true, resolved: true } });
     await expect(
       registry.invoke({ command: "worktrees.merge-and-resolve", input: {} }, context),
@@ -672,18 +672,18 @@ describe("Backend-owned Cake operation composition", () => {
     );
     expect(control.add).toHaveBeenCalledWith(
       { path: project.path, name: "Agents" },
-      context.signal,
+      expect.any(AbortSignal),
     );
     expect(added.details).toMatchObject({ result: { project, alreadyRegistered: false } });
     await registry.invoke({ command: "projects.remove", input: { path: project.path } }, context);
     expect(control.remove).toHaveBeenCalledWith(
       { path: project.path, deleteSessions: false },
-      context.signal,
+      expect.any(AbortSignal),
     );
     await registry.invoke({ command: "projects.list" }, context);
-    expect(control.list).toHaveBeenCalledWith({}, context.signal);
+    expect(control.list).toHaveBeenCalledWith({}, expect.any(AbortSignal));
     await registry.invoke({ command: "projects.info", input: { path: project.path } }, context);
-    expect(control.info).toHaveBeenCalledWith({ path: project.path }, context.signal);
+    expect(control.info).toHaveBeenCalledWith({ path: project.path }, expect.any(AbortSignal));
     await expect(
       registry.invoke({ command: "projects.add", input: { name: "No path" } }, context),
     ).rejects.toThrow();
@@ -703,7 +703,10 @@ describe("Backend-owned Cake operation composition", () => {
       { command: "projects.settings.get", input: { projectPath: project.path } },
       context,
     );
-    expect(control.getSettings).toHaveBeenCalledWith({ projectPath: project.path }, context.signal);
+    expect(control.getSettings).toHaveBeenCalledWith(
+      { projectPath: project.path },
+      expect.any(AbortSignal),
+    );
     const changes = {
       worktreeCreateCommand: "tree create {branchName}",
       worktreeRemoveCommand: "tree remove",
@@ -716,7 +719,7 @@ describe("Backend-owned Cake operation composition", () => {
     );
     expect(control.updateSettings).toHaveBeenCalledWith(
       { projectPath: project.path, changes },
-      context.signal,
+      expect.any(AbortSignal),
     );
     await expect(
       registry.invoke(
@@ -741,7 +744,7 @@ describe("Backend-owned Cake operation composition", () => {
     );
     expect(control.updateSettings).toHaveBeenLastCalledWith(
       { projectPath: project.path, changes: { iconPath: "~/icon.png" } },
-      context.signal,
+      expect.any(AbortSignal),
     );
     await expect(
       registry.invoke(
@@ -872,7 +875,7 @@ describe("Backend-owned Cake operation composition", () => {
     const runtime = await createCakeSessionRuntime(configured);
     runtimes.push(runtime);
     await runtime.callCakeOperation?.("browser.enter", {}, context.signal);
-    expect(enter).toHaveBeenCalledWith(context.signal);
+    expect(enter).toHaveBeenCalledWith(expect.any(AbortSignal));
     expect(await runtime.callCakeOperation?.("browser", {}, context.signal)).toContain(
       "browser.enter",
     );

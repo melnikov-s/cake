@@ -79,7 +79,7 @@ describe("Cake session model operations", () => {
           },
         }),
       },
-      context.signal,
+      expect.any(AbortSignal),
     );
   });
 
@@ -120,7 +120,7 @@ describe("Cake session model operations", () => {
           },
         }),
       }),
-      context.signal,
+      expect.any(AbortSignal),
     );
   });
 
@@ -153,12 +153,12 @@ describe("Cake session model operations", () => {
     expect(invoke).toHaveBeenNthCalledWith(
       1,
       { name: "sessions.create", arguments: expect.objectContaining({ model: solFast }) },
-      context.signal,
+      expect.any(AbortSignal),
     );
     expect(invoke).toHaveBeenNthCalledWith(
       2,
       { name: "sessions.create-draft", arguments: expect.objectContaining({ model: solFast }) },
-      context.signal,
+      expect.any(AbortSignal),
     );
 
     // A changed default applies to the next launch.
@@ -176,7 +176,7 @@ describe("Cake session model operations", () => {
           model: { ...solFast, fastMode: false, preset: { id: catalog.presets[0]!.id } },
         }),
       }),
-      context.signal,
+      expect.any(AbortSignal),
     );
   });
 
@@ -197,7 +197,7 @@ describe("Cake session model operations", () => {
     );
     expect(invoke).toHaveBeenLastCalledWith(
       expect.objectContaining({ arguments: expect.objectContaining({ model: caller }) }),
-      context.signal,
+      expect.any(AbortSignal),
     );
 
     await expect(

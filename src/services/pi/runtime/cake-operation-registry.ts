@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { cakeToolCallKey } from "./cake-tool-timing";
+import { withCakeOperationDeadline } from "./cake-operation-deadline";
 import { discoveryResultText } from "../../../contracts/agent/discovery-result-text";
 import {
   MAX_CAKE_OPERATION_IMAGE_BYTES,
@@ -256,6 +257,7 @@ export class CakeOperationRegistry {
       `Result: ${operation.result}`,
       ...operation.examples.slice(0, 1).map((example) => formatExample(operation.command, example)),
       ...(operation.outputSchema ? [`Result schema: ${operation.command}.output-schema`] : []),
+      "Limitation: Cake calls have a 5-minute maximum wait, including blocking/user-input calls. Timeout does not imply rollback; inspect state before retrying. Background work continues after its launch receipt.",
       ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
     ].join("\n");
   }
@@ -313,6 +315,26 @@ export class CakeOperationRegistry {
   ): Promise<CakeOperationInvocation> {
     const envelope = Schema.decodeUnknownSync(cakeToolEnvelopeSchema)(envelopeInput);
     const command = envelope.command ?? "help";
+    let acceptingUpdates = true;
+    try {
+      return await withCakeOperationDeadline(command, context.signal, (signal) => {
+        const boundedContext = { ...context, signal };
+        if (context.onUpdate)
+          boundedContext.onUpdate = (value) => {
+            if (acceptingUpdates && !signal.aborted) context.onUpdate?.(value);
+          };
+        return this.dispatch(command, envelope.input ?? {}, boundedContext);
+      });
+    } finally {
+      acceptingUpdates = false;
+    }
+  }
+
+  private async dispatch(
+    command: string,
+    rawInput: JsonObject,
+    context: CakeOperationExecutionContext,
+  ): Promise<CakeOperationInvocation> {
     if (command === "help") return helpResult(command, this.help());
     const topicHelp = this.topicHelp(command);
     if (topicHelp !== undefined) return helpResult(command, topicHelp);
@@ -342,9 +364,10 @@ export class CakeOperationRegistry {
       phase = next;
     };
     try {
-      const input = decodeOperationInput(operation, envelope.input ?? {});
+      const input = decodeOperationInput(operation, rawInput);
       enter("execute");
       const executionResult = await operation.execute(input, context);
+      context.signal.throwIfAborted();
       enter("validate");
       const richResult = isCakeOperationImageResult(executionResult);
       if (operation.outputSchema && richResult)
@@ -363,6 +386,7 @@ export class CakeOperationRegistry {
         this.projectResult && !operation.canonicalSessionIds
           ? await this.projectResult(result, context.signal)
           : result;
+      context.signal.throwIfAborted();
       enter("format");
       // Typed results retain their canonical contract. Text is always the agent projection.
       const structured =

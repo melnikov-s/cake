@@ -157,7 +157,7 @@ describe("Cake widget presentation operation", () => {
           toolCallId: "tool-1",
           runtime,
         }),
-      ).rejects.toThrow("cancelled");
+      ).rejects.toBe(controller.signal.reason);
       expect(persistArtifact).not.toHaveBeenCalled();
       expect(appendEntry).not.toHaveBeenCalled();
     },
