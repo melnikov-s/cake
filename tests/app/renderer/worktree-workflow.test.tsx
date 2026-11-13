@@ -355,7 +355,9 @@ describe("Worktree operation workflows", () => {
           cancellationRequested: blocked === "canceling" ? true : undefined,
         }),
       });
-      expect(await screen.findByRole("button", { name: "Merge & resolve" })).toHaveProperty(
+      const store = fixture.root.sessionRegistry.load("session-1", "/worktree").worktreeStore;
+      await waitFor(() => expect(store.phase).toBe("paused"));
+      expect(screen.getByRole("button", { name: "Merge & resolve" })).toHaveProperty(
         "disabled",
         true,
       );
@@ -833,7 +835,7 @@ describe("Worktree operation workflows", () => {
       ).toBeDefined();
       expect(store.isBusy).toBe(false);
       expect(store.phase).toBe("paused");
-      expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", true);
+      expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", !automatic);
     },
   );
 
