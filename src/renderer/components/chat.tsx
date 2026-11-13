@@ -1,3 +1,4 @@
+import { WidgetSlotLayout } from "./widget-slot-layout";
 import type { ComposerInputElement } from "../lib/composer-input-element";
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
@@ -488,10 +489,7 @@ export const Chat = observer(function Chat({
     </div>
   );
   return (
-    <div
-      data-widget-chat={widgets ? "" : undefined}
-      className="flex h-full min-h-0 min-w-0 flex-col"
-    >
+    <WidgetSlotLayout enabled={Boolean(widgets)}>
       {widgets?.top}
       <div className="flex min-h-0 min-w-0 flex-1">
         {widgets?.left}
@@ -550,6 +548,6 @@ export const Chat = observer(function Chat({
         {widgets?.right}
       </div>
       {widgets?.bottom}
-    </div>
+    </WidgetSlotLayout>
   );
 });

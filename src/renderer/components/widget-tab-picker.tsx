@@ -10,7 +10,7 @@ import { cn } from "../lib/utils";
 export const WidgetTabPicker = observer(function WidgetTabPicker() {
   const root = useStore(RootStore);
   const store = root.widgetAttachmentStore;
-  const widgets = store.tabWidgets;
+  const widgets = store.availableTabWidgets;
   const navigator = root.workspaceNavigatorStore;
   const selected = navigator.selectedWidget;
   const active = navigator.showingWidget;

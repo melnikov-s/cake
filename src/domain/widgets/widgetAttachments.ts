@@ -16,11 +16,6 @@ class WidgetAttachmentError extends Schema.TaggedError<WidgetAttachmentError>()(
 export const attach = Effect.fn("WidgetAttachments.attach")(function* (
   input: (typeof widgetAttachmentContracts)[0]["inputSchema"]["Type"],
 ) {
-  if (input.slot === "tab" && input.target.kind !== "global")
-    return yield* new WidgetAttachmentError({
-      message:
-        'The tab slot requires target.kind "global"; session and category-scoped widgets cannot use tab',
-    });
   const storage = yield* ArtifactStorage;
   const artifact = yield* storage.read(input.lineageId);
   if (artifact?.snapshot.kind !== "widget")

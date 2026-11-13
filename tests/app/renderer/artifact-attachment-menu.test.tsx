@@ -116,8 +116,7 @@ it("offers all five destinations in the side-panel header and reuses the instanc
         expect.objectContaining({
           lineageId: widget.revision.lineageId,
           slot,
-          target:
-            slot === "tab" ? { kind: "global" } : { kind: "session", sessionId: "viewing-session" },
+          target: { kind: "session", sessionId: "viewing-session" },
         }),
         expect.anything(),
       ),
@@ -157,6 +156,8 @@ it.each(["top", "bottom", "left", "right", "tab"] as const)(
     expect(f.attach.mock.calls[0]?.[0]).toMatchObject({
       id: "existing",
       lineageId: widget.revision.lineageId,
+      target:
+        slot === "tab" ? { kind: "global" } : { kind: "session", sessionId: "viewing-session" },
     });
     expect(f.fixture.root.widgetAttachmentStore.attachments).toHaveLength(1);
     expect(f.stateReplace).not.toHaveBeenCalled();
@@ -222,7 +223,10 @@ it("supports keyboard navigation and Escape in fullscreen without closing the vi
   await user.keyboard("{End}");
   expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Workspace tab" }));
   await user.keyboard("{Enter}");
-  expect(f.attach.mock.calls[0]?.[0]).toMatchObject({ slot: "tab", target: { kind: "global" } });
+  expect(f.attach.mock.calls[0]?.[0]).toMatchObject({
+    slot: "tab",
+    target: { kind: "session", sessionId: "viewing-session" },
+  });
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("menu")).toBeNull();
   expect(f.close).not.toHaveBeenCalled();

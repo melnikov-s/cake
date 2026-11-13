@@ -243,6 +243,87 @@ function renderNavigator(fixture: ReturnType<typeof setup>["fixture"]) {
 const pressed = (name: string | RegExp) =>
   screen.getByRole("button", { name }).getAttribute("aria-pressed");
 
+it("keeps scoped tabs alive while unselected, releases them outside applicability, and restores selection/state on return", async () => {
+  const f = setup();
+  using fixture = f.fixture;
+  act(() => {
+    fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+    f.publish([
+      { ...f.entries[0]!, target: { kind: "session", sessionId: CAKE_CHAT_SESSION_ID } },
+      f.entries[1]!,
+    ]);
+  });
+  const view = renderNavigator(fixture);
+  await waitFor(() => expect(view.container.querySelectorAll("iframe")).toHaveLength(2));
+  const scoped = view.container.querySelector('[data-widget-attachment="first"]')!;
+  const original = scoped.querySelector("iframe")!;
+  act(() => {
+    fixture.root.workspaceNavigatorStore.showWidget("first");
+    request(original, "widget-subscribe", {
+      id: "poll",
+      subscriptionId: "poll",
+      kind: "poll",
+      options: { key: "sessions", command: "sessions.list", input: {}, intervalMs: 1000 },
+    });
+  });
+  expect(f.poll.mock.calls[0]?.[0].sessionId).toBe(CAKE_CHAT_SESSION_ID);
+  act(() => fixture.root.workspaceNavigatorStore.showWidget("second"));
+  expect(original.isConnected).toBe(true);
+  expect(f.stops[0]).not.toHaveBeenCalled();
+  act(() => fixture.root.workspaceNavigatorStore.showWidget("first"));
+  act(() => {
+    fixture.root.appShellStore.workspace = "home";
+  });
+  expect(fixture.root.widgetAttachmentStore.availableTabWidgets.map((entry) => entry.id)).toEqual([
+    "second",
+  ]);
+  expect(fixture.root.workspaceNavigatorStore.selectedWidget).toBeUndefined();
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(false);
+  expect(view.container.querySelector('[data-widget-attachment="first"]')).toBeNull();
+  expect(original.isConnected).toBe(false);
+  expect(f.stops[0]).toHaveBeenCalledTimes(1);
+  act(() => fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID));
+  await waitFor(() =>
+    expect(view.container.querySelector('[data-widget-attachment="first"] iframe')).not.toBeNull(),
+  );
+  expect(fixture.root.workspaceNavigatorStore.selectedWidget?.id).toBe("first");
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(true);
+  const restored = view.container.querySelector(
+    '[data-widget-attachment="first"] iframe',
+  ) as HTMLIFrameElement;
+  const post = vi.spyOn(restored.contentWindow!, "postMessage");
+  act(() => request(restored, "artifact-state-read", { id: "restored" }));
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "state-result",
+        value: expect.objectContaining({
+          state: expect.objectContaining({ value: { saved: true } }),
+        }),
+      }),
+      "*",
+    ),
+  );
+  act(() =>
+    f.publish([
+      {
+        ...f.entries[0]!,
+        target: { kind: "session", sessionId: CAKE_CHAT_SESSION_ID },
+        hidden: true,
+      },
+      f.entries[1]!,
+    ]),
+  );
+  expect(restored.isConnected).toBe(false);
+  expect(fixture.root.workspaceNavigatorStore.selectedWidget?.hidden).toBe(true);
+  expect(
+    view.container.querySelector(
+      '[data-widget-attachment="first"] button[aria-label="Widget options for Activity monitor"]',
+    ),
+  ).not.toBeNull();
+  view.unmount();
+});
+
 it("keeps the picked widget on its tab across To-dos/Sessions switches until Clear", async () => {
   const f = setup();
   using fixture = f.fixture;

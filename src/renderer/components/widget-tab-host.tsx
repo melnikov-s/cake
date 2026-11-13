@@ -7,6 +7,7 @@ import { WidgetPlacement } from "./widget-placement";
 import { cn } from "../lib/utils";
 
 /** One stable host per window, outside conversation and accessory lifetimes.
+ * Only applicable attachments mount; leaving scope releases the view and its subscriptions.
  * Geometry follows the visible pane, without reparenting/reloading its iframes.
  * Unselected widgets keep their existing bridge resources; no transcript is loaded.
  */
@@ -55,7 +56,7 @@ export const WidgetTabHost = observer(function WidgetTabHost({
           )}
           style={bounds}
         >
-          {root.widgetAttachmentStore.tabWidgets.map((attachment) => (
+          {root.widgetAttachmentStore.availableTabWidgets.map((attachment) => (
             <div
               key={attachment.id}
               className={cn("h-full min-h-0 min-w-0", selected?.id !== attachment.id && "hidden")}

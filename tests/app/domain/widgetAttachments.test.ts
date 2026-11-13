@@ -87,17 +87,20 @@ it.effect.each([
   { kind: "session" as const, sessionId: "one" },
   { kind: "project-chats" as const },
   { kind: "project-sessions" as const },
-])("rejects non-global tab placement at schema and domain boundaries: $kind", (target) =>
+])("moves scoped widgets through Workspace without changing applicability: $kind", (target) =>
   Effect.gen(function* () {
     yield* (yield* ApplicationState).initialize();
     yield* attachments.attach(request);
-    const input = { ...request, slot: "tab" as const, target };
-    expect(() => Schema.decodeUnknownSync(widgetAttachmentContracts[0].inputSchema)(input)).toThrow(
-      'tab slot requires target.kind "global"',
-    );
-    const error = yield* Effect.flip(attachments.attach(input));
-    expect(error.message).toContain('tab slot requires target.kind "global"');
-    expect((yield* (yield* ApplicationState).current()).widgetAttachments[0]?.slot).toBe("bottom");
+    const scoped = { ...request, target };
+    for (const slot of ["tab", "left", "right", "top", "bottom"] as const) {
+      const input = yield* Schema.decodeUnknownEffect(widgetAttachmentContracts[0].inputSchema)({
+        ...scoped,
+        slot,
+      });
+      const state = yield* attachments.attach(input);
+      expect(state.widgetAttachments).toHaveLength(1);
+      expect(state.widgetAttachments[0]).toMatchObject({ ...scoped, slot });
+    }
   }).pipe(Effect.provide(layer())),
 );
 

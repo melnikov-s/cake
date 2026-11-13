@@ -17,7 +17,7 @@ export function createWidgetAttachmentOperations(
     guidance: [
       "Attachments reference existing widget lineages. Move an attachment by presenting the same ID with another slot; identity and saved state survive.",
       "Targets are session categories across Cake, not sessions within one project. Broad attachments share one widget instance. Independent state requires widgets.instantiate with a new lineage ID.",
-      'Slot tab is global-only: use target: {kind: "global"}. It adds a full Workspace pane chosen beside To-dos/Sessions. Only visible tab attachments appear in its dropdown; tab widgets stay active when unselected or changing conversations. One tab placement per widget lineage.',
+      "Slot tab adds a full Workspace pane beside To-dos/Sessions. Retain the attachment target when moving: only tabs applicable to the active conversation appear. Applicable tab widgets stay active when unselected; leaving scope releases their views, not saved state. One tab placement per widget lineage.",
       "User requests authorize agents to attach directly. Widget code cannot attach itself or manage permissions.",
     ],
     examples: [],

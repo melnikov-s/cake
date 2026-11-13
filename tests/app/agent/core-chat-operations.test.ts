@@ -79,7 +79,7 @@ describe("core coordinator calling reference", () => {
     expect(line("widgets.attach")).toContain("lineageId");
     expect(line("widgets.attach")).toContain("target");
     expect(line("widgets.attach")).toContain('"tab"');
-    expect(reference).toContain("tab (target global only)");
+    expect(reference).toContain("Keep the target unchanged when moving");
     expect(line("widgets.detach")).toBe("widgets.detach {id}");
     expect(line("widgets.attachments")).toBe("widgets.attachments {}");
     expect(prompt).toContain("Moving keeps identity/state");

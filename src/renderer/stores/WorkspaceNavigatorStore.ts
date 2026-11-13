@@ -33,7 +33,7 @@ export class WorkspaceNavigatorStore extends Store<{
 
   /** Undefined when nothing is picked or the picked widget is no longer a tab. */
   get selectedWidget() {
-    return this.props.widgets().tabWidgets.find((entry) => entry.id === this.widgetId);
+    return this.props.widgets().availableTabWidgets.find((entry) => entry.id === this.widgetId);
   }
 
   get showingWidget() {
@@ -41,7 +41,7 @@ export class WorkspaceNavigatorStore extends Store<{
   }
 
   showWidget(id = this.widgetId) {
-    if (!this.props.widgets().tabWidgets.some((entry) => entry.id === id)) return;
+    if (!this.props.widgets().availableTabWidgets.some((entry) => entry.id === id)) return;
     this.widgetId = id;
     this.widgetActive = true;
     this.accessoryVisible = true;
@@ -79,7 +79,7 @@ export class WorkspaceNavigatorStore extends Store<{
     // Hidden widgets retain their header/options so Show remains reachable.
     // The binding itself is kept: attachments load after startup hydration.
     this.reaction(
-      () => Boolean(this.selectedWidget),
+      () => this.props.widgets().tabWidgets.some((entry) => entry.id === this.widgetId),
       (present) => {
         if (!present) this.widgetActive = false;
       },

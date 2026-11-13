@@ -38,28 +38,32 @@ function visibleElement(selector: string) {
 
 function dropTargets(): WidgetDropTarget[] {
   const chat = visibleElement("[data-widget-chat]");
+  const companion = visibleElement('[data-slot="workspace-companion-content"]');
   const workspace = visibleElement(
     '[data-slot="workspace-navigator"], [data-slot="workspace-companion-content"]',
   );
-  // In tool mode Chat lives inside the companion: reserve its tab strip for
-  // Workspace drops so it does not mask the chat's four edge destinations.
+  // Keep the selected widget/header mounted while offering Chat edge destinations
+  // over the companion body. The committed move, not hover, switches it to Chat.
   const rect =
-    workspace && chat && workspace.contains(chat)
+    workspace && companion
       ? workspace.firstElementChild?.getBoundingClientRect()
       : workspace?.getBoundingClientRect();
   return [
     ...(chat
-      ? chatDropTargets(chat.getBoundingClientRect()).map((target) => {
-          const occupied = chat.querySelector<HTMLElement>(`[data-widget-slot="${target.slot}"]`);
-          const rect = occupied?.getBoundingClientRect();
-          return rect && rect.width > 0 && rect.height > 0
-            ? {
-                slot: target.slot,
-                rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-              }
-            : target;
-        })
-      : []),
+      ? chatDropTargets(chat.getBoundingClientRect())
+      : companion
+        ? (() => {
+            const body = companion.getBoundingClientRect();
+            const strip = companion.firstElementChild?.getBoundingClientRect();
+            const top = strip ? strip.bottom : body.top;
+            return chatDropTargets({
+              left: body.left,
+              top,
+              width: body.width,
+              height: Math.max(0, body.bottom - top),
+            });
+          })()
+        : []),
     ...(rect
       ? [
           {
@@ -94,10 +98,6 @@ export function WidgetPlacement({ children }: { children: ReactNode }) {
       message,
     });
   const commit = (attachment: WidgetAttachment, slot: WidgetSlot, order?: number) => {
-    if (slot === "tab" && attachment.target.kind !== "global") {
-      reportFailure("Workspace requires a global widget. This widget's scope has not changed.");
-      return;
-    }
     const current = store.attachments.find((entry) => entry.id === attachment.id);
     if (!current) return;
     const siblings = store.attachments.filter(
@@ -108,6 +108,7 @@ export function WidgetPlacement({ children }: { children: ReactNode }) {
       .move(current, slot, order ?? last + 1)
       .then(() => {
         if (slot === "tab") root.workspaceNavigatorStore.showWidget(current.id);
+        else if (root.workspaceNavigatorStore.inCompanion) root.workspaceNavigatorStore.showChat();
         setMessage(`Moved ${store.title(current)} to ${slot === "tab" ? "Workspace" : slot}.`);
       })
       .catch((error: unknown) =>
@@ -143,10 +144,25 @@ export function WidgetPlacement({ children }: { children: ReactNode }) {
       if (!active && Math.hypot(event.clientX - startX, event.clientY - startY) < 4) return;
       active = true;
       const targets = dropTargets();
-      // Prefer the Workspace destination at its boundary with the chat.
-      chosen = [...targets]
-        .reverse()
-        .find((target) => containsPoint(target.rect, event.clientX, event.clientY));
+      // Edge zones are disjoint and always win, even when a pane fills the chat.
+      chosen = targets.find((target) => containsPoint(target.rect, event.clientX, event.clientY));
+      // Reorder in an occupied interior independently of the edge destinations.
+      if (!chosen) {
+        const occupied = [...document.querySelectorAll<HTMLElement>("[data-widget-slot]")].find(
+          (element) => {
+            const rect = element.getBoundingClientRect();
+            return (
+              rect.width > 0 && rect.height > 0 && containsPoint(rect, event.clientX, event.clientY)
+            );
+          },
+        );
+        const slot = occupied?.dataset.widgetSlot;
+        if (
+          occupied &&
+          (slot === "left" || slot === "right" || slot === "top" || slot === "bottom")
+        )
+          chosen = { slot, rect: occupied.getBoundingClientRect() };
+      }
       order = undefined;
       let marker: PlacementRect | undefined;
       if (chosen && chosen.slot !== "tab") {
@@ -266,7 +282,6 @@ export function WidgetPlacement({ children }: { children: ReactNode }) {
     window.addEventListener("blur", finish);
     update();
   };
-  const rejected = preview?.slot === "tab" && preview.attachment.target.kind !== "global";
   return (
     <WidgetPlacementContext value={{ pointer, keyboard }}>
       {children}
@@ -289,13 +304,14 @@ export function WidgetPlacement({ children }: { children: ReactNode }) {
                 className={cn(
                   "pointer-events-none absolute flex items-center justify-center rounded-md border border-dashed border-accent bg-accent/10 text-sm text-foreground",
                   preview.slot === target.slot && "border-solid bg-accent/25 ring-2 ring-accent",
-                  rejected &&
-                    target.slot === "tab" &&
-                    "border-destructive bg-destructive/10 ring-destructive",
                 )}
                 style={target.rect}
               >
-                {target.slot === "tab" ? "Workspace" : target.slot}
+                {target.slot === "tab"
+                  ? "Workspace"
+                  : root.workspaceNavigatorStore.inCompanion
+                    ? `Chat · ${target.slot}`
+                    : target.slot}
               </div>
             ))}
             {preview.marker && (
@@ -309,11 +325,9 @@ export function WidgetPlacement({ children }: { children: ReactNode }) {
               role="status"
               className="pointer-events-none absolute inset-x-0 bottom-4 mx-auto w-fit max-w-full rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-sm"
             >
-              {rejected
-                ? "Workspace requires a global widget; scope will not change."
-                : preview.keyboard
-                  ? `Move widget: ${preview.slot}, position ${(preview.order ?? 0) + 1}. Arrow keys: edge · W: Workspace · Page Up/Down: order · Enter: place · Escape: cancel`
-                  : "Drop to place widget · Escape to cancel"}
+              {preview.keyboard
+                ? `Move widget: ${preview.slot}, position ${(preview.order ?? 0) + 1}. Arrow keys: edge · W: Workspace · Page Up/Down: order · Enter: place · Escape: cancel`
+                : "Drop to place widget · Escape to cancel"}
             </div>
           </div>,
           document.body,

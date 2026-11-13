@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { observer } from "r-state-tree/react";
 import type { WidgetSlot as Slot } from "../../contracts/widgets/widget-attachment";
@@ -8,6 +8,7 @@ import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { WidgetAttachment } from "./widget-attachment";
 import { ResizeHandle } from "./ui/resize-handle";
 import { cn } from "../lib/utils";
+import { useWidgetSlotLayout } from "./widget-slot-layout";
 
 export const WidgetSlot = observer(function WidgetSlot({
   slot,
@@ -21,47 +22,35 @@ export const WidgetSlot = observer(function WidgetSlot({
   widgets: InlineWidgetStore;
 }) {
   const side = slot === "left" || slot === "right";
-  const [size, setSize] = useState(side ? 280 : 160);
-  const [available, setAvailable] = useState(0);
+  const layout = useWidgetSlotLayout();
   const [resizing, setResizing] = useState(false);
-  const element = useRef<HTMLElement>(null);
   const attachments = store.forSession(session.sessionId, session.kind, slot);
+  const present = attachments.length > 0;
+  const { register } = layout;
   useLayoutEffect(() => {
-    const panel = element.current;
-    const container = panel?.parentElement;
-    if (!panel || !container) return;
-    const siblings = [...container.children].filter(
-      (child) => child !== panel && child.hasAttribute("data-widget-slot"),
-    );
-    const measure = () => {
-      const rect = container.getBoundingClientRect();
-      const occupied = siblings.reduce((sum, sibling) => {
-        const rect = sibling.getBoundingClientRect();
-        return sum + (side ? rect.width : rect.height);
-      }, 0);
-      setAvailable(Math.max(0, (side ? rect.width : rect.height) - occupied));
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    for (const sibling of siblings) observer.observe(sibling);
-    measure();
-    return () => observer.disconnect();
-  });
-  if (attachments.length === 0) return null;
-  const value = Math.min(size, available);
+    register(slot, present);
+    return () => register(slot, false);
+  }, [register, slot, present]);
+  if (!present) return null;
+  const value = layout.sizes[slot];
+  const available = side ? layout.width : layout.height;
   return (
     <section
-      ref={element}
       aria-label={`${slot} widgets`}
       data-widget-slot={slot}
       className={cn(
-        "relative min-h-0 min-w-0 shrink-0 overflow-hidden bg-background",
-        side ? "h-full border-x border-border/65" : "border-y border-border/65",
+        "relative min-h-0 min-w-0 shrink-0 bg-background",
+        side && "h-full",
         resizing && "select-none",
       )}
       style={side ? { width: value } : { height: value }}
     >
-      <div className="h-full overflow-auto overscroll-contain">
+      <div
+        className={cn(
+          "h-full overflow-auto overscroll-contain",
+          value > 0 && (side ? "border-x border-border/65" : "border-y border-border/65"),
+        )}
+      >
         {attachments.map((attachment) => (
           <WidgetAttachment
             key={attachment.id}
@@ -75,19 +64,27 @@ export const WidgetSlot = observer(function WidgetSlot({
       <ResizeHandle
         className={
           slot === "left"
-            ? "right-0"
-            : slot === "right"
+            ? value === 0
               ? "left-0"
+              : "-right-1"
+            : slot === "right"
+              ? value === 0
+                ? "right-0"
+                : "-left-1"
               : slot === "top"
-                ? "bottom-0"
-                : "top-0"
+                ? value === 0
+                  ? "top-0"
+                  : "-bottom-1"
+                : value === 0
+                  ? "bottom-0"
+                  : "-top-1"
         }
         label={`Resize ${slot} widgets`}
         value={value}
         min={0}
         max={available}
         edge={slot}
-        onChange={setSize}
+        onChange={(size) => layout.resize(slot, size)}
         onResizeStart={() => setResizing(true)}
         onResizeEnd={() => setResizing(false)}
       />

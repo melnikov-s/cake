@@ -12,6 +12,8 @@ import {
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { WidgetSlot } from "../../../src/renderer/components/widget-slot";
+import { WidgetSlotLayout } from "../../../src/renderer/components/widget-slot-layout";
+import type { ReactNode } from "react";
 import { WidgetPlacement } from "../../../src/renderer/components/widget-placement";
 import { StoreProvider } from "r-state-tree/react";
 import * as attachments from "../../../src/domain/widgets/widgetAttachments";
@@ -23,6 +25,10 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { artifactObserverWorkflowEvents } from "./artifact-observer-workflow-events";
 import type { Client } from "../../../src/renderer/client/Client";
 import type { ArtifactState } from "../../../src/contracts/artifacts/artifact-state";
+
+function renderSlots(children: ReactNode) {
+  return render(<WidgetSlotLayout>{children}</WidgetSlotLayout>);
+}
 
 const widget = widgetInstance();
 const token = "00000000-0000-4000-8000-000000000010";
@@ -147,10 +153,10 @@ it("moves and remounts the same instance with saved state, and hiding releases e
   await using f = await setup();
   const user = userEvent.setup();
   const session = { sessionId: "session-a", kind: "project-session" as const };
-  const view = render(
+  const view = renderSlots(
     <StoreProvider store={f.fixture.root}>
       <WidgetPlacement>
-        <div data-widget-chat>
+        <div>
           {(["top", "bottom", "left", "right"] as const).map((slot) => (
             <WidgetSlot
               key={slot}
@@ -246,10 +252,10 @@ it("cancels keyboard placement and reorders in place without replacing the ifram
   await using f = await setup();
   await f.add("second-view", "bottom");
   const user = userEvent.setup();
-  const view = render(
+  const view = renderSlots(
     <StoreProvider store={f.fixture.root}>
       <WidgetPlacement>
-        <div data-widget-chat>
+        <div>
           <WidgetSlot
             slot="bottom"
             session={{ sessionId: "one", kind: "project-session" }}
@@ -293,7 +299,7 @@ it("cancels keyboard placement and reorders in place without replacing the ifram
 it("shares instance state while delivering different current sessions to each view", async () => {
   await using f = await setup();
   await f.add("second-view", "top");
-  const view = render(
+  const view = renderSlots(
     <>
       <WidgetSlot
         slot="bottom"
@@ -360,7 +366,7 @@ it.each([true, false])(
   async (materialized) => {
     await using f = await setup();
     const user = userEvent.setup();
-    const view = render(
+    const view = renderSlots(
       <WidgetSlot
         slot="bottom"
         session={{ sessionId: "one", kind: "project-session" }}

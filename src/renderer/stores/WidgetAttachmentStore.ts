@@ -9,6 +9,7 @@ import {
   type WidgetTarget,
 } from "../../contracts/widgets/widget-attachment";
 import { ClientContext } from "./context/ClientContext";
+import { ArtifactNavigationContext } from "./context/ArtifactNavigationContext";
 
 /** Placements are application-owned. Widget source and saved state remain artifact-owned. */
 export class WidgetAttachmentStore extends Store {
@@ -40,15 +41,25 @@ export class WidgetAttachmentStore extends Store {
   }
 
   get tabWidgets() {
-    const seen = new Set<ArtifactLineageId>();
     return this.attachments
-      .filter((entry) => entry.slot === "tab" && entry.target.kind === "global")
-      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-      .filter((entry) => {
-        if (seen.has(entry.lineageId)) return false;
-        seen.add(entry.lineageId);
-        return true;
-      });
+      .filter((entry) => entry.slot === "tab")
+      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  }
+
+  /** Out-of-scope tabs are neither discoverable nor mounted; selection never changes applicability. */
+  get availableTabWidgets() {
+    const session = ArtifactNavigationContext.consume(this)?.()?.session;
+    const seen = new Set<ArtifactLineageId>();
+    return this.tabWidgets.filter((entry) => {
+      if (
+        entry.target.kind !== "global" &&
+        (!session || !widgetAppliesTo(entry.target, session.sessionId, session.kind))
+      )
+        return false;
+      if (seen.has(entry.lineageId)) return false;
+      seen.add(entry.lineageId);
+      return true;
+    });
   }
 
   title(attachment: WidgetAttachment) {
@@ -102,12 +113,9 @@ export class WidgetAttachmentStore extends Store {
     if (this.placementRequests.get(lineageId)?.pending) return;
     this.placementRequests.set(lineageId, { pending: true });
     try {
-      let target: WidgetTarget;
-      if (slot === "tab") target = { kind: "global" };
-      else {
-        if (!sessionId) throw new Error("Open a conversation to attach this widget to a chat slot");
-        target = { kind: "session", sessionId };
-      }
+      if (!sessionId && slot !== "tab")
+        throw new Error("Open a conversation to attach this widget to a chat slot");
+      const target: WidgetTarget = sessionId ? { kind: "session", sessionId } : { kind: "global" };
       // Prefer the unique Workspace placement, then this conversation's placement.
       // Reuse another existing placement rather than silently duplicating the widget.
       const placements = this.attachments.filter((entry) => entry.lineageId === lineageId);
@@ -118,7 +126,7 @@ export class WidgetAttachmentStore extends Store {
         ) ??
         placements[0];
       if (existing) {
-        await this.move(existing, slot, existing.order, target);
+        await this.move(existing, slot);
         if (!this.signal.aborted && existing.hidden) await this.hide(existing.id, false);
       } else {
         await this.client.application.attachWidget(
@@ -136,17 +144,12 @@ export class WidgetAttachmentStore extends Store {
     }
   }
 
-  async move(
-    attachment: WidgetAttachment,
-    slot: WidgetSlot,
-    order = attachment.order,
-    target = attachment.target,
-  ) {
+  async move(attachment: WidgetAttachment, slot: WidgetSlot, order = attachment.order) {
     await this.client.application.attachWidget(
       {
         id: attachment.id,
         lineageId: attachment.lineageId,
-        target,
+        target: attachment.target,
         slot,
         order,
       },

@@ -3,7 +3,7 @@ import { ArtifactLineageId } from "../artifacts/artifact-lineage";
 
 export const WidgetSlot = Schema.Literals(["top", "bottom", "left", "right", "tab"]).annotate({
   description:
-    'top/bottom/left/right for chat placement; tab for a full Workspace pane, only with target.kind "global"',
+    "top/bottom/left/right for chat placement; tab for a full Workspace pane with the same target applicability",
 });
 export type WidgetSlot = typeof WidgetSlot.Type;
 
@@ -33,21 +33,14 @@ export interface WidgetAttachment extends Schema.Schema.Type<typeof WidgetAttach
 export const widgetAttachmentContracts = [
   {
     command: "widgets.attach",
-    summary: "Attach an existing widget to chat slots or a global Workspace tab",
+    summary: "Attach an existing widget to chat slots or a scope-preserving Workspace tab",
     inputSchema: Schema.Struct({
       id: WidgetAttachment.fields.id,
       lineageId: ArtifactLineageId,
       target: WidgetTarget,
       slot: WidgetSlot,
       order: Schema.optionalKey(WidgetAttachment.fields.order),
-    }).check(
-      Schema.makeFilter(
-        (input) =>
-          input.slot !== "tab" ||
-          input.target.kind === "global" ||
-          'The tab slot requires target.kind "global"; session and category-scoped widgets cannot use tab',
-      ),
-    ),
+    }),
   },
   {
     command: "widgets.detach",

@@ -9,6 +9,7 @@ import { emitRendererEvent } from "./main-harness";
 const repository = resolve(import.meta.dirname, "../..");
 
 async function beginDrag(page: Page, header: Locator) {
+  await expect(header).toBeVisible();
   const rect = (await header.boundingBox())!;
   await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
   await page.mouse.down();
@@ -22,7 +23,7 @@ async function drop(page: Page, slot: string) {
   await expect(page.locator("[data-widget-placement-overlay]")).toHaveCount(0);
 }
 
-for (const scope of ["global", "session", "project-sessions"] as const) {
+for (const scope of ["global", "session", "project-sessions", "project-chats"] as const) {
   for (const theme of scope === "global" ? (["light", "dark"] as const) : (["light"] as const)) {
     test(`header drag, unrestricted resize and scope-safe Workspace drop (${scope}, ${theme})`, async ({}, testInfo) => {
       test.setTimeout(120_000);
@@ -33,6 +34,7 @@ for (const scope of ["global", "session", "project-sessions"] as const) {
         userData: join(root, "user-data"),
       };
       await widgetAttachmentsScenario.seed(paths, theme);
+      const ownerSession = "visual-widget-attachments";
       const statePath = join(paths.cakeHome, "state", "application.json");
       const state = JSON.parse(await readFile(statePath, "utf8"));
       state.data.widgetAttachments = [
@@ -44,7 +46,7 @@ for (const scope of ["global", "session", "project-sessions"] as const) {
             scope === "global"
               ? { kind: "global" }
               : scope === "session"
-                ? { kind: "session", sessionId: "visual-widget-attachments" }
+                ? { kind: "session", sessionId: ownerSession }
                 : { kind: scope },
         },
       ];
@@ -74,10 +76,24 @@ for (const scope of ["global", "session", "project-sessions"] as const) {
           .getByRole("combobox", { name: /^Message/ })
           .first()
           .waitFor();
-        await emitRendererEvent(app, {
-          type: "session-open-requested",
-          sessionId: "visual-widget-attachments",
-        });
+        const openOwner = async () => {
+          if (scope === "project-chats") {
+            await page
+              .getByRole("button", { name: "Open Project Chat for Widget workspace", exact: true })
+              .click();
+            // Release deliberate project-rail focus/hover before interacting with its adjacent widget.
+            await page
+              .getByRole("combobox", { name: /^Message/ })
+              .first()
+              .focus();
+            await page.mouse.move(800, 800);
+          } else
+            await emitRendererEvent(app, {
+              type: "session-open-requested",
+              sessionId: ownerSession,
+            });
+        };
+        await openOwner();
         const panel = page.locator('[data-widget-attachment="dashboard-left"]');
         const header = panel.getByRole("button", { name: "Move Shared dashboard", exact: true });
         const options = panel.getByRole("button", {
@@ -103,6 +119,7 @@ for (const scope of ["global", "session", "project-sessions"] as const) {
           /text-destructive/,
         );
         await page.screenshot({
+          scale: "css",
           path: testInfo.outputPath(`widget-options-${scope}-${theme}.png`),
         });
         await page.keyboard.press("Escape");
@@ -110,6 +127,7 @@ for (const scope of ["global", "session", "project-sessions"] as const) {
 
         await beginDrag(page, header);
         await page.screenshot({
+          scale: "css",
           path: testInfo.outputPath(`widget-destinations-${scope}-${theme}.png`),
         });
         await page.keyboard.press("Escape");
@@ -142,19 +160,6 @@ for (const scope of ["global", "session", "project-sessions"] as const) {
         await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2, { steps: 8 });
         await page.mouse.up();
         expect(await savedAttachment()).toEqual(original);
-
-        if (scope !== "global") {
-          await beginDrag(page, header);
-          await drop(page, "tab");
-          await expect(
-            page.getByRole("alert").filter({ hasText: "Workspace requires a global widget" }),
-          ).toBeVisible();
-          expect(await savedAttachment()).toEqual(original);
-          await expect(
-            panel.locator("iframe").contentFrame().getByText("Shared count: 1"),
-          ).toBeVisible();
-          return;
-        }
 
         for (const slot of ["top", "bottom", "right", "left"] as const) {
           await expect(page.locator(`[data-widget-slot="${slot}"]`)).toHaveCount(
@@ -200,6 +205,7 @@ for (const scope of ["global", "session", "project-sessions"] as const) {
             .poll(async () => Number(await separator.getAttribute("aria-valuenow")))
             .toBeGreaterThan(desired - 3);
           await page.screenshot({
+            scale: "css",
             path: testInfo.outputPath(`widget-resized-${slot}-${theme}.png`),
           });
           await testInfo.attach(`resize-${slot}`, {
@@ -214,28 +220,128 @@ for (const scope of ["global", "session", "project-sessions"] as const) {
           await separator.focus();
           await page.keyboard.press("Home");
           await expect(separator).toHaveAttribute("aria-valuenow", "0");
+          // A zero-sized content pane still exposes a pointer-hittable splitter.
+          const collapsed = (await separator.boundingBox())!;
+          const reopenX = collapsed.x + collapsed.width / 2;
+          const reopenY = collapsed.y + collapsed.height / 2;
+          await page.mouse.move(reopenX, reopenY);
+          await page.mouse.down();
+          const reopen = slot === "left" || slot === "top" ? 220 : -220;
+          await page.mouse.move(
+            reopenX + (slot === "left" || slot === "right" ? reopen : 0),
+            reopenY + (slot === "top" || slot === "bottom" ? reopen : 0),
+            { steps: 10 },
+          );
+          await page.mouse.up();
+          await expect
+            .poll(async () => Number(await separator.getAttribute("aria-valuenow")))
+            .toBeGreaterThan(210);
+          await separator.focus();
           await page.keyboard.press("End");
           await expect(separator).toHaveAttribute("aria-valuenow", String(Math.round(max)));
-          // Restore a useful size without retaining the old arbitrary minimum/cap.
-          for (let index = 0; index < Math.ceil((max - 240) / 48); index++)
-            await page.keyboard.press(
-              slot === "left"
-                ? "Shift+ArrowLeft"
-                : slot === "right"
-                  ? "Shift+ArrowRight"
-                  : slot === "top"
-                    ? "Shift+ArrowUp"
-                    : "Shift+ArrowDown",
-            );
         }
 
+        // A maximized right source must not mask any of the other edge targets.
+        await header.focus();
+        await page.keyboard.press("Enter");
+        await page.keyboard.press("ArrowRight");
+        await page.keyboard.press("Enter");
+        for (const edge of ["top", "bottom", "left"] as const) {
+          const rightHandle = page.getByRole("separator", {
+            name: "Resize right widgets",
+            exact: true,
+          });
+          await rightHandle.focus();
+          await page.keyboard.press("End");
+          await beginDrag(page, header);
+          await drop(page, edge);
+          await expect.poll(async () => (await savedAttachment()).slot).toBe(edge);
+          await header.focus();
+          await page.keyboard.press("Enter");
+          await page.keyboard.press("ArrowRight");
+          await page.keyboard.press("Enter");
+          await expect.poll(async () => (await savedAttachment()).slot).toBe("right");
+        }
         await beginDrag(page, header);
         await drop(page, "tab");
         await expect.poll(async () => (await savedAttachment()).slot).toBe("tab");
+        expect(await savedAttachment()).toMatchObject({
+          id: original.id,
+          lineageId: original.lineageId,
+          target: original.target,
+        });
         await expect(
           page.getByRole("button", { name: "Widget tab: Shared dashboard", exact: true }),
         ).toHaveAttribute("aria-pressed", "true");
         await expect(panel).toBeVisible();
+        await expect(
+          panel.locator("iframe").contentFrame().getByText("Shared count: 1"),
+        ).toBeVisible();
+        // Discovery and mounted views follow the unchanged target, not the tab slot.
+        await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+        if (scope !== "global") {
+          await expect(panel).toHaveCount(0);
+          await expect(
+            page.getByRole("button", { name: "Widget tab: Shared dashboard", exact: true }),
+          ).toHaveCount(0);
+        } else await expect(panel).toBeVisible();
+        await openOwner();
+        await expect(panel).toBeVisible();
+        await expect(
+          panel.locator("iframe").contentFrame().getByText("Shared count: 1"),
+        ).toBeVisible();
+        expect(await savedAttachment()).toMatchObject({
+          id: original.id,
+          lineageId: original.lineageId,
+          target: original.target,
+        });
+        if (scope === "session") {
+          for (const mode of ["Browser", "VS Code"] as const) {
+            await page.getByRole("button", { name: mode, exact: true }).click();
+            await expect(
+              page.getByRole("region", { name: `${mode} workspace`, exact: true }),
+            ).toBeVisible();
+            await page
+              .getByRole("button", { name: "Widget tab: Shared dashboard", exact: true })
+              .click();
+            await expect(panel).toBeVisible();
+            await expect(page.locator("[data-widget-chat]")).not.toBeVisible();
+            await beginDrag(page, header);
+            await page.screenshot({
+              scale: "css",
+              path: testInfo.outputPath(`widget-companion-destinations-${mode}.png`),
+            });
+            await drop(page, "left");
+            await expect(
+              page.locator('[data-widget-slot="left"] [data-widget-attachment="dashboard-left"]'),
+            ).toBeVisible();
+            await expect.poll(async () => (await savedAttachment()).slot).toBe("left");
+            await beginDrag(page, header);
+            await drop(page, "tab");
+            await expect.poll(async () => (await savedAttachment()).slot).toBe("tab");
+            await expect(panel).toBeVisible();
+            // Keyboard placement has the same hidden-Chat round trip.
+            await header.focus();
+            await page.keyboard.press("Enter");
+            await page.keyboard.press("ArrowDown");
+            await page.keyboard.press("Enter");
+            await expect(
+              page.locator('[data-widget-slot="bottom"] [data-widget-attachment="dashboard-left"]'),
+            ).toBeVisible();
+            await header.focus();
+            await page.keyboard.press("Enter");
+            await page.keyboard.press("w");
+            await page.keyboard.press("Enter");
+            await expect.poll(async () => (await savedAttachment()).slot).toBe("tab");
+            await expect(panel).toBeVisible();
+            await expect(
+              panel.locator("iframe").contentFrame().getByText("Shared count: 1"),
+            ).toBeVisible();
+            expect((await savedAttachment()).target).toEqual(original.target);
+          }
+          await page.getByRole("button", { name: "Main", exact: true }).click();
+          await expect(panel).toBeVisible();
+        }
         const iframe = await panel.locator("iframe").elementHandle();
         const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
         await workspace.getByRole("button", { name: /To-dos/ }).click();
@@ -252,7 +358,10 @@ for (const scope of ["global", "session", "project-sessions"] as const) {
         await expect(
           panel.locator("iframe").contentFrame().getByText("Shared count: 1"),
         ).toBeVisible();
-        await page.screenshot({ path: testInfo.outputPath(`widget-workspace-${theme}.png`) });
+        await page.screenshot({
+          scale: "css",
+          path: testInfo.outputPath(`widget-workspace-${theme}.png`),
+        });
         await options.click();
         await page.getByRole("button", { name: "Close Shared dashboard", exact: true }).click();
         await expect(panel).toHaveCount(0);

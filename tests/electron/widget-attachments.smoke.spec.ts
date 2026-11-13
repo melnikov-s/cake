@@ -57,7 +57,58 @@ for (const theme of ["light", "dark"] as const)
       expect(homeBounds).not.toBeNull();
       expect(titleBounds).not.toBeNull();
       expect(titleBounds!.x).toBeGreaterThanOrEqual(homeBounds!.x + homeBounds!.width);
-      await page.screenshot({ path: testInfo.outputPath(`widgets-four-slots-${theme}.png`) });
+      await page.screenshot({
+        scale: "css",
+        path: testInfo.outputPath(`widgets-four-slots-${theme}.png`),
+      });
+      // Paired preferred sizes must allocate deterministically when the window is narrower/shorter.
+      for (const [width, height, first, second, axis] of [
+        [850, 1000, "left", "right", "width"],
+        [1440, 280, "top", "bottom", "height"],
+      ] as const) {
+        await app.evaluate(
+          ({ BrowserWindow }, { width, height }) => {
+            const window = BrowserWindow.getAllWindows()[0]!;
+            window.setMinimumSize(0, 0);
+            window.setContentSize(width, height);
+          },
+          { width, height },
+        );
+        await expect
+          .poll(async () =>
+            Number(
+              await page
+                .getByRole("separator", { name: `Resize ${first} widgets`, exact: true })
+                .getAttribute("aria-valuenow"),
+            ),
+          )
+          .toBeLessThan(first === "left" ? 280 : 160);
+        const samples = await page.evaluate(
+          async ({ first, second, axis }) => {
+            const result = [];
+            for (let frame = 0; frame < 20; frame++) {
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              result.push(
+                [first, second].map(
+                  (slot) =>
+                    document.querySelector(`[data-widget-slot="${slot}"]`)!.getBoundingClientRect()[
+                      axis
+                    ],
+                ),
+              );
+            }
+            return result;
+          },
+          { first, second, axis },
+        );
+        for (const sample of samples) {
+          expect(sample[0]).toBeCloseTo(sample[1]!, 1);
+          expect(sample).toEqual(samples[0]);
+        }
+      }
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]!.setContentSize(1440, 1000),
+      );
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
       await composer.click();
       await expect(composer).toBeFocused();
@@ -82,9 +133,14 @@ for (const theme of ["light", "dark"] as const)
       const firstSibling = (await page
         .locator('[data-widget-attachment="dashboard-right"]')
         .boundingBox())!;
-      await page.mouse.move(firstSibling.x + firstSibling.width / 2, firstSibling.y + 10, {
-        steps: 8,
-      });
+      const chatBounds = (await page.locator("[data-widget-chat]").boundingBox())!;
+      await page.mouse.move(
+        firstSibling.x + firstSibling.width / 2,
+        Math.max(firstSibling.y + 10, chatBounds.y + chatBounds.height / 4 + 10),
+        {
+          steps: 8,
+        },
+      );
       await page.mouse.up();
       await expect
         .poll(async () =>
@@ -120,7 +176,10 @@ for (const theme of ["light", "dark"] as const)
           .contentFrame()
           .getByText("Shared count: 1"),
       ).toBeVisible();
-      await page.screenshot({ path: testInfo.outputPath(`widget-crash-${theme}.png`) });
+      await page.screenshot({
+        scale: "css",
+        path: testInfo.outputPath(`widget-crash-${theme}.png`),
+      });
       await left.getByRole("button", { name: "Retry", exact: true }).click();
       await expect(
         left.locator("iframe").contentFrame().getByText("Shared count: 1"),
