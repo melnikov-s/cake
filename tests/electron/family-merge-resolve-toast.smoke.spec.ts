@@ -173,17 +173,9 @@ for (const retainedAutomaticIntent of [false, true]) {
           },
         });
       await expect(panes).toHaveAttribute("data-session-id", children[1]!.sessionId);
-      await emitRendererEvent(application, {
-        type: "project-session-control-requested",
-        sessionId: children[1]!.sessionId,
-        controlRequestId: "return-to-family-root",
-        invocation: {
-          _tag: "InvokeAppControl",
-          command: "sessions.open",
-          input: { sessionId: parent },
-        },
-      });
+      await page.getByRole("button", { name: "Back to source conversation", exact: true }).click();
       const parentPane = page.locator(`[data-slot="session-pane"][data-session-id="${parent}"]`);
+      await expect(parentPane).toBeVisible();
       await parentPane.getByRole("combobox", { name: "Message", exact: true }).click();
       const mergeAndResolve = parentPane.getByRole("button", { name: "Merge & resolve" });
       await expect(mergeAndResolve).toBeVisible({ timeout: 20_000 });

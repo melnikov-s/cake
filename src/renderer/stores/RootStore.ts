@@ -565,6 +565,7 @@ export class RootStore extends Store<{
       allowDirtyTarget: operation.allowDirtyTarget,
       resolveAfterLanding: operation.resolveAfterLanding,
       automatic: operation.automatic,
+      cancellationRequested: operation.cancellationRequested,
       resolvedSessionIds: operation.resolvedSessionIds,
       cleanupFailures: operation.cleanupFailures,
       pauseReason: operation.pauseReason,
