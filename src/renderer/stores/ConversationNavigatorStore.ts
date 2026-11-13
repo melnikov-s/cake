@@ -6,7 +6,7 @@ import { conversationOwnedNavigation } from "../lib/conversation-owned-navigatio
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SidebarSessionListStore } from "./SidebarSessionListStore";
-import { sessionKind, sessionKinds, type SessionKind } from "../lib/session-kind";
+import { sessionKinds, type SessionKind } from "../lib/session-kind";
 import type { ReviewThread } from "../models/ReviewThread";
 import type { DiscussionThreadMetadata } from "../../contracts/discussion-sessions/discussion-session-data";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
@@ -516,7 +516,7 @@ export class ConversationNavigatorStore extends Store<{
       projectPath !== undefined && !tree.roots.some((node) => node.relationship === "home");
     const kindOf = (node: ConversationNavigationNode): SessionKind => {
       if (node.target.kind === "project-session")
-        return sessionKind(this.props.catalog.find(node.target.sessionId));
+        return this.props.sessionList.sessionKindForDisplay(node.target.sessionId);
       const parent = node.parentKey ? tree.byKey.get(node.parentKey) : undefined;
       return parent ? kindOf(parent) : "user";
     };

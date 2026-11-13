@@ -9,13 +9,15 @@ import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 
 const repository = resolve(import.meta.dirname, "../..");
 
-test("My sessions lead delegated work and mixed to-do session links retain individual relationship cues", async ({}, testInfo) => {
+test("My session descendants stay together and mixed to-do session links retain individual relationship cues", async ({}, testInfo) => {
   const root = await mkdtemp(join(tmpdir(), "cake-session-purposes-"));
   const project = join(root, "project");
   const cakeHome = join(root, "cake-home");
   const userData = join(root, "user-data");
   const mine = "00000000-0000-4000-8000-000000000001";
   const delegated = "00000000-0000-4000-8000-000000000002";
+  const child = "00000000-0000-4000-8000-000000000003";
+  const grandchild = "00000000-0000-4000-8000-000000000004";
   const state = join(cakeHome, "state");
   const sessionDirectory = join(
     cakeHome,
@@ -70,11 +72,34 @@ test("My sessions lead delegated work and mixed to-do session links retain indiv
       JSON.stringify({
         version: 12,
         data: {
-          families: [],
+          families: [
+            {
+              familyId: "my-family",
+              parentSessionId: mine,
+              projectPath: project,
+              workingDirectory: project,
+              createdAt: new Date(0).toISOString(),
+              children: [
+                { sessionId: child, parentSessionId: mine },
+                { sessionId: grandchild, parentSessionId: child },
+              ].map((member, index) => ({
+                ...member,
+                requestId: `child-${index}`,
+                workingDirectory: project,
+                createdAt: new Date(0).toISOString(),
+              })),
+            },
+          ],
           turns: [],
           spawnedSessions: [],
           sessionPurposes: [
             { sessionId: mine, projectPath: project, purpose: "user", createdPurpose: "user" },
+            ...[child, grandchild].map((sessionId) => ({
+              sessionId,
+              projectPath: project,
+              purpose: "delegated",
+              createdPurpose: "delegated",
+            })),
             {
               sessionId: delegated,
               projectPath: project,
@@ -87,6 +112,8 @@ test("My sessions lead delegated work and mixed to-do session links retain indiv
     ),
     ...[
       [mine, "Design with me", "2026-01-01"],
+      [child, "Investigate options", "2026-01-02"],
+      [grandchild, "Check the details", "2026-01-03"],
       [delegated, "Implementation assignment", "2026-02-01"],
     ].map(async ([id, title, date]) => {
       const timestamp = `${date}T00:00:00.000Z`;
@@ -159,14 +186,30 @@ test("My sessions lead delegated work and mixed to-do session links retain indiv
     await expect(conversations.getByRole("heading", { name: "My sessions" })).toBeVisible();
     await expect(conversations.getByRole("heading", { name: "Delegated" })).toBeVisible();
     const rows = conversations.locator('[data-slot="conversation-navigator-row"][data-session-id]');
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(5);
+    const myGroup = conversations.getByRole("region", { name: "My sessions", exact: true });
+    const delegatedGroup = conversations.getByRole("region", { name: "Delegated", exact: true });
+    await expect(
+      myGroup.locator(`[data-slot="conversation-navigator-row"][data-session-id="${child}"]`),
+    ).toBeVisible();
+    await expect(
+      myGroup.locator(`[data-slot="conversation-navigator-row"][data-session-id="${grandchild}"]`),
+    ).toBeVisible();
+    await expect(
+      delegatedGroup.locator('[data-slot="conversation-navigator-row"][data-session-id]'),
+    ).toHaveCount(1);
+    await expect(
+      delegatedGroup.locator(
+        `[data-slot="conversation-navigator-row"][data-session-id="${delegated}"]`,
+      ),
+    ).toBeVisible();
     expect(
       (
         await rows.evaluateAll((elements) =>
           elements.map((element) => element.getAttribute("data-session-id")),
         )
-      ).slice(-2),
-    ).toEqual([mine, delegated]);
+      ).slice(-4),
+    ).toEqual([mine, child, grandchild, delegated]);
     await conversations
       .locator(`[data-session-id="${mine}"]`)
       .getByText("Design with me", { exact: true })
@@ -187,7 +230,7 @@ test("My sessions lead delegated work and mixed to-do session links retain indiv
     await page.screenshot({ path: testInfo.outputPath("mixed-todo-session-links.png") });
     expect(
       JSON.parse(await readFile(join(state, "session-families.json"), "utf8")).data.sessionPurposes,
-    ).toHaveLength(2);
+    ).toHaveLength(4);
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

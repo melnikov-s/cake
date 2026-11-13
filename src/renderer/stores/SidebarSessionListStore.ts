@@ -147,14 +147,22 @@ export class SidebarSessionListStore extends Store<{
     const { roots } = this.sortedProjectSessionRoots(projectPath, resolved);
     return resolved
       ? roots
-      : roots.filter((root) => this.isSessionKindGroupExpanded(projectPath, sessionKind(root)));
+      : roots.filter((root) =>
+          this.isSessionKindGroupExpanded(projectPath, this.sessionKindForDisplay(root.sessionId)),
+        );
+  }
+
+  /** A displayed family stays in its root's lane; child purpose still owns reporting semantics. */
+  sessionKindForDisplay(sessionId: string): SessionKind {
+    const rootId = this.sidebarAncestorIds(sessionId).at(-1) ?? sessionId;
+    return sessionKind(this.props.catalog.find(rootId));
   }
 
   /** Active sessions per kind, including family children; independent of disclosure or paging. */
   activeSessionKindCounts(projectPath: string) {
     const counts = { user: 0, delegated: 0 } satisfies Record<SessionKind, number>;
     for (const session of this.props.catalog.projectSessions(projectPath, false))
-      counts[sessionKind(session)] += 1;
+      counts[this.sessionKindForDisplay(session.sessionId)] += 1;
     return counts;
   }
 
@@ -181,7 +189,7 @@ export class SidebarSessionListStore extends Store<{
     return mostUrgentSessionActivity(
       this.props.catalog
         .projectSessions(projectPath, false)
-        .filter((session) => sessionKind(session) === kind)
+        .filter((session) => this.sessionKindForDisplay(session.sessionId) === kind)
         .map((session) => this.metadata.sessionActivity(session.sessionId)),
     );
   }
@@ -251,7 +259,7 @@ export class SidebarSessionListStore extends Store<{
     if (session && !session.resolved) {
       this.expandActiveGroup(session.projectPath);
       delete this.collapsedSessionKindGroups[
-        this.sessionKindGroupKey(session.projectPath, sessionKind(session))
+        this.sessionKindGroupKey(session.projectPath, this.sessionKindForDisplay(session.sessionId))
       ];
     }
     for (const ancestorId of this.sidebarAncestorIds(selected.sessionId))
@@ -266,7 +274,7 @@ export class SidebarSessionListStore extends Store<{
       selected.sessionId,
       session?.projectPath,
       session?.resolved,
-      sessionKind(session),
+      this.sessionKindForDisplay(selected.sessionId),
       // Returning kind headers reveal the selection instead of hiding it in a remembered collapse.
       session && this.showsSessionKindGroups(session.projectPath),
       ...this.sidebarAncestorIds(selected.sessionId),
@@ -483,7 +491,7 @@ export class SidebarSessionListStore extends Store<{
         .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
       return [session, ...children.flatMap(flatten)];
     };
-    return roots.flatMap(flatten).sort(compareSessionPurposes);
+    return roots.flatMap(flatten);
   }
 
   private sortedProjectSessionRoots(projectPath: string, resolved: boolean): ProjectSessionRoots {
