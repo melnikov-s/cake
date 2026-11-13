@@ -23,6 +23,7 @@ import {
   type DurableMemoryOptions,
 } from "../../../../src/services/pi-durable/durable-chat-memory";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
+import { memoryWork } from "../../../../src/services/opt-memory/memory-work";
 import { defaultCakeChatPreferences } from "../../../../src/contracts/cake-chats/cake-chat-preferences";
 import {
   MemoryNode,
@@ -646,7 +647,8 @@ it("initializes an existing conversation without an index without model-backed h
   await f.memory.initializeToolPolicy(signal());
   const view = await f.memory.synchronize(signal());
   expect(view).toMatchObject({ complete: true, sourceCount: 2 });
-  expect(view.text).toContain("[excerpt; summary deferred]");
+  expect(view.text).toContain("Some memory summaries are pending");
+  expect(view.text).not.toContain("[excerpt;");
   expect(view.text).toContain("HISTORICAL_DIALOGUE");
   expect(view.text).not.toContain("HISTORICAL_TOOL");
   expect(view.text).toContain("HISTORICAL_ASSISTANT");
@@ -736,4 +738,238 @@ it("preserves an already saved tool boundary through a memory schema upgrade", a
   const inputs = summarize.mock.calls.map(([request]) => input(request.context)).join(" ");
   expect(inputs).toContain("FUTURE_TOOL");
   expect(inputs).not.toContain("HISTORICAL_TOOL");
+});
+
+it("reopens nested legacy excerpts, repairs from originals and preserves valid siblings, coverage and active context", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-memory-repair-"));
+  cleanup.unshift(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "repair.sqlite");
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(
+    async () => "Rebuilt exact decision " + "s".repeat(280),
+  );
+  let f = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+  const a = await f.append("ORIGINAL_A ".repeat(100));
+  const b = await f.append("ORIGINAL_B ".repeat(100));
+  const c = await f.append("VALID_C");
+  const d = await f.append("VALID_D");
+  const label = "[excerpt; summary unavailable] ";
+  let validEntry = 0;
+  await f.root.commit(async (tx) => {
+    const leaf = async (id: number, original: number, text: string) =>
+      (await tx.appendEntry(SavedNode, f.root.id, { data: { id, n: 1, original, text } })).id;
+    const left = await leaf(0, a.id, label + "ORIGINAL_A");
+    const right = await leaf(1, b.id, "[excerpt; summary deferred] ORIGINAL_B");
+    const failed = await tx.appendEntry(SavedNode, f.root.id, {
+      data: {
+        id: 0,
+        n: 2,
+        children: [left, right],
+        text: label + label + "ORIGINAL_A " + label + "ORIGINAL_B",
+      },
+    });
+    const goodC = await leaf(2, c.id, "Valid sibling C");
+    const goodD = await leaf(3, d.id, "Valid sibling D");
+    const valid = await tx.appendEntry(SavedNode, f.root.id, {
+      data: { id: 2, n: 2, children: [goodC, goodD], text: "Valid sibling CD" },
+    });
+    validEntry = valid.id;
+    const parent = await tx.appendEntry(SavedNode, f.root.id, {
+      data: {
+        id: 0,
+        n: 4,
+        children: [failed.id, valid.id],
+        text: label.repeat(8) + "truncated excerpts",
+      },
+    });
+    Object.assign(await tx.doc(legacyMemory(6), f.root.id), {
+      ...initialMemoryTreeState(),
+      through: d.id,
+      count: 4,
+      budget: 4_000,
+      toolHistoryAfter: 0,
+      forest: [{ id: 0, n: 4, entry: parent.id }],
+      parts: [{ id: 0, n: 4, entry: parent.id, ancestors: [] }],
+    });
+  }, BACKGROUND_CONTEXT);
+  expect(JSON.stringify((await f.nodes()).at(-1)?.data).match(/\[excerpt;/g)).toHaveLength(8); // representative old persisted failure
+  await f.harness.close(BACKGROUND_CONTEXT);
+  cleanup.pop();
+  f = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+  const degraded = await f.memory.synchronize(signal());
+  expect(degraded).toMatchObject({ sourceCount: 4, complete: true });
+  expect(degraded.text).not.toContain("[excerpt;");
+  expect(degraded.text).toContain("ORIGINAL_A");
+  expect(degraded.text).toContain("ORIGINAL_B");
+  expect(degraded.text).toContain("Valid sibling CD");
+  expect(degraded.text.match(/Some memory summaries are pending/g)).toHaveLength(1);
+  expect(summarize).not.toHaveBeenCalled(); // reads never incur historical repair spend
+  await f.root.commit(
+    (tx) =>
+      tx.appendEntry(ResetEntry, f.root.id, {
+        head: "self",
+        model: [{ role: "user", content: degraded.text, timestamp: 1 }],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  const before = await f.root.context(BACKGROUND_CONTEXT);
+  expect(await f.memory.repair(0, 4, memoryWork(signal()))).toMatchObject({
+    repaired: 4,
+    automaticRetry: false,
+  });
+  expect(JSON.stringify(summarize.mock.calls)).not.toContain("[excerpt;");
+  expect(JSON.stringify(summarize.mock.calls)).toContain("ORIGINAL_A");
+  expect(JSON.stringify(summarize.mock.calls)).toContain("ORIGINAL_B");
+  expect((await f.memory.synchronize(signal())).text).not.toContain("pending");
+  const zoom = await f.memory.zoom(0, 4, signal());
+  expect(zoom.text).toContain("Valid sibling CD");
+  const nodes = (await f.nodes()).map((entry) => ({
+    entry: entry.id,
+    data: Schema.decodeUnknownSync(MemoryNode)(entry.data),
+  }));
+  expect(nodes.at(-1)?.data.children?.[1]).toBe(validEntry);
+  expect(nodes.filter(({ data }) => data.id === 2 && data.n === 2)).toHaveLength(1);
+  expect((await f.memory.zoom(0, 1, signal())).text).toContain("ORIGINAL_A ".repeat(100));
+  expect((await f.memory.zoom(3, 1, signal())).text).toContain("VALID_D");
+  const after = await f.root.context(BACKGROUND_CONTEXT);
+  expect(after.head).toEqual(before.head);
+  expect(after.messages).toEqual(before.messages);
+  const calls = summarize.mock.calls.length;
+  await f.harness.close(BACKGROUND_CONTEXT);
+  cleanup.pop();
+  f = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+  expect((await f.memory.synchronize(signal())).sourceCount).toBe(4);
+  expect(summarize).toHaveBeenCalledTimes(calls);
+  expect(await f.memory.repair(0, 4, memoryWork(signal()))).toMatchObject({
+    repaired: 0,
+    calls: 0,
+  });
+});
+
+it("persists deferred state across restart and explicitly repairs dialogue without admitting historical tools", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-memory-deferred-"));
+  cleanup.unshift(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "deferred.sqlite");
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(
+    async () => "Recovered historical dialogue",
+  );
+  let f = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+  await f.root.commit(
+    (tx) =>
+      tx.appendEntry(AssistantEntry, f.root.id, {
+        model: [
+          durableAnswer("HISTORICAL_DIALOGUE ".repeat(100), [
+            { type: "text", text: "HISTORICAL_DIALOGUE ".repeat(100) },
+            {
+              type: "toolCall",
+              id: "old",
+              name: "bash",
+              arguments: { command: "HISTORICAL_TOOL_SECRET" },
+            },
+          ]),
+        ],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  await f.memory.initializeToolPolicy(signal());
+  await f.memory.synchronize(signal());
+  expect((await f.nodes())[0]?.data).toMatchObject({
+    degraded: { reason: "completion-skipped", attempts: 0 },
+  });
+  expect(summarize).not.toHaveBeenCalled();
+  await f.harness.close(BACKGROUND_CONTEXT);
+  cleanup.pop();
+  f = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+  await f.memory.synchronize(signal());
+  expect(summarize).not.toHaveBeenCalled();
+  expect(await f.memory.repair(0, 1, memoryWork(signal()))).toMatchObject({
+    repaired: 1,
+    calls: 1,
+  });
+  expect(JSON.stringify(summarize.mock.calls)).toContain("HISTORICAL_DIALOGUE");
+  expect(JSON.stringify(summarize.mock.calls)).not.toContain("HISTORICAL_TOOL_SECRET");
+  expect((await f.memory.zoom(0, 1, signal())).text).toContain("HISTORICAL_TOOL_SECRET");
+});
+
+it("bounds persistent-failure views to one warning and retrievable original bounds without losing indexed coverage", async () => {
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(async () => "");
+  const f = await fixture(summarize, new MemoryStorage(), 200);
+  const originals = [];
+  for (let i = 0; i < 32; i += 1)
+    originals.push(await f.append(`ORIGINAL_${i} ` + "界".repeat(300)));
+  const before = await f.root.context(BACKGROUND_CONTEXT);
+  const view = await f.memory.synchronize(signal());
+  expect(view).toMatchObject({ sourceCount: 32, complete: true });
+  expect(view.bytes).toBeLessThanOrEqual(200);
+  expect(view.text.match(/Memory degraded/g)).toHaveLength(1);
+  expect(view.text).toContain(`[originals=${originals[0]!.id}..${originals.at(-1)!.id}]`);
+  expect(view.text).not.toContain("[excerpt;");
+  expect((await f.memory.zoom(31, 1, signal())).text).toContain("ORIGINAL_31");
+  const calls = summarize.mock.calls.length;
+  await f.memory.synchronize(signal());
+  expect(summarize).toHaveBeenCalledTimes(calls);
+  const after = await f.root.context(BACKGROUND_CONTEXT);
+  expect(after.head).toEqual(before.head);
+  expect(after.messages).toEqual(before.messages);
+});
+
+it("limits each explicit repair to eight nodes and leaves missing originals explicitly unavailable", async () => {
+  const storage = new MemoryStorage();
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(async () => "");
+  const f = await fixture(summarize, storage, 4_000);
+  const missing = await f.append("MISSING_ORIGINAL ".repeat(100));
+  for (let i = 1; i < 16; i += 1) await f.append(`ORIGINAL_${i} `.repeat(100));
+  await f.memory.synchronize(signal());
+  const originalEntry = storage.entry.bind(storage);
+  const read = vi
+    .spyOn(storage, "entry")
+    .mockImplementation((conversation, id, context) =>
+      id === missing.id ? Promise.resolve(undefined) : originalEntry(conversation, id, context),
+    );
+  try {
+    summarize.mockResolvedValue("Recovered " + "s".repeat(290));
+    const result = await f.memory.repair(0, 16, memoryWork(signal()));
+    expect(result.attempted).toBe(8);
+    expect(result.calls).toBeLessThanOrEqual(8);
+    expect((await f.memory.synchronize(signal())).text).toContain(
+      "Some memory summaries are pending",
+    );
+    expect((await f.memory.zoom(0, 2, signal())).text).toContain("Original content unavailable");
+    expect((await f.memory.zoom(15, 1, signal())).text).toContain("ORIGINAL_15");
+    expect(
+      (await f.nodes()).some(
+        (entry) =>
+          Schema.decodeUnknownSync(MemoryNode)(entry.data).degraded?.reason === "missing-original",
+      ),
+    ).toBe(true);
+  } finally {
+    read.mockRestore();
+  }
+});
+
+it("cancels a partially staged repair without publishing a late node or losing the prior index", async () => {
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(async () => "");
+  const f = await fixture(summarize, new MemoryStorage(), 4_000);
+  await f.append("ORIGINAL_A ".repeat(100));
+  await f.append("ORIGINAL_B ".repeat(100));
+  const before = await f.memory.synchronize(signal());
+  const started = Promise.withResolvers<AbortSignal>();
+  const held = Promise.withResolvers<string>();
+  summarize.mockResolvedValueOnce("Recovered A " + "s".repeat(280));
+  summarize.mockImplementationOnce(({ signal }) => {
+    started.resolve(signal);
+    return held.promise;
+  });
+  const cancellation = new AbortController();
+  const repairing = f.memory.repair(0, 2, memoryWork(cancellation.signal));
+  const callSignal = await started.promise;
+  const failure = expect(repairing).rejects.toThrow("Stop repair");
+  cancellation.abort(new Error("Stop repair"));
+  await failure;
+  expect(callSignal.aborted).toBe(true);
+  held.resolve("late answer");
+  expect((await f.memory.synchronize(signal())).text).toBe(before.text);
+  expect((await f.memory.zoom(1, 1, signal())).text).toContain("ORIGINAL_B");
+  summarize.mockResolvedValue("Recovered original decision " + "s".repeat(280));
+  expect(await f.memory.repair(0, 2, memoryWork(signal()))).toMatchObject({ repaired: 3 });
+  expect((await f.memory.synchronize(signal())).text).not.toContain("late answer");
 });

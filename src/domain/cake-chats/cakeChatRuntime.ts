@@ -1,3 +1,4 @@
+import { MemorySummaryError } from "../../services/opt-memory/memory-work";
 import { personalInstructions } from "../../contracts/application/personal-instructions";
 import { AgentContextFork } from "../../contracts/cake-chats/agent-context-fork";
 import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
@@ -841,9 +842,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               cakeModelCatalog(state),
               input.caller,
             );
-          } catch (error) {
-            return Promise.reject(error);
+          } catch {
+            return Promise.reject(new MemorySummaryError({ reason: "configuration" }));
           }
+          input.onModel?.(`${selection.provider}/${selection.modelId}`);
           return run(
             models.complete(
               {

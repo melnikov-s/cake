@@ -646,9 +646,10 @@ six preserves older checkpoints and summaries. On upgrade it saves the end of th
 conversation as a fixed tool-inclusion boundary, before admitting new input; this is
 independent of the older indexing cursor and never moves on restart. Tool calls/results
 at or before that boundary are excluded from newly indexed sources, including mixed
-assistant text/tool messages. Unindexed historical dialogue uses labelled local excerpts,
-and previously planned historical slots settle locally without provider calls. Full
-originals remain retrievable. Future dialogue and tools use normal incremental summaries.
+assistant text/tool messages. Unindexed historical dialogue remains explicitly degraded
+with bounded original-backed text, and previously planned historical slots settle locally
+without provider calls. Full originals remain retrievable; explicit repair retains this
+tool-inclusion boundary. Future dialogue and tools use normal incremental summaries.
 Version four had reset indexes for a full historical rebuild. Its older immutable summary
 nodes remain available: a one-time recovery scans them for a complete chronological prefix
 whose original-entry coverage is ahead of the partial rebuild, validates child relationships,
@@ -669,22 +670,48 @@ request updates the system prefix; maintenance never rewrites that retained head
 a UTF-8-safe cut marker, and real assistant/user turns in the same request conversation.
 After five oversized responses the shortest complete response is retained, as specified;
 it can exceed 512 bytes. The view measures actual sizes. A stored answer is never truncated.
-A failed completion (provider error, tool call, empty or transport-oversized output) is
-retried once per node; if it fails again, the node stores a labelled verbatim excerpt
-(`[excerpt; summary unavailable]`, within 512 bytes, splitting room between both children
-of a merge) and reports only its range. One unsummarizable message therefore never stalls
-the index, maintenance or a required limit reset; zoom still reaches the original. One
-request's `<input>` is bounded to 64,000 bytes: a larger original sends its head and tail
-with an omitted-bytes marker. The summarization-model setting still resolves through the
-existing provider/utility selection, not a hard-coded provider.
+Failures persist as degraded, repairable nodes with a fixed category, selected model
+when resolved, and attempt count; diagnostics also include the original-entry range.
+Provider bodies, secrets and reasoning are discarded at the memory boundary. Pi returns
+provider failures as assistant messages; its retryability classifier identifies transient
+responses. Only those receive one lifecycle-cancellable retry after 250ms. Unknown
+exceptions, invalid model configuration, authentication failures, empty/reasoning-only,
+tool-call and transport-oversized replies are not retried. Configuration/auth failures
+suppress further calls within the same work pass. Five size-correction turns remain
+separate from this transient retry budget.
+
+Degraded nodes are never inputs to parent summaries. Their bounded text comes from
+retained originals or valid children, not previous excerpts. Old nested excerpt nodes
+are recognized on read and rendered from the same retained sources, with at most one
+warning per view and stable `[originals=A..B]` retrieval bounds. If normal consolidation
+cannot fit, a bounded degraded view retains an inclusive original range and as much
+source text as fits; it does not fail merely because fallback text is too large.
+Originals and valid summaries are not rewritten.
+
+`memory_repair {id,n}` is an explicit supported recovery path: an aligned range of at
+most 32 originals, at most eight degraded nodes per call, with no automatic continuation
+or historical model-spend loop. Expand larger ranges with Zoom first. It rebuilds from
+originals/valid children, preserves valid siblings and historical tool omissions, and
+publishes new immutable derived nodes plus their provenance paths. The final checkpoint
+switches references without changing source coverage, original-entry IDs or active heads.
+Cancellation before publication leaves the prior index authoritative; unused derived
+entries are harmless. Missing originals remain explicitly unavailable. Repeated reads,
+reopen and foreground sends never retry committed degraded nodes; recovery requires an
+explicit repair call. Successful repair reaches active context at the next ordinary
+handoff, not by replacing a warm head.
+
+One request's `<input>` is bounded to 64,000 bytes: a larger original sends its head and
+tail with an omitted-bytes marker. The summarization-model setting still resolves through
+the existing provider/utility selection, not a hard-coded provider.
 
 Incremental maintenance is independent of Cake's deliberate warm-context retention.
 Successful terminal assistant commits coalesce into one pending cutoff; idle maintenance
 indexes through it without replacing the active head or cache evidence. Reopen resumes
 persisted jobs. Error, aborted and tool-use responses do not independently rearm maintenance.
 There is no expiry timer, polling worker, or automatic failed-call retry loop beyond the
-single per-node retry: a later successful run, reopen or explicit foreground preparation
-offers another opportunity after cancellation or storage failure.
+bounded transient retry: a later successful run, reopen or explicit foreground preparation
+offers another opportunity for unfinished DAG jobs after cancellation or storage failure,
+not for already committed degraded nodes.
 
 Memory catch-up and its utility completions have no wall-clock deadline or call-count
 allowance. Ready-node concurrency bounds simultaneous requests, not total catch-up work.

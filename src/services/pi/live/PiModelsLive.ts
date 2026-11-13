@@ -2,6 +2,8 @@ import { composePresetPrompt } from "../../../contracts/model-presets/preset-con
 import { loadPresetContext } from "../../storage/load-preset-context";
 import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
+import { isRetryableAssistantError } from "@earendil-works/pi-ai";
+import { PiModelCompletionError } from "../../../contracts/pi/model-data";
 import type {
   AssistantMessage,
   Context as ModelContext,
@@ -409,7 +411,20 @@ export const makePiModelsLive = (agentDirectory: string) =>
               capture?.settle(true);
               throw error;
             }
-            if (response.errorMessage) throw new Error(response.errorMessage);
+            if (response.errorMessage)
+              throw new PiModelCompletionError({
+                message: response.errorMessage,
+                // Pi returns provider failures as assistant messages, not rejected Promises.
+                // Classify in memory, never retain the provider body in memory diagnostics.
+                category:
+                  /\b(?:401|403)\b|unauthenticated|unauthorized|invalid.?api.?key|authentication/i.test(
+                    response.errorMessage,
+                  )
+                    ? "authentication"
+                    : isRetryableAssistantError(response)
+                      ? "transient"
+                      : "completion-failed",
+              });
             // A cut-off utility reply is never a usable answer; report it instead of partial text.
             if (!input.chat && response.stopReason === "length")
               throw new Error("Model output was truncated at the model's output limit");
@@ -419,7 +434,12 @@ export const makePiModelsLive = (agentDirectory: string) =>
                 response.stopReason === "aborted" ||
                 response.content.some((part) => part.type === "toolCall"))
             )
-              throw new Error("Memory completion did not produce a successful text-only summary");
+              throw new PiModelCompletionError({
+                message: "Memory completion did not produce a successful text-only summary",
+                category: response.content.some((part) => part.type === "toolCall")
+                  ? "tool-output"
+                  : "completion-failed",
+              });
             return response.content
               .flatMap((part) => (part.type === "text" ? [part.text] : []))
               .join("\n");

@@ -30,6 +30,9 @@ import {
   createMemoryTree,
   type AnchoredNode,
   type StoredNode,
+  type MemoryTreeOptions,
+  isDegradedMemoryNode,
+  MEMORY_DEGRADED_WARNING,
 } from "../opt-memory/memory-tree";
 import type { DurableChatMemoryView } from "./durable-chat-data";
 import {
@@ -83,12 +86,13 @@ const entryId = (value: number) => value as EntryId;
 export interface DurableMemoryOptions {
   readonly budget: () => number;
   readonly onConsolidating?: () => void;
-  /** A node's summary kept failing, so it stores a verbatim excerpt instead. */
-  readonly onExcerpt?: (line: { id: number; n: number }) => void;
+  /** Safe category/model/range diagnostics; never provider bodies or causes. */
+  readonly onExcerpt?: MemoryTreeOptions["onExcerpt"];
   readonly summarize: (input: {
     instructions: string;
     context: string;
     signal: AbortSignal;
+    onModel?: (model: string) => void;
     previous?: readonly { role: "user" | "assistant"; text: string }[];
     tools?: CompletionChat["tools"];
   }) => Promise<string>;
@@ -191,7 +195,8 @@ const sourceText = (entry: EntryRecord, includeTools = true) => {
 };
 const line = (node: AnchoredNode) =>
   `${node.id}+${node.n}|[originals=${node.fromEntryId}..${node.throughEntryId}] ${node.text.replace(/\s*\n\s*/g, " ")}`;
-const render = (nodes: readonly AnchoredNode[]) => `<chat>\n${nodes.map(line).join("\n")}\n</chat>`;
+const render = (nodes: readonly AnchoredNode[]) =>
+  `<chat>\n${nodes.some(isDegradedMemoryNode) ? `${MEMORY_DEGRADED_WARNING}\n` : ""}${nodes.map(line).join("\n")}\n</chat>`;
 /** One serialized caller owns indexing. No lifetime transcript or node cache is retained. */
 export function createDurableChatMemory(
   harness: Harness,
@@ -245,7 +250,7 @@ export function createDurableChatMemory(
       },
       original: async (ref, signal) => {
         const original = (await storage.entry(root.id, entryId(ref), contextFor(signal)))?.entry;
-        if (!original) throw new Error("Cake Chat original is missing");
+        if (!original) throw new MemorySummaryError({ reason: "missing-original" });
         return (
           sourceText(original, original.id > toolHistoryAfter) ||
           "Historical tool traffic omitted from automatic memory; the original remains retrievable."
@@ -406,7 +411,8 @@ export function createDurableChatMemory(
       ) ?? [];
     // Recovery can restore older nodes, so write order alone no longer proves
     // the retained head's handles still name the same original history.
-    let stale = head !== undefined && found.entry > head.id && heads.length > 0;
+    let stale = false;
+    let verifiedHeadRange = false;
     for (const text of heads) {
       for (const match of text.matchAll(/^(\d+)\+(\d+)\|\[originals=(\d+)\.\.(\d+)\]/gm)) {
         const start = Number(match[1]);
@@ -417,6 +423,7 @@ export function createDurableChatMemory(
           throw error;
         });
         const bounds = advertised && (await anchored(advertised, signal));
+        verifiedHeadRange = true;
         if (
           !bounds ||
           bounds.fromEntryId !== Number(match[3]) ||
@@ -425,6 +432,10 @@ export function createDurableChatMemory(
           stale = true;
       }
     }
+    // Legacy heads without original bounds cannot prove identity after an index
+    // rebuild. A modern head with matching bounds remains valid after repair.
+    if (!verifiedHeadRange && head !== undefined && found.entry > head.id && heads.length > 0)
+      stale = true;
     if (stale)
       throw new Error(
         "The memory index was rebuilt; this id+n handle is stale and may now identify different history. Do not retry these coordinates. Use archive_search with [originals=A..B] from the old memory line (fromEntryId=A, throughEntryId=B), or a specific query if it has no bounds, then archive_read. Fresh Zoom handles arrive in <chat> at the next memory handoff; only then use those refreshed ranges.",
@@ -473,7 +484,7 @@ export function createDurableChatMemory(
     }
     const children = await Promise.all(found.children!.map((ref) => node(ref, signal)));
     return {
-      text: (await Promise.all(children.map((child) => anchored(child, signal))))
+      text: (await Promise.all(children.map((child) => tree.presented(child, signal))))
         .map(line)
         .join("\n"),
       messages: [],
@@ -513,5 +524,5 @@ export function createDurableChatMemory(
       })),
     };
   };
-  return { initializeToolPolicy, synchronize, zoom, inspect };
+  return { initializeToolPolicy, synchronize, zoom, inspect, repair: tree.repair };
 }

@@ -10,6 +10,7 @@ export interface CakeChatMemoryOptions {
     instructions: string;
     context: string;
     signal: AbortSignal;
+    onModel?: (model: string) => void;
     tools?: CompletionChat["tools"];
     previous?: CompletionChat["previous"];
     observeRequest?: ProviderRequestObservation;

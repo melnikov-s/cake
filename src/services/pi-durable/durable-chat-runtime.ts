@@ -404,6 +404,33 @@ export async function createDurableCakeChatRuntime(
       };
     },
   });
+  const repairMemory = defineTool({
+    name: "memory_repair",
+    description:
+      "Explicitly retry degraded summaries from retained originals or valid children, without changing active context. Up to 8 nodes and 32 originals per call; no automatic continuation. Valid summaries and originals are preserved. Uses the configured summary model; call only when summary recovery is needed, not repeatedly after a persistent failure. Historical tool omissions remain omitted. Use archive_search/read for immediate evidence.",
+    parameters: Type.Object({
+      id: Type.Integer({
+        minimum: 0,
+        maximum: Number.MAX_SAFE_INTEGER,
+        description: "Aligned memory range start from <chat> or Zoom children.",
+      }),
+      n: Type.Integer({
+        minimum: 1,
+        maximum: 32,
+        description:
+          "Aligned power-of-two range size, at most 32. Expand larger branches with Zoom first.",
+      }),
+    }),
+    replay: "unsafe",
+    async execute(input, _api, context) {
+      const result = await engine.repairMemory(
+        input.id,
+        input.n,
+        context.abortSignal ?? new AbortController().signal,
+      );
+      return { output: [{ type: "text", text: JSON.stringify(result) }] };
+    },
+  });
   const date = defineTool({
     name: "date",
     description: "Get the backend-recorded date and time of a memory message by id.",
@@ -427,6 +454,7 @@ export async function createDurableCakeChatRuntime(
   const tools: ToolRegistration[] = [
     cake,
     zoom,
+    repairMemory,
     date,
     ...createDurableArchiveRecallTools({
       sessionId,

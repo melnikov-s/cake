@@ -201,12 +201,22 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
     observeRequest?: ProviderRequestObservation,
   ) {
     const decoded = yield* Schema.decodeUnknownEffect(BoundedCompletionInput)(input).pipe(
-      Effect.mapError((cause) => new PiModelCompletionError({ message: cause.message })),
+      Effect.mapError(
+        (cause) =>
+          new PiModelCompletionError({ message: cause.message, category: "configuration" }),
+      ),
     );
     yield* resolve(decoded.selection);
-    const completion = adapter
-      .complete(decoded, observeRequest)
-      .pipe(Effect.mapError((cause) => new PiModelCompletionError({ message: messageOf(cause) })));
+    const completion = adapter.complete(decoded, observeRequest).pipe(
+      Effect.mapError((cause) =>
+        cause instanceof PiModelCompletionError
+          ? cause
+          : new PiModelCompletionError({
+              message: messageOf(cause),
+              category: "completion-failed",
+            }),
+      ),
+    );
     const text = yield* decoded.timeoutMs === undefined
       ? completion
       : completion.pipe(
@@ -214,12 +224,16 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
           Effect.mapError((cause) =>
             cause instanceof PiModelCompletionError
               ? cause
-              : new PiModelCompletionError({ message: "Bounded model completion timed out" }),
+              : new PiModelCompletionError({
+                  message: "Bounded model completion timed out",
+                  category: "transient",
+                }),
           ),
         );
     if (decoded.chat && text.length > decoded.maximumOutputCharacters)
       return yield* new PiModelCompletionError({
         message: "Memory completion exceeded its transport output limit",
+        category: "output-limit",
       });
     return text.slice(0, decoded.maximumOutputCharacters);
   });

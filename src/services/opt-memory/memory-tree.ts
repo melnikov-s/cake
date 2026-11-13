@@ -1,20 +1,26 @@
-import { Schema } from "effect";
+import { Schema, Struct } from "effect";
 import type { CompletionChat } from "../../contracts/pi/model-data";
+import { MEMORY_INPUT_BYTES, MEMORY_NODE_BYTES, memoryBytes, utf8Slice } from "./memory-policy";
 import {
-  MEMORY_INPUT_BYTES,
-  MEMORY_NODE_BYTES,
-  MEMORY_SUMMARY_FAILURES,
-  memoryBytes,
-  utf8Slice,
-} from "./memory-policy";
-import { abortableMemoryTask, MemorySummaryError, type MemoryWork } from "./memory-work";
+  abortableMemoryTask,
+  MemoryFailureReason,
+  MemorySummaryError,
+  type MemoryWork,
+} from "./memory-work";
 
 const Id = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const Range = Schema.Struct({ id: Id, n: Schema.Int.check(Schema.isGreaterThan(0)), entry: Id });
+export const MemoryDegradation = Schema.Struct({
+  reason: MemoryFailureReason,
+  attempts: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  model: Schema.optionalKey(Schema.String),
+});
+export type MemoryDegradation = Schema.Schema.Type<typeof MemoryDegradation>;
 export const MemoryNode = Schema.Struct({
   id: Range.fields.id,
   n: Range.fields.n,
   text: Schema.NonEmptyString,
+  degraded: Schema.optionalKey(MemoryDegradation),
   original: Schema.optionalKey(Id),
   children: Schema.optionalKey(Schema.mutable(Schema.Tuple([Id, Id]))),
 });
@@ -70,15 +76,21 @@ const boundedInput = (text: string) => {
   const tail = utf8Slice(text, half, "end");
   return `${head}\n[… ${bytes - memoryBytes(head) - memoryBytes(tail)} bytes omitted; zoom for the original …]\n${tail}`;
 };
-const EXCERPT = "[excerpt; summary unavailable] ";
+export const isDegradedMemoryNode = (node: MemoryNode) =>
+  node.degraded !== undefined || /^\[excerpt; summary (?:unavailable|deferred)\]/.test(node.text);
+export const MEMORY_DEGRADED_WARNING =
+  "Some memory summaries are pending; use id+n Zoom or [originals=A..B] with archive_search/archive_read for full evidence.";
 const EXCERPT_JOIN = " … ";
-/** Deterministic fallback when the summarizer keeps failing: verbatim text from every
- * source (both children of a merge), bounded to one memory line. */
-const excerpt = (sources: readonly string[], label = EXCERPT) => {
-  const room =
-    MEMORY_NODE_BYTES - memoryBytes(label) - memoryBytes(EXCERPT_JOIN) * (sources.length - 1);
-  const each = Math.floor(room / sources.length);
-  return `${label}${sources.map((source) => utf8Slice(source.replace(/\s+/g, " ").trim(), each)).join(EXCERPT_JOIN)}`;
+/** Only original text or valid summaries may enter this bounded degraded view. */
+const excerpt = (sources: readonly string[], limit = MEMORY_NODE_BYTES) => {
+  if (!sources.length) return utf8Slice("Original content unavailable.", limit);
+  const room = limit - memoryBytes(EXCERPT_JOIN) * (sources.length - 1);
+  const each = Math.max(0, Math.floor(room / sources.length));
+  return (
+    sources
+      .map((source) => utf8Slice(source.replace(/\s+/g, " ").trim(), each))
+      .join(EXCERPT_JOIN) || utf8Slice("Original content unavailable.", limit)
+  );
 };
 
 export class MemoryRangeError extends Schema.TaggedError<MemoryRangeError>()("MemoryRangeError", {
@@ -89,11 +101,12 @@ export class MemoryRangeError extends Schema.TaggedError<MemoryRangeError>()("Me
 export interface MemoryTreeOptions {
   readonly compactionPolicy: string;
   readonly onConsolidating?: () => void;
-  readonly onExcerpt?: (line: { id: number; n: number }) => void;
+  readonly onExcerpt?: (line: { id: number; n: number } & SourceRange & MemoryDegradation) => void;
   readonly summarize: (input: {
     instructions: string;
     context: string;
     signal: AbortSignal;
+    onModel?: (model: string) => void;
     previous?: readonly { role: "user" | "assistant"; text: string }[];
     tools?: CompletionChat["tools"];
   }) => Promise<string>;
@@ -140,9 +153,45 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
     ...found,
     ...(await sourceRange(found, signal)),
   });
+  // Legacy fallback strings are never sources. Recover from retained originals or
+  // valid children, with a bounded traversal even for a very old collapsed tree.
+  const usableSources = async (found: StoredNode, signal: AbortSignal) => {
+    const sources: string[] = [];
+    let visited = 0;
+    const visit = async (item: StoredNode): Promise<void> => {
+      signal.throwIfAborted();
+      if (++visited > 128 || sources.length >= 8) return;
+      if (!isDegradedMemoryNode(item)) {
+        sources.push(item.text);
+        return;
+      }
+      if (item.original !== undefined) {
+        try {
+          sources.push(await adapter.original(item.original, signal));
+        } catch (error) {
+          signal.throwIfAborted();
+          if (!(error instanceof MemorySummaryError) || error.reason !== "missing-original")
+            throw error;
+        }
+      } else if (item.children) {
+        for (const entry of item.children) await visit(await node(entry, signal));
+      }
+    };
+    await visit(found);
+    return sources;
+  };
+  const presented = async (found: StoredNode, signal: AbortSignal): Promise<AnchoredNode> => {
+    const base = await anchored(found, signal);
+    if (!isDegradedMemoryNode(found)) return base;
+    return {
+      ...base,
+      text: excerpt(await usableSources(found, signal)),
+      degraded: found.degraded ?? { reason: "degraded-source", attempts: 0 },
+    };
+  };
   const nodes = async (parts: readonly Part[], signal: AbortSignal) => {
     const result: AnchoredNode[] = [];
-    for (const part of parts) result.push(await anchored(await node(part.entry, signal), signal));
+    for (const part of parts) result.push(await presented(await node(part.entry, signal), signal));
     return result;
   };
   const summarize = async (
@@ -154,7 +203,7 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
   ) => {
     work.signal.throwIfAborted();
     const text = sources.join("\n");
-    if (memoryBytes(text) <= MEMORY_NODE_BYTES) return text;
+    if (memoryBytes(text) <= MEMORY_NODE_BYTES) return { text };
     const request =
       task.n === 1
         ? `Compaction: compress message ${task.id} into one line of at most 512 bytes\n(about 70 words), the length of this ruler:\n${"-".repeat(512)}`
@@ -168,37 +217,38 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
     const context = `${prefix}\n\n${request}${policy}\n<input>\n${boundedInput(text)}\n</input>`;
     const previous: { role: "user" | "assistant"; text: string }[] = [];
     let shortest: string | undefined;
-    let failures = 0;
-    let deferred = false;
+    let attempts = 0;
+    let model: string | undefined;
+    let reason: MemoryDegradation["reason"] = "completion-failed";
     for (let attempt = 0; attempt < 5; attempt += 1) {
       let answer: string;
       try {
         answer = (
-          await work.complete((signal) =>
-            options.summarize({
+          await work.complete((signal) => {
+            attempts += 1;
+            return options.summarize({
               instructions: shared.instructions,
               tools: shared.tools,
               context,
               previous: [...previous],
               signal,
-            }),
-          )
+              onModel: (selected) => {
+                model = selected.slice(0, 256);
+              },
+            });
+          })
         ).trim();
         if (!answer) throw new MemorySummaryError({ reason: "empty-summary" });
       } catch (error) {
-        // Cancellation propagates. A failed answer (provider error, tool call,
-        // oversized or empty output) is retried, then replaced by an excerpt.
+        // Retry policy lives at the provider-call boundary; empty/tool/config
+        // failures are not evidence of transience. Cancellation always propagates.
+        work.signal.throwIfAborted();
         if (!(error instanceof MemorySummaryError)) throw error;
-        if (error.reason === "completion-skipped") {
-          deferred = true;
-          break;
-        }
-        failures += 1;
-        if (failures < MEMORY_SUMMARY_FAILURES) continue;
+        reason = error.reason;
         break;
       }
       if (shortest === undefined || memoryBytes(answer) < memoryBytes(shortest)) shortest = answer;
-      if (memoryBytes(answer) <= MEMORY_NODE_BYTES) return answer;
+      if (memoryBytes(answer) <= MEMORY_NODE_BYTES) return { text: answer };
       // A UTF-8-safe byte cut is a ruler in feedback, never a stored summary.
       const cut = utf8Slice(answer, MEMORY_NODE_BYTES);
       previous.push(
@@ -211,9 +261,11 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
     }
     // Public chat-memory spec: five attempts, retain the shortest, measure real
     // view bytes. It explicitly tolerates slight oversize, not arbitrary truncation.
-    if (shortest !== undefined) return shortest;
-    if (!deferred) options.onExcerpt?.(task);
-    return excerpt(sources, deferred ? "[excerpt; summary deferred] " : EXCERPT);
+    if (shortest !== undefined) return { text: shortest };
+    return {
+      text: excerpt(sources),
+      degraded: model === undefined ? { reason, attempts } : { reason, attempts, model },
+    };
   };
 
   const fit = async (current: MemoryTreeState, signal: AbortSignal, budget: number) => {
@@ -253,15 +305,33 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
           entry: parent.entry,
           ancestors: part.ancestors.slice(1),
         });
-        visible.splice(best, 2, {
-          ...parent,
-          fromEntryId: visible[best]!.fromEntryId,
-          throughEntryId: visible[best + 1]!.throughEntryId,
-        });
+        visible.splice(best, 2, await presented(parent, signal));
       }
       current.shrinking = memoryBytes(render(visible)) > target;
     }
-    return render(visible);
+    const text = render(visible);
+    if (memoryBytes(text) <= budget || !visible.some(isDegradedMemoryNode)) return text;
+    // Do not wedge a foreground send when even degraded leaves cannot fit. One
+    // inclusive original range retains coverage; these are archive, not Zoom IDs.
+    const first = visible[0]!;
+    const last = visible.at(-1)!;
+    const prefix = `<chat>\nMemory degraded; retrieve originals.\n[originals=${first.fromEntryId}..${last.throughEntryId}]`;
+    const tail = "\n</chat>";
+    const room = budget - memoryBytes(prefix + tail) - 1;
+    if (room < 0) return text;
+    const sources = (
+      await Promise.all(
+        current.parts
+          .slice(0, 8)
+          .map(async (part) => usableSources(await node(part.entry, signal), signal)),
+      )
+    )
+      .flat()
+      .slice(0, 8);
+    // Re-read originals/valid children at the final display budget, not excerpts
+    // of saved excerpts. The inclusive reference covers any omitted content.
+    const bounded = `${prefix}\n${excerpt(sources.slice(0, Math.max(1, Math.floor(room / 16))), room)}${tail}`;
+    return memoryBytes(bounded) <= budget ? bounded : prefix + tail;
   };
 
   const fitViews = async (current: MemoryTreeState, signal: AbortSignal, budget: number) => {
@@ -410,19 +480,43 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
         32_000,
       );
     };
-    type Completion = { index: number; text: string } | { index: number; error: unknown };
+    type Summary = { text: string; degraded?: MemoryDegradation };
+    type Completion = { index: number; summary: Summary } | { index: number; error: unknown };
     const active = new Map<number, Promise<Completion>>();
     const launch = (index: number) => {
       const job = jobs[index]!;
       const task = (async () => {
         const context = await prefix(job);
-        const sources =
-          job.n === 1
-            ? [await adapter.original(job.original!, signal)]
-            : [
-                (await node(resolve(job.left!), signal)).text,
-                (await node(resolve(job.right!), signal)).text,
-              ];
+        let sources: string[];
+        if (job.n === 1) {
+          try {
+            sources = [await adapter.original(job.original!, signal)];
+          } catch (error) {
+            signal.throwIfAborted();
+            if (!(error instanceof MemorySummaryError) || error.reason !== "missing-original")
+              throw error;
+            return {
+              text: "Original content unavailable.",
+              degraded: { reason: "missing-original" as const, attempts: 0 },
+            };
+          }
+        } else {
+          const children = await Promise.all(
+            [job.left!, job.right!].map((link) => node(resolve(link), signal)),
+          );
+          if (children.some(isDegradedMemoryNode)) {
+            const usable = (
+              await Promise.all(children.map((child) => usableSources(child, signal)))
+            )
+              .flat()
+              .slice(0, 8);
+            return {
+              text: excerpt(usable),
+              degraded: { reason: "degraded-source" as const, attempts: 0 },
+            };
+          }
+          sources = children.map((child) => child.text);
+        }
         return summarize(
           sources,
           context,
@@ -439,7 +533,7 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
       active.set(
         index,
         abortableMemoryTask(task, signal).then(
-          (text) => ({ index, text }),
+          (summary) => ({ index, summary }),
           (error: unknown) => ({ index, error }),
         ),
       );
@@ -456,7 +550,7 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
         if ("error" in result) throw result.error;
         signal.throwIfAborted();
         const job = jobs[result.index]!;
-        const value = { id: job.id, n: job.n, text: result.text };
+        const value = { id: job.id, n: job.n, ...result.summary };
         const built: MemoryNode =
           job.n === 1
             ? { ...value, original: job.original! }
@@ -469,6 +563,13 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
           },
           signal,
         );
+        if (built.degraded && built.degraded.attempts > 0)
+          options.onExcerpt?.({
+            id: job.id,
+            n: job.n,
+            ...(await sourceRange({ ...built, entry: job.entry! }, signal)),
+            ...built.degraded,
+          });
         if (job.n === 1) unbuiltBefore -= 1;
         for (const parent of dependents.get(result.index) ?? []) {
           const count = waiting.get(parent)! - 1;
@@ -527,7 +628,139 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
     return found;
   };
 
+  /** Explicit bounded repair, never an automatic model-spend loop. Rewrite only
+   * degraded nodes and their provenance paths; valid siblings remain immutable.
+   * New entries are harmless until one final state publication points at them.
+   * Originals, IDs, coverage and the adapter's active context head never change. */
+  const repair = async (id: number, n: number, work: MemoryWork) => {
+    if (n > 32)
+      throw new MemoryRangeError({
+        reason: "invalid-range",
+        message: "Repair at most 32 originals at a time; choose a smaller aligned range.",
+      });
+    await lookupIndexed(id, n, work.signal);
+    const current = await state(work.signal);
+    if (current.pending)
+      throw new MemoryRangeError({
+        reason: "not-ready",
+        message: "Finish pending indexing before repair.",
+      });
+    const shared = await adapter.context(work.signal);
+    const replacements = new Map<number, number>();
+    let attempted = 0;
+    let repaired = 0;
+    const publish = async (before: StoredNode, value: MemoryNode) => {
+      let entry = before.entry;
+      await adapter.append(
+        value,
+        current,
+        (assigned) => {
+          entry = assigned;
+        },
+        work.signal,
+      );
+      replacements.set(before.entry, entry);
+      return { ...value, entry };
+    };
+    const rebuild = async (found: StoredNode): Promise<StoredNode> => {
+      work.signal.throwIfAborted();
+      if (found.id + found.n <= id || found.id >= id + n) return found;
+      const inside = found.id >= id && found.id + found.n <= id + n;
+      if (inside && !isDegradedMemoryNode(found)) return found;
+      let children: StoredNode[] = [];
+      if (found.children)
+        children = await Promise.all(found.children.map((entry) => node(entry, work.signal)));
+      // Sequential postorder bounds repair calls and preserves usable siblings.
+      for (let i = 0; i < children.length; i += 1) children[i] = await rebuild(children[i]!);
+      const changed = children.some((child, i) => child.entry !== found.children?.[i]);
+      let value: MemoryNode = Struct.omit(found, ["entry"]);
+      if (isDegradedMemoryNode(found))
+        value = {
+          ...value,
+          degraded: found.degraded ?? { reason: "degraded-source", attempts: 0 },
+        };
+      if (children.length) value = { ...value, children: [children[0]!.entry, children[1]!.entry] };
+      if (
+        inside &&
+        isDegradedMemoryNode(found) &&
+        attempted < 8 &&
+        !children.some(isDegradedMemoryNode)
+      ) {
+        attempted += 1;
+        let sources: string[] = children.map((child) => child.text);
+        try {
+          if (found.original !== undefined)
+            sources = [await adapter.original(found.original, work.signal)];
+          const summary = await summarize(sources, "", found, work, shared);
+          value = { ...value, ...summary };
+          if (summary.degraded)
+            value = {
+              ...value,
+              degraded: {
+                ...summary.degraded,
+                attempts: (found.degraded?.attempts ?? 0) + summary.degraded.attempts,
+              },
+            };
+          else {
+            value = Struct.omit(value, ["degraded"]);
+            repaired += 1;
+          }
+        } catch (error) {
+          work.signal.throwIfAborted();
+          if (!(error instanceof MemorySummaryError) || error.reason !== "missing-original")
+            throw error;
+          value = {
+            ...value,
+            text: "Original content unavailable.",
+            degraded: { reason: "missing-original", attempts: found.degraded?.attempts ?? 0 },
+          };
+        }
+      } else if (!changed) return found;
+      // Do not copy an old recursive excerpt while rebuilding a provenance path.
+      if (value.degraded)
+        value = {
+          ...value,
+          text: excerpt(await usableSources({ ...value, entry: found.entry }, work.signal)),
+        };
+      const result = await publish(found, value);
+      if (value.degraded)
+        options.onExcerpt?.({
+          id: found.id,
+          n: found.n,
+          ...(await sourceRange(result, work.signal)),
+          ...value.degraded,
+        });
+      return result;
+    };
+    for (const root of current.forest) await rebuild(await node(root.entry, work.signal));
+    const replace = (entry: number) => replacements.get(entry) ?? entry;
+    current.forest = current.forest.map((range) => ({ ...range, entry: replace(range.entry) }));
+    const remap = (parts: Part[]) =>
+      parts.map((part) => ({
+        ...part,
+        entry: replace(part.entry),
+        ancestors: part.ancestors.map(replace),
+      }));
+    current.parts = remap(current.parts);
+    if (current.reference) current.reference.parts = remap(current.reference.parts);
+    work.signal.throwIfAborted();
+    await save(current, work.signal);
+    return { attempted, repaired, calls: work.metrics().calls, automaticRetry: false as const };
+  };
   const children = async (found: StoredNode, signal: AbortSignal) =>
     Promise.all((found.children ?? []).map((ref) => node(ref, signal)));
-  return { state, node, anchored, nodes, save, fitViews, plan, build, lookupIndexed, children };
+  return {
+    state,
+    node,
+    anchored,
+    presented,
+    nodes,
+    save,
+    fitViews,
+    plan,
+    build,
+    repair,
+    lookupIndexed,
+    children,
+  };
 }

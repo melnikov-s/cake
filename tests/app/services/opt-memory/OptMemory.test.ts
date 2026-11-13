@@ -207,13 +207,14 @@ describe("shared OptMem core and automation adapter", () => {
     expect(input).toContain("HEAD");
     expect(input).toContain("TAIL");
     expect(input).toContain("bytes omitted; zoom for the original");
-    summarize.mockRejectedValueOnce(new Error("provider failed")).mockResolvedValueOnce("");
+    summarize.mockRejectedValueOnce(new Error("provider failed"));
     await f.write(id, "SECOND ".repeat(100));
     const view = await f.read(id);
     const excerpt = view.lines.find((line) => line.range.id === 1)?.text;
-    expect(excerpt).toContain("[excerpt; summary unavailable] note:");
+    expect(excerpt).toContain("note:");
+    expect(excerpt).not.toContain("[excerpt;");
     expect(Buffer.byteLength(excerpt ?? "")).toBeLessThanOrEqual(512);
-    expect(summarize).toHaveBeenCalledTimes(8); // five shortenings, two failures, one merge
+    expect(summarize).toHaveBeenCalledTimes(6); // five shortenings, one unclassified failure; no recursive merge of fallback
     const pages: string[] = [];
     let offset: number | null = 0;
     while (offset !== null) {

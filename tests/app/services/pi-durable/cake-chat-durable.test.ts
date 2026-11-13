@@ -987,7 +987,8 @@ it("answers an over-limit send with verbatim excerpts when the summarizer is una
   const last = JSON.stringify(f.requests[2]);
   expect(last).toContain("Continue");
   expect(last).not.toContain(original);
-  expect(last).toContain("[excerpt; summary unavailable] user: USER_DETAIL");
+  expect(last).toContain("user: USER_DETAIL");
+  expect(last).not.toContain("[excerpt;");
   expect((await f.view()).sourceCount).toBe(6);
   expect((await f.zoom(2, 1)).text).toContain(original);
   f.limit(300_000);
@@ -2134,19 +2135,22 @@ it("keeps memory moving with a verbatim excerpt when the summarizer keeps failin
   });
   const original = "PRESERVE_ORIGINAL_DETAIL ".repeat(100);
   await f.send(original, "history");
-  // The leaf and its merge with the answer each retry once, then keep an excerpt; no loop.
-  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledTimes(2));
-  expect(f.summarize).toHaveBeenCalledTimes(4);
+  // Unknown exception text is not proof of transience. Parents never re-summarize fallbacks.
+  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledTimes(1));
+  expect(f.summarize).toHaveBeenCalledTimes(1);
   f.advance(6 * 60_000);
   expect((await f.send("Continue", "cold-cache")).status).toBe("done");
   expect(f.requests).toHaveLength(2);
   expect(JSON.stringify(f.requests[1])).not.toContain(original);
-  expect(JSON.stringify(f.requests[1])).toContain("[excerpt; summary unavailable] user: PRESERVE");
+  expect(JSON.stringify(f.requests[1])).toContain("user: PRESERVE");
+  expect(JSON.stringify(f.requests[1])).not.toContain("[excerpt;");
   expect(JSON.stringify(f.requests[1])).toContain("Continue");
   expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("cache-cold");
   expect((await f.zoom(0, 1)).text).toContain(original);
   const reports = f.onReport.mock.calls.map(([error]) => String(error)).join(" ");
-  expect(reports).toContain("kept a verbatim excerpt because summarization failed");
+  expect(reports).toContain('"category":"completion-failed"');
+  expect(reports).toContain('"attempts":1');
+  expect(reports).toContain('"fromEntryId":');
   expect(reports).not.toContain("private summary body");
 });
 
@@ -2160,10 +2164,10 @@ it("does not route required preparation failures through generic provider retrie
     retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 },
   });
   await f.send("PREPARATION_DETAIL ".repeat(100), "history");
-  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledTimes(1));
   const calls = f.summarize.mock.calls.length;
   // Too little room for even one memory line: a genuine, explicit preparation failure.
-  f.limit(240);
+  f.limit(1); // Below even the bounded original-reference view and request envelope.
   f.advance(6 * 60_000);
   const failed = await f.send("Continue", "failure");
   expect(failed).toMatchObject({ status: "unanswered", reason: "model_error" });
@@ -2249,7 +2253,7 @@ it("compacts an over-limit chat before its model request even when one original 
   expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("limit");
   expect((await f.zoom(0, 1)).text).toContain(poison);
   expect(f.onReport.mock.calls.map(([error]) => String(error)).join(" ")).toContain(
-    "verbatim excerpt",
+    "Cake Chat memory degraded:",
   );
   // Repeated sends keep working on top of the rebuilt memory.
   expect((await f.send("And after that?", "repeat")).status).toBe("done");

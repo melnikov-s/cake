@@ -174,6 +174,17 @@ export async function openDurableChatEngine(options: {
     // when it eventually reaches the front of the queue.
     return awaitWithContext(result, withAbortSignal(signal, BACKGROUND_CONTEXT));
   };
+  const repairMemory = (id: number, n: number, signal: AbortSignal) => {
+    const result = worker.then(() => {
+      signal.throwIfAborted();
+      return memory.repair(id, n, memoryWork(signal));
+    });
+    worker = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return awaitWithContext(result, withAbortSignal(signal, BACKGROUND_CONTEXT));
+  };
   // One coalesced high-water mark, not one catch-up job per commit. Maintenance
   // runs only between coordinator runs with up to eight dependency-ready calls
   // and no work deadline. A later original or reopen resumes persisted
@@ -638,10 +649,18 @@ export async function openDurableChatEngine(options: {
         }
       },
       // Provider text never enters reports (it may hold private bodies or retry wording).
-      onExcerpt: ({ id, n }) =>
+      onExcerpt: ({ id, n, fromEntryId, throughEntryId, reason, attempts, model }) =>
         options.onReport(
           new Error(
-            `Cake Chat memory line ${id}+${n} kept a verbatim excerpt because summarization failed. Originals remain available through zoom.`,
+            `Cake Chat memory degraded: ${JSON.stringify({
+              id,
+              n,
+              fromEntryId,
+              throughEntryId,
+              category: reason,
+              attempts,
+              model,
+            })}. Originals remain retrievable; memory_repair can retry this range explicitly.`,
           ),
         ),
     });
@@ -735,6 +754,7 @@ export async function openDurableChatEngine(options: {
       signal: closing.signal,
       storage: options.storage,
       index,
+      repairMemory,
       /** Explicit OptMem handoff, independent of cache freshness and automatic thresholds.
        * Only an idle root can be replaced; SDK originals and the Zoom index stay intact. */
       async compact(model: { contextWindow: number; maxTokens?: number }) {

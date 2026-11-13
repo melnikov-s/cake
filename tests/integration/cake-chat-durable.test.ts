@@ -1167,6 +1167,42 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/catalog-project")])(
   },
 );
 
+it("executes bounded memory recovery through the production memory_repair tool", async () => {
+  const f = await fixture();
+  f.summarize.mockResolvedValue("");
+  const chat = await f.open();
+  await chat.runtime.prompt("RECOVER_ORIGINAL ".repeat(100), "prompt", [], true, ids.first);
+  await vi.waitFor(() => expect(f.summarize).toHaveBeenCalledTimes(1));
+  f.summarize.mockResolvedValue("Recovered original decision");
+  f.answer((index) =>
+    index === 2
+      ? durableAnswer("", [
+          {
+            type: "toolCall",
+            id: "repair",
+            name: "memory_repair",
+            arguments: { id: 0, n: 1 },
+          },
+        ])
+      : durableAnswer("Recovery finished"),
+  );
+  await chat.runtime.prompt("Repair the degraded range", "prompt", [], true, ids.second);
+  const results = f.requests
+    .flatMap((request) => request.messages)
+    .filter((message) => message.role === "toolResult" && message.toolName === "memory_repair");
+  expect(results).toHaveLength(1);
+  expect(results[0]).toMatchObject({
+    role: "toolResult",
+    isError: false,
+    content: [{ type: "text", text: expect.stringContaining('"repaired":1') }],
+  });
+  expect(results[0]?.content).toContainEqual({
+    type: "text",
+    text: expect.stringContaining('"automaticRetry":false'),
+  });
+  expect(f.summarize).toHaveBeenCalledTimes(2);
+});
+
 it("uses production SQLite, existing credentials and exact originals across reopen", async () => {
   const f = await fixture();
   const original = `ANCIENT_DETAIL ${"original words ".repeat(200)}`;
@@ -1191,6 +1227,7 @@ it("uses production SQLite, existing credentials and exact originals across reop
     "No image bytes/reasoning, replay or inferred success",
   );
   expect(description("zoom")).toContain("nextOffset");
+  expect(description("memory_repair")).toContain("Up to 8 nodes and 32 originals per call");
   const zoomParameters = offered?.find((tool) => tool.name === "zoom")?.parameters;
   expect(JSON.stringify(zoomParameters)).toContain("power-of-two");
   expect(JSON.stringify(zoomParameters)).toContain("divisible by n");
@@ -1198,6 +1235,7 @@ it("uses production SQLite, existing credentials and exact originals across reop
   expect(offered?.map((tool) => tool.name)).toEqual([
     "cake",
     "zoom",
+    "memory_repair",
     "date",
     "archive_search",
     "archive_read",

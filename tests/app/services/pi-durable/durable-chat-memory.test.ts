@@ -410,14 +410,17 @@ it("derives bounded original anchors through view consolidation, zoom and SQLite
   expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(head.messages);
 });
 
-it("retries a failed summary once, then keeps a bounded verbatim excerpt instead of stalling", async () => {
+it("keeps empty output repairable with a bounded original-backed view instead of stalling", async () => {
   const f = await fixture();
   await f.append("RAW_B ".repeat(100));
   f.summarize.mockResolvedValue("");
   expect((await f.view()).sourceCount).toBe(1);
-  expect(f.summarize).toHaveBeenCalledTimes(2);
+  expect(f.summarize).toHaveBeenCalledTimes(1);
+  expect((await f.nodes())[0]?.data).toMatchObject({
+    degraded: { reason: "empty-summary", attempts: 1 },
+  });
   const { text } = StoredNode((await f.nodes())[0]?.data);
-  expect(text.startsWith("[excerpt; summary unavailable] user: RAW_B RAW_B")).toBe(true);
+  expect(text.startsWith("user: RAW_B RAW_B")).toBe(true);
   expect(Buffer.byteLength(text)).toBeLessThanOrEqual(512);
   expect((await f.memory.zoom(0, 1, signal())).text).toContain("RAW_B ".repeat(100));
   f.summarize.mockResolvedValue("valid summary");

@@ -145,9 +145,20 @@ export class PiProviderAuthError extends Schema.TaggedError<PiProviderAuthError>
   },
 ) {}
 
+export const CompletionFailureCategory = Schema.Literals([
+  "configuration",
+  "authentication",
+  "transient",
+  "empty-summary",
+  "tool-output",
+  "output-limit",
+  "completion-failed",
+]);
+export type CompletionFailureCategory = Schema.Schema.Type<typeof CompletionFailureCategory>;
+
 export class PiModelCompletionError extends Schema.TaggedError<PiModelCompletionError>()(
   "PiModelCompletionError",
-  { message: Schema.String },
+  { message: Schema.String, category: Schema.optionalKey(CompletionFailureCategory) },
 ) {}
 
 export type ThinkingLevel = typeof ThinkingLevel.Type;
