@@ -788,6 +788,20 @@ describe("Worktree operation workflows", () => {
     },
   );
 
+  it("presents clean-rebase validation without conflict repair, including validation edits", async () => {
+    const validating = operation("validating", { automatic: true, pauseReason: "clean-rebase" });
+    using fixture = renderWorktree({ operation: validating });
+    await screen.findByRole("button", { name: "Merge" });
+    const store = fixture.root.sessionRegistry.load("session-1", "/worktree").worktreeStore;
+    await waitFor(() => expect(store.phase).toBe("validating"));
+    expect(store.isBusy).toBe(true);
+    expect(screen.queryByRole("button", { name: "Resolving conflicts…" })).toBeNull();
+    await fixture.publish({ ...validating, phase: "stalled" }, status({ dirtyCount: 1 }));
+    expect(await screen.findByText("Paused — fresh validation required.")).toBeDefined();
+    expect(screen.queryByText(/conflict repair/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("retries and dismisses a stalled operation through main-process commands", async () => {
     const retryLanding = vi.fn<Client["managedWorktrees"]["retryLanding"]>(async () =>
       operation("resolving", { operationId: "retry-operation" }),

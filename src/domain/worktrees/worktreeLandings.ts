@@ -309,8 +309,11 @@ interface AutomaticLanding {
   readonly authorize: Effect.Effect<void, WorktreeLandingError>;
   /** Transient presentation of confirmed Git success, never snapshot/recovery delivery. */
   readonly onLanded: Effect.Effect<void>;
-  /** Retires old readiness and waits for a separate, validated repair turn. Never lands. */
-  readonly repair: (text: string) => Effect.Effect<void, WorktreeLandingError>;
+  /** Retires old readiness and waits for a separate validated turn. Never lands. */
+  readonly revalidate: (
+    text: string,
+    reason: "conflict" | "clean-rebase",
+  ) => Effect.Effect<void, WorktreeLandingError>;
 }
 
 const performLanding: (
@@ -381,6 +384,29 @@ const performLanding: (
     return yield* completeLanding(operation, outcome.commit, automatic);
   }
   const status = yield* requireStatus(operation.workspacePath);
+  if (outcome.outcome === "revalidation-required") {
+    if (!automatic)
+      return yield* new WorktreeLandingError({
+        operation: "land",
+        message: "The rebased HEAD requires fresh validated readiness before landing.",
+      });
+    yield* update(operation.workspacePath, operation.operationId, (current) => ({
+      ...current,
+      phase: "validating",
+      pauseReason: "clean-rebase",
+      conflictFiles: undefined,
+    }));
+    yield* automatic.revalidate(
+      `Cake cleanly rebased this worktree onto ${status.targetBranch}. HEAD is now ${outcome.commit}; the target branch has not been changed. Review the rebased changes and rerun task-scoped checks against the final HEAD.`,
+      "clean-rebase",
+    );
+    yield* update(operation.workspacePath, operation.operationId, (current) => ({
+      ...current,
+      phase: "stalled",
+      error: "Clean-rebase validation completed; waiting for fresh authorized readiness.",
+    }));
+    return;
+  }
   const reason = outcome.outcome === "proposal" ? "squash-message" : "conflict";
   yield* update(operation.workspacePath, operation.operationId, (current) => ({
     ...current,
@@ -389,11 +415,17 @@ const performLanding: (
     conflictFiles: outcome.outcome === "resolving" ? outcome.files : undefined,
   }));
   if (automatic) {
-    yield* automatic.repair(
+    if (outcome.outcome !== "resolving")
+      return yield* new WorktreeLandingError({
+        operation: "land",
+        message: "Automatic preserve landing unexpectedly requested a squash proposal.",
+      });
+    yield* automatic.revalidate(
       renderCakePrompt(configuredPrompts(application).worktreePreserveConflict, {
         target: status.targetBranch,
-        files: outcome.outcome === "resolving" ? outcome.files : [],
+        files: outcome.files,
       }),
+      "conflict",
     );
     yield* update(operation.workspacePath, operation.operationId, (current) => ({
       ...current,
@@ -819,7 +851,7 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
     return yield* new WorktreeLandingError({
       operation: "retry",
       message:
-        "Automatic repair requires fresh commit-bound readiness and current Auto-merge authorization.",
+        "Automatic landing requires fresh commit-bound readiness and current Auto-merge authorization.",
     });
   const operation = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.operations.get(input.workspacePath);
@@ -1146,11 +1178,13 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
       automatic,
       pauseReason: ready
         ? undefined
-        : strategy
-          ? proposing
-            ? "squash-message"
-            : "conflict"
-          : "rebase-conflict",
+        : automatic && !gitBlocked(status)
+          ? "clean-rebase"
+          : strategy
+            ? proposing
+              ? "squash-message"
+              : "conflict"
+            : "rebase-conflict",
     });
     if (yield* insert(operation, status.record)) {
       if (strategy && !operation.automatic) yield* run(operation, adoptLanding(operation, ready));

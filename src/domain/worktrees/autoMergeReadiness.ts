@@ -219,7 +219,9 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
     operation?.automatic &&
     !operation.cancellationRequested &&
     operation.sessionId === target.sessionId &&
-    (operation.phase === "resolving" || operation.phase === "stalled")
+    (operation.phase === "resolving" ||
+      operation.phase === "validating" ||
+      operation.phase === "stalled")
   ) {
     const previous = document.autoMergeRequests?.find(
       (item) => item.id === operation.autoMergeRequestId,

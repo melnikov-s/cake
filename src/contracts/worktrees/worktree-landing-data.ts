@@ -14,6 +14,7 @@ export const WorktreeLandingPhase = Schema.Literals([
   "rebasing",
   "resolving",
   "resolving-rebase",
+  "validating",
   "proposing",
   "stalled",
   "landed",
@@ -59,7 +60,7 @@ export const WorktreeLandingOperation = Schema.Struct({
   /** Accepted cancellation; block replay until readiness revocation is reconciled. */
   cancellationRequested: Schema.optionalKey(Schema.Literal(true)),
   pauseReason: Schema.optionalKey(
-    Schema.Literals(["commit", "conflict", "rebase-conflict", "squash-message"]),
+    Schema.Literals(["commit", "conflict", "rebase-conflict", "squash-message", "clean-rebase"]),
   ),
   error: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
   /** Git landing succeeded, but lifecycle completion or clearing its intent failed. */

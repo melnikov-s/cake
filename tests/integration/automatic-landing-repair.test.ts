@@ -13,6 +13,7 @@ import { projectChatSessionId } from "../../src/domain/cake-chats/cakeChatLocati
 import { makeTurnLifecycle } from "../../src/domain/project-sessions/projectSessionTurnLifecycle";
 import { runPass } from "../../src/domain/worktrees/autoMerge";
 import { report, setEnabled } from "../../src/domain/worktrees/autoMergeReadiness";
+import { cancel } from "../../src/domain/worktrees/worktreeLandings";
 import { ClientEvents } from "../../src/services/clients/ClientEvents";
 import { CakeSessionRuntimes } from "../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../src/services/project-sessions/ProjectSessionConfiguration";
@@ -37,10 +38,16 @@ import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees"
 
 const exec = promisify(execFile);
 
-it.each(["conflict", "clean-rebase"] as const)(
-  "automatically revalidates a real Git %s, declares fresh readiness and lands without Retry",
+it.each([
+  { scenario: "conflict", ending: "complete" },
+  { scenario: "clean-rebase", ending: "complete" },
+  { scenario: "clean-rebase", ending: "revoked" },
+  { scenario: "clean-rebase", ending: "aborted" },
+  { scenario: "clean-rebase", ending: "canceled" },
+] as const)(
+  "revalidates a real Git $scenario with $ending completion and fresh authorization",
   { timeout: 30_000 },
-  async (scenario) => {
+  async ({ scenario, ending }) => {
     const root = await mkdtemp(join(tmpdir(), "cake-auto-repair-"));
     const engine = makeTestWorktreeService(join(root, ".git", "cake-test-worktrees.json"));
     const git = (cwd: string, ...args: string[]) => exec("git", args, { cwd });
@@ -147,6 +154,11 @@ it.each(["conflict", "clean-rebase"] as const)(
       await engine.run(
         Effect.gen(function* () {
           const families = yield* SessionFamilyStorage;
+          yield* families.setPurpose({
+            sessionId: "owner",
+            projectPath: root,
+            purpose: "delegated",
+          });
           yield* families.registerSpawn({
             sessionId: "owner",
             projectPath: root,
@@ -159,6 +171,7 @@ it.each(["conflict", "clean-rebase"] as const)(
             reportDelivered: true,
             handoffSettled: true,
           });
+          const coordinator = yield* WorktreeLandingCoordinator;
           const context =
             yield* Effect.context<
               Effect.Services<ReturnType<typeof report> | ReturnType<typeof makeTurnLifecycle>>
@@ -169,6 +182,24 @@ it.each(["conflict", "clean-rebase"] as const)(
             promptAndWait: ({ text }) =>
               Effect.gen(function* () {
                 events.push("repair-handoff");
+                const operation = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
+                  source.worktreePath,
+                );
+                expect(operation).toMatchObject({
+                  phase: scenario === "clean-rebase" ? "validating" : "resolving",
+                  pauseReason: scenario === "clean-rebase" ? "clean-rebase" : "conflict",
+                });
+                if (scenario === "clean-rebase") {
+                  expect(operation).not.toHaveProperty("conflictFiles");
+                  expect(text).toContain("Automatic clean-rebase validation");
+                  expect(text).toContain("No new commit is needed");
+                  expect(text).not.toMatch(/conflict|repair|git status|rebase --continue|git add/i);
+                } else {
+                  expect(operation?.conflictFiles).toEqual(["feature.mjs"]);
+                  expect(text).toContain("- feature.mjs");
+                  expect(text).toContain("GIT_EDITOR=true git rebase --continue");
+                  expect(text).toContain("Automatic landing repair");
+                }
                 expect(text).toContain("worktrees.reportReadiness");
                 expect(text).toContain("Do not call worktrees.merge");
                 expect((yield* families.state()).autoMergeRequests?.[0]?.readyToMerge).toBe(false);
@@ -206,6 +237,7 @@ it.each(["conflict", "clean-rebase"] as const)(
                 });
                 executingTurn = "repair-turn";
                 expect(yield* report(target, ready(validated))).toEqual({ eligible: true });
+                if (ending === "revoked") yield* setEnabled(root, false);
                 events.push("fresh-readiness");
                 const hooks = yield* makeTurnLifecycle({
                   sessionId: "owner",
@@ -220,13 +252,13 @@ it.each(["conflict", "clean-rebase"] as const)(
                 yield* hooks.onTurnSettled({
                   sessionId: "owner",
                   turnId: "repair-turn",
-                  outcome: "complete",
+                  outcome: ending === "aborted" ? "aborted" : "complete",
                   result: {
                     stopReason: "stop",
                     text: "Repaired both requirements, committed final changes, and the scoped acceptance test passed.",
                   },
                 });
-                return "complete" as const;
+                return ending === "aborted" ? ("aborted" as const) : ("complete" as const);
               }).pipe(
                 Effect.provide(context),
                 Effect.mapError(
@@ -236,7 +268,6 @@ it.each(["conflict", "clean-rebase"] as const)(
               ),
           });
           const pass = runPass().pipe(Effect.provideService(WorktreeLandingAgent, agent));
-          const coordinator = yield* WorktreeLandingCoordinator;
           const terminal = SubscriptionRef.changes(coordinator.state).pipe(
             Stream.filter((state) =>
               ["stalled", "landed", "failed"].includes(
@@ -249,8 +280,22 @@ it.each(["conflict", "clean-rebase"] as const)(
           yield* report(target, ready(original));
           yield* families.updateAutoMerge("task-turn", "ready");
           yield* pass;
+          expect(
+            (yield* SubscriptionRef.get(coordinator.state)).operations.has(source.worktreePath),
+            JSON.stringify((yield* families.state()).autoMergeRequests),
+          ).toBe(true);
           yield* terminal;
           expect(events).toEqual(["repair-handoff", "scoped-validation-passed", "fresh-readiness"]);
+          if (ending === "canceled") yield* cancel(source.worktreePath, "task-turn");
+          if (ending !== "complete") {
+            yield* pass;
+            yield* pass;
+            expect(events).not.toContain("landed-notice");
+            expect(events).not.toContain("resolve");
+            const requests = (yield* families.state()).autoMergeRequests;
+            expect(requests?.some((request) => request.state === "landed")).toBe(false);
+            return;
+          }
           // Scheduler passes alone resume: no merge, Retry or resolve tool invocation.
           yield* pass;
           yield* terminal;
@@ -274,10 +319,11 @@ it.each(["conflict", "clean-rebase"] as const)(
           ]);
         }).pipe(Effect.provide(dependencies)),
       );
-      expect(await head(root)).toBe(validated);
-      await exec(process.execPath, ["--test", "feature.test.mjs", "upstream.test.mjs"], {
-        cwd: root,
-      });
+      expect(await head(root)).toBe(ending === "complete" ? validated : targetBeforeRepair);
+      if (ending === "complete")
+        await exec(process.execPath, ["--test", "feature.test.mjs", "upstream.test.mjs"], {
+          cwd: root,
+        });
     } finally {
       const records = await engine.records().catch(() => []);
       for (const record of records)

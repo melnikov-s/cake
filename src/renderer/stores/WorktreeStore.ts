@@ -53,6 +53,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     | "proposing"
     | "resolving"
     | "resolving-rebase"
+    | "validating"
     | "resolving-session"
     | "discarding" = "idle";
   error: string | undefined;
@@ -173,7 +174,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (!this.stalled) return undefined;
     const operation = this.props.operation();
     if (operation?.automatic)
-      return this.status && !this.status.dirtyCount && !this.status.merging && !this.status.rebasing
+      return operation.pauseReason === "clean-rebase" ||
+        (this.status && !this.status.dirtyCount && !this.status.merging && !this.status.rebasing)
         ? "Paused — fresh validation required."
         : "Paused — conflict repair and fresh validation required.";
     if (operation?.pauseReason === "commit") return "Paused — commit required.";

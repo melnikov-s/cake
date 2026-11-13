@@ -53,6 +53,7 @@ const agentPhases: ReadonlySet<WorktreeLandingOperation["phase"]> = new Set([
   "committing",
   "resolving",
   "resolving-rebase",
+  "validating",
   "proposing",
 ]);
 const finalPhases: ReadonlySet<WorktreeLandingOperation["phase"]> = new Set([
@@ -71,6 +72,8 @@ const requestedWork = (operation: WorktreeLandingOperation, owner: "its" | "your
       return `commit ${owner} uncommitted worktree changes`;
     case "squash-message":
       return "propose the squash commit message";
+    case "clean-rebase":
+      return `revalidate ${owner} cleanly rebased HEAD and report fresh readiness`;
     case "rebase-conflict":
       return `resolve rebase conflicts${files} in ${owner} worktree`;
     default:
@@ -100,6 +103,8 @@ function nextStep(
       return `Cake prompted the owning session (${operation?.sessionId ?? "unknown"}) to ${work}. The landing resumes automatically when that turn finishes; call worktrees.merge again later to read the result. ${never}`;
     }
     case "stalled":
+      if (operation?.pauseReason === "clean-rebase")
+        return `The cleanly rebased HEAD needs fresh task-scoped validation and readiness. Cake retries only after successful turn completion and current Auto-merge authorization. ${never}`;
       return `The owning session's turn ended but the worktree is still blocked (${operation?.pauseReason ?? "unknown"}). The owning session must finish that work inside its worktree (commit changes or resolve and commit conflicts); then call worktrees.merge again to retry. ${never}`;
     case "failed":
       return `The landing failed: ${operation?.error ?? "unknown error"}. Fix the cause (for example, uncommitted changes in the target checkout belong to the user to commit or stash), then call worktrees.merge again. ${never}`;

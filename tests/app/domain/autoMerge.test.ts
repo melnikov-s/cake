@@ -70,6 +70,8 @@ const record = {
 function fixture(
   options: {
     conflict?: boolean;
+    /** Emulate a successful engine rebase, not a conflict or an agent-created commit. */
+    cleanRebaseHead?: string;
     failure?: boolean;
     resolveFailure?: boolean;
     wait?: Effect.Effect<void>;
@@ -269,6 +271,10 @@ function fixture(
             return yield* new ManagedWorktreeError({ operation: "land", message: "Target dirty" });
           if (conflict ?? options.conflict)
             return { outcome: "resolving" as const, files: ["conflict.ts"] };
+          if (options.cleanRebaseHead && head !== options.cleanRebaseHead) {
+            head = options.cleanRebaseHead;
+            return { outcome: "revalidation-required" as const, commit: head };
+          }
           currentRecord = { ...currentRecord };
           Reflect.deleteProperty(currentRecord, "pendingAutomaticLanding");
           return { outcome: "landed" as const, commit: head };
@@ -283,7 +289,7 @@ function fixture(
     Layer.mock(WorktreeLandingAgent, {
       promptAndWait: ({ text }) =>
         Effect.sync(() => {
-          events.push("repair");
+          events.push(text.includes("Automatic clean-rebase validation") ? "revalidate" : "repair");
           expect(text).toContain("worktrees.reportReadiness");
           expect(text).toContain("Do not call worktrees.merge");
           prompts.push(text);
@@ -849,6 +855,121 @@ it.effect(
     }).pipe(Effect.provide(test.layer));
   },
 );
+
+it.effect("revalidates cleanly rebased HEAD without conflict state or an extra commit", () => {
+  const rebased = "b".repeat(40);
+  const test = fixture({ cleanRebaseHead: rebased });
+  return Effect.gen(function* () {
+    yield* ready;
+    const validate = yield* completedRepair(test, "validation-turn", rebased);
+    const coordinator = yield* WorktreeLandingCoordinator;
+    test.setRepair(
+      Effect.gen(function* () {
+        const operation = (yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree");
+        expect(operation).toMatchObject({ phase: "validating", pauseReason: "clean-rebase" });
+        expect(operation).not.toHaveProperty("conflictFiles");
+        return yield* validate;
+      }),
+    );
+    yield* runPass();
+    yield* terminal;
+    expect(test.events).toEqual(["land", "revalidate", "scoped-validation"]);
+    expect(test.prompts[0]).toContain(rebased);
+    expect(test.prompts[0]).toContain("No new commit is needed");
+    expect(test.prompts[0]).not.toMatch(/conflict|repair|git status|rebase --continue|git add/i);
+    expect((yield* requests)[0]).toMatchObject({ commit, readyToMerge: false });
+    expect((yield* requests)[1]).toMatchObject({
+      commit: rebased,
+      state: "ready",
+      repairOfRequestId: "turn",
+    });
+    expect((yield* SubscriptionRef.get(coordinator.state)).operations.get("/tree")).toMatchObject({
+      phase: "stalled",
+      pauseReason: "clean-rebase",
+    });
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    expect((yield* requests)[1]).toMatchObject({ commit: rebased, state: "landed" });
+    expect(test.events.filter((event) => event === "revalidate")).toHaveLength(1);
+    expect(test.events.filter((event) => event === "resolve")).toHaveLength(1);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect("clean-rebase reminder asks only for final-HEAD validation, never repair", () => {
+  const test = fixture({ cleanRebaseHead: "b".repeat(40) });
+  return Effect.gen(function* () {
+    yield* ready;
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    expect(test.prompts).toHaveLength(2);
+    for (const text of test.prompts) {
+      expect(text).toContain("clean-rebase validation");
+      expect(text).toContain("No new commit is needed");
+      expect(text).not.toMatch(/conflict|repair|git status|rebase --continue|git add/i);
+    }
+    expect((yield* requests)[0]).toMatchObject({ state: "failed", readyToMerge: false });
+    expect((yield* requests)[0]?.message).toContain("clean-rebase validation stopped");
+    expect(test.events).not.toContain("resolve");
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect.each(["revoked", "new-input", "changed-head", "aborted", "failed", "canceled"] as const)(
+  "clean-rebase revalidation never lands after %s",
+  (change) => {
+    const test = fixture({ cleanRebaseHead: "b".repeat(40) });
+    return Effect.gen(function* () {
+      yield* ready;
+      const validate = yield* completedRepair(
+        test,
+        "validation-turn",
+        "b".repeat(40),
+        change === "aborted" || change === "failed" ? change : "complete",
+      );
+      const context = yield* Effect.context<Effect.Services<ReturnType<typeof setEnabled>>>();
+      test.setRepair(
+        validate.pipe(
+          // Exercise revocation while the validation turn is still running.
+          Effect.tap(() => (change === "revoked" ? setEnabled("/project", false) : Effect.void)),
+          Effect.provide(context),
+          Effect.mapError(
+            (error) =>
+              new WorktreeLandingAgentError({
+                operation: "revalidation",
+                message: String(error),
+              }),
+          ),
+        ),
+      );
+      yield* runPass();
+      yield* terminal;
+      if (change === "new-input") yield* (yield* SessionFamilyStorage).invalidateAutoMerge("/tree");
+      if (change === "changed-head") test.setHead("c".repeat(40));
+      if (change === "canceled") yield* cancel("/tree", "turn");
+      yield* runPass();
+      if (change === "changed-head") yield* terminal;
+      expect(test.events.filter((event) => event === "land")).toHaveLength(1);
+      expect(test.events).not.toContain("resolve");
+      expect(test.notices).toEqual([]);
+      for (const text of test.prompts)
+        expect(text).not.toMatch(/conflict|repair|git status|rebase --continue/i);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect("unchanged validated HEAD lands without repair or revalidation", () => {
+  const test = fixture();
+  return Effect.gen(function* () {
+    yield* ready;
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    expect((yield* requests)[0]).toMatchObject({ commit, state: "landed" });
+    expect(test.prompts).toEqual([]);
+    expect(test.events.filter((event) => event === "land")).toHaveLength(1);
+  }).pipe(Effect.provide(test.layer));
+});
 
 it.effect.each(["complete", "aborted"] as const)(
   "resumes only after delayed real completion hooks settle (%s), without Retry",

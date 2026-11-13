@@ -176,7 +176,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
         operationId: "fresh-a",
         request: { strategy: "preserve", expectedSourceCommit: repairedHead },
       }),
-    ).toMatchObject({ outcome: "resolving", files: [] });
+    ).toMatchObject({ outcome: "revalidation-required" });
     // B advanced main while A was repairing. A's clean rebase still needs new validation.
     expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(targetBeforeRevalidation);
     const revalidatedHead = (await git(first.worktreePath, "rev-parse", "HEAD")).stdout.trim();
@@ -879,6 +879,22 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     ).not.toHaveProperty("pendingAutomaticLanding");
   });
 
+  it("lands unchanged validated HEAD without a revalidation or conflict outcome", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const source = await worktrees.create(repo);
+    await writeFile(join(source.worktreePath, "feature.txt"), "feature\n");
+    await commitAll(source.worktreePath, "feature");
+    const validated = (await git(source.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    expect(
+      await worktrees.land(source.worktreePath, {
+        request: { strategy: "preserve", expectedSourceCommit: validated },
+      }),
+    ).toEqual({ outcome: "landed", commit: validated });
+    expect((await git(source.worktreePath, "rev-parse", "HEAD")).stdout.trim()).toBe(validated);
+    expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(validated);
+  });
+
   it("hands even a clean automatic rebase back for validation before touching the target", async () => {
     const repo = await repository();
     const worktrees = service();
@@ -889,12 +905,20 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await writeFile(join(repo, "upstream.txt"), "upstream\n");
     await commitAll(repo, "upstream change");
     const target = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
+    const outcome = await worktrees.land(source.worktreePath, {
+      request: { strategy: "preserve", expectedSourceCommit: validated },
+    });
+    const rebased = (await git(source.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    expect(outcome).toEqual({ outcome: "revalidation-required", commit: rebased });
+    expect(
+      (await git(source.worktreePath, "diff", "--name-only", "--diff-filter=U")).stdout.trim(),
+    ).toBe("");
+    expect((await worktrees.status(source.worktreePath))?.rebasing).toBe(false);
     await expect(
       worktrees.land(source.worktreePath, {
         request: { strategy: "preserve", expectedSourceCommit: validated },
       }),
-    ).resolves.toEqual({ outcome: "resolving", files: [] });
-    const rebased = (await git(source.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    ).rejects.toThrow(/readiness is stale/);
     expect(rebased).not.toBe(validated);
     expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(target);
     expect(existsSync(join(repo, "feature.txt"))).toBe(false);

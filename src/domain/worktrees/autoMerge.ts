@@ -18,8 +18,11 @@ import * as worktreeLifecycle from "./worktreeLifecycle";
 
 const emptyRequests: ReadonlyArray<AutoMergeRequest> = [];
 
-/** Why the latest repair turn did not leave a landable declaration, or undefined. */
-const repairProblem = Effect.fn("AutoMerge.repairProblem")(function* (request: AutoMergeRequest) {
+/** Why the latest follow-up turn did not leave a landable declaration, or undefined. */
+const validationProblem = Effect.fn("AutoMerge.validationProblem")(function* (
+  request: AutoMergeRequest,
+  cleanRebase: boolean,
+) {
   const inspected = yield* readiness.inspectReadyHead(request.workspacePath);
   if (inspected.problem !== undefined) return inspected.problem;
   const declaration = ((yield* (yield* SessionFamilyStorage).state()).autoMergeRequests ?? [])
@@ -33,14 +36,17 @@ const repairProblem = Effect.fn("AutoMerge.repairProblem")(function* (request: A
         item.repairOfRequestId === request.id,
     )
     .at(-1);
-  if (!declaration) return `No readiness was reported after the repair. HEAD is ${inspected.head}.`;
+  if (!declaration)
+    return `No readiness was reported after the ${cleanRebase ? "clean-rebase validation" : "repair"}. HEAD is ${inspected.head}.`;
   if (
     !declaration.readyToMerge ||
     (declaration.state !== "pending" && declaration.state !== "ready")
   )
     return `Readiness for ${declaration.commit} was withdrawn or invalidated${declaration.message ? ` (${declaration.message})` : ""}. HEAD is ${inspected.head}.`;
   if (declaration.commit === request.commit)
-    return `Readiness names the pre-repair commit ${request.commit}; the repaired HEAD must be revalidated and declared.`;
+    return cleanRebase
+      ? `Readiness names the pre-rebase commit ${request.commit}; the rebased HEAD must be revalidated and declared.`
+      : `Readiness names the pre-repair commit ${request.commit}; the repaired HEAD must be revalidated and declared.`;
   if (declaration.commit !== inspected.head)
     return `Readiness was declared for ${declaration.commit}, but HEAD is now ${inspected.head}.`;
   return undefined;
@@ -111,7 +117,9 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       request.repairAttempt !== undefined &&
       operation?.automatic &&
       !operation.cancellationRequested &&
-      (operation.phase === "resolving" || operation.phase === "stalled") &&
+      (operation.phase === "resolving" ||
+        operation.phase === "validating" ||
+        operation.phase === "stalled") &&
       operation.sessionId === request.sessionId &&
       requests.some(
         (previous) =>
@@ -380,23 +388,29 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
           requestId: request.id,
           commit: request.commit,
           authorize,
-          repair: (text) =>
-            Effect.gen(function* () {
+          revalidate: (text, reason) => {
+            const cleanRebase = reason === "clean-rebase";
+            const label = cleanRebase ? "Automatic clean-rebase validation" : "Automatic repair";
+            const operation = cleanRebase ? "revalidation" : "repair";
+            return Effect.gen(function* () {
               yield* authorize;
-              // Retire the immutable declaration before admitting a repair input. A
-              // toggle cycle must not resurrect validation of the pre-repair commit.
+              // Retire the immutable declaration before admitting a follow-up input.
+              // A toggle cycle must not resurrect validation of the old commit.
               yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
               if ((request.repairAttempt ?? 0) >= 2)
                 return yield* new WorktreeLandingError({
-                  operation: "repair",
-                  message:
-                    "Automatic repair stopped after two repair turns with recurring conflicts; no merge or resolution occurred.",
+                  operation,
+                  message: cleanRebase
+                    ? `${label} stopped after two validation turns; no merge or resolution occurred.`
+                    : "Automatic repair stopped after two repair turns with recurring conflicts; no merge or resolution occurred.",
                 });
               const outcome = yield* agent.promptAndWait({
                 sessionId: request.sessionId,
-                text: `${text}\n\nAutomatic landing repair: own routine merge/rebase conflicts. If Git already completed a clean rebase, review the updated commits. Revalidate the final changes with task-scoped checks, commit, then call worktrees.reportReadiness; Cake records the current HEAD, so no commit hash is needed. Do not call worktrees.merge, resolve sessions, or change Auto-merge. Cake will retry only after successful turn completion and fresh current authorization. Report genuine repair failures or ambiguous design/permission decisions honestly.`,
+                text: cleanRebase
+                  ? `${text}\n\nAutomatic clean-rebase validation: call worktrees.reportReadiness after the final-HEAD checks pass; Cake records the current HEAD. No new commit is needed unless validation requires code changes. Do not call worktrees.merge, resolve sessions, or change Auto-merge. Cake will retry only after successful turn completion and fresh current authorization. Report validation failures honestly.`
+                  : `${text}\n\nAutomatic landing repair: own routine merge/rebase conflicts. Revalidate the final changes with task-scoped checks, commit, then call worktrees.reportReadiness; Cake records the current HEAD, so no commit hash is needed. Do not call worktrees.merge, resolve sessions, or change Auto-merge. Cake will retry only after successful turn completion and fresh current authorization. Report genuine repair failures or ambiguous design/permission decisions honestly.`,
               });
-              let problem = yield* repairProblem(request).pipe(
+              let problem = yield* validationProblem(request, cleanRebase).pipe(
                 Effect.provideService(ManagedWorktrees, worktrees),
                 Effect.provideService(SessionFamilyStorage, storage),
               );
@@ -408,40 +422,41 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
                   .pipe(Effect.provideService(SessionFamilyStorage, storage));
                 yield* agent.promptAndWait({
                   sessionId: request.sessionId,
-                  text: `Automatic landing repair is not finished: ${problem}\n\nFinish the repair, commit, rerun task-scoped checks if the code changed, then call worktrees.reportReadiness {readyToMerge: true, taskCompleted: true, validationPassed: true}; Cake records the current HEAD. Do not call worktrees.merge, resolve sessions, or change Auto-merge. This is the only reminder: if readiness is still missing or invalid when this turn ends, automatic landing stops. If you cannot finish the repair, say so instead of reporting readiness.`,
+                  text: cleanRebase
+                    ? `${label} is not finished: ${problem}\n\nFinish task-scoped checks against the final HEAD, then call worktrees.reportReadiness {readyToMerge: true, taskCompleted: true, validationPassed: true}. No new commit is needed unless code changes are required. Do not call worktrees.merge, resolve sessions, or change Auto-merge. This is the only reminder: if readiness is still missing or invalid when this turn ends, automatic landing stops. Report any validation blocker instead of reporting readiness.`
+                    : `Automatic landing repair is not finished: ${problem}\n\nFinish the repair, commit, rerun task-scoped checks if the code changed, then call worktrees.reportReadiness {readyToMerge: true, taskCompleted: true, validationPassed: true}; Cake records the current HEAD. Do not call worktrees.merge, resolve sessions, or change Auto-merge. This is the only reminder: if readiness is still missing or invalid when this turn ends, automatic landing stops. If you cannot finish the repair, say so instead of reporting readiness.`,
                 });
-                problem = yield* repairProblem(request).pipe(
+                problem = yield* validationProblem(request, cleanRebase).pipe(
                   Effect.provideService(ManagedWorktrees, worktrees),
                   Effect.provideService(SessionFamilyStorage, storage),
                 );
               }
               if (problem)
                 return yield* new WorktreeLandingError({
-                  operation: "repair",
+                  operation,
                   message: `${
                     outcome === "complete"
-                      ? "Automatic repair stopped after one reminder"
+                      ? `${label} stopped after one reminder`
                       : outcome
-                        ? `Automatic repair turn ${outcome === "aborted" ? "was stopped" : "failed"}`
-                        : "Automatic repair turn ended with an unknown outcome"
+                        ? `${label} turn ${outcome === "aborted" ? "was stopped" : "failed"}`
+                        : `${label} turn ended with an unknown outcome`
                   } without fresh validated completion: ${problem} No retry or resolution occurred.`,
                 });
             }).pipe(
               Effect.mapError(
-                (error) =>
-                  new WorktreeLandingError({ operation: "repair", message: error.message }),
+                (error) => new WorktreeLandingError({ operation, message: error.message }),
               ),
               Effect.tapError((error) =>
                 landings.revokeReadiness(request.workspacePath, request.id).pipe(
                   Effect.provideService(SessionFamilyStorage, storage),
                   Effect.andThen(finish(request, "failed", error.message)),
                   Effect.mapError(
-                    (failure) =>
-                      new WorktreeLandingError({ operation: "repair", message: failure.message }),
+                    (failure) => new WorktreeLandingError({ operation, message: failure.message }),
                   ),
                 ),
               ),
-            ),
+            );
+          },
           onLanded: Effect.gen(function* () {
             // Project Chat outlives source-session resolution. Its existing binding owns
             // notification delivery; never broadcast to other projects/windows or replay.

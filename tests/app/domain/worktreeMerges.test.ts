@@ -255,6 +255,41 @@ describe("WorktreeMerges.merge", () => {
     }).pipe(Effect.scoped, Effect.provide(layer(harness)));
   });
 
+  it.effect("reports clean-rebase validation as owner work, not conflict repair", () => {
+    const harness: Harness = {
+      status: {},
+      prompts: [],
+      land: () => Effect.succeed({ outcome: "revalidation-required", commit: "rebased" }),
+    };
+    return Effect.gen(function* () {
+      yield* worktreeLandings.start({
+        operationId: "automatic",
+        workspacePath,
+        sessionId: "owner",
+        strategy: "preserve",
+        allowDirtyTarget: false,
+        commitBeforeLanding: false,
+        automatic: {
+          requestId: "ready",
+          commit: "validated",
+          authorize: Effect.void,
+          onLanded: Effect.void,
+          revalidate: () => Effect.never,
+        },
+      });
+      const report = yield* merge("owner");
+      expect(report).toMatchObject({
+        outcome: "awaiting-agent",
+        phase: "validating",
+        pauseReason: "clean-rebase",
+      });
+      expect(report.nextStep).toContain("revalidate your cleanly rebased HEAD");
+      expect(report.nextStep).not.toContain("conflict");
+      expect(report).not.toHaveProperty("conflictFiles");
+      expect(harness.prompts).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+
   it.effect("reports a stalled landing and retries it on the next merge call", () => {
     const harness: Harness = {
       status: {},

@@ -543,7 +543,11 @@ describe("WorktreeLandings", () => {
       const events: string[] = [];
       return Effect.gen(function* () {
         const inspected = yield* worktreeLandings.inspect({ workspacePath, sessionId: "owner" });
-        expect(inspected.operation).toMatchObject({ automatic: true, phase: "stalled" });
+        expect(inspected.operation).toMatchObject({
+          automatic: true,
+          phase: "stalled",
+          pauseReason: rebasing ? "conflict" : "clean-rebase",
+        });
         expect(events).toEqual([]);
         const error = yield* worktreeLandings
           .retry({ workspacePath, sessionId: "owner" })
