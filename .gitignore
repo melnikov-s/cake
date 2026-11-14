@@ -1,4 +1,6 @@
 node_modules
+.r-state-tree*-inspector.json
+.r-state-tree*-inspector.json.*
 .pnpm-store/
 dist/
 out/

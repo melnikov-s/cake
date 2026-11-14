@@ -117,7 +117,7 @@ function setup(
       sessionSummary({ sessionId, projectPath: "/project" }),
     ),
     flushWindowState: async () => {
-      snapshots.push(toSnapshot(fixture.root));
+      snapshots.push(toSnapshot(fixture.root) ?? {});
       await options.save?.();
     },
     client: {
@@ -269,7 +269,7 @@ it("uses a persisted composer snapshot without replacing newer in-memory destina
   let snapshot: StoreSnapshot;
   {
     using original = setup();
-    snapshot = toSnapshot(original.root);
+    snapshot = toSnapshot(original.root) ?? {};
   }
   using fixture = setup({ snapshot });
   await fixture.user.type(fixture.input("Destination"), " plus live edits");

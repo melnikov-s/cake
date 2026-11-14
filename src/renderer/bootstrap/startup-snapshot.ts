@@ -4,20 +4,21 @@ import { migrateNavigation } from "../persistence/migrate-navigation";
 import { migrateWorkspaceSidebarWidths } from "../persistence/migrate-workspace-sidebar-widths";
 
 /** Startup policy, not a migration: retain conversation state, never restore a destination. */
-export function startupSnapshot(saved: StoreSnapshot): StoreSnapshot {
-  const snapshot = migrateWorkspaceSidebarWidths(migrateNavigation(saved));
-  const shell = snapshot.children.appShellStore;
-  const collection = snapshot.children.cakeChatCollectionStore;
-  const navigator = snapshot.children.workspaceNavigatorStore;
+export function startupSnapshot(saved: StoreSnapshot | undefined): StoreSnapshot {
+  const snapshot = migrateWorkspaceSidebarWidths(migrateNavigation(saved ?? {}));
+  const shell = snapshot.children?.appShellStore;
+  const collection = snapshot.children?.cakeChatCollectionStore;
+  const navigator = snapshot.children?.workspaceNavigatorStore;
   // These are singular @child Stores, not keyed child arrays.
   if (Array.isArray(shell) || Array.isArray(collection) || Array.isArray(navigator))
     throw new Error("Invalid startup navigation snapshot");
-  const layout = collection?.children.sessionLayoutStore;
+  const layout = collection?.children?.sessionLayoutStore;
   if (Array.isArray(layout)) throw new Error("Invalid Cake Chat layout snapshot");
   const shellState = { ...shell?.state };
   delete shellState.workspace;
   delete shellState.coveringSurface;
-  const history = Array.isArray(layout?.state.history) ? [...layout.state.history] : [];
+  const retainedHistory = layout?.state?.history;
+  const history = Array.isArray(retainedHistory) ? [...retainedHistory] : [];
   if (history.at(-1) !== CAKE_CHAT_SESSION_ID) history.push(CAKE_CHAT_SESSION_ID);
   return {
     ...snapshot,

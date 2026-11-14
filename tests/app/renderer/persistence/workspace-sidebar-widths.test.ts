@@ -38,10 +38,10 @@ describe("per-presentation sidebar preferences", () => {
     navigator.setWidth("vscode", 620);
     navigator.setWidth("browser", 480);
     const saved = JSON.parse(JSON.stringify(toSnapshot(f.root))) as StoreSnapshot;
-    expect(saved.children.workspaceNavigatorStore).toMatchObject({
+    expect(saved?.children?.workspaceNavigatorStore).toMatchObject({
       state: { chatWidth: 380, vscodeWidth: 620, browserWidth: 480 },
     });
-    expect(saved.children.workspaceNavigatorStore).not.toHaveProperty("state.width");
+    expect(saved?.children?.workspaceNavigatorStore).not.toHaveProperty("state.width");
     using restored = createRendererStoreFixture({ snapshot: saved });
     const hydrated = restored.root.workspaceNavigatorStore;
     expect(modes.map((mode) => hydrated.widthFor(mode))).toEqual([380, 620, 480]);
@@ -72,10 +72,10 @@ describe("per-presentation sidebar preferences", () => {
 
   it.each([false, true])("migrates browser-host snapshots too (phone: %s)", (phone) => {
     const migrated = browserInitialSnapshot(snapshot({ width: 416 }), phone);
-    expect(migrated.children.workspaceNavigatorStore).toMatchObject({
+    expect(migrated?.children?.workspaceNavigatorStore).toMatchObject({
       state: { chatWidth: 416, vscodeWidth: 416, browserWidth: 416 },
     });
-    expect(migrated.children.workspaceNavigatorStore).not.toHaveProperty("state.width");
+    expect(migrated?.children?.workspaceNavigatorStore).not.toHaveProperty("state.width");
   });
 
   it("keeps existing per-mode widths and unrelated state; migration is immutable and idempotent", () => {
@@ -89,7 +89,7 @@ describe("per-presentation sidebar preferences", () => {
     });
     const before = structuredClone(saved);
     const migrated = migrateWorkspaceSidebarWidths(saved);
-    expect(migrated.children.workspaceNavigatorStore).toEqual({
+    expect(migrated?.children?.workspaceNavigatorStore).toEqual({
       state: {
         chatWidth: 400,
         vscodeWidth: 512,

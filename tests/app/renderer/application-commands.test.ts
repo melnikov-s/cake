@@ -114,10 +114,10 @@ describe("Application command registry", () => {
     });
     expect(root.appShellStore.surface).toBe("cake-chat");
     const snapshot = toSnapshot(root);
-    expect(snapshot.children?.appShellStore).toMatchObject({
+    expect(snapshot?.children?.appShellStore).toMatchObject({
       state: { navigationVersion: 4 },
     });
-    expect(snapshot.children?.appShellStore).not.toHaveProperty("state.workspace");
-    expect(snapshot.children?.navigationStore).toMatchObject({ state: {} });
+    expect(snapshot?.children?.appShellStore).not.toHaveProperty("state.workspace");
+    expect(snapshot?.children?.navigationStore).toBeUndefined();
   });
 });

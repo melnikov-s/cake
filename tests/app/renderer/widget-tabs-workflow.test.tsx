@@ -375,7 +375,7 @@ it("restores the picked widget after reload and falls back when it no longer exi
     const f = setup();
     using fixture = f.fixture;
     act(() => fixture.root.workspaceNavigatorStore.showWidget("second"));
-    saved = toSnapshot(fixture.root);
+    saved = toSnapshot(fixture.root) ?? {};
   }
   {
     const f = setup(saved);
@@ -405,7 +405,7 @@ it("restores the picked widget after reload and falls back when it no longer exi
   }
   {
     // A stale saved id from a deleted widget renders the default state without errors.
-    const navigator = saved.children.workspaceNavigatorStore as StoreSnapshot;
+    const navigator = saved.children?.workspaceNavigatorStore as StoreSnapshot;
     const f = setup({
       ...saved,
       children: {

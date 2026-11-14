@@ -188,9 +188,9 @@ describe("unconditional global startup navigation", () => {
 
   it("missing global catalog entry never selects another pending chat or sends its input", async () => {
     const saved = savedDestination(sideChatId);
-    const collection = saved.children.cakeChatCollectionStore;
+    const collection = saved.children?.cakeChatCollectionStore;
     if (!collection || Array.isArray(collection)) throw new Error("Expected collection");
-    collection.children.pendingSessions = node({
+    (collection.children ??= {}).pendingSessions = node({
       conversationIds: [sideChatId],
       pendingSessionIds: [sideChatId],
     });
@@ -207,7 +207,7 @@ describe("unconditional global startup navigation", () => {
     expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(CAKE_CHAT_SESSION_ID);
     expect(prompt).not.toHaveBeenCalled();
     expect(
-      toSnapshot(fixture.root.cakeChatCollectionStore.pendingSessions).state.pendingSessionIds,
+      toSnapshot(fixture.root.cakeChatCollectionStore.pendingSessions)?.state?.pendingSessionIds,
     ).toContain(sideChatId);
   });
 
@@ -215,13 +215,13 @@ describe("unconditional global startup navigation", () => {
     const saved = savedDestination(sideChatId);
     const before = structuredClone(saved);
     const result = startupSnapshot(saved);
-    expect(result.children.sessionRegistry).toEqual(saved.children.sessionRegistry);
-    expect(result.children.sessionLayoutStore).toEqual(saved.children.sessionLayoutStore);
-    const collection = result.children.cakeChatCollectionStore;
-    const original = saved.children.cakeChatCollectionStore;
+    expect(result.children?.sessionRegistry).toEqual(saved.children?.sessionRegistry);
+    expect(result.children?.sessionLayoutStore).toEqual(saved.children?.sessionLayoutStore);
+    const collection = result.children?.cakeChatCollectionStore;
+    const original = saved.children?.cakeChatCollectionStore;
     if (!collection || Array.isArray(collection) || !original || Array.isArray(original))
       throw new Error("Expected collection");
-    expect(collection.children.registry).toEqual(original.children.registry);
+    expect(collection.children?.registry).toEqual(original.children?.registry);
     expect(startupSnapshot(result)).toEqual(result);
     expect(saved).toEqual(before);
   });

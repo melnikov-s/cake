@@ -53,7 +53,7 @@ export class WindowStatePersistence implements Disposable {
     // Store snapshots are plain data, but may contain undefined and non-finite numbers.
     // Keep JSON normalization and capture isolation before queueing. Parsing our own JSON
     // needs no further tree validation here; the RPC and storage boundaries still validate.
-    const snapshot: StoreSnapshot & JsonValue = JSON.parse(JSON.stringify(toSnapshot(root)));
+    const snapshot: StoreSnapshot & JsonValue = JSON.parse(JSON.stringify(toSnapshot(root) ?? {}));
     if (root instanceof RootStore)
       withoutSessionForkPreviews(
         snapshot,

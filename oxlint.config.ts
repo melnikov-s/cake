@@ -15,8 +15,16 @@ export default defineConfig({
     ".windsurf/**",
     "tools/oxlint/anti-slop/**",
   ],
-  jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }],
+  jsPlugins: [
+    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+    { name: "r-state-tree", specifier: "r-state-tree/lint" },
+  ],
   rules: {
+    "r-state-tree/no-computed-mutation": "error",
+    "r-state-tree/no-direct-construction": "error",
+    "r-state-tree/no-plain-collection-mutation": "error",
+    "r-state-tree/no-observable-collection-replacement": "error",
+    "r-state-tree/no-discarded-child-read": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",

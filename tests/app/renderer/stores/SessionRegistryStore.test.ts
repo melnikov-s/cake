@@ -111,7 +111,7 @@ describe("Session Registry identity and observation integration", () => {
       using fixture = registryFixture();
       fixture.root.sessionRegistry.load("session-1", "/project");
       fixture.root.sessionRegistry.load("session-2", "/project");
-      snapshot = toSnapshot(fixture.root.sessionRegistry);
+      snapshot = toSnapshot(fixture.root.sessionRegistry) ?? {};
     }
     using restored = registryFixture(snapshot);
     const registry = restored.root.sessionRegistry;

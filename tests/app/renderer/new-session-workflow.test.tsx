@@ -215,7 +215,7 @@ describe("New session destination workflow", () => {
       await fixture.user.click(screen.getByRole("button", { name: "New session" }));
       await fixture.user.click(screen.getByRole("option", { name: /Beta/ }));
       await screen.findByRole("combobox", { name: "Message" });
-      snapshot = fixture.snapshot();
+      snapshot = fixture.snapshot() ?? {};
     }
     {
       using fixture = renderPicker({ snapshot });

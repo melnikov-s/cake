@@ -90,7 +90,7 @@ it("hides without a reserved layout row, persists off, and restores immediately 
       screen.getByTestId("conversation").closest('[data-slot="conversation-identity-layout"]'),
     ).toBeNull();
     expect(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).toBeDefined();
-    saved = toSnapshot(f.root);
+    saved = toSnapshot(f.root) ?? {};
   }
   using restored = renderIdentity(saved);
   const toggle = screen.getByRole("switch", { name: "Conversation identity tab" });

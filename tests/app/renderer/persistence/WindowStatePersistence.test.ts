@@ -11,6 +11,27 @@ import { defaultSpeechInputPreferences } from "../../../../src/utils/speech-inpu
 import { fakeSavedDrafts } from "../fakes/saved-drafts";
 import { fixtureTimestamp } from "../fixtures/catalog-fixtures";
 
+it("accepts compact 0.13 snapshots, including empty keyed children and null array slots", () => {
+  const compact = {
+    children: { layout: { state: { selected: "one" } }, items: [null, { key: "empty" }] },
+  };
+  expect(Schema.decodeUnknownSync(storeSnapshotSchema)(compact)).toEqual(compact);
+  expect(Schema.decodeUnknownSync(storeSnapshotSchema)({})).toEqual({});
+});
+
+it("persists an empty Store snapshot as an empty JSON object", async () => {
+  using root = mount(createStore(Store));
+  const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);
+  using persistence = new WindowStatePersistence(
+    createTestClient({ windowState: { save } }),
+    () => {},
+  );
+  persistence.observe(root);
+  expect(toSnapshot(root)).toBeUndefined();
+  await persistence.flush();
+  expect(save).toHaveBeenCalledWith({});
+});
+
 const workspace = "/projects/example";
 const sessionId = "00000000-0000-4000-8000-000000000001";
 const savedId = "00000000-0000-4000-8000-000000000002";
@@ -123,7 +144,7 @@ describe("WindowStatePersistence", () => {
         },
       },
     });
-    expect(toSnapshot(h.root).children.projectCatalogStore).toMatchObject({
+    expect(toSnapshot(h.root)?.children?.projectCatalogStore).toMatchObject({
       state: { projectOrder: [workspace] },
     });
     expect(h.save).not.toHaveBeenCalled();
@@ -402,7 +423,6 @@ describe("WindowStatePersistence", () => {
     await persistence.flush();
     expect(save).toHaveBeenCalledExactlyOnceWith({
       state: { value: { numbers: [null, null, null, null], date: "2026-01-01T00:00:00.000Z" } },
-      children: {},
     });
   });
 });

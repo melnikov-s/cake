@@ -56,7 +56,7 @@ function renderAppearanceSettings(snapshot?: StoreSnapshot, customIcon = false) 
   return {
     user: userEvent.setup(),
     container: view.container,
-    savedSnapshot: () => toSnapshot(root),
+    savedSnapshot: () => toSnapshot(root) ?? {},
     [Symbol.dispose]() {
       view.unmount();
       rootFixture[Symbol.dispose]();

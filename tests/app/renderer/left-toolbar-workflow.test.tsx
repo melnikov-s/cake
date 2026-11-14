@@ -74,8 +74,8 @@ describe("left toolbar settings", () => {
     using reloaded = createRendererStoreFixture();
     reloaded.root.settingsStore.applyApplicationState(3, JSON.parse(JSON.stringify(state)));
     expect(reloaded.root.settingsStore.appearance.leftToolbar.preferences.layout).toBe("slim");
-    expect(toSnapshot(a.root.projectRailStore).state).toEqual({});
-    expect(toSnapshot(store).state).toEqual({});
+    expect(toSnapshot(a.root.projectRailStore)).toBeUndefined();
+    expect(toSnapshot(store)).toBeUndefined();
     await act(async () => {
       fireEvent.click(screen.getByRole("switch", { name: "Auto-hide" }));
     });

@@ -23,13 +23,13 @@ const legacyNavigationSchema = Schema.Struct({
 
 /** Root children and the collection's layout are singular Store children. */
 function child(snapshot: StoreSnapshot, name: string): StoreSnapshot | undefined {
-  const value = snapshot.children[name];
+  const value = snapshot.children?.[name];
   return value && !Array.isArray(value) ? value : undefined;
 }
 
 function seedLayout(snapshot: StoreSnapshot | undefined, sessionId: string): StoreSnapshot {
   // An existing layout wins over the old, independently writable shell identity.
-  if (snapshot?.state.layout) return snapshot;
+  if (snapshot?.state?.layout) return snapshot;
   const paneId = crypto.randomUUID();
   return {
     state: {
@@ -49,15 +49,15 @@ function migrateNavigationV2(snapshot: StoreSnapshot): StoreSnapshot {
   const shell = child(snapshot, "appShellStore");
   if (
     !shell ||
-    shell.state.navigationVersion === 2 ||
-    shell.state.navigationVersion === 3 ||
-    shell.state.navigationVersion === 4
+    shell.state?.navigationVersion === 2 ||
+    shell.state?.navigationVersion === 3 ||
+    shell.state?.navigationVersion === 4
   )
     return snapshot;
   // Startup-only decoding: malformed legacy navigation fails restoration rather than
   // silently choosing a different conversation. The rest of the Store snapshot is unchanged.
   const { selection, activeConversation } = Schema.decodeUnknownSync(legacyNavigationSchema)(
-    shell.state,
+    shell.state ?? {},
   );
   const state = { ...shell.state };
   delete state.selection;

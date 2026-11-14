@@ -2,7 +2,7 @@ import type { StoreSnapshot } from "r-state-tree";
 import type { WindowConversationSelection } from "../stores/AppShellStore";
 
 function child(snapshot: StoreSnapshot, name: string) {
-  const value = snapshot.children[name];
+  const value = snapshot.children?.[name];
   return value && !Array.isArray(value) ? value : undefined;
 }
 
@@ -17,23 +17,25 @@ export function withoutSessionForkPreviews(
   const navigation = child(snapshot, "appShellStore");
   const panes = child(snapshot, "sessionLayoutStore");
   if (registry) {
-    const targets = registry.state.targets;
-    if (Array.isArray(targets))
+    const targets = registry.state?.targets;
+    if (registry.state && Array.isArray(targets))
       registry.state.targets = targets.filter((target) => !sources.has(target.sessionId));
-    const sessions = registry.children.sessions;
-    if (Array.isArray(sessions))
-      registry.children.sessions = sessions.filter((session) => !sources.has(String(session.key)));
+    const sessions = registry.children?.sessions;
+    if (registry.children && Array.isArray(sessions))
+      registry.children.sessions = sessions.filter(
+        (session) => !session || !sources.has(String(session.key)),
+      );
   }
-  if (navigation && Array.isArray(navigation.state.sessionHistory))
+  if (navigation?.state && Array.isArray(navigation.state.sessionHistory))
     navigation.state.sessionHistory = navigation.state.sessionHistory.map((entry) => ({
       ...entry,
       sessionId: sources.get(entry.sessionId) ?? entry.sessionId,
     }));
   const capture = child(snapshot, "screenCaptureStore");
   // SAFETY: captured directly from the local ScreenCaptureAttachmentStore, not loaded window data.
-  const lastTarget = capture?.state.lastTarget as WindowConversationSelection | undefined;
-  if (capture && lastTarget?.kind === "project-session" && sources.has(lastTarget.sessionId))
+  const lastTarget = capture?.state?.lastTarget as WindowConversationSelection | undefined;
+  if (capture?.state && lastTarget?.kind === "project-session" && sources.has(lastTarget.sessionId))
     capture.state.lastTarget = { ...lastTarget, sessionId: sources.get(lastTarget.sessionId) };
-  if (panes) panes.state.history = history.map((id) => sources.get(id) ?? id);
+  if (panes) panes.state = { ...panes.state, history: history.map((id) => sources.get(id) ?? id) };
   return snapshot;
 }

@@ -53,7 +53,7 @@ describe("Project pending-session authority integration", () => {
     const conversation = pending.conversation("one");
     pending.prepareStaged("/project", "two");
     pending.trackFamilyParent("one", "family");
-    const phases = () => toSnapshot(pending).state.sessionsById;
+    const phases = () => toSnapshot(pending)?.state?.sessionsById;
     expect(phases()).toEqual({ one: { phase: "staged" }, two: { phase: "staged" } });
     pending.projectSubmission("one", "First turn");
     expect(phases()).toEqual({ one: { phase: "submitting" }, two: { phase: "staged" } });

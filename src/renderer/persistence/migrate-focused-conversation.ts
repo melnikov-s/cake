@@ -6,14 +6,14 @@ export type PersistedSplitLayout =
   | { kind: "split"; first: PersistedSplitLayout; second: PersistedSplitLayout };
 
 function child(snapshot: StoreSnapshot, name: string): StoreSnapshot | undefined {
-  const value = snapshot.children[name];
+  const value = snapshot.children?.[name];
   return value && !Array.isArray(value) ? value : undefined;
 }
 
 function collapse(snapshot: StoreSnapshot | undefined): StoreSnapshot | undefined {
   if (!snapshot) return undefined;
   // SAFETY: legacy layout fields are part of the persisted pre-v4 Store snapshot.
-  const layout = snapshot.state.layout as PersistedSplitLayout | undefined;
+  const layout = snapshot.state?.layout as PersistedSplitLayout | undefined;
   const panes: Extract<PersistedSplitLayout, { kind: "pane" }>[] = [];
   const visit = (node: PersistedSplitLayout) => {
     if (node.kind === "pane") panes.push(node);
@@ -23,7 +23,7 @@ function collapse(snapshot: StoreSnapshot | undefined): StoreSnapshot | undefine
     }
   };
   if (layout) visit(layout);
-  const focused = panes.find((pane) => pane.paneId === snapshot.state.focusedPaneId) ?? panes[0];
+  const focused = panes.find((pane) => pane.paneId === snapshot.state?.focusedPaneId) ?? panes[0];
   const retained = panes.filter((pane) => pane !== focused).flatMap((pane) => pane.history);
   const history = [...retained, ...(focused?.history ?? [])];
   return {
@@ -35,7 +35,7 @@ function collapse(snapshot: StoreSnapshot | undefined): StoreSnapshot | undefine
 /** v3 -> v4: retain conversation visits, choosing the old focused pane, discard split geometry. */
 export function migrateFocusedConversation(snapshot: StoreSnapshot): StoreSnapshot {
   const shell = child(snapshot, "appShellStore");
-  if (!shell || shell.state.navigationVersion === 4) return snapshot;
+  if (!shell || shell.state?.navigationVersion === 4) return snapshot;
   const children = { ...snapshot.children };
   const project = collapse(child(snapshot, "sessionLayoutStore"));
   if (project) children.sessionLayoutStore = project;

@@ -9,7 +9,7 @@ export function browserInitialSnapshot(
   const snapshot = startupSnapshot(saved ?? { state: {}, children: {} });
   if (!phoneLayout) return snapshot;
   // SAFETY: RootStore.sidebarStore is a singular @child Store, not a child array.
-  const sidebar = snapshot.children.sidebarStore as StoreSnapshot | undefined;
+  const sidebar = snapshot.children?.sidebarStore as StoreSnapshot | undefined;
   return {
     ...snapshot,
     children: {

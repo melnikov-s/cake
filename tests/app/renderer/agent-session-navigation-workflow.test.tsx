@@ -731,7 +731,7 @@ describe("Agent session navigation workflow", () => {
       const toggle = await openSettings(fixture);
       await fixture.user.click(toggle);
       await persistence.flush();
-      saved = toSnapshot(fixture.root);
+      saved = toSnapshot(fixture.root) ?? {};
       expect(save).toHaveBeenLastCalledWith(JSON.parse(JSON.stringify(saved)));
       expect(saved).toMatchObject({
         children: {

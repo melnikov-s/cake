@@ -123,7 +123,13 @@ export const ChatTranscript = observer(function ChatTranscript({
 }) {
   useEffect(() => store.retainTranscript(), [store]);
   useEffect(() => store.history?.retain?.(), [store]);
-  useEffect(() => () => store.transcriptInteraction.cancelResultReveal(), [store]);
+  useEffect(
+    () => () => {
+      // Retirement may dispose the Store before React runs passive unmount cleanup.
+      if (!store.signal.aborted) store.transcriptInteraction.cancelResultReveal();
+    },
+    [store],
+  );
   useEffect(
     () => behavior.inlineArtifactPreviews?.observeConversation(store.id, () => store.parts),
     [behavior.inlineArtifactPreviews, store],

@@ -1,3 +1,4 @@
+/// <reference types="r-state-tree/devtools/vite/client" />
 import type { ElectronRpcTransport } from "../ipc/transport/ElectronRpcTransport";
 
 declare global {

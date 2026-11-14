@@ -134,13 +134,18 @@ const rootStore = mountRootStore(
   () => connection.connected && !connection.uncertainOperation,
   true,
 );
+if (import.meta.hot && !import.meta.env.SSR && import.meta.env.MODE !== "test")
+  void import("./dev/inspector").then(({ registerRoot }) => {
+    registerRoot("BrowserConnection", connection, connection.signal);
+    registerRoot("BrowserMenus", menus, menus.signal);
+  });
 function persist() {
   try {
     // Browser navigation and drafts are tab-local; never write the desktop window record.
     sessionStorage.setItem(
       snapshotKey,
       JSON.stringify(
-        extractSavedDrafts(JSON.parse(JSON.stringify(toSnapshot(rootStore)))).windowSnapshot,
+        extractSavedDrafts(JSON.parse(JSON.stringify(toSnapshot(rootStore) ?? {}))).windowSnapshot,
       ),
     );
   } catch (error) {

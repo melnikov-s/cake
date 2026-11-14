@@ -2,8 +2,10 @@ import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { rStateTreeInspector } from "r-state-tree/devtools/vite";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
+import { standardDecorators } from "./scripts/vite-standard-decorators";
 import { buildIdentity } from "./scripts/build-identity.mjs";
 import { buildNativeAssets } from "./scripts/native-build-mode.mjs";
 
@@ -66,8 +68,8 @@ export default defineConfig({
   renderer: {
     define: buildDefine,
     root: resolve(import.meta.dirname, "src/renderer"),
-    server: { hmr: !manualReload },
-    esbuild: {
+    server: { host: "127.0.0.1", hmr: !manualReload },
+    oxc: {
       target: "es2022",
     },
     resolve: {
@@ -77,7 +79,14 @@ export default defineConfig({
     },
     // Vite's esbuild CSS optimizer supports native ::highlight(); Tailwind's
     // redundant Lightning CSS pass reports this valid selector as unsupported.
-    plugins: [react(), tailwindcss({ optimize: false })],
+    plugins: [
+      react(),
+      tailwindcss({ optimize: false }),
+      rStateTreeInspector({
+        relayFile: resolve(import.meta.dirname, ".r-state-tree-inspector.json"),
+      }),
+      standardDecorators(),
+    ],
     worker: { format: "es" },
     build: {
       // Keep third-party editor assets as local files under Cake's intentionally narrow CSP.

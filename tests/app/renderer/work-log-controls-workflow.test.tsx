@@ -44,7 +44,7 @@ function renderToolbar(
   );
   return {
     user: userEvent.setup(),
-    savedSnapshot: () => toSnapshot(fixture.root),
+    savedSnapshot: () => toSnapshot(fixture.root) ?? {},
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();

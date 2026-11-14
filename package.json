@@ -89,7 +89,7 @@
     "oxc-parser": "0.157.0",
     "pele": "1.9.0",
     "qrcode": "^1.5.4",
-    "r-state-tree": "0.10.2",
+    "r-state-tree": "0.13.0",
     "react": "19.2.8",
     "react-day-picker": "9.14.0",
     "react-dom": "19.2.8",
@@ -100,11 +100,12 @@
     "tailwind-merge": "3.6.0",
     "unified": "11.0.5",
     "use-stick-to-bottom": "^1.1.6",
-    "vite": "7.3.6"
+    "vite": "8.3.4"
   },
   "devDependencies": {
     "@effect/tsgo": "0.67.1",
     "@effect/vitest": "4.1.2",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@oxlint/plugins": "1.78.0",
     "@playwright/test": "1.62.1",
     "@testing-library/react": "^16.3.3",
@@ -115,14 +116,15 @@
     "electron": "45.2.1",
     "electron-builder": "26.18.0",
     "electron-devtools-installer": "4.0.0",
-    "electron-vite": "5.0.0",
+    "electron-vite": "6.0.0",
     "jsdom": "^26.1.0",
     "knip": "^6.32.3",
     "oxfmt": "0.64.0",
     "oxlint": "1.78.0",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "ws": "8.22.2"
   },
   "engines": {
     "node": ">=22.19.0"

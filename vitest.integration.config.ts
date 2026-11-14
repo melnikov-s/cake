@@ -1,8 +1,10 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
+import { standardDecorators } from "./scripts/vite-standard-decorators";
 import QuietReporter from "./scripts/vitest-quiet-reporter";
 
 export default defineConfig({
+  plugins: [standardDecorators()],
   resolve: {
     alias: {
       "@": resolve(import.meta.dirname, "src/renderer"),

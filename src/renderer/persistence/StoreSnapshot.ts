@@ -6,14 +6,16 @@ const storeChildSnapshotSchema: Schema.Codec<StoreSnapshot & { key?: string | nu
   Schema.suspend(() =>
     Schema.Struct({
       key: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])),
-      state: Schema.Record(Schema.String, jsonValueSchema),
-      children: Schema.Record(
-        Schema.String,
-        Schema.Union([
-          storeChildSnapshotSchema,
-          Schema.mutable(Schema.Array(storeChildSnapshotSchema)),
-          Schema.Null,
-        ]),
+      state: Schema.optionalKey(Schema.Record(Schema.String, jsonValueSchema)),
+      children: Schema.optionalKey(
+        Schema.Record(
+          Schema.String,
+          Schema.Union([
+            storeChildSnapshotSchema,
+            Schema.mutable(Schema.Array(Schema.NullOr(storeChildSnapshotSchema))),
+            Schema.Null,
+          ]),
+        ),
       ),
     }),
   );

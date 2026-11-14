@@ -9,7 +9,7 @@ import { migratePendingSessions } from "../persistence/migrate-pending-sessions"
 
 export function mountRootStore(
   client: Client,
-  snapshot: StoreSnapshot,
+  snapshot: StoreSnapshot | undefined,
   flushWindowState: () => Promise<void>,
   projection: RootProjection,
   desktopConnection?: DesktopConnectionStore,
@@ -25,8 +25,13 @@ export function mountRootStore(
       projection,
       flushWindowState,
     }),
-    { snapshot: startupSnapshot(migratePendingSessions(snapshot)) },
+    { snapshot: startupSnapshot(migratePendingSessions(snapshot ?? {})) },
   );
+  if (import.meta.hot && !import.meta.env.SSR && import.meta.env.MODE !== "test")
+    void import("../dev/inspector").then(({ registerRoot }) => {
+      registerRoot("RootStore", root, root.signal);
+      registerRoot("RootProjection", projection, root.signal);
+    });
   // Presentation is session-local; a previously open editor/browser must not cover startup chat.
   root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID).showPresentation("normal");
   return root;

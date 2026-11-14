@@ -625,7 +625,7 @@ describe("Dictation writing-field workflow", () => {
       const phrase = screen.getByRole("textbox", { name: "Submit phrase" });
       expect((phrase as HTMLInputElement).value).toBe("send it");
       fireEvent.change(phrase, { target: { value: "over and out" } });
-      saved = toSnapshot(f.root);
+      saved = toSnapshot(f.root) ?? {};
       cleanup();
     }
     using restored = renderDictation({ snapshot: saved });
@@ -1801,14 +1801,13 @@ describe("Dictation writing-field workflow", () => {
       await persistence.flush();
       saved = toSnapshot(fixture.root);
       expect(save).toHaveBeenLastCalledWith(saved);
-      expect(saved.children.dictationStore).toEqual({
+      expect(saved?.children?.dictationStore).toEqual({
         state: {
           enabled: true,
           deviceId: "usb-mic",
           textProcessingMode: "raw",
           preventAutomaticRefocus: true,
         },
-        children: { vocabulary: { state: {}, children: {} } },
       });
     }
     {
@@ -3295,7 +3294,7 @@ describe("Dictation writing-field workflow", () => {
       screen.getByRole("combobox", { name: "Text processing" }),
       "raw",
     );
-    expect(toSnapshot(fixture.root).children.dictationStore).toMatchObject({
+    expect(toSnapshot(fixture.root)?.children?.dictationStore).toMatchObject({
       state: { textProcessingMode: "raw" },
     });
     await fixture.user.click(mode());

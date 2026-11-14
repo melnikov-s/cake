@@ -51,16 +51,16 @@ describe("browser presentation snapshot boundary", () => {
         };
         const before = structuredClone(saved);
         const phone = browserInitialSnapshot(saved, true);
-        expect(phone.children.sessionLayoutStore).toEqual({
+        expect(phone?.children?.sessionLayoutStore).toEqual({
           state: { history: ["previous"], historyCursor: 0 },
           children: {},
         });
-        expect(phone.children.sidebarStore).toMatchObject({
+        expect(phone?.children?.sidebarStore).toMatchObject({
           state: { hidden: true, width: 330, navigationMode: "activity" },
         });
         const desktop = browserInitialSnapshot(saved, false);
-        expect(desktop.children.sidebarStore).toEqual(saved.children.sidebarStore);
-        expect(desktop.children.cakeChatCollectionStore).toMatchObject({
+        expect(desktop?.children?.sidebarStore).toEqual(saved?.children?.sidebarStore);
+        expect(desktop?.children?.cakeChatCollectionStore).toMatchObject({
           children: {
             sessionLayoutStore: { state: { history: [CAKE_CHAT_SESSION_ID], historyCursor: 0 } },
           },

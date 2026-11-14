@@ -52,7 +52,7 @@ describe("Drop-down Cake Chat settings workflow", () => {
         ),
       );
       expect(view.recorder().textContent).toBe("Not assigned");
-      persisted = toSnapshot(view.fixture.root);
+      persisted = toSnapshot(view.fixture.root) ?? {};
     }
 
     // A new window restores the preference from the window snapshot and hands it to main.
@@ -79,7 +79,7 @@ describe("Drop-down Cake Chat settings workflow", () => {
         expect.anything(),
       ),
     );
-    expect(toSnapshot(restored.fixture.root.settingsStore.cakeChatOverlay).state).toMatchObject({
+    expect(toSnapshot(restored.fixture.root.settingsStore.cakeChatOverlay)?.state).toMatchObject({
       captureSelectedText: false,
     });
   });

@@ -225,7 +225,7 @@ describe("App shell navigation workflow", () => {
         }
         if (cover === "settings") await fixture.user.click(settings());
         else await openLibrary(fixture.user);
-        saved = toSnapshot(fixture.root);
+        saved = toSnapshot(fixture.root) ?? {};
       }
       using restored = renderAppShellNavigation({}, { snapshot: saved });
       await expectCakeChat();

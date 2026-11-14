@@ -66,6 +66,10 @@ else if (new URLSearchParams(window.location.search).get("screenCapture") === "1
       copy: (image, annotationText) => client.electron.copyScreenCapture({ image, annotationText }),
     }),
   );
+  if (import.meta.hot && !import.meta.env.SSR && import.meta.env.MODE !== "test")
+    void import("./dev/inspector").then(({ registerRoot }) =>
+      registerRoot("ScreenCaptureOverlay", store, store.signal),
+    );
   const stopDictation = observeDictation(runtime, store.dictationStore);
   root.render(createElement(ScreenCaptureOverlay, { store }));
   void store.initialize();
@@ -110,6 +114,10 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>, overlay: boole
       },
     }),
   );
+  if (import.meta.hot && !import.meta.env.SSR && import.meta.env.MODE !== "test")
+    void import("./dev/inspector").then(({ registerRoot }) =>
+      registerRoot("DesktopConnection", connection, connection.signal),
+    );
   if (host.kind === "remote") {
     await initialRuntime.dispose();
     runtime = makeRemoteRuntime(bridge.rpc, host.url, (connected) => {

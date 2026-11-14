@@ -108,13 +108,14 @@ describe("navigation snapshot migrations", () => {
           ? ["older", "pane-current"]
           : ["older", "pane-current", CAKE_CHAT_SESSION_ID],
       );
-      expect(toSnapshot(fixture.root).children.appShellStore).toEqual(
-        store({
+      expect(toSnapshot(fixture.root)?.children?.appShellStore).toEqual({
+        state: {
+          lastInteractedConversation: undefined,
           navigationVersion: 4,
           sessionHistory: visits,
           sessionHistoryCursor: 1,
-        }),
-      );
+        },
+      });
       expect(saved).toEqual(before);
     },
   );
@@ -138,7 +139,9 @@ describe("navigation snapshot migrations", () => {
       expect(migrateNavigation(migrated)).toBe(migrated);
       using fixture = createRendererStoreFixture({ snapshot: migrated });
       const shell = fixture.root.appShellStore;
-      expect(migrated.children.appShellStore).toMatchObject({ state: { coveringSurface: cover } });
+      expect(migrated?.children?.appShellStore).toMatchObject({
+        state: { coveringSurface: cover },
+      });
       expect(shell.selection).toEqual(active);
       expect(shell.activeConversation).toEqual(active);
       fixture.root.navigationStore.returnToWorkbench();
