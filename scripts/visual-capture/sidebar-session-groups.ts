@@ -168,7 +168,49 @@ function createScenario(
       if (variant === "mixed") {
         await expect(list.getByRole("heading", { name: "My sessions" })).toBeVisible();
         await expect(list.getByRole("heading", { name: "Delegated" })).toBeVisible();
+        const group = list.getByRole("region", { name: "Delegated", exact: true });
+        const toggle = group.getByRole("switch", { name: /^Auto-merge:/ });
+        const collapse = group.getByRole("button", { name: "Delegated", exact: true });
+        await expect(toggle).toBeVisible();
+        await expect(toggle).toHaveAttribute("aria-checked", "false");
+        await expect(
+          list.getByRole("region", { name: "My sessions", exact: true }).getByRole("switch"),
+        ).toHaveCount(0);
+        const geometry = await toggle.evaluate((element) => {
+          const row = element.closest("label")!.parentElement!;
+          const button = row.querySelector("button")!;
+          const control = element.getBoundingClientRect();
+          const bounds = row.getBoundingClientRect();
+          const disclosure = button.getBoundingClientRect();
+          return {
+            fits: row.scrollWidth <= row.clientWidth && control.right <= bounds.right,
+            rightAligned: bounds.right - control.right < 8,
+            separate: disclosure.right <= control.left,
+            sameRow:
+              Math.abs(disclosure.top + disclosure.height / 2 - control.top - control.height / 2) <
+              2,
+          };
+        });
+        expect(geometry).toEqual({ fits: true, rightAligned: true, separate: true, sameRow: true });
+        if (state === "auto-merge-on") {
+          // This isolated project has no readiness; exercise native keyboard and label activation.
+          await toggle.focus();
+          await toggle.press("Space");
+          await expect(toggle).toHaveAttribute("aria-checked", "true");
+          await expect(collapse).toHaveAttribute("aria-expanded", "true");
+          await toggle.press("Enter");
+          await expect(toggle).toHaveAttribute("aria-checked", "false");
+          await group.getByText("Auto-merge", { exact: true }).click();
+          await expect(toggle).toHaveAttribute("aria-checked", "true");
+          await expect(collapse).toHaveAttribute("aria-expanded", "true");
+          await collapse.click();
+          await expect(toggle).toBeVisible();
+          await expect(collapse).toHaveAttribute("aria-expanded", "false");
+          await collapse.click();
+          await toggle.blur();
+        }
       } else {
+        await expect(list.getByRole("switch")).toHaveCount(0);
         await expect(list.getByRole("heading", { name: "My sessions" })).toHaveCount(0);
         await expect(list.getByRole("heading", { name: "Delegated" })).toHaveCount(0);
       }
@@ -193,5 +235,5 @@ function createScenario(
 export const sidebarSessionGroupsScenarios: VisualCaptureScenario[] = [
   createScenario("delegated", ["default"]),
   createScenario("user", ["default"]),
-  createScenario("mixed", ["default", "collapsed-unread", "resolved-expanded"]),
+  createScenario("mixed", ["default", "auto-merge-on", "collapsed-unread", "resolved-expanded"]),
 ];

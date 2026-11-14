@@ -565,33 +565,36 @@ it.effect(
   },
 );
 
-it.effect("moving a delegated session to My sessions cancels its awaiting auto-merge", () => {
-  const test = fixture();
-  return Effect.gen(function* () {
-    const storage = yield* SessionFamilyStorage;
-    yield* setEnabled("/project", true);
-    expect(yield* report(target, readiness)).toEqual({ eligible: true });
-    // Still pending: a queued declaration waiting for the task turn to settle.
-    const change = yield* storage.setPurpose({
-      sessionId: "owner",
-      projectPath: "/project",
-      purpose: "user",
-    });
-    expect(change.canceledAutoMergeIds).toEqual(["turn"]);
-    expect((yield* requests)[0]).toMatchObject({ readyToMerge: false, state: "canceled" });
-    yield* storage.updateAutoMerge("turn", "ready");
-    yield* runPass();
-    expect(test.events).toEqual([]);
-    // Delegating again does not resurrect the canceled declaration.
-    yield* storage.setPurpose({
-      sessionId: "owner",
-      projectPath: "/project",
-      purpose: "delegated",
-    });
-    yield* runPass();
-    expect(test.events).toEqual([]);
-  }).pipe(Effect.provide(test.layer));
-});
+it.effect.each(["pending", "ready"] as const)(
+  "moving a delegated session to My sessions cancels its %s auto-merge",
+  (state) => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* setEnabled("/project", true);
+      expect(yield* report(target, readiness)).toEqual({ eligible: true });
+      if (state === "ready") yield* storage.updateAutoMerge("turn", "ready");
+      const change = yield* storage.setPurpose({
+        sessionId: "owner",
+        projectPath: "/project",
+        purpose: "user",
+      });
+      expect(change.canceledAutoMergeIds).toEqual(["turn"]);
+      expect((yield* requests)[0]).toMatchObject({ readyToMerge: false, state: "canceled" });
+      yield* storage.updateAutoMerge("turn", "ready");
+      yield* runPass();
+      expect(test.events).toEqual([]);
+      // Delegating again does not resurrect the canceled declaration.
+      yield* storage.setPurpose({
+        sessionId: "owner",
+        projectPath: "/project",
+        purpose: "delegated",
+      });
+      yield* runPass();
+      expect(test.events).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
 
 it.effect(
   "a landing already underway is refused at merge time once the session is a User Session",
@@ -1613,9 +1616,9 @@ it.effect.each(["off", "new-input", "re-enabled"] as const)(
     }),
 );
 
-it.effect(
-  "rechecks automatic authorization after Git success before committing resolution intent",
-  () =>
+it.effect.each(["off", "my-sessions"] as const)(
+  "rechecks %s after Git success before committing resolution intent",
+  (change) =>
     Effect.gen(function* () {
       const landed = yield* Deferred.make<void>();
       const continueResolution = yield* Deferred.make<void>();
@@ -1628,7 +1631,13 @@ it.effect(
         yield* ready;
         yield* runPass();
         yield* Deferred.await(landed);
-        yield* setEnabled("/project", false);
+        if (change === "my-sessions")
+          yield* (yield* SessionFamilyStorage).setPurpose({
+            sessionId: "owner",
+            projectPath: "/project",
+            purpose: "user",
+          });
+        else yield* setEnabled("/project", false);
         yield* Deferred.succeed(continueResolution, undefined);
         yield* terminal;
         yield* runPass();
@@ -1972,7 +1981,7 @@ it.effect(
   },
 );
 
-it.effect.each(["off", "new-epoch"] as const)(
+it.effect.each(["off", "new-epoch", "my-sessions"] as const)(
   "does not dispatch repair if %s revokes authority after Git returns conflicts",
   (change) =>
     Effect.gen(function* () {
@@ -1988,7 +1997,13 @@ it.effect.each(["off", "new-epoch"] as const)(
         yield* ready;
         yield* runPass();
         yield* Deferred.await(gitReturned);
-        yield* setEnabled("/project", false);
+        if (change === "my-sessions")
+          yield* (yield* SessionFamilyStorage).setPurpose({
+            sessionId: "owner",
+            projectPath: "/project",
+            purpose: "user",
+          });
+        else yield* setEnabled("/project", false);
         if (change === "new-epoch") yield* setEnabled("/project", true);
         yield* Deferred.succeed(finishGit, undefined);
         yield* terminal;

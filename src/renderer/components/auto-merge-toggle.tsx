@@ -22,9 +22,9 @@ export const AutoMergeToggle = observer(function AutoMergeToggle({
     return null;
   const project = root.autoMergeForProject(projectPath);
   const enabled = project?.enabled ?? false;
-  const description =
-    project?.status ??
-    "Enable for validated work directly delegated by this project’s Project Chat";
+  const scope =
+    "Validated work directly delegated by this project’s Project Chat only. Never My sessions.";
+  const description = project?.status ? `${project.status} — ${scope}` : scope;
   return (
     <label
       className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap px-1 text-xs font-medium text-muted-foreground"
