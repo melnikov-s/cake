@@ -16,6 +16,7 @@ export const SessionChangesToggle = observer(function SessionChangesToggle({
   return (
     <NumberedIconButton
       count={count}
+      countPlacement="inline"
       tooltip={`Review changes${secondaryFocused ? ` in ${session.workspacePath}` : ""}${count === undefined ? "" : ` · ${count} commits`}`}
       wrapTooltip={secondaryFocused}
       pressedAppearance="subtle"

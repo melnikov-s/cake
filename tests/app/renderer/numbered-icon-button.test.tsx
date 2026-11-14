@@ -54,6 +54,45 @@ describe("NumberedIconButton", () => {
     expect(button.querySelector("svg")!.getAttribute("width")).toBe("18");
   });
 
+  it.each([
+    [undefined, ""],
+    [0, ""],
+    [1, "1"],
+    [10, "10"],
+    [99, "99"],
+    [100, "99+"],
+  ])("reserves readable inline count space for %s without overlaying the glyph", (count, shown) => {
+    render(
+      <NumberedIconButton
+        count={count}
+        countPlacement="inline"
+        tooltip={`Review changes${count === undefined ? "" : ` · ${count} commits`}`}
+        aria-pressed
+        pressedAppearance="subtle"
+      >
+        <ArtifactIcon />
+      </NumberedIconButton>,
+    );
+    const button = screen.getByRole("button", { name: /^Review changes/ });
+    expect(button.textContent).toBe(shown);
+    expect(button.classList.contains("text-foreground")).toBe(true);
+    expect(button.classList.contains("size-7")).toBe(true);
+    expect(button.classList.contains("w-auto")).toBe(Boolean(shown));
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.classList.contains("aria-pressed:text-accent")).toBe(true);
+    expect(button.querySelector("svg")!.getAttribute("width")).toBe("18");
+    const badge = button.querySelector('[data-slot="count-badge"]');
+    if (!shown) {
+      expect(badge).toBeNull();
+      return;
+    }
+    expect(badge!.parentElement!.classList.contains("absolute")).toBe(false);
+    expect(badge!.closest('[aria-hidden="true"]')).not.toBeNull();
+    for (const utility of ["text-foreground", "text-xs", "font-semibold", "tabular-nums"])
+      expect(badge!.classList.contains(utility)).toBe(true);
+    expect(badge!.classList.contains("text-muted-foreground")).toBe(false);
+  });
+
   it("shows the plain icon for zero", () => {
     render(
       <NumberedIconButton count={0} tooltip="0 artifacts">

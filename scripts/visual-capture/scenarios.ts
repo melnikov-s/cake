@@ -27,6 +27,7 @@ import {
 } from "./widget-composer-attach";
 import { cakeColorPalettes } from "../../src/utils/cake-color-palettes.ts";
 import { sessionChangesScenario } from "./session-changes";
+import { createSessionChangesToolbarScenario } from "./session-changes-toolbar";
 import { seedAutomationVisualFixture } from "../../tests/fixtures/automations";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
 import {
@@ -9310,6 +9311,8 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
     createChatFirstNavigationScenario(assistantMarkdownCode.seed, seedDurableChat),
   ),
   sessionChangesScenario,
+  createSessionChangesToolbarScenario(10),
+  createSessionChangesToolbarScenario(100),
   sideChatActions,
   sideChatTabsScenario,
   numberedIconButtonsScenario(35),
