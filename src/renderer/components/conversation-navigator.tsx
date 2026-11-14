@@ -1,7 +1,6 @@
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { ConversationNavigatorRow } from "./conversation-navigator-row";
-import { AutoMergeToggle } from "./auto-merge-toggle";
 import { Button } from "./ui/button";
 import { PlusIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
@@ -72,11 +71,6 @@ export const ConversationNavigator = observer(function ConversationNavigator({
                     group.header.expanded
                       ? undefined
                       : list.sessionKindGroupActivity(group.header.projectPath, group.header.kind)
-                  }
-                  actions={
-                    group.header.kind === "delegated" ? (
-                      <AutoMergeToggle projectPath={group.header.projectPath} />
-                    ) : undefined
                   }
                   onToggle={() =>
                     list.toggleSessionKindGroupExpanded(

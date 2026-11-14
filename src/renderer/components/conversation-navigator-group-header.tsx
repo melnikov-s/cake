@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId } from "react";
 import type { SessionActivity } from "../lib/session-activity";
 import { cn } from "../lib/utils";
 import { SessionActivityIndicator, sessionActivityLabel } from "./session-activity-indicator";
@@ -15,14 +15,12 @@ export function ConversationNavigatorGroupHeader({
   expanded,
   hiddenActivity,
   onToggle,
-  actions,
 }: {
   label: string;
   count: number | undefined;
   expanded: boolean;
   hiddenActivity?: SessionActivity;
   onToggle(): void;
-  actions?: ReactNode;
 }) {
   const descriptionId = useId();
   const activity = expanded ? undefined : hiddenActivity;
@@ -67,7 +65,6 @@ export function ConversationNavigatorGroupHeader({
             .join(", ")}
         </span>
       </h3>
-      {actions}
     </div>
   );
 }
