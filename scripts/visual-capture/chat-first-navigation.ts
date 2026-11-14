@@ -89,6 +89,7 @@ export function createChatFirstNavigationScenario(
       "panel-sessions",
       "sessions",
       "sessions-unread",
+      "session-resolve-hover",
       "sessions-collapsed",
       "search",
       "deep-worker",
@@ -694,7 +695,12 @@ export function createChatFirstNavigationScenario(
         const tree = page.getByRole("region", { name: "Sessions", exact: true });
         if (
           !runningStarted &&
-          !["panel-sessions", "browser-todos", "browser-sessions"].includes(state)
+          ![
+            "panel-sessions",
+            "browser-todos",
+            "browser-sessions",
+            "session-resolve-hover",
+          ].includes(state)
         ) {
           if (!application) throw new Error("Controlled running workers require isolated Electron");
           await application.evaluate(() => {
@@ -754,6 +760,33 @@ export function createChatFirstNavigationScenario(
         ]) {
           const expand = tree.getByRole("button", { name: `Expand ${title}`, exact: true });
           if (await expand.count()) await expand.click();
+        }
+        if (state === "session-resolve-hover") {
+          // Hold a real Project Session turn open against the local fixture provider.
+          const working = tree.locator(`.session-item[data-session-id="${sessions[0][0]}"]`);
+          await working.getByRole("button", { name: /^UI Layout Refactor(?: |$)/ }).click();
+          await page
+            .getByRole("combobox", { name: "Message", exact: true })
+            .fill(reviewWorkerInstruction);
+          await page.getByRole("button", { name: "Send", exact: true }).click();
+          await expect(
+            page.getByText("Reviewing the conversation lineage…", { exact: true }),
+          ).toBeVisible();
+          const running = working.getByRole("img", { name: "Running", exact: true });
+          await expect(running).toBeVisible();
+          await working.hover();
+          await expect(working.locator(".session-resolve-action")).toHaveCount(0);
+          await expect(running.locator("..")).toHaveCSS("opacity", "1");
+          const idle = tree.locator(`.session-item[data-session-id="${sessions[3][0]}"]`);
+          await idle.hover();
+          await expect(
+            idle.getByRole("button", { name: `Resolve ${sessions[3][1]}`, exact: true }),
+          ).toHaveCSS("opacity", "1");
+          await working.hover();
+          await expect(working.locator(".session-resolve-action")).toHaveCount(0);
+          await expect(running.locator("..")).toHaveCSS("opacity", "1");
+          await settle();
+          return;
         }
         if (state === "sessions-unread") {
           if (!application) throw new Error("Unread capture requires isolated Electron");

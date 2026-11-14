@@ -527,13 +527,15 @@ describe("Workspace Sessions navigation workflow", () => {
     expect(within(row("failed")).getByRole("img", { name: "Error" })).toBeDefined();
     // Waiting still owns an active turn, so shares Working's priority below green.
     for (const id of ["waiting", "running", "failed"]) {
-      // Hover/focus Resolve replaces every status dot, including active and failed turns.
-      expect(within(row(id)).getByRole("button", { name: `Resolve ${id}` })).toBeDefined();
       if (id === "failed") {
+        expect(within(row(id)).getByRole("button", { name: `Resolve ${id}` })).toBeDefined();
         expect(row(id).querySelector("time")?.dateTime).toBe(
           sessions.find((session) => session.sessionId === id)!.modifiedAt,
         );
-      } else expect(row(id).querySelector("time")?.textContent).toBe("Working");
+      } else {
+        expect(within(row(id)).queryByRole("button", { name: `Resolve ${id}` })).toBeNull();
+        expect(row(id).querySelector("time")?.textContent).toBe("Working");
+      }
     }
   });
 

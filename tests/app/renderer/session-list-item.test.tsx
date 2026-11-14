@@ -79,8 +79,8 @@ describe("session row metadata", () => {
     expect(screen.getByRole("img", { name: "Running" })).toBeDefined();
     fireEvent.click(screen.getByText(props.session.title));
     expect(onOpen).toHaveBeenCalledWith(props.session.sessionId);
-    fireEvent.click(screen.getByRole("button", { name: `Resolve ${props.session.title}` }));
-    expect(onResolve).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: `Resolve ${props.session.title}` })).toBeNull();
+    expect(onResolve).not.toHaveBeenCalled();
     rerender(
       <SessionListItem
         {...props}
@@ -243,10 +243,72 @@ describe("session row action track", () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  // Every activity the row can display; the indicator draws nothing for `stopped`.
-  const statuses = [
+  const activeStatuses = [
     ["waiting", "Waiting for your answer"],
     ["running", "Running"],
+  ] as const;
+
+  it.each(activeStatuses)(
+    "keeps %s visible without a Resolve action on unselected and selected rows",
+    (activity, statusLabel) => {
+      const onOpen = vi.fn();
+      const onResolve = vi.fn();
+      const { container, rerender } = render(
+        <SessionListItem {...props} activity={activity} onOpen={onOpen} onResolve={onResolve} />,
+      );
+      const checkWorkingRow = () => {
+        const row = container.querySelector<HTMLElement>(".session-item")!;
+        fireEvent.mouseOver(row);
+        fireEvent.focus(screen.getByRole("button", { name: /^Review tutorial/ }));
+        expect(screen.queryByRole("button", { name: `Resolve ${props.session.title}` })).toBeNull();
+        expect(row.classList.contains("can-resolve")).toBe(false);
+        expect(row.classList.contains("has-session-action")).toBe(false);
+        const status = screen.getByRole("img", { name: statusLabel }).parentElement!;
+        expect(status.className).not.toContain("group-hover/session:opacity-0");
+        expect(status.className).not.toContain("group-focus-within/session:opacity-0");
+      };
+      checkWorkingRow();
+      rerender(
+        <SessionListItem
+          {...props}
+          selected
+          activity={activity}
+          onOpen={onOpen}
+          onResolve={onResolve}
+        />,
+      );
+      checkWorkingRow();
+      fireEvent.click(screen.getByRole("button", { name: /^Review tutorial/ }));
+      expect(onOpen).toHaveBeenCalledExactlyOnceWith(props.session.sessionId);
+      expect(onResolve).not.toHaveBeenCalled();
+
+      rerender(<SessionListItem {...props} selected onResolve={onResolve} />);
+      fireEvent.click(screen.getByRole("button", { name: `Resolve ${props.session.title}` }));
+      expect(onResolve).toHaveBeenCalledExactlyOnceWith(props.session.sessionId, true);
+      rerender(<SessionListItem {...props} selected activity={activity} onResolve={onResolve} />);
+      checkWorkingRow();
+    },
+  );
+
+  it.each(activeStatuses)("preserves Delete and Restore while %s", (activity) => {
+    const onResolve = vi.fn();
+    const { rerender } = render(
+      <SessionListItem
+        {...props}
+        session={{ ...props.session, draft: true }}
+        activity={activity}
+        onResolve={onResolve}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: `Delete ${props.session.title}` }));
+    expect(onResolve).toHaveBeenLastCalledWith(props.session.sessionId, true);
+    rerender(<SessionListItem {...props} resolved activity={activity} onResolve={onResolve} />);
+    fireEvent.click(screen.getByRole("button", { name: `Restore ${props.session.title}` }));
+    expect(onResolve).toHaveBeenLastCalledWith(props.session.sessionId, false);
+  });
+
+  // Settled activities still yield to Resolve; the indicator draws nothing for `stopped`.
+  const statuses = [
     ["blocked", "Needs your input"],
     ["unread", "Ready, unread"],
     ["error", "Error"],
@@ -288,6 +350,20 @@ describe("session row action track", () => {
     render(<SessionListItem {...props} selected activity={activity} onResolve={vi.fn()} />);
     const resolve = screen.getByRole("button", { name: `Resolve ${props.session.title}` });
     expect(resolve.className).toContain("group-hover/session:opacity-100");
+  });
+
+  it.each([false, true])("resolves an eligible idle row with selected=%s", (selected) => {
+    const onResolve = vi.fn();
+    const { container } = render(
+      <SessionListItem {...props} selected={selected} onResolve={onResolve} />,
+    );
+    const resolve = screen.getByRole("button", { name: `Resolve ${props.session.title}` });
+    expect(container.querySelector(".can-resolve")).not.toBeNull();
+    expect(resolve.className).toContain(
+      selected ? "opacity-100" : "group-hover/session:opacity-100",
+    );
+    fireEvent.click(resolve);
+    expect(onResolve).toHaveBeenCalledExactlyOnceWith(props.session.sessionId, true);
   });
 
   it("omits the action track for an idle family child but retains disclosure and selection", () => {
