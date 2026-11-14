@@ -369,7 +369,7 @@ describe("Session management workflow", () => {
   });
 
   it.each(["button", "former-resolve"] as const)(
-    "deletes a selected draft via %s and retires navigation/layout without resolving real sessions",
+    "deletes a selected draft via %s without resolving real sessions or redirecting agent commands",
     async (action) => {
       const drafts = fakeSavedDrafts();
       const id = "10000000-0000-4000-8000-000000000001";
@@ -422,12 +422,21 @@ describe("Session management workflow", () => {
       );
       expect(resolve).not.toHaveBeenCalled();
       expect(deleteSession).not.toHaveBeenCalled();
-      expect(fixture.root.sessionRegistry.findSession(id)).toBeUndefined();
-      expect(fixture.root.appShellStore.activeConversation).toEqual({
-        kind: "cake-chat",
-        sessionId: `project-chat:${"c".repeat(64)}`,
-      });
-      expect(fixture.root.sessionLayoutStore.history).not.toContain(id);
+      if (action === "button") {
+        expect(fixture.root.sessionRegistry.findSession(id)).toBeUndefined();
+        expect(fixture.root.appShellStore.activeConversation).toEqual({
+          kind: "cake-chat",
+          sessionId: `project-chat:${"c".repeat(64)}`,
+        });
+        expect(fixture.root.sessionLayoutStore.history).not.toContain(id);
+      } else {
+        expect(fixture.root.sessionRegistry.findSession(id)).toBeUndefined();
+        expect(fixture.root.appShellStore.activeConversation).toEqual({
+          kind: "project-session",
+          sessionId: id,
+        });
+        expect(fixture.root.sessionLayoutStore.history).toContain(id);
+      }
     },
   );
 

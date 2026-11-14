@@ -27,8 +27,9 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
 
   async setProjectSessionResolved(sessionId: string, resolved: boolean) {
     const projectPath = this.props.catalog.find(sessionId)?.projectPath;
+    const viewedSessionId = this.props.shell.activeConversation?.sessionId;
     return this.management.resolveSession(sessionId, resolved, async (ids) => {
-      if (!this.signal.aborted) await this.forgetProjectSessions(ids, projectPath);
+      if (!this.signal.aborted) await this.forgetProjectSessions(ids, projectPath, viewedSessionId);
     });
   }
 
@@ -42,9 +43,11 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
     return this.management.resolveSessionsById(
       sessionIds,
       resolved,
-      async (ids) => {
-        if (!this.signal.aborted) await this.forgetProjectSessions(ids, projectPath);
-      },
+      origin === "user"
+        ? async (ids) => {
+            if (!this.signal.aborted) await this.forgetProjectSessions(ids, projectPath, activeId);
+          }
+        : undefined,
       origin,
     );
   }
@@ -55,7 +58,11 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
     const draft = this.props.registry.pendingSessions.isDraft(sessionId);
     if (!(await this.management.deleteSession(sessionId))) return;
     if (draft) {
-      await this.forgetProjectSessions([sessionId], session?.projectPath);
+      await this.forgetProjectSessions(
+        [sessionId],
+        session?.projectPath,
+        wasSelected ? sessionId : undefined,
+      );
       return;
     }
     if (!this.props.catalog.find(sessionId))
@@ -77,14 +84,39 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
       await this.props.createProjectSession(fallbackProjectPath);
   }
 
+  /** A manual landing keeps its observers alive to finish their completion receipts. */
+  async returnToProjectChatAfterManualResolution(
+    sessionIds: readonly string[],
+    viewedSessionId: string,
+    fallbackProjectPath?: string,
+  ) {
+    if (this.signal.aborted) return;
+    const active = this.props.shell.activeConversation;
+    if (
+      active?.kind !== "project-session" ||
+      active.sessionId !== viewedSessionId ||
+      !sessionIds.includes(viewedSessionId)
+    )
+      return;
+    const projectPath =
+      this.props.catalog.find(viewedSessionId)?.projectPath ?? fallbackProjectPath;
+    if (projectPath) await this.props.openProjectChat(projectPath);
+  }
+
   /** Retires resolved sessions; only a removed selection returns to its local Project Chat. */
-  async forgetProjectSessions(sessionIds: readonly string[], fallbackProjectPath?: string) {
+  async forgetProjectSessions(
+    sessionIds: readonly string[],
+    fallbackProjectPath?: string,
+    viewedSessionId?: string,
+  ) {
     if (this.signal.aborted) return;
     const active = this.props.shell.activeConversation;
     const activeSessionId =
       active?.kind === "project-session" && sessionIds.includes(active.sessionId)
         ? active.sessionId
         : undefined;
+    // A background action must not retire a conversation the user opened while it ran.
+    if (activeSessionId && activeSessionId !== viewedSessionId) return;
     const projectPath = activeSessionId
       ? (this.props.catalog.find(activeSessionId)?.projectPath ?? fallbackProjectPath)
       : undefined;

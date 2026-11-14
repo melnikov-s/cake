@@ -374,6 +374,86 @@ describe("App shell navigation workflow", () => {
     },
   );
 
+  it("keeps the viewed session and draft when manual resolution fails", async () => {
+    const resolve = vi.fn<Client["projectSessions"]["resolve"]>(async () => {
+      throw new Error("Session is still running");
+    });
+    using fixture = renderAppShellNavigation({ projectSessions: { resolve } });
+    await selectProjectSession(fixture, "beta");
+    await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Keep my draft");
+    await fixture.showSessions();
+    await fixture.user.click(screen.getByRole("button", { name: "Resolve beta conversation" }));
+    expect(await screen.findByText("Session is still running")).toBeDefined();
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId: "beta",
+    });
+    expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty(
+      "value",
+      "Keep my draft",
+    );
+  });
+
+  it.each(["agent", "automatic"] as const)(
+    "%s resolution retains the viewed session, pane, and draft",
+    async (origin) => {
+      const resolve = vi.fn<Client["projectSessions"]["resolve"]>(async () => undefined);
+      using fixture = renderAppShellNavigation({ projectSessions: { resolve } });
+      await selectProjectSession(fixture, "beta");
+      await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Keep my draft");
+      const session = fixture.root.sessionRegistry.findSession("beta");
+      if (origin === "agent") {
+        await act(async () => {
+          expect(
+            await fixture.root.sessionRetirementStore.setProjectSessionsResolved(
+              ["beta"],
+              true,
+              "agent",
+            ),
+          ).toBe(1);
+        });
+        expect(resolve).toHaveBeenCalledWith(
+          { sessionId: "beta", workingDirectory: "/beta", userInitiated: false },
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+      }
+      await fixture.publishResolved("beta");
+      expect(fixture.root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: "beta",
+      });
+      expect(fixture.root.sessionRegistry.findSession("beta")).toBe(session);
+      expect(screen.getByTestId("resolved-session-notice")).toBeDefined();
+      expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty(
+        "value",
+        "Keep my draft",
+      );
+    },
+  );
+
+  it("does not redirect a session opened while its background resolution was pending", async () => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    using fixture = renderAppShellNavigation({ projectSessions: { resolve: () => pending } });
+    await selectProjectSession(fixture, "alpha");
+    let resolving!: Promise<boolean>;
+    act(() => {
+      resolving = fixture.root.sessionRetirementStore.setProjectSessionResolved("beta", true);
+    });
+    await selectProjectSession(fixture, "beta");
+    await act(async () => {
+      finish();
+      await resolving;
+    });
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId: "beta",
+    });
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+  });
+
   it("does not redirect navigation made while selected-session resolution is pending", async () => {
     let finish!: () => void;
     const pending = new Promise<void>((resolve) => {

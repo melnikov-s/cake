@@ -449,10 +449,16 @@ describe("Worktree operation workflows", () => {
     expect(screen.queryByRole("button", { name: /^Land new commit/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(startLanding).toHaveBeenCalledOnce();
-    expect(cancelLanding).toHaveBeenCalledWith({
-      operationId: "landing-operation",
-      workspacePath: "/worktree",
-      intent: "acknowledge",
+    await waitFor(() =>
+      expect(cancelLanding).toHaveBeenCalledWith({
+        operationId: "landing-operation",
+        workspacePath: "/worktree",
+        intent: "acknowledge",
+      }),
+    );
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "cake-chat",
+      sessionId: `project-chat:${"c".repeat(64)}`,
     });
   });
 

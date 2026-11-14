@@ -37,8 +37,12 @@ export interface ProjectWorkbenchStoreProps {
   originatingDirectory(): string | undefined;
   browserHost?: boolean;
   onBrowserUnavailable?(): void;
-  /** Removes resolved worktree sessions from history and chooses the next conversation. */
-  onWorktreeSessionsResolved(sessionIds: readonly string[], projectPath: string): Promise<void>;
+  /** Retires manually resolved worktree sessions without redirecting a later selection. */
+  onWorktreeSessionsResolved(
+    sessionIds: readonly string[],
+    projectPath: string,
+    viewedSessionId?: string,
+  ): Promise<void>;
   reconcileForkPreview(previewId: string, sessionId: string): void;
   discardForkPreview(previewId: string): void;
   /** The Project Session retained by the application shell as its active conversation. */
@@ -388,6 +392,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     workspacePath: string,
     options: { initiatingSessionId: string; workingDirectoryRetired?: boolean },
   ) {
+    const viewedSessionId = this.props.activeSessionId();
     if (!options.workingDirectoryRetired && !(await this.props.retirement.prepare([workspacePath])))
       return;
     try {
@@ -399,8 +404,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       // Resolving a Working Directory can archive several sessions. Only replace the
       // visible conversation when the session whose action started this workflow is
       // still focused; a sibling selected while resolution was in flight must stay put.
-      if (this.props.activeSessionId() === options.initiatingSessionId)
-        await this.props.onWorktreeSessionsResolved(result.resolvedSessionIds, result.projectPath);
+      if (
+        viewedSessionId === options.initiatingSessionId &&
+        this.props.activeSessionId() === viewedSessionId
+      )
+        await this.props.onWorktreeSessionsResolved(
+          result.resolvedSessionIds,
+          result.projectPath,
+          viewedSessionId,
+        );
       if (this.signal.aborted) return;
       const messages = [
         ...result.failures.map((failure) => failure.message),

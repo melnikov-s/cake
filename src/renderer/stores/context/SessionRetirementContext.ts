@@ -6,6 +6,9 @@ export const SessionRetirementContext =
   createContext<
     Pick<
       SessionRetirementStore,
-      "setProjectSessionResolved" | "setProjectSessionsResolved" | "deleteProjectSession"
+      | "setProjectSessionResolved"
+      | "setProjectSessionsResolved"
+      | "deleteProjectSession"
+      | "returnToProjectChatAfterManualResolution"
     >
   >();

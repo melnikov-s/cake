@@ -1221,8 +1221,8 @@ export class RootStore extends Store<{
           message: "Open Cake desktop to use Browser Mode.",
           coalesceKey: "browser-mode-unavailable",
         }),
-      onWorktreeSessionsResolved: (sessionIds, projectPath) =>
-        this.sessionRetirementStore.forgetProjectSessions(sessionIds, projectPath),
+      onWorktreeSessionsResolved: (sessionIds, projectPath, viewedSessionId) =>
+        this.sessionRetirementStore.forgetProjectSessions(sessionIds, projectPath, viewedSessionId),
       discardForkPreview: (previewId) => {
         this.sessionLayoutStore.removeSessions([previewId]);
         this.appShellStore.removeSessionsFromHistory([previewId]);

@@ -29,6 +29,7 @@ import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import { ClientContext } from "./context/ClientContext";
 import { EditorSelectionsStore } from "./EditorSelectionsStore";
 import { SessionManagementContext } from "./context/SessionManagementContext";
+import { SessionRetirementContext } from "./context/SessionRetirementContext";
 import { ProjectSessionCreationContext } from "./context/ProjectSessionCreationContext";
 import { ProjectSessionNavigationContext } from "./context/ProjectSessionNavigationContext";
 import { SessionPresentationContext } from "./context/SessionPresentationContext";
@@ -280,10 +281,18 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       operation: this.props.worktreeOperation,
       onMergeAndResolveStarted: (operationId) =>
         SessionRegistryContext.consume(this)!.silenceWorktreeLanding(operationId),
-      onLanded: (_record, result) => {
+      onLanded: async (record, result) => {
         // Automatic landings have one project-owned transient announcement. Their
         // snapshots can be observed by siblings, other windows, or after reconnect.
         if (this.props.worktreeOperation()?.automatic) return;
+        if (result.manualResolution && this.selected) {
+          await SessionRetirementContext.consume(this)!.returnToProjectChatAfterManualResolution(
+            result.resolvedSessionIds ?? [this.sessionId],
+            this.sessionId,
+            record.projectPath,
+          );
+          return;
+        }
         if (SessionRegistryContext.consume(this)!.isWorktreeLandingSilent(result.operationId))
           return;
         // Sibling sessions sharing this Working Directory observe the same operation; keying

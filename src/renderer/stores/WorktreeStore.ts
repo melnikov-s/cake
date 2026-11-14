@@ -32,6 +32,8 @@ export interface WorktreeStoreProps {
 export interface WorktreeLandedResult {
   readonly operationId: string;
   readonly resolved: boolean;
+  /** This window started Merge & resolve while its initiating session was viewed. */
+  readonly manualResolution?: boolean;
   /** Sessions main committed as resolved by this landing, when it reported them. */
   readonly resolvedSessionIds?: readonly string[];
 }
@@ -62,6 +64,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   private operationId: string | undefined;
   private startedLandingOperationId: string | undefined;
   private startedResolveAfterLanding = false;
+  private startedResolutionWhileViewed = false;
   private readonly refreshingWorkspacePaths = new Set<string>();
   private readonly refreshAgainWorkspacePaths = new Set<string>();
   private observedWorkspacePath: string | undefined;
@@ -259,6 +262,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     const operationId = crypto.randomUUID();
     this.startedLandingOperationId = operationId;
     this.startedResolveAfterLanding = resolveAfterLanding;
+    this.startedResolutionWhileViewed = resolveAfterLanding && this.props.enabled();
     if (resolveAfterLanding) this.props.onMergeAndResolveStarted(operationId);
     try {
       const operation = await this.managedWorktrees.startLanding({
@@ -525,6 +529,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
 
   private async finishLanded(workspacePath: string, result: WorktreeLandedResult) {
     const currentStatus = this.status;
+    const manualResolution =
+      result.resolved &&
+      this.startedLandingOperationId === result.operationId &&
+      this.startedResolveAfterLanding &&
+      this.startedResolutionWhileViewed;
     this.phase = "idle";
     this.stalled = false;
     this.startedLandingOperationId = undefined;
@@ -535,7 +544,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       Reflect.deleteProperty(record, "pendingAutomaticLanding");
       Reflect.deleteProperty(record, "pendingLandingOperationId");
       this.status = { ...currentStatus, merged: true, record };
-      await this.props.onLanded(record, result);
+      await this.props.onLanded(record, { ...result, manualResolution });
     }
     this.operationId = undefined;
     await this.managedWorktrees.cancelLanding({

@@ -262,6 +262,10 @@ describe("Worktree landing completion toasts", () => {
           "“Fix the merge toast” was merged into the project.",
         );
         expect(screen.getByRole("status").textContent).not.toContain("resolved");
+        expect(fixture.activeConversation()).toEqual({
+          kind: "project-session",
+          sessionId: "parent",
+        });
         await fixture.user.click(screen.getByRole("button", { name: "Dismiss notification" }));
         await emit();
         expect(screen.queryByRole("status")).toBeNull();
@@ -308,7 +312,40 @@ describe("Worktree landing completion toasts", () => {
     );
     expect(fixture.toasts()).toHaveLength(0);
     expect(screen.queryByRole("status")).toBeNull();
+    expect(fixture.activeConversation()).toEqual({
+      kind: "cake-chat",
+      sessionId: `project-chat:${"c".repeat(64)}`,
+    });
   });
+
+  it.each(["background", "navigated-away"] as const)(
+    "keeps the current conversation after %s manual merge-and-resolve",
+    async (mode) => {
+      using fixture = renderSessions(mode === "background" ? "standalone" : "parent");
+      if (mode === "background") {
+        await act(async () =>
+          fixture.root.sessionRegistry
+            .findSession("parent")!
+            .worktreeStore.commitAndMerge(false, true),
+        );
+      } else {
+        await fixture.user.click(
+          await fixture.pane("parent").findByRole("button", { name: "Merge & resolve" }),
+        );
+      }
+      const operationId = fixture.startLanding.mock.calls[0]![0].operationId;
+      if (mode === "navigated-away")
+        act(() => fixture.root.navigationStore.selectProjectSession("standalone"));
+      await fixture.publish(
+        landed(operationId, "/family", "parent", ["parent", "child-1", "child-2", "grandchild"]),
+      );
+      await waitFor(() => expect(fixture.cancelLanding).toHaveBeenCalledTimes(4));
+      expect(fixture.activeConversation()).toEqual({
+        kind: "project-session",
+        sessionId: "standalone",
+      });
+    },
+  );
 
   it("counts only the sessions main reported, so already-resolved members are not announced again", async () => {
     using fixture = renderSessions();
@@ -395,6 +432,10 @@ describe("Worktree landing completion toasts", () => {
     );
     expect(await screen.findByText("Merge target is unavailable")).toBeDefined();
     expect(fixture.toasts()).toHaveLength(0);
+    expect(fixture.activeConversation()).toEqual({
+      kind: "project-session",
+      sessionId: "standalone",
+    });
   });
 
   it("keeps projected merge-and-resolve failures visible", async () => {
@@ -410,6 +451,10 @@ describe("Worktree landing completion toasts", () => {
     });
     expect(await screen.findByText("Merge could not be completed")).toBeDefined();
     expect(fixture.toasts()).toHaveLength(0);
+    expect(fixture.activeConversation()).toEqual({
+      kind: "project-session",
+      sessionId: "standalone",
+    });
   });
 
   it("does not coalesce independent landing operations", async () => {

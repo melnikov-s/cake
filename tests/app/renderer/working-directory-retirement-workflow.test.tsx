@@ -167,6 +167,12 @@ describe("Working Directory retirement workflow", () => {
       await waitFor(() => expect(fixture.resolve).toHaveBeenCalledOnce());
       expect(screen.queryByRole("dialog")).toBeNull();
       expect(screen.queryByText(/unmerged work/i)).toBeNull();
+      await waitFor(() =>
+        expect(fixture.root.appShellStore.activeConversation).toEqual({
+          kind: "cake-chat",
+          sessionId: `project-chat:${"c".repeat(64)}`,
+        }),
+      );
       expect(fixture.root.toastStore.toasts).toHaveLength(0);
     },
   );
@@ -243,6 +249,10 @@ describe("Working Directory retirement workflow", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fixture.close).not.toHaveBeenCalled();
     expect(fixture.resolve).not.toHaveBeenCalled();
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId: "session-one",
+    });
 
     await fixture.user.click(resolveButton());
     await fixture.user.click(await screen.findByRole("button", { name: "Continue and stop" }));
@@ -263,6 +273,46 @@ describe("Working Directory retirement workflow", () => {
     expect(fixture.close).not.toHaveBeenCalled();
     expect(fixture.resolve).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps the viewed session when resolution is rejected", async () => {
+    using fixture = renderRetirement(
+      async () => ({ runningProgramCount: 0 }),
+      async () => {
+        throw new Error("Resolution rejected");
+      },
+    );
+    await fixture.user.click(resolveButton());
+    expect(await screen.findByText("Resolution rejected")).toBeDefined();
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId: "session-one",
+    });
+  });
+
+  it("does not redirect a background worktree selected while resolution is pending", async () => {
+    const pending =
+      deferred<Awaited<ReturnType<Client["projectSessions"]["resolveWorkingDirectory"]>>>();
+    using fixture = renderRetirement(
+      async () => ({ runningProgramCount: 0 }),
+      () => pending.promise,
+    );
+    await fixture.user.click(resolveButton("two"));
+    await waitFor(() => expect(fixture.resolve).toHaveBeenCalledOnce());
+    act(() => fixture.root.navigationStore.selectProjectSession("session-two"));
+    await act(async () =>
+      pending.resolve({
+        projectPath: "/project",
+        workingDirectory: "/two",
+        resolvedSessionIds: ["session-two"],
+        failures: [],
+        cleanupFailures: [],
+      }),
+    );
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId: "session-two",
+    });
   });
 
   it("does not start another retirement while the first directory is being inspected", async () => {
