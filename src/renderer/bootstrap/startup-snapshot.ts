@@ -1,10 +1,11 @@
 import type { StoreSnapshot } from "r-state-tree";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { migrateNavigation } from "../persistence/migrate-navigation";
+import { migrateWorkspaceSidebarWidths } from "../persistence/migrate-workspace-sidebar-widths";
 
 /** Startup policy, not a migration: retain conversation state, never restore a destination. */
 export function startupSnapshot(saved: StoreSnapshot): StoreSnapshot {
-  const snapshot = migrateNavigation(saved);
+  const snapshot = migrateWorkspaceSidebarWidths(migrateNavigation(saved));
   const shell = snapshot.children.appShellStore;
   const collection = snapshot.children.cakeChatCollectionStore;
   const navigator = snapshot.children.workspaceNavigatorStore;

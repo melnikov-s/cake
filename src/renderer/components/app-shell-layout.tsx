@@ -67,7 +67,7 @@ export const AppShellLayout = observer(function AppShellLayout({
       )
     : 0;
   const accessoryMax = mainWorkspacePanelMaxWidth(workspaceWidth - commandReserve);
-  const accessoryWidth = Math.min(navigator.width, accessoryMax);
+  const accessoryWidth = Math.min(navigator.widthFor("normal"), accessoryMax);
   const commandMax = Math.max(320, workspaceWidth - (navigatorVisible ? accessoryWidth : 0) - 360);
   const shellStyle: CSSProperties & Record<"--navigator-width" | "--command-width", string> = {
     "--navigator-width": navigatorVisible ? `${accessoryWidth}px` : "0px",
@@ -151,7 +151,7 @@ export const AppShellLayout = observer(function AppShellLayout({
             min={Math.min(MIN_WORKSPACE_PANEL_WIDTH, accessoryMax)}
             max={accessoryMax}
             edge="right"
-            onChange={(width) => navigator.setWidth(width)}
+            onChange={(width) => navigator.setWidth("normal", width)}
             onDrag={(width) =>
               shellRef.current?.style.setProperty("--navigator-width", `${width}px`)
             }

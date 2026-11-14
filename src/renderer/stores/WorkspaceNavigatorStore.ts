@@ -54,8 +54,10 @@ export class WorkspaceNavigatorStore extends Store<{
     this.widgetId = null;
     this.widgetActive = false;
   }
-  /** Preferred width across modes; layout clamps never overwrite it. */
-  @snapshot width = 320;
+  /** Preferred widths by presentation; layout clamps never overwrite them. */
+  @snapshot chatWidth = 320;
+  @snapshot vscodeWidth = 320;
+  @snapshot browserWidth = 320;
 
   constructor(props: WorkspaceNavigatorStore["props"]) {
     super(props);
@@ -148,8 +150,17 @@ export class WorkspaceNavigatorStore extends Store<{
     else this.accessoryVisible = false;
   }
 
-  setWidth(width: number) {
-    this.width = Math.max(MIN_WORKSPACE_PANEL_WIDTH, width);
+  widthFor(mode: ProjectSessionPresentationMode) {
+    if (mode === "vscode") return this.vscodeWidth;
+    if (mode === "browser") return this.browserWidth;
+    return this.chatWidth;
+  }
+
+  setWidth(mode: ProjectSessionPresentationMode, width: number) {
+    const preferred = Math.max(MIN_WORKSPACE_PANEL_WIDTH, width);
+    if (mode === "vscode") this.vscodeWidth = preferred;
+    else if (mode === "browser") this.browserWidth = preferred;
+    else this.chatWidth = preferred;
   }
 
   replyContext(name: string, text: string) {

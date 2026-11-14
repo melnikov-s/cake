@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot, toSnapshot } from "r-state-tree";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { settleListLayout } from "./settle-list-layout";
@@ -50,7 +51,13 @@ afterEach(() => {
   Reflect.deleteProperty(Range.prototype, "getClientRects");
 });
 
-function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = startInChat) {
+function renderWorkspace(
+  kind: Kind | "global-chat",
+  mode: Mode,
+  startInChat = false,
+  fullApp = startInChat,
+) {
+  const chatId = kind === "global-chat" ? CAKE_CHAT_SESSION_ID : cakeChatId;
   const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => ({
     outcome: { view: "file" },
     locations: [],
@@ -94,12 +101,18 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = 
   const { root, models } = fixture;
   applySnapshot(models.cakeChatCatalog, {
     loaded: true,
-    sessions: [{ sessionId: cakeChatId, title: "Project coordinator", projectPath: "/project" }],
+    sessions: [
+      {
+        sessionId: chatId,
+        title: "Project coordinator",
+        ...(kind === "global-chat" ? {} : { projectPath: "/project" }),
+      },
+    ],
   });
   const session =
     kind === "project"
       ? root.sessionRegistry.load(projectId, "/project")
-      : root.cakeChatCollectionStore.registry.load(cakeChatId);
+      : root.cakeChatCollectionStore.registry.load(chatId);
   if (kind === "project") {
     root.navigationStore.selectProjectSession(session.sessionId);
     root.projectWorkbenchStore.showLoadedSession(session.sessionId);
@@ -110,7 +123,7 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = 
   }
   session.showPresentation(startInChat ? "normal" : mode);
   if (startInChat) session.toggleWorkspaceChatSidebar();
-  root.workspaceNavigatorStore.setWidth(440);
+  root.workspaceNavigatorStore.setWidth(startInChat ? "normal" : mode, 440);
   applyConversationSnapshot(session.model, {
     sessionId: session.sessionId,
     sessionFile: `/sessions/${session.sessionId}`,
@@ -146,7 +159,7 @@ function renderWorkspace(kind: Kind, mode: Mode, startInChat = false, fullApp = 
       />
     ) : (
       <CakeChatWorkspaceSurface
-        session={root.cakeChatCollectionStore.registry.find(cakeChatId)!}
+        session={root.cakeChatCollectionStore.registry.find(chatId)!}
         mode={mode}
         browserMode={false}
       />
@@ -270,9 +283,111 @@ it.each<Mode>(["browser", "vscode"])(
   },
 );
 
+it("global Cake Chat remembers Main and Browser widths using the same mode preferences", async () => {
+  using f = renderWorkspace("global-chat", "browser", true);
+  const mainHandle = () => screen.getByRole("separator", { name: "Resize Workspace" });
+  expect(f.root.appShellStore.activeConversation?.sessionId).toBe(CAKE_CHAT_SESSION_ID);
+  fireEvent.keyDown(mainHandle(), { key: "ArrowLeft" });
+  await f.user.click(screen.getByRole("button", { name: "Browser" }));
+  const browserHandle = () =>
+    screen.getByRole("separator", { name: "Resize current session sidebar" });
+  expect(browserHandle().getAttribute("aria-valuenow")).toBe("320");
+  fireEvent.keyDown(browserHandle(), { key: "ArrowLeft", shiftKey: true });
+  await f.user.click(screen.getByRole("button", { name: "Main" }));
+  expect(mainHandle().getAttribute("aria-valuenow")).toBe("456");
+  await f.user.click(screen.getByRole("button", { name: "Browser" }));
+  expect(browserHandle().getAttribute("aria-valuenow")).toBe("368");
+  expect(f.root.workspaceNavigatorStore.vscodeWidth).toBe(320);
+});
+
 // Real workflow Stores, Models, controls, Chat and side-chat composition.
 // These assertions cover rendered wiring, not pixel layout, native input or focus.
 describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
+  it("remembers three independent widths when resizing and switching presentation modes", async () => {
+    using f = renderWorkspace(kind, "browser", true);
+    const navigator = f.root.workspaceNavigatorStore;
+    const mainHandle = () => screen.getByRole("separator", { name: "Resize Workspace" });
+    const toolHandle = () =>
+      screen.getByRole("separator", { name: "Resize current session sidebar" });
+    fireEvent.keyDown(mainHandle(), { key: "ArrowLeft" });
+    expect(navigator.chatWidth).toBe(456);
+
+    await f.user.click(screen.getByRole("button", { name: "Browser" }));
+    expect(toolHandle().getAttribute("aria-valuenow")).toBe("320");
+    fireEvent.keyDown(toolHandle(), { key: "ArrowLeft", shiftKey: true });
+    expect(navigator.browserWidth).toBe(368);
+
+    await f.user.click(screen.getByRole("button", { name: "VS Code" }));
+    expect(toolHandle().getAttribute("aria-valuenow")).toBe("320");
+    fireEvent.keyDown(toolHandle(), { key: "ArrowLeft" });
+    expect(navigator.vscodeWidth).toBe(336);
+
+    await f.user.click(screen.getByRole("button", { name: "Main" }));
+    expect(mainHandle().getAttribute("aria-valuenow")).toBe("456");
+    await f.user.click(screen.getByRole("button", { name: "Browser" }));
+    expect(toolHandle().getAttribute("aria-valuenow")).toBe("368");
+    await f.user.click(screen.getByRole("button", { name: "VS Code" }));
+    expect(toolHandle().getAttribute("aria-valuenow")).toBe("336");
+    expect([navigator.chatWidth, navigator.vscodeWidth, navigator.browserWidth]).toEqual([
+      456, 336, 368,
+    ]);
+  });
+
+  it.each(["normal", "vscode", "browser"] as const)(
+    "%s clamps only rendered geometry and restores the preference when the window widens",
+    async (mode) => {
+      const observers = new Set<() => void>();
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(private readonly callback: () => void) {
+            observers.add(callback);
+          }
+          observe() {}
+          disconnect() {
+            observers.delete(this.callback);
+          }
+        },
+      );
+      using f = renderWorkspace(
+        kind,
+        mode === "normal" ? "browser" : mode,
+        mode === "normal",
+        true,
+      );
+      if (mode !== "normal")
+        await f.user.click(
+          screen.getByRole("button", { name: mode === "browser" ? "Browser" : "VS Code" }),
+        );
+      const navigator = f.root.workspaceNavigatorStore;
+      act(() => navigator.setWidth(mode, 900));
+      const handle = () =>
+        screen.getByRole("separator", {
+          name: mode === "normal" ? "Resize Workspace" : "Resize current session sidebar",
+        });
+      // Main reserves 360px for chat; tools reserve only the 5px splitter edge.
+      expect(handle().getAttribute("aria-valuenow")).toBe(mode === "normal" ? "840" : "900");
+      act(() => {
+        vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue(
+          new DOMRect(0, 0, 400, 900),
+        );
+        observers.forEach((notify) => notify());
+      });
+      expect(handle().getAttribute("aria-valuenow")).toBe(mode === "normal" ? "40" : "395");
+      expect(navigator.widthFor(mode)).toBe(900);
+      using restored = createRendererStoreFixture({ snapshot: toSnapshot(f.root) });
+      expect(restored.root.workspaceNavigatorStore.widthFor(mode)).toBe(900);
+      act(() => {
+        vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue(
+          new DOMRect(0, 0, 1600, 900),
+        );
+        observers.forEach((notify) => notify());
+      });
+      expect(handle().getAttribute("aria-valuenow")).toBe("900");
+      expect(navigator.widthFor(mode)).toBe(900);
+    },
+  );
+
   it("places one VS Code work-log trigger immediately before the shell pane toggle and preserves its behavior", async () => {
     using f = renderWorkspace(kind, "vscode", false, true);
     const shellControls = document.querySelector('[data-slot="shell-workspace-controls"]')!;
@@ -708,7 +823,7 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
     expect(screen.getByRole("main").style.getPropertyValue("--workspace-chat-sidebar-width")).toBe(
       "395px",
     );
-    expect(f.root.workspaceNavigatorStore.width).toBe(440);
+    expect(f.root.workspaceNavigatorStore.widthFor("browser")).toBe(440);
   });
   it.each<Mode>(["browser", "vscode"])(
     "%s companion retains the same conversation and draft when closed and reopened",

@@ -123,7 +123,7 @@ describe("unconditional global startup navigation", () => {
       expect(globalComposer()).toHaveProperty("value", "");
       expect(fixture.root.workspaceNavigatorStore.mode).toBe("todos");
       expect(fixture.root.workspaceNavigatorStore.visible).toBe(true);
-      expect(fixture.root.workspaceNavigatorStore.width).toBe(376);
+      expect(fixture.root.workspaceNavigatorStore.chatWidth).toBe(376);
       expect(screen.getByRole("button", { name: /^To-dos / }).getAttribute("aria-pressed")).toBe(
         "true",
       );

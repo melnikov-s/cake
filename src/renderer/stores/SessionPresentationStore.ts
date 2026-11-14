@@ -73,8 +73,9 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
       chatSidebarVisible: () => this.session?.workspaceChatSidebarVisible ?? true,
       toggleChatSidebar: () => this.session?.toggleWorkspaceChatSidebar(),
       showChatSidebar: () => this.session?.showWorkspaceChatSidebar(),
-      chatSidebarWidth: () => WorkspaceNavigatorContext.consume(this)!.width,
-      setChatSidebarWidth: (width) => WorkspaceNavigatorContext.consume(this)!.setWidth(width),
+      chatSidebarWidth: () => WorkspaceNavigatorContext.consume(this)!.widthFor("vscode"),
+      setChatSidebarWidth: (width) =>
+        WorkspaceNavigatorContext.consume(this)!.setWidth("vscode", width),
       selectionHighlights: () => ({
         locations:
           this.session?.editorSelectionsStore.selections.map((selection) => selection.location) ??
@@ -104,8 +105,9 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
       presentationMode: () => this.session?.presentationMode ?? "normal",
       setPresentationMode: (mode) => this.session?.showPresentation(mode),
       chatSidebarVisible: () => this.session?.workspaceChatSidebarVisible ?? true,
-      chatSidebarWidth: () => WorkspaceNavigatorContext.consume(this)!.width,
-      setChatSidebarWidth: (width) => WorkspaceNavigatorContext.consume(this)!.setWidth(width),
+      chatSidebarWidth: () => WorkspaceNavigatorContext.consume(this)!.widthFor("browser"),
+      setChatSidebarWidth: (width) =>
+        WorkspaceNavigatorContext.consume(this)!.setWidth("browser", width),
       appendAttachment: (attachment) =>
         this.session?.conversationSessionStore.composerStore.draftStore.appendAttachments([
           attachment,
