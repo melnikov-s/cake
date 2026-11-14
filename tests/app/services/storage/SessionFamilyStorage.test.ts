@@ -712,6 +712,60 @@ describe("SessionFamilyStorage", () => {
     }).pipe(Effect.provide(testLayer())),
   );
 
+  it.effect("selects pending requests by their sender without changing other obligations", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.recordTurn(
+        turn({ turnId: "parent-turn", requestMessageId: "parent-request" }),
+      );
+      yield* storage.recordTurn(
+        turn({
+          senderSessionId: "sibling",
+          turnId: "sibling-turn",
+          requestMessageId: "sibling-request",
+        }),
+      );
+      const before = yield* storage.state();
+      const executing = ["parent-turn", "sibling-turn"];
+      assert.equal(
+        (yield* storage.pendingResponseRequest("child", executing, undefined, undefined, "parent"))
+          ?.turnId,
+        "parent-turn",
+      );
+      assert.equal(
+        (yield* storage.pendingResponseRequest("child", executing, undefined, undefined, "sibling"))
+          ?.turnId,
+        "sibling-turn",
+      );
+      assert.equal(
+        yield* storage.pendingResponseRequest("child", executing, undefined, undefined, "other"),
+        undefined,
+      );
+      assert.equal(
+        yield* storage.pendingResponseRequest(
+          "child",
+          executing,
+          "thread",
+          "parent-request",
+          "sibling",
+        ),
+        undefined,
+      );
+      assert.deepEqual(yield* storage.state(), before);
+
+      yield* storage.settleTurn("parent-turn", "complete");
+      assert.equal(
+        (yield* storage.pendingResponseRequest("child", [], "thread", "parent-request", "parent"))
+          ?.turnId,
+        "parent-turn",
+      );
+      assert.equal(
+        yield* storage.pendingResponseRequest("child", [], "thread", "parent-request", "sibling"),
+        undefined,
+      );
+    }).pipe(Effect.provide(testLayer())),
+  );
+
   it.effect("selects only consumed requests while allowing delayed explicit correlation", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;

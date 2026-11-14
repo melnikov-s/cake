@@ -250,13 +250,20 @@ for (const destination of ["family", "coordinator"] as const) {
           destination === "family"
             ? yield* route({ sessionId: "child", location }, "sessions.reply", input)
             : yield* routeCoordinatorMessage("child", "sessions.reply", input, location);
+        const [turn] = (yield* (yield* SessionFamilyStorage).state()).turns;
         assert.deepEqual(receipt, {
           ok: true,
           command: "sessions.reply",
           status: "report-recorded",
+          ...(destination === "coordinator"
+            ? {
+                target: { kind: "cake-chat" },
+                threadId: turn?.threadId,
+                replyToMessageId: turn?.requestMessageId,
+              }
+            : null),
           expectsResponse: false,
         });
-        const [turn] = (yield* (yield* SessionFamilyStorage).state()).turns;
         assert.deepEqual(turn?.report, { outcome: "completed", text });
         assert.equal(turn?.reported, false);
         assert.deepEqual(offers, [text]);

@@ -168,6 +168,7 @@ export class SessionFamilyStorage extends Context.Service<
       executingTurnIds: ReadonlyArray<string>,
       threadId?: string,
       requestMessageId?: string,
+      senderSessionId?: string,
     ) => Effect.Effect<FamilyTurn | undefined, SessionFamilyStorageError>;
     readonly prepareResponse: (
       sessionId: string,
@@ -1056,6 +1057,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         executingTurnIds: ReadonlyArray<string>,
         threadId?: string,
         requestMessageId?: string,
+        senderSessionId?: string,
       ) => {
         const executing = new Set(executingTurnIds);
         const explicitlyCorrelated = threadId !== undefined || requestMessageId !== undefined;
@@ -1066,6 +1068,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               .find(
                 (turn) =>
                   turn.sessionId === sessionId &&
+                  (senderSessionId === undefined || turn.senderSessionId === senderSessionId) &&
                   !turn.reported &&
                   (executing.has(turn.turnId) ||
                     (explicitlyCorrelated && turn.outcome !== undefined)) &&

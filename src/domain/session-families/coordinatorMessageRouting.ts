@@ -83,6 +83,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       workingDirectory: location.workingDirectory,
       sessionDirectory: location.sessionDirectory,
     });
+    // Execution alone does not make a send a report: it must address the request's sender.
     const pending =
       command === "sessions.reply" ||
       input.replyToMessageId ||
@@ -92,6 +93,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
             executingIds,
             input.threadId,
             input.replyToMessageId,
+            targetId,
           )
         : undefined;
     if (
@@ -127,6 +129,12 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
           ok: true,
           command,
           status: "report-recorded",
+          target: {
+            kind: "cake-chat",
+            ...(targetId === CAKE_CHAT_SESSION_ID ? null : { sessionId: targetId }),
+          },
+          threadId: pending.threadId,
+          replyToMessageId: pending.requestMessageId,
           expectsResponse: false,
         });
     }
@@ -138,7 +146,11 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       ...(sourceMessageRef ? { sourceMessageRef } : null),
       version: 1 as const,
       messageId,
-      threadId: pending?.threadId ?? input.threadId ?? spawn?.sessionId ?? crypto.randomUUID(),
+      threadId:
+        pending?.threadId ??
+        input.threadId ??
+        (targetId === requesterId ? spawn?.sessionId : undefined) ??
+        crypto.randomUUID(),
       sequence: 1,
       expectsResponse,
       resultDelivery:

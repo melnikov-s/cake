@@ -2516,6 +2516,193 @@ describe("automatic spawned-session reporting", () => {
       }),
   );
 
+  for (const busy of [false, true])
+    for (const delivery of [undefined, "prompt", "steer"] as const)
+      it.effect.each(["notification", "ignore"] as const)(
+        `an executing worker sends to a different Project Chat with ${delivery ?? "omitted"} delivery (busy=${busy}) and %s results without consuming its owner's request`,
+        (resultDelivery) =>
+          Effect.gen(function* () {
+            const f = yield* fixture(busy);
+            yield* f.run(
+              Effect.gen(function* () {
+                const owner = projectChatSessionId("/project");
+                const target = projectChatSessionId("/other");
+                yield* assembleCoordinator(target);
+                const created = yield* createFromChat([], "notification", owner);
+                yield* Deferred.await(f.entered);
+                const request = yield* onlyTurn();
+                const before = yield* f.storage.state();
+                const options = yield* projectOptions({
+                  location,
+                  sessionId: created.sessionId,
+                  newSession: false,
+                });
+                const receipt = yield* Effect.promise(() =>
+                  options.runtime.currentSessionControl!.routeFamilyMessage!(
+                    "sessions.send",
+                    {
+                      sessionId: target,
+                      text: resultText,
+                      ...(delivery ? { delivery } : null),
+                      resultDelivery,
+                    },
+                    new AbortController().signal,
+                  ),
+                );
+                const decoded = yield* Schema.decodeUnknownEffect(
+                  Schema.Struct({
+                    status: Schema.String,
+                    target: Schema.Struct({ kind: Schema.String, sessionId: Schema.String }),
+                    delivery: Schema.String,
+                    turnId: Schema.String,
+                    messageId: Schema.String,
+                    threadId: Schema.String,
+                    expectsResponse: Schema.Boolean,
+                    resultDelivery: Schema.String,
+                  }),
+                )(receipt);
+                assert.equal(decoded.status, "accepted");
+                assert.deepEqual(decoded.target, { kind: "cake-chat", sessionId: target });
+                assert.equal(decoded.delivery, delivery ?? (busy ? "steer" : "prompt"));
+                assert.equal(decoded.expectsResponse, resultDelivery !== "ignore");
+                assert.equal(decoded.resultDelivery, resultDelivery);
+                assert.notEqual(decoded.threadId, request.threadId);
+                yield* Deferred.await(f.received);
+                assert.deepEqual(f.recipients, [target]);
+                assert.deepEqual(f.deliveries, [decoded.delivery]);
+                const message = parseCrossSessionMessage(f.chatTranscripts.get(target)?.[0] ?? "");
+                assert.equal(message?.text, resultText);
+                assert.equal(message?.metadata.messageId, decoded.messageId);
+                assert.equal(message?.metadata.threadId, decoded.threadId);
+                assert.equal(message?.metadata.replyToMessageId, undefined);
+                assert.equal(message?.metadata.resultDelivery, resultDelivery);
+                assert.equal(message?.metadata.expectsResponse, decoded.expectsResponse);
+                assert.deepEqual(f.chatTranscripts.get(owner), []);
+                const after = yield* f.storage.state();
+                assert.deepEqual(
+                  after.turns.filter((turn) => turn.sessionId === created.sessionId),
+                  before.turns,
+                );
+                assert.deepEqual(after.spawnedSessions, before.spawnedSessions);
+                const outbound = after.turns.filter((turn) => turn.sessionId === target);
+                assert.equal(outbound.length, resultDelivery === "ignore" ? 0 : 1);
+                if (resultDelivery === "notification") {
+                  assert.equal(outbound[0]?.senderSessionId, created.sessionId);
+                  assert.equal(outbound[0]?.requestMessageId, decoded.messageId);
+                }
+
+                const ownerResult = "Owner task complete: validated the routing regression.";
+                yield* Deferred.succeed(f.finish, { stopReason: "stop", text: ownerResult });
+                // The destination may settle first; wait for this worker, not any turn.
+                while ((yield* Queue.take(f.settledTurns)) !== request.turnId) {}
+                const settled = (yield* f.storage.state()).turns.find(
+                  (turn) => turn.turnId === request.turnId,
+                );
+                assert.ok(settled);
+                assert.equal(settled.senderSessionId, owner);
+                assert.equal(settled.requestMessageId, request.requestMessageId);
+                assert.equal(settled.report?.text, ownerResult);
+                assert.equal(settled.reported, false);
+              }),
+            );
+          }),
+      );
+
+  it.effect.each([undefined, "parent", "explicit"] as const)(
+    "an executing worker's %s parent send records only its owning Project Chat report",
+    (address) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const owner = projectChatSessionId("/project");
+            const created = yield* createFromChat([], "notification", owner);
+            yield* Deferred.await(f.entered);
+            const request = yield* onlyTurn();
+            const options = yield* projectOptions({
+              location,
+              sessionId: created.sessionId,
+              newSession: false,
+            });
+            const receipt = yield* Effect.promise(() =>
+              options.runtime.currentSessionControl!.routeFamilyMessage!(
+                "sessions.send",
+                {
+                  ...(address ? { sessionId: address === "explicit" ? owner : address } : null),
+                  text: resultText,
+                },
+                new AbortController().signal,
+              ),
+            );
+            assert.deepEqual(receipt, {
+              ok: true,
+              command: "sessions.send",
+              status: "report-recorded",
+              target: { kind: "cake-chat", sessionId: owner },
+              threadId: request.threadId,
+              replyToMessageId: request.requestMessageId,
+              expectsResponse: false,
+            });
+            assert.deepEqual(f.recipients, []);
+            const recorded = yield* onlyTurn();
+            assert.equal(recorded.report?.text, resultText);
+            assert.equal(recorded.reported, false);
+            assert.equal(recorded.replyMessageIds, undefined);
+          }),
+        );
+      }),
+  );
+
+  it.effect.each(["sessions.send", "sessions.reply"] as const)(
+    "%s preserves an explicitly correlated response to the owning Project Chat",
+    (command) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const owner = projectChatSessionId("/project");
+            const created = yield* createFromChat([], "notification", owner);
+            yield* Deferred.await(f.entered);
+            const request = yield* onlyTurn();
+            const options = yield* projectOptions({
+              location,
+              sessionId: created.sessionId,
+              newSession: false,
+            });
+            const receipt = yield* Effect.promise(() =>
+              options.runtime.currentSessionControl!.routeFamilyMessage!(
+                command,
+                {
+                  ...(command === "sessions.send" ? { sessionId: owner } : null),
+                  text: "Can you confirm the migration acceptance criteria?",
+                  resultDelivery: "reply",
+                  threadId: request.threadId,
+                  replyToMessageId: request.requestMessageId,
+                },
+                new AbortController().signal,
+              ),
+            );
+            const decoded = yield* Schema.decodeUnknownEffect(
+              Schema.Struct({ status: Schema.String, messageId: Schema.String }),
+            )(receipt);
+            assert.equal(decoded.status, "accepted");
+            yield* Deferred.await(f.received);
+            assert.deepEqual(f.recipients, [owner]);
+            const message = parseCrossSessionMessage(f.chatTranscripts.get(owner)?.[0] ?? "");
+            assert.equal(message?.metadata.threadId, request.threadId);
+            assert.equal(message?.metadata.replyToMessageId, request.requestMessageId);
+            assert.equal(message?.metadata.expectsResponse, true);
+            const pending = (yield* f.storage.state()).turns.find(
+              (turn) => turn.turnId === request.turnId,
+            );
+            assert.ok(pending);
+            assert.deepEqual(pending.replyMessageIds, [decoded.messageId]);
+            assert.equal(pending.report, undefined);
+          }),
+        );
+      }),
+  );
+
   it.effect(
     "a spawned session's send without sessionId follows sessions.reply's correlation to Cake Chat",
     () =>
@@ -2543,6 +2730,9 @@ describe("automatic spawned-session reporting", () => {
               ok: true,
               command: "sessions.send",
               status: "report-recorded",
+              target: { kind: "cake-chat" },
+              threadId: request.threadId,
+              replyToMessageId: request.requestMessageId,
               expectsResponse: false,
             });
             yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
@@ -3229,10 +3419,14 @@ describe("automatic spawned-session reporting", () => {
               },
               location,
             );
+            const request = yield* onlyTurn();
             assert.deepEqual(recorded, {
               ok: true,
               command: "sessions.reply",
               status: "report-recorded",
+              target: { kind: "cake-chat" },
+              threadId: request.threadId,
+              replyToMessageId: request.requestMessageId,
               expectsResponse: false,
             });
             yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });

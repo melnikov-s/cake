@@ -10,6 +10,7 @@ import type { TaskInputReference } from "../../../src/contracts/conversations/ta
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { deliver } from "../../../src/domain/session-families/sessionFamilyCompletion";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { Cause, Deferred, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
@@ -73,6 +74,7 @@ const environment = (
     AgentControlTestLive,
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
+    Layer.mock(RendererRequestCoordinator, { releaseSession: () => Effect.void }),
     Layer.mock(SessionCatalogChanges, {
       publish: (change) =>
         Effect.sync(() => {
@@ -502,6 +504,13 @@ it.effect.each(
           ok: true,
           command: "sessions.reply",
           status: "report-recorded",
+          ...(scenario.destination === "coordinator"
+            ? {
+                target: { kind: "cake-chat" },
+                threadId: familyId,
+                replyToMessageId: messageId,
+              }
+            : null),
           expectsResponse: false,
         });
         assert.equal(received.length, 0);
