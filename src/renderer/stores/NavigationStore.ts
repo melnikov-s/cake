@@ -3,7 +3,11 @@ import { subagentTitle } from "../lib/subagent-title";
 import { ToastContext } from "./context/ToastContext";
 import { describeError } from "../lib/error-details";
 import { linkedMessageTarget } from "../lib/message-navigation";
-import type { ConversationNavigationTarget } from "../lib/conversation-navigation-tree";
+import {
+  conversationNavigationTargetKey,
+  type ConversationNavigationTarget,
+} from "../lib/conversation-navigation-tree";
+import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { AttachmentReferencePreviewStore } from "./AttachmentReferencePreviewStore";
 import {
@@ -168,6 +172,41 @@ export class NavigationStore extends Store<{
       owner.conversationSessionStore.sideChatStore.close();
     if (target.kind === "cake-chat") await this.openCakeChat(target.sessionId);
     else await this.openSession(target.sessionId);
+  }
+
+  /** A Sessions-row activation is an explicit chat intent, including reselecting the current row. */
+  async openSessionFromNavigator(target: ConversationNavigationTarget) {
+    const navigator = WorkspaceNavigatorContext.consume(this)!;
+    navigator.showChat();
+    await this.openConversationTarget(target);
+    // Row activation can run on mousedown. Let its native focus and the revealed
+    // Chat mount settle before requesting the destination input, not the source's.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    if (this.signal.aborted || this.props.shell.applicationSurface) return;
+    const active = this.props.shell.activeConversation;
+    if (!active) return;
+    const owner =
+      this.props.cakeChat().registry.find(active.sessionId) ??
+      this.props.registry.findSession(active.sessionId);
+    const conversation = owner?.conversationSessionStore;
+    if (!conversation) return;
+    const secondary = conversation.sideChatStore.target;
+    const primary = target.kind === "cake-chat" || target.kind === "project-session";
+    // A superseded/failed open must not reveal or focus a different conversation.
+    if (
+      primary
+        ? active.kind !== target.kind || active.sessionId !== target.sessionId
+        : !secondary?.navigationTarget ||
+          conversationNavigationTargetKey(secondary.navigationTarget) !==
+            conversationNavigationTargetKey(target)
+    )
+      return;
+    // Opening can outlive a subsequent tab choice; do not take it back from the user.
+    if (navigator.companionTab !== "chat" || navigator.showingWidget) return;
+    const draft = primary
+      ? conversation.composerStore.draftStore
+      : secondary?.chatStore?.props.composerDraft?.();
+    draft?.requestFocus({ explicit: true });
   }
 
   showAutomations() {

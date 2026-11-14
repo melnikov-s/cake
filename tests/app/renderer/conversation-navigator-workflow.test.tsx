@@ -30,10 +30,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderNavigator(
-  projectPath: string | undefined = navigatorProjectPath,
-  coldSideChat = false,
-) {
+function renderNavigator(projectPath: string | null = navigatorProjectPath, coldSideChat = false) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: navigatorProjectPath }), projectRecord({ path: "/other" })],
     sessions: navigatorSessions,
@@ -105,7 +102,7 @@ function renderNavigator(
   fixture.root.navigationStore.selectCakeChat(navigatorHomeId);
   const view = render(
     <StoreProvider store={fixture.root}>
-      <ConversationNavigator projectPath={projectPath} />
+      <ConversationNavigator projectPath={projectPath ?? undefined} />
       <SideChatsMenu store={{ sessionId: "layout" }} />
     </StoreProvider>,
   );
@@ -140,6 +137,146 @@ function settleFixtureWorkers(fixture: ReturnType<typeof renderNavigator>) {
 }
 
 describe("Sessions navigator workflow", () => {
+  it.each(
+    (["normal", "vscode", "browser"] as const).flatMap((mode) =>
+      (["project-session", "cake-chat"] as const).flatMap((kind) =>
+        [true, false].map((same) => ({ mode, kind, same })),
+      ),
+    ),
+  )("reveals Chat for $kind in $mode (same selection: $same)", async ({ mode, kind, same }) => {
+    using fixture = renderNavigator();
+    const root = fixture.root;
+    // Native tool restoration is covered in Electron; this test owns row routing/state.
+    vi.spyOn(root.projectWorkbenchStore.presentationStore, "restore").mockImplementation(() => {});
+    const target =
+      kind === "project-session"
+        ? ({ kind, sessionId: "layout" } as const)
+        : ({ kind, sessionId: navigatorHomeId } as const);
+    await act(async () => {
+      await root.navigationStore.openConversationTarget(
+        same ? target : { kind: "project-session", sessionId: "keyboard" },
+      );
+    });
+    const session =
+      kind === "project-session"
+        ? root.sessionRegistry.findSession(target.sessionId)!
+        : root.cakeChatCollectionStore.registry.load(target.sessionId);
+    act(() => {
+      session.showPresentation(mode);
+      session.conversationSessionStore.composerStore.draftStore.setText("Keep this draft");
+      root.workspaceNavigatorStore.show("sessions");
+    });
+    const draft = session.conversationSessionStore.composerStore.draftStore;
+    const revision = draft.focusRequestRevision;
+    await fixture.user.click(
+      within(rowFor(kind === "project-session" ? "UI Layout Refactor" : "Project Chat")).getByRole(
+        "button",
+        { name: kind === "project-session" ? /^UI Layout Refactor/ : "cake" },
+      ),
+    );
+    await waitFor(() => {
+      expect(root.appShellStore.activeConversation).toEqual(target);
+      expect(root.workspaceNavigatorStore.companionTab).toBe("chat");
+      expect(draft.focusRequestRevision).toBeGreaterThan(revision);
+      expect(draft.focusRequestIsExplicit).toBe(true);
+    });
+    expect(draft.text).toBe("Keep this draft");
+    expect(session.presentationMode).toBe(mode);
+    expect(root.workspaceNavigatorStore.mode).toBe("sessions");
+  });
+
+  it.each(["filtered global", "resolved"] as const)(
+    "reveals Chat through the %s Sessions entry path",
+    async (path) => {
+      using fixture = renderNavigator(path === "filtered global" ? null : navigatorProjectPath);
+      const root = fixture.root;
+      if (path === "resolved") {
+        act(() => {
+          fixture.models.sessionCatalog.find("layout")!.resolved = true;
+        });
+        await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
+      } else {
+        await fixture.user.type(
+          screen.getByRole("searchbox", { name: "Search sessions" }),
+          "UI Layout Refactor",
+        );
+      }
+      act(() => root.workspaceNavigatorStore.show("sessions"));
+      await fixture.user.click(screen.getByRole("button", { name: /^UI Layout Refactor/ }));
+      await waitFor(() => {
+        expect(root.appShellStore.activeConversation?.sessionId).toBe("layout");
+        expect(root.workspaceNavigatorStore.companionTab).toBe("chat");
+        expect(
+          root.sessionRegistry.findSession("layout")!.conversationSessionStore.composerStore
+            .draftStore.focusRequestIsExplicit,
+        ).toBe(true);
+      });
+    },
+  );
+
+  it("keeps a later Sessions tab choice while the selected session finishes opening", async () => {
+    using fixture = renderNavigator();
+    const root = fixture.root;
+    await act(async () => {
+      await root.navigationStore.openSession("layout");
+    });
+    let finishOpen!: () => void;
+    vi.spyOn(fixture.client.projectSessions, "open").mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishOpen = resolve;
+        }),
+    );
+    const draft =
+      root.sessionRegistry.findSession("keyboard")!.conversationSessionStore.composerStore
+        .draftStore;
+    let opening!: Promise<void>;
+    act(() => {
+      root.workspaceNavigatorStore.show("sessions");
+      opening = root.navigationStore.openSessionFromNavigator({
+        kind: "project-session",
+        sessionId: "keyboard",
+      });
+    });
+    await waitFor(() => {
+      expect(root.appShellStore.activeConversation?.sessionId).toBe("keyboard");
+      expect(finishOpen).toBeTypeOf("function");
+    });
+    act(() => root.workspaceNavigatorStore.show("sessions"));
+    const revision = draft.focusRequestRevision;
+    await act(async () => {
+      finishOpen();
+      await opening;
+    });
+    expect(root.workspaceNavigatorStore.companionTab).toBe("sessions");
+    expect(draft.focusRequestRevision).toBe(revision);
+  });
+
+  it.each(["normal", "vscode", "browser"] as const)(
+    "retains the chosen tab on ordinary same-conversation navigation in %s",
+    async (mode) => {
+      using fixture = renderNavigator();
+      const root = fixture.root;
+      await act(async () => {
+        await root.navigationStore.openSession("layout");
+      });
+      vi.spyOn(root.projectWorkbenchStore.presentationStore, "restore").mockImplementation(
+        () => {},
+      );
+      act(() => {
+        root.sessionRegistry.findSession("layout")!.showPresentation(mode);
+        root.workspaceNavigatorStore.show("sessions");
+      });
+      await act(async () => {
+        await root.navigationStore.openConversationTarget({
+          kind: "project-session",
+          sessionId: "layout",
+        });
+      });
+      expect(root.workspaceNavigatorStore.companionTab).toBe("sessions");
+    },
+  );
+
   it("hides only the Project Chat grouping rail without changing indentation or family rails", async () => {
     using fixture = renderNavigator();
     expect(rowFor("Project Chat").querySelector('[data-slot="depth-rails"]')).toBeNull();

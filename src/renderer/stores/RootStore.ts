@@ -959,7 +959,7 @@ export class RootStore extends Store<{
         if (owner?.kind === "project-session" || owner?.kind === "cake-chat")
           this.appShellStore.recordConversationInteraction(owner);
       },
-      open: (target) => this.navigationStore.openConversationTarget(target),
+      open: (target) => this.navigationStore.openSessionFromNavigator(target),
     });
   }
 
