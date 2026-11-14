@@ -4,6 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isCakeChatSessionId,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { ConversationBreadcrumb } from "../../../src/renderer/components/conversation-breadcrumb";
 import { ConversationIdentityDock } from "../../../src/renderer/components/conversation-identity-dock";
 import { SettingsAppearanceSection } from "../../../src/renderer/components/settings-appearance-section";
@@ -17,7 +21,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderIdentity(snapshot?: StoreSnapshot) {
+function renderIdentity(snapshot?: StoreSnapshot, sessionId = "task") {
   const fixture = createRendererStoreFixture({
     snapshot,
     projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -25,11 +29,12 @@ function renderIdentity(snapshot?: StoreSnapshot) {
       sessionSummary({ sessionId: "task", projectPath: "/project", title: "Build identity" }),
     ],
   });
-  fixture.root.navigationStore.selectProjectSession("task");
+  if (isCakeChatSessionId(sessionId)) fixture.root.navigationStore.selectCakeChat(sessionId);
+  else fixture.root.navigationStore.selectProjectSession(sessionId);
   const view = render(
     <StoreProvider store={fixture.root}>
-      <ConversationBreadcrumb sessionId="task" />
-      <ConversationIdentityDock sessionId="task">
+      <ConversationBreadcrumb sessionId={sessionId} />
+      <ConversationIdentityDock sessionId={sessionId}>
         <div data-testid="conversation">Transcript and composer</div>
       </ConversationIdentityDock>
       <SettingsAppearanceSection appearance={fixture.root.settingsStore.appearance} />
@@ -105,11 +110,23 @@ it("hides without a reserved layout row, persists off, and restores immediately 
   );
 });
 
-it("tracks the displayed global and project session as the shared focused surface switches", async () => {
+it.each([
+  ["Project Chat", `project-chat:${"a".repeat(64)}`],
+  ["global Cake Chat", CAKE_CHAT_SESSION_ID],
+])("omits the badge and layout row in %s with the setting on", (_kind, sessionId) => {
+  using f = renderIdentity(undefined, sessionId);
+  expect(f.root.appShellStore.activeConversation).toEqual({ kind: "cake-chat", sessionId });
+  expect(f.root.settingsStore.appearance.conversationIdentityEnabled).toBe(true);
+  expect(screen.queryByRole("navigation", { name: "Conversation identity" })).toBeNull();
+  expect(document.querySelector('[data-slot="conversation-identity-layout"]')).toBeNull();
+  expect(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).toBeDefined();
+  expect(screen.getByTestId("conversation")).toBeDefined();
+});
+
+it("only shows the displayed Project Session as the shared focused surface switches", async () => {
   using f = renderAppShellNavigation();
-  expect(screen.getByRole("navigation", { name: "Conversation identity" }).textContent).toBe(
-    "Cake Chat",
-  );
+  expect(screen.queryByRole("navigation", { name: "Conversation identity" })).toBeNull();
+  expect(document.querySelector('[data-slot="conversation-identity-layout"]')).toBeNull();
   await f.selectSession("alpha");
   expect(screen.getByRole("navigation", { name: "Conversation identity" }).textContent).toContain(
     "alpha conversation",
@@ -122,7 +139,6 @@ it("tracks the displayed global and project session as the shared focused surfac
     screen.getByRole("navigation", { name: "Conversation identity" }).textContent,
   ).not.toContain("alpha conversation");
   await f.user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
-  expect(screen.getByRole("navigation", { name: "Conversation identity" }).textContent).toBe(
-    "Cake Chat",
-  );
+  expect(screen.queryByRole("navigation", { name: "Conversation identity" })).toBeNull();
+  expect(document.querySelector('[data-slot="conversation-identity-layout"]')).toBeNull();
 });

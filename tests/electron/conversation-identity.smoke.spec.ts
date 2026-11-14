@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 
-test("identity stays docked in its chat column, preserves input/navigation, and persists hidden across relaunch", async () => {
+test("identity only docks in Project Sessions, preserves input/navigation, and persists hidden across relaunch", async () => {
   test.setTimeout(180_000);
   const temporary = await mkdtemp(join(tmpdir(), "cake-conversation-identity-"));
   const paths = {
@@ -46,6 +46,21 @@ test("identity stays docked in its chat column, preserves input/navigation, and 
     await expect(
       restored.getByRole("navigation", { name: "Conversation breadcrumb" }),
     ).toBeVisible();
+    // Relaunch opens Cake Chat; return to an eligible session before checking the saved setting.
+    await restored
+      .getByRole("button", { name: "Open Project Chat for visual-capture-project", exact: true })
+      .click();
+    await restored.getByRole("button", { name: "Search sessions", exact: true }).click();
+    await restored.keyboard.type("Deep consultant review");
+    await restored
+      .getByRole("option", { name: /^Deep consultant review/ })
+      .first()
+      .click();
+    await expect(
+      restored
+        .getByRole("navigation", { name: "Conversation breadcrumb" })
+        .getByRole("button", { name: /^Deep consultant review/ }),
+    ).toHaveAttribute("aria-current", "page");
     await expect(restored.getByRole("navigation", { name: "Conversation identity" })).toHaveCount(
       0,
     );

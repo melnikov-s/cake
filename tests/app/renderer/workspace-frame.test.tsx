@@ -199,29 +199,17 @@ it.each(
     (["browser", "vscode"] as const).map((mode) => ({ kind, mode })),
   ),
 )(
-  "$kind $mode companion docks its live identity and removes the row when disabled",
+  "$kind $mode companion only docks Project Session identity and removes the row when disabled",
   ({ kind, mode }) => {
     using f = renderWorkspace(kind, mode);
-    const identity = screen.getByRole("navigation", { name: "Conversation identity" });
-    expect(identity.closest('[aria-label="Current conversation companion"]')).not.toBeNull();
-    expect(identity.textContent).toContain(kind === "global-chat" ? "Cake Chat" : "Project");
-    expect(identity.textContent).toContain(
-      kind === "project" ? "Project task" : "Project coordinator",
-    );
-    if (kind !== "project") {
-      act(() =>
-        applySnapshot(f.models.cakeChatCatalog, {
-          ...toSnapshot(f.models.cakeChatCatalog),
-          sessions: [
-            {
-              sessionId: f.session.sessionId,
-              title: "Renamed coordinator",
-              ...(kind === "global-chat" ? {} : { projectPath: "/project" }),
-            },
-          ],
-        }),
-      );
-      expect(identity.textContent).toContain("Renamed coordinator");
+    if (kind === "project") {
+      const identity = screen.getByRole("navigation", { name: "Conversation identity" });
+      expect(identity.closest('[aria-label="Current conversation companion"]')).not.toBeNull();
+      expect(identity.textContent).toContain("Project");
+      expect(identity.textContent).toContain("Project task");
+    } else {
+      expect(screen.queryByRole("navigation", { name: "Conversation identity" })).toBeNull();
+      expect(document.querySelector('[data-slot="conversation-identity-layout"]')).toBeNull();
     }
     act(() => f.root.settingsStore.appearance.setConversationIdentityEnabled(false));
     expect(screen.queryByRole("navigation", { name: "Conversation identity" })).toBeNull();

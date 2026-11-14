@@ -3,7 +3,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { ConversationBreadcrumb } from "./conversation-breadcrumb";
 
-/** Reserve a compact bottom row in the chat column, outside its transcript and composer. */
+/** Reserve a compact bottom row only for the displayed Project Session chat. */
 export const ConversationIdentityDock = observer(function ConversationIdentityDock({
   sessionId,
   children,
@@ -12,7 +12,14 @@ export const ConversationIdentityDock = observer(function ConversationIdentityDo
   children: ReactNode;
 }) {
   const root = useStore(RootStore);
-  if (!sessionId || !root.settingsStore.appearance.conversationIdentityEnabled) return children;
+  const active = root.appShellStore.activeConversation;
+  if (
+    !sessionId ||
+    active?.kind !== "project-session" ||
+    active.sessionId !== sessionId ||
+    !root.settingsStore.appearance.conversationIdentityEnabled
+  )
+    return children;
   return (
     <div data-slot="conversation-identity-layout" className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="min-h-0 min-w-0 flex-1">{children}</div>

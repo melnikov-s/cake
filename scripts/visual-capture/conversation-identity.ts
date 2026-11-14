@@ -27,7 +27,7 @@ export function createConversationIdentityScenario(
       const identity = page.getByRole("navigation", { name: "Conversation identity" });
       if (state === "global-chat") {
         await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
-        await expect(identity).toHaveText("Cake Chat");
+        await expect(header).toHaveText("Cake Chat");
       } else if (state === "browser") {
         await page.getByRole("button", { name: "Browser", exact: true }).click();
         await expect(
@@ -38,7 +38,12 @@ export function createConversationIdentityScenario(
           .getByRole("button", { name: "Chat", exact: true })
           .click();
       }
-      await expect(identity).toBeVisible();
+      const eligible = state !== "project-chat" && state !== "global-chat";
+      if (eligible) await expect(identity).toBeVisible();
+      else {
+        await expect(identity).toHaveCount(0);
+        await expect(page.locator('[data-slot="conversation-identity-layout"]')).toHaveCount(0);
+      }
       const beforeHeader = await header.textContent();
       const input = page.getByRole("combobox", { name: /^Message(?: Project Chat| Cake Chat)?$/ });
       await input.fill("Keep this draft");
@@ -58,7 +63,7 @@ export function createConversationIdentityScenario(
         await page.getByRole("button", { name: /^Appearance/ }).click();
         await expect(toggle).toHaveAttribute("aria-checked", "false");
         await page.getByRole("button", { name: "Back to chat", exact: true }).click();
-      } else {
+      } else if (eligible) {
         const geometry = await identity.evaluate((nav) => {
           const tab = nav.closest('[data-slot="conversation-identity-tab"]')!;
           const layout = tab.closest('[data-slot="conversation-identity-layout"]')!;
