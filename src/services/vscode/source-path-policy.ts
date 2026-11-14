@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { EditorLocation } from "../../contracts/editor/editor-location";
 
@@ -29,14 +29,25 @@ export async function resolveSourceTarget(workingDirectory: string, requestedPat
     return target;
   };
 
-  let target: string;
-  try {
-    target = await realpath(candidate);
-  } catch {
-    const parent = ensureInsideWorkspace(await realpath(dirname(candidate)));
-    target = join(parent, basename(candidate));
+  // Historical diff paths may have lost their entire parent directory.
+  // Resolve the nearest existing ancestor, but never skip a dangling symlink.
+  let ancestor = candidate;
+  const missing: string[] = [];
+  while (true) {
+    try {
+      const target = join(await realpath(ancestor), ...missing);
+      return { workspace, target: ensureInsideWorkspace(target) };
+    } catch (cause) {
+      if (!(cause instanceof Error) || !("code" in cause) || cause.code !== "ENOENT") throw cause;
+      const entry = await lstat(ancestor).catch((error: unknown) => {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+        throw error;
+      });
+      if (entry || ancestor === workspace) throw cause;
+      missing.unshift(basename(ancestor));
+      ancestor = dirname(ancestor);
+    }
   }
-  return { workspace, target: ensureInsideWorkspace(target) };
 }
 
 /** Resolves an editor target while preserving the Project Session's Working Directory. */

@@ -127,6 +127,64 @@ describe("file location routing", () => {
   );
 
   it.effect(
+    "routes deleted workspace files to revision diffs without admitting missing ordinary or external files",
+    () =>
+      withFiles((root) =>
+        Effect.gen(function* () {
+          const project = join(root, "project");
+          const outside = join(root, "outside");
+          yield* Effect.promise(() => mkdir(project));
+          yield* Effect.promise(() => mkdir(outside));
+          yield* Effect.promise(() => symlink(outside, join(project, "escape")));
+          yield* Effect.promise(() => symlink(join(outside, "missing"), join(project, "dangling")));
+          const files = yield* WorkspaceFiles;
+          for (const path of ["deleted.ts", "removed/directory/file.ts"]) {
+            expect(
+              yield* files.prepareFileLocation(1, {
+                workspacePath: project,
+                originatingDirectory: project,
+                location: {
+                  kind: "working-directory",
+                  path,
+                  view: "changes",
+                  base: "creation-sha",
+                },
+              }),
+            ).toMatchObject({
+              viewer: "vscode",
+              location: { path, base: "creation-sha", view: "changes" },
+            });
+          }
+          for (const path of [
+            "deleted.ts",
+            "escape/missing.ts",
+            "dangling/file.ts",
+            "../outside/missing.ts",
+          ]) {
+            const result = yield* Effect.result(
+              files.prepareFileLocation(1, {
+                workspacePath: project,
+                originatingDirectory: project,
+                location: {
+                  kind: "working-directory",
+                  path,
+                  ...(path === "deleted.ts" ? {} : { view: "changes" as const }),
+                },
+              }),
+            );
+            expect(result._tag).toBe("Failure");
+          }
+        }).pipe(
+          Effect.provide(
+            makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(
+              Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
+            ),
+          ),
+        ),
+      ),
+  );
+
+  it.effect(
     "opens text files anywhere on the host but rejects unavailable, non-text and oversized targets",
     () =>
       withFiles((root) =>

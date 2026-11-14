@@ -7,6 +7,7 @@ import type {
 } from "../../contracts/filesystem/file-location";
 import { isImagePath, readLocalImage } from "./local-image";
 import { expandHomePath } from "./local-path";
+import { resolveSourceTarget } from "../vscode/source-path-policy";
 
 /** Both inputs must be canonical absolute paths. Directory equality is not a file. */
 function containsFile(directory: string, target: string): boolean {
@@ -48,7 +49,22 @@ export async function prepareFileLocation(
   if (request.location.kind === "absolute-file" && !isAbsolute(path))
     throw new Error("An absolute file path is required");
   if (!path) throw new Error("A file path is required");
-  const target = await resolveExistingPath(path, [...(request.authorDirectories ?? []), origin]);
+  const target = await resolveExistingPath(path, [
+    ...(request.authorDirectories ?? []),
+    origin,
+  ]).catch(async (cause: unknown) => {
+    // A deleted project file still has revision content. Missing external files
+    // and ordinary file navigation retain their existing error behavior.
+    if (
+      workspace &&
+      request.location.kind === "working-directory" &&
+      request.location.view === "changes"
+    ) {
+      const resolved = await resolveSourceTarget(origin, path);
+      if (containsFile(workspace, resolved.target)) return resolved.target;
+    }
+    throw cause;
+  });
   if (workspace && containsFile(workspace, target)) {
     return {
       viewer: "vscode",

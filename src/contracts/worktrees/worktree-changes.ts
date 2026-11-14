@@ -43,6 +43,8 @@ export const WorktreeChanges = Schema.Struct({
   baseAlternatives: Schema.Array(BaseAlternative),
   /** Immutable counterfactual baseline -> actual HEAD, shared by files and aggregate counts. */
   baseRevision: Schema.NullOr(Schema.String),
+  /** Recorded creation commit for working-tree review; inferred fork point for unmanaged checkouts. */
+  branchPointRevision: Schema.NullOr(Schema.String),
   headRevision: Schema.String,
   contributionUnavailableReason: Schema.NullOr(Schema.String),
   files: Schema.Array(ChangedFile),

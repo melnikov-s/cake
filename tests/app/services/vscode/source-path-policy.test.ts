@@ -76,6 +76,25 @@ describe("VS Code source path policy", () => {
     ).resolves.toMatchObject({ location: { path: "..notes.ts" } });
   });
 
+  it("resolves deleted directory paths while rejecting missing paths through external or dangling symlinks", async () => {
+    const { workspace } = await workspaceFixture();
+    const outside = await workspaceFixture();
+    await symlink(outside.workspace, join(workspace, "escape"));
+    await symlink(join(outside.workspace, "missing"), join(workspace, "dangling"));
+    await expect(
+      resolveEditorTarget(workspace, {
+        kind: "working-directory",
+        path: "removed/nested/file.ts",
+        view: "changes",
+        base: "creation-sha",
+      }),
+    ).resolves.toMatchObject({ location: { path: "removed/nested/file.ts" } });
+    await expect(resolveSourceTarget(workspace, "escape/missing/deleted.ts")).rejects.toThrow(
+      "outside the selected project",
+    );
+    await expect(resolveSourceTarget(workspace, "dangling/deleted.ts")).rejects.toThrow();
+  });
+
   it("rejects a relative path labeled as an absolute editor file", async () => {
     const { workspace } = await workspaceFixture();
 

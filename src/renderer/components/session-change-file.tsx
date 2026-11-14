@@ -7,12 +7,10 @@ import type { SessionChangesStore } from "../stores/SessionChangesStore";
 export function SessionChangeFile({
   file,
   store,
-  commit,
   contribution = false,
 }: {
   file: ChangedFile;
   store: SessionChangesStore;
-  commit?: string;
   contribution?: boolean;
 }) {
   return (
@@ -20,8 +18,8 @@ export function SessionChangeFile({
       variant="ghost"
       size="sm"
       className="h-auto w-full justify-start gap-2 rounded-none px-4 py-1.5 text-xs font-normal text-foreground"
-      title={`${file.path} · ${commit && !file.deleted && file.workingTreeExists ? "Open file in VS Code" : "Open changes in VS Code"}`}
-      onClick={() => void store.openFile(file, commit, contribution)}
+      title={`${file.path} · Open changes in VS Code`}
+      onClick={() => void store.openFile(file, contribution)}
     >
       <span className="shrink-0 text-muted-foreground">
         <FileIcon />

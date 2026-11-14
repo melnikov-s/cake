@@ -105,6 +105,7 @@ const fixture = Effect.fn("test.fixture")(function* () {
     expect(changeTotals(data.files)).toMatchObject({ additions, deletions });
     expect(data.files.map((file) => file.path).sort()).toEqual(paths.toSorted());
     expect(data.headRevision).toBe(run("rev-parse", "HEAD"));
+    expect(data.branchPointRevision).toBe(worktree.baseCommit);
     expect(
       run("diff", "--name-only", data.baseRevision ?? "", data.headRevision)
         .split("\n")

@@ -169,6 +169,9 @@ class FakeUri {
   toString() {
     return `${this.scheme}:${this.path}${this.query ? `?${encodeURIComponent(this.query)}` : ""}`;
   }
+  with(change: { scheme: string; query: string }) {
+    return new FakeUri(change.scheme, this.path, change.query);
+  }
   static file(path: string) {
     return new FakeUri("file", path);
   }
@@ -310,6 +313,7 @@ interface FakeGitRepository {
   status: ReturnType<typeof vi.fn>;
   diffWith: ReturnType<typeof vi.fn>;
   diffBetween: ReturnType<typeof vi.fn>;
+  getObjectDetails: ReturnType<typeof vi.fn>;
   state: { workingTreeChanges: Array<{ uri: FakeUri }> };
 }
 let gitRepository: FakeGitRepository | undefined;
@@ -322,6 +326,7 @@ function fakeGitRepository(options: {
     status: vi.fn(async () => undefined),
     diffWith: vi.fn(typeof diff === "function" ? diff : async () => diff),
     diffBetween: vi.fn(typeof diff === "function" ? diff : async () => diff),
+    getObjectDetails: vi.fn(async () => ({ size: 1 })),
     state: {
       workingTreeChanges: (options.workingTreeChanges ?? []).map((file) => ({
         uri: FakeUri.file(file),
@@ -413,6 +418,8 @@ const fakeVscode = {
   languages: { registerCodeLensProvider: () => ({ dispose() {} }) },
   ConfigurationTarget: { Global: 1, Workspace: 2 },
   workspace: {
+    fs: { stat: vi.fn(async () => ({ type: 1 })) },
+    registerTextDocumentContentProvider: vi.fn(() => ({ dispose() {} })),
     openTextDocument,
     getConfiguration: vi.fn<
       () => {
@@ -873,6 +880,35 @@ describe("companion editor reveals", () => {
     expect(editor.revealRange).toHaveBeenCalledOnce();
   });
 
+  it("waits for the initial Git repository scan when a changeset click starts VS Code", async () => {
+    gitRepository = fakeGitRepository({ diff: "@@" });
+    const dispose = vi.fn();
+    const getRepository = vi.fn().mockReturnValueOnce(undefined).mockReturnValue(gitRepository);
+    const extensionLookup = vi.spyOn(fakeVscode.extensions, "getExtension").mockReturnValueOnce({
+      isActive: true,
+      exports: {
+        getAPI: () => ({
+          getRepository,
+          toGitUri: (uri: FakeUri, ref: string) => gitRevisionUri(uri.fsPath, ref),
+          onDidOpenRepository: (listener: () => void) => {
+            queueMicrotask(listener);
+            return { dispose };
+          },
+        }),
+      },
+    });
+    const outcome = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+      base: "creation-sha",
+    });
+    expect(outcome).toEqual({ outcome: { view: "changes" }, locations: [] });
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(openTextDocument).not.toHaveBeenCalled();
+    extensionLookup.mockRestore();
+  });
+
   it("compares the working tree with a requested base revision instead of HEAD", async () => {
     const changedPath = `${WORKSPACE}/src/run.ts`;
     gitRepository = fakeGitRepository({ diff: "@@ -1 +1 @@\n-old\n+new\n" });
@@ -895,6 +931,74 @@ describe("companion editor reveals", () => {
       }),
       expect.objectContaining({ scheme: "file", path: changedPath }),
       "run.ts (origin/main ↔ Working Tree)",
+      { preview: false },
+    );
+  });
+
+  it.each(["added.ts", "renamed-new.ts"])(
+    "opens untracked %s against an empty base instead of falling back to a file",
+    async (file) => {
+      gitRepository = fakeGitRepository({ diff: "" });
+      gitRepository.getObjectDetails.mockRejectedValue({ gitErrorCode: "UnknownPath" });
+      const outcome = await commands.get("cake.reveal")!({
+        kind: "working-directory",
+        path: file,
+        view: "changes",
+        base: "creation-sha",
+      });
+      expect(outcome).toEqual({ outcome: { view: "changes" }, locations: [] });
+      expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
+        "vscode.diff",
+        expect.objectContaining({ scheme: "cake-empty", path: `${WORKSPACE}/${file}` }),
+        expect.objectContaining({ scheme: "file", path: `${WORKSPACE}/${file}` }),
+        `${file} (creation-sha ↔ Working Tree)`,
+        { preview: false },
+      );
+      expect(openTextDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it("opens a deleted path against an empty working-tree side", async () => {
+    gitRepository = fakeGitRepository({ diff: "@@ -1 +0 @@\\n-old" });
+    fakeVscode.workspace.fs.stat.mockRejectedValueOnce({ code: "FileNotFound" });
+    const outcome = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "renamed-old.ts",
+      view: "changes",
+      base: "creation-sha",
+      side: "before",
+    });
+    expect(outcome).toEqual({ outcome: { view: "changes" }, locations: [] });
+    expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
+      "vscode.diff",
+      expect.objectContaining({
+        scheme: "git",
+        query: JSON.stringify({ path: `${WORKSPACE}/renamed-old.ts`, ref: "creation-sha" }),
+      }),
+      expect.objectContaining({ scheme: "cake-empty", path: `${WORKSPACE}/renamed-old.ts` }),
+      "renamed-old.ts (creation-sha ↔ Working Tree)",
+      { preview: false },
+    );
+  });
+
+  it("uses an empty base for committed additions without changing the contribution revision", async () => {
+    gitRepository = fakeGitRepository({ diff: "@@" });
+    gitRepository.getObjectDetails.mockRejectedValueOnce({ gitErrorCode: "UnknownPath" });
+    await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "added.ts",
+      view: "changes",
+      base: "contribution-sha",
+      revision: "session-sha",
+    });
+    expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
+      "vscode.diff",
+      expect.objectContaining({ scheme: "cake-empty" }),
+      expect.objectContaining({
+        scheme: "git",
+        query: JSON.stringify({ path: `${WORKSPACE}/added.ts`, ref: "session-sha" }),
+      }),
+      "added.ts (contribution-sha ↔ session-sha)",
       { preview: false },
     );
   });

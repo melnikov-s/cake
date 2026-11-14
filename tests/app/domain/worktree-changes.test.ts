@@ -43,6 +43,9 @@ function dependencies(
     total?: number;
     branch?: string;
     reflog?: string;
+    head?: string;
+    target?: string;
+    fork?: string;
     fail?: { command: string; message: string };
   } = {},
 ) {
@@ -63,11 +66,17 @@ function dependencies(
           );
         if (args[0] === "rev-parse")
           return Effect.succeed(
-            args.includes("--abbrev-ref") ? `${options.branch ?? "agent/review"}\n` : "tip\n",
+            args.includes("--abbrev-ref")
+              ? `${options.branch ?? "agent/review"}\n`
+              : args.some((arg) => arg.startsWith("refs/heads/"))
+                ? `${options.target ?? "tip"}\n`
+                : `${options.head ?? "tip"}\n`,
           );
         if (args[0] === "merge-base")
           return Effect.succeed(
-            args.includes("acknowledged") && args.includes("tip") ? "acknowledged\n" : "fork\n",
+            args.includes("acknowledged") && args.includes(options.head ?? "tip")
+              ? "acknowledged\n"
+              : `${options.fork ?? "fork"}\n`,
           );
         if (args[0] === "for-each-ref")
           return Effect.succeed(
@@ -193,6 +202,46 @@ describe("Worktree Changes Git projection", () => {
       }),
   );
 
+  it.effect(
+    "keeps the recorded branch point across session commits, upstream imports and landing checkpoints",
+    () =>
+      Effect.gen(function* () {
+        for (const head of ["session-commit-1", "session-commit-3"]) {
+          for (const target of ["upstream-1", "upstream-5"]) {
+            const fixture = dependencies({
+              status: { ...status, record: { ...status.record, baseCommit: "creation-sha" } },
+              head,
+              target,
+              // A later upstream import can advance the merge-base, not the creation point.
+              fork: "imported-upstream",
+              total: 3,
+            });
+            const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
+            expect(result.branchPointRevision).toBe("creation-sha");
+            expect(result.headRevision).toBe(head);
+            expect(result.baseRevision).toBeNull(); // No contribution evidence in this fixture.
+            expect(result.totalCommits).toBe(3);
+          }
+        }
+      }),
+  );
+
+  it.effect("uses the inferred immutable fork point only for unmanaged checkouts", () =>
+    Effect.gen(function* () {
+      const fixture = dependencies({
+        head: "session-3",
+        target: "upstream-5",
+        fork: "inferred-fork",
+      });
+      const result = yield* inspect("/checkout", {}).pipe(Effect.provide(fixture.layer));
+      expect(result.branchPointRevision).toBe("inferred-fork");
+      expect(result.baseRevision).toBeNull();
+      const managed = dependencies({ status });
+      const legacy = yield* inspect("/checkout", {}).pipe(Effect.provide(managed.layer));
+      expect(legacy.branchPointRevision).toBeNull();
+    }),
+  );
+
   it.effect("reviews only the working tree when no other branch is a possible parent", () =>
     Effect.gen(function* () {
       // agent/child contains HEAD (behind 0): a child of this branch, never its parent.
@@ -203,6 +252,7 @@ describe("Worktree Changes Git projection", () => {
         base: null,
         baseAlternatives: [],
         baseRevision: null,
+        branchPointRevision: null,
         headRevision: "tip",
         contributionUnavailableReason: "This checkout has no recorded worktree creation baseline",
         files: [],

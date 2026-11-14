@@ -15,7 +15,8 @@ const changes: WorktreeChanges = {
   base: "main",
   baseAlternatives: [],
   totalCommits: 2,
-  baseRevision: "fork-sha",
+  baseRevision: "contribution-sha",
+  branchPointRevision: "fork-sha",
   headRevision: "head-sha",
   contributionUnavailableReason: null,
   files: [],
@@ -108,6 +109,7 @@ function renderChanges(
             commits: [],
             totalCommits: 0,
             baseRevision: "other-fork",
+            branchPointRevision: "other-fork",
             headRevision: "other-head",
             contributionUnavailableReason: null,
             files: [],
@@ -121,8 +123,8 @@ function renderChanges(
   const prepareFileLocation = vi.fn<Client["filesystem"]["prepareFileLocation"]>(
     async ({ location }) => ({ viewer: "vscode", location }),
   );
-  const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => ({
-    outcome: { view: "file" },
+  const reveal = vi.fn<Client["vscode"]["reveal"]>(async (_workspace, location) => ({
+    outcome: { view: location.view ?? "file" },
     locations: [],
   }));
   const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
@@ -187,7 +189,13 @@ describe("Session Changes review", () => {
       await fixture.user.click(within(pane).getByRole("button", { name: /committed.ts/ }));
       expect(fixture.reveal).toHaveBeenLastCalledWith(
         editorWorkingDirectory,
-        { kind: "working-directory", path: "committed.ts" },
+        {
+          kind: "working-directory",
+          path: "committed.ts",
+          view: "changes",
+          base: "fork-sha",
+          side: "after",
+        },
         expect.anything(),
       );
       expect(workspace.isConnected).toBe(true);
@@ -244,7 +252,13 @@ describe("Session Changes review", () => {
     {
       path: "committed.ts",
       commit: true,
-      location: { kind: "working-directory", path: "committed.ts" },
+      location: {
+        kind: "working-directory",
+        path: "committed.ts",
+        view: "changes",
+        base: "fork-sha",
+        side: "after",
+      },
     },
     {
       path: "earlier.ts",
@@ -254,7 +268,7 @@ describe("Session Changes review", () => {
         path: "earlier.ts",
         view: "changes",
         side: "before",
-        base: "abc1234567",
+        base: "fork-sha",
       },
     },
     {
@@ -265,21 +279,33 @@ describe("Session Changes review", () => {
         path: "removed.ts",
         view: "changes",
         side: "before",
-        base: "abc1234567^",
+        base: "fork-sha",
       },
     },
     {
       path: "staged.ts",
       commit: false,
-      location: { kind: "working-directory", path: "staged.ts", view: "changes" },
+      location: {
+        kind: "working-directory",
+        path: "staged.ts",
+        view: "changes",
+        base: "fork-sha",
+        side: "after",
+      },
     },
     {
       path: "working.ts",
       commit: false,
-      location: { kind: "working-directory", path: "working.ts", view: "changes" },
+      location: {
+        kind: "working-directory",
+        path: "working.ts",
+        view: "changes",
+        base: "fork-sha",
+        side: "after",
+      },
     },
   ])(
-    "opens $path through the existing editor-location workflow",
+    "opens $path as a creation-base to working-tree diff through the editor workflow",
     async ({ path, commit, location }) => {
       using fixture = renderChanges();
       const pane = await openChanges(fixture);
@@ -306,6 +332,52 @@ describe("Session Changes review", () => {
       );
     },
   );
+
+  it.each([
+    { path: "added.ts", deleted: false, workingTreeExists: true },
+    { path: "renamed-new.ts", deleted: false, workingTreeExists: true },
+    { path: "renamed-old.ts", deleted: true, workingTreeExists: false },
+    { path: "deleted.ts", deleted: true, workingTreeExists: false },
+  ])(
+    "opens current $path against the creation commit, not a commit row or contribution baseline",
+    async (file) => {
+      using fixture = renderChanges({
+        ...changes,
+        unstaged: [{ ...file, additions: 1, deletions: 1 }],
+      });
+      const pane = await openChanges(fixture);
+      await fixture.user.click(within(pane).getByRole("button", { name: new RegExp(file.path) }));
+      expect(fixture.reveal).toHaveBeenLastCalledWith(
+        editorWorkingDirectory,
+        {
+          kind: "working-directory",
+          path: file.path,
+          view: "changes",
+          base: "fork-sha",
+          side: file.workingTreeExists ? "after" : "before",
+        },
+        expect.anything(),
+      );
+    },
+  );
+
+  it("uses the same creation base for files in later session commits", async () => {
+    using fixture = renderChanges();
+    const pane = await openChanges(fixture);
+    await fixture.user.click(within(pane).getByRole("button", { name: /Add artwork/ }));
+    await fixture.user.click(within(pane).getByRole("button", { name: /image.png/ }));
+    expect(fixture.reveal).toHaveBeenLastCalledWith(
+      editorWorkingDirectory,
+      {
+        kind: "working-directory",
+        path: "image.png",
+        view: "changes",
+        base: "fork-sha",
+        side: "after",
+      },
+      expect.anything(),
+    );
+  });
 
   it("closes Changes only after embedded VS Code Source Control opens successfully", async () => {
     using fixture = renderChanges();
@@ -412,7 +484,7 @@ describe("Session Changes review", () => {
         kind: "working-directory",
         path: "net.ts",
         view: "changes",
-        base: "fork-sha",
+        base: "contribution-sha",
         revision: "head-sha",
         side: "after",
       },

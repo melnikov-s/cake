@@ -152,6 +152,7 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
         distance,
       })),
       baseRevision: contribution.baseline,
+      branchPointRevision: record ? (record.baseCommit ?? null) : (range?.base ?? null),
       headRevision,
       contributionUnavailableReason: contribution.unavailableReason,
       files: withExistence(tracked.files),

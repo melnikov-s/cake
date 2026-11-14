@@ -483,8 +483,27 @@ async function probeWorkingTreeChange(vscode, targetUri, base, revision) {
     if (!extension) return gitUnavailable();
     const exports = extension.isActive ? extension.exports : await extension.activate();
     const api = exports?.getAPI?.(1);
-    const repository = api?.getRepository?.(targetUri);
-    if (!api || !repository) return gitUnavailable();
+    if (!api) return gitUnavailable();
+    let repository = api.getRepository(targetUri);
+    // Activation can finish before the initial repository scan. A changeset
+    // click that starts VS Code must not silently become a plain-file open.
+    if (!repository) {
+      repository = await new Promise((resolveRepository) => {
+        const subscription = api.onDidOpenRepository(() => {
+          const opened = api.getRepository(targetUri);
+          if (!opened) return;
+          clearTimeout(timer);
+          subscription.dispose();
+          resolveRepository(opened);
+        });
+        const timer = setTimeout(() => {
+          subscription.dispose();
+          resolveRepository(undefined);
+        }, GIT_PROBE_TIMEOUT_MS);
+        timer.unref?.();
+      });
+    }
+    if (!repository) return gitUnavailable();
     let diff;
     try {
       diff = revision
@@ -494,7 +513,32 @@ async function probeWorkingTreeChange(vscode, targetUri, base, revision) {
       // Git rejected the comparison; an unknown revision is by far the usual cause.
       return { changed: false, fallback: "unknown-base" };
     }
-    return diff ? { changed: true, api } : { changed: false, fallback: "no-changes" };
+    const revisionUri = async (ref) => {
+      try {
+        await repository.getObjectDetails(ref, targetUri.fsPath);
+        return api.toGitUri(targetUri, ref);
+      } catch (error) {
+        if (error.gitErrorCode !== "UnknownPath") throw error;
+        return targetUri.with({ scheme: "cake-empty", query: "", fragment: "" });
+      }
+    };
+    const left = await revisionUri(base);
+    let right;
+    if (revision) right = await revisionUri(revision);
+    else {
+      try {
+        await vscode.workspace.fs.stat(targetUri);
+        right = targetUri;
+      } catch (error) {
+        if (error.code !== "FileNotFound") throw error;
+        right = targetUri.with({ scheme: "cake-empty", query: "", fragment: "" });
+      }
+    }
+    // Git diff omits untracked files, including the added half of a rename.
+    const untracked = !revision && left.scheme === "cake-empty" && right.scheme === "file";
+    return diff || untracked
+      ? { changed: true, left, right }
+      : { changed: false, fallback: "no-changes" };
   })();
   let timer;
   const deadline = new Promise((resolvePromise) => {
@@ -510,24 +554,18 @@ async function probeWorkingTreeChange(vscode, targetUri, base, revision) {
 
 /**
  * Opens VS Code's native diff editor for the target's working tree or revision against the
- * base revision. The left side is a `git:` URI whose content comes from one
- * `git show <base>:<path>`, so this stays fast regardless of repository size
- * and does not depend on the Source Control list being current.
+ * base revision. Existing revision content uses the Git provider; absent sides
+ * use the read-only empty provider for additions, deletions and rename halves.
+ * This does not depend on the Source Control list being current.
  */
-async function openWorkingTreeDiff(vscode, api, targetUri, base, revision) {
+async function openWorkingTreeDiff(vscode, targetUri, base, revision, left, right) {
   const name = path.basename(targetUri.fsPath);
   const title = revision
     ? `${name} (${base} ↔ ${revision})`
     : base === "HEAD"
       ? `${name} (Working Tree)`
       : `${name} (${base} ↔ Working Tree)`;
-  await vscode.commands.executeCommand(
-    "vscode.diff",
-    api.toGitUri(targetUri, base),
-    revision ? api.toGitUri(targetUri, revision) : targetUri,
-    title,
-    { preview: false },
-  );
+  await vscode.commands.executeCommand("vscode.diff", left, right, title, { preview: false });
 }
 
 async function setTheme(vscode, payload) {
@@ -756,6 +794,12 @@ async function activate(context) {
     vscode.languages.registerCodeLensProvider({ scheme: "file" }, annotationCodeLensProvider),
   );
 
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider("cake-empty", {
+      provideTextDocumentContent: () => "",
+    }),
+  );
+
   const reveal = async (payload) => {
     const requestedPath = String(payload.path || "");
     if (!requestedPath) throw new Error("A file path is required");
@@ -781,7 +825,7 @@ async function activate(context) {
       if (probe.changed) {
         try {
           await openSourceControl(vscode);
-          await openWorkingTreeDiff(vscode, probe.api, targetUri, base, revision);
+          await openWorkingTreeDiff(vscode, targetUri, base, revision, probe.left, probe.right);
           const requestedRanges = payload.ranges || (payload.range ? [payload.range] : []);
           const locations = [];
           if (requestedRanges.length > 0) {

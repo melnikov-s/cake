@@ -38,7 +38,7 @@ export const SessionChangeCommit = observer(function SessionChangeCommit({
       {open && (
         <div className="pb-2 pl-5">
           {commit.files.map((file) => (
-            <SessionChangeFile key={file.path} file={file} store={store} commit={commit.hash} />
+            <SessionChangeFile key={file.path} file={file} store={store} />
           ))}
         </div>
       )}
