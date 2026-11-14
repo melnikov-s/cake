@@ -35,6 +35,7 @@ interface CakeAppearanceSettings {
   readonly darkTheme: ColorThemeChoice;
   readonly projectAvatarsEnabled: boolean;
   readonly sessionAvatarsEnabled: boolean;
+  readonly conversationIdentityEnabled: boolean;
   readonly sidebarCharactersEnabled: boolean;
   readonly workLogViewMode: "auto" | "diff" | "log";
   readonly workLogsExpansion: "collapsed" | "expanded" | "fully-expanded";

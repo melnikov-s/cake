@@ -220,6 +220,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
           darkTheme: this.appearance.darkTheme,
           projectAvatarsEnabled: this.appearance.projectAvatarsEnabled,
           sessionAvatarsEnabled: this.appearance.sessionAvatarsEnabled,
+          conversationIdentityEnabled: this.appearance.conversationIdentityEnabled,
           sidebarCharactersEnabled: this.appearance.sidebarCharactersEnabled,
           workLogViewMode: this.appearance.workLogViewMode,
           workLogsExpansion: this.appearance.workLogsExpansion,
@@ -252,6 +253,8 @@ export class SettingsStore extends Store<SettingsStoreProps> {
         this.appearance.setProjectAvatarsEnabled(changes.projectAvatarsEnabled);
       if (changes.sessionAvatarsEnabled !== undefined)
         this.appearance.setSessionAvatarsEnabled(changes.sessionAvatarsEnabled);
+      if (changes.conversationIdentityEnabled !== undefined)
+        this.appearance.setConversationIdentityEnabled(changes.conversationIdentityEnabled);
       if (changes.sidebarCharactersEnabled !== undefined)
         this.appearance.setSidebarCharactersEnabled(changes.sidebarCharactersEnabled);
       if (changes.workLogViewMode !== undefined)

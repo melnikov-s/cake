@@ -194,6 +194,52 @@ function renderWorkspace(
   };
 }
 
+it.each(
+  (["project", "cake-chat", "global-chat"] as const).flatMap((kind) =>
+    (["browser", "vscode"] as const).map((mode) => ({ kind, mode })),
+  ),
+)(
+  "$kind $mode companion docks its live identity and removes the row when disabled",
+  ({ kind, mode }) => {
+    using f = renderWorkspace(kind, mode);
+    const identity = screen.getByRole("navigation", { name: "Conversation identity" });
+    expect(identity.closest('[aria-label="Current conversation companion"]')).not.toBeNull();
+    expect(identity.textContent).toContain(kind === "global-chat" ? "Cake Chat" : "Project");
+    expect(identity.textContent).toContain(
+      kind === "project" ? "Project task" : "Project coordinator",
+    );
+    if (kind !== "project") {
+      act(() =>
+        applySnapshot(f.models.cakeChatCatalog, {
+          ...toSnapshot(f.models.cakeChatCatalog),
+          sessions: [
+            {
+              sessionId: f.session.sessionId,
+              title: "Renamed coordinator",
+              ...(kind === "global-chat" ? {} : { projectPath: "/project" }),
+            },
+          ],
+        }),
+      );
+      expect(identity.textContent).toContain("Renamed coordinator");
+    }
+    act(() => f.root.settingsStore.appearance.setConversationIdentityEnabled(false));
+    expect(screen.queryByRole("navigation", { name: "Conversation identity" })).toBeNull();
+    expect(document.querySelector('[data-slot="conversation-identity-layout"]')).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).toBeDefined();
+    expect(
+      screen.getByRole("combobox", {
+        name:
+          kind === "project"
+            ? "Message"
+            : kind === "global-chat"
+              ? "Message Cake Chat"
+              : "Message Project Chat",
+      }),
+    ).toBeDefined();
+  },
+);
+
 it.each<Mode>(["browser", "vscode"])(
   "%s companion toggles and switches transcript to-do focus like the header clear action",
   async (mode) => {

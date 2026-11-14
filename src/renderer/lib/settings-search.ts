@@ -355,6 +355,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             keywords: "rail auto-hide full slim dynamic layout",
           },
           {
+            label: "Conversation identity tab",
+            targetId: "setting-conversation-identity",
+            keywords: "breadcrumb title chat composer bottom footer dock show hide",
+          },
+          {
             label: "Show session characters",
             targetId: "setting-sidebar-characters",
             keywords: "avatars icons labels squares appearance",

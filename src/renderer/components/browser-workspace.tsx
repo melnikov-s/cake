@@ -5,6 +5,7 @@ import type { BrowserStore } from "../stores/BrowserStore";
 import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { Chat } from "./chat";
+import { ConversationIdentityDock } from "./conversation-identity-dock";
 import { SideChatLayout } from "./side-chat-layout";
 import { NestedChat } from "./nested-chat";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
@@ -22,6 +23,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   headerLeading,
   headerActions,
   conversationHeader,
+  conversationSessionId,
   projectComposerHeader,
   widgets,
   projectComposerContent,
@@ -36,6 +38,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   headerLeading?: ReactNode;
   headerActions?: ReactNode;
   conversationHeader?: ReactNode;
+  conversationSessionId?: string;
   projectComposerHeader?: ReactNode;
   widgets?: ComponentProps<typeof Chat>["widgets"];
   projectComposerContent?: ReactNode;
@@ -80,15 +83,17 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
         />
       )}
     >
-      <Chat
-        className="h-full"
-        widgets={widgets}
-        store={projectChat}
-        transcriptBehavior={transcriptBehavior}
-        composerHeader={projectComposerHeader}
-        composerContent={projectComposerContent}
-        composerLeadingAccessory={projectComposerLeadingAccessory}
-      />
+      <ConversationIdentityDock sessionId={conversationSessionId}>
+        <Chat
+          className="h-full"
+          widgets={widgets}
+          store={projectChat}
+          transcriptBehavior={transcriptBehavior}
+          composerHeader={projectComposerHeader}
+          composerContent={projectComposerContent}
+          composerLeadingAccessory={projectComposerLeadingAccessory}
+        />
+      </ConversationIdentityDock>
     </SideChatLayout>
   );
 

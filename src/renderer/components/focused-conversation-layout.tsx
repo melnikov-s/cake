@@ -73,6 +73,7 @@ export const FocusedConversationLayout = observer(function FocusedConversationLa
           <FocusedConversationPane
             key={sessionId}
             session={session}
+            identitySessionId={compactHeader ? undefined : sessionId}
             chatProps={chatProps}
             wrapPane={wrapPane}
           />

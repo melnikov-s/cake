@@ -8,6 +8,7 @@ import type { ReviewsStore } from "../stores/ReviewsStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { Button } from "./ui/button";
 import { Chat } from "./chat";
+import { ConversationIdentityDock } from "./conversation-identity-dock";
 import { EditorSelectionPills } from "./editor-selection-pills";
 import type { EditorSelectionsStore } from "../stores/EditorSelectionsStore";
 import { EmbeddedEditorPane } from "./embedded-editor";
@@ -36,6 +37,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   headerLeading,
   headerActions,
   conversationHeader,
+  conversationSessionId,
   projectComposerHeader,
   widgets,
   projectComposerContent,
@@ -53,6 +55,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   /** Session-scoped controls shown in the chat sidebar header, such as the side chats menu. */
   headerActions?: ReactNode;
   conversationHeader?: ReactNode;
+  conversationSessionId?: string;
   projectComposerHeader?: ReactNode;
   widgets?: ComponentProps<typeof Chat>["widgets"];
   projectComposerContent?: ReactNode;
@@ -102,24 +105,26 @@ export const IdeWorkspace = observer(function IdeWorkspace({
       {contextualChat ? (
         <NestedChat store={contextualChat} parentBehavior={transcriptBehavior} compact={false} />
       ) : (
-        <Chat
-          className="h-full"
-          widgets={widgets}
-          store={projectChat}
-          transcriptBehavior={transcriptBehavior}
-          composerHeader={
-            <>
-              {(selections.selections.length > 0 || selections.error) && (
-                <div className="px-4 pb-2">
-                  <EditorSelectionPills store={selections} />
-                </div>
-              )}
-              {projectComposerHeader}
-            </>
-          }
-          composerContent={projectComposerContent}
-          composerLeadingAccessory={projectComposerLeadingAccessory}
-        />
+        <ConversationIdentityDock sessionId={conversationSessionId}>
+          <Chat
+            className="h-full"
+            widgets={widgets}
+            store={projectChat}
+            transcriptBehavior={transcriptBehavior}
+            composerHeader={
+              <>
+                {(selections.selections.length > 0 || selections.error) && (
+                  <div className="px-4 pb-2">
+                    <EditorSelectionPills store={selections} />
+                  </div>
+                )}
+                {projectComposerHeader}
+              </>
+            }
+            composerContent={projectComposerContent}
+            composerLeadingAccessory={projectComposerLeadingAccessory}
+          />
+        </ConversationIdentityDock>
       )}
     </SideChatLayout>
   );

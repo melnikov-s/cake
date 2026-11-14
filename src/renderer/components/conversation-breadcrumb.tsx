@@ -1,7 +1,10 @@
 import { Fragment } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
@@ -9,8 +12,13 @@ import { cn } from "../lib/utils";
 /** Persistent, navigable ownership lineage; grouping never claims Session Family ancestry. */
 export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
   sessionId,
+  ariaLabel = "Conversation breadcrumb",
+  includeChatTitle = false,
 }: {
   sessionId: string;
+  ariaLabel?: string;
+  /** The dock identifies its displayed primary chat, even while a secondary chat is selected. */
+  includeChatTitle?: boolean;
 }) {
   const root = useStore(RootStore);
   const navigator = root.conversationNavigatorStore;
@@ -18,22 +26,35 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
   const previewDirectory = previewTitle
     ? root.sessionRegistry.findSession(sessionId)?.workspacePath
     : undefined;
+  const chat = isCakeChatSessionId(sessionId)
+    ? root.cakeChatCollectionStore.summaries.find((summary) => summary.sessionId === sessionId)
+    : undefined;
   const projectPath =
     root.sessionCatalogStore.find(sessionId)?.projectPath ??
-    root.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === sessionId)
-      ?.projectPath ??
+    chat?.projectPath ??
     (previewDirectory ? root.sessionCatalogStore.projectPathFor(previewDirectory) : undefined);
-  const lineage = navigator
-    .lineageFor(sessionId)
-    .filter(
-      (node) =>
-        node.relationship !== "home" &&
-        (node.target.kind !== "cake-chat" || node.target.sessionId !== CAKE_CHAT_SESSION_ID),
-    );
+  const lineage = (
+    includeChatTitle
+      ? navigator.lineageForTarget({
+          kind: isCakeChatSessionId(sessionId) ? "cake-chat" : "project-session",
+          sessionId,
+        })
+      : navigator.lineageFor(sessionId)
+  ).filter(
+    (node) =>
+      node.relationship !== "home" &&
+      (node.target.kind !== "cake-chat" || node.target.sessionId !== CAKE_CHAT_SESSION_ID),
+  );
+  const homeTitle = projectPath ? root.projectCatalogStore.nameForPath(projectPath) : "Cake Chat";
+  const currentTitle =
+    previewTitle ??
+    (includeChatTitle && lineage.length === 0 && chat?.title !== homeTitle
+      ? chat?.title
+      : undefined);
   return (
     <div className="flex h-full w-full min-w-0 items-center">
       <nav
-        aria-label="Conversation breadcrumb"
+        aria-label={ariaLabel}
         className="flex h-full min-w-0 flex-1 items-center gap-x-0.5 overflow-hidden text-xs leading-5"
       >
         {!projectPath ? (
@@ -41,7 +62,9 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
             variant="ghost"
             size="sm"
             className="h-6 shrink-0 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]"
-            aria-current={!projectPath && lineage.length === 0 ? "page" : undefined}
+            aria-current={
+              !projectPath && lineage.length === 0 && !currentTitle ? "page" : undefined
+            }
             onClick={() => {
               root.appShellStore.recordConversationInteraction({
                 kind: "cake-chat",
@@ -58,10 +81,10 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
             size="sm"
             className={cn(
               "h-6 min-w-0 shrink-0 justify-start gap-2 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
-              lineage.length > 0 || previewTitle ? "max-w-1/2" : "max-w-full",
+              lineage.length > 0 || currentTitle ? "max-w-1/2" : "max-w-full",
             )}
             title={projectPath}
-            aria-current={lineage.length === 0 && !previewTitle ? "page" : undefined}
+            aria-current={lineage.length === 0 && !currentTitle ? "page" : undefined}
             onClick={() => void root.navigationStore.openProjectChat(projectPath)}
           >
             <Avatar
@@ -74,7 +97,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
             <span className="truncate">{root.projectCatalogStore.nameForPath(projectPath)}</span>
           </Button>
         )}
-        {previewTitle && (
+        {currentTitle && (
           <>
             <span aria-hidden="true" className="shrink-0 text-muted-foreground">
               ›
@@ -82,9 +105,9 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
             <span
               aria-current="page"
               className="min-w-0 truncate px-1 font-bold text-foreground"
-              title={previewTitle}
+              title={currentTitle}
             >
-              {previewTitle}
+              {currentTitle}
             </span>
           </>
         )}

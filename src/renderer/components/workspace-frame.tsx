@@ -35,6 +35,7 @@ export const WorkspaceFrame = observer(function WorkspaceFrame({
   const presentation = root.projectWorkbenchStore.presentationStore;
   const commonProps = {
     ...slots,
+    conversationSessionId: session.sessionId,
     widgets: chatWidgetsFor(root, {
       sessionId: session.sessionId,
       kind: isProjectChatSessionId(session.sessionId)

@@ -123,6 +123,13 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
           </div>
         </div>
         <SettingsToggle
+          id="setting-conversation-identity"
+          label="Conversation identity tab"
+          description="Show the breadcrumb and title beneath the chat composer."
+          checked={appearance.conversationIdentityEnabled}
+          onChange={(enabled) => appearance.setConversationIdentityEnabled(enabled)}
+        />
+        <SettingsToggle
           id="setting-project-avatars"
           label="Project avatars"
           description="Show project icons in the sidebar."

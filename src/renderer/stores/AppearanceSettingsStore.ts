@@ -41,6 +41,7 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   private readonly importedEntries = new Map<string, ColorThemeChoice>();
   @snapshot projectAvatarsEnabled = true;
   @snapshot sessionAvatarsEnabled = true;
+  @snapshot conversationIdentityEnabled = true;
   @snapshot sidebarCharactersEnabled = false;
   @snapshot workLogViewMode: WorkLogViewMode = "auto";
   @snapshot workLogsExpansion: WorkLogsExpansion = "collapsed";
@@ -225,6 +226,10 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
 
   setSessionAvatarsEnabled(enabled: boolean) {
     this.sessionAvatarsEnabled = enabled;
+  }
+
+  setConversationIdentityEnabled(enabled: boolean) {
+    this.conversationIdentityEnabled = enabled;
   }
 
   setSidebarCharactersEnabled(enabled: boolean) {

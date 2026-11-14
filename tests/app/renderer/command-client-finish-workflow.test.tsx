@@ -74,6 +74,7 @@ describe("Application command to renderer workflows", () => {
             theme: "dark",
             darkTheme: "bundled:solarized-dark",
             sidebarCharactersEnabled: true,
+            conversationIdentityEnabled: false,
           },
         })
         .then((result) => {
@@ -88,15 +89,25 @@ describe("Application command to renderer workflows", () => {
     expect(
       screen.getByRole("button", { name: "Solarized Dark theme" }).getAttribute("aria-pressed"),
     ).toBe("true");
+    expect(
+      screen
+        .getByRole("switch", { name: "Conversation identity tab" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
     expect(flush).toHaveBeenCalledOnce();
     expect(completed).toBe(false);
     await act(async () => persisted.resolve());
     expect(await saving).toMatchObject({ ok: true, scope: "window", settings: { theme: "dark" } });
+    await fixture.user.click(screen.getByRole("switch", { name: "Conversation identity tab" }));
     await fixture.user.click(screen.getByRole("button", { name: "Light" }));
     await fixture.user.click(screen.getByRole("switch", { name: "Show session characters" }));
     expect(await fixture.invoke("settings.window.get", { section: "appearance" })).toMatchObject({
       ok: true,
-      settings: { theme: "light", sidebarCharactersEnabled: false },
+      settings: {
+        theme: "light",
+        sidebarCharactersEnabled: false,
+        conversationIdentityEnabled: true,
+      },
     });
     await expect(
       fixture.invoke("settings.window.update", { section: "appearance", changes: {} }),

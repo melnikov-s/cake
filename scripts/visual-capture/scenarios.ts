@@ -11,6 +11,7 @@ import { sideChatTabsScenario } from "./side-chat-tabs";
 import { wrappedWorkerReport } from "../../tests/fixtures/wrapped-worker-report";
 import { createChatFirstNavigationScenario } from "./chat-first-navigation.ts";
 import { createSessionHeaderTitleScenario } from "./session-header-title.ts";
+import { createConversationIdentityScenario } from "./conversation-identity.ts";
 import { createSidebarSurfacesScenario } from "./sidebar-surfaces.ts";
 import { sidebarSessionGroupsScenarios } from "./sidebar-session-groups.ts";
 import {
@@ -9403,6 +9404,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   cakeChatScenario,
   titleBarAlignmentScenario,
   createSessionHeaderTitleScenario(assistantMarkdownCode),
+  createConversationIdentityScenario(assistantMarkdownCode),
   createWorkspacePanelGeometryScenario(titleBarAlignmentScenario),
   titleBarSideChatsScenario,
   cakeChatConversationScenario,

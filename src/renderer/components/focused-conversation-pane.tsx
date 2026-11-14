@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import type { Store } from "r-state-tree";
 import { observer, StoreProvider } from "r-state-tree/react";
 import { Chat } from "./chat";
+import { ConversationIdentityDock } from "./conversation-identity-dock";
 import { NestedChat } from "./nested-chat";
 import { SideChatLayout } from "./side-chat-layout";
 import type { ChatStore } from "../stores/ChatStore";
@@ -23,8 +24,10 @@ export const FocusedConversationPane = observer(function FocusedConversationPane
   session,
   chatProps,
   wrapPane,
+  identitySessionId,
 }: {
   session: T;
+  identitySessionId?: string;
   chatProps(session: T): ConversationChatProps;
   wrapPane?(session: T, children: ReactNode): ReactNode;
 }) {
@@ -41,7 +44,9 @@ export const FocusedConversationPane = observer(function FocusedConversationPane
         />
       )}
     >
-      <Chat store={session.conversationSessionStore.chatStore} composerFocusEnabled {...props} />
+      <ConversationIdentityDock sessionId={identitySessionId}>
+        <Chat store={session.conversationSessionStore.chatStore} composerFocusEnabled {...props} />
+      </ConversationIdentityDock>
     </SideChatLayout>
   );
   return (
