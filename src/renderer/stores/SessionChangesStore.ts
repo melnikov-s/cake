@@ -39,6 +39,22 @@ export class SessionChangesStore extends Store<SessionChangesStoreProps> {
         if (enabled) void this.refresh();
       });
     });
+    this.effect(() => {
+      if (!this.props.enabled() || !this.open) return;
+      // inspectChanges is a fresh Git read, not a filesystem subscription. Edits
+      // from VS Code, terminals and other sessions need no Cake turn to finish.
+      let active = true;
+      let timer: ReturnType<typeof setTimeout>;
+      const poll = async () => {
+        if (!this.loading) await this.refresh();
+        if (active) timer = setTimeout(poll, 2_000);
+      };
+      timer = setTimeout(poll, 2_000);
+      return () => {
+        active = false;
+        clearTimeout(timer);
+      };
+    });
     this.reaction(
       () => this.props.isStreaming(),
       (streaming, previous) => {

@@ -1,4 +1,6 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
@@ -7,6 +9,83 @@ import { sessionChangesScenario } from "../../scripts/visual-capture/session-cha
 import { seedSessionChanges, sessionChangesComparisonBranch } from "../fixtures/session-changes";
 
 const repository = resolve(import.meta.dirname, "../..");
+
+test("open Changes discovers external staged, unstaged and untracked edits and returns to clean", async ({}, testInfo) => {
+  test.setTimeout(90_000);
+  const directory = await mkdtemp(join(tmpdir(), "cake-changes-live-"));
+  const paths = {
+    project: join(directory, "project"),
+    cakeHome: join(directory, "cake"),
+    userData: join(directory, "user-data"),
+  };
+  const git = (cwd: string, ...args: string[]) => promisify(execFile)("git", args, { cwd });
+  let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+  try {
+    const { worktree } = await seedSessionChanges(paths);
+    await git(worktree, "reset", "--hard", "HEAD");
+    await appendFile(join(paths.project, ".git/info/exclude"), "\nignored.tmp\n");
+    app = await electron.launch({
+      args: [repository],
+      cwd: repository,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_HOME: paths.cakeHome,
+        CAKE_ELECTRON_USER_DATA: paths.userData,
+        PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+      },
+    });
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await sessionChangesScenario.prepare(page, "closed");
+    await page.getByRole("button", { name: "Review changes · 3 commits", exact: true }).click();
+    const panel = page.getByRole("complementary", { name: "Changes", exact: true });
+    await expect(panel.getByText("Working tree clean", { exact: true })).toBeVisible();
+    const contribution = await panel
+      .getByRole("region", { name: "Contribution", exact: true })
+      .innerText();
+
+    // No Cake turn, manual refresh, navigation or reopen: mutate real Git/files
+    // only after the open panel has rendered its clean snapshot.
+    await appendFile(join(worktree, "README.md"), "Staged outside Cake.\n");
+    await git(worktree, "add", "README.md");
+    await appendFile(join(worktree, "src/review-pane.ts"), "export const external = true;\n");
+    await mkdir(join(worktree, "new"));
+    await writeFile(join(worktree, "new/nested.ts"), "export const untracked = true;\n");
+    await writeFile(join(worktree, "ignored.tmp"), "not a change\n");
+    const staged = panel.getByRole("region", { name: "Staged", exact: true });
+    const unstaged = panel.getByRole("region", { name: "Unstaged", exact: true });
+    await expect(staged.getByRole("button", { name: /README.md/ })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(unstaged.getByRole("button", { name: /src\/review-pane.ts/ })).toBeVisible();
+    await expect(unstaged.getByRole("button", { name: /new\/nested.ts/ })).toBeVisible();
+    await expect(panel.getByText("Working tree clean", { exact: true })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: /ignored.tmp/ })).toHaveCount(0);
+    expect(await panel.getByRole("region", { name: "Contribution", exact: true }).innerText()).toBe(
+      contribution,
+    );
+    await page.screenshot({ path: testInfo.outputPath("external-uncommitted-changes.png") });
+
+    // Index-only mutation must be observed too, not just writes to tracked files.
+    await git(worktree, "add", "new/nested.ts");
+    await expect(staged.getByRole("button", { name: /new\/nested.ts/ })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(unstaged.getByRole("button", { name: /new\/nested.ts/ })).toHaveCount(0);
+    await git(worktree, "reset", "--hard", "HEAD");
+    await rm(join(worktree, "new"), { recursive: true, force: true });
+    await expect(panel.getByText("Working tree clean", { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(staged).toHaveCount(0);
+    await expect(unstaged).toHaveCount(0);
+  } finally {
+    await app?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 for (const theme of ["dark", "light"] as const) {
   test(`comparison selector stays compact and supports keyboard selection (${theme})`, async () => {
