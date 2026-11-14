@@ -80,7 +80,13 @@ export const makeRuntimeRecoveryStorageLive = (stateDirectory: string) =>
         onError: (operation, file, cause) =>
           new RuntimeRecoveryStorageError({
             operation,
-            message: `Cannot ${operation} recovery metadata at ${file}: ${String(cause)}. Restore this file and retry; the saved Pi transcript has not been replaced.`,
+            message: `Cannot ${operation} recovery metadata at ${file}: ${String(cause)}. ${
+              operation === "encode"
+                ? "The proposed recovery metadata is invalid; existing recovery metadata has not been replaced. Report this application error with its schema path; restoring the file will not fix it."
+                : operation === "decode"
+                  ? "The saved recovery metadata could not be decoded. Preserve this file and repair it or restore a valid backup before retrying."
+                  : "Check filesystem access and available disk space before trying to save recovery metadata again."
+            } The saved Pi transcript has not been replaced.`,
           }),
       });
       return RuntimeRecoveryStorage.of(records);

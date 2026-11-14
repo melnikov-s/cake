@@ -157,10 +157,10 @@ export function createSessionRuntimeHandle(input: {
                 return input
                   ? [
                       {
-                        ...input,
+                        ...Struct.omit(input, ["internal"]),
                         delivery: queued.delivery,
                         text: queued.text,
-                        internal: queued.internal,
+                        ...(queued.internal === undefined ? null : { internal: queued.internal }),
                       },
                     ]
                   : [];
@@ -174,7 +174,15 @@ export function createSessionRuntimeHandle(input: {
             });
           }),
         )
-        .pipe(sessionError(operation));
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new PiSessionError({
+                operation,
+                message: `The runtime queue edit was applied, but its recovery metadata could not be saved. The live queue may differ from the saved recovery record; check the current queue before making further changes. ${messageOf(cause)}`,
+              }),
+          ),
+        );
     return result;
   }, shared.queueEdits.withPermit);
   const updates = Stream.unwrap(

@@ -6,7 +6,17 @@ import {
   SettingsManager,
   type AgentSession,
 } from "@earendil-works/pi-coding-agent";
-import { Context, Deferred, Effect, FileSystem, Fiber, Layer, Queue, Stream } from "effect";
+import {
+  Context,
+  Deferred,
+  Effect,
+  FileSystem,
+  Fiber,
+  Layer,
+  PlatformError,
+  Queue,
+  Stream,
+} from "effect";
 import { describe } from "vitest";
 import {
   CakeSessionRuntimes,
@@ -21,6 +31,7 @@ import {
 } from "../../../../src/services/storage/RuntimeRecoveryStorage";
 import { fakeRuntime, options } from "../../helpers/piRuntimeFixture";
 import { durableModel } from "../../../fixtures/durable-chat";
+import { addResponseModeReminder } from "../../../../src/contracts/conversations/response-mode-reminders";
 
 type Settlement = Parameters<NonNullable<CakeSessionRuntimeAcquireOptions["onTurnSettled"]>>[0];
 const platform = Layer.merge(NodeFileSystem.layer, NodePath.layer);
@@ -37,7 +48,25 @@ const input = (turnId: string): RuntimeRecoveryInput => ({
 const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const directory = yield* fs.makeTempDirectoryScoped({ prefix: "cake-queue-settlement-" });
-  const storageLayer = makeRuntimeRecoveryStorageLive(directory);
+  let failNextSave = false;
+  const storageLayer = makeRuntimeRecoveryStorageLive(directory).pipe(
+    Layer.provide(
+      Layer.succeed(FileSystem.FileSystem, {
+        ...fs,
+        rename: (source, target) => {
+          if (!failNextSave) return fs.rename(source, target);
+          failNextSave = false;
+          return Effect.fail(
+            PlatformError.systemError({
+              _tag: "PermissionDenied",
+              module: "FileSystem",
+              method: "rename",
+            }),
+          );
+        },
+      }),
+    ),
+  );
   const storage = Context.get(yield* Layer.build(storageLayer), RuntimeRecoveryStorage);
   const activity = yield* Queue.unbounded<void>();
   const settlements = yield* Queue.unbounded<Settlement>();
@@ -155,6 +184,9 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
           pendingRecoveryInputs: controller.pendingRecoveryInputs,
           executingTurnIds: controller.executingTurnIds,
           hasConsumedInput: (id) => consumed.has(id),
+          reorderPendingMessage: controller.reorderPendingMessage,
+          updateQueuedMessage: controller.updateQueuedMessage,
+          steerQueuedMessage: controller.steerQueuedMessage,
           removeQueuedMessage: controller.removeQueuedMessage,
           clearQueue: controller.clearQueue,
           sendQueuedMessageNow: controller.sendQueuedMessageNow,
@@ -173,10 +205,14 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
         Queue.offerUnsafe(settlements, event);
       }),
   });
-  const submit = Effect.fn("QueueSettlement.submit")(function* (value: RuntimeRecoveryInput) {
+  const submit = Effect.fn("QueueSettlement.submit")(function* (
+    value: RuntimeRecoveryInput,
+    verifyDelivery: (content: string) => void = (content) => assert.equal(content, value.text),
+  ) {
     yield* handle.submit(value);
     yield* Queue.take(activity); // admission
-    assert.equal(yield* Queue.take(deliveries), value.text);
+    const delivered = yield* Queue.take(deliveries);
+    verifyDelivery(delivered);
   });
   const settled = Effect.fn("QueueSettlement.settled")(function* (turnId: string, outcome: string) {
     const event = yield* Queue.take(settlements);
@@ -200,6 +236,10 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
     settled,
     partId,
     reopened,
+    pendingRecoveryInputs: controller.pendingRecoveryInputs,
+    failNextSave: () => {
+      failNextSave = true;
+    },
     outcomes,
     settings,
     aborts: () => aborts,
@@ -213,6 +253,123 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
 });
 
 describe("CakeSessionRuntimes queue settlement", () => {
+  it.effect("edits, steers and reorders mixed metadata queues through real recovery storage", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const reminder: RuntimeRecoveryInput = {
+        ...input("reminder"),
+        text: "review this",
+        internal: {
+          _tag: "UserWithReminders",
+          text: "review this",
+          userText: "review this",
+          notices: [],
+          updates: [
+            {
+              id: "update",
+              text: "background result",
+              source: { title: "worker", href: "cake://session/worker" },
+            },
+          ],
+          reportNotices: [],
+        },
+        attachments: [
+          {
+            kind: "input",
+            id: "00000000-0000-4000-8000-000000000001",
+            name: "context.txt",
+            mimeType: "text/plain",
+            byteLength: 20,
+          },
+        ],
+        markdown: true,
+        presentationMode: "browser",
+        responseMode: "voice",
+      };
+      for (const value of [
+        input("active"),
+        input("plain-1"),
+        reminder,
+        input("plain-2"),
+        { ...reminder, turnId: "reminder-2" },
+      ])
+        yield* f.submit(value, (delivered) => {
+          if (value.internal) assert.match(delivered, /review this/);
+          else
+            assert.equal(
+              delivered,
+              value.turnId === "plain-2" ? addResponseModeReminder(value.text, "text") : value.text,
+            );
+        });
+      const before = yield* f.reopened();
+      assert.ok(before);
+      assert.equal(Object.hasOwn(f.pendingRecoveryInputs()[0] ?? {}, "internal"), false);
+      yield* f.handle.updateQueuedMessage(yield* f.partId("plain-1"), "edited plain");
+      // Attachments and response reminders affect visible content, so locate the reminder by its stable item order.
+      const reminderPart = (yield* f.handle.pendingMessages()).items[1]?.partId;
+      assert.ok(reminderPart);
+      yield* f.handle.updateQueuedMessage(reminderPart, "edited reminder");
+      yield* f.handle.steerQueuedMessage(yield* f.partId("plain-2"));
+      const last = (yield* f.handle.pendingMessages()).items.at(-1);
+      assert.ok(last);
+      yield* f.handle.reorderPendingMessage({ itemId: last.itemId, position: 1 });
+      const after = yield* f.reopened();
+      assert.ok(after);
+      const byId = new Map(before.inputs.map((entry) => [entry.turnId, entry]));
+      assert.deepEqual(
+        after.inputs,
+        ["active", "plain-2", "reminder-2", "plain-1", "reminder"].map((id) => {
+          const original = byId.get(id);
+          assert.ok(original);
+          if (id === "plain-2") return { ...original, delivery: "steer" };
+          if (id === "plain-1") return { ...original, text: "edited plain" };
+          if (id === "reminder")
+            return {
+              ...original,
+              text: "edited reminder",
+              internal: {
+                ...reminder.internal,
+                text: "edited reminder",
+                userText: "edited reminder",
+              },
+            };
+          return original;
+        }),
+      );
+      assert.deepEqual(after.canceledInputIds, []);
+      yield* f.finish();
+      yield* f.settled("active", "complete");
+      yield* f.handle.clearQueue();
+      for (const id of ["plain-1", "reminder", "plain-2", "reminder-2"])
+        yield* f.settled(id, "aborted");
+    }).pipe(Effect.provide(platform)),
+  );
+
+  it.effect("reports applied-but-unsaved edits without replacing the last durable queue", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.submit(input("active"));
+      yield* f.submit(input("held"));
+      const saved = yield* f.reopened();
+      f.failNextSave();
+      const failure = yield* Effect.flip(f.handle.steerQueuedMessage(yield* f.partId("held")));
+      assert.match(
+        failure.message,
+        /runtime queue edit was applied.*recovery metadata could not be saved/,
+      );
+      assert.match(failure.message, /check the current queue/);
+      assert.match(failure.message, /Cannot rename recovery metadata/);
+      assert.doesNotMatch(failure.message, /Restore this file and retry/);
+      assert.equal((yield* f.handle.pendingMessages()).items[0]?.lane, "steering");
+      assert.deepEqual(yield* f.reopened(), saved);
+      assert.deepEqual(yield* f.handle.currentTurnIds(), ["active", "held"]);
+      yield* f.finish();
+      yield* f.settled("active", "complete");
+      yield* f.handle.clearQueue();
+      yield* f.settled("held", "aborted");
+    }).pipe(Effect.provide(platform)),
+  );
+
   it.effect("model handoff retains queued human turn IDs and recovery while continuing once", () =>
     Effect.gen(function* () {
       const f = yield* fixture();

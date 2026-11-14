@@ -4,6 +4,7 @@ import { recoveryRecordFileName } from "../../../../src/services/storage/interna
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PlatformError, Ref } from "effect";
 import { describe, expect } from "vitest";
+import type { InternalInput } from "../../../../src/contracts/conversations/internal-input";
 import {
   makeRuntimeRecoveryStorageLive,
   RuntimeRecoveryStorage,
@@ -68,6 +69,109 @@ const open = <A, E>(
 const list = (directory: string) => open(directory, (storage) => storage.list());
 
 describe("RuntimeRecoveryStorage", () => {
+  it.effect("round trips historical and current internal metadata without changing version 1", () =>
+    withDirectory((directory) =>
+      Effect.gen(function* () {
+        const update = {
+          id: "update",
+          text: "result",
+          source: { title: "worker", href: "cake://session/worker" },
+        };
+        const origins: InternalInput[] = [
+          { _tag: "UserWithReminders", text: "historical input", notices: [] },
+          {
+            _tag: "UserWithReminders",
+            text: "current input",
+            userText: "current input",
+            notices: [],
+            updates: [update],
+            reportNotices: [],
+          },
+          { _tag: "UpdateBatch", notices: [], updates: [update], reportNotices: [] },
+          {
+            _tag: "AttentionItem",
+            todoId: "todo",
+            title: "Review",
+            updates: [update],
+            reportNotices: [],
+          },
+          { _tag: "AgentUpdate", update },
+          { _tag: "WorkboardDelivery", boardId: "board", sequences: [1, 2] },
+          {
+            _tag: "SubagentCompletion",
+            details: { outcome: "completed", values: [1, true, null] },
+          },
+        ];
+        const saved: RuntimeRecoveryRecord = {
+          ...record,
+          inputs: [
+            ...record.inputs,
+            ...origins.map((internal, index) => ({
+              turnId: `internal-${index}`,
+              text: "input",
+              delivery: "follow-up" as const,
+              attachments: [],
+              markdown: false,
+              internal,
+            })),
+          ],
+        };
+        yield* open(directory, (storage) => storage.update(saved));
+        expect(yield* list(directory)).toEqual([saved]);
+        // A decoded envelope must also be encodable on the next queue edit.
+        yield* open(directory, (storage) =>
+          Effect.gen(function* () {
+            const decoded = yield* storage.get(record.sessionId);
+            expect(decoded).toEqual(saved);
+            if (decoded) yield* storage.update(decoded);
+          }),
+        );
+        expect(yield* list(directory)).toEqual([saved]);
+      }),
+    ),
+  );
+
+  it.effect.each([
+    { name: "present undefined (the queue merge regression)", internal: undefined },
+    { name: "unknown variant", internal: { _tag: "NotAnInternalInput" } },
+    {
+      name: "invalid reminder metadata",
+      internal: { _tag: "UserWithReminders", text: "input", notices: "invalid" },
+    },
+  ])("rejects $name before replacing recovery metadata", ({ internal }) =>
+    withDirectory((directory) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const file = recordFile(directory, record.sessionId);
+        yield* open(directory, (storage) => storage.update(record));
+        const original = yield* fs.readFileString(file);
+        const badInput = {
+          turnId: "fourth",
+          text: "input",
+          delivery: "follow-up" as const,
+          attachments: [],
+          markdown: false,
+        };
+        // Deliberately reproduce the runtime-invalid own property without loosening the schema.
+        Reflect.set(badInput, "internal", internal);
+        const candidate = { ...record, inputs: [...record.inputs, badInput] };
+        yield* open(directory, (storage) =>
+          Effect.gen(function* () {
+            const error = yield* Effect.flip(storage.update(candidate));
+            expect(error.operation).toBe("encode");
+            expect(error.message).toContain('["data"]["inputs"][3]["internal"]');
+            expect(error.message).toContain("proposed recovery metadata is invalid");
+            expect(error.message).toContain("restoring the file will not fix it");
+            expect(error.message).not.toContain("Restore this file and retry");
+            expect(yield* storage.get(record.sessionId)).toEqual(record);
+          }),
+        );
+        expect(yield* fs.readFileString(file)).toBe(original);
+        expect(yield* list(directory)).toEqual([record]);
+      }),
+    ),
+  );
+
   it.effect("reopens durable input envelopes from the same versioned file", () =>
     withDirectory((directory) =>
       Effect.gen(function* () {
@@ -369,6 +473,9 @@ describe("RuntimeRecoveryStorage", () => {
               const error = yield* Effect.flip(operation);
               expect(error._tag).toBe("RuntimeRecoveryStorageError");
               expect(error.operation).toBe("decode");
+              expect(error.message).toContain("saved recovery metadata could not be decoded");
+              expect(error.message).toContain("repair it or restore a valid backup");
+              expect(error.message).not.toContain("proposed recovery metadata is invalid");
             }
           }),
         );

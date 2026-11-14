@@ -1146,18 +1146,18 @@ export function createCakeSessionRuntimeTurnController(input: {
     pendingRecoveryInputs() {
       const queues = queuedForStop();
       return (["steering", "follow-up"] as const).flatMap((lane) =>
-        queues[lane].flatMap((item) =>
-          item.turnId
-            ? [
-                {
-                  turnId: item.turnId,
-                  delivery: lane === "steering" ? ("steer" as const) : ("follow-up" as const),
-                  text: item.text,
-                  internal: turnCompletions.internalInputById(item.turnId),
-                },
-              ]
-            : [],
-        ),
+        queues[lane].flatMap((item) => {
+          if (!item.turnId) return [];
+          const internal = turnCompletions.internalInputById(item.turnId);
+          return [
+            {
+              turnId: item.turnId,
+              delivery: lane === "steering" ? ("steer" as const) : ("follow-up" as const),
+              text: item.text,
+              ...(internal === undefined ? null : { internal }),
+            },
+          ];
+        }),
       );
     },
     async restorePending(restored) {
