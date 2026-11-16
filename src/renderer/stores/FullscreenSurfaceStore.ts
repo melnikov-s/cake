@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { observable, Store } from "r-state-tree";
 
 interface FullscreenSurfaceStoreProps {
   setOpen?(surfaceId: string, open: boolean): Promise<void>;
@@ -6,7 +6,7 @@ interface FullscreenSurfaceStoreProps {
 
 /** Owns fullscreen close requests and, when present, informs native surface controls. */
 export class FullscreenSurfaceStore extends Store<FullscreenSurfaceStoreProps> {
-  private readonly closeRequests = new Map<string, () => void>();
+  private readonly closeRequests = observable(new Map<string, () => void>());
 
   open(surfaceId: string, onClose: () => void) {
     this.closeRequests.set(surfaceId, onClose);

@@ -166,17 +166,21 @@ function applyConversationEvent(model: Conversation, event: ConversationEvent) {
   }
   batch(() => {
     if (event._tag === "IncomingUpdated") {
-      model.incomingParts = event.parts.map((part) => Schema.decodeUnknownSync(uiPartSchema)(part));
+      model.incomingParts.splice(
+        0,
+        model.incomingParts.length,
+        ...event.parts.map((part) => Schema.decodeUnknownSync(uiPartSchema)(part)),
+      );
       model.reconcileIncomingOrder(model.parts.map((part) => part.value));
     } else if (event._tag === "PartUpdated") {
       const part = Schema.decodeUnknownSync(uiPartSchema)(event.part);
       applyPartUpdate(model.parts, part, model.sessionId);
-      if (model.incomingParts.some((incoming) => incoming.id === part.id))
-        model.incomingParts = model.incomingParts.filter((incoming) => incoming.id !== part.id);
+      for (let index = model.incomingParts.length - 1; index >= 0; index -= 1)
+        if (model.incomingParts[index]!.id === part.id) model.incomingParts.splice(index, 1);
     } else if (event._tag === "PartRemoved") {
       removePart(model.parts, event.partId);
-      if (model.incomingParts.some((part) => part.id === event.partId))
-        model.incomingParts = model.incomingParts.filter((part) => part.id !== event.partId);
+      for (let index = model.incomingParts.length - 1; index >= 0; index -= 1)
+        if (model.incomingParts[index]!.id === event.partId) model.incomingParts.splice(index, 1);
     } else if (event._tag === "StreamingChanged") {
       model.streaming = event.streaming;
       // Pi's settled run ends activity even if correlation bookkeeping follows later.

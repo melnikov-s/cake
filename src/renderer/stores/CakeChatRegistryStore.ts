@@ -2,7 +2,7 @@ import { listSessionAssistantControlTools } from "../app-control/AppControlBridg
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { Project } from "../models/Project";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
-import { Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
+import { untracked, Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
@@ -40,7 +40,7 @@ export interface CakeChatRegistryStoreProps {
 /** Owns loaded Cake Chat target identities and their stable keyed Session Store instances. */
 export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
   @snapshot readonly targets: string[] = observable([]);
-  private readonly sessionsById = new Map<string, CakeChatSessionStore>();
+  private readonly sessionsById = observable(new Map<string, CakeChatSessionStore>());
 
   @child
   get sessions(): CakeChatSessionStore[] {
@@ -88,7 +88,7 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
   }
 
   find(sessionId: string) {
-    const cached = this.sessionsById.get(sessionId);
+    const cached = untracked(() => this.sessionsById.get(sessionId));
     if (cached) return cached;
     const session = this.sessions.find((candidate) => candidate.sessionId === sessionId);
     if (session) this.sessionsById.set(sessionId, session);

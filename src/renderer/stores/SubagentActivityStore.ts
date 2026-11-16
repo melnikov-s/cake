@@ -1,4 +1,6 @@
 import {
+  untracked,
+  observable,
   Store,
   child,
   computed,
@@ -63,8 +65,6 @@ export class SubagentActivityStore extends Store<{
   focusedTodos?(): readonly ProjectTodo[];
 }> {
   private commandErrors: Record<string, string | undefined> = {};
-  /** Last child element per worker chat, reused while its chat is unchanged. */
-  private readonly chatElements = new Map<string, { signature: string; element: ChatStore }>();
 
   get client() {
     return ClientContext.consume(this)!;
@@ -216,10 +216,10 @@ export class SubagentActivityStore extends Store<{
   }
 
   /** Memoized per worker: one run's change never re-notifies other workers' composers. */
-  private readonly messageable = new Map<string, ReadonlySignal<boolean>>();
+  private readonly messageable = observable(new Map<string, ReadonlySignal<boolean>>());
 
   private canMessage(key: string) {
-    let messageable = this.messageable.get(key);
+    let messageable = untracked(() => this.messageable.get(key));
     if (!messageable) {
       messageable = computed(() => {
         const run = this.run(key);
@@ -327,23 +327,22 @@ export class SubagentActivityStore extends Store<{
   }
 
   @child
-  get chatStores(): ChatStore[] {
-    const chats = this.workerChildren.chats;
-    const keys = new Set(chats.map(({ handleId }) => handleId));
-    for (const key of this.chatElements.keys()) if (!keys.has(key)) this.chatElements.delete(key);
-    return chats.map((chat) => {
-      // Reusing an unchanged chat's element keeps its props identical, so one
-      // worker's queued/messaging change never re-notifies the other workers' chats.
-      const signature = JSON.stringify(chat);
-      const cached = this.chatElements.get(chat.handleId);
-      if (cached?.signature === signature) return cached.element;
-      const element = this.chatElement(chat);
-      this.chatElements.set(chat.handleId, { signature, element });
-      return element;
-    });
+  private get chatEntries(): SubagentChatEntryStore[] {
+    return this.workerChildren.chats.map(({ handleId }) =>
+      createStore(SubagentChatEntryStore, { key: handleId, handleId, owner: this }),
+    );
   }
 
-  private chatElement(chat: WorkerChat): ChatStore {
+  @child
+  get chatStores(): ChatStore[] {
+    return this.chatEntries.map((entry) => entry.element);
+  }
+
+  workerChat(handleId: string): WorkerChat {
+    return this.workerChildren.chats.find((chat) => chat.handleId === handleId)!;
+  }
+
+  chatElement(chat: WorkerChat): ChatStore {
     // Historical and live runs with a handle are keyed by that handle.
     const run = { ...chat, key: chat.handleId };
     return createStore(ChatStore, {
@@ -462,5 +461,23 @@ export class SubagentActivityStore extends Store<{
   runForChat(chat: ChatStore) {
     const key = chat.key === undefined ? undefined : String(chat.key);
     return key !== undefined && this.chatStoresByKey.get(key) === chat ? this.run(key) : undefined;
+  }
+}
+
+/** Memoizes each worker's descriptor without changing Chat ownership or snapshot paths. */
+class SubagentChatEntryStore extends Store<{
+  handleId: string;
+  owner: SubagentActivityStore;
+}> {
+  @computed
+  private get signature(): string {
+    return JSON.stringify(this.props.owner.workerChat(this.props.handleId));
+  }
+
+  @computed
+  get element(): ChatStore {
+    // SAFETY: signature is the typed WorkerChat serialized above.
+    const chat = JSON.parse(this.signature) as WorkerChat;
+    return this.props.owner.chatElement(chat);
   }
 }

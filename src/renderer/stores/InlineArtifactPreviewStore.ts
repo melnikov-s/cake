@@ -33,7 +33,7 @@ export class InlineArtifactPreviewStore extends Store<{
     Record<string, { conversationId: string; parts(): UiPart[] }>
   >({});
   private nextObservation = 0;
-  private readonly newest = new Map<string, number>();
+  private readonly newest = observable(new Map<string, number>());
   private readonly disclosures = observable<
     Record<
       string,

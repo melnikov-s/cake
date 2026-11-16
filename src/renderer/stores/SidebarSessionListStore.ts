@@ -1,4 +1,11 @@
-import { Store, computed, observable, snapshot, type ReadonlySignal } from "r-state-tree";
+import {
+  untracked,
+  Store,
+  computed,
+  observable,
+  snapshot,
+  type ReadonlySignal,
+} from "r-state-tree";
 import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
 import {
@@ -51,7 +58,9 @@ export class SidebarSessionListStore extends Store<{
   private readonly sessionLimits: Record<string, number> = observable({});
   @snapshot private readonly collapsedFamilies: Record<string, boolean> = observable({});
   resolvedLaneExpanded = false;
-  private readonly orderedProjectGroups = new Map<string, ReadonlySignal<ProjectSessionRoots>>();
+  private readonly orderedProjectGroups = observable(
+    new Map<string, ReadonlySignal<ProjectSessionRoots>>(),
+  );
   /** The selected row's root keeps the rank and last-updated time it had when selected, so the row never moves under the user. */
   private heldRoot: { sessionId: string; rank: number; modifiedAt: string } | undefined;
 
@@ -496,7 +505,7 @@ export class SidebarSessionListStore extends Store<{
 
   private sortedProjectSessionRoots(projectPath: string, resolved: boolean): ProjectSessionRoots {
     const key = `${resolved ? "resolved" : "active"}:${projectPath}`;
-    let group = this.orderedProjectGroups.get(key);
+    let group = untracked(() => this.orderedProjectGroups.get(key));
     if (!group) {
       group = computed(() => this.orderProjectSessionRoots(projectPath, resolved));
       this.orderedProjectGroups.set(key, group);

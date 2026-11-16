@@ -1,4 +1,4 @@
-import { createStore, effect, mount, observable } from "r-state-tree";
+import { applySnapshot, createStore, effect, mount, observable, toSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
 import {
@@ -114,6 +114,45 @@ function observeEveryChat(store: SubagentActivityStore) {
 }
 
 describe("SubagentActivityStore bounded work", () => {
+  it("preserves the existing keyed chat snapshot path and draft restoration", () => {
+    const { store } = setup();
+    const key = handleIdAt(2);
+    store.chatStore(key)!.setDraft("Retained draft");
+    const snapshot = toSnapshot(store);
+    expect(snapshot).toMatchObject({
+      children: {
+        chatStores: expect.arrayContaining([{ key, state: { localDraft: "Retained draft" } }]),
+      },
+    });
+    const restored = setup().store;
+    applySnapshot(restored, snapshot);
+    expect(restored.chatStore(key)!.draft).toBe("Retained draft");
+    expect(snapshot).not.toHaveProperty("children.chatEntries");
+    store[Symbol.dispose]();
+    restored[Symbol.dispose]();
+  });
+
+  it("disposes keyed worker chats on removal and all retained chats with their owner", () => {
+    const { catalog, transcript, store } = setup();
+    const chats = store.chatStores.slice();
+    const removed = chats[3]!;
+    transcript.parts = transcript.parts.filter((part) => part.id !== "spawn-3");
+    applySubagentUpdate(catalog, parentSessionId, {
+      _tag: "Snapshot",
+      revision: 2,
+      parentSessionId,
+      activities: Array.from({ length: WORKERS }, (_, index) => activity(index)).filter(
+        (_, index) => index !== 3,
+      ),
+      backgroundActive: true,
+    });
+    expect(store.chatStore(handleIdAt(3))).toBeUndefined();
+    expect(removed.signal.aborted).toBe(true);
+    expect(store.chatStore(handleIdAt(4))).toBe(chats[4]);
+    store[Symbol.dispose]();
+    expect(chats.every((chat) => chat.signal.aborted)).toBe(true);
+  });
+
   it("does no transcript or messaging work when an observation clears loaded state", () => {
     const { catalog, counts, store } = setup();
     const evaluations = observeEveryChat(store);

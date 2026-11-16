@@ -235,8 +235,10 @@ export class InlineWidgetStore extends Store<{
   }
 
   readonly states: Record<string, InlineWidgetState> = observable({});
-  private readonly revisions = new Map<string, number>();
-  private readonly browserReadyDeadlines = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly revisions = observable(new Map<string, number>());
+  private readonly browserReadyDeadlines = observable(
+    new Map<string, ReturnType<typeof setTimeout>>(),
+  );
 
   private clearBrowserReadyDeadline(id: string) {
     clearTimeout(this.browserReadyDeadlines.get(id));

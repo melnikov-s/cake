@@ -38,11 +38,10 @@ export class Conversation extends Model {
 
   reconcileIncomingOrder(parts: readonly UiPart[]) {
     const ids = new Set(parts.map((part) => part.id));
-    this.incomingParts = this.incomingParts.filter((part) => !ids.has(part.id));
-    this.incomingAnchors = incomingPartAnchors(
-      [...parts, ...this.incomingParts],
-      this.incomingAnchors,
-    );
+    for (let index = this.incomingParts.length - 1; index >= 0; index -= 1)
+      if (ids.has(this.incomingParts[index]!.id)) this.incomingParts.splice(index, 1);
+    const anchors = incomingPartAnchors([...parts, ...this.incomingParts], this.incomingAnchors);
+    this.incomingAnchors.splice(0, this.incomingAnchors.length, ...anchors);
   }
   @modelRef(LlmModel) model: LlmModel | undefined;
   preset: PresetContext | undefined;

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadDesktopHost, installDesktopSocketOrigin } from "../services/electron/DesktopHostLive";
 import { makeRemoteMainLive } from "./RemoteMainLive";
 import { Cause, Context, Effect, Exit, Layer, ManagedRuntime, Schema } from "effect";
@@ -99,14 +100,31 @@ function startMain() {
       : makeMainLive(mainOptions);
 
   const initializeDeveloperTools =
-    process.env.ELECTRON_RENDERER_URL && process.env.CAKE_ELECTRON_SMOKE !== "1"
+    import.meta.env.DEV &&
+    !app.isPackaged &&
+    process.env.ELECTRON_RENDERER_URL &&
+    (process.env.CAKE_ELECTRON_SMOKE !== "1" || process.env.CAKE_RST_DEVTOOLS_SMOKE === "1")
       ? async () => {
-          const { installExtension, REACT_DEVELOPER_TOOLS } =
-            await import("electron-devtools-installer");
-          const extension = await installExtension(REACT_DEVELOPER_TOOLS, {
-            loadExtensionOptions: { allowFileAccess: true },
-          });
-          console.info(`[cake.main] Added Electron extension: ${extension.name}`);
+          await Promise.all([
+            (async () => {
+              const { session } = await import("electron");
+              const extensionPath = fileURLToPath(
+                new URL("../devtools/extension", import.meta.resolve("r-state-tree")),
+              );
+              // Native unpacked MV3 loading; no permission expansion or bridge adapter.
+              const extension =
+                await session.defaultSession.extensions.loadExtension(extensionPath);
+              console.info(`[cake.main] Added Electron extension: ${extension.name}`);
+            })(),
+            (async () => {
+              const { installExtension, REACT_DEVELOPER_TOOLS } =
+                await import("electron-devtools-installer");
+              const extension = await installExtension(REACT_DEVELOPER_TOOLS, {
+                loadExtensionOptions: { allowFileAccess: true },
+              });
+              console.info(`[cake.main] Added Electron extension: ${extension.name}`);
+            })(),
+          ]);
         }
       : undefined;
 

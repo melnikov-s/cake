@@ -12,6 +12,10 @@ files:
   - package.json
   - "!out/server/**"
   - "!out/renderer/rpc-test-harness.html"
+  # Optional inspector entry points/types and the unpacked extension are development-only.
+  - "!**/r-state-tree/devtools/**"
+  - "!**/r-state-tree/dist/devtools*"
+  - "!**/r-state-tree/dist/devtools/**"
   - "!**/prebuilds/{darwin-x64,linux-*,win32-*}/**"
   - "!**/pi-tui/native/{linux,win32}/**"
 # electron-builder prunes top-level package READMEs, examples and changelogs.

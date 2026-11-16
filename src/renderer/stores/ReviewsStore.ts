@@ -37,7 +37,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   draftFocusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
-  private readonly resolutionRevisions = new Map<string, number>();
+  private readonly resolutionRevisions = observable(new Map<string, number>());
 
   get client() {
     return ClientContext.consume(this)!;

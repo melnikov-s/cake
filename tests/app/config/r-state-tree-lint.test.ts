@@ -6,7 +6,24 @@ import { expect, test } from "vitest";
 
 const root = resolve(import.meta.dirname, "../../..");
 
-test("the supported Oxlint pipeline enables all five published r-state-tree rules", async () => {
+test("the supported Oxlint pipeline enables every shipped r-state-tree rule at error severity", async () => {
+  const shipped = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+    import { rules } from "r-state-tree/lint";
+    import config from "./oxlint.config.ts";
+    console.log(JSON.stringify(Object.keys(rules).map(name => [name, config.rules["r-state-tree/" + name]])));
+  `,
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  expect(shipped.status, shipped.stderr).toBe(0);
+  const rules: Array<[string, string]> = JSON.parse(shipped.stdout);
+  expect(rules).toHaveLength(5);
+  for (const [, severity] of rules) expect(severity).toBe("error");
   const temporary = await mkdtemp(join(tmpdir(), "cake-rst-lint-"));
   try {
     const fixture = join(temporary, "fixture.ts");
@@ -33,13 +50,7 @@ export const invalidConstruction = new Example();
     expect(result.status, result.stderr).toBe(1);
     const diagnostics = JSON.parse(result.stdout).diagnostics;
     const codes = diagnostics.map((diagnostic: { code: string }) => diagnostic.code);
-    for (const rule of [
-      "no-computed-mutation",
-      "no-direct-construction",
-      "no-plain-collection-mutation",
-      "no-observable-collection-replacement",
-      "no-discarded-child-read",
-    ])
+    for (const [rule] of rules)
       expect(
         codes.some((code: string) => code.includes(rule)),
         result.stdout,

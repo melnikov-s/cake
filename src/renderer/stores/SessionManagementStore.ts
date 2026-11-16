@@ -21,7 +21,7 @@ export interface SessionManagementStoreProps {
 export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   private readonly transitioningSessionIds = observable(new Set<string>());
   /** Unread reminders this window's user set since visiting; finished-turn unread is the backend's. */
-  private readonly userMarkedUnreadIds = new Set<string>();
+  private readonly userMarkedUnreadIds = observable(new Set<string>());
 
   get client() {
     return ClientContext.consume(this)!;

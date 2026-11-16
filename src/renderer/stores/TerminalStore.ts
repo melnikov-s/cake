@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { observable, Store } from "r-state-tree";
 import { ClientContext } from "./context/ClientContext";
 import type { WorkingDirectoryRetirementStore } from "./WorkingDirectoryRetirementStore";
 
@@ -35,15 +35,17 @@ export class TerminalStore extends Store<{
   entries: TerminalEntry[] = [];
   activeEntryKeys: Record<string, string> = {};
   private connectionEpoch = 0;
-  private readonly dataListeners = new Map<string, Set<(data: string) => void>>();
-  private readonly bufferedData = new Map<string, string>();
-  private readonly orphanEvents = new Map<
-    string,
-    Array<
-      | { type: "terminal-data"; terminalId: string; data: string }
-      | { type: "terminal-exited"; terminalId: string; exitCode: number }
-    >
-  >();
+  private readonly dataListeners = observable(new Map<string, Set<(data: string) => void>>());
+  private readonly bufferedData = observable(new Map<string, string>());
+  private readonly orphanEvents = observable(
+    new Map<
+      string,
+      Array<
+        | { type: "terminal-data"; terminalId: string; data: string }
+        | { type: "terminal-exited"; terminalId: string; exitCode: number }
+      >
+    >(),
+  );
 
   constructor(props: TerminalStore["props"]) {
     super(props);

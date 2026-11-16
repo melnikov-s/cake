@@ -1,4 +1,4 @@
-import { Store, createContext, untracked } from "r-state-tree";
+import { observable, Store, createContext, untracked } from "r-state-tree";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import type { TextProcessingMode } from "../../contracts/dictation/dictation-data";
 import type { SpeechOutputSettings } from "../../contracts/speech/speech-output-data";
@@ -120,17 +120,17 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   private outputRunning = false;
   // Ephemeral output-generation wakeup: lets synthesis continue while audio drains.
   private outputWake: (() => void) | undefined;
-  private phrases: string[] = [];
-  private cursors = new Map<string, number>();
-  private users = new Set<string>();
-  private liveReplies = new Set<string>();
+  private readonly phrases: string[] = observable([]);
+  private cursors = observable(new Map<string, number>());
+  private users = observable(new Set<string>());
+  private liveReplies = observable(new Set<string>());
   private outputEligible = false;
   /** Wall-clock entry time; assistant messages requested later are new replies, not history. */
   private enteredAt = Number.POSITIVE_INFINITY;
   private utterance: Utterance | undefined;
   private recognitionRunning = false;
-  private finalizing: Utterance[] = [];
-  private preroll: Float32Array[] = [];
+  private readonly finalizing: Utterance[] = observable([]);
+  private readonly preroll: Float32Array[] = observable([]);
   private onset = 0;
   private cleanup: Promise<void> = Promise.resolve();
 
@@ -281,8 +281,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       if (run.interruption && run.interruption.state !== "confirmed") this.transcript = "";
     }
     this.utterance = undefined;
-    this.finalizing = [];
-    this.preroll = [];
+    this.finalizing.splice(0);
+    this.preroll.splice(0);
     this.onset = 0;
     this.listening = false;
     this.sendProgress = undefined;
@@ -341,7 +341,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.props.playback.stop();
     this.outputWake?.();
     this.outputWake = undefined;
-    this.phrases = [];
+    this.phrases.splice(0);
     this.speaking = false;
   }
   async setMuted(muted: boolean): Promise<void> {
@@ -375,7 +375,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     if (run.interruption?.state !== "pending") return;
     this.clearInterruptionTimer(run);
     run.interruption.state = "rejected";
-    run.chunks = [];
+    run.chunks.splice(0);
     run.samples = 0;
     this.transcript = "";
     // Do not cancel native inference: finish this ID at the quiet boundary so
@@ -481,7 +481,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       const tentative = this.speaking;
       run = {
         id: crypto.randomUUID(),
-        chunks: this.preroll,
+        // The utterance owns these chunks after the reusable preroll is cleared.
+        chunks: observable(this.preroll.slice()),
         samples: this.preroll.reduce((sum, chunk) => sum + chunk.length, 0),
         duration: 0,
         quiet: 0,
@@ -503,7 +504,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
           this.preferences.interruptionWindowMs,
         );
       }
-      this.preroll = [];
+      this.preroll.splice(0);
       this.onset = 0;
       this.utterance = run;
       this.transcript = "";
@@ -545,8 +546,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       inputSignal ?? this.signal,
       this.signal,
     ]);
-    const chunks = run.chunks;
-    run.chunks = [];
+    // Drain into the recognition request while retaining the live input buffer.
+    const chunks = run.chunks.splice(0);
     run.samples = 0;
     const final = run.finishing;
     this.recognitionRunning = true;

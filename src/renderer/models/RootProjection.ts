@@ -38,7 +38,7 @@ export class RootProjection extends Model {
     [],
   );
   @child(CakeChatControls) cakeChatControls: CakeChatControls[] = observable([]);
-  @transient private readonly discussionConversationParents = new Map<string, string>();
+  @transient private readonly discussionConversationParents = observable(new Map<string, string>());
 
   removeProjectSessionProjections(
     sessionId: string,

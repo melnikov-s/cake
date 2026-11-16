@@ -127,6 +127,13 @@ export class AppShellStore extends Store<AppShellStoreProps> {
 
   constructor(props: AppShellStore["props"]) {
     super(props);
+    // Register only when normal application consumers have realized this child.
+    if (import.meta.hot && !import.meta.env.SSR && import.meta.env.MODE !== "test")
+      this.effect(() => {
+        void import("../dev/inspector").then(({ registerRoot }) =>
+          registerRoot("AppShell", this, this.signal),
+        );
+      });
     this.reaction(
       () => (this.selection.kind === "project-session" ? this.selection.sessionId : undefined),
       (current, previous) => this.props.onProjectSessionSelectionChanged(current, previous),

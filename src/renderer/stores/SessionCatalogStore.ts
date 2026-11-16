@@ -1,4 +1,4 @@
-import { Store, computed, observable, type ReadonlySignal } from "r-state-tree";
+import { untracked, Store, computed, observable, type ReadonlySignal } from "r-state-tree";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeCatalog } from "../models/WorktreeCatalog";
@@ -43,10 +43,9 @@ export class SessionCatalogStore extends Store<{
   /** Bridges newly-created worktrees only until their first authoritative session projection. */
   private readonly pendingManagedWorktrees = observable(new Map<string, WorktreeRecord>());
   /** Keeps catalog derivation scoped to the Project whose sidebar group consumes it. */
-  private readonly projectSessionGroups = new Map<
-    string,
-    ReadonlySignal<ReadonlyArray<SessionSummary | PendingSessionSummary>>
-  >();
+  private readonly projectSessionGroups = observable(
+    new Map<string, ReadonlySignal<ReadonlyArray<SessionSummary | PendingSessionSummary>>>(),
+  );
 
   constructor(props: SessionCatalogStore["props"]) {
     super(props);
@@ -166,7 +165,7 @@ export class SessionCatalogStore extends Store<{
 
   projectSessions(projectPath: string, resolved?: boolean) {
     const key = `${resolved === undefined ? "all" : resolved ? "resolved" : "active"}:${projectPath}`;
-    let group = this.projectSessionGroups.get(key);
+    let group = untracked(() => this.projectSessionGroups.get(key));
     if (!group) {
       group = computed(() => {
         // Read membership from the shared index, not the globally sorted list: metadata

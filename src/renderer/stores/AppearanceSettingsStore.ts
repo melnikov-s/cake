@@ -38,7 +38,7 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   themeEntries: string[] = observable([]);
   selectedEntry = "";
   /** Import-session deduplication only; rendered choices live in importedThemes. */
-  private readonly importedEntries = new Map<string, ColorThemeChoice>();
+  private readonly importedEntries = observable(new Map<string, ColorThemeChoice>());
   @snapshot projectAvatarsEnabled = true;
   @snapshot sessionAvatarsEnabled = true;
   @snapshot conversationIdentityEnabled = true;

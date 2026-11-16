@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { observable, Store, untracked } from "r-state-tree";
 import type { WorktreeLandingOperation } from "../../contracts/worktrees/worktree-landing-data";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import type {
@@ -65,8 +65,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   private startedLandingOperationId: string | undefined;
   private startedResolveAfterLanding = false;
   private startedResolutionWhileViewed = false;
-  private readonly refreshingWorkspacePaths = new Set<string>();
-  private readonly refreshAgainWorkspacePaths = new Set<string>();
+  private readonly refreshingWorkspacePaths = observable(new Set<string>());
+  private readonly refreshAgainWorkspacePaths = observable(new Set<string>());
   private observedWorkspacePath: string | undefined;
   private completedOperationId: string | undefined;
 
@@ -210,7 +210,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     const workspacePath = requestedWorkspacePath ?? this.props.workspacePath();
     const sessionId = this.props.sessionId();
     if (!workspacePath || !sessionId) return;
-    if (this.refreshingWorkspacePaths.has(workspacePath)) {
+    // The mounted refresh effect depends on workspace demand, not its own request guard.
+    if (untracked(() => this.refreshingWorkspacePaths.has(workspacePath))) {
       this.refreshAgainWorkspacePaths.add(workspacePath);
       return;
     }

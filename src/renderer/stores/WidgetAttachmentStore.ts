@@ -19,7 +19,7 @@ export class WidgetAttachmentStore extends Store {
     new Map<ArtifactLineageId, Extract<CakeArtifactV1, { kind: "widget" }>>(),
   );
   readonly errors = observable(new Map<string, string>());
-  private readonly loading = new Map<string, Promise<void>>();
+  private readonly loading = observable(new Map<string, Promise<void>>());
   readonly placementRequests = observable(
     new Map<ArtifactLineageId, { pending: boolean; error?: string; slot?: WidgetSlot }>(),
   );

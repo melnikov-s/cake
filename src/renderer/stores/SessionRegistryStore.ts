@@ -1,4 +1,5 @@
 import {
+  untracked,
   Store,
   batch,
   child,
@@ -47,8 +48,8 @@ export interface SessionRegistryStoreProps {
 /** Owns the keyed collection and stable identity of loaded Project Session Stores for a window. */
 export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot readonly targets: SessionTarget[] = observable([]);
-  private readonly sessionsById = new Map<string, ProjectSessionStore>();
-  private readonly silentWorktreeLandings = new Set<string>();
+  private readonly sessionsById = observable(new Map<string, ProjectSessionStore>());
+  private readonly silentWorktreeLandings = observable(new Set<string>());
   private readonly forkPreviews = observable(
     new Map<string, { title: string; sourceSessionId: string }>(),
   );
@@ -151,7 +152,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   findSession(sessionId: string) {
-    const cached = this.sessionsById.get(sessionId);
+    const cached = untracked(() => this.sessionsById.get(sessionId));
     if (cached) return cached;
     const index = this.targets.findIndex((target) => target.sessionId === sessionId);
     if (index < 0) return undefined;
@@ -159,7 +160,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     // so switching to another already-loaded session does not reconcile the
     // entire child array again on its first lookup.
     for (const session of this.sessions) this.sessionsById.set(session.sessionId, session);
-    return this.sessionsById.get(sessionId);
+    return untracked(() => this.sessionsById.get(sessionId));
   }
 
   isForkPreview(sessionId: string) {

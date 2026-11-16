@@ -1,4 +1,11 @@
-import { Store, computed, observable, snapshot, type ReadonlySignal } from "r-state-tree";
+import {
+  untracked,
+  Store,
+  computed,
+  observable,
+  snapshot,
+  type ReadonlySignal,
+} from "r-state-tree";
 import { subagentTitle } from "../lib/subagent-title";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import type { RootProjection } from "../models/RootProjection";
@@ -34,15 +41,15 @@ export class ConversationNavigatorStore extends Store<{
   @snapshot private readonly collapsed: Record<string, boolean> = observable({});
   private readonly queries: Record<string, string> = observable({});
   private readonly searchCollapsed: Record<string, boolean> = observable({});
-  private readonly trees = new Map<string, ReadonlySignal<ConversationNavigationTree>>();
-  private readonly lineages = new Map<
-    string,
-    ReadonlySignal<readonly ConversationNavigationEntry[]>
-  >();
-  private readonly metadataScopes = new Map<
-    string,
-    ReadonlySignal<readonly ConversationNavigationMetadataTarget[]>
-  >();
+  private readonly trees = observable(
+    new Map<string, ReadonlySignal<ConversationNavigationTree>>(),
+  );
+  private readonly lineages = observable(
+    new Map<string, ReadonlySignal<readonly ConversationNavigationEntry[]>>(),
+  );
+  private readonly metadataScopes = observable(
+    new Map<string, ReadonlySignal<readonly ConversationNavigationMetadataTarget[]>>(),
+  );
   error: string | undefined;
 
   constructor(props: ConversationNavigatorStore["props"]) {
@@ -55,7 +62,7 @@ export class ConversationNavigatorStore extends Store<{
 
   tree(projectPath: string | undefined, resolved = false): ConversationNavigationTree {
     const key = `${resolved ? "resolved" : "active"}:${this.scopeKey(projectPath)}`;
-    let tree = this.trees.get(key);
+    let tree = untracked(() => this.trees.get(key));
     if (!tree) {
       tree = computed(() => this.buildTree(projectPath, resolved));
       this.trees.set(key, tree);
@@ -127,24 +134,14 @@ export class ConversationNavigatorStore extends Store<{
     includeClosed = false,
   ): readonly ConversationNavigationMetadataTarget[] {
     const key = `${includeClosed}:${this.scopeKey(projectPath)}`;
-    let scope = this.metadataScopes.get(key);
+    let scope = untracked(() => this.metadataScopes.get(key));
     if (!scope) {
-      let previous: readonly ConversationNavigationMetadataTarget[] = [];
+      const signature = computed(() =>
+        JSON.stringify(this.buildMetadataTargets(projectPath, includeClosed)),
+      );
       scope = computed(() => {
-        const next = this.buildMetadataTargets(projectPath, includeClosed);
-        if (
-          next.length !== previous.length ||
-          next.some((target, index) => {
-            const old = previous[index];
-            return (
-              old?.sessionId !== target.sessionId ||
-              old?.kind !== target.kind ||
-              old?.workingDirectory !== target.workingDirectory
-            );
-          })
-        )
-          previous = next;
-        return previous;
+        // SAFETY: the signature serializes only the typed metadata targets built above.
+        return JSON.parse(signature.value) as readonly ConversationNavigationMetadataTarget[];
       });
       this.metadataScopes.set(key, scope);
     }
@@ -272,14 +269,14 @@ export class ConversationNavigatorStore extends Store<{
 
   lineageForTarget(target: ConversationNavigationTarget): readonly ConversationNavigationEntry[] {
     const key = conversationNavigationTargetKey(target);
-    let lineage = this.lineages.get(key);
+    let lineage = untracked(() => this.lineages.get(key));
     if (!lineage) {
-      let previous: readonly ConversationNavigationEntry[] = [];
+      // Stable scalar equality keeps activity-only metadata replacements from
+      // notifying ownership/title consumers, without writes during derivation.
+      const signature = computed(() => JSON.stringify(this.buildLineage(target)));
       lineage = computed(() => {
-        const next = this.buildLineage(target);
-        // Metadata arrives as replacement rows even when only activity changed.
-        if (!sameLineage(previous, next)) previous = next;
-        return previous;
+        // SAFETY: the signature serializes only the typed lineage entries built above.
+        return JSON.parse(signature.value) as readonly ConversationNavigationEntry[];
       });
       this.lineages.set(key, lineage);
     }
@@ -609,26 +606,4 @@ export interface ConversationRowGroup {
     readonly count: number;
     readonly expanded: boolean;
   };
-}
-
-function sameLineage(
-  left: readonly ConversationNavigationEntry[],
-  right: readonly ConversationNavigationEntry[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((entry, index) => {
-      const next = right[index]!;
-      return (
-        entry.key === next.key &&
-        entry.title === next.title &&
-        entry.relationship === next.relationship &&
-        entry.target.kind === next.target.kind &&
-        (entry.target.kind !== "side-chat" ||
-          (next.target.kind === "side-chat" &&
-            entry.target.parentSessionId === next.target.parentSessionId &&
-            entry.target.threadId === next.target.threadId))
-      );
-    })
-  );
 }

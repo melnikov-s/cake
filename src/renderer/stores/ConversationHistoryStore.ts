@@ -1,4 +1,4 @@
-import { batch, Store } from "r-state-tree";
+import { observable, batch, Store } from "r-state-tree";
 import type { Conversation } from "../models/Conversation";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
@@ -16,7 +16,7 @@ export class ConversationHistoryStore extends Store<{
   private generation = 0;
   private request: AbortController | undefined;
   private readers = 0;
-  private readonly completedCursors = new Set<string>();
+  private readonly completedCursors = observable(new Set<string>());
 
   constructor(props: ConversationHistoryStore["props"]) {
     super(props);

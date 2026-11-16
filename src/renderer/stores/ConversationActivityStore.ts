@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { observable, Store, untracked } from "r-state-tree";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   launchedSessions,
@@ -16,7 +16,7 @@ export class ConversationActivityStore extends Store<{
   openSession(sessionId: string): Promise<void>;
   selectedSessionId?(): string | undefined;
 }> {
-  private readonly loading = new Set<string>();
+  private readonly loading = observable(new Set<string>());
 
   constructor(props: ConversationActivityStore["props"]) {
     super(props);
@@ -36,7 +36,8 @@ export class ConversationActivityStore extends Store<{
   }
 
   private async loadDetails(sessionId: string) {
-    if (this.loading.has(sessionId)) return;
+    // In-flight bookkeeping must not become an input to the demand effect.
+    if (untracked(() => this.loading.has(sessionId))) return;
     this.loading.add(sessionId);
     try {
       await this.props.catalog.lookup(sessionId);

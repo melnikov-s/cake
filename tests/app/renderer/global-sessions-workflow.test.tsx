@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { StoreProvider } from "r-state-tree/react";
+import { effect } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
@@ -257,6 +258,36 @@ describe("Global Cake Sessions scope", () => {
     expect(ids(alpha)).not.toContain("alpha-resolved");
     expect(load).not.toHaveBeenCalled();
     expect(fixture.models.projectConversations).toHaveLength(0);
+  });
+
+  it("keeps metadata and lineage identities stable for activity but not ownership labels", () => {
+    using fixture = renderSessions();
+    const metadata: object[] = [];
+    const lineages: object[] = [];
+    const stopMetadata = effect(() => {
+      metadata.push(fixture.navigator.metadataTargets(alpha));
+    });
+    const stopLineage = effect(() => {
+      lineages.push(fixture.navigator.lineageFor("alpha-session"));
+    });
+    try {
+      const session = fixture.models.sessionCatalog.find("alpha-session")!;
+      act(() => {
+        session.running = true;
+        session.unread = true;
+      });
+      expect(metadata).toHaveLength(1);
+      expect(lineages).toHaveLength(1);
+      act(() => {
+        session.title = "Renamed";
+      });
+      expect(metadata).toHaveLength(1);
+      expect(lineages).toHaveLength(2);
+      expect(fixture.navigator.lineageFor("alpha-session").at(-1)?.title).toBe("Renamed");
+    } finally {
+      stopMetadata();
+      stopLineage();
+    }
   });
 
   it("reacts to project registration and removal instead of retaining an old scope", () => {

@@ -18,8 +18,8 @@ export class ArtifactReferencePreviewStore extends Store<{
 }> {
   /** Resolution identities/status only. Mutable lineage facts live in ArtifactCatalog. */
   readonly previewStates = observable<Record<string, ArtifactReferencePreviewState>>({});
-  private readonly pending = new Map<string, Promise<ArtifactStableRef | undefined>>();
-  private readonly mounts = new Map<string, number>();
+  private readonly pending = observable(new Map<string, Promise<ArtifactStableRef | undefined>>());
+  private readonly mounts = observable(new Map<string, number>());
   operationError: string | undefined;
   private operationErrorLineageId: ArtifactLineageId | undefined;
   private operationRequest = 0;

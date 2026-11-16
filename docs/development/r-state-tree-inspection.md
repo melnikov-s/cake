@@ -1,6 +1,6 @@
 # r-state-tree development inspection
 
-Cake pins the published `r-state-tree@0.13.0`. Its Vite plugin requires Vite 8 (`parseSync`), so Cake uses Vite 8.3.4 with electron-vite 6.0.0; existing Oxlint 1.78.0 supports the shipped rules. Node 22.19+ is required. The upgrade also adopts compact Store snapshots: omitted empty state/children sections and an undefined empty-root snapshot are handled at persistence/startup boundaries. `scripts/vite-standard-decorators.ts` preserves esbuild lowering for development/SSR because Vite 8 only lowers standard decorators during production bundling; it runs after inspector metadata extraction. All five shipped syntax rules are enabled at error severity in `oxlint.config.ts`, used by `pnpm lint:oxlint` and `pnpm lint`. They have no autofixes; adoption does not authorize rewriting existing state ownership or collections. The installed `node_modules/r-state-tree/lint/README.md` documents their analysis limits.
+Cake pins the published `r-state-tree@0.13.0`. Its Vite plugin requires Vite 8 (`parseSync`), so Cake uses Vite 8.3.4 with electron-vite 6.0.0; existing Oxlint 1.78.0 supports the shipped rules. Node 22.19+ is required. The upgrade also adopts compact Store snapshots: omitted empty state/children sections and an undefined empty-root snapshot are handled at persistence/startup boundaries. `scripts/vite-standard-decorators.ts` preserves esbuild lowering for development/SSR because Vite 8 only lowers standard decorators during production bundling; it runs after inspector metadata extraction. All five shipped syntax rules are enabled at error severity in `oxlint.config.ts`, used by `pnpm lint:oxlint` and `pnpm lint`. They have no autofixes. Mutable Store/Model collections are explicitly observable and keep their identity; copies are reserved for derived values and ownership/transport boundaries. Navigation uses scalar signatures for equality without captured-state writes, and keyed worker-chat owners keep unrelated workers' props stable without a mutating shared child-descriptor cache. The installed `node_modules/r-state-tree/lint/README.md` documents their analysis limits.
 
 ## Development launches
 
@@ -10,14 +10,14 @@ The desktop record is `<checkout>/.r-state-tree-inspector.json`; browser develop
 
 Registration is nonvisual and automatic for existing mounted roots:
 
-| Renderer surface                                 | Registered roots                                                   |
-| ------------------------------------------------ | ------------------------------------------------------------------ |
-| Each local/remote desktop window                 | `DesktopConnection`, `RootStore`, `RootProjection`                 |
-| Drop-down Cake Chat window, when actually opened | Same roots, independent window/instance                            |
-| Screen capture overlay, when actually opened     | `ScreenCaptureOverlay`                                             |
-| Browser dev tab                                  | `BrowserConnection`, `BrowserMenus`, `RootStore`, `RootProjection` |
+| Renderer surface                                 | Registered roots                                                               |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Each local/remote desktop window                 | `DesktopConnection`, `RootStore`, `RootProjection`, `AppShell`                 |
+| Drop-down Cake Chat window, when actually opened | Same roots, independent window/instance                                        |
+| Screen capture overlay, when actually opened     | `ScreenCaptureOverlay`                                                         |
+| Browser dev tab                                  | `BrowserConnection`, `BrowserMenus`, `RootStore`, `RootProjection`, `AppShell` |
 
-Lazy children are never initialized for coverage. Inspect retained children through their owning root; `uninitialized` is intentional. Root Store disposal unregisters its roots; pagehide/HMR disconnects transports, unregisters all roots and disposes the inspector without disposing application state.
+Lazy children are never initialized for coverage. `AppShell` registers itself only when normal application consumers have realized and mounted it; this focused root keeps navigation state usable within the extension's bounded reads of Cake's much larger root. Inspect retained children through their owning root; `uninitialized` is intentional. Root Store disposal unregisters its roots; pagehide/HMR disconnects transports, unregisters all roots and disposes the inspector without disposing application state.
 
 This is not whole-process observability. Electron main/preload, backend Effect services/Pi runtimes, server processes, workers, native helpers, webviews/iframes, and non-observable/React-local state are not registered. The RPC test harness has no application Store roots. Main-owned domain state is visible only through the renderer projection already delivered to that window. Maps/Sets and arbitrary class internals are unsupported. Bounded reads may truncate; getters/Context-only references are not exhaustive ownership discovery.
 
@@ -49,11 +49,25 @@ Use a stdio entry, not an HTTP endpoint:
 
 Resolve `node` on the actual backend host, or use its absolute Node executable. On the main workspace substitute `/Users/user/dev/cake`; for a managed worktree substitute that worktree's absolute path in **all three** locations. Use another named entry and the browser record path for browser dev. Do not reuse a main-workspace relay for another worktree. Explicit relay-file environment removes dependence on the renderer Vite root (`src/renderer` or `src/renderer/browser`). The installed `r-state-tree-inspector` executable is equivalent; its public entry is `dist/devtools-mcp.cjs`.
 
-The host saves/reloads native configuration through `settings.mcp.update`; no manual setup is needed on each subsequent dev launch. No server discovery across arbitrary checkouts is promised. A closed window has no inspectable runtime. The MCP process rereads the record for each request and reconnects after Vite restarts.
+The host saves/reloads native configuration through `settings.mcp.update`; no manual setup is needed on each subsequent dev launch. Busy Project Sessions queue their resource reload until the current response settles, so their current tool registry is not evidence that registration failed. After settlement, use Pi's native `/mcp reconnect <server-name>` if needed and rediscover tools from a fresh response. The supported `settings.mcp.native` reconnect operation targets an idle Project Session; a running session can queue the native command between responses. No server discovery across arbitrary checkouts is promised. A closed window has no inspectable runtime. The MCP process rereads the record for each request and reconnects after Vite restarts.
 
 The application sets `controls: false`: no field writes or method calls. The suggested host entry also hides explicit child initialization and Context evaluation, which can run application code even without controls. `rst_inspect` evaluates declared computeds by default; always pass `evaluateComputeds: false` for structure/state queries unless deliberate evaluation is authorized. Read-only is not a sandbox. Default credential-name redaction remains active; it is not data-flow tracking. Use synthetic development data.
 
 Discover with `rst_list_tabs`, then `rst_list_roots({tabId})`. Select the actual window by title/origin and opaque IDs. Use bounded `rst_inspect({tabId,rootId,path:[],depth:1,maxEntries:100,evaluateComputeds:false})`, then a narrow literal path. Re-list IDs after reload/HMR; do not reuse old capabilities. For example, an already mounted desktop root exposes `["appShellStore","workspace"]`. Tool envelopes contain `value` or `error`; respect deferred, unsupported, redacted and truncated markers.
+
+## Electron DevTools extension
+
+Desktop development installs the package's unpacked MV3 extension through Electron's native `session.defaultSession.extensions.loadExtension` before opening the renderer, independently of the React DevTools install. Its path is resolved from the installed package, not a hard-coded worktree. No manifest patch, permission expansion, injected adapter, browser fallback, or relay credential is involved. Installation failures are logged by the existing developer-tools startup warning; they do not prevent Cake from opening.
+
+Open Electron DevTools and choose **RStateTree** (possibly under overflow), select **AppShell**. Opening Settings and refreshing should change the `workspace` field from `cake-chat` to `settings`. Keep **Evaluate computeds** unchecked. This is manual refresh, not a subscription.
+
+The loader is eliminated from production main bundles and refuses packaged apps. Packaging also excludes the optional inspector entry points/types and unpacked extension from the installed dependency; `tests/app/config/r-state-tree-production.test.ts` checks the installed file set against those filters without excluding core/React. Ordinary smoke launches skip extensions; the isolated development inspection test explicitly enables them with `CAKE_RST_DEVTOOLS_SMOKE=1`. The renderer's existing development-only registration serves the real panel without exposing main-process state.
+
+```sh
+pnpm test:electron:run tests/electron/r-state-tree-devtools.smoke.spec.ts
+```
+
+This exceptional test builds development main/preload output, starts loopback Vite, and creates hidden Cake/DevTools windows with empty temporary profiles. It checks the native installed extension, registered roots, read-only mode, a real Settings interaction and panel reread, and writes a screenshot to Playwright's output directory. Rebuild slim production output afterward before ordinary built-output smoke tests.
 
 ## Optional activity
 
@@ -69,4 +83,4 @@ pnpm build:slim
 pnpm build:browser
 ```
 
-For runtime verification, use an isolated hidden Electron development instance with an empty profile and a real stdio MCP client. Check discovery and bounded state reads before/after a harmless navigation. Endpoint verification does not imply that the user's Cake host has been registered or attached. Do not inspect the user's running Cake.
+For runtime verification, use an isolated hidden Electron development instance with an empty profile and Cake's actual native MCP host. Synchronize the target checkout's installed dependencies with its pinned lockfile first; the configured command must exist in that checkout, not just another worktree. Check discovery and bounded state reads before/after a harmless navigation. Endpoint verification does not imply that the user's Cake host has been registered or attached. Do not inspect the user's running Cake.

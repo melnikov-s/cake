@@ -26,7 +26,7 @@ const TOAST_TIMEOUT_MS = 8_000;
 /** Owns transient app-level toast notifications shown in the window corner. */
 export class ToastStore extends Store {
   toasts: Toast[] = observable([]);
-  private timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private timers = observable(new Map<string, ReturnType<typeof setTimeout>>());
 
   constructor(props: Record<string, never>) {
     super(props);

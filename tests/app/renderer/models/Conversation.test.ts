@@ -1,4 +1,4 @@
-import { toSnapshot } from "r-state-tree";
+import { effect, toSnapshot } from "r-state-tree";
 import { expect, it } from "vitest";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
 import {
@@ -96,6 +96,30 @@ it("separates Pi entry identity from Cake display-part identity only where neede
   first[Symbol.dispose]();
   fork[Symbol.dispose]();
   restored[Symbol.dispose]();
+});
+
+it("retains incoming collection identity and notifications across reconciliation", () => {
+  using model = Conversation.create({ sessionId: "incoming" });
+  const incoming = model.incomingParts;
+  const anchors = model.incomingAnchors;
+  const first = { id: "first", kind: "notice", tone: "info", title: "First" } as const;
+  const second = { id: "second", kind: "notice", tone: "info", title: "Second" } as const;
+  incoming.push(first, second);
+  const seen: string[][] = [];
+  const stop = effect(() => {
+    seen.push(incoming.map((part) => part.id));
+  });
+  try {
+    model.reconcileIncomingOrder([first]);
+    expect(model.incomingParts).toBe(incoming);
+    expect(model.incomingAnchors).toBe(anchors);
+    expect(incoming).toEqual([second]);
+    incoming.push(first);
+    expect(seen.at(-1)).toEqual(["second", "first"]);
+    expect(seen).toContainEqual(["second"]);
+  } finally {
+    stop();
+  }
 });
 
 it("keeps Pi tree navigation identifiers distinct from renderer identity", () => {

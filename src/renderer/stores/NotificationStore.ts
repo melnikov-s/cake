@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { observable, Store } from "r-state-tree";
 import { ClientContext } from "./context/ClientContext";
 import { ToastContext } from "./context/ToastContext";
 
@@ -25,7 +25,7 @@ export class NotificationStore extends Store {
   private get toast() {
     return ToastContext.consume(this)!;
   }
-  private readonly pending = new Map<string, PendingNotification>();
+  private readonly pending = observable(new Map<string, PendingNotification>());
 
   constructor(props: NotificationStore["props"]) {
     super(props);

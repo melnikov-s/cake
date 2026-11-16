@@ -62,7 +62,7 @@ export class ModelPresetSettingsStore extends Store {
   private persistedDefaultPresetId: string | undefined;
   private applicationRevision = -1;
   private presetProjectionRevision = -1;
-  private readonly authoritativeIds = new Map<string, string>();
+  private readonly authoritativeIds = observable(new Map<string, string>());
 
   get client() {
     return ClientContext.consume(this)!;

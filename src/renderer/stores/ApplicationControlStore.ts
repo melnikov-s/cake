@@ -4,7 +4,7 @@ import type {
 } from "../../contracts/application/window-control";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
-import { Store, child, createStore, untracked } from "r-state-tree";
+import { observable, Store, child, createStore, untracked } from "r-state-tree";
 import type {
   CakeChatControlRequest,
   CakeControlTool,
@@ -53,8 +53,8 @@ export class ApplicationControlStore extends Store<{
   reportCakeChatError(error: unknown, context: string): void;
 }> {
   private readonly bridge: AppControlBridge;
-  private readonly acceptedCakeChatRequestIds = new Set<string>();
-  private readonly acceptedProjectRequestIds = new Set<string>();
+  private readonly acceptedCakeChatRequestIds = observable(new Set<string>());
+  private readonly acceptedProjectRequestIds = observable(new Set<string>());
 
   constructor(props: ApplicationControlStore["props"]) {
     super(props);
