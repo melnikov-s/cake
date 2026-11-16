@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useImageCopy } from "@/lib/use-image-copy";
 import { ContextMenu } from "@/components/ui/context-menu";
 import { CopyButton } from "@/components/ui/copy-button";
-import { Callout } from "@/components/ui/callout";
+import { Callout, calloutVariants } from "@/components/ui/callout";
 
 /** Renders an image that opens in Cake's shared fullscreen surface. */
 export function ImagePreview({
@@ -33,6 +33,7 @@ export function ImagePreview({
   return (
     <>
       <ContextMenu
+        as={presentation === "image" ? "span" : "div"}
         label="Image actions"
         items={items}
         className={cn("inline-block max-w-full", className)}
@@ -60,7 +61,13 @@ export function ImagePreview({
           </Button>
         )}
       </ContextMenu>
-      {error && !open && <Callout variant="error">{error}</Callout>}
+      {error &&
+        !open && (
+          // Markdown images remain phrasing content even when copying fails.
+          <span role="alert" className={calloutVariants({ variant: "error" })}>
+            {error}
+          </span>
+        )}
       {open ? (
         <FullscreenSurface
           eyebrow="Image preview"

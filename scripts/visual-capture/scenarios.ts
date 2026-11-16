@@ -4447,8 +4447,8 @@ const subagentReportsScenario: VisualCaptureScenario = {
 const relativeChatImagesScenario: VisualCaptureScenario = {
   name: "relative-chat-images",
   description:
-    "Project Chat image linked relative to its scratch directory, plus a missing image naming the paths tried",
-  states: ["default"],
+    "Standalone and inline Project Chat images, their context menu/fullscreen caption, and a missing image naming the paths tried",
+  states: ["default", "menu", "fullscreen"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const chat = join(
@@ -4469,13 +4469,20 @@ const relativeChatImagesScenario: VisualCaptureScenario = {
         "",
         "![Top bar, light theme](pgj/top-light.png)",
         "",
+        "Before ![Inline capture](pgj/top-light.png) after.",
+        "",
         "This one was never written:",
         "",
         "![Missing capture](pgj/missing.png)",
       ].join("\n"),
     ]);
   },
-  async prepare(page) {
+  async prepare(page, state) {
+    const nestingWarnings: string[] = [];
+    page.on("console", (message) => {
+      if (/In HTML|cannot (be a descendant|contain a nested)|hydration error/i.test(message.text()))
+        nestingWarnings.push(message.text());
+    });
     await page
       .getByRole("button", { name: /^Open Project Chat for / })
       .first()
@@ -4485,10 +4492,48 @@ const relativeChatImagesScenario: VisualCaptureScenario = {
       timeout: 20_000,
     });
     await expect(transcript.getByText("Image not available: Missing capture")).toBeVisible();
+    const inline = transcript.getByRole("button", { name: "View Inline capture enlarged" });
+    await expect(inline).toBeVisible();
+    for (const name of ["Top bar, light theme", "Inline capture"]) {
+      const image = transcript.getByRole("img", { name, exact: true });
+      await expect
+        .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth))
+        .toBeGreaterThan(0);
+      const markup = await image.evaluate((element) => {
+        const paragraph = element.closest("p");
+        const ancestors: string[] = [];
+        for (let parent = element.parentElement; parent; parent = parent.parentElement)
+          ancestors.push(parent.tagName);
+        return {
+          ancestors,
+          paragraph: paragraph?.tagName ?? null,
+          invalid: paragraph?.querySelector("div, figure, figcaption, p")?.tagName ?? null,
+        };
+      });
+      expect(markup.paragraph, JSON.stringify(markup)).toBe("P");
+      expect(markup.invalid, JSON.stringify(markup)).toBeNull();
+    }
+    await inline.click({ button: "right" });
+    await expect(page.getByRole("menu", { name: "Image actions" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await inline.focus();
+    await page.keyboard.press("Shift+F10");
+    await expect(page.getByRole("menu", { name: "Image actions" })).toBeVisible();
+    if (state !== "menu") await page.keyboard.press("Escape");
+    if (state === "fullscreen") {
+      await inline.press("Enter");
+      const fullscreen = page.getByRole("dialog", { name: "Inline capture", exact: true });
+      await expect(fullscreen).toBeVisible();
+      await expect(fullscreen.locator("figure > figcaption")).toHaveText("pgj/top-light.png");
+    }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
+    expect(nestingWarnings).toEqual([]);
   },
-  region: (page) => page.locator(".transcript").last(),
+  region: (page, state) =>
+    state === "fullscreen"
+      ? page.getByRole("dialog", { name: "Inline capture", exact: true })
+      : page.locator(".transcript").last(),
 };
 
 const resultTodoActionsScenario: VisualCaptureScenario = {

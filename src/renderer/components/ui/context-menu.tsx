@@ -18,13 +18,16 @@ export function ContextMenu({
   label,
   items,
   className,
+  as: Anchor = "div",
 }: {
   children: ReactNode;
   label: string;
   items: readonly ContextMenuItem[];
   className?: string;
+  /** Use a phrasing-content anchor inside prose; block consumers keep their div. */
+  as?: "div" | "span";
 }) {
-  const anchor = useRef<HTMLDivElement>(null);
+  const anchor = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
   const [point, setPoint] = useState<{ x: number; y: number }>();
   const [panel, setPanel] = useState<ContextMenuItem>();
@@ -34,8 +37,10 @@ export function ContextMenu({
   };
   return (
     <Popover open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
-      <div
-        ref={anchor}
+      <Anchor
+        ref={(element) => {
+          anchor.current = element;
+        }}
         className={className}
         tabIndex={-1}
         onContextMenu={(event) => {
@@ -57,7 +62,7 @@ export function ContextMenu({
         }}
       >
         {children}
-      </div>
+      </Anchor>
       <PopoverContent
         anchorRef={anchor}
         anchorPoint={point}

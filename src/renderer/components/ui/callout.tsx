@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-const calloutVariants = cva(
+export const calloutVariants = cva(
   "grid gap-1.5 rounded-md border border-border/60 border-l-3 p-3 text-xs leading-relaxed transition-colors",
   {
     variants: {
