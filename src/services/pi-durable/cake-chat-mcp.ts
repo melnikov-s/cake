@@ -63,7 +63,7 @@ export async function loadCakeChatMcpServers(options: {
     if (!configured.has(server.name)) configured.set(server.name, server.config);
   return {
     servers: [...configured]
-      .filter(([, config]) => config.enabled !== false && config.exposure !== "hidden")
+      .filter(([, config]) => accessibleServer(config))
       .map(([name, config]) => ({ name, config })),
     errors,
   };
@@ -111,6 +111,16 @@ export async function resolveMcpConfigValue(
         throw new Error(`Environment variable ${name} is not set`);
       return resolved;
     },
+  );
+}
+
+function accessibleServer(config: McpServerConfig) {
+  return (
+    config.enabled !== false &&
+    (config.exposure !== "hidden" ||
+      Object.values(config.toolExposure ?? {}).some(
+        (exposure) => exposure === "codemode" || exposure === "deferred" || exposure === "direct",
+      ))
   );
 }
 
@@ -172,16 +182,31 @@ interface Connection {
 export class CakeChatMcp {
   private readonly connections = new Map<string, Promise<Connection>>();
   private closed = false;
+  private closing: Promise<void> = Promise.resolve();
+  private servers: readonly CakeChatMcpServer[];
 
   constructor(
-    private readonly servers: readonly CakeChatMcpServer[],
+    servers: readonly CakeChatMcpServer[],
     private readonly options: {
       readonly cwd: string;
       readonly createTransport?: CakeChatMcpTransportFactory;
     },
-  ) {}
+  ) {
+    this.servers = servers.filter(({ config }) => accessibleServer(config));
+  }
+
+  private assertOpen() {
+    if (this.closed) throw new Error("Cake Chat MCP access has closed");
+  }
+
+  private assertCurrent(server: CakeChatMcpServer) {
+    this.assertOpen();
+    if (!this.servers.includes(server))
+      throw new Error("MCP configuration changed; retry discovery with the reloaded configuration");
+  }
 
   private server(name: string) {
+    this.assertOpen();
     const server = this.servers.find((candidate) => candidate.name === name);
     if (!server)
       throw new Error(
@@ -195,7 +220,7 @@ export class CakeChatMcp {
   }
 
   private connect(server: CakeChatMcpServer): Promise<Connection> {
-    if (this.closed) return Promise.reject(new Error("Cake Chat MCP access has closed"));
+    this.assertCurrent(server);
     const existing = this.connections.get(server.name);
     if (existing) return existing;
     const resource = shutdownResource(`${this.options.cwd}\0${server.name}`);
@@ -258,6 +283,7 @@ export class CakeChatMcp {
       servers.map(async (server) => {
         try {
           const { tools } = await this.connect(server);
+          this.assertCurrent(server);
           for (const tool of tools) {
             const haystack =
               `${tool.name} ${tool.title ?? ""} ${tool.description ?? ""}`.toLowerCase();
@@ -284,6 +310,7 @@ export class CakeChatMcp {
   private async tool(serverName: string, toolName: string) {
     const server = this.server(serverName);
     const connection = await this.connect(server);
+    this.assertCurrent(server);
     const tool = connection.tools.find((candidate) => candidate.name === toolName);
     if (!tool)
       throw new Error(
@@ -309,6 +336,8 @@ export class CakeChatMcp {
     signal: AbortSignal | undefined,
   ) {
     const { server, connection } = await this.tool(serverName, toolName);
+    this.assertCurrent(server);
+    signal?.throwIfAborted();
     const result = await connection.client.callTool(toolName, args ?? {}, {
       signal,
       timeoutMs: this.timeoutMs(server),
@@ -316,11 +345,26 @@ export class CakeChatMcp {
     return { content: toLlmContent(result), isError: result.isError === true };
   }
 
-  async close() {
+  /** Swap authority before awaiting cleanup; pending discovery must not dispatch old tools. */
+  reload(servers: readonly CakeChatMcpServer[]) {
+    this.assertOpen();
+    // Fresh identities invalidate pending requests even when a caller reuses server objects.
+    this.servers = servers
+      .filter(({ config }) => accessibleServer(config))
+      .map((server) => ({ ...server }));
+    return this.closeConnections();
+  }
+
+  close() {
     this.closed = true;
+    this.servers = [];
+    return this.closeConnections();
+  }
+
+  private closeConnections() {
     const connections = [...this.connections.entries()];
     this.connections.clear();
-    await Promise.all(
+    const closing = Promise.all(
       connections.map(([name, connection]) => {
         const resource = shutdownResource(`${this.options.cwd}\0${name}`);
         return shutdownDiagnostics
@@ -337,6 +381,9 @@ export class CakeChatMcp {
           .catch(() => undefined);
       }),
     );
+    // Disposal also owns clients retired by an earlier, still-pending reload.
+    this.closing = Promise.all([this.closing, closing]).then(() => undefined);
+    return this.closing;
   }
 }
 

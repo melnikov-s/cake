@@ -229,10 +229,12 @@ export async function createDurableCakeChatRuntime(
     );
   let modelOptions = await projectModels();
   let disposed = false;
+  let reloading: Promise<void> = Promise.resolve();
+  let mcpErrors = mcpServers.errors;
   let initialProjection = true;
   let streaming = false;
   let activeTurnIds: string[] = [];
-  const diagnostics: string[] = [...agentExtensions.errors, ...mcpServers.errors];
+  const diagnostics: string[] = [...agentExtensions.errors];
   const currentConfiguration = (): ExplicitCakeModelSelection => ({
     provider: selected.provider,
     modelId: selected.id,
@@ -892,7 +894,7 @@ export async function createDurableCakeChatRuntime(
           preset: activePreset,
           fastModeAvailable: supportsFastMode(selected),
           piSettings: projectPiSettings(settings),
-          diagnostics: [...diagnostics],
+          diagnostics: [...diagnostics, ...mcpErrors],
           commands: commands.catalog(),
           usage: {
             tokens,
@@ -1077,14 +1079,30 @@ export async function createDurableCakeChatRuntime(
       modelOptions = await projectModels();
       publish();
     },
-    async reload() {
-      // Global settings reload includes Cake Chat, but is not a Project Session edit.
-      // Durable keeps its engine/history; its settings getters read this manager live.
-      await commands.reload();
-      const errors = settings.drainErrors();
-      if (errors.length) throw new Error(errors.map((error) => error.error.message).join("\n"));
-      await configureAgent();
-      publish();
+    reload() {
+      // Serialize resource reloads without replacing Durable's engine/history or tool binding.
+      const reload = reloading.then(async () => {
+        const assertOpen = () => {
+          if (disposed) throw new Error("The Cake runtime has been disposed");
+        };
+        assertOpen();
+        await commands.reload();
+        assertOpen();
+        const configured = await loadCakeChatMcpServers({
+          agentDirectory: options.agentDir,
+          registered: agentExtensions.mcpServers,
+        });
+        assertOpen();
+        mcpErrors = configured.errors;
+        await mcp.reload(configured.servers);
+        assertOpen();
+        const errors = settings.drainErrors();
+        if (errors.length) throw new Error(errors.map((error) => error.error.message).join("\n"));
+        await configureAgent();
+        publish();
+      });
+      reloading = reload.catch(() => undefined);
+      return reload;
     },
     rename: unsupported,
     // Forks only ever become side chats; Cake Chat itself stays one permanent conversation.
@@ -1096,6 +1114,7 @@ export async function createDurableCakeChatRuntime(
     async dispose() {
       disposed = true;
       const resource = shutdownResource(sessionId);
+      await shutdownDiagnostics.promise("durable.drainReloads", resource, () => reloading);
       await shutdownDiagnostics.promise("durable.publication", resource, () => publishing);
       try {
         await shutdownDiagnostics.promise("durable.engine.close", resource, () => engine.close());
