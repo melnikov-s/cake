@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
-import { readFile, realpath } from "node:fs/promises";
+import { open, realpath } from "node:fs/promises";
+import { StringDecoder } from "node:string_decoder";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { Effect, Layer } from "effect";
 import { ProjectAccess } from "../projects/ProjectAccess";
@@ -19,6 +20,39 @@ const workspaceFilesError = (operation: string, cause: unknown) =>
     operation,
     message: cause instanceof Error ? cause.message : String(cause),
   });
+
+// Preserve readFile("utf8") semantics: 2,000,000 UTF-16 code units, not bytes,
+// including replacement characters for malformed UTF-8 and a retained BOM.
+async function readWorkspaceText(target: string, signal: AbortSignal) {
+  const maxLength = 2_000_000;
+  signal.throwIfAborted();
+  const handle = await open(target, "r");
+  try {
+    const buffer = Buffer.alloc(64 * 1_024);
+    const decoder = new StringDecoder("utf8");
+    const chunks: string[] = [];
+    let length = 0;
+    while (true) {
+      signal.throwIfAborted();
+      // A byte yields at most one code unit unless it completes a pending UTF-8
+      // sequence. Read only enough to detect overflow, including after file growth.
+      const { bytesRead } = await handle.read(
+        buffer,
+        0,
+        Math.min(buffer.length, maxLength - length + 1),
+        null,
+      );
+      signal.throwIfAborted();
+      const chunk = bytesRead === 0 ? decoder.end() : decoder.write(buffer.subarray(0, bytesRead));
+      length += chunk.length;
+      if (length > maxLength) throw new Error("File is too large to display");
+      chunks.push(chunk);
+      if (bytesRead === 0) return chunks.join("");
+    }
+  } finally {
+    await handle.close();
+  }
+}
 
 /** `cakeChatDirectory` is global Cake Chat's session directory; other chats derive theirs from it. */
 export const makeWorkspaceFilesLive = (agentDirectory: string, cakeChatDirectory: string) =>
@@ -77,7 +111,7 @@ export const makeWorkspaceFilesLive = (agentDirectory: string, cakeChatDirectory
             message: "Workspace file path must be relative",
           });
         const content = yield* Effect.tryPromise({
-          try: async () => {
+          try: async (signal) => {
             const workspace = await realpath(request.workspacePath);
             const target = await realpath(resolve(workspace, request.path));
             const relativePath = relative(workspace, target);
@@ -88,9 +122,7 @@ export const makeWorkspaceFilesLive = (agentDirectory: string, cakeChatDirectory
               isAbsolute(relativePath)
             )
               throw new Error("File is outside the selected project");
-            const value = await readFile(target, "utf8");
-            if (value.length > 2_000_000) throw new Error("File is too large to display");
-            return value;
+            return readWorkspaceText(target, signal);
           },
           catch: (cause) => workspaceFilesError("readFile", cause),
         });

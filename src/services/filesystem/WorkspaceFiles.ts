@@ -24,6 +24,7 @@ export class WorkspaceFiles extends Context.Service<
       connectionId: number,
       request: Payload<"prepare-file-location">,
     ) => Effect.Effect<Success<"prepare-file-location">, WorkspaceFileError>;
+    /** Complete UTF-8 text, at most 2,000,000 UTF-16 code units (not bytes); oversized files fail. */
     readonly readFile: (
       connectionId: number,
       request: Payload<"read-workspace-file">,
