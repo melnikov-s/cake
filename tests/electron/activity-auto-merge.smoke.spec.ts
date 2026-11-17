@@ -9,6 +9,7 @@ import { visualCaptureResultPrefix } from "../../scripts/visual-capture/result";
 for (const [state, theme] of [
   ["default", "light"],
   ["auto-merge-on", "light"],
+  ["auto-merge-pending", "light"],
   ["narrow-off", "dark"],
   ["narrow-on", "dark"],
 ] as const) {

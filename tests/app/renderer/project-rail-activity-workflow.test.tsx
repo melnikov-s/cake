@@ -179,8 +179,8 @@ it("hides project Auto-merge live for external workflows without disabling direc
       name: "Auto-merge: on",
     }),
   ).toBeDefined();
-  expect(fixture.root.autoMergeForProject("/direct")?.enabled).toBe(true);
-  expect(fixture.root.autoMergeForProject("/external")?.enabled).toBe(true);
+  expect(fixture.root.autoMergeStore.forProject("/direct")?.enabled).toBe(true);
+  expect(fixture.root.autoMergeStore.forProject("/external")?.enabled).toBe(true);
   expect(setAutoMerge).not.toHaveBeenCalled();
   view.unmount();
 });

@@ -44,6 +44,7 @@ import {
 } from "../services/diagnostics/BackendLoggingLive";
 import { shutdownDiagnostics } from "../services/diagnostics/shutdown-diagnostics";
 import { installLandingSmokeFixture } from "./landing-smoke-fixture";
+import { installAutoMergeSmokeFixture } from "./auto-merge-smoke-fixture";
 import { startupDiagnostics } from "../services/diagnostics/startup-diagnostics";
 import { bootstrapTiming } from "../services/diagnostics/bootstrap-timing";
 import { reportMainFailure } from "./report-main-failure";
@@ -220,6 +221,7 @@ function startMain() {
 
   if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
     installLandingSmokeFixture((effect) => mainRuntime.runPromise(effect));
+    installAutoMergeSmokeFixture((effect) => mainRuntime.runPromise(effect));
     const boardServices = Effect.fn("Smoke.boardServices")(function* () {
       const artifacts = yield* Effect.serviceOption(ArtifactStorage);
       const boards = yield* Effect.serviceOption(MessageBoardStorage);

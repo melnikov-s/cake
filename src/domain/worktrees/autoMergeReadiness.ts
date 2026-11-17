@@ -1,4 +1,4 @@
-import { Effect, SubscriptionRef } from "effect";
+import { Clock, Effect, SubscriptionRef } from "effect";
 import type { AutoMergeRequest, MergeReadiness } from "../../contracts/worktrees/auto-merge";
 import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing-data";
 import { CakeSessionRuntimes, type PiSessionTarget } from "../../services/pi/CakeSessionRuntimes";
@@ -41,50 +41,92 @@ export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (
     });
   const coordinator = yield* WorktreeLandingCoordinator;
   const storage = yield* SessionFamilyStorage;
-  yield* storage.withCreationLock(
-    `auto-merge-toggle:${projectPath}`,
-    Effect.gen(function* () {
-      const current = yield* SubscriptionRef.get(coordinator.state);
-      const previous = current.autoMergeProjects?.find((item) => item.projectPath === projectPath);
-      if (Boolean(previous?.enabled) === enabled) return;
-      const epoch = crypto.randomUUID();
-      const runId = current.autoMergeRunId ?? crypto.randomUUID();
-      if (enabled)
-        yield* storage.authorizeAutoMerge(
-          runId,
-          epoch,
-          projectPath,
-          projectChatSessionId(projectPath),
+  const clock = yield* Clock.Clock;
+  const startedAt = clock.monotonicTimeNanosUnsafe();
+  type Phase = "wait" | "authorization" | "preference" | "publish";
+  let phase: Phase = "wait";
+  let phaseStartedAt = startedAt;
+  let completed = false;
+  const phasesMs: Partial<Record<Phase, number>> = {};
+  const enter = (next: Phase) => {
+    const now = clock.monotonicTimeNanosUnsafe();
+    phasesMs[phase] = Number(now - phaseStartedAt) / 1e6;
+    phaseStartedAt = now;
+    phase = next;
+  };
+  yield* storage
+    .withCreationLock(
+      `auto-merge-toggle:${projectPath}`,
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(coordinator.state);
+        const previous = current.autoMergeProjects?.find(
+          (item) => item.projectPath === projectPath,
         );
-      // Commit the project preference before publishing success to any window. Once
-      // persistence starts, finish publication together with it, even on interruption.
-      yield* Effect.gen(function* () {
-        yield* application.transact((state) =>
-          Effect.succeed({
+        if (Boolean(previous?.enabled) === enabled) {
+          completed = true;
+          return;
+        }
+        enter("authorization");
+        const epoch = crypto.randomUUID();
+        const runId = current.autoMergeRunId ?? crypto.randomUUID();
+        if (enabled)
+          yield* storage.authorizeAutoMerge(
+            runId,
+            epoch,
+            projectPath,
+            projectChatSessionId(projectPath),
+          );
+        // Commit the project preference before publishing success to any window. Once
+        // persistence starts, finish publication together with it, even on interruption.
+        yield* Effect.gen(function* () {
+          enter("preference");
+          yield* application.transact((state) =>
+            Effect.succeed({
+              ...state,
+              projects: state.projects.map((project) =>
+                project.path === projectPath ? { ...project, autoMergeEnabled: enabled } : project,
+              ),
+            }),
+          );
+          enter("publish");
+          yield* SubscriptionRef.update(coordinator.state, (state) => ({
             ...state,
-            projects: state.projects.map((project) =>
-              project.path === projectPath ? { ...project, autoMergeEnabled: enabled } : project,
-            ),
-          }),
-        );
-        yield* SubscriptionRef.update(coordinator.state, (state) => ({
-          ...state,
-          autoMergeRunId: runId,
-          autoMergeProjects: [
-            ...(state.autoMergeProjects ?? []).filter((item) => item.projectPath !== projectPath),
-            {
-              projectPath,
-              enabled,
-              epoch,
-              status: enabled
-                ? "Merging validated work directly delegated by this project’s Project Chat"
-                : "Off",
-            },
-          ],
-        }));
-      }).pipe(Effect.uninterruptible);
-    }),
-  );
+            autoMergeRunId: runId,
+            autoMergeProjects: [
+              ...(state.autoMergeProjects ?? []).filter((item) => item.projectPath !== projectPath),
+              {
+                projectPath,
+                enabled,
+                epoch,
+                status: enabled
+                  ? "Merging validated work directly delegated by this project’s Project Chat"
+                  : "Off",
+              },
+            ],
+          }));
+          completed = true;
+        }).pipe(Effect.uninterruptible);
+      }),
+    )
+    .pipe(
+      Effect.ensuring(
+        Effect.suspend(() => {
+          const finishedAt = clock.monotonicTimeNanosUnsafe();
+          const totalMs = Number(finishedAt - startedAt) / 1e6;
+          if (totalMs < 1_000) return Effect.void;
+          phasesMs[phase] = Number(finishedAt - phaseStartedAt) / 1e6;
+          // Numeric timings only. Preference includes ApplicationState's own lock/save timing;
+          // nested durations overlap, and must not be summed. No project or readiness data.
+          return Effect.logWarning("Slow auto-merge toggle", {
+            enabled,
+            completed,
+            phase,
+            phasesMs,
+            totalMs,
+          });
+        }),
+      ),
+    );
 });
 
 const listed = (files: ReadonlyArray<string>) =>

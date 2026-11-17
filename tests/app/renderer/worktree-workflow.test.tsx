@@ -366,7 +366,7 @@ describe("Worktree operation workflows", () => {
 
   it("keeps manual Merge and Merge & resolve when project auto-merge is off", async () => {
     using fixture = renderWorktree();
-    expect(fixture.root.autoMergeForProject("/project")?.enabled ?? false).toBe(false);
+    expect(fixture.root.autoMergeStore.forProject("/project")?.enabled ?? false).toBe(false);
     expect(await screen.findByRole("button", { name: "Merge" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Merge & resolve" })).toBeDefined();
     expect(screen.getByRole("switch", { name: "Auto-merge: off" })).toBeDefined();
@@ -397,7 +397,7 @@ describe("Worktree operation workflows", () => {
     expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Resolve" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Discard & resolve" })).toBeDefined();
-    expect(fixture.root.autoMergeForProject("/project")?.enabled ?? false).toBe(false);
+    expect(fixture.root.autoMergeStore.forProject("/project")?.enabled ?? false).toBe(false);
     await fixture.setLanding("merge");
     expect(screen.getByRole("button", { name: "Merge" })).toBeDefined();
     expect(screen.getByRole("switch", { name: "Auto-merge: off" })).toBeDefined();

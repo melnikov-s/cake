@@ -1,3 +1,4 @@
+import { AutoMergeStore } from "./AutoMergeStore";
 import { DraftMoveStore } from "./DraftMoveStore";
 import { DraftMoveContext } from "./context/DraftMoveContext";
 import { SessionAssistantStore } from "./SessionAssistantStore";
@@ -523,10 +524,9 @@ export class RootStore extends Store<{
   get autoMergeRequests() {
     return this.props.projection.worktreeOperations.autoMergeRequests;
   }
-  autoMergeForProject(projectPath: string) {
-    return this.props.projection.worktreeOperations.autoMergeProjects.find(
-      (item) => item.projectPath === projectPath,
-    );
+  @child
+  get autoMergeStore(): AutoMergeStore {
+    return createStore(AutoMergeStore, { operations: this.props.projection.worktreeOperations });
   }
   projectForSession(sessionId: string) {
     return (
@@ -534,21 +534,6 @@ export class RootStore extends Store<{
         ?.projectPath ?? this.sessionCatalogStore.find(sessionId)?.projectPath
     );
   }
-  async toggleAutoMerge(projectPath: string) {
-    try {
-      await this.client.managedWorktrees.setAutoMerge(
-        projectPath,
-        !this.autoMergeForProject(projectPath)?.enabled,
-      );
-    } catch (error) {
-      this.toastStore.show({
-        tone: "error",
-        title: "Could not change auto-merge",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
   private worktreeOperation(workspacePath: string) {
     const operation = this.props.projection.worktreeOperations.find(workspacePath);
     if (!operation) return undefined;

@@ -50,5 +50,5 @@ export const familyStorageHarness = (
     Layer.provide(Layer.succeed(FileSystem.FileSystem)(fileSystem)),
     Layer.provide(Path.layer),
   );
-  return { files, layer, reads: () => reads };
+  return { files, layer, fileSystem, reads: () => reads };
 };

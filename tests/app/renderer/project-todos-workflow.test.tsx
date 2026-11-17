@@ -374,7 +374,7 @@ it("keeps the rail free of global Auto-merge and hides project Activity and to-d
   await fixture.updateLanding("pull-request");
   expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
   expect(screen.queryByText("Auto-merge")).toBeNull();
-  expect(fixture.root.autoMergeForProject("/cake")?.enabled).toBe(true);
+  expect(fixture.root.autoMergeStore.forProject("/cake")?.enabled).toBe(true);
   expect(fixture.autoMergeChanges).toEqual([]);
   await fixture.updateLanding("merge");
   expect(screen.getAllByRole("switch", { name: "Auto-merge: on" }).length).toBeGreaterThan(0);

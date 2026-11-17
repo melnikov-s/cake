@@ -20,14 +20,22 @@ export const AutoMergeToggle = observer(function AutoMergeToggle({
     root.projectCatalogStore.find(projectPath)?.settings.worktreeLanding === "pull-request"
   )
     return null;
-  const project = root.autoMergeForProject(projectPath);
+  const store = root.autoMergeStore;
+  const project = store.forProject(projectPath);
+  const pendingTarget = store.pendingTarget(projectPath);
+  const pending = pendingTarget !== undefined;
+  const pendingLabel = pendingTarget ? "Enabling…" : "Disabling…";
   const enabled = project?.enabled ?? false;
   const scope =
     "Validated work directly delegated by this project’s Project Chat only. Never My sessions.";
-  const description = project?.status ? `${project.status} — ${scope}` : scope;
+  const status = pending ? pendingLabel : project?.status;
+  const description = status ? `${status} — ${scope}` : scope;
   return (
     <label
-      className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap px-1 text-xs font-medium text-muted-foreground"
+      className={cn(
+        "flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap px-1 text-xs font-medium text-muted-foreground",
+        pending ? "cursor-wait" : "cursor-pointer",
+      )}
       onMouseEnter={(event) => show(event.currentTarget)}
       onMouseLeave={hide}
       onMouseDown={hide}
@@ -41,12 +49,16 @@ export const AutoMergeToggle = observer(function AutoMergeToggle({
           <MergeResolveIcon />
         </IconSizeProvider>
       </span>
-      Auto-merge
+      <span role={pending ? "status" : undefined} aria-live="polite">
+        {pending ? pendingLabel : "Auto-merge"}
+      </span>
       <Switch
         checked={enabled}
         aria-label={`Auto-merge: ${enabled ? "on" : "off"}`}
         aria-description={description}
-        onCheckedChange={() => void root.toggleAutoMerge(projectPath)}
+        aria-busy={pending}
+        disabled={pending}
+        onCheckedChange={() => void store.toggle(projectPath)}
       />
       {anchor && (
         <TooltipBubble

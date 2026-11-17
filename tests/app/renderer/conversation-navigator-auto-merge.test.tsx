@@ -100,7 +100,7 @@ it.each([false, true])(
       ["/project", false],
       ["/project", true],
     ]);
-    expect(fixture.root.autoMergeForProject("/other")?.enabled).toBe(false);
+    expect(fixture.root.autoMergeStore.forProject("/other")?.enabled).toBe(false);
     expect(navigator.queryByRole("switch")).toBeNull();
     view.unmount();
     const remounted = render(surface());

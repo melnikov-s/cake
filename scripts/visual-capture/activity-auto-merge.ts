@@ -4,7 +4,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 export async function verifyActivityAutoMerge(page: Page, cap: Locator, enabled: boolean) {
   const activity = cap.getByRole("button", { name: "Activity · 1 running" });
   const toggle = cap.getByRole("switch", { name: /^Auto-merge:/ });
-  const label = cap.getByText("Auto-merge", { exact: true });
+  const label = toggle.locator("xpath=..");
   const icon = label.locator("svg");
   await expect(activity).toHaveAttribute("aria-expanded", "false");
   await expect(toggle).toBeVisible();
@@ -30,15 +30,18 @@ export async function verifyActivityAutoMerge(page: Page, cap: Locator, enabled:
   await expect(toggle).toBeFocused();
   await toggle.press("Space");
   await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expect(toggle).toBeEnabled();
   await expect(icon).toHaveCSS("color", mergedColor);
   await expect(activity).toHaveAttribute("aria-expanded", "false");
   await toggle.press("Enter");
   await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(toggle).toBeEnabled();
   await expect(icon).toHaveCSS("color", offColor);
 
   // Label activation also changes only the switch, without opening Activity.
   if (enabled) await label.click();
   await expect(toggle).toHaveAttribute("aria-checked", String(enabled));
+  await expect(toggle).toBeEnabled();
   await expect(activity).toHaveAttribute("aria-expanded", "false");
   await expect(cap.getByRole("region", { name: "Conversation activity" })).toHaveCount(0);
   await activity.click();

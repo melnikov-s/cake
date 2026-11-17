@@ -119,7 +119,11 @@ export interface VisualCaptureScenario {
     theme: VisualCaptureTheme,
     artifact?: CakeArtifactV1,
   ): Promise<void | (() => Promise<void>)>;
-  prepare(page: Page, state: string, application?: ElectronApplication): Promise<void>;
+  prepare(
+    page: Page,
+    state: string,
+    application?: ElectronApplication,
+  ): Promise<void | (() => Promise<void>)>;
   region(page: Page, state: string): Locator;
 }
 
@@ -6794,7 +6798,7 @@ const activityLongPromptScenario: VisualCaptureScenario = {
 const activityWorktreeScenario: VisualCaptureScenario = {
   name: "activity-worktree-cap",
   description: "Attached activity band above real worktree tools and the shared composer",
-  states: ["default", "open", "auto-merge-on", "narrow-off", "narrow-on"],
+  states: ["default", "open", "auto-merge-on", "auto-merge-pending", "narrow-off", "narrow-on"],
   async seed(paths, theme) {
     const cleanup = await cakeChatSessionUpdatesScenario.seed(paths, theme);
     if (cleanup) await cleanup();
@@ -6870,6 +6874,35 @@ const activityWorktreeScenario: VisualCaptureScenario = {
     const activity = cap.getByRole("button", { name: "Activity · 1 running" });
     await expect(activity).toBeVisible();
     await verifyActivityAutoMerge(page, cap, state === "auto-merge-on" || state === "narrow-on");
+    if (state === "auto-merge-pending") {
+      if (!application) throw new Error("Pending Auto-merge capture requires Electron");
+      await application.evaluate(async () => {
+        const hold = Reflect.get(
+          globalThis,
+          "cakeSmokeHoldApplicationCommit",
+        ) as () => Promise<void>;
+        await hold();
+      });
+      const toggle = cap.getByRole("switch", { name: /^Auto-merge:/ });
+      await toggle.click();
+      await expect(cap.getByRole("status")).toHaveText("Enabling…");
+      await expect(toggle).toBeDisabled();
+      await expect(toggle).toHaveAttribute("aria-checked", "false");
+      await expect(toggle).toHaveAttribute("aria-busy", "true");
+      await page.mouse.move(1, 1);
+      // Capture the working pending state, then release and verify durable acceptance.
+      return async () => {
+        await application.evaluate(async () => {
+          const release = Reflect.get(
+            globalThis,
+            "cakeSmokeReleaseApplicationCommit",
+          ) as () => Promise<void>;
+          await release();
+        });
+        await expect(toggle).toHaveAttribute("aria-checked", "true");
+        await expect(toggle).toBeEnabled();
+      };
+    }
     if (state === "open") {
       await activity.click();
       await expect(page.getByRole("region", { name: "Conversation activity" })).toBeVisible();

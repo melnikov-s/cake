@@ -65,6 +65,7 @@ export async function captureVisual(
   };
   let application: ElectronApplication | undefined;
   let disposeScenario: void | (() => Promise<void>) = undefined;
+  let disposePreparedScenario: void | (() => Promise<void>) = undefined;
 
   try {
     if (browserScenario) {
@@ -112,7 +113,7 @@ export async function captureVisual(
       (dimensions) => innerWidth === dimensions.width && innerHeight === dimensions.height,
       { width: options.width, height: options.height },
     );
-    await scenario.prepare(page, options.state, application);
+    disposePreparedScenario = await scenario.prepare(page, options.state, application);
 
     const target = options.capture === "window" ? page : scenario.region(page, options.state);
     await mkdir(dirname(outputPath), { recursive: true });
@@ -192,9 +193,13 @@ export async function captureVisual(
       { cause },
     );
   } finally {
-    if (application) await application.close().catch(() => undefined);
-    if (disposeScenario) await disposeScenario();
-    await rm(temporaryRoot, { recursive: true, force: true });
+    try {
+      if (disposePreparedScenario) await disposePreparedScenario();
+    } finally {
+      if (application) await application.close().catch(() => undefined);
+      if (disposeScenario) await disposeScenario();
+      await rm(temporaryRoot, { recursive: true, force: true });
+    }
   }
 }
 
