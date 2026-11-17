@@ -13,6 +13,7 @@ import {
   FileSystem,
   Fiber,
   Layer,
+  Option,
   PlatformError,
   Queue,
   Stream,
@@ -28,10 +29,13 @@ import {
   makeRuntimeRecoveryStorageLive,
   RuntimeRecoveryStorage,
   type RuntimeRecoveryInput,
+  type RuntimeRecoveryRecord,
 } from "../../../../src/services/storage/RuntimeRecoveryStorage";
 import { fakeRuntime, options } from "../../helpers/piRuntimeFixture";
 import { durableModel } from "../../../fixtures/durable-chat";
 import { addResponseModeReminder } from "../../../../src/contracts/conversations/response-mode-reminders";
+import { passiveNoticeContext } from "../../../../src/contracts/conversations/passive-notice";
+import type { InternalInput } from "../../../../src/contracts/conversations/internal-input";
 
 type Settlement = Parameters<NonNullable<CakeSessionRuntimeAcquireOptions["onTurnSettled"]>>[0];
 const platform = Layer.merge(NodeFileSystem.layer, NodePath.layer);
@@ -43,9 +47,48 @@ const input = (turnId: string): RuntimeRecoveryInput => ({
   markdown: false,
 });
 
+const humanInput = (turnId: string): RuntimeRecoveryInput => {
+  const userText = `Keep my exact ${turnId} draft.\n\nIncluding this paragraph.`;
+  const notices = [
+    {
+      id: "passive-result",
+      text: "Background review finished",
+      crossSession: {
+        version: 1 as const,
+        messageId: "00000000-0000-4000-8000-000000000001",
+        threadId: "00000000-0000-4000-8000-000000000002",
+        sequence: 1,
+        expectsResponse: false,
+        sender: { sessionId: "worker", title: "Review", kind: "project-session" as const },
+      },
+    },
+  ];
+  return {
+    ...input(turnId),
+    delivery: "prompt",
+    text: `${userText}\n\n${passiveNoticeContext(notices)}`,
+    markdown: true,
+    attachments: [
+      {
+        kind: "input",
+        id: "00000000-0000-4000-8000-000000000003",
+        name: "context.txt",
+        mimeType: "text/plain",
+        byteLength: 20,
+      },
+    ],
+    internal: { _tag: "UserWithReminders", text: userText, userText, notices },
+  };
+};
+
 // Keep Cake's runtime, turn controller, completion correlations and durable journal
 // real. Only the Pi execution boundary is controlled by explicit release signals.
-const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
+const fixture = Effect.fn("QueueSettlement.fixture")(function* (
+  setup: {
+    stoppedRecord?: RuntimeRecoveryRecord;
+    abortCleanup?: Deferred.Deferred<void>;
+  } = {},
+) {
   const fs = yield* FileSystem.FileSystem;
   const directory = yield* fs.makeTempDirectoryScoped({ prefix: "cake-queue-settlement-" });
   let failNextSave = false;
@@ -68,7 +111,9 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
     ),
   );
   const storage = Context.get(yield* Layer.build(storageLayer), RuntimeRecoveryStorage);
+  if (setup.stoppedRecord) yield* storage.update(setup.stoppedRecord);
   const activity = yield* Queue.unbounded<void>();
+  const restorations = yield* Queue.unbounded<string>();
   const settlements = yield* Queue.unbounded<Settlement>();
   const deliveries = yield* Queue.unbounded<string>();
   const cleanupSettled = yield* Deferred.make<void>();
@@ -126,6 +171,7 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
       aborts += 1;
       streaming = false;
       Deferred.doneUnsafe(release, Effect.void);
+      if (setup.abortCleanup) await Effect.runPromise(Deferred.await(setup.abortCleanup));
     },
   } as unknown as AgentSession;
   const controller = createCakeSessionRuntimeTurnController({
@@ -180,6 +226,14 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
               sessionId: "session-1",
               sessionFile: "/project/session.jsonl",
             })),
+          restoreInput: (value) => {
+            const completion = controller.restorePending({
+              ...value,
+              attachments: [...value.attachments],
+            });
+            Queue.offerUnsafe(restorations, value.turnId);
+            return completion;
+          },
           pendingMessages: controller.pendingMessages,
           pendingRecoveryInputs: controller.pendingRecoveryInputs,
           executingTurnIds: controller.executingTurnIds,
@@ -244,6 +298,8 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* () {
     settings,
     aborts: () => aborts,
     nextDelivery: () => Queue.take(deliveries),
+    pollDelivery: () => Queue.poll(deliveries),
+    nextRestoration: () => Queue.take(restorations),
     cleanupSettled: Deferred.await(cleanupSettled),
     finish: () => Deferred.succeed(release, undefined),
     failNextRun: () => {
@@ -458,39 +514,171 @@ describe("CakeSessionRuntimes queue settlement", () => {
     );
   }
 
-  it.effect.each([false, true])(
-    "stop with queued inputs permits human input carrying reminders (compact first: %s)",
-    (compactFirst) =>
-      Effect.gen(function* () {
-        const f = yield* fixture();
-        yield* f.submit(input("active"));
-        yield* f.submit(input("queued-1"));
-        yield* f.submit(input("queued-2"));
-        const before = (yield* f.handle.pendingMessages()).items;
-        yield* f.handle.abort({ by: "user" });
-        yield* f.settled("active", "aborted");
-        yield* f.cleanupSettled;
-        if (compactFirst) yield* f.handle.toolPrune("assistant-entry");
-        assert.deepEqual((yield* f.handle.pendingMessages()).items, before);
-        assert.deepEqual(
-          f.outcomes.map((event) => event.turnId),
-          ["active"],
+  for (const active of [true, false]) {
+    for (const reminders of [true, false]) {
+      it.effect.each([false, true])(
+        `stop preserves queued drafts and admits a human (active: ${active}, reminders: ${reminders}, prune first: %s)`,
+        (pruneFirst) =>
+          Effect.gen(function* () {
+            const f = yield* fixture();
+            yield* f.submit(input("active"));
+            const queuedReminder = { ...humanInput("queued-1"), delivery: "follow-up" as const };
+            yield* f.submit(queuedReminder, (content) => assert.match(content, /passive-result/));
+            yield* f.submit(input("queued-2"));
+            if (!active) {
+              yield* f.finish();
+              yield* f.settled("active", "complete");
+            }
+            const before = (yield* f.handle.pendingMessages()).items;
+            yield* f.handle.abort({ by: "user" });
+            if (active) yield* f.settled("active", "aborted");
+            yield* f.cleanupSettled;
+            if (pruneFirst) yield* f.handle.toolPrune("assistant-entry");
+            const saved = yield* f.reopened();
+            assert.equal(saved?.state, "stopped");
+            assert.deepEqual(saved.inputs, [queuedReminder, input("queued-2")]);
+            assert.deepEqual((yield* f.handle.pendingMessages()).items, before);
+            const human = humanInput("human");
+            const turnId = reminders
+              ? yield* f.handle.submit(human)
+              : yield* f.handle.prompt("Ordinary human draft");
+            const delivered = yield* f.nextDelivery();
+            if (reminders) assert.match(delivered, /passive-result/);
+            else assert.equal(delivered, "Ordinary human draft");
+            assert.deepEqual((yield* f.handle.pendingMessages()).items, before);
+            const resumed = yield* f.reopened();
+            assert.equal(resumed?.state, "active");
+            assert.deepEqual(resumed.inputs.slice(0, 2), saved.inputs);
+            if (reminders) assert.deepEqual(resumed.inputs[2], human);
+            assert.deepEqual(resumed.canceledInputIds, saved.canceledInputIds);
+            // Retrying a stable human admission must not replay it or its reminders.
+            if (reminders) assert.equal(yield* f.handle.submit(human), turnId);
+            assert.ok(Option.isNone(yield* f.pollDelivery()));
+            yield* f.finish();
+            yield* f.settled(turnId, "complete");
+            assert.deepEqual((yield* f.reopened())?.inputs, saved.inputs);
+            yield* f.handle.clearQueue();
+            yield* f.settled("queued-1", "aborted");
+            yield* f.settled("queued-2", "aborted");
+          }).pipe(Effect.provide(platform)),
+      );
+    }
+  }
+
+  it.effect("stopped queues reject each control-only provenance without consuming drafts", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.submit(input("active"));
+      yield* f.submit(input("held"));
+      yield* f.handle.abort({ by: "user" });
+      yield* f.settled("active", "aborted");
+      yield* f.cleanupSettled;
+      const saved = yield* f.reopened();
+      const before = (yield* f.handle.pendingMessages()).items;
+      const controls: (InternalInput | undefined)[] = [
+        undefined,
+        { _tag: "UpdateBatch", notices: [] },
+        { _tag: "AttentionItem", todoId: "todo", title: "Attention" },
+        {
+          _tag: "AgentUpdate",
+          update: {
+            id: "update",
+            text: "result",
+            source: { title: "worker", href: "cake://session/worker" },
+          },
+        },
+        { _tag: "WorkboardDelivery", boardId: "board", sequences: [1] },
+        { _tag: "SubagentCompletion", details: { text: "result" } },
+      ];
+      for (const [index, internal] of controls.entries()) {
+        const failure = yield* Effect.flip(
+          f.handle.submit({
+            ...input(`control-${index}`),
+            text: "<system-reminder>Human-looking text is not provenance</system-reminder>",
+            ...(internal ? { internal } : {}),
+          }),
         );
+        assert.match(failure.message, /needs user input/);
+      }
+      assert.deepEqual(yield* f.reopened(), saved);
+      assert.deepEqual((yield* f.handle.pendingMessages()).items, before);
+      assert.ok(Option.isNone(yield* f.pollDelivery()));
+      yield* f.handle.clearQueue();
+      yield* f.settled("held", "aborted");
+    }).pipe(Effect.provide(platform)),
+  );
+
+  it.effect("a human admitted during abort cleanup waits and concurrent retries run once", () =>
+    Effect.gen(function* () {
+      const cleanup = yield* Deferred.make<void>();
+      const f = yield* fixture({ abortCleanup: cleanup });
+      yield* f.submit(input("active"));
+      yield* f.submit(input("held"));
+      const before = (yield* f.handle.pendingMessages()).items;
+      yield* f.handle.abort({ by: "user" });
+      yield* f.settled("active", "aborted");
+      const human = humanInput("human");
+      const ids = yield* Effect.all([f.handle.submit(human), f.handle.submit(human)], {
+        concurrency: 2,
+      });
+      assert.deepEqual(ids, ["human", "human"]);
+      assert.ok(Option.isNone(yield* f.pollDelivery()));
+      assert.deepEqual((yield* f.reopened())?.inputs, [input("held"), human]);
+      yield* Deferred.succeed(cleanup, undefined);
+      yield* f.cleanupSettled;
+      assert.match(yield* f.nextDelivery(), /passive-result/);
+      assert.ok(Option.isNone(yield* f.pollDelivery()));
+      assert.deepEqual((yield* f.handle.pendingMessages()).items, before);
+      yield* f.finish();
+      yield* f.settled("human", "complete");
+      assert.deepEqual((yield* f.reopened())?.inputs, [input("held")]);
+      yield* f.handle.clearQueue();
+      yield* f.settled("held", "aborted");
+    }).pipe(Effect.provide(platform)),
+  );
+
+  it.effect(
+    "a fresh runtime restores stopped drafts without waking, then admits human reminders",
+    () =>
+      Effect.gen(function* () {
+        const original = yield* fixture();
+        yield* original.submit(input("active"));
+        const held = { ...humanInput("held"), delivery: "follow-up" as const };
+        yield* original.submit(held, (content) => assert.match(content, /passive-result/));
+        yield* original.handle.abort({ by: "user" });
+        yield* original.settled("active", "aborted");
+        yield* original.cleanupSettled;
+        const saved = yield* original.reopened();
+        assert.ok(saved);
+        const fresh = yield* fixture({ stoppedRecord: saved });
+        yield* fresh.handle.recover(saved.inputs, true);
+        assert.equal(yield* fresh.nextRestoration(), "held");
+        assert.ok(Option.isNone(yield* fresh.pollDelivery()));
+        assert.equal((yield* fresh.reopened())?.state, "stopped");
+        const before = (yield* fresh.handle.pendingMessages()).items;
+        assert.equal(before.length, 1);
         assert.match(
-          (yield* Effect.flip(f.handle.submit(input("automatic")))).message,
+          (yield* Effect.flip(fresh.handle.submit(input("control")))).message,
           /needs user input/,
         );
-        yield* f.submit({
-          ...input("human"),
-          delivery: "prompt",
-          internal: { _tag: "UserWithReminders", text: "human", userText: "human", notices: [] },
-        });
-        assert.deepEqual((yield* f.handle.pendingMessages()).items, before);
-        yield* f.finish();
-        yield* f.settled("human", "complete");
-        yield* f.handle.clearQueue();
-        yield* f.settled("queued-1", "aborted");
-        yield* f.settled("queued-2", "aborted");
+        const human = humanInput("human");
+        // Restored drafts keep FIFO: human input resumes the held draft first,
+        // then runs itself rather than jumping ahead of the restored queue.
+        yield* fresh.submit(human, (content) => assert.match(content, /exact held draft/));
+        const pending = (yield* fresh.handle.pendingMessages()).items;
+        assert.equal(pending.length, 1);
+        assert.match(pending[0]?.text ?? "", /exact human draft/);
+        assert.deepEqual((yield* fresh.reopened())?.inputs, [held, human]);
+        yield* fresh.finish();
+        yield* fresh.settled("held", "complete");
+        assert.match(yield* fresh.nextDelivery(), /exact human draft/);
+        assert.deepEqual((yield* fresh.reopened())?.inputs, [human]);
+        yield* fresh.finish();
+        yield* fresh.settled("human", "complete");
+        assert.deepEqual((yield* fresh.reopened())?.inputs, []);
+        assert.ok(Option.isNone(yield* fresh.pollDelivery()));
+        yield* original.handle.clearQueue();
+        yield* original.settled("held", "aborted");
       }).pipe(Effect.provide(platform)),
   );
 

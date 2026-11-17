@@ -410,7 +410,7 @@ describe("CakeSessionRuntimes", () => {
     }),
   );
 
-  it.effect.each(["restart", "manual Continue"] as const)(
+  it.effect.each(["restart", "manual Continue", "human with reminders"] as const)(
     "continues previously interrupted turns on %s without reporting a user stop or losing the original completion",
     (continuation) =>
       Effect.gen(function* () {
@@ -470,6 +470,20 @@ describe("CakeSessionRuntimes", () => {
           onTurnSettled: (event) => Queue.offer(settlements, event).pipe(Effect.asVoid),
         });
         if (continuation === "restart") yield* handle.recover([input]);
+        else if (continuation === "human with reminders")
+          yield* handle.submit({
+            turnId: "human-continuation",
+            delivery: "prompt",
+            text: "Continue\n\n<system-reminder>Pending review</system-reminder>",
+            attachments: [],
+            markdown: false,
+            internal: {
+              _tag: "UserWithReminders",
+              text: "Continue\n\n<system-reminder>Pending review</system-reminder>",
+              userText: "Continue",
+              notices: [],
+            },
+          });
         else yield* handle.prompt("Continue");
         yield* Deferred.await(recovered);
         const current = yield* storage.get("session-1");
@@ -481,7 +495,7 @@ describe("CakeSessionRuntimes", () => {
         );
         yield* Deferred.succeed(release, undefined);
         const outcomes = [yield* Queue.take(settlements)];
-        if (continuation === "manual Continue") outcomes.push(yield* Queue.take(settlements));
+        if (continuation !== "restart") outcomes.push(yield* Queue.take(settlements));
         assert.ok(outcomes.some((event) => event.turnId === input.turnId));
         assert.ok(
           outcomes.every((event) => event.outcome === "complete" && event.stop === undefined),
