@@ -9,10 +9,12 @@ export function createConversationIdentityScenario(
   const titles = createSessionHeaderTitleScenario(base);
   return {
     name: "conversation-identity",
-    description: "Bottom-docked identity, long-title ellipsis, and persistent Appearance toggle",
+    description:
+      "Floating identity on the chat canvas, title ellipsis, and persistent Appearance toggle",
     states: [
       "project-chat",
       "long-title",
+      "short-title",
       "hidden",
       "browser",
       "global-chat",
@@ -23,7 +25,11 @@ export function createConversationIdentityScenario(
     async prepare(page, state, application) {
       await titles.prepare(
         page,
-        state === "project-chat" || state.startsWith("staged") ? "project-chat" : "long-title",
+        state === "project-chat" || state.startsWith("staged")
+          ? "project-chat"
+          : state === "short-title"
+            ? "short-title"
+            : "long-title",
         application,
       );
       // The title scenario ends over the dynamic rail; dismiss its intentional overlay before hit tests.
@@ -108,10 +114,32 @@ export function createConversationIdentityScenario(
           const bounds = tab.getBoundingClientRect();
           const column = layout.getBoundingClientRect();
           const style = getComputedStyle(tab);
+          const positioner = tab.parentElement!;
+          const positionerStyle = getComputedStyle(positioner);
+          const layoutStyle = getComputedStyle(layout);
+          // Resolve the actual paint behind Chat, including transparent intermediate wrappers.
+          let canvas: Element | null = chat;
+          while (canvas && getComputedStyle(canvas).backgroundColor === "rgba(0, 0, 0, 0)")
+            canvas = canvas.parentElement;
+          const outside = document.elementFromPoint(
+            column.left + 2,
+            bounds.top + bounds.height / 2,
+          );
           return {
             centerDelta: bounds.left + bounds.width / 2 - (column.left + column.width / 2),
             bottomDelta: column.bottom - bounds.bottom,
             height: bounds.height,
+            width: bounds.width,
+            columnWidth: column.width,
+            canvasBackground: canvas && getComputedStyle(canvas).backgroundColor,
+            layoutBackground: layoutStyle.backgroundColor,
+            positionerPosition: positionerStyle.position,
+            positionerBackground: positionerStyle.backgroundColor,
+            positionerBorder: positionerStyle.borderWidth,
+            positionerShadow: positionerStyle.boxShadow,
+            positionerPointerEvents: positionerStyle.pointerEvents,
+            tabPointerEvents: style.pointerEvents,
+            outsideHitsPositioner: outside === positioner,
             inside: bounds.left >= column.left && bounds.right <= column.right,
             chatBeforeTab: chat.getBoundingClientRect().bottom <= bounds.top,
             composerBeforeTab: composer.getBoundingClientRect().bottom <= bounds.top,
@@ -121,13 +149,23 @@ export function createConversationIdentityScenario(
           };
         });
         expect(Math.abs(geometry.centerDelta)).toBeLessThanOrEqual(1);
-        expect(Math.abs(geometry.bottomDelta)).toBeLessThanOrEqual(1);
+        expect(geometry.bottomDelta).toBe(8);
         expect(geometry.height).toBe(28);
+        expect(geometry.layoutBackground).toBe(geometry.canvasBackground);
+        expect(geometry.positionerPosition).toBe("absolute");
+        expect(geometry.positionerBackground).toBe("rgba(0, 0, 0, 0)");
+        expect(geometry.positionerBorder).toBe("0px");
+        expect(geometry.positionerShadow).toBe("none");
+        expect(geometry.positionerPointerEvents).toBe("none");
+        expect(geometry.tabPointerEvents).toBe("auto");
+        expect(geometry.outsideHitsPositioner).toBe(false);
+        expect(geometry.width).toBeLessThanOrEqual(geometry.columnWidth - 32);
+        if (state === "short-title") expect(geometry.width).toBeLessThan(geometry.columnWidth / 2);
         expect(geometry.inside).toBe(true);
         expect(geometry.chatBeforeTab).toBe(true);
         expect(geometry.composerBeforeTab).toBe(true);
         expect(geometry.topRadius).toBeGreaterThan(0);
-        expect(geometry.bottomRadius).toBe(0);
+        expect(geometry.bottomRadius).toBe(geometry.topRadius);
         expect(geometry.navOverflow).toBeLessThanOrEqual(1);
         for (const button of await identity.getByRole("button").all())
           await button.click({ trial: true });
@@ -147,6 +185,15 @@ export function createConversationIdentityScenario(
         expect((await identity.boundingBox())!.y).toBe(tabTop);
         await expect(identity).toBeVisible();
         await expect(header).toHaveText(beforeHeader!);
+        // Exercise real navigation from the floating label, not just its header counterpart.
+        await identity.getByRole("button", { name: "visual-capture-project", exact: true }).click();
+        await expect(
+          page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+        ).toBeVisible();
+        await expect(identity).toHaveCount(0);
+        await page.getByRole("button", { name: "Go back in session history", exact: true }).click();
+        await expect(identity).toBeVisible();
+        await expect(input).toHaveValue("Keep this draft");
         console.log("CONVERSATION_IDENTITY_GEOMETRY", JSON.stringify({ state, ...geometry }));
       }
       await page.mouse.move(500, 80);

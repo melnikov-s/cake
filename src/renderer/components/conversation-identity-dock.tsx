@@ -3,7 +3,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { ConversationBreadcrumb } from "./conversation-breadcrumb";
 
-/** Reserve a compact bottom row only for the displayed Project Session chat. */
+/** Float only the displayed Project Session's identity, with clear space below its composer. */
 export const ConversationIdentityDock = observer(function ConversationIdentityDock({
   sessionId,
   children,
@@ -21,12 +21,18 @@ export const ConversationIdentityDock = observer(function ConversationIdentityDo
   )
     return children;
   return (
-    <div data-slot="conversation-identity-layout" className="flex h-full min-h-0 min-w-0 flex-col">
-      <div className="min-h-0 min-w-0 flex-1">{children}</div>
-      <div className="flex min-w-0 shrink-0 justify-center px-4">
+    <div
+      data-slot="conversation-identity-layout"
+      className="relative h-full min-h-0 min-w-0 bg-background"
+    >
+      <div className="h-full min-h-0 min-w-0 pb-10">{children}</div>
+      <div
+        data-slot="conversation-identity-positioner"
+        className="pointer-events-none absolute inset-x-0 bottom-2 flex min-w-0 justify-center px-4"
+      >
         <div
           data-slot="conversation-identity-tab"
-          className="h-7 min-w-0 max-w-full rounded-t-lg border border-b-0 border-border/65 bg-sidebar/60 px-2"
+          className="pointer-events-auto h-7 min-w-0 max-w-full rounded-lg border border-border/65 bg-popover/95 px-2 shadow-sm backdrop-blur-md"
         >
           <ConversationBreadcrumb
             sessionId={sessionId}

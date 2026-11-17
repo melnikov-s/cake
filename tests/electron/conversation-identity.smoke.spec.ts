@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 
-test("identity only docks in Project Sessions, preserves input/navigation, and persists hidden across relaunch", async () => {
+test("identity floats only in Project Sessions, preserves input/navigation, and persists hidden across relaunch", async () => {
   test.setTimeout(180_000);
   const temporary = await mkdtemp(join(tmpdir(), "cake-conversation-identity-"));
   const paths = {
@@ -32,13 +32,21 @@ test("identity only docks in Project Sessions, preserves input/navigation, and p
   let application = await launch();
   try {
     const page = await application.firstWindow();
-    for (const state of ["project-chat", "long-title", "browser", "global-chat", "hidden"]) {
+    for (const [state, width] of [
+      ["project-chat", 1440],
+      ["long-title", 1280],
+      ["long-title", 760],
+      ["short-title", 1280],
+      ["browser", 960],
+      ["global-chat", 960],
+      ["hidden", 960],
+    ] as const) {
       await application.evaluate(
         ({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setContentSize(width, 784),
-        state === "project-chat" ? 1440 : 960,
+        width,
       );
       await scenario.prepare(page, state, application);
-      await page.screenshot({ path: test.info().outputPath(`${state}.png`) });
+      await page.screenshot({ path: test.info().outputPath(`${state}-${width}.png`) });
     }
     await application.close();
     application = await launch();
