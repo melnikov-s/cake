@@ -331,7 +331,14 @@ export async function readDurableOriginalPage(
           { live: true },
         ).map((part) =>
           part.kind === "text"
-            ? { ...part, ...responseIdentity, status: "streaming" as const }
+            ? {
+                ...part,
+                ...responseIdentity,
+                // A LiveDoc projection key is not an original entry. In particular,
+                // freezing a stopped stream's display must not turn it into receipt evidence.
+                entryId: undefined,
+                status: "streaming" as const,
+              }
             : part,
         ),
       );

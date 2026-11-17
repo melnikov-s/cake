@@ -53,6 +53,11 @@ import type {
 import type { ConversationSnapshot } from "../../src/contracts/conversations/session-contract";
 import { durableAnswer, durableModel } from "../fixtures/durable-chat";
 import { TurnDetachedError } from "../../src/services/pi/runtime/RuntimeTurnCompletion";
+import * as pendingReports from "../../src/domain/conversations/pendingReports";
+import { PendingReportAcknowledge } from "../../src/contracts/conversations/pending-report";
+import { SessionFamilyStorage } from "../../src/services/storage/SessionFamilyStorage";
+import { familyStorageHarness } from "../app/helpers/familyStorageHarness";
+import { toJsonValue } from "../../src/utils/to-json-value";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -747,6 +752,208 @@ it("saves and reloads global Pi settings while permanent Cake Chat is busy witho
   expect(JSON.stringify(settled.parts)).toContain("Retain this active turn");
   expect(f.requests).toHaveLength(2);
 });
+
+it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/report-evidence-project")])(
+  "attests same-entry text through the SQLite adapter and real runtime handle without accepting stale or interrupted text (%s)",
+  async (sessionId) => {
+    const f = await fixture();
+    const scope = { sessionId, sessionDir: join(f.directory, "report-evidence-chat") };
+    const notice =
+      "Both investigations confirmed current defects. [Full agent response](cake://session/worker?message=result)";
+    const input = {
+      ids: [ids.first, ids.second],
+      disposition: "communicated" as const,
+      communicatedText: notice,
+    };
+    const receipts: unknown[] = [];
+    let openedRuntime: CakeSessionRuntime | undefined;
+    const control: NonNullable<CakeSessionRuntimeSetup["globalControl"]> = {
+      tools: backendAgentTools().filter((tool) => tool.command === "sessions.reports.acknowledge"),
+      invoke: async (invocation) => {
+        const result = await handles.runPromise(
+          Effect.gen(function* () {
+            const request = yield* Schema.decodeUnknownEffect(PendingReportAcknowledge)(
+              invocation.arguments,
+            );
+            const handle = yield* (yield* CakeSessionRuntimes).acquireSession(sessionId);
+            const snapshot = yield* handle.snapshot();
+            expect(snapshot.streaming).toBe(true);
+            expect(snapshot.parts).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  kind: "text",
+                  role: "assistant",
+                  text: notice,
+                  status: "complete",
+                  entryId: expect.any(String),
+                }),
+              ]),
+            );
+            return yield* pendingReports.acknowledge(sessionId, request);
+          }).pipe(Effect.scoped),
+        );
+        receipts.push(result);
+        return toJsonValue(result);
+      },
+    };
+    const handles = ManagedRuntime.make(
+      Layer.mergeAll(
+        makeCakeSessionRuntimesLayer({
+          sessionIds: () => Stream.empty,
+          catalog: () => Stream.empty,
+          catalogEntry: () => Effect.succeed(undefined),
+          inspect: () => Effect.succeed(undefined),
+          changelog: () => Effect.succeed(""),
+          createRuntime: (options) =>
+            Effect.tryPromise({
+              try: async () => {
+                openedRuntime = (await f.open(control, undefined, scope, options.onEvent)).runtime;
+                return openedRuntime;
+              },
+              catch: (cause) =>
+                new PiSessionError({ operation: "fixture", message: String(cause) }),
+            }),
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+        familyStorageHarness().layer,
+      ),
+    );
+    cleanup.push(() => handles.dispose());
+    const handle = await handles.runPromise(
+      Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        for (const id of input.ids)
+          yield* storage.deferReferenceNotice({
+            id,
+            recipientSessionId: sessionId,
+            text: "Worker report",
+          });
+        return yield* (yield* CakeSessionRuntimes).acquire({
+          ...runtimeOptions({ ...scope, cwd: f.directory, globalControl: control }),
+          profile: { _tag: "CakeChatSession" },
+        });
+      }).pipe(Effect.scoped),
+    );
+    const attest = (request = input, caller = sessionId) =>
+      handles.runPromise(
+        Effect.result(pendingReports.acknowledge(caller, request)).pipe(Effect.scoped),
+      );
+    expect((await attest())._tag).toBe("Failure"); // Planned prose has not been emitted.
+    expect((await attest(input, "wrong-caller"))._tag).toBe("Failure");
+    expect((await attest({ ...input, ids: ["unknown-report"] }))._tag).toBe("Failure");
+    f.answer((index) =>
+      index === 1
+        ? durableAnswer("", [
+            { type: "text", text: notice, textSignature: "fixture-commentary-signature" },
+            {
+              type: "toolCall",
+              id: "ack-report",
+              name: "cake",
+              arguments: { command: "sessions.reports.acknowledge", input },
+            },
+            {
+              type: "toolCall",
+              id: "ack-report-retry",
+              name: "cake",
+              arguments: { command: "sessions.reports.acknowledge", input },
+            },
+          ])
+        : durableAnswer("Done"),
+    );
+    await handles.runPromise(handle.prompt("Report both investigations"));
+    const runtime = openedRuntime;
+    if (!runtime) throw new Error("Expected the opened permanent runtime");
+    await f.waitSnapshot(
+      runtime,
+      (snapshot) =>
+        !snapshot.streaming &&
+        snapshot.parts.some(
+          (part) => part.kind === "text" && part.role === "assistant" && part.text === "Done",
+        ),
+    );
+    expect(receipts).toHaveLength(2);
+    expect(receipts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          assistantPartId: expect.any(String),
+          disposition: "communicated",
+        }),
+        expect.objectContaining({ alreadyHandled: true }),
+      ]),
+    );
+    expect(await handles.runPromise(pendingReports.list(sessionId, {}))).toMatchObject({
+      total: 0,
+    });
+
+    await handles.runPromise(
+      Effect.gen(function* () {
+        yield* (yield* SessionFamilyStorage).deferReferenceNotice({
+          id: ids.third,
+          recipientSessionId: sessionId,
+          text: "Another worker report",
+        });
+      }),
+    );
+    const nextInput = { ...input, ids: [ids.third] };
+    await runtime.prompt("Unrelated next question", "prompt", [], false, ids.second);
+    expect((await attest(nextInput))._tag).toBe("Failure"); // No old reply across a consumed input.
+    expect((await attest())._tag).toBe("Success"); // A duplicate handled request remains idempotent.
+
+    f.answer(() => durableAnswer(notice));
+    f.hold(true);
+    const interrupted = runtime
+      .prompt("Interrupted report", "prompt", [], false, ids.third)
+      .catch((error: unknown) => error);
+    await f.waitSnapshot(runtime, (snapshot) =>
+      snapshot.parts.some(
+        (part) =>
+          part.kind === "text" &&
+          part.role === "assistant" &&
+          part.text === notice &&
+          part.status === "streaming",
+      ),
+    );
+    expect((await attest(nextInput))._tag).toBe("Failure"); // Partial live text is not a durable original.
+    await runtime.abort();
+    await interrupted;
+    expect((await attest(nextInput))._tag).toBe("Failure"); // Freezing the display must not mint an entry identity.
+    expect((await runtime.snapshot()).parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "text",
+          role: "assistant",
+          text: notice,
+          status: "complete",
+          entryId: undefined,
+        }),
+      ]),
+    );
+
+    f.hold(false);
+    f.answer(() => ({
+      ...durableAnswer(notice),
+      stopReason: "error",
+      errorMessage: "Fixture response failed",
+    }));
+    await runtime
+      .prompt("Errored report", "prompt", [], false, "00000000-0000-4000-8000-000000000004")
+      .catch((_error: unknown) => undefined);
+    expect((await runtime.snapshot()).parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "text",
+          role: "assistant",
+          text: notice,
+          status: "error",
+          entryId: expect.any(String),
+        }),
+      ]),
+    );
+    expect((await attest(nextInput))._tag).toBe("Failure");
+    expect(await handles.runPromise(pendingReports.list(sessionId, {}))).toMatchObject({
+      total: 1,
+    });
+  },
+);
 
 it("self-switches through the real Durable Cake tool after recording its accepted receipt", async () => {
   const f = await fixture();

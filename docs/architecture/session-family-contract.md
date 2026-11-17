@@ -216,7 +216,9 @@ assistant original before starting its tool round; a whole turn need not finish 
 Acknowledgment pages Pi-owned originals back to the latest consumed input when the bounded
 GUI snapshot starts mid-turn. It stops at that boundary, never broadening eligibility to
 older replies, and fails closed on missing or non-advancing history. No replay token or
-second transcript is maintained. The agent emits
+second transcript is maintained. LiveDoc preview keys are not Pi original entry IDs; live
+text carries no entry identity, including when cancellation freezes its display as complete.
+The agent emits
 a grouped notice first, then acknowledges its IDs as communicated (or dismissed only on
 the user's decision). Backend validation proves the evidence exists, not that the words
 adequately summarize the report. Successful or unrelated answers never auto-acknowledge.
