@@ -58,6 +58,8 @@ import { PendingReportAcknowledge } from "../../src/contracts/conversations/pend
 import { SessionFamilyStorage } from "../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../app/helpers/familyStorageHarness";
 import { toJsonValue } from "../../src/utils/to-json-value";
+import { passiveNoticeContext } from "../../src/contracts/conversations/passive-notice";
+import type { InternalInput } from "../../src/contracts/conversations/internal-input";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -753,9 +755,13 @@ it("saves and reloads global Pi settings while permanent Cake Chat is busy witho
   expect(f.requests).toHaveLength(2);
 });
 
-it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/report-evidence-project")])(
-  "attests same-entry text through the SQLite adapter and real runtime handle without accepting stale or interrupted text (%s)",
-  async (sessionId) => {
+it.each(
+  [CAKE_CHAT_SESSION_ID, projectChatSessionId("/report-evidence-project")].flatMap((sessionId) =>
+    ["plain", "passive-notice", "agent-update"].map((queuedKind) => ({ sessionId, queuedKind })),
+  ),
+)(
+  "attests current-input commentary through the SQLite control path with $queuedKind queued ($sessionId)",
+  async ({ sessionId, queuedKind }) => {
     const f = await fixture();
     const scope = { sessionId, sessionDir: join(f.directory, "report-evidence-chat") };
     const notice =
@@ -766,32 +772,97 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/report-evidence-project")]
       communicatedText: notice,
     };
     const receipts: unknown[] = [];
+    const controlFailures: string[] = [];
+    let capturedBoundary = false;
     let openedRuntime: CakeSessionRuntime | undefined;
     const control: NonNullable<CakeSessionRuntimeSetup["globalControl"]> = {
       tools: backendAgentTools().filter((tool) => tool.command === "sessions.reports.acknowledge"),
       invoke: async (invocation) => {
-        const result = await handles.runPromise(
-          Effect.gen(function* () {
-            const request = yield* Schema.decodeUnknownEffect(PendingReportAcknowledge)(
-              invocation.arguments,
-            );
-            const handle = yield* (yield* CakeSessionRuntimes).acquireSession(sessionId);
-            const snapshot = yield* handle.snapshot();
-            expect(snapshot.streaming).toBe(true);
-            expect(snapshot.parts).toEqual(
-              expect.arrayContaining([
-                expect.objectContaining({
-                  kind: "text",
-                  role: "assistant",
-                  text: notice,
-                  status: "complete",
-                  entryId: expect.any(String),
+        const result = await handles
+          .runPromise(
+            Effect.gen(function* () {
+              const request = yield* Schema.decodeUnknownEffect(PendingReportAcknowledge)(
+                invocation.arguments,
+              );
+              const handle = yield* (yield* CakeSessionRuntimes).acquireSession(sessionId);
+              const snapshot = yield* handle.snapshot();
+              const consumedOriginal = snapshot.parts.findLast(
+                (part) =>
+                  part.kind === "text" &&
+                  part.role === "user" &&
+                  part.entryId !== undefined &&
+                  !part.deliveryState,
+              );
+              const originals = yield* Schema.decodeUnknownEffect(MessageListResult)(
+                yield* handle.inspectSession({
+                  kind: "messages-list",
+                  roles: ["user"],
+                  limit: 100,
                 }),
-              ]),
-            );
-            return yield* pendingReports.acknowledge(sessionId, request);
-          }).pipe(Effect.scoped),
-        );
+              );
+              expect(originals.total).toBe(1);
+              expect(consumedOriginal).toMatchObject({
+                text: "Report both investigations",
+                entryId: originals.messages[0]?.entryId,
+              });
+              if (queuedKind !== "plain") {
+                const legacyBoundary = snapshot.parts.findLast(
+                  (part) => part.kind === "text" && part.role === "user" && !part.deliveryState,
+                );
+                const replyIndex = snapshot.parts.findIndex(
+                  (part) =>
+                    part.kind === "text" && part.role === "assistant" && part.text === notice,
+                );
+                if (!legacyBoundary || legacyBoundary.kind !== "text" || !consumedOriginal)
+                  throw new Error("Expected both projected and consumed boundaries");
+                expect(legacyBoundary).toMatchObject({
+                  id:
+                    queuedKind === "passive-notice"
+                      ? "passive-queued-fyi"
+                      : "agent-update-queued-fyi",
+                });
+                expect(legacyBoundary.entryId).toBeUndefined();
+                expect(snapshot.parts.indexOf(legacyBoundary)).toBeGreaterThan(replyIndex);
+                expect(snapshot.parts.indexOf(consumedOriginal)).toBeLessThan(replyIndex);
+                if (!capturedBoundary) {
+                  capturedBoundary = true;
+                  console.info("Receipt input-boundary evidence", {
+                    sessionId,
+                    queuedKind,
+                    consumedOriginalEntryId: originals.messages[0]?.entryId,
+                    unconsumedUiBoundaryId: legacyBoundary.id,
+                    unconsumedUiEntryId: legacyBoundary.entryId,
+                  });
+                }
+                expect(snapshot.parts).toEqual(
+                  expect.arrayContaining([
+                    expect.objectContaining({
+                      kind: "text",
+                      text: "Queued next question",
+                      deliveryState: "queued",
+                    }),
+                  ]),
+                );
+              }
+              expect(snapshot.streaming).toBe(true);
+              expect(snapshot.parts).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    kind: "text",
+                    role: "assistant",
+                    text: notice,
+                    status: "complete",
+                    entryId: expect.any(String),
+                  }),
+                ]),
+              );
+              return yield* pendingReports.acknowledge(sessionId, request);
+            }).pipe(Effect.scoped),
+          )
+          .catch((error: unknown) => {
+            controlFailures.push(String(error));
+            throw error;
+          });
         receipts.push(result);
         return toJsonValue(result);
       },
@@ -840,6 +911,9 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/report-evidence-project")]
     expect((await attest())._tag).toBe("Failure"); // Planned prose has not been emitted.
     expect((await attest(input, "wrong-caller"))._tag).toBe("Failure");
     expect((await attest({ ...input, ids: ["unknown-report"] }))._tag).toBe("Failure");
+    const runtime = openedRuntime;
+    if (!runtime) throw new Error("Expected the opened permanent runtime");
+    f.hold(queuedKind !== "plain");
     f.answer((index) =>
       index === 1
         ? durableAnswer("", [
@@ -860,8 +934,83 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/report-evidence-project")]
         : durableAnswer("Done"),
     );
     await handles.runPromise(handle.prompt("Report both investigations"));
-    const runtime = openedRuntime;
-    if (!runtime) throw new Error("Expected the opened permanent runtime");
+    let queued: Promise<void> | undefined;
+    if (queuedKind !== "plain") {
+      await f.waitSnapshot(runtime, (snapshot) =>
+        snapshot.parts.some(
+          (part) =>
+            part.kind === "text" &&
+            part.role === "assistant" &&
+            part.text === notice &&
+            part.status === "streaming",
+        ),
+      );
+      const notices =
+        queuedKind === "passive-notice"
+          ? [
+              {
+                id: "queued-fyi",
+                text: "Unconsumed worker FYI",
+                crossSession: {
+                  version: 1 as const,
+                  messageId: ids.first,
+                  threadId: ids.second,
+                  sequence: 1,
+                  expectsResponse: false,
+                  sender: {
+                    sessionId: "worker",
+                    title: "Worker",
+                    kind: "project-session" as const,
+                  },
+                },
+              },
+            ]
+          : [];
+      const text =
+        "Queued next question" +
+        (notices.length ? `\n\n${passiveNoticeContext(notices)}` : "\n\nUnconsumed worker FYI");
+      const internal: InternalInput = {
+        _tag: "UserWithReminders",
+        userText: "Queued next question",
+        text,
+        notices,
+        updates:
+          queuedKind === "agent-update"
+            ? [
+                {
+                  id: "queued-fyi",
+                  text: "Unconsumed worker FYI",
+                  source: { title: "Worker", href: "cake://session/worker" },
+                },
+              ]
+            : [],
+      };
+      queued = runtime.prompt(
+        text,
+        "follow-up",
+        [],
+        false,
+        "00000000-0000-4000-8000-000000000005",
+        undefined,
+        undefined,
+        undefined,
+        internal,
+      );
+      await f.waitSnapshot(
+        runtime,
+        (snapshot) =>
+          snapshot.parts.some(
+            (part) =>
+              part.id ===
+              (queuedKind === "passive-notice" ? "passive-queued-fyi" : "agent-update-queued-fyi"),
+          ) &&
+          snapshot.parts.some((part) => part.kind === "text" && part.deliveryState === "queued"),
+      );
+      f.hold(false);
+      const finish = f.finishes[0];
+      if (!finish) throw new Error("Expected the held provider response");
+      finish();
+    }
     await f.waitSnapshot(
       runtime,
       (snapshot) =>
@@ -870,6 +1019,8 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/report-evidence-project")]
           (part) => part.kind === "text" && part.role === "assistant" && part.text === "Done",
         ),
     );
+    await queued;
+    expect(controlFailures).toEqual([]);
     expect(receipts).toHaveLength(2);
     expect(receipts).toEqual(
       expect.arrayContaining([
@@ -894,6 +1045,7 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/report-evidence-project")]
       }),
     );
     const nextInput = { ...input, ids: [ids.third] };
+    if (queuedKind !== "plain") expect((await attest(nextInput))._tag).toBe("Failure"); // Once the queued input is consumed, its boundary is real.
     await runtime.prompt("Unrelated next question", "prompt", [], false, ids.second);
     expect((await attest(nextInput))._tag).toBe("Failure"); // No old reply across a consumed input.
     expect((await attest())._tag).toBe("Success"); // A duplicate handled request remains idempotent.

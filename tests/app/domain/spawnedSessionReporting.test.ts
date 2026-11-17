@@ -68,6 +68,7 @@ import {
   snapshot,
 } from "../helpers/piRuntimeFixture";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
+import { partsFromMessage } from "../../../src/services/pi/runtime/message-projection";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import * as projectTodoAttention from "../../../src/domain/projects/projectTodoAttention";
 import * as pendingReports from "../../../src/domain/conversations/pendingReports";
@@ -1367,6 +1368,7 @@ describe("automatic spawned-session reporting", () => {
       role: "user" as const,
       text: "Current question",
       status: "complete" as const,
+      entryId: "current-input-original",
     };
     const reply = {
       id: "notice",
@@ -1412,7 +1414,89 @@ describe("automatic spawned-session reporting", () => {
       undefined,
     );
     assert.equal(pendingReports.communicationEvidence([input, reply], "   "), undefined);
+    // Visible sender-authored rows are not consumed input merely because they lack a queue badge.
+    const fyi = { ...input, id: "queued-fyi", entryId: undefined, text: "Worker FYI" };
+    assert.equal(pendingReports.communicationEvidence([input, reply, fyi], reply.text), reply.id);
+    assert.equal(pendingReports.communicationEvidence([fyi, reply], reply.text), undefined);
+    // A genuinely consumed cross-session original is still a boundary, not a stale-text exception.
+    assert.equal(
+      pendingReports.communicationEvidence(
+        [
+          input,
+          reply,
+          {
+            ...input,
+            id: "new-input",
+            entryId: "new-original",
+            crossSession: {
+              version: 1,
+              messageId: parentId,
+              threadId: parentId,
+              sequence: 1,
+              expectsResponse: false,
+              sender: { sessionId: "worker", title: "Worker", kind: "project-session" },
+            },
+          },
+        ],
+        reply.text,
+      ),
+      undefined,
+    );
     // This is an explicit attestation anchor, not a test of semantic communication.
+  });
+
+  it("retains Pi input boundaries for consumed automatic transports without human prose", () => {
+    const input = {
+      id: "input",
+      kind: "text" as const,
+      role: "user" as const,
+      text: "Question",
+      status: "complete" as const,
+      entryId: "input-original",
+    };
+    const reply = {
+      ...input,
+      id: "reply",
+      role: "assistant" as const,
+      text: "Report ready",
+      entryId: "reply-original",
+    };
+    const update = {
+      id: "update",
+      text: "Worker FYI",
+      source: { title: "Worker", href: "cake://session/worker" },
+    };
+    const origins: InternalInput[] = [
+      { _tag: "AgentUpdate", update },
+      { _tag: "UpdateBatch", notices: [], updates: [update] },
+      { _tag: "AttentionItem", todoId: "todo", title: "Review", updates: [update] },
+    ];
+    for (const origin of origins) {
+      const consumed = partsFromMessage(
+        { role: "user", content: "Automatic input", timestamp: 1 },
+        "automatic",
+        false,
+        "automatic-original",
+        false,
+        undefined,
+        undefined,
+        origin,
+      );
+      assert.ok(
+        consumed.some(
+          (part) =>
+            part.kind === "text" && part.role === "user" && part.entryId === "automatic-original",
+        ),
+      );
+      assert.equal(
+        pendingReports.communicationEvidence([input, reply, ...consumed], reply.text),
+        undefined,
+      );
+      assert.equal(
+        pendingReports.communicationEvidence([input, ...consumed, reply], reply.text),
+        reply.id,
+      );
+    }
   });
 
   it.effect(
@@ -1425,6 +1509,7 @@ describe("automatic spawned-session reporting", () => {
           role: "user" as const,
           text: "Question",
           status: "complete" as const,
+          entryId: "current-input-original",
         };
         const reply = {
           id: "reply",
@@ -1465,6 +1550,22 @@ describe("automatic spawned-session reporting", () => {
             undefined,
           );
         }
+        // A visible queued FYI must not stop history traversal before the actual consumed input.
+        assert.equal(
+          yield* pendingReports.readCommunicationEvidence(
+            {
+              snapshot: () =>
+                Effect.succeed({
+                  ...snapshot,
+                  parts: [reply, { ...input, id: "fyi", entryId: undefined }],
+                  historyCursor: "older",
+                }),
+              history: () => Effect.succeed({ parts: [input] }),
+            },
+            reply.text,
+          ),
+          reply.id,
+        );
         // An older matching reply cannot cross a newer consumed input on an earlier page.
         assert.equal(
           yield* pendingReports.readCommunicationEvidence(

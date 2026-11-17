@@ -71,7 +71,7 @@ export function admittedIncomingParts(origin: InternalInput | undefined, text: s
   return [...(digest ? sessionDigestParts(digest.text) : []), ...passiveNoticeParts(origin)];
 }
 
-export function agentUpdatePart(update: AgentUpdate): UiPart {
+export function agentUpdatePart(update: AgentUpdate): Extract<UiPart, { kind: "text" }> {
   return {
     id: `agent-update-${update.id}`,
     renderKey: `agent-update-${update.id}`,

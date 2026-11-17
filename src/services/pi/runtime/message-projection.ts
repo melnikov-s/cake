@@ -77,7 +77,7 @@ export function partsFromMessage(
     const timestamp = Reflect.get(message, "timestamp");
     const renderKey =
       typeof timestamp === "number" && Number.isFinite(timestamp) ? `user-${timestamp}` : undefined;
-    if (internal?._tag === "AgentUpdate") return [agentUpdatePart(internal.update)];
+    if (internal?._tag === "AgentUpdate") return [{ ...agentUpdatePart(internal.update), entryId }];
     const rawContext = splitContextReminders(
       withoutPassiveNotices(textFromContent(content), internal),
     );
@@ -277,8 +277,16 @@ export function partsFromMessage(
         text: "",
         status: "complete",
       });
+    // A consumed automatic transport still establishes a boundary, even without human prose.
+    // Queued FYIs keep no entry identity; UserWithReminders has its own Pi-backed user row.
+    const notices = passiveNoticeParts(internal).map((part) =>
+      part.kind === "text" &&
+      (internal?._tag === "UpdateBatch" || internal?._tag === "AttentionItem")
+        ? { ...part, entryId }
+        : part,
+    );
     // Sender-authored FYIs and remaining context precede the actual user input in every view.
-    return [...reminderParts, ...passiveNoticeParts(internal), ...parts];
+    return [...reminderParts, ...notices, ...parts];
   }
 
   if (role === "assistant" && Array.isArray(content)) {

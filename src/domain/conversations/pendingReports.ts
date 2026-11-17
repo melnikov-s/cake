@@ -74,14 +74,18 @@ export const read = Effect.fn("PendingReports.read")(function* (
   };
 });
 
+/** Visible FYIs can sit after a reply while their transport is still queued.
+ * Only a Pi-backed user transport, not its sender-authored presentation rows, is a boundary.
+ */
+const isConsumedInput = (part: UiPart) =>
+  part.kind === "text" && part.role === "user" && part.entryId !== undefined && !part.deliveryState;
+
 /** Only persisted visible assistant text after the latest consumed input can anchor an attestation. */
 export function communicationEvidence(
   parts: readonly UiPart[],
   communicatedText: string,
 ): string | undefined {
-  const lastInput = parts.findLastIndex(
-    (part) => part.kind === "text" && part.role === "user" && !part.deliveryState,
-  );
+  const lastInput = parts.findLastIndex(isConsumedInput);
   if (lastInput < 0 || !communicatedText.trim()) return undefined;
   return parts
     .slice(lastInput + 1)
@@ -105,11 +109,7 @@ export const readCommunicationEvidence = Effect.fn("PendingReports.readCommunica
     let parts = snapshot.parts;
     let cursor = snapshot.historyCursor;
     const visited = new Set<string>();
-    while (
-      !parts.some((part) => part.kind === "text" && part.role === "user" && !part.deliveryState) &&
-      cursor !== undefined &&
-      handle.history
-    ) {
+    while (!parts.some(isConsumedInput) && cursor !== undefined && handle.history) {
       if (visited.has(cursor))
         return yield* new SessionChatError({
           operation: "reports.acknowledge",

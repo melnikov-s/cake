@@ -210,7 +210,11 @@ remain attached. No report-only wakeup, timer or poll is introduced. Resume deli
 
 `sessions.reports.acknowledge` is an explicit agent attestation, not a semantic classifier.
 It requires exact assistant text already emitted in the requesting conversation after its
-latest consumed user input, with a persisted Pi entry and complete text status. Reasoning,
+latest consumed user input, with a persisted Pi entry and complete text status. The input
+boundary also requires a Pi entry identity: already-visible FYIs beside a queued input
+are not consumed originals, even though their display rows have user role and no queue
+badge. Consumed automatic updates retain their transport's Pi identity, so a newer
+consumed update still invalidates older replies. Reasoning,
 context, tools, queued inputs and planned final answers are not evidence. Durable appends the
 assistant original before starting its tool round; a whole turn need not finish first.
 Acknowledgment pages Pi-owned originals back to the latest consumed input when the bounded
