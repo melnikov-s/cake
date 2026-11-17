@@ -25,10 +25,10 @@ export const ConversationIdentityDock = observer(function ConversationIdentityDo
       data-slot="conversation-identity-layout"
       className="relative h-full min-h-0 min-w-0 bg-background"
     >
-      <div className="h-full min-h-0 min-w-0 pb-10">{children}</div>
+      <div className="h-full min-h-0 min-w-0 [&_[data-slot=composer-dock]]:pb-14">{children}</div>
       <div
         data-slot="conversation-identity-positioner"
-        className="pointer-events-none absolute inset-x-0 bottom-2 flex min-w-0 justify-center px-4"
+        className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex min-w-0 justify-center px-4"
       >
         <div
           data-slot="conversation-identity-tab"

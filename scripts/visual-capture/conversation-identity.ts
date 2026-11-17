@@ -141,7 +141,7 @@ export function createConversationIdentityScenario(
             tabPointerEvents: style.pointerEvents,
             outsideHitsPositioner: outside === positioner,
             inside: bounds.left >= column.left && bounds.right <= column.right,
-            chatBeforeTab: chat.getBoundingClientRect().bottom <= bounds.top,
+            chatBottomDelta: column.bottom - chat.getBoundingClientRect().bottom,
             composerBeforeTab: composer.getBoundingClientRect().bottom <= bounds.top,
             topRadius: parseFloat(style.borderTopLeftRadius),
             bottomRadius: parseFloat(style.borderBottomLeftRadius),
@@ -162,7 +162,7 @@ export function createConversationIdentityScenario(
         expect(geometry.width).toBeLessThanOrEqual(Math.min(576, geometry.columnWidth - 32));
         if (state === "short-title") expect(geometry.width).toBeLessThan(geometry.columnWidth / 2);
         expect(geometry.inside).toBe(true);
-        expect(geometry.chatBeforeTab).toBe(true);
+        expect(geometry.chatBottomDelta).toBe(0);
         expect(geometry.composerBeforeTab).toBe(true);
         expect(geometry.topRadius).toBeGreaterThan(0);
         expect(geometry.bottomRadius).toBe(geometry.topRadius);
