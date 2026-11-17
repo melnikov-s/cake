@@ -19,6 +19,8 @@ import {
   setValidationQueueCapacity,
 } from "../../scripts/validation-queue.mjs";
 import { validationCommands, validationPriority } from "../../scripts/validation-run.mjs";
+// The shared supervisor's low-level cleanup cases belong to this validation suite.
+import "./electron-process-cleanup.test.mjs";
 
 const clientPath = resolve("tests/fixtures/validation-queue-client.mjs");
 const jobPath = resolve("tests/fixtures/validation-queue-job.mjs");

@@ -10,6 +10,8 @@ import { constants } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { cleanupGroup, groupAlive, identity } from "./electron-process-cleanup.mjs";
+
 const modulePath = fileURLToPath(import.meta.url);
 const marker = "CAKE_ELECTRON_RUN_PARENT";
 
@@ -19,11 +21,6 @@ export function electronQueuePath() {
   if (process.platform === "win32")
     throw new Error("The Electron run queue currently requires macOS or Linux.");
   return join("/tmp", `cake-electron-runs-${process.getuid()}.sqlite`);
-}
-
-function identity(pid) {
-  const result = spawnSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8" });
-  return result.status === 0 ? result.stdout.trim() : "";
 }
 
 function ownerAlive(row) {
@@ -36,44 +33,6 @@ function ownerAlive(row) {
   const current = identity(row.owner);
   // An unsuccessful process probe is not evidence that a live owner is stale.
   return !current || current === row.identity;
-}
-
-function groupAlive(pid) {
-  if (!pid) return false;
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    if (error.code === "EPERM") {
-      // Darwin can report EPERM while a killed group is disappearing. Check
-      // membership instead of crashing cleanup or assuming an app is alive.
-      const result = spawnSync("ps", ["-axo", "pgid=,stat="], { encoding: "utf8" });
-      if (result.status !== 0) throw error;
-      return result.stdout.split("\n").some((line) => {
-        const [group, state] = line.trim().split(/\s+/);
-        return Number(group) === pid && state && !state.startsWith("Z");
-      });
-    }
-    throw error;
-  }
-}
-
-function signalGroup(pid, signal) {
-  try {
-    process.kill(-pid, signal);
-  } catch (error) {
-    if (error.code !== "ESRCH") throw error;
-  }
-}
-
-async function cleanupGroup(pid, signal = "SIGTERM", graceMs = 250) {
-  if (groupAlive(pid)) {
-    signalGroup(pid, signal);
-    await delay(graceMs);
-    if (groupAlive(pid)) signalGroup(pid, "SIGKILL");
-  }
-  while (groupAlive(pid)) await delay(50);
 }
 
 // Nested Electron supervisors detach their application groups. Register those
@@ -338,16 +297,19 @@ async function supervise() {
     if (process.connected) process.send(message);
   };
   let job;
+  let jobIdentity;
   let unregisterJob;
   let server;
   const sockets = new Set();
   const registrations = new Set();
   let launchTail = Promise.resolve();
+  const cleanupErrors = [];
   const socketPath = join("/tmp", `cake-er-${process.pid}-${randomUUID().slice(0, 8)}.sock`);
   let code = 1;
   let previousFeedback;
   let admittedState;
   let nextStaleProbe = 0;
+  let runError;
   try {
     while (!cancelled) {
       // Process probes launch ps; recovery need not repeat on every admission tick.
@@ -438,6 +400,8 @@ async function supervise() {
             socket.destroy();
             return;
           }
+          // Capture ownership while the registered shim is still waiting to start.
+          const groupIdentity = identity(message.pid);
           // Serialize actual launches too, including Promise.all inside one test.
           const previous = launchTail;
           if (registrations.size)
@@ -445,7 +409,9 @@ async function supervise() {
           const closed = new Promise((resolve) => socket.once("close", resolve));
           const registration = (async () => {
             await previous;
-            if (socket.destroyed) return;
+            if (socket.destroyed || cancelled) return;
+            if (!groupIdentity)
+              throw new Error(`Cannot identify application group ${message.pid}.`);
             db.prepare("INSERT INTO electron_groups(request_id, pid) VALUES (?, ?)").run(
               id,
               message.pid,
@@ -454,13 +420,23 @@ async function supervise() {
             console.error(`[cake:electron] starting application within #${id}`);
             socket.write("start\n");
             await closed;
-            await cleanupGroup(message.pid);
+            await cleanupGroup(message.pid, groupIdentity);
             unregister?.();
             db.prepare("DELETE FROM electron_groups WHERE pid = ?").run(message.pid);
           })();
-          launchTail = registration;
           registrations.add(registration);
-          registration.finally(() => registrations.delete(registration));
+          // Observe rejection immediately, even if it settles before shutdown.
+          // A discarded .finally() would create another rejecting promise.
+          launchTail = registration.then(
+            () => registrations.delete(registration),
+            (error) => {
+              registrations.delete(registration);
+              cleanupErrors.push(
+                new Error(`Application group ${message.pid} cleanup failed.`, { cause: error }),
+              );
+              cancel("SIGTERM");
+            },
+          );
         });
         socket.on("error", () => {});
         socket.on("close", () => sockets.delete(socket));
@@ -492,6 +468,7 @@ async function supervise() {
     job.on("message", (message) => {
       if (message.type === "done") done = message.code;
     });
+    jobIdentity = identity(job.pid);
     db.prepare("UPDATE requests SET group_id = ? WHERE id = ?").run(job.pid, id);
     unregisterJob = registerValidationGroup(request, job.pid);
     job.send({ ...request, type: "start" });
@@ -507,39 +484,73 @@ async function supervise() {
         ? 124
         : done;
     if (code === 124) console.error(`[cake:${tag}] timed out #${id}`);
+  } catch (error) {
+    runError = error;
+    throw error;
   } finally {
-    // Close the private registration channel first; live shims clean up their
-    // own groups on EOF. Never signal processes found by app name or a port.
-    for (const socket of sockets) socket.destroy();
-    if (server) await new Promise((resolve) => server.close(resolve));
-    await rm(socketPath, { force: true });
-    await Promise.all(registrations);
-    if (job?.pid) {
-      // Kill the enclosing group first: nested wrappers then disconnect/cancel
-      // their detached supervisors. Keep admission until all registered groups
-      // have also exited. Never signal unrelated groups discovered by a scan.
-      await cleanupGroup(
-        job.pid,
-        validation && cancelled ? cancelSignal : "SIGTERM",
-        validation && cancelled ? 1_000 : 250,
-      );
+    const attempt = async (label, action) => {
+      try {
+        await action();
+      } catch (error) {
+        cleanupErrors.push(new Error(`${label} failed for ${tag} run #${id}.`, { cause: error }));
+      }
+    };
+    try {
+      // Close the private channel first; shims clean up their own groups on EOF.
+      for (const socket of sockets) socket.destroy();
+      if (server)
+        await attempt(
+          "Registration server close",
+          () =>
+            new Promise((resolve, reject) =>
+              server.close((error) => (error ? reject(error) : resolve())),
+            ),
+        );
+      await attempt("Registration socket removal", () => rm(socketPath, { force: true }));
+      // Every registration has an immediate rejection handler. The serialized
+      // tail always fulfills, but retains failures above for diagnostics.
+      await launchTail;
+      if (job?.pid)
+        await attempt("Job group cleanup", () =>
+          cleanupGroup(
+            job.pid,
+            jobIdentity,
+            validation && cancelled ? cancelSignal : "SIGTERM",
+            validation && cancelled ? 1_000 : 250,
+          ),
+        );
+      // Don't wait forever on a group we could not clean up. Preserve its queue
+      // ownership for stale-owner recovery rather than falsely releasing a slot.
+      if (!cleanupErrors.length)
+        await attempt("Admission release", async () => {
+          while (
+            db
+              .prepare("SELECT pid FROM electron_groups WHERE request_id = ?")
+              .all(id)
+              .some((group) => groupAlive(group.pid))
+          )
+            await delay(100);
+          db.prepare("DELETE FROM electron_groups WHERE request_id = ?").run(id);
+          unregisterJob?.();
+          if (validation) db.prepare("DELETE FROM validation_waiting WHERE request_id = ?").run(id);
+          db.prepare("DELETE FROM requests WHERE id = ?").run(id);
+          db.prepare("DELETE FROM admissions WHERE request_id = ?").run(id);
+          console.error(`[cake:${tag}] released #${id}`);
+        });
+    } finally {
+      await attempt("Queue database close", () => db.close());
+      // Even failed cleanup must settle IPC and let the bootstrap's EOF fallback run.
+      if (job?.connected) job.disconnect();
+      if (!cleanupErrors.length) notify({ type: "result", code });
+      if (process.connected) process.disconnect();
     }
-    while (
-      db
-        .prepare("SELECT pid FROM electron_groups WHERE request_id = ?")
-        .all(id)
-        .some((group) => groupAlive(group.pid))
-    )
-      await delay(100);
-    db.prepare("DELETE FROM electron_groups WHERE request_id = ?").run(id);
-    unregisterJob?.();
-    if (validation) db.prepare("DELETE FROM validation_waiting WHERE request_id = ?").run(id);
-    db.prepare("DELETE FROM requests WHERE id = ?").run(id);
-    db.prepare("DELETE FROM admissions WHERE request_id = ?").run(id);
-    db.close();
-    console.error(`[cake:${tag}] released #${id}`);
-    notify({ type: "result", code });
-    if (process.connected) process.disconnect();
+    if (cleanupErrors.length)
+      // Preserve any primary failure as well as cleanup errors when overriding
+      // the pending return/throw: failed cleanup must never report success.
+      throw new AggregateError(
+        runError ? [runError, ...cleanupErrors] : cleanupErrors,
+        `[cake:${tag}] cleanup failed for #${id}`,
+      );
   }
 }
 

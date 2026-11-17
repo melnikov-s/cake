@@ -13,6 +13,7 @@ import { electronQueueState, setElectronQueueCapacity } from "../../scripts/elec
 const clientPath = fileURLToPath(new URL("../fixtures/electron-queue-client.mjs", import.meta.url));
 const jobPath = fileURLToPath(new URL("../fixtures/electron-queue-job.mjs", import.meta.url));
 const queueModule = resolve("scripts/electron-run-queue.mjs");
+const cleanupFault = new URL("../fixtures/electron-queue-cleanup-fault.mjs", import.meta.url).href;
 type Event = {
   type: string;
   code?: number;
@@ -50,8 +51,15 @@ function start(
     mode?: string;
     timeoutMs?: number | "Infinity";
     command?: string;
+    cleanupFault?: "EIO" | "EPERM";
   } = {},
 ) {
+  const env = { ...process.env };
+  if (options.cleanupFault) {
+    env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ""} --import=${cleanupFault}`;
+    env.CAKE_TEST_CLEANUP_FAULT = options.cleanupFault;
+    env.CAKE_TEST_CLEANUP_ROOT = root;
+  }
   const child = fork(
     clientPath,
     [
@@ -63,13 +71,17 @@ function start(
         timeoutMs: options.timeoutMs ?? 15_000,
       }),
     ],
-    { stdio: ["ignore", "ignore", "pipe", "ipc"] },
+    {
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+      env,
+    },
   );
   const events: Event[] = [];
   let stderr = "";
   child.stderr!.on("data", (chunk) => {
     stderr += chunk;
   });
+  // SAFETY: The isolated client fixture sends only queue events and its terminal result.
   child.on("message", (event) => events.push(event as Event));
   const exit = new Promise<number | null>((resolveExit, reject) => {
     child.once("error", reject);
@@ -299,6 +311,34 @@ it("serializes parallel detached launches within one admitted runner", async () 
   await empty();
 }, 20_000);
 
+it("observes a registration cleanup rejection and still cleans the enclosing job before shutdown", async () => {
+  const run = start("cleanup-failure", { mode: "detached", cleanupFault: "EIO" });
+  const app = await started("cleanup-failure");
+  const jobGroup = Number(rows("requests")[0]!.group_id);
+  await release("cleanup-failure");
+  expect(await run.exit, run.stderr()).toBe(1);
+  expect(run.stderr()).toContain("Application group");
+  expect(run.stderr()).toContain("injected registration cleanup EIO");
+  expect(run.stderr()).toContain("AggregateError");
+  expect(run.stderr()).not.toContain("node:internal/process/promises");
+  expect(await readFile(join(root, "cleanup-signals"), "utf8")).toContain(`-${jobGroup} SIGTERM`);
+  expect(alive(app.pid)).toBe(false);
+  // Failed cleanup retains ownership rather than advertising a false release.
+  expect(rows("admissions")).toHaveLength(1);
+  expect(run.stderr()).not.toContain("released #");
+  await expect.poll(() => electronQueueState(queuePath).running, { timeout: 10_000 }).toBe(0);
+  await empty();
+}, 20_000);
+
+it("settles registration cleanup when an exiting process group probe reports EPERM", async () => {
+  const run = start("cleanup-exit", { mode: "detached", cleanupFault: "EPERM" });
+  await started("cleanup-exit");
+  await release("cleanup-exit");
+  expect(await run.exit, run.stderr()).toBe(0);
+  expect(run.stderr()).not.toContain("cleanup failed");
+  await empty();
+}, 20_000);
+
 it("defaults to three slots and validates one shared host capacity across independent processes", () => {
   const path = join(root, "default.sqlite");
   expect(electronQueueState(path)).toEqual({ capacity: 3, running: 0, queued: 0 });
@@ -465,5 +505,6 @@ it("routes maintained Playwright imports and package launch commands through the
 });
 
 it("rejects Playwright worker fan-out before tests start", () => {
+  // SAFETY: This rejection path reads only workers and throws before using the rest of FullConfig.
   expect(() => setup({ workers: 2 } as FullConfig)).toThrow("--workers=1");
 });
