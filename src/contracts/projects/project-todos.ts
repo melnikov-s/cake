@@ -100,7 +100,7 @@ export const PROJECT_TODO_LINK_GUIDANCE =
 
 /** Only explicit human requests own actionable attention; routine reports use the inbox. */
 export const PROJECT_TODO_ATTENTION_GUIDANCE =
-  "Set needsAttention with an action-oriented attentionReason for a human request. Never revive/reword a dismissed request; only a new request reflags. Report arrival never flags attention. Results wait behind existing attention; others stay in the quiet inbox. X clears attention without delivering held reports. Attention never approves merging or changes lifecycle. Completion clears it; reopening starts Active.";
+  "Set needsAttention with an action-oriented attentionReason for a human request. Supply a stable attentionRequestId (for example its exact result reference), reuse it for retries/rewording, and change it only for a genuinely new human request, never routine report arrival. Distinct requests may share a reason. Never revive/reword a dismissed request; only a new request reflags. Report arrival never flags attention. Results wait behind existing attention; others stay in the quiet inbox. X clears attention without delivering held reports. Attention never approves merging or changes lifecycle. Completion clears it; reopening starts Active.";
 
 const ProjectTodoAttentionReason = Schema.String.check(
   Schema.isTrimmed(),
@@ -150,6 +150,8 @@ const ProjectTodoSnoozeUntil = Schema.String.check(
   ),
 );
 
+const ProjectTodoAttentionRequestId = text(4096).check(Schema.isTrimmed(), Schema.isMinLength(1));
+
 const ProjectTodoRemainingWork = text(512).check(Schema.isTrimmed(), Schema.isMinLength(1));
 
 export const ProjectTodo = Schema.Struct({
@@ -165,6 +167,8 @@ export const ProjectTodo = Schema.Struct({
   /** Absent on older saved items means false; no reason is invented for existing work. */
   needsAttention: Schema.optionalKey(Schema.Boolean),
   attentionReason: Schema.optionalKey(ProjectTodoAttentionReason),
+  /** Stable explicit request/result identity, retained after opening or dismissal. */
+  attentionRequestId: Schema.optionalKey(ProjectTodoAttentionRequestId),
   /** Main-owned FIFO occurrence order within this list; retained when cleared.
    * Older saved requests without a sequence keep storage order ahead of new arrivals. */
   attentionSequence: Schema.optionalKey(revision),
@@ -262,6 +266,7 @@ export const ProjectTodoCreate = Schema.Struct({
   status: Schema.optionalKey(ProjectTodo.fields.status),
   needsAttention: Schema.optionalKey(Schema.Boolean),
   attentionReason: Schema.optionalKey(ProjectTodoAttentionReason),
+  attentionRequestId: ProjectTodo.fields.attentionRequestId,
   associations: Schema.optionalKey(Associations),
 });
 export interface ProjectTodoCreate extends Schema.Schema.Type<typeof ProjectTodoCreate> {}
@@ -275,6 +280,7 @@ export const ProjectTodoUpdate = Schema.Struct({
   remainingWork: Schema.optionalKey(Schema.NullOr(ProjectTodoRemainingWork)),
   needsAttention: Schema.optionalKey(Schema.Boolean),
   attentionReason: Schema.optionalKey(ProjectTodoAttentionReason),
+  attentionRequestId: ProjectTodo.fields.attentionRequestId,
   snoozedUntil: Schema.optionalKey(Schema.NullOr(ProjectTodoSnoozeUntil)),
   associations: Schema.optionalKey(Associations),
 });
@@ -325,6 +331,7 @@ const ProjectTodoSummary = Schema.Struct({
   snoozedUntil: ProjectTodo.fields.snoozedUntil,
   needsAttention: Schema.Boolean,
   attentionReason: ProjectTodo.fields.attentionReason,
+  attentionRequestId: ProjectTodo.fields.attentionRequestId,
   revision,
 });
 const ProjectTodoReconciliation = Schema.Struct({
@@ -357,6 +364,7 @@ export const ProjectTodoReceipt = Schema.Struct({
   committed: Schema.Literal(true),
   needsAttention: Schema.Boolean,
   attentionReason: Schema.optionalKey(ProjectTodoAttentionReason),
+  attentionRequestId: ProjectTodo.fields.attentionRequestId,
   snoozedUntil: Schema.optionalKey(Schema.NullOr(ProjectTodoSnoozeUntil)),
   associations: Schema.optionalKey(Associations),
   note: Schema.optionalKey(Schema.String),
@@ -384,6 +392,7 @@ interface ProjectTodoContextData {
     remainingWork?: string;
     needsAttention: boolean;
     attentionReason?: string;
+    attentionRequestId?: string;
     revision: number;
     sessions?: readonly string[];
     subagents?: readonly SubagentReference[];
@@ -454,6 +463,7 @@ export function projectTodoBaseline(value: ProjectTodos, chat: TodoChat = "Proje
           ...(item.remainingWork ? { remainingWork: item.remainingWork } : null),
           needsAttention: Boolean(item.needsAttention),
           ...(item.attentionReason ? { attentionReason: item.attentionReason } : null),
+          ...(item.attentionRequestId ? { attentionRequestId: item.attentionRequestId } : null),
           revision: item.revision,
           ...(projectTodoSubagents(item).length ? { subagents: projectTodoSubagents(item) } : null),
           ...(projectTodoSessionIds(item).length

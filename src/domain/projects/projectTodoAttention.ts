@@ -101,7 +101,9 @@ const restoreQueued = Effect.fn("ProjectTodoAttention.restoreQueued")(function* 
     current?.state === "open" &&
     !current.snoozedUntil &&
     !current.needsAttention &&
-    current.attentionReason === record.attentionReason;
+    (current.attentionRequestId || record.attentionRequestId
+      ? current.attentionRequestId === record.attentionRequestId
+      : current.attentionReason === record.attentionReason);
   const restored = untouched
     ? yield* todos
         .mutateUser(record.scope, {
@@ -109,7 +111,7 @@ const restoreQueued = Effect.fn("ProjectTodoAttention.restoreQueued")(function* 
           id: record.todoId,
           expectedRevision: current.revision,
           needsAttention: true,
-          attentionReason: record.attentionReason,
+          attentionReason: current.attentionReason ?? record.attentionReason,
         })
         .pipe(
           Effect.as(true),
@@ -245,6 +247,7 @@ export const activate = Effect.fn("ProjectTodoAttention.activate")(
             scope,
             todoId: id,
             attentionReason: item.attentionReason,
+            ...(item.attentionRequestId ? { attentionRequestId: item.attentionRequestId } : null),
             reportIds: reports.map((report) => report.id),
           });
         const ids = reports.map((report) => report.id);

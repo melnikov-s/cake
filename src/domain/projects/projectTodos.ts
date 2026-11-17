@@ -61,6 +61,7 @@ function commit(
       | "associations"
       | "needsAttention"
       | "attentionReason"
+      | "attentionRequestId"
     >
   >,
   by: ProjectTodoCompletion["by"],
@@ -350,6 +351,7 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           input.associations !== undefined ||
           input.needsAttention !== undefined ||
           input.attentionReason !== undefined ||
+          input.attentionRequestId !== undefined ||
           input.snoozedUntil !== undefined;
         // Retrying the exact same link replacement is a no-op, including stale retries.
         const { id: _id, expectedRevision: _revision, associations, ...other } = input;
@@ -395,13 +397,14 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
             return yield* error("Snooze deadline must be in the future");
         }
         const attentionReason = input.attentionReason ?? item.attentionReason;
-        // An off flag with a retained reason represents a dismissed request. Only the user
-        // can restore that exact request; agents must have a genuinely new reason.
+        const attentionRequestId = input.attentionRequestId ?? item.attentionRequestId;
+        // Identity, not display copy, distinguishes explicit requests. Older requests keep
+        // the reason-based guard until a caller supplies their first stable identity.
+        const sameRequest = attentionRequestId
+          ? attentionRequestId === item.attentionRequestId
+          : attentionReason === item.attentionReason;
         const repeatedDismissal =
-          !user &&
-          !item.needsAttention &&
-          Boolean(item.attentionReason) &&
-          attentionReason === item.attentionReason;
+          !user && !item.needsAttention && Boolean(item.attentionReason) && sameRequest;
         const needsAttention =
           input.needsAttention === true && repeatedDismissal
             ? false
@@ -426,6 +429,7 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
             remainingWork,
             needsAttention,
             ...(attentionReason ? { attentionReason } : null),
+            ...(attentionRequestId ? { attentionRequestId } : null),
             state: input.state ?? (automatic && item.state === "open" ? "done" : item.state),
             associations: input.associations ?? item.associations,
           },

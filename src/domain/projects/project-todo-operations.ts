@@ -54,6 +54,7 @@ export function createProjectTodoOperations(
       input.associations,
       input.needsAttention,
       input.attentionReason,
+      input.attentionRequestId,
       input.snoozedUntil,
     ].some((value) => value !== undefined);
     return {
@@ -74,6 +75,7 @@ export function createProjectTodoOperations(
     committed: true as const,
     needsAttention: Boolean(item.needsAttention),
     ...(item.attentionReason ? { attentionReason: item.attentionReason } : null),
+    ...(item.attentionRequestId ? { attentionRequestId: item.attentionRequestId } : null),
     ...(input.snoozedUntil !== undefined ? { snoozedUntil: item.snoozedUntil ?? null } : null),
     ...(input.state === undefined &&
     item.state === "done" &&

@@ -135,6 +135,7 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
     state: item.state,
     needsAttention: Boolean(item.needsAttention),
     ...(item.attentionReason ? { attentionReason: item.attentionReason } : null),
+    ...(item.attentionRequestId ? { attentionRequestId: item.attentionRequestId } : null),
     ...(item.snoozedUntil ? { snoozedUntil: item.snoozedUntil } : null),
     ...(item.remainingWork ? { remainingWork: item.remainingWork } : null),
     revision: item.revision,

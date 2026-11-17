@@ -578,7 +578,7 @@ is a refactoring signal, not precedent.
   This path does not merge, delete, retire checkouts or abort turns. Agent to-do edits and
   attention dismissal, hiding, snoozing or pill deletion never resolve sessions. Each open item may
   persist one explicit UTC `snoozedUntil` deadline, a `needsAttention` flag and a separate
-  bounded, nonempty `attentionReason`. Older saved items may omit attention fields (off);
+  bounded, nonempty `attentionReason`, with optional stable `attentionRequestId` independent of display copy. Older saved items may omit attention fields (off);
   no reason is invented. Four exclusive sections, in order: Needs attention (open, unsnoozed,
   flagged), Active (open, unsnoozed, unflagged), Snoozed (open with a deadline), Done.
   Needs attention shows expanded only when its filtered list is nonempty; when empty, its
@@ -597,8 +597,9 @@ is a refactoring signal, not precedent.
   held reports never ride on unrelated input or timed batches. Explicit reply delivery remains immediate.
   No click completes the item, merges work, resolves sessions, or approves those actions.
   One-step Dismiss clears only the flag, retaining the hidden reason, selection and work state.
-  An agent cannot reactivate an identical retained dismissed reason; genuinely new requests use
-  changed reasons. Explicit user Restore bypasses suppression. Native context menus provide
+  An agent cannot reactivate the retained dismissed request identity, even with changed copy;
+  genuinely new explicit requests use different identities and may share a reason. Requests without
+  identity retain the legacy reason-based guard. Explicit user Restore bypasses suppression. Native context menus provide
   Restore, Mark with a manual reason input, or Edit; no utility-model inference. User attention
   edits enter the existing durable user-change reminder. Completion clears the flag but retains
   the reason; reopening starts Active. Snoozing retains attention and takes visibility precedence;

@@ -11,6 +11,7 @@ import {
   type MessageReadResult,
 } from "../../../src/contracts/conversations/message-reference";
 import { projectTodoLayer } from "./projectTodoHarness";
+import type { ProjectTodos } from "../../../src/contracts/projects/project-todos";
 import { familyStorageHarness } from "./familyStorageHarness";
 import { snapshot } from "./piRuntimeFixture";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
@@ -53,8 +54,10 @@ export const originalPage: MessageReadResult = {
   truncated: false,
 };
 
-export function heldAttentionHarness() {
-  const storage = familyStorageHarness();
+export function heldAttentionHarness(
+  options: { initialTodos?: ProjectTodos; files?: Map<string, string> } = {},
+) {
+  const storage = familyStorageHarness(options.files);
   const submissions: Parameters<CakeSessionHandle["submit"]>[0][] = [];
   const acquired: string[] = [];
   const receipts = new Map<string, "pending" | "consumed" | "canceled">();
@@ -148,7 +151,7 @@ export function heldAttentionHarness() {
     }),
   ).pipe(Layer.provide(handles));
   const layer = Layer.mergeAll(
-    projectTodoLayer(),
+    projectTodoLayer(options),
     unusedMessageLookupLayer,
     storage.layer,
     Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),

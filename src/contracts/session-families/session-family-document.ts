@@ -180,6 +180,7 @@ export const QueuedAttention = Schema.Struct({
   scope: BoundedPath,
   todoId: BoundedId,
   attentionReason: Schema.String,
+  attentionRequestId: Schema.optionalKey(Schema.String),
   reportIds: Schema.Array(BoundedId),
 });
 export interface QueuedAttention extends Schema.Schema.Type<typeof QueuedAttention> {}

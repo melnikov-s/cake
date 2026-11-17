@@ -102,6 +102,7 @@ describe("core coordinator calling reference", () => {
       "associations?",
       "needsAttention?",
       "attentionReason?",
+      "attentionRequestId?",
     ])
       expect(line("todos.update")).toContain(key);
     expect(reference).toContain("Revision conflict: reread");

@@ -24,6 +24,7 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
       "associations",
       "needsAttention",
       "attentionReason",
+      "attentionRequestId",
     ])
   )
     lines.push(
