@@ -1,4 +1,4 @@
-import { useContext, useId, type ReactNode } from "react";
+import { useCallback, useContext, useId, type ReactNode } from "react";
 import { ConversationFocusContext } from "../lib/conversation-focus-context";
 import { observer } from "r-state-tree/react";
 import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
@@ -30,6 +30,15 @@ export const SideChatLayout = observer(function SideChatLayout({
 }) {
   const focusConversation = useContext(ConversationFocusContext);
   const target = hideArtifact && store.target?.artifact ? undefined : store.target;
+  const parentChatStore = target?.chatStore ? target.parentChatStore : undefined;
+  const registerPrimaryVisibility = useCallback(
+    (isVisible: () => boolean) => {
+      // Fullscreen readers share this Store but are dismissed before capture handoff.
+      if (hideArtifact) return () => {};
+      return store.registerPrimaryChatVisibility(() => !parentChatStore && isVisible());
+    },
+    [store, parentChatStore, hideArtifact],
+  );
   const tabId = useId();
   const panelId = `${tabId}-panel`;
   const tabs = store.tabs;
@@ -103,6 +112,7 @@ export const SideChatLayout = observer(function SideChatLayout({
       <AccessoryPanelLayout
         dataSlot="side-chat-layout"
         open={Boolean(target)}
+        registerPrimaryVisibility={registerPrimaryVisibility}
         width={target?.changes?.width ?? store.width}
         resizeLabel={target?.changes ? "Resize changes" : "Resize side chat"}
         onWidthChange={(width) =>

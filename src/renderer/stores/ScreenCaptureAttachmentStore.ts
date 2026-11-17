@@ -339,20 +339,28 @@ export class ScreenCaptureAttachmentStore extends Store<{
       if (context) draft.setText([draft.text, `${name}\n${context}`].filter(Boolean).join("\n\n"));
       // Pixels and draft handoff are complete. Never dismiss captured content on failure/cancel.
       this.props.fullscreen().closeAll();
-      // Ordinary navigation retains inspection. A completed capture must instead reveal
-      // the exact composer that received it, not its retained subagent/secondary panel.
+      // Reveal the destination before deciding whether its accessory hides the composer.
+      // A visible Side Chat is not an obstacle and must not be dismissed by capture.
       const session =
         target.kind === "project-session"
           ? this.props.registry.findSession(target.sessionId)
           : this.props.cakeChat().registry.find(target.sessionId);
-      if (session?.conversationSessionStore.sideChatStore.target)
-        session.conversationSessionStore.sideChatStore.close();
-      const navigation = this.props.navigation();
-      if (target.kind === "project-session") navigation.showLoadedProjectSession(target.sessionId);
-      else await navigation.openCakeChat(target.sessionId);
+      const active = this.props.shell.activeConversation;
+      if (active?.kind !== target.kind || active.sessionId !== target.sessionId) {
+        const navigation = this.props.navigation();
+        if (target.kind === "project-session")
+          navigation.showLoadedProjectSession(target.sessionId);
+        else await navigation.openCakeChat(target.sessionId);
+      }
       WorkspaceNavigatorContext.consume(this)!.showChat();
-      // Fullscreen unmount restores its former focus; request the composer after that cleanup.
+      // Let navigation, responsive layout and fullscreen focus restoration settle first.
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (this.signal.aborted) return;
+      const sideChat = session?.conversationSessionStore.sideChatStore;
+      if (sideChat?.target && !sideChat.primaryChatVisible) {
+        sideChat.close();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
       if (!this.signal.aborted) draft.requestFocus({ explicit: true });
     } catch (error) {
       if (!this.signal.aborted)

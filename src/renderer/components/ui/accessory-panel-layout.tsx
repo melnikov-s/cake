@@ -13,6 +13,7 @@ export function AccessoryPanelLayout({
   children,
   panel,
   onWidthChange,
+  registerPrimaryVisibility,
   dataSlot = "accessory-panel-layout",
 }: {
   open: boolean;
@@ -21,6 +22,7 @@ export function AccessoryPanelLayout({
   children: ReactNode;
   panel: ReactNode;
   onWidthChange(width: number): void;
+  registerPrimaryVisibility?(isVisible: () => boolean): () => void;
   dataSlot?: string;
 }) {
   const layoutRef = useRef<HTMLDivElement>(null);
@@ -37,6 +39,19 @@ export function AccessoryPanelLayout({
   }, []);
 
   const sideBySide = open && availableWidth >= SIDE_BY_SIDE_MIN_WIDTH;
+  useLayoutEffect(
+    () =>
+      registerPrimaryVisibility?.(
+        // Read current geometry: revealing a hidden companion precedes ResizeObserver delivery.
+        () => {
+          const layout = layoutRef.current;
+          return Boolean(
+            layout && (!open || layout.getBoundingClientRect().width >= SIDE_BY_SIDE_MIN_WIDTH),
+          );
+        },
+      ),
+    [registerPrimaryVisibility, open],
+  );
   const maximumWidth = Math.max(MIN_PANEL_WIDTH, availableWidth * 0.6);
   const panelWidth = Math.min(maximumWidth, Math.max(MIN_PANEL_WIDTH, width));
   const style: CSSProperties &

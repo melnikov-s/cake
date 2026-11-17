@@ -76,6 +76,19 @@ export interface SideChatStoreProps {
 /** Owns one session’s transient accessory selection and shared secondary-pane width. */
 export class SideChatStore extends Store<SideChatStoreProps> {
   target: SideChatTarget | undefined;
+  private primaryChatVisibility: (() => boolean) | undefined;
+
+  /** Query the mounted layout, not stale geometry from before a hidden companion was revealed. */
+  get primaryChatVisible() {
+    return this.primaryChatVisibility?.() ?? false;
+  }
+
+  registerPrimaryChatVisibility(isVisible: () => boolean) {
+    this.primaryChatVisibility = isVisible;
+    return () => {
+      this.primaryChatVisibility = undefined;
+    };
+  }
   width = 416;
   resolving = false;
   resolutionError: string | undefined;

@@ -18,7 +18,12 @@ import { ScreenCaptureOverlay } from "../../../src/renderer/components/screen-ca
 import { ScreenCaptureOverlayStore } from "../../../src/renderer/stores/ScreenCaptureOverlayStore";
 import { createTestClient } from "./test-client";
 import { App } from "../../../src/renderer/components/app";
-import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import {
+  applyConversationUpdate,
+  applyDiscussionSessionUpdate,
+} from "../../../src/renderer/reducers/ConversationReducer";
+import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
+import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import { applySubagentUpdate } from "../../../src/renderer/reducers/SubagentReducer";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -241,7 +246,18 @@ function expectExistingDraft() {
   if (!(input instanceof HTMLTextAreaElement)) throw new Error("Expected chat composer");
   expect(input.value).toBe("Existing draft");
 }
+let captureChatWidth = 1200;
 beforeEach(() => {
+  captureChatWidth = 1200;
+  const measure = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      const rect = measure.call(this);
+      return this.getAttribute("data-slot") === "side-chat-layout"
+        ? { ...rect, width: captureChatWidth }
+        : rect;
+    },
+  );
   vi.stubGlobal("PointerEvent", MouseEvent);
   Object.defineProperty(SVGElement.prototype, "getBBox", {
     configurable: true,
@@ -340,6 +356,116 @@ async function inspectCaptureWorker(
 }
 
 describe("Screen capture attachment destinations", () => {
+  it.each(
+    (["project-session", "cake-chat"] as const).flatMap((kind) =>
+      (["normal", "browser", "vscode"] as const).flatMap((mode) =>
+        [1200, 600].map((width) => ({ kind, mode, width })),
+      ),
+    ),
+  )(
+    "reveals the $kind composer in $mode at $width px without dismissing a visible human Side Chat",
+    async ({ kind, mode, width }) => {
+      captureChatWidth = width;
+      const destination = { kind, sessionId: kind === "cake-chat" ? projectChatId : "alpha" };
+      using fixture = renderCapture(async () => ({
+        annotationColor: "pink",
+        capture: { data: png, annotationText: "", destination },
+      }));
+      const owner =
+        kind === "cake-chat"
+          ? fixture.root.cakeChatCollectionStore.registry.find(projectChatId)!
+          : fixture.root.sessionRegistry.findSession("alpha")!;
+      const thread: DiscussionThread = {
+        id: "capture-side-chat",
+        title: "Human Side Chat",
+        sidecarSessionId: "capture-sidecar",
+        parentSessionId: destination.sessionId,
+        workingDirectory: "/project",
+        anchor: {
+          path: `session:${destination.sessionId}`,
+          view: "session",
+          start: { diffLine: 0 },
+          end: { diffLine: 0 },
+          selectedText: "",
+          contextBefore: "",
+          contextAfter: "",
+          diff: "",
+        },
+        parts: [],
+        status: "open",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      };
+      await act(async () => {
+        applyDiscussionSessionUpdate(
+          fixture.models.discussionConversation(
+            "capture-sidecar",
+            "/project",
+            destination.sessionId,
+          ),
+          "capture-sidecar",
+          {
+            _tag: "Snapshot",
+            revision: 1,
+            snapshot: {
+              identity: {
+                _tag: "DiscussionSession",
+                sessionId: "capture-sidecar",
+                parentSessionId: destination.sessionId,
+              },
+              conversation: emptyConversation("capture-sidecar"),
+            },
+          },
+        );
+        applyDiscussionCatalogUpdate(
+          fixture.models.discussionCatalog(destination.sessionId),
+          destination.sessionId,
+          {
+            _tag: "Snapshot",
+            revision: 1,
+            parentSessionId: destination.sessionId,
+            threads: [thread],
+          },
+        );
+        if (kind === "cake-chat") await fixture.root.navigationStore.openCakeChat(projectChatId);
+        else fixture.select("alpha");
+        owner.showPresentation(mode);
+        fixture.root.workspaceNavigatorStore.showChat();
+      });
+      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+      await fixture.user.click(
+        within(screen.getByRole("dialog", { name: "Open side chats" })).getByRole("button", {
+          name: "Human Side Chat",
+        }),
+      );
+      const sideChat = owner.conversationSessionStore.sideChatStore;
+      const panel = sideChat.target;
+      const sideInput = within(
+        screen.getByRole("complementary", { name: "Human Side Chat" }),
+      ).getByRole("combobox");
+      await fixture.user.type(sideInput, "Retained side draft");
+      expect(sideChat.primaryChatVisible).toBe(width >= 860);
+      const draft = owner.conversationSessionStore.composerStore.draftStore;
+      const beforeFocus = draft.focusRequestRevision;
+      await act(() => fixture.capture.capture());
+      expect(fixture.root.appShellStore.activeConversation).toEqual(destination);
+      expect(owner.presentationMode).toBe(mode);
+      expect(draft.attachments).toEqual([expect.objectContaining({ kind: "image", data: png })]);
+      expect(draft.focusRequestRevision).toBeGreaterThan(beforeFocus);
+      expect(sideChat.target).toBe(width >= 860 ? panel : undefined);
+      expect(panel?.chatStore?.draft).toBe("Retained side draft");
+      expect(fixture.models.discussionCatalog(destination.sessionId).threads[0]?.status).toBe(
+        "open",
+      );
+      expect(
+        screen.getByRole("combobox", {
+          name: kind === "cake-chat" ? "Message Project Chat" : "Message",
+        }),
+      ).toBeDefined();
+      expect(fixture.prompt).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     { label: "Project Chat", kind: "cake-chat", sessionId: projectChatId },
     { label: "global Cake Chat", kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID },
