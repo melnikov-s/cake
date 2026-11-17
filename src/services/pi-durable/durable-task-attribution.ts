@@ -13,6 +13,7 @@ import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import { durableInputPresentation, type DurableTaskContext } from "./durable-input-presentation";
 import { isAutomaticInput } from "../pi/runtime/internal-input-projection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { visibleTaskAttributionContent } from "../pi/runtime/task-attribution-presentation";
 
 /** Identity-only presentation metadata. Originals remain the only transcript. */
 export const TaskAttributionDoc = defineDoc<{
@@ -44,20 +45,9 @@ const Decision = Schema.Struct({
   todoId: Schema.NullOr(Schema.String.check(Schema.isUUID(4))),
   newTopic: Schema.optionalKey(Schema.Boolean),
 });
-const OPEN = "<cake-todo>";
-
-/** Also withhold split opening tags and incomplete metadata on interruption. */
-function visibleText(value: string): string {
-  const clean = value.replace(/<cake-todo>[\s\S]*?(?:<\/cake-todo>|$)/g, "");
-  for (let n = OPEN.length - 1; n > 0; n -= 1)
-    if (clean.endsWith(OPEN.slice(0, n))) return clean.slice(0, -n);
-  return clean;
-}
-const visibleMessage = (message: AssistantMessage): AssistantMessage => ({
+const visibleMessage = (message: AssistantMessage, streaming = false): AssistantMessage => ({
   ...message,
-  content: message.content.map((block) =>
-    block.type === "text" ? { ...block, text: visibleText(block.text) } : block,
-  ),
+  content: visibleTaskAttributionContent(message.content, streaming),
 });
 
 /** One normal provider request, no scheduler, model call, history replay or tool round. */
@@ -126,7 +116,9 @@ export async function prepareTaskAttribution(options: {
         event.type === "error"
           ? ""
           : (text.match(/^(?:\s*<cake-todo>[\s\S]*?<\/cake-todo>)*/)?.[0] ?? "");
-      responseStarted = visibleText(text).trim().length > 0;
+      responseStarted = visibleMessage(message, true).content.some(
+        (block) => block.type === "text" && block.text.trim().length > 0,
+      );
       const decisions = new Map<string, Array<Schema.Schema.Type<typeof Decision>>>();
       for (const match of prefix.matchAll(/<cake-todo>([\s\S]*?)<\/cake-todo>/g)) {
         const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Decision))(match[1]);
@@ -177,8 +169,8 @@ export async function prepareTaskAttribution(options: {
         }, BACKGROUND_CONTEXT);
     }
     if (event.type === "done") return { ...event, message: visibleMessage(event.message) };
-    if (event.type === "error") return { ...event, error: visibleMessage(event.error) };
-    const partial = visibleMessage(event.partial);
+    if (event.type === "error") return { ...event, error: visibleMessage(event.error, true) };
+    const partial = visibleMessage(event.partial, true);
     if (event.type === "text_delta") {
       const block = partial.content[event.contentIndex];
       const text = block?.type === "text" ? block.text : "";
@@ -186,8 +178,10 @@ export async function prepareTaskAttribution(options: {
       lengths.set(event.contentIndex, text.length);
       return { ...event, partial, delta };
     }
-    if (event.type === "text_end")
-      return { ...event, partial, content: visibleText(event.content) };
+    if (event.type === "text_end") {
+      const block = partial.content[event.contentIndex];
+      return { ...event, partial, content: block?.type === "text" ? block.text : "" };
+    }
     return { ...event, partial };
   };
 }

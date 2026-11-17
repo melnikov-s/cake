@@ -24,6 +24,7 @@ test("Project Chat preserves explicit attention context without overriding norma
   const userData = join(root, "user-data");
   const requests: Array<{ response: ServerResponse; turnId: string; text: string }> = [];
   const server = createServer(async (request, response) => {
+    // SAFETY: this isolated fixture accepts only OpenAI requests from Cake's test provider.
     const body = JSON.parse(Buffer.concat(await request.toArray()).toString()) as {
       messages: Array<{ role: string; content: string | Array<{ text?: string }> | null }>;
     };
@@ -189,6 +190,11 @@ test("Project Chat preserves explicit attention context without overriding norma
         )
         .toBe(`Show in To-do: ${title}`);
     };
+    const openAttention = async (title: string) => {
+      const section = page.getByRole("button", { name: /^Needs attention · \d+ to-dos$/ });
+      if ((await section.getAttribute("aria-expanded")) === "false") await section.click();
+      await page.getByRole("button", { name: `Open attention: ${title}`, exact: true }).click();
+    };
     const choices = [A, "missing", "invalid", B, null, A] as const;
     const topics = [
       "Investigate startup",
@@ -213,7 +219,11 @@ test("Project Chat preserves explicit attention context without overriding norma
             ? '<cake-todo>{"turnId":"invalid","todoId":null}</cake-todo>'
             : `<cake-todo>${JSON.stringify({ turnId, todoId: choice })}</cake-todo>`;
       const answer = `Answer ${index + 1}`;
-      response.write(chunk(prefix + answer));
+      if (index === 0) {
+        // Exercise withheld opening/body/closing fragments through the real SSE provider.
+        for (const char of prefix) response.write(chunk(char));
+        response.write(chunk(answer));
+      } else response.write(chunk(prefix + answer));
       await expect(transcript.getByText(answer, { exact: true })).toBeVisible();
       const assigned = choice === A || choice === B;
       if (assigned) {
@@ -230,7 +240,9 @@ test("Project Chat preserves explicit attention context without overriding norma
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
       await expect(row(topic).locator('[data-slot="margin-rail"]')).toHaveCount(assigned ? 1 : 0);
       await expect(transcript).not.toContainText("cake-todo");
-      if (index === 2 || index === choices.length - 1) {
+      await expect(transcript).not.toContainText('"turnId"');
+      await expect(transcript).not.toContainText('"todoId"');
+      if (index === 0 || index === 2 || index === choices.length - 1) {
         await page.waitForFunction(() => document.fonts.status === "loaded");
         await page.mouse.move(1, 1);
         await page.screenshot({
@@ -238,15 +250,17 @@ test("Project Chat preserves explicit attention context without overriding norma
           path: join(
             repository,
             ".visual-captures",
-            index === 2 ? "task-attribution-missing.png" : "task-attribution-return.png",
+            index === 0
+              ? "task-attribution-fragmented.png"
+              : index === 2
+                ? "task-attribution-missing.png"
+                : "task-attribution-return.png",
           ),
         });
       }
     }
     // Reproduce A -> open B -> reply: even stale A metadata cannot undo explicit selection.
-    await page
-      .getByRole("button", { name: "Open attention: Navigation improvements", exact: true })
-      .click();
+    await openAttention("Navigation improvements");
     await expect(
       transcript.getByText("Review the selected task's recommendation", { exact: true }),
     ).toBeVisible();
@@ -278,9 +292,7 @@ test("Project Chat preserves explicit attention context without overriding norma
       animations: "disabled",
       path: join(repository, ".visual-captures", "task-context-attention-followups.png"),
     });
-    await page
-      .getByRole("button", { name: "Open attention: Renderer review", exact: true })
-      .click();
+    await openAttention("Renderer review");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
     await composer.fill("Proceed with the renderer review");
     await composer.press("Enter");

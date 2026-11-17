@@ -1,4 +1,5 @@
 import { widgetItemPart } from "../../../utils/widget-item-parts";
+import { visibleTaskAttributionContent } from "./task-attribution-presentation";
 import { parseSkillBlock, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { Tool } from "@earendil-works/pi-ai";
 import { Option, Schema } from "effect";
@@ -324,7 +325,10 @@ export function partsFromMessage(
       response = undefined;
       return current;
     };
-    const parts = content.flatMap((item, index): UiPart[] => {
+    const parts = visibleTaskAttributionContent(
+      content,
+      streaming || stopReason === "aborted" || stopReason === "error",
+    ).flatMap((item, index): UiPart[] => {
       if (typeof item !== "object" || item === null) return [];
       const type = Reflect.get(item, "type");
       if (type === "text") {

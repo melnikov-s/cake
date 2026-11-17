@@ -5,7 +5,10 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createDurableSideChats } from "../../../../src/services/pi-durable/durable-side-chats";
-import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatConversationId,
+} from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId } from "../../../../src/domain/cake-chats/cakeChatLocations";
 import {
   createRegistry,
@@ -17,6 +20,7 @@ import {
   UserEntry,
   AssistantEntry,
   ResetEntry,
+  type ConversationId,
 } from "@earendil-works/pi-durable";
 import {
   Type,
@@ -46,12 +50,13 @@ import {
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import type { ProjectTodo } from "../../../../src/contracts/projects/project-todos";
 import { partsFromMessage } from "../../../../src/services/pi/runtime/message-projection";
+import { textFromContent } from "../../../../src/services/pi/runtime/tool-projection";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
 const A = "00000000-0000-4000-8000-000000000001";
 const B = "00000000-0000-4000-8000-000000000002";
 const context = BACKGROUND_CONTEXT;
-const cleanup: Array<() => Promise<unknown>> = [];
+const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
@@ -66,13 +71,7 @@ const todo = (id: string): ProjectTodo => ({
 });
 const turnIds = (request: Context) =>
   request.messages
-    .flatMap((message) =>
-      message.role !== "user"
-        ? []
-        : typeof message.content === "string"
-          ? [message.content]
-          : message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])),
-    )
+    .flatMap((message) => (message.role === "user" ? [textFromContent(message.content)] : []))
     .flatMap((text) => [...text.matchAll(/<cake-turn id="([^"]+)"\/>/g)].map((match) => match[1]));
 const metadata = (turnId: string, todoId: string | null) =>
   `<cake-todo>${JSON.stringify({ turnId, todoId })}</cake-todo>`;
@@ -953,6 +952,173 @@ it.each(["toolUse", "length"] as const)(
     await submission.wait(context);
   },
 );
+
+it("filters character-sized text blocks in all event fields without losing attribution", async () => {
+  const f = await fixture();
+  const held = f.hold();
+  const submission = await f.submit("Startup");
+  const request = await held.started;
+  const project = await prepareTaskAttribution({
+    conversation: f.engine.root,
+    harness: f.engine.harness,
+    storage: f.engine.storage,
+    signal: new AbortController().signal,
+    todos: () => [todo(A)],
+  });
+  const prefix = metadata(turnIds(request).at(-1)!, A);
+  const wire = prefix + "Answer";
+  let deltas = "";
+  for (let length = 1; length <= wire.length; length += 1) {
+    const content = Array.from(wire.slice(0, length), (text) => ({ type: "text" as const, text }));
+    const partial = durableAnswer("", content);
+    const contentIndex = content.length - 1;
+    const started = await project({ type: "text_start", contentIndex, partial });
+    const delta = await project({
+      type: "text_delta",
+      contentIndex,
+      delta: wire.charAt(length - 1),
+      partial,
+    });
+    const ended = await project({
+      type: "text_end",
+      contentIndex,
+      content: wire.charAt(length - 1),
+      partial,
+    });
+    if (delta.type !== "text_delta" || ended.type !== "text_end") throw new Error("Wrong event");
+    deltas += delta.delta;
+    expect(ended.content).toBe(delta.delta);
+    for (const event of [started, delta, ended]) {
+      if (!("partial" in event)) throw new Error("Missing partial");
+      expect(
+        event.partial.content
+          .flatMap((block) => (block.type === "text" ? [block.text] : []))
+          .join(""),
+      ).toBe(wire.slice(prefix.length, length));
+    }
+    if (length > prefix.length)
+      expect(Object.values((await f.doc())?.inputs ?? {})[0]).toMatchObject({
+        pending: false,
+        todoId: A,
+      });
+  }
+  expect(deltas).toBe("Answer");
+  const message = durableAnswer(
+    "",
+    [...wire].map((text) => ({ type: "text" as const, text })),
+  );
+  for (const event of [
+    await project({ type: "done", reason: "stop", message }),
+    await project({
+      type: "error",
+      reason: "aborted",
+      error: { ...message, stopReason: "aborted" },
+    }),
+  ]) {
+    const visible =
+      event.type === "done" ? event.message : event.type === "error" ? event.error : undefined;
+    expect(
+      visible?.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join(""),
+    ).toBe("Answer");
+  }
+  held.finish(request, A);
+  await submission.wait(context);
+});
+
+it("filters raw persisted fragmented metadata after SQLite reopen without modifying originals", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-fragmented-attribution-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "chat.sqlite");
+  const f = await fixture(database);
+  const prefix = metadata(A, B);
+  const message = durableAnswer("", [
+    { type: "text", text: prefix.slice(0, 4) },
+    { type: "text", text: prefix.slice(4, 23) },
+    { type: "text", text: prefix.slice(23) + 'Answer {"keep":true}' },
+  ]);
+  await f.engine.root.commit(async (tx) => {
+    await tx.appendEntry(AssistantEntry, f.engine.root.id, { model: [message] });
+  }, context);
+  await f.close();
+  const reopened = await fixture(database);
+  expect((await reopened.page()).parts.filter((part) => part.kind === "text")).toMatchObject([
+    { text: 'Answer {"keep":true}' },
+  ]);
+  const originals = await reopened.engine.root.entries({}, 200, undefined, context);
+  expect(originals.items.find((entry) => entry.kind === "pi.assistant")?.model).toEqual([message]);
+  expect(reopened.requests).toHaveLength(0);
+});
+
+it("filters Side Chat live/history/reopen when a request bypasses attribution processing", async () => {
+  const f = await fixture();
+  await f.send("Startup");
+  const sideChats = createDurableSideChats({
+    harness: f.engine.harness,
+    root: f.engine.root,
+    storage: f.engine.storage,
+    sessionFile: "/fixture/chat.sqlite",
+    catalog: { getModel: () => durableModel },
+    settings: SettingsManager.inMemory(),
+    models: () => [],
+    fastMode: () => false,
+  });
+  const sessionId = await sideChats.fork();
+  const id = cakeChatSideChatConversationId(sessionId);
+  if (id === undefined) throw new Error("Missing fixture fork");
+  // SAFETY: the identity parser validates a nonnegative Durable conversation ID.
+  const fork = await f.engine.harness.conversation(id as ConversationId, context);
+  if (!fork) throw new Error("Missing fixture fork conversation");
+  const open = () =>
+    sideChats.open({
+      sessionId,
+      cwd: "/fixture",
+      agentDir: "/agent",
+      sessionDir: "/sessions",
+      requestUi: async () => undefined,
+      onEvent: () => {},
+    });
+  const side = await open();
+  const prefix = metadata(A, B);
+  const message = durableAnswer("", [
+    { type: "text", text: prefix.slice(0, 4) },
+    { type: "text", text: prefix.slice(4, 25) },
+    { type: "text", text: prefix.slice(25) + 'Side answer {"keep":true}' },
+  ]);
+  try {
+    const held = f.hold();
+    // No cake-input-presentation target: exercises the confirmed provider bypass
+    // in this isolated fixture, not a human Side Chat in the running application.
+    const submission = await fork.submit({ type: "input", content: "Fixture input" }, context);
+    await held.started;
+    held.stream.push({ type: "start", partial: message });
+    await vi.waitFor(async () => {
+      const snapshot = await side.snapshot();
+      expect(snapshot.parts).toContainEqual(
+        expect.objectContaining({ text: 'Side answer {"keep":true}', status: "streaming" }),
+      );
+      expect(JSON.stringify(snapshot.parts)).not.toContain("cake-todo");
+    });
+    held.stream.push({ type: "done", reason: "stop", message });
+    await submission.wait(context);
+    expect(JSON.stringify((await side.snapshot()).parts)).not.toContain("cake-todo");
+    expect(JSON.stringify((await readDurableOriginalPage(fork)).parts)).not.toContain("cake-todo");
+    const originals = await fork.entries({}, 200, undefined, context);
+    expect(originals.items.some((entry) => JSON.stringify(entry.model).includes("cake-todo"))).toBe(
+      true,
+    );
+  } finally {
+    await side.dispose();
+  }
+  const reopened = await open();
+  try {
+    expect((await reopened.snapshot()).parts).toContainEqual(
+      expect.objectContaining({ text: 'Side answer {"keep":true}' }),
+    );
+    expect(JSON.stringify((await reopened.snapshot()).parts)).not.toContain("cake-todo");
+  } finally {
+    await reopened.dispose();
+  }
+});
 
 it("settles missing metadata before forwarding streamed prose and rejects a later prefix", async () => {
   const f = await fixture();
