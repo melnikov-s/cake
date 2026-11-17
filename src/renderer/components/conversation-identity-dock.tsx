@@ -32,7 +32,7 @@ export const ConversationIdentityDock = observer(function ConversationIdentityDo
       >
         <div
           data-slot="conversation-identity-tab"
-          className="pointer-events-auto h-7 min-w-0 max-w-full rounded-lg border border-border/65 bg-popover/95 px-2 shadow-sm backdrop-blur-md"
+          className="pointer-events-auto h-7 min-w-0 max-w-xl rounded-lg border border-border/65 bg-popover/95 px-2 shadow-sm backdrop-blur-md"
         >
           <ConversationBreadcrumb
             sessionId={sessionId}

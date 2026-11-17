@@ -159,7 +159,7 @@ export function createConversationIdentityScenario(
         expect(geometry.positionerPointerEvents).toBe("none");
         expect(geometry.tabPointerEvents).toBe("auto");
         expect(geometry.outsideHitsPositioner).toBe(false);
-        expect(geometry.width).toBeLessThanOrEqual(geometry.columnWidth - 32);
+        expect(geometry.width).toBeLessThanOrEqual(Math.min(576, geometry.columnWidth - 32));
         if (state === "short-title") expect(geometry.width).toBeLessThan(geometry.columnWidth / 2);
         expect(geometry.inside).toBe(true);
         expect(geometry.chatBeforeTab).toBe(true);
