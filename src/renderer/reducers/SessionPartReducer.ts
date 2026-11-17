@@ -25,6 +25,31 @@ export function removePart(parts: Message[], partId: string) {
   if (index >= 0) parts.splice(index, 1);
 }
 
+/** Omit already-equal fields, retaining IDs for the snapshot loader's keyed reconciliation. */
+export function messageSnapshotChanges(
+  parts: ReadonlyArray<typeof uiPartSchema.Type>,
+  ownerId: string,
+  currentParts: readonly Message[],
+): Snapshot<Message>[] {
+  const snapshots = messageSnapshots(parts, ownerId);
+  if (!currentParts.length) return snapshots;
+  const currentById = new Map(currentParts.map((part) => [part.id, part]));
+  for (const [index, snapshot] of snapshots.entries()) {
+    const current = snapshot.id == null ? undefined : currentById.get(snapshot.id);
+    if (!current) continue;
+    // Only prune exact equality. Nested JSON still goes through the normal
+    // snapshot codec, including its in-place hydration and rollback semantics.
+    const changes: Snapshot<Message> = { id: snapshot.id };
+    // SAFETY: these are own keys of the freshly mapped Message snapshot.
+    for (const key of Object.keys(snapshot) as Array<keyof Snapshot<Message>>) {
+      if (key !== "id" && !Object.is(current[key], snapshot[key]))
+        Reflect.set(changes, key, snapshot[key]);
+    }
+    snapshots[index] = changes;
+  }
+  return snapshots;
+}
+
 export function messageSnapshots(
   parts: ReadonlyArray<typeof uiPartSchema.Type>,
   ownerId: string,

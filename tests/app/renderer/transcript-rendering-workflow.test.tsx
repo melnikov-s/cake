@@ -38,6 +38,22 @@ afterEach(() => {
 // fullscreen readers belong to message-selection/side-chat-streaming Electron
 // suites. This suite does not fabricate those layout or native-event contracts.
 describe("Projected transcript rendering workflows", () => {
+  it("keeps mounted message content through equal snapshots and renders later authoritative changes", () => {
+    using fixture = renderTranscriptRendering([user, answer]);
+    const original = screen.getByText(answer.text);
+    fixture.publish(structuredClone([user, answer]));
+    expect(screen.getByText(answer.text)).toBe(original);
+    fixture.publish([
+      { ...user, renderAs: "markdown" },
+      { ...answer, text: "Changed authoritative answer" },
+    ]);
+    expect(screen.queryByText(answer.text)).toBeNull();
+    expect(screen.getByText("Changed authoritative answer")).toBeDefined();
+    expect(fixture.container.querySelector('[data-slot="message-content"] h1')).not.toBeNull();
+    fixture.publish([user, { ...answer, text: "Changed authoritative answer" }]);
+    expect(fixture.container.querySelector('[data-slot="message-content"] h1')).toBeNull();
+  });
+
   it.each([undefined, "markdown"] as const)(
     "copies the original user text with renderAs=%s without changing its presentation",
     async (renderAs) => {

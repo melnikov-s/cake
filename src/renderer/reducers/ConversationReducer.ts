@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { applySnapshot, batch, type Snapshot } from "r-state-tree";
+import { applySnapshot, batch, untracked, type Snapshot } from "r-state-tree";
 import type {
   ConversationEvent,
   ConversationSnapshot,
@@ -17,7 +17,7 @@ import { projectionId } from "../../utils/projection-id";
 import { modelOptionKey } from "../../utils/model-option-key";
 import type { Conversation } from "../models/Conversation";
 import { applyConversationCatalog } from "./ConversationCatalogReducer";
-import { applyPartUpdate, messageSnapshots, removePart } from "./SessionPartReducer";
+import { applyPartUpdate, messageSnapshotChanges, removePart } from "./SessionPartReducer";
 
 export function applyConversationUpdate(model: Conversation, update: ConversationUpdate) {
   if (update._tag === "Snapshot" || update._tag === "Preview") {
@@ -120,7 +120,7 @@ export function applyConversationSnapshot(
     ...conversation,
     workspacePath: "",
   });
-  const authoritative = conversationSnapshot(parsed);
+  const authoritative = untracked(() => conversationSnapshot(parsed, model));
   batch(() => {
     // A live snapshot is a bounded recent window. Retain evicted originals only
     // after the user explicitly loaded history; ordinary observation stays bounded.
@@ -230,12 +230,15 @@ function applyExtensionUiEvent(
     extensionUi.compatibilityDiagnostics.push(event.diagnostic);
 }
 
-function conversationSnapshot(parsed: RuntimeConversationSnapshot): Snapshot<Conversation> {
+function conversationSnapshot(
+  parsed: RuntimeConversationSnapshot,
+  model: Conversation,
+): Snapshot<Conversation> {
   return {
     sessionId: parsed.sessionId,
     sessionFile: parsed.sessionFile,
     historyCursor: parsed.historyCursor,
-    parts: messageSnapshots(parsed.parts, parsed.sessionId),
+    parts: messageSnapshotChanges(parsed.parts, parsed.sessionId, model.parts),
     model: parsed.model ? { id: modelOptionKey(parsed.model) } : undefined,
     preset: parsed.preset,
     fastMode: parsed.fastMode ?? false,
