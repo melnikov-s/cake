@@ -242,6 +242,11 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
       : undefined;
   }
 
+  /** Preserve occurrence correlation when a new side chat acquires its own Store. */
+  transferTo(target: OptimisticUserMessagesStore) {
+    target.pending.push(...this.pending.splice(0));
+  }
+
   clear() {
     this.pending.splice(0);
   }

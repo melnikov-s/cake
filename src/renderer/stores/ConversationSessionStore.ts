@@ -261,7 +261,11 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       inputLabel: capabilities.inputLabel,
       canSubmit: () => this.canSubmit,
       submit: (_draft, options) =>
-        this.composerStore.submit(undefined, options?.renderUserMessageAsMarkdown ?? false),
+        this.composerStore.submit(
+          undefined,
+          options?.renderUserMessageAsMarkdown ?? false,
+          options?.onSubmitted,
+        ),
       userMessagePresentation: {
         setMarkdown: (entryId, renderAsMarkdown) =>
           this.client.sessionChats.setUserMessageMarkdown(

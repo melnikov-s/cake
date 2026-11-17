@@ -647,7 +647,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         // which carries the shared queue, stop, and reply behavior.
         const sideChat = this.conversationSessionStore.sideChatStore;
         if (sideChat.target?.chatStore !== this.messageCommentsStore.draftChatStore) return;
-        this.openSideChat(threadId);
+        // Keep the submitted input visible while catalog/sidecar hydration catches up.
+        this.pendingSideChatThreadId = threadId;
+        this.pendingSideChatTarget = sideChat.target;
+        this.showSideChat(threadId);
       },
     });
   }

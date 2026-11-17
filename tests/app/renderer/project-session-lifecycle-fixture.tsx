@@ -168,9 +168,13 @@ export function renderProjectSelectionLifecycle(start: Client["discussionSession
   let revision = 0;
   return {
     user: userEvent.setup(),
-    async publishThread(thread: DiscussionThread) {
+    async publishThread(
+      thread: DiscussionThread,
+      parts: ConversationSnapshot["parts"] = [],
+      observed = true,
+    ) {
       await act(async () => {
-        if (thread.sidecarSessionId)
+        if (thread.sidecarSessionId && observed)
           applyDiscussionSessionUpdate(
             fixture.models.discussionConversation(thread.sidecarSessionId, "/project"),
             thread.sidecarSessionId,
@@ -183,7 +187,7 @@ export function renderProjectSelectionLifecycle(start: Client["discussionSession
                   sessionId: thread.sidecarSessionId,
                   parentSessionId: "parent",
                 },
-                conversation: conversation(thread.sidecarSessionId),
+                conversation: { ...conversation(thread.sidecarSessionId), parts },
               },
             },
           );

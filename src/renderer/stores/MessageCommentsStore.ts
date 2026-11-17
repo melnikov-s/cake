@@ -4,7 +4,8 @@ import type { Annotation } from "../../contracts/conversations/session-contract"
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
-import { AnnotationDraftStore } from "./AnnotationDraftStore";
+import { SideChatDraftSubmissionStore } from "./SideChatDraftSubmissionStore";
+import type { DiscussionSessionStore } from "./DiscussionSessionStore";
 
 /**
  * The Discussion Session workflow that owns a parent's message side chats:
@@ -15,6 +16,8 @@ export interface MessageSideChatHost {
   readonly error: string | undefined;
   readonly errorDetails: string | undefined;
   chatStore(threadId: string): ChatStore | undefined;
+  readonly discussionSessions: DiscussionSessionStore[];
+  discussionSession(threadId: string): DiscussionSessionStore | undefined;
   createThread(
     anchor: ReviewAnchor,
     body: string,
@@ -67,8 +70,6 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   }
 
   prepareDraft(selection: MessageSelectionAnchor) {
-    this.draftChatStore.setDraft("");
-    this.annotationDraft.clear();
     this.draftSelection = selection;
     this.sessionDraft = false;
     this.createdThreadId = undefined;
@@ -77,8 +78,6 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
 
   /** A Project Session can discuss its whole conversation without a selection. */
   prepareSessionDraft() {
-    this.draftChatStore.setDraft("");
-    this.annotationDraft.clear();
     this.draftSelection = undefined;
     this.sessionDraft = true;
     this.createdThreadId = undefined;
@@ -86,8 +85,21 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   }
 
   @child
-  get annotationDraft(): AnnotationDraftStore {
-    return createStore(AnnotationDraftStore);
+  get draftSubmission(): SideChatDraftSubmissionStore {
+    return createStore(SideChatDraftSubmissionStore, {
+      key: `${this.props.context()?.sessionId}:${this.draftFocusRequestRevision}`,
+      create: (text, annotations) => this.createThread(this.draftSelection, text, annotations),
+      requestTarget: (threadId) => {
+        this.props.host().discussionSession(threadId);
+      },
+      target: (threadId) =>
+        this.props.host().discussionSessions.find((session) => session.threadId === threadId)
+          ?.conversationSessionStore.composerStore.deliveryStore.optimisticUserMessages,
+    });
+  }
+
+  get annotationDraft() {
+    return this.draftSubmission.draft.annotationDraft;
   }
 
   @child
@@ -97,7 +109,8 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       id: () => "message-comment-draft",
       parts: () => {
         const selection = this.draftSelection;
-        if (!selection) return [];
+        const pending = this.draftSubmission.parts;
+        if (!selection) return pending;
         return [
           {
             id: `selection:${selection.messageId}:${selection.startOffset}:${selection.endOffset}`,
@@ -106,12 +119,16 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
             text: selection.selectedText,
             status: "complete" as const,
           },
+          ...pending,
         ];
       },
       streaming: () => false,
       // Once the thread exists its own conversation Store takes over the side
       // chat; the draft only bridges the moment until the catalog lists it.
-      submitting: () => Boolean(this.createdThreadId),
+      submitting: () => this.draftSubmission.submitting || Boolean(this.createdThreadId),
+      composerDraft: () => this.draftSubmission.draft,
+      draft: () => this.draftSubmission.draft.text,
+      setDraft: (text) => this.draftSubmission.draft.setText(text),
       configuration: () => this.props.host().configuration,
       commands: () => [],
       placeholder: () =>
@@ -127,19 +144,19 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
           !this.createdThreadId &&
           (draft.trim() || this.annotationDraft.annotations.length),
         ),
-      submit: async (draft) => {
+      submit: async (_draft, options) => {
         if ((!this.draftSelection && !this.sessionDraft) || this.createdThreadId) return false;
         const revision = this.draftFocusRequestRevision;
-        const threadId = await this.createThread(
-          this.draftSelection,
-          draft,
-          this.annotationDraft.annotations,
-        );
-        if (this.signal.aborted || revision !== this.draftFocusRequestRevision)
+        const submission = this.draftSubmission;
+        const threadId = await submission.submit(options?.onSubmitted);
+        if (
+          this.signal.aborted ||
+          submission.signal.aborted ||
+          revision !== this.draftFocusRequestRevision
+        )
           return Boolean(threadId);
         this.createdThreadId = threadId;
         if (threadId) {
-          this.annotationDraft.clear();
           this.props.onThreadCreated?.(threadId);
         }
         return Boolean(threadId);
@@ -149,8 +166,8 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       updateAnnotation: (id, update) => this.annotationDraft.update(id, update),
       removeAnnotation: (id) => this.annotationDraft.remove(id),
       error: () => ({
-        message: this.props.host().error,
-        details: this.props.host().errorDetails,
+        message: this.draftSubmission.draft.error ?? this.props.host().error,
+        details: this.draftSubmission.draft.errorDetails ?? this.props.host().errorDetails,
       }),
     });
   }

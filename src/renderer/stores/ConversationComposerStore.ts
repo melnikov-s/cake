@@ -122,7 +122,11 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     return Boolean(this.deliveryStore.editingEntryId || this.pendingSessionDraftStore.editing);
   }
 
-  async submit(deliveryOverride?: "steer", renderUserMessageAsMarkdown = false) {
+  async submit(
+    deliveryOverride?: "steer",
+    renderUserMessageAsMarkdown = false,
+    onSubmitted?: () => void,
+  ) {
     if (!this.props.canSubmit()) return;
     this.clearError();
     const text = this.draftStore.text.trim();
@@ -168,13 +172,15 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     }
     if (text || attachments.length) {
       this.draftStore.clearForSubmit();
-      return this.deliveryStore.send(
+      const delivery = this.deliveryStore.send(
         text,
         attachments,
         deliveryOverride ?? "prompt",
         true,
         renderUserMessageAsMarkdown,
       );
+      onSubmitted?.();
+      return delivery;
     }
   }
 

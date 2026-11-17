@@ -10,7 +10,7 @@ const input = () => screen.getByRole("combobox", { name: "Message" });
 
 describe("composer Enter scroll provenance", () => {
   it.each([false, true])(
-    "waits for accepted input, including queued acceptance (streaming=%s)",
+    "reveals locally accepted input before delivery, including queued input (streaming=%s)",
     async (streaming) => {
       let accept!: (id: TurnId) => void;
       const admission = new Promise<TurnId>((resolve) => {
@@ -24,11 +24,13 @@ describe("composer Enter scroll provenance", () => {
       const interaction = fixture.chat.transcriptInteraction;
       await fixture.user.type(input(), "Actual user message{enter}");
       await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
-      expect(interaction.composerEnterRequestRevision).toBe(0);
-      expect(interaction.transcriptScrollPosition).toEqual({ kind: "top" });
+      expect(input()).toHaveProperty("value", "");
+      expect(screen.getByText("Actual user message", { exact: true })).toBeDefined();
+      expect(interaction.composerEnterRequestRevision).toBe(1);
+      expect(interaction.transcriptScrollPosition).toEqual({ kind: "bottom" });
       await fixture.user.keyboard("{enter}{enter}");
       expect(prompt).toHaveBeenCalledOnce();
-      expect(interaction.composerEnterRequestRevision).toBe(0);
+      expect(interaction.composerEnterRequestRevision).toBe(1);
       await act(async () => {
         accept(turnId);
         await admission;
@@ -91,7 +93,7 @@ describe("composer Enter scroll provenance", () => {
     expect(fixture.chat.transcriptInteraction.composerEnterRequestRevision).toBe(0);
   });
 
-  it("does not force after failed submission, or reuse that intent for a later programmatic send", async () => {
+  it("reveals a locally consumed submission once even if delivery fails, without reusing Enter intent", async () => {
     const prompt = vi
       .fn()
       .mockRejectedValueOnce(new Error("Admission rejected"))
@@ -101,10 +103,10 @@ describe("composer Enter scroll provenance", () => {
     await waitFor(() =>
       expect(screen.getByText("Admission rejected", { exact: true })).toBeDefined(),
     );
-    expect(fixture.chat.transcriptInteraction.composerEnterRequestRevision).toBe(0);
+    expect(fixture.chat.transcriptInteraction.composerEnterRequestRevision).toBe(1);
     await act(async () => {
       await fixture.chat.submit("Later programmatic message");
     });
-    expect(fixture.chat.transcriptInteraction.composerEnterRequestRevision).toBe(0);
+    expect(fixture.chat.transcriptInteraction.composerEnterRequestRevision).toBe(1);
   });
 });

@@ -67,6 +67,31 @@ it("restores an archived project session and waits for a fresh projection before
   }
 });
 
+it("reconciles an initial side-chat echo that arrives before the start receipt", async () => {
+  const pending = deferred<Awaited<ReturnType<Client["discussionSessions"]["start"]>>>();
+  using fixture = renderProjectSelectionLifecycle(() => pending.promise);
+  const panel = screen.getByRole("complementary", { name: "Side chat" });
+  const input = within(panel).getByRole("combobox", { name: "Message about selected text" });
+  await fixture.user.type(input, "Early echo{Enter}");
+  expect(input).toHaveProperty("value", "");
+  const linked = { ...lifecycleSelectionThread, sidecarSessionId: "sidecar-selection" };
+  await fixture.publishThread(linked, [
+    { id: "early-echo", kind: "text", role: "user", text: "Early echo", status: "complete" },
+  ]);
+  expect(within(panel).getAllByText("Early echo", { exact: true })).toHaveLength(1);
+  await act(async () =>
+    pending.resolve({
+      turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
+      thread: linked,
+    }),
+  );
+  expect(
+    within(panel).getByRole("combobox", { name: "Reply to selection side chat" }),
+  ).toBeDefined();
+  expect(within(panel).getAllByText("Early echo", { exact: true })).toHaveLength(1);
+  expect(within(panel).queryByText("You · sending")).toBeNull();
+});
+
 it.each([false, true])(
   "bridges the selection draft until the sidecar links, without reopening a panel closed before creation completes (closed: %s)",
   async (closed) => {
@@ -78,6 +103,9 @@ it.each([false, true])(
     await fixture.user.type(input, "Why this?");
     await fixture.user.click(within(panel).getByRole("button", { name: "Send" }));
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
+    expect(input).toHaveProperty("value", "");
+    expect(within(panel).getAllByText("Why this?", { exact: true })).toHaveLength(1);
+    expect(within(panel).getByText("You · sending")).toBeDefined();
     expect(start).toHaveBeenCalledWith(
       {
         parentSessionId: "parent",
@@ -89,7 +117,7 @@ it.each([false, true])(
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     if (closed)
-      await fixture.user.click(within(panel).getByRole("button", { name: "Close Side chat" }));
+      await fixture.user.click(within(panel).getByRole("button", { name: "Close side chat" }));
     await act(async () =>
       pending.resolve({
         turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
@@ -107,10 +135,15 @@ it.each([false, true])(
       expect(within(panel).getByRole("button", { name: "Send" })).toHaveProperty("disabled", true);
       expect(start).toHaveBeenCalledOnce();
     }
-    await fixture.publishThread({
-      ...lifecycleSelectionThread,
-      sidecarSessionId: "sidecar-selection",
-    });
+    const linked = { ...lifecycleSelectionThread, sidecarSessionId: "sidecar-selection" };
+    await fixture.publishThread(linked, [], false);
+    if (!closed) {
+      expect(within(panel).getAllByText("Why this?", { exact: true })).toHaveLength(1);
+      expect(within(panel).getByRole("combobox", { name: "Message about selected text" })).toBe(
+        input,
+      );
+    }
+    await fixture.publishThread(linked);
     if (closed) {
       expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
       expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
@@ -121,6 +154,13 @@ it.each([false, true])(
       expect(
         within(panel).queryByRole("combobox", { name: "Message about selected text" }),
       ).toBeNull();
+      expect(within(panel).getAllByText("Why this?", { exact: true })).toHaveLength(1);
+      await fixture.publishThread(
+        { ...lifecycleSelectionThread, sidecarSessionId: "sidecar-selection" },
+        [{ id: "initial-echo", kind: "text", role: "user", text: "Why this?", status: "complete" }],
+      );
+      expect(within(panel).getAllByText("Why this?", { exact: true })).toHaveLength(1);
+      expect(within(panel).queryByText("You · sending")).toBeNull();
       expect(within(panel).getByText("Side chat")).toBeDefined();
       expect(within(panel).getByRole("button", { name: "Close and resolve" })).toBeDefined();
     }

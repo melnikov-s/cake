@@ -81,6 +81,7 @@ export function renderAnnotationComment(start: Client["discussionSessions"]["sta
   );
   return {
     user: userEvent.setup(),
+    comments,
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();

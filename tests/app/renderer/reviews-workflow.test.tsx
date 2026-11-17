@@ -283,6 +283,29 @@ describe("Review side-chat workflow", () => {
     );
   });
 
+  it("projects a code-chat first input and clears the composer before session start resolves", async () => {
+    let reject!: (error: Error) => void;
+    const pending = new Promise<Awaited<ReturnType<Client["discussionSessions"]["start"]>>>(
+      (_resolve, fail) => {
+        reject = fail;
+      },
+    );
+    const start = vi.fn<Client["discussionSessions"]["start"]>(() => pending);
+    using fixture = renderReview({ discussionSessions: { start } }, { draft: true });
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message code chat" });
+    await fixture.user.type(input, "Explain code{Enter}");
+    expect(start).toHaveBeenCalledOnce();
+    expect(input.value).toBe("");
+    expect(screen.getAllByText("Explain code", { exact: true })).toHaveLength(1);
+    await act(async () => {
+      reject(new Error("Start rejected"));
+      await pending.catch(() => undefined);
+    });
+    expect(screen.getByText("Start rejected")).toBeDefined();
+    expect(input.value).toBe("Explain code");
+    expect(screen.queryByText("You · sending")).toBeNull();
+  });
+
   it("starts a selected-code discussion on the parent model and preserves a failed draft for retry", async () => {
     const start = vi
       .fn<Client["discussionSessions"]["start"]>()

@@ -14,7 +14,7 @@ import { ChatStore } from "./ChatStore";
 import { DiscussionSessionStore } from "./DiscussionSessionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
-import { AnnotationDraftStore } from "./AnnotationDraftStore";
+import { SideChatDraftSubmissionStore } from "./SideChatDraftSubmissionStore";
 import { applyDiscussionThread } from "../reducers/DiscussionReducer";
 
 export interface ReviewsStoreProps {
@@ -38,6 +38,26 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
   private readonly resolutionRevisions = observable(new Map<string, number>());
+
+  constructor(props: ReviewsStore["props"]) {
+    super(props);
+    this.reaction(
+      () => {
+        const threadId = this.draftAnchor ? this.draftSubmission.threadId : undefined;
+        return threadId
+          ? this.discussionSessions.find((session) => session.threadId === threadId)
+          : undefined;
+      },
+      (session) => {
+        if (!session) return;
+        this.draftSubmission.optimisticMessages.transferTo(
+          session.conversationSessionStore.composerStore.deliveryStore.optimisticUserMessages,
+        );
+        this.selectThread(session.threadId);
+        this.cancelDraft();
+      },
+    );
+  }
 
   get client() {
     return ClientContext.consume(this)!;
@@ -150,23 +170,34 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
 
   prepareDraft(anchor: DiscussionAnchor) {
-    this.draftChatStore.setDraft("");
     this.draftAnchor = anchor;
     this.draftFocusRequestRevision += 1;
   }
 
   cancelDraft() {
     this.draftAnchor = undefined;
-    this.draftChatStore.setDraft("");
-    this.annotationDraft.clear();
+    this.draftFocusRequestRevision += 1;
   }
 
   @child
-  get annotationDraft(): AnnotationDraftStore {
-    return createStore(AnnotationDraftStore, {
-      onLimitReached: () =>
-        this.reportError(new Error("A message can include at most 100 annotations")),
+  get draftSubmission(): SideChatDraftSubmissionStore {
+    return createStore(SideChatDraftSubmissionStore, {
+      key: `${this.context?.sessionId}:${this.draftFocusRequestRevision}`,
+      create: (text, annotations) =>
+        this.draftAnchor
+          ? this.createThread(this.draftAnchor, text, annotations)
+          : Promise.resolve(undefined),
+      requestTarget: (threadId) => {
+        this.discussionSession(threadId);
+      },
+      target: (threadId) =>
+        this.discussionSessions.find((session) => session.threadId === threadId)
+          ?.conversationSessionStore.composerStore.deliveryStore.optimisticUserMessages,
     });
+  }
+
+  get annotationDraft() {
+    return this.draftSubmission.draft.annotationDraft;
   }
 
   /** Composer for a code-anchored thread that does not exist yet. */
@@ -184,32 +215,40 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
                 text: this.draftAnchor.selectedText,
                 status: "complete" as const,
               },
+              ...this.draftSubmission.parts,
             ]
           : [],
       streaming: () => false,
-      submitting: () => false,
+      submitting: () => this.draftSubmission.submitting,
+      composerDraft: () => this.draftSubmission.draft,
+      draft: () => this.draftSubmission.draft.text,
+      setDraft: (text) => this.draftSubmission.draft.setText(text),
       configuration: () => this.configuration,
       commands: () => [],
       placeholder: () => "Ask Cake about this code…",
       inputLabel: () => "Message code chat",
       focusRequestRevision: () => this.draftFocusRequestRevision,
       canSubmit: (draft) =>
-        Boolean(this.draftAnchor && (draft.trim() || this.annotationDraft.annotations.length)),
-      submit: async (draft) => {
+        Boolean(
+          this.draftAnchor &&
+          !this.draftSubmission.threadId &&
+          (draft.trim() || this.annotationDraft.annotations.length),
+        ),
+      submit: async (_draft, options) => {
         const anchor = this.draftAnchor;
         if (!anchor) return false;
-        const threadId = await this.createThread(anchor, draft, this.annotationDraft.annotations);
-        if (threadId && this.draftAnchor === anchor) {
-          this.cancelDraft();
-          this.selectThread(threadId);
-        }
+        const submission = this.draftSubmission;
+        const threadId = await submission.submit(options?.onSubmitted);
         return Boolean(threadId);
       },
       annotations: () => this.annotationDraft.annotations,
       addAnnotation: (annotation) => this.annotationDraft.add(annotation),
       updateAnnotation: (id, update) => this.annotationDraft.update(id, update),
       removeAnnotation: (id) => this.annotationDraft.remove(id),
-      error: () => ({ message: this.error, details: this.errorDetails }),
+      error: () => ({
+        message: this.draftSubmission.draft.error ?? this.error,
+        details: this.draftSubmission.draft.errorDetails ?? this.errorDetails,
+      }),
     });
   }
 

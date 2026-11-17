@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -75,14 +75,17 @@ describe("Annotation-only selection comment workflow", () => {
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
-    expect(screen.getByRole("button", { name: "View 1 annotation" })).toBeDefined();
+    expect(fixture.comments.annotationDraft.annotations).toHaveLength(0);
+    expect(
+      within(screen.getByLabelText("Conversation")).getByRole("button", {
+        name: "View 1 annotation",
+      }),
+    ).toBeDefined();
     await act(async () => {
       accept(accepted);
       await admission;
     });
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /^View \d+ annotations?$/ })).toBeNull(),
-    );
+    expect(fixture.comments.annotationDraft.annotations).toHaveLength(0);
   });
 
   it("preserves annotations after a failed creation and clears them on retry", async () => {
@@ -103,10 +106,66 @@ describe("Annotation-only selection comment workflow", () => {
     expect(start.mock.calls[1]?.[0].annotations).toEqual(
       preparedAnnotations.map((annotation) => expect.objectContaining(annotation)),
     );
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "View 2 annotations" })).toBeNull(),
-    );
+    expect(fixture.comments.annotationDraft.annotations).toHaveLength(0);
     expect(screen.queryByText("Discussion service unavailable")).toBeNull();
+  });
+
+  it("clears and projects before blocked thread creation; a rejection preserves a newer draft and restores notes", async () => {
+    let reject!: (error: Error) => void;
+    const admission = new Promise<typeof accepted>((_resolve, fail) => {
+      reject = fail;
+    });
+    const start = vi.fn<Client["discussionSessions"]["start"]>(() => admission);
+    using fixture = renderAnnotationComment(start);
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", {
+      name: "Message about selected text",
+    });
+    await fixture.user.type(input, "First comment{Enter}");
+    expect(input.value).toBe("");
+    expect(screen.getAllByText("First comment", { exact: true })).toHaveLength(1);
+    expect(fixture.comments.annotationDraft.annotations).toHaveLength(0);
+    expect(
+      within(screen.getByLabelText("Conversation")).getByRole("button", {
+        name: "View 2 annotations",
+      }),
+    ).toBeDefined();
+    await fixture.user.type(input, "Newer comment");
+    await act(async () => {
+      reject(new Error("Creation rejected"));
+      await admission.catch(() => undefined);
+    });
+    expect(screen.getByText("Creation rejected")).toBeDefined();
+    expect(input.value).toBe("Newer comment");
+    expect(fixture.comments.annotationDraft.annotations).toHaveLength(2);
+    expect(within(screen.getByLabelText("Conversation")).queryByText("First comment")).toBeNull();
+  });
+
+  it("retires pending content when another selection replaces the draft, ignoring a late failure", async () => {
+    let reject!: (error: Error) => void;
+    const admission = new Promise<typeof accepted>((_resolve, fail) => {
+      reject = fail;
+    });
+    using fixture = renderAnnotationComment(() => admission);
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", {
+      name: "Message about selected text",
+    });
+    await fixture.user.type(input, "Old comment{Enter}");
+    const previous = fixture.comments.draftSubmission;
+    act(() =>
+      fixture.comments.prepareDraft({
+        ...commentSelection,
+        messageId: "other",
+        selectedText: "Other selection",
+      }),
+    );
+    expect(previous.signal.aborted).toBe(true);
+    expect(screen.queryByText("Old comment", { exact: true })).toBeNull();
+    await act(async () => {
+      reject(new Error("Late failure"));
+      await admission.catch(() => undefined);
+    });
+    expect(input.value).toBe("");
+    expect(fixture.comments.annotationDraft.annotations).toHaveLength(0);
   });
 
   it("disables an empty comment after its last annotation is removed", async () => {

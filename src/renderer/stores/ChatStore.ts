@@ -97,7 +97,11 @@ export interface ChatStoreProps {
   canSubmit(draft: string): boolean;
   submit(
     draft: string,
-    options?: { renderUserMessageAsMarkdown?: boolean },
+    options?: {
+      renderUserMessageAsMarkdown?: boolean;
+      /** The Store consumed and projected this input, before asynchronous delivery. */
+      onSubmitted?(): void;
+    },
   ): Promise<boolean | void | { turnId: string }>;
   sendQueuedToSideChat?(id: string): Promise<void>;
   userMessagePresentation?: UserMessagePresentationCapabilities;
@@ -769,9 +773,23 @@ export class ChatStore extends Store<ChatStoreProps> {
       if (!this.editingMessage) this.transcriptInteraction.noteSentMessage();
       const submittedRevision = this.draftRevision;
       const inputHistoryRevision = this.inputHistoryRevision;
+      let revealed = false;
+      const revealSubmission = () => {
+        if (
+          !revealed &&
+          enterSubmission &&
+          !options?.composerEnter?.aborted &&
+          !this.signal.aborted &&
+          this.id === conversationId
+        ) {
+          revealed = true;
+          this.transcriptInteraction.acceptComposerEnterSubmission();
+        }
+      };
       const submitted = await this.props.submit(value, {
         renderUserMessageAsMarkdown:
           options?.renderUserMessageAsMarkdown ?? shouldRenderMarkdown(value),
+        onSubmitted: revealSubmission,
       });
       accepted = submitted !== false;
       if (accepted && this.inputHistoryRevision === inputHistoryRevision)
@@ -787,15 +805,8 @@ export class ChatStore extends Store<ChatStoreProps> {
           this.enterContinuation = { ...continuation, turnId: submitted.turnId };
         else this.cancelEnterContinuation();
       }
-      if (
-        accepted &&
-        submitted !== undefined &&
-        enterSubmission &&
-        !options?.composerEnter?.aborted &&
-        !this.signal.aborted &&
-        this.id === conversationId
-      )
-        this.transcriptInteraction.acceptComposerEnterSubmission();
+      // Other composer ports may only report acceptance through their result.
+      if (accepted && submitted !== undefined) revealSubmission();
       return submitted !== false;
     } finally {
       dictation?.completeSubmission(submission, accepted);
