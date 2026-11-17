@@ -1,6 +1,7 @@
 import { describe, expect } from "vitest";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import {
   ArtifactRuntimeError,
@@ -198,6 +199,277 @@ describe("Independent artifact runtime", () => {
       });
     },
   );
+  it.effect("explicit stop escapes an indefinitely blocked handler and finalizes its bridge", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const finalized = yield* Deferred.make<void>();
+      const f = fixture({
+        invokeCommand: ({ command }) =>
+          command === "test.wait"
+            ? Deferred.succeed(entered, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.ensuring(Deferred.succeed(finalized, undefined)),
+                Effect.as(null),
+              )
+            : Effect.succeed(null),
+      });
+      yield* Effect.gen(function* () {
+        const service = yield* ArtifactRuntime;
+        yield* service.setHost(f.host);
+        const blocked = {
+          ...target,
+          runtime: {
+            source: "return { tools: { wait: () => cake('test.wait') } };",
+            tools: [{ name: "wait", description: "Wait", inputSchema: true, outputSchema: true }],
+          },
+        };
+        const call = yield* service
+          .call({ target: blocked, name: "wait", input: {} })
+          .pipe(Effect.forkScoped);
+        yield* Deferred.await(entered);
+        const stop = yield* service.stop(lineageId).pipe(Effect.forkScoped);
+        yield* Effect.gen(function* () {
+          yield* TestClock.adjust("6 seconds");
+          expect((yield* service.status(lineageId)).running).toBe(false);
+          expect((yield* Fiber.join(stop)).running).toBe(false);
+          expect((yield* Fiber.join(call).pipe(Effect.flip)).message).toContain("stopped");
+          yield* Deferred.await(finalized);
+          expect((yield* service.stop(lineageId)).running).toBe(false);
+        }).pipe(Effect.ensuring(Deferred.succeed(release, undefined)));
+      }).pipe(Effect.provide(f.layer));
+    }),
+  );
+  it.effect("explicit stop lets an admitted call and asynchronous cleanup finish gracefully", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const cleanupEntered = yield* Deferred.make<void>();
+      const cleanupRelease = yield* Deferred.make<void>();
+      const commands: string[] = [];
+      const f = fixture({
+        invokeCommand: ({ command }) =>
+          Effect.gen(function* () {
+            commands.push(command);
+            if (command === "test.wait") {
+              yield* Deferred.succeed(entered, undefined);
+              yield* Deferred.await(release);
+            } else if (command === "test.cleanup") {
+              yield* Deferred.succeed(cleanupEntered, undefined);
+              yield* Deferred.await(cleanupRelease);
+            }
+            return null;
+          }),
+      });
+      yield* Effect.gen(function* () {
+        const service = yield* ArtifactRuntime;
+        yield* service.setHost(f.host);
+        const waiting = {
+          ...target,
+          runtime: {
+            source: `return {
+              lifecycle: { stop: async () => { await cake('test.cleanup'); await data.write({ cleaned: true }); } },
+              tools: { wait: async () => { await cake('test.wait'); return 7; } },
+            };`,
+            tools: [{ name: "wait", description: "Wait", inputSchema: true, outputSchema: true }],
+          },
+        };
+        const call = yield* service
+          .call({ target: waiting, name: "wait", input: {} })
+          .pipe(Effect.forkScoped);
+        yield* Deferred.await(entered);
+        const stop = yield* service.stop(lineageId).pipe(Effect.forkScoped);
+        yield* Effect.gen(function* () {
+          yield* TestClock.adjust("1 second");
+          expect((yield* service.status(lineageId)).running).toBe(true);
+          const rejected = yield* service
+            .call({ target: waiting, name: "wait", input: {} })
+            .pipe(Effect.forkScoped);
+          yield* Deferred.succeed(release, undefined);
+          yield* Deferred.await(cleanupEntered);
+          expect(yield* Fiber.join(call)).toBe(7);
+          expect(stop.pollUnsafe()).toBeUndefined();
+          yield* Deferred.succeed(cleanupRelease, undefined);
+          expect((yield* Fiber.join(stop)).running).toBe(false);
+          expect((yield* Fiber.join(rejected).pipe(Effect.flip)).message).toContain("stopping");
+          yield* service.stop(lineageId);
+          expect(commands).toEqual(["test.wait", "test.cleanup"]);
+          expect(f.invalidations()).toBe(1);
+          expect((yield* service.status(lineageId)).lastError).toBe(null);
+          expect(yield* service.call({ target, name: "readiness", input: {} })).toEqual({
+            ready: [],
+            blocked: [],
+          });
+        }).pipe(
+          Effect.ensuring(
+            Effect.all([
+              Deferred.succeed(release, undefined),
+              Deferred.succeed(cleanupRelease, undefined),
+            ]),
+          ),
+        );
+      }).pipe(Effect.provide(f.layer));
+    }),
+  );
+
+  for (const event of ["stop", "delete"] as const) {
+    it.effect(`explicit ${event} bounds a blocked cleanup hook and concurrent repeated stops`, () =>
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const finalized = yield* Deferred.make<void>();
+        let cleanups = 0;
+        const f = fixture({
+          invokeCommand: () =>
+            Effect.gen(function* () {
+              cleanups += 1;
+              yield* Deferred.succeed(entered, undefined);
+              yield* Deferred.await(release).pipe(
+                Effect.ensuring(Deferred.succeed(finalized, undefined)),
+              );
+              return null;
+            }),
+        });
+        yield* Effect.gen(function* () {
+          const service = yield* ArtifactRuntime;
+          yield* service.setHost(f.host);
+          const waiting = {
+            ...target,
+            runtime: {
+              source: `return { lifecycle: { ${event}: () => cake('test.cleanup') }, tools: { value: () => 1 } };`,
+              tools: [
+                { name: "value", description: "Value", inputSchema: true, outputSchema: true },
+              ],
+            },
+          };
+          expect(yield* service.call({ target: waiting, name: "value", input: {} })).toBe(1);
+          const first = yield* service
+            .lifecycle({ target: waiting, event })
+            .pipe(Effect.forkScoped);
+          yield* Deferred.await(entered);
+          const second = yield* service.stop(lineageId, event).pipe(Effect.forkScoped);
+          yield* Effect.gen(function* () {
+            yield* TestClock.adjust("6 seconds");
+            expect((yield* Fiber.join(first)).running).toBe(false);
+            expect((yield* Fiber.join(second)).running).toBe(false);
+            yield* Deferred.await(finalized);
+            expect(cleanups).toBe(1);
+            expect(yield* service.call({ target: waiting, name: "value", input: {} })).toBe(1);
+          }).pipe(Effect.ensuring(Deferred.succeed(release, undefined)));
+        }).pipe(Effect.provide(f.layer));
+      }),
+    );
+  }
+
+  it.effect("explicit stop also closes a worker blocked in its start hook", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const finalized = yield* Deferred.make<void>();
+      const f = fixture({
+        invokeCommand: () =>
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.andThen(Deferred.await(release)),
+            Effect.ensuring(Deferred.succeed(finalized, undefined)),
+            Effect.as(null),
+          ),
+      });
+      yield* Effect.gen(function* () {
+        const service = yield* ArtifactRuntime;
+        yield* service.setHost(f.host);
+        const starting = {
+          ...target,
+          runtime: {
+            ...runtime,
+            source: "return { lifecycle: { start: () => cake('test.wait') }, tools: {} };",
+          },
+        };
+        const start = yield* service
+          .lifecycle({ target: starting, event: "start" })
+          .pipe(Effect.forkScoped);
+        yield* Deferred.await(entered);
+        const stop = yield* service.stop(lineageId).pipe(Effect.forkScoped);
+        yield* Effect.gen(function* () {
+          yield* TestClock.adjust("6 seconds");
+          expect((yield* Fiber.join(stop)).running).toBe(false);
+          expect((yield* Fiber.join(start).pipe(Effect.flip)).message).toContain("stopped");
+          yield* Deferred.await(finalized);
+          expect((yield* service.stop(lineageId)).running).toBe(false);
+        }).pipe(Effect.ensuring(Deferred.succeed(release, undefined)));
+      }).pipe(Effect.provide(f.layer));
+    }),
+  );
+
+  it.effect("failed graceful cleanup remains visible and still closes the worker", () => {
+    const f = fixture({
+      invokeCommand: () =>
+        Effect.fail(new ArtifactRuntimeError({ operation: "cleanup", message: "cleanup failed" })),
+    });
+    return Effect.gen(function* () {
+      const service = yield* ArtifactRuntime;
+      yield* service.setHost(f.host);
+      const failing = {
+        ...target,
+        runtime: {
+          ...runtime,
+          source: "return { lifecycle: { stop: () => cake('test.cleanup') }, tools: {} };",
+        },
+      };
+      yield* service.lifecycle({ target: failing, event: "start" });
+      expect((yield* service.stop(lineageId).pipe(Effect.flip)).message).toContain(
+        "cleanup failed",
+      );
+      expect(yield* service.status(lineageId)).toMatchObject({
+        running: false,
+        revision: null,
+        lastError: expect.stringContaining("cleanup failed"),
+      });
+      expect((yield* service.stop(lineageId)).running).toBe(false);
+    }).pipe(Effect.provide(f.layer));
+  });
+
+  it.effect("ordinary persistent idle workers and long calls have no shutdown deadline", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const f = fixture({
+        invokeCommand: () =>
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.andThen(Deferred.await(release)),
+            Effect.as(null),
+          ),
+      });
+      yield* Effect.gen(function* () {
+        const service = yield* ArtifactRuntime;
+        yield* service.setHost(f.host);
+        const persistent = {
+          ...target,
+          runtime: {
+            source:
+              "let count = 0; return { tools: { count: async ({ wait }) => { if (wait) await cake('test.wait'); return ++count; } } };",
+            tools: [{ name: "count", description: "Count", inputSchema: true, outputSchema: true }],
+          },
+        };
+        expect(yield* service.call({ target: persistent, name: "count", input: {} })).toBe(1);
+        yield* service.lifecycle({ target: persistent, event: "unmount" });
+        yield* TestClock.adjust("365 days");
+        expect((yield* service.status(lineageId)).running).toBe(true);
+        expect(yield* service.call({ target: persistent, name: "count", input: {} })).toBe(2);
+        const long = yield* service
+          .call({ target: persistent, name: "count", input: { wait: true } })
+          .pipe(Effect.forkScoped);
+        yield* Deferred.await(entered);
+        yield* Effect.gen(function* () {
+          yield* TestClock.adjust("365 days");
+          expect((yield* service.status(lineageId)).running).toBe(true);
+          expect(long.pollUnsafe()).toBeUndefined();
+          yield* Deferred.succeed(release, undefined);
+          expect(yield* Fiber.join(long)).toBe(3);
+        }).pipe(Effect.ensuring(Deferred.succeed(release, undefined)));
+      }).pipe(Effect.provide(f.layer));
+    }),
+  );
+
   it.effect(
     "refreshes a PR dashboard while closed, answers readiness and sends to an explicit chat without a fake caller",
     () => {

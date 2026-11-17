@@ -84,7 +84,17 @@ export const ArtifactRuntimeLive = Layer.effect(
       capacity: Number.MAX_SAFE_INTEGER,
       lookup: Effect.fn("ArtifactRuntime.controller")(function* () {
         const semaphore = yield* Semaphore.make(1);
+        const stopSemaphore = yield* Semaphore.make(1);
         const owner = yield* Effect.scope;
+        let stopRequested = false;
+        // Includes acquisition: a blocked start hook must also be stoppable.
+        let workerScope: Scope.Closeable | undefined;
+        const closeWorker = Effect.fn("ArtifactRuntime.controller.closeWorker")(function* (
+          scope: Scope.Closeable,
+        ) {
+          yield* Scope.close(scope, Exit.void);
+          if (workerScope === scope) workerScope = undefined;
+        });
         let lastError: string | undefined;
         // The stop/delete hook may finish its own cleanup after the gate closed.
         let stopping = false;
@@ -108,9 +118,7 @@ export const ArtifactRuntimeLive = Layer.effect(
               worker: Effect.Success<ReturnType<typeof makeArtifactRuntimeWorker>>;
             }
           | undefined;
-        yield* Effect.addFinalizer(() =>
-          current ? Scope.close(current.scope, Exit.void) : Effect.void,
-        );
+        yield* Effect.addFinalizer(() => (workerScope ? closeWorker(workerScope) : Effect.void));
         const stop = Effect.fn("ArtifactRuntime.controller.stop")(function* (
           event: "stop" | "delete" = "stop",
           callingSessionId?: string,
@@ -120,7 +128,7 @@ export const ArtifactRuntimeLive = Layer.effect(
           current = undefined;
           if (previous) {
             if (!previous.worker.isRunning()) {
-              yield* Scope.close(previous.scope, Exit.void);
+              yield* closeWorker(previous.scope);
               return;
             }
             stopping = true;
@@ -134,7 +142,7 @@ export const ArtifactRuntimeLive = Layer.effect(
               })
               .pipe(
                 Effect.ensuring(
-                  Scope.close(previous.scope, Exit.void).pipe(
+                  closeWorker(previous.scope).pipe(
                     Effect.andThen(
                       Effect.sync(() => {
                         stopping = false;
@@ -145,6 +153,56 @@ export const ArtifactRuntimeLive = Layer.effect(
               );
           }
         });
+        const unlessStopping = <A>(effect: Effect.Effect<A, ArtifactRuntimeError>) =>
+          Effect.suspend(() =>
+            stopRequested ? failure("stop", "Artifact runtime is stopping") : effect,
+          );
+        // Reject new requests immediately and recheck requests queued before shutdown.
+        const run = <A>(effect: Effect.Effect<A, ArtifactRuntimeError>) =>
+          effect.pipe(
+            unlessStopping,
+            record,
+            Effect.uninterruptible,
+            semaphore.withPermit,
+            unlessStopping,
+          );
+        const explicitStop = Effect.fn("ArtifactRuntime.controller.explicitStop")(
+          function* (
+            event: "stop" | "delete",
+            callingSessionId?: string,
+            windowConnectionId?: number,
+          ) {
+            stopRequested = true;
+            yield* Effect.gen(function* () {
+              // Only an explicit shutdown has a deadline. Let admitted work and the
+              // lifecycle hook finish gracefully, then abort through the owning scope.
+              // The fallback must not wait for the permit held by a stuck handler.
+              const graceful = yield* stop(event, callingSessionId, windowConnectionId).pipe(
+                record,
+                semaphore.withPermit,
+                Effect.timeoutOption("5 seconds"),
+                Effect.interruptible,
+              );
+              if (Option.isNone(graceful)) {
+                if (workerScope) yield* closeWorker(workerScope);
+                // Wait for the aborted invocation to settle before reopening admission.
+                yield* semaphore.withPermit(Effect.void);
+                current = undefined;
+                stopping = false;
+                lastError =
+                  "Artifact runtime force-stopped after explicit shutdown grace period expired";
+              }
+            }).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  stopRequested = false;
+                }),
+              ),
+            );
+          },
+          Effect.uninterruptible,
+          stopSemaphore.withPermit,
+        );
         /** Stops a worker whose revision is no longer the attached one. Never starts work. */
         const reconcile = Effect.fn("ArtifactRuntime.controller.reconcile")(function* () {
           if (!current) return;
@@ -165,6 +223,7 @@ export const ArtifactRuntimeLive = Layer.effect(
           if (current) yield* stop("stop", callingSessionId, windowConnectionId);
           yield* compile(target.runtime);
           const scope = yield* Scope.fork(owner);
+          workerScope = scope;
           // A detached or superseded worker cannot reach Cake, even mid-call.
           const gatedHost: ArtifactRuntimeHost = {
             invokeCommand: Effect.fn("ArtifactRuntime.gatedInvokeCommand")(function* (input) {
@@ -182,7 +241,7 @@ export const ArtifactRuntimeLive = Layer.effect(
             Effect.provideService(Scope.Scope, scope),
             Effect.provideService(ArtifactStorage, storage),
             Effect.provideService(ClientEvents, clientEvents),
-            Effect.onError(() => Scope.close(scope, Exit.void)),
+            Effect.onError(() => closeWorker(scope)),
           );
           current = { target, scope, worker };
           lastError = undefined;
@@ -191,7 +250,8 @@ export const ArtifactRuntimeLive = Layer.effect(
         return {
           semaphore,
           ensure,
-          stop,
+          explicitStop,
+          run,
           reconcile,
           record,
           peek: () => current,
@@ -250,13 +310,8 @@ export const ArtifactRuntimeLive = Layer.effect(
       const cached = yield* ScopedCache.getOption(controllers, lineageId);
       if (Option.isSome(cached)) {
         yield* cached.value
-          .stop(event, callingSessionId, windowConnectionId)
-          .pipe(
-            cached.value.record,
-            Effect.uninterruptible,
-            cached.value.semaphore.withPermit,
-            Effect.ensuring(invalidateExecution(lineageId)),
-          );
+          .explicitStop(event, callingSessionId, windowConnectionId)
+          .pipe(Effect.ensuring(invalidateExecution(lineageId)));
       }
       return yield* status(lineageId);
     });
@@ -296,12 +351,7 @@ export const ArtifactRuntimeLive = Layer.effect(
           });
           yield* validate(tool.output, result, "output");
           return result;
-        }).pipe(
-          controller.record,
-          Effect.uninterruptible,
-          controller.semaphore.withPermit,
-          Effect.ensuring(invalidateExecution(input.target.lineageId)),
-        );
+        }).pipe(controller.run, Effect.ensuring(invalidateExecution(input.target.lineageId)));
       }),
       lifecycle: Effect.fn("ArtifactRuntime.lifecycle")(function* (input) {
         yield* rejectArtifactRuntimeReentry(input.target.lineageId, input.event);
@@ -347,12 +397,7 @@ export const ArtifactRuntimeLive = Layer.effect(
                 ? null
                 : { windowConnectionId: input.windowConnectionId }),
             });
-        }).pipe(
-          controller.record,
-          Effect.uninterruptible,
-          controller.semaphore.withPermit,
-          Effect.ensuring(invalidateExecution(input.target.lineageId)),
-        );
+        }).pipe(controller.run, Effect.ensuring(invalidateExecution(input.target.lineageId)));
         return yield* status(input.target.lineageId);
       }),
     });
