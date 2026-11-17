@@ -46,6 +46,7 @@ export class ScreenCaptureOverlayStore extends Store<{
   copied = false;
   cancelled = false;
   error: string | undefined;
+  initializing = false;
   annotationColor: CaptureAnnotationColor = DEFAULT_CAPTURE_ANNOTATION_COLOR;
 
   @child
@@ -75,11 +76,23 @@ export class ScreenCaptureOverlayStore extends Store<{
     });
   }
 
+  get awaitingMuteState() {
+    const voice = this.snapshot?.routing.dictation;
+    return Boolean(
+      voice?.enabled &&
+      voice.muted === undefined &&
+      !this.dictationStore.state &&
+      this.dictationStore.muted,
+    );
+  }
+
   async initialize() {
+    if (this.initializing || this.snapshot || this.cancelled || this.signal.aborted) return;
+    this.initializing = true;
+    this.error = undefined;
     try {
       const snapshot = await this.props.client.screenCaptureState({ signal: this.signal });
-      if (!this.signal.aborted) {
-        this.snapshot = snapshot;
+      if (!this.signal.aborted && !this.cancelled) {
         this.annotationColor = snapshot.routing.annotationColor;
         const voice = snapshot.routing.dictation;
         const recognition = voice.recognition;
@@ -93,14 +106,20 @@ export class ScreenCaptureOverlayStore extends Store<{
         };
         // Seed mute before annotation focus can start capture. The live shared observation
         // may have arrived during snapshot loading; never overwrite it with older routing.
-        this.dictationStore.muted = this.dictationStore.state?.muted ?? voice.muted;
+        // Unknown legacy routing cannot authorize a microphone. Shared observation can
+        // subsequently synchronize it through DictationStore.applyState as usual.
+        this.dictationStore.muted = this.dictationStore.state?.muted ?? voice.muted ?? true;
         this.dictationStore.enabled = voice.enabled;
         this.dictationStore.phase = voice.enabled ? "paused" : "off";
         this.dictationStore.deviceId = voice.deviceId;
         this.dictationStore.textProcessingMode = voice.textProcessingMode;
+        // Publish only after voice initialization; annotation focus must never see defaults.
+        this.snapshot = snapshot;
       }
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
+      if (!this.signal.aborted && !this.cancelled) this.reportError(error);
+    } finally {
+      this.initializing = false;
     }
   }
 

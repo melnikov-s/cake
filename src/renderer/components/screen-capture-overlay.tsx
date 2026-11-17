@@ -8,6 +8,7 @@ import { CaptureToolbar } from "./ui/capture-toolbar";
 import { AnnotationDraftPopover } from "./annotation-draft-popover";
 import { AnnotationItemPopover } from "./annotation-item-popover";
 import { Callout } from "./ui/callout";
+import { Button } from "./ui/button";
 import { applyDocumentTheme } from "../lib/resolved-color-theme";
 
 export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
@@ -138,7 +139,35 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
           )}
         </StoreProvider>
       )}
-      {!store.capturePreview && (
+      {!snapshot && (
+        <div className="absolute inset-0 flex items-center justify-center p-4">
+          <div className="flex max-w-lg flex-col gap-3">
+            {store.error ? (
+              <Callout variant="error" role="alert">
+                <p className="font-medium">Screen capture could not initialize</p>
+                Cancel and try capturing again, or restart Cake if this continues.
+                <div className="mt-2 break-words text-xs">{store.error}</div>
+              </Callout>
+            ) : (
+              <p role="status">Loading screen capture…</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => void store.cancel()}>
+                Cancel
+              </Button>
+              {store.error && (
+                <Button
+                  disabled={store.initializing || store.cancelled}
+                  onClick={() => void store.initialize()}
+                >
+                  Retry
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {snapshot && !store.capturePreview && (
         <CaptureToolbar
           destination={
             store.destinationPicker && (
@@ -161,7 +190,15 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
           onCancel={() => void store.cancel()}
         />
       )}
-      {store.error && (
+      {store.awaitingMuteState && (
+        <div className="absolute bottom-4 left-1/2 z-20 max-w-[calc(100vw-32px)] -translate-x-1/2">
+          <Callout>
+            Dictation mute state is unavailable from an older Cake build. Dictation stays paused
+            until synchronized or you unmute it.
+          </Callout>
+        </div>
+      )}
+      {snapshot && store.error && (
         <div className="absolute bottom-4 left-1/2 z-20 max-w-[calc(100vw-32px)] -translate-x-1/2">
           <Callout variant="error">{store.error}</Callout>
         </div>

@@ -1,6 +1,12 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { Effect, Queue, Stream } from "effect";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Effect, Exit, Predicate, Queue, Schema, Stream } from "effect";
+import { Rpc } from "effect/rpc";
+import { ElectronRpc } from "../../../src/ipc/protocol/ElectronRpc";
+import {
+  CapturePreferences,
+  ScreenCaptureSnapshot as SnapshotSchema,
+} from "../../../src/contracts/desktop/screen-capture-data";
 import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DictationState } from "../../../src/contracts/dictation/dictation-data";
@@ -32,7 +38,13 @@ function captureSnapshot(muted: boolean): ScreenCaptureSnapshot {
 }
 
 /** Real annotation UI, dictation Store and observer; audio and transport are safe fakes. */
-function captureDictation(snapshot: ScreenCaptureSnapshot | Promise<ScreenCaptureSnapshot>) {
+function captureDictation(
+  snapshot:
+    | ScreenCaptureSnapshot
+    | Promise<ScreenCaptureSnapshot>
+    | (() => Promise<ScreenCaptureSnapshot>),
+) {
+  const finishScreenCapture = vi.fn(async () => {});
   const stop = vi.fn();
   const open = vi.fn<Microphone["open"]>(async () => ({
     stop,
@@ -49,8 +61,8 @@ function captureDictation(snapshot: ScreenCaptureSnapshot | Promise<ScreenCaptur
   const store = mount(
     createStore(ScreenCaptureOverlayStore, {
       client: {
-        screenCaptureState: async () => snapshot,
-        finishScreenCapture: async () => {},
+        screenCaptureState: async () => (Predicate.isFunction(snapshot) ? snapshot() : snapshot),
+        finishScreenCapture,
       },
       speech: {
         client: client.dictation,
@@ -69,6 +81,7 @@ function captureDictation(snapshot: ScreenCaptureSnapshot | Promise<ScreenCaptur
   const view = render(<ScreenCaptureOverlay store={store} />);
   return {
     store,
+    finishScreenCapture,
     open,
     stop,
     async emit(muted: boolean) {
@@ -101,6 +114,201 @@ function captureDictation(snapshot: ScreenCaptureSnapshot | Promise<ScreenCaptur
 }
 
 describe("Capture dictation mute", () => {
+  it("decodes an older main's capture response produced from the real originating capture command", async () => {
+    // The pre-mute main build decodes/encodes these fields, stripping a newer origin's mute.
+    const fields = CapturePreferences.fields.dictation.fields;
+    const legacyPreferences = Schema.Struct({
+      ...CapturePreferences.fields,
+      dictation: Schema.Struct({
+        enabled: fields.enabled,
+        deviceId: fields.deviceId,
+        textProcessingMode: fields.textProcessingMode,
+        recognition: fields.recognition,
+      }),
+    });
+    const rpc = ElectronRpc.requests.get("electron.screen-capture-state");
+    if (!rpc || rpc._tag !== "electron.screen-capture-state")
+      throw new Error("Missing capture RPC");
+    let response: unknown;
+    using origin = createRendererStoreFixture({
+      client: {
+        electron: {
+          startScreenCapture: async (preferences) => {
+            expect(preferences.dictation.muted).toBe(true);
+            const wireRouting = Schema.encodeSync(Schema.toCodecJson(CapturePreferences))(
+              preferences,
+            );
+            const routing = Schema.decodeUnknownSync(Schema.toCodecJson(legacyPreferences))(
+              wireRouting,
+            );
+            expect("muted" in routing.dictation).toBe(false);
+            const legacySnapshot = Schema.Struct({
+              ...SnapshotSchema.fields,
+              routing: legacyPreferences,
+            });
+            response = Schema.encodeSync(
+              Schema.toCodecJson(Schema.Exit(legacySnapshot, Schema.Never, Schema.Defect())),
+            )(Exit.succeed({ ...captureSnapshot(true), routing }));
+            return { annotationColor: preferences.annotationColor };
+          },
+        },
+      },
+    });
+    origin.root.dictationStore.enabled = true;
+    origin.root.dictationStore.muted = true;
+    await origin.root.screenCaptureStore.capture();
+    const decoded = Schema.decodeUnknownSync(Schema.toCodecJson(Rpc.exitSchema(rpc)))(response);
+    expect(decoded._tag).toBe("Success");
+    if (!Exit.isSuccess(decoded)) throw new Error("Capture response failed");
+    expect(decoded.value.routing.dictation.muted).toBeUndefined();
+    await using overlay = captureDictation(decoded.value);
+    await overlay.initialize();
+    await overlay.annotate();
+    expect(overlay.store.dictationStore.muted).toBe(true);
+    expect(overlay.store.awaitingMuteState).toBe(true);
+    expect(screen.getByText(/Dictation mute state is unavailable/)).toBeDefined();
+    expect(overlay.open).not.toHaveBeenCalled();
+    await overlay.emit(false);
+    await waitFor(() => expect(overlay.open).toHaveBeenCalledOnce());
+    expect(overlay.store.awaitingMuteState).toBe(false);
+    await overlay.emit(true);
+    expect(overlay.stop).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { enabled: false, muted: false },
+    { enabled: false, muted: true },
+    { enabled: true, muted: false },
+    { enabled: true, muted: true },
+  ])(
+    "preserves enabled=$enabled muted=$muted through the originating capture command and wire contract",
+    async ({ enabled, muted }) => {
+      let snapshot = captureSnapshot(muted);
+      using origin = createRendererStoreFixture({
+        client: {
+          electron: {
+            startScreenCapture: async (preferences) => {
+              const routing = Schema.decodeUnknownSync(Schema.toCodecJson(CapturePreferences))(
+                Schema.encodeSync(Schema.toCodecJson(CapturePreferences))(preferences),
+              );
+              snapshot = { ...snapshot, routing };
+              return { annotationColor: preferences.annotationColor };
+            },
+          },
+        },
+      });
+      origin.root.dictationStore.enabled = enabled;
+      origin.root.dictationStore.muted = muted;
+      await origin.root.screenCaptureStore.capture();
+      expect(snapshot.routing.dictation).toMatchObject({ enabled, muted });
+      await using overlay = captureDictation(snapshot);
+      await overlay.initialize();
+      await overlay.annotate();
+      expect(overlay.store.dictationStore.enabled).toBe(enabled);
+      expect(overlay.store.dictationStore.muted).toBe(muted);
+      expect(overlay.store.awaitingMuteState).toBe(false);
+      if (enabled && !muted) await waitFor(() => expect(overlay.open).toHaveBeenCalledOnce());
+      else expect(overlay.open).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([true, false])(
+    "uses shared mute=%s when legacy routing has no mute key",
+    async (muted) => {
+      const snapshot = captureSnapshot(false);
+      const { muted: _omitted, ...voice } = snapshot.routing.dictation;
+      await using fixture = captureDictation({
+        ...snapshot,
+        routing: { ...snapshot.routing, dictation: voice },
+      });
+      await fixture.emit(muted);
+      await fixture.initialize();
+      await fixture.annotate();
+      expect(fixture.store.dictationStore.muted).toBe(muted);
+      expect(fixture.store.awaitingMuteState).toBe(false);
+      if (muted) expect(fixture.open).not.toHaveBeenCalled();
+      else await waitFor(() => expect(fixture.open).toHaveBeenCalledOnce());
+    },
+  );
+
+  it("keeps disabled legacy dictation off and allows explicit unmute of enabled unknown state", async () => {
+    const snapshot = captureSnapshot(false);
+    const { muted: _omitted, ...voice } = snapshot.routing.dictation;
+    await using fixture = captureDictation({
+      ...snapshot,
+      routing: { ...snapshot.routing, dictation: { ...voice, enabled: false } },
+    });
+    await fixture.initialize();
+    await fixture.annotate();
+    expect(fixture.open).not.toHaveBeenCalled();
+    expect(fixture.store.dictationStore.enabled).toBe(false);
+    expect(fixture.store.awaitingMuteState).toBe(false);
+    await act(async () => {
+      fixture.store.dictationStore.enabled = true;
+    });
+    expect(fixture.open).not.toHaveBeenCalled();
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Unmute dictation" })),
+    );
+    await waitFor(() => expect(fixture.open).toHaveBeenCalledOnce());
+  });
+
+  it("does not accept a malformed mute value as a legacy omission", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(SnapshotSchema)({
+        ...captureSnapshot(true),
+        routing: { ...captureRouting, dictation: { ...captureRouting.dictation, muted: "false" } },
+      }),
+    ).toThrow();
+  });
+
+  it("shows initialization failure with retry and cancel, and recovers without opening audio", async () => {
+    let attempts = 0;
+    await using fixture = captureDictation(async () => {
+      if (++attempts === 1)
+        throw new Error('Missing key at ["value"]["routing"]["dictation"]["muted"]');
+      return captureSnapshot(true);
+    });
+    await fixture.initialize();
+    expect(screen.getByRole("alert").textContent).toContain("Screen capture could not initialize");
+    expect(screen.getByRole("alert").textContent).toContain("restart Cake");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(attempts).toBe(2);
+    expect(fixture.store.snapshot).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(fixture.open).not.toHaveBeenCalled();
+    await act(async () => fireEvent.keyDown(window, { key: "Escape" }));
+    expect(fixture.finishScreenCapture).toHaveBeenCalledOnce();
+  });
+
+  it("allows Escape cleanup after decode failure, without requiring a snapshot", async () => {
+    await using fixture = captureDictation(async () => {
+      throw new Error("Invalid capture response");
+    });
+    await fixture.initialize();
+    await act(async () => fireEvent.keyDown(window, { key: "Escape" }));
+    expect(fixture.finishScreenCapture).toHaveBeenCalledWith(undefined, "yellow", {
+      signal: fixture.store.signal,
+    });
+    expect(fixture.store.cancelled).toBe(true);
+    expect(fixture.open).not.toHaveBeenCalled();
+  });
+
+  it("does not initialize a late snapshot after Escape while loading", async () => {
+    let resolve!: (snapshot: ScreenCaptureSnapshot) => void;
+    const pending = new Promise<ScreenCaptureSnapshot>((complete) => {
+      resolve = complete;
+    });
+    await using fixture = captureDictation(pending);
+    const loading = fixture.store.initialize();
+    await act(async () => fireEvent.keyDown(window, { key: "Escape" }));
+    resolve(captureSnapshot(false));
+    await act(async () => loading);
+    expect(fixture.store.snapshot).toBeUndefined();
+    expect(fixture.store.dictationStore.enabled).toBe(false);
+    expect(fixture.open).not.toHaveBeenCalled();
+  });
   it("inherits mute before the first observation, then follows live shared unmute and mute", async () => {
     await using fixture = captureDictation(captureSnapshot(true));
     await fixture.initialize();

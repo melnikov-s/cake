@@ -71,7 +71,9 @@ export const CapturePreferences = Schema.Struct({
   }),
   dictation: Schema.Struct({
     enabled: Schema.Boolean,
-    muted: Schema.Boolean,
+    // Older main builds strip this key while relaying routing. Absence means unknown,
+    // not unmuted; the overlay must wait for shared mute state or explicit user intent.
+    muted: Schema.optionalKey(Schema.Boolean),
     deviceId: Schema.String,
     textProcessingMode: TextProcessingMode,
     recognition: SpeechRecognitionSettings,
