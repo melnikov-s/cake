@@ -66,7 +66,7 @@ for (const global of [false, true]) {
     const mutations: ProjectTodoUserMutation[] = [];
     const project = () => ({ ...projectRecord({ path: "/cake" }), todos });
     using fixture = createRendererStoreFixture({
-      projects: [project()],
+      projects: [global ? projectRecord({ path: "/cake" }) : project()],
       client: {
         projectTodos: {
           mutateUser: async ({ mutation }) => {

@@ -31,9 +31,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
             size="sm"
           >
             <span>To-dos</span>{" "}
-            <span className="text-muted-foreground tabular-nums">
-              {todos?.openItems.length ?? 0}
-            </span>
+            <span className="text-muted-foreground tabular-nums">{todos?.paneOpenCount ?? 0}</span>
           </SegmentedControlButton>
           <SegmentedControlButton
             active={!navigator.showingWidget && navigator.mode === "sessions"}

@@ -36,7 +36,9 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
     let todos = { ...emptyProjectTodos(), items: [a, b] };
     const project = () => ({ ...projectRecord({ path: "/project" }), todos });
     using f = createRendererStoreFixture({
-      projects: [project()],
+      projects: [
+        sessionId === CAKE_CHAT_SESSION_ID ? projectRecord({ path: "/project" }) : project(),
+      ],
       client: {
         sessionChats: { prompt },
         cakeChats: { open: async () => undefined },

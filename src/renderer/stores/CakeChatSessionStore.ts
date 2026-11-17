@@ -5,6 +5,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-ident
 import { CAKE_CHAT_TODO_SCOPE, type ProjectTodo } from "../../contracts/projects/project-todos";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ProjectTodosStore } from "./ProjectTodosStore";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
 import { Store, child, createStore, snapshot } from "r-state-tree";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
@@ -183,6 +184,19 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           ? this.props.project?.()
           : undefined;
         return project && { scope: project.path, chat: "Project Chat" as const, owner: project };
+      },
+      projectGroups: () => {
+        if (this.sessionId !== CAKE_CHAT_SESSION_ID) return undefined;
+        const catalog = ProjectCatalogContext.consume(this);
+        return catalog?.orderedProjectPaths.map((path) => {
+          const project = catalog.find(path)!;
+          return {
+            scope: path,
+            chat: "Project Chat" as const,
+            owner: project,
+            title: project.name,
+          };
+        });
       },
       pane: () => WorkspaceNavigatorContext.consume(this)!.todoPane(this.sessionId),
       replyContext: (name, text) =>

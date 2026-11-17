@@ -3270,6 +3270,84 @@ const projectChatTodos: VisualCaptureScenario = {
         : page.locator('[data-slot="side-chat-layout"]'),
 };
 
+const globalChatTodos: VisualCaptureScenario = {
+  name: "global-chat-todos",
+  description: "Global Cake Chat projects existing project lists and a separate global list",
+  states: ["open"],
+  async seed(paths, theme) {
+    await projectChatTodos.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const application = JSON.parse(await readFile(file, "utf8"));
+    const first = application.data.projects[0];
+    first.name = "Cake";
+    first.todos.items = first.todos.items.slice(0, 2);
+    first.todos.items[0].needsAttention = true;
+    first.todos.items[0].attentionReason = "Review the startup findings";
+    const secondPath = join(paths.project, "website");
+    await mkdir(secondPath, { recursive: true });
+    application.data.projects.push({
+      ...first,
+      path: secondPath,
+      name: "Website",
+      todos: {
+        ...first.todos,
+        selectedId: null,
+        items: [
+          {
+            ...first.todos.items[1],
+            id: "00000000-0000-4000-8000-000000000021",
+            title: "Review the documentation layout",
+            description: "Check the updated documentation navigation.",
+            status: "Ready for review",
+            associations: [],
+          },
+        ],
+      },
+    });
+    application.data.cakeChatTodos = {
+      ...first.todos,
+      selectedId: null,
+      items: [
+        {
+          ...first.todos.items[1],
+          id: "00000000-0000-4000-8000-000000000031",
+          title: "Plan the next milestone",
+          description: "Set priorities across projects.",
+          status: "",
+          associations: [],
+        },
+      ],
+    };
+    await writeFile(file, JSON.stringify(application));
+  },
+  async prepare(page) {
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible();
+    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+    if (!(await workspace.isVisible()))
+      await page.locator('[data-slot="shell-workspace-toggle"]').click();
+    await workspace.getByRole("button", { name: "To-dos 4", exact: true }).click();
+    try {
+      for (const name of ["Cake", "Website", "Global"])
+        await expect(workspace.getByRole("heading", { name, exact: true })).toBeVisible();
+    } catch (error) {
+      console.error("Global to-do workspace:", await workspace.innerText());
+      throw error;
+    }
+    for (const name of [
+      "Startup investigation",
+      "Review the documentation layout",
+      "Plan the next milestone",
+    ])
+      await expect(workspace.getByRole("button", { name, exact: true })).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.getByRole("complementary", { name: "Workspace", exact: true }),
+};
+
 const projectChatAttention: VisualCaptureScenario = {
   name: "project-chat-attention",
   description: "Action-first Needs attention with exclusive Active, Snoozed and Done sections",
@@ -9467,6 +9545,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   scheduledPromptsScenario,
   taskInputAttachmentsScenario,
   projectChatTodos,
+  globalChatTodos,
   createTodoResolvedSessionScenario(projectChatTodos),
   createInterfaceIconsScenario(projectChatTodos, seedDurableChat),
   createAutoMergeIconsScenario(activityWorktreeScenario, startActivityFixtureSession),

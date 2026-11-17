@@ -40,6 +40,8 @@ export interface TodoResultOrigin {
 
 export class ProjectTodosStore extends Store<{
   list(): TodoListSource | undefined;
+  /** Display-only project groups; the chat's own list stays scoped. */
+  projectGroups?(): readonly (TodoListSource & { readonly title: string })[] | undefined;
   pane(): { readonly visible: boolean; open(): void; close(): void };
   replyContext(name: string, text: string): void;
 }> {
@@ -74,9 +76,9 @@ export class ProjectTodosStore extends Store<{
       },
     );
     this.reaction(
-      () => this.value?.items.map((item) => item.id).join(","),
+      () => this.paneItems.map((item) => item.id).join(","),
       () => {
-        const ids = new Set(this.value?.items.map((item) => item.id));
+        const ids = new Set(this.paneItems.map((item) => item.id));
         this.focusedItemIds = this.focusedItemIds.filter((id) => ids.has(id));
       },
     );
@@ -92,13 +94,32 @@ export class ProjectTodosStore extends Store<{
   get value() {
     return this.source?.owner.todos;
   }
+  get grouped() {
+    return this.props.projectGroups?.() !== undefined;
+  }
+  get paneGroups() {
+    const projects = this.props.projectGroups?.();
+    const source = this.source;
+    return [...(projects ?? []), ...(source ? [{ ...source, title: "Global" }] : [])].filter(
+      (group) => group.owner.todos.items.length > 0,
+    );
+  }
+  private get paneItems() {
+    return this.paneGroups.flatMap((group) => group.owner.todos.items);
+  }
+  get paneOpenCount() {
+    return this.paneItems.filter((item) => item.state === "open" && !item.snoozedUntil).length;
+  }
+  /** Route actions through the original item reference, not a synthetic aggregate scope. */
+  private sourceFor(item: ProjectTodo) {
+    return this.paneGroups.find((group) => group.owner.todos.items.includes(item));
+  }
   @computed
   get focusedItems() {
     // Rows also observe the authority revision here: snapshot reconciliation can
     // retain plain item identities while updating their content in place.
-    const value = this.value;
+    const items = new Map(this.paneItems.map((item) => [item.id, item]));
     if (this.focusedItemIds.length === 0) return [];
-    const items = new Map(value?.items.map((item) => [item.id, item]));
     return this.focusedItemIds.flatMap((id) => items.get(id) ?? []);
   }
   /** Narrowly derived membership for row reads, not a cache of list classification. */
@@ -110,23 +131,21 @@ export class ProjectTodosStore extends Store<{
     return this.focusedIds.has(id);
   }
   get classifiedItems() {
+    return this.classifyItems(this.value?.items ?? []);
+  }
+  classifyItems(items: readonly ProjectTodo[]) {
     // Construct the readiness join only if a matching unfocused active item needs it.
     let readiness: ((sessionId: string) => AutoMergeRequest | undefined) | undefined;
-    return classifyProjectTodos(
-      this.value?.items ?? [],
-      this.focusedItemIds,
-      this.query,
-      (item) => {
-        const lookup = (readiness ??=
-          SessionMetadataContext.consume(this)!.createMergeReadinessLookup());
-        return item.associations.some(
-          (link) =>
-            link.kind === "session" &&
-            !SessionMetadataContext.consume(this)!.isResolved(link.sessionId) &&
-            lookup(link.sessionId)?.readyToMerge === true,
-        );
-      },
-    );
+    return classifyProjectTodos(items, this.focusedItemIds, this.query, (item) => {
+      const lookup = (readiness ??=
+        SessionMetadataContext.consume(this)!.createMergeReadinessLookup());
+      return item.associations.some(
+        (link) =>
+          link.kind === "session" &&
+          !SessionMetadataContext.consume(this)!.isResolved(link.sessionId) &&
+          lookup(link.sessionId)?.readyToMerge === true,
+      );
+    });
   }
   get openItems() {
     return this.value?.items.filter((item) => item.state === "open" && !item.snoozedUntil) ?? [];
@@ -192,17 +211,25 @@ export class ProjectTodosStore extends Store<{
     );
   }
 
-  /** Access repairs this list only; authoritative changes arrive through its projection.
+  /** Access repairs displayed source lists; authoritative changes arrive through their projections.
    * Ignore repeat opens while a repair is running, without blocking ordinary edits.
    */
   reconciling = false;
   async reconcile() {
-    const scope = this.source?.scope;
-    if (!scope || this.reconciling || this.signal.aborted) return;
+    const sources = [
+      ...(this.props.projectGroups?.()?.filter((group) => group.owner.todos.items.length > 0) ??
+        []),
+      ...(this.source ? [this.source] : []),
+    ];
+    if (!sources.length || this.reconciling || this.signal.aborted) return;
     this.reconciling = true;
     this.error = undefined;
     try {
-      await ClientContext.consume(this)!.projectTodos.reconcile({ scope }, { signal: this.signal });
+      await Promise.all(
+        sources.map(({ scope }) =>
+          ClientContext.consume(this)!.projectTodos.reconcile({ scope }, { signal: this.signal }),
+        ),
+      );
     } catch (error) {
       if (!this.signal.aborted) this.error = describeError(error).message;
     } finally {
@@ -246,7 +273,7 @@ export class ProjectTodosStore extends Store<{
       this.error = "Choose a future date and time.";
       return;
     }
-    return this.mutate({
+    return this.mutate(item, {
       _tag: "Snooze",
       id: item.id,
       expectedRevision: item.revision,
@@ -255,11 +282,11 @@ export class ProjectTodosStore extends Store<{
   }
   unsnooze(item: ProjectTodo) {
     if (item.state !== "open" || !item.snoozedUntil) return;
-    return this.mutate({ _tag: "Unsnooze", id: item.id, expectedRevision: item.revision });
+    return this.mutate(item, { _tag: "Unsnooze", id: item.id, expectedRevision: item.revision });
   }
   setAttention(item: ProjectTodo, needsAttention: boolean, attentionReason?: string) {
     if (item.state !== "open") return;
-    return this.mutate({
+    return this.mutate(item, {
       _tag: "SetAttention",
       id: item.id,
       expectedRevision: item.revision,
@@ -268,7 +295,7 @@ export class ProjectTodosStore extends Store<{
     });
   }
   async activateAttention(item: ProjectTodo) {
-    const scope = this.source?.scope;
+    const scope = this.sourceFor(item)?.scope;
     if (!scope || this.busy || this.signal.aborted) return;
     this.busy = true;
     this.error = undefined;
@@ -291,7 +318,7 @@ export class ProjectTodosStore extends Store<{
     return this.setAttention(item, true);
   }
   reply(item: ProjectTodo) {
-    const source = this.source;
+    const source = this.sourceFor(item);
     if (!source) return;
     this.props.replyContext(
       `To-do · ${item.title}`,
@@ -345,7 +372,7 @@ export class ProjectTodosStore extends Store<{
   }
   /** User done/reopen from the pane or a result message; reported to the agent as a user change. */
   setDone(item: ProjectTodo) {
-    return this.mutate({
+    return this.mutate(item, {
       _tag: "SetState",
       id: item.id,
       expectedRevision: item.revision,
@@ -353,8 +380,8 @@ export class ProjectTodosStore extends Store<{
     });
   }
   /** Reject overlapping local edits. Domain serialization handles other windows and the agent. */
-  private async mutate(mutation: ProjectTodoUserMutation) {
-    const scope = this.source?.scope;
+  private async mutate(item: ProjectTodo, mutation: ProjectTodoUserMutation) {
+    const scope = this.sourceFor(item)?.scope;
     if (!scope || this.busy || this.signal.aborted) return;
     this.busy = true;
     this.error = undefined;

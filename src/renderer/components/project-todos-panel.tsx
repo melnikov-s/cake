@@ -17,6 +17,7 @@ type Section = {
   toggle?: () => void;
 };
 type Row =
+  | { key: string; kind: "group"; title: string }
   | { key: string; kind: "header"; section: Section; first: boolean }
   | { key: string; kind: "todo"; section: Section; item: ProjectTodo };
 
@@ -27,9 +28,6 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
 }) {
   const root = useStore(RootStore);
   const projectPath = store.source?.scope;
-  const allowsCakeMerge =
-    !projectPath ||
-    root.projectCatalogStore.find(projectPath)?.settings.worktreeLanding !== "pull-request";
   const list = useRef<LegendListRef>(null);
   const [focusedKey, setFocusedKey] = useState<string>();
   // Scroll promises can settle before React commits the destination. The row ref
@@ -44,50 +42,66 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
   useEffect(() => {
     void store.reconcile();
   }, [store]);
-  const classified = store.classifiedItems;
-  const sections: Section[] = [
-    { key: "focus", title: "Focus", items: classified.focused, open: true },
-    { key: "attention", title: "Needs attention", items: classified.attention, open: true },
-    {
-      key: "ready",
-      title: allowsCakeMerge ? "Ready to Merge" : "Ready",
-      items: classified.ready,
-      open: store.readyExpanded,
-      toggle: () => store.toggleReady(),
-    },
-    {
-      key: "active",
-      title: "Active",
-      items: classified.active,
-      open: store.activeExpanded,
-      toggle: () => store.toggleActive(),
-    },
-    {
-      key: "snoozed",
-      title: "Snoozed",
-      items: classified.snoozed,
-      open: store.snoozedExpanded,
-      toggle: () => store.toggleSnoozed(),
-    },
-    {
-      key: "done",
-      title: "Done",
-      items: classified.done,
-      open: store.doneExpanded,
-      toggle: () => store.toggleDone(),
-    },
-  ].filter((section) => section.items.length > 0);
-  const rows: Row[] = sections.flatMap((section, index) => [
-    { key: `section:${section.key}`, kind: "header", section, first: index === 0 },
-    ...(section.open
-      ? section.items.map((item): Row => ({
-          key: item.id,
-          kind: "todo",
+  const rows: Row[] = store.paneGroups.flatMap((group) => {
+    const allowsCakeMerge =
+      root.projectCatalogStore.find(group.scope)?.settings.worktreeLanding !== "pull-request";
+    const classified = store.classifyItems(group.owner.todos.items);
+    const sections: Section[] = [
+      { key: "focus", title: "Focus", items: classified.focused, open: true },
+      { key: "attention", title: "Needs attention", items: classified.attention, open: true },
+      {
+        key: "ready",
+        title: allowsCakeMerge ? "Ready to Merge" : "Ready",
+        items: classified.ready,
+        open: store.readyExpanded,
+        toggle: () => store.toggleReady(),
+      },
+      {
+        key: "active",
+        title: "Active",
+        items: classified.active,
+        open: store.activeExpanded,
+        toggle: () => store.toggleActive(),
+      },
+      {
+        key: "snoozed",
+        title: "Snoozed",
+        items: classified.snoozed,
+        open: store.snoozedExpanded,
+        toggle: () => store.toggleSnoozed(),
+      },
+      {
+        key: "done",
+        title: "Done",
+        items: classified.done,
+        open: store.doneExpanded,
+        toggle: () => store.toggleDone(),
+      },
+    ].filter((section) => section.items.length > 0);
+
+    if (!sections.length) return [];
+    return [
+      ...(store.grouped
+        ? [{ key: `group:${group.scope}`, kind: "group" as const, title: group.title }]
+        : []),
+      ...sections.flatMap((section, index): Row[] => [
+        {
+          key: `section:${group.scope}:${section.key}`,
+          kind: "header",
           section,
-          item,
-        }))
-      : []),
-  ]);
+          first: index === 0,
+        },
+        ...(section.open
+          ? section.items.map((item): Row => ({
+              key: item.id,
+              kind: "todo",
+              section,
+              item,
+            }))
+          : []),
+      ]),
+    ];
+  });
   // Navigation must materialize an offscreen destination before restoring focus.
   // Only explicit requests do this; background updates use the list's key/size anchoring.
   const request = store.paneRequest;
@@ -197,7 +211,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
         let index = rows.findIndex((row) => row.key === owner.dataset.todoVirtualKey) - 1;
         while (index >= 0 && index < rows.length) {
           const row = rows[index]!;
-          if (row.kind === "todo" || row.section.toggle) break;
+          if (row.kind === "todo" || (row.kind === "header" && row.section.toggle)) break;
           index -= 1;
         }
         const next = rows[index];
@@ -237,7 +251,14 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
         </p>
       }
       renderItem={({ item: row, index }) =>
-        row.kind === "header" ? (
+        row.kind === "group" ? (
+          <h2
+            data-todo-group={row.key}
+            className="border-b border-border px-3 pb-2 pt-3 text-sm font-semibold"
+          >
+            {row.title}
+          </h2>
+        ) : row.kind === "header" ? (
           <div
             ref={(element) => attachRow(row.key, element)}
             role="listitem"
