@@ -5,6 +5,7 @@ import { observer, StoreProvider } from "r-state-tree/react";
 import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
@@ -125,6 +126,15 @@ describe("New session destination workflow", () => {
       );
       expect(fixture.root.appShellStore.selection.kind).toBe("project-session");
       expect(fixture.root.projectWorkbenchStore.activeSession?.workspacePath).toBe(projectPath);
+      const sessionId = fixture.root.projectWorkbenchStore.activeSession!.sessionId;
+      expect(fixture.root.conversationNavigatorStore.projectPathForSession(sessionId)).toBe(
+        projectPath,
+      );
+      expect(fixture.root.conversationNavigatorStore.lineageFor(sessionId).at(-1)?.title).toBe(
+        "New chat",
+      );
+      expect(fixture.root.sessionCatalogStore.find(sessionId)).toBeUndefined();
+      expect(fixture.root.sessionRegistry.pendingSessions.summaries).toEqual([]);
       expect(fixture.start).not.toHaveBeenCalled();
 
       await fixture.user.type(message, "Keep this staged draft");
@@ -182,6 +192,11 @@ describe("New session destination workflow", () => {
     await fixture.user.click(screen.getByRole("option", { name: /Cake Chat/ }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
+    expect(fixture.root.appShellStore.selection).toEqual({
+      kind: "cake-chat",
+      sessionId: CAKE_CHAT_SESSION_ID,
+    });
+    expect(fixture.root.sessionRegistry.pendingSessions.conversations).toHaveLength(0);
     expect(fixture.inspect).not.toHaveBeenCalled();
   });
 

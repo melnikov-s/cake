@@ -942,6 +942,7 @@ export class RootStore extends Store<{
     return createStore(ConversationNavigatorStore, {
       projection: this.props.projection,
       catalog: this.sessionCatalogStore,
+      registry: this.sessionRegistry,
       sessionList: this.sidebarStore.sessionListStore,
       selected: () => {
         const owner = this.appShellStore.activeConversation;

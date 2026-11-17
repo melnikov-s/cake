@@ -52,6 +52,7 @@ export function renderSessionIdentity(
   );
   return {
     user: userEvent.setup(),
+    root,
     snapshot: () => toSnapshot(root),
     publishWorktrees(records: WorktreeRecord[]) {
       act(() =>

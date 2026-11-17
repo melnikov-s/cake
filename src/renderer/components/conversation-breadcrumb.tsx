@@ -23,16 +23,10 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
   const root = useStore(RootStore);
   const navigator = root.conversationNavigatorStore;
   const previewTitle = root.sessionRegistry.forkPreviewTitle(sessionId);
-  const previewDirectory = previewTitle
-    ? root.sessionRegistry.findSession(sessionId)?.workspacePath
-    : undefined;
   const chat = isCakeChatSessionId(sessionId)
     ? root.cakeChatCollectionStore.summaries.find((summary) => summary.sessionId === sessionId)
     : undefined;
-  const projectPath =
-    root.sessionCatalogStore.find(sessionId)?.projectPath ??
-    chat?.projectPath ??
-    (previewDirectory ? root.sessionCatalogStore.projectPathFor(previewDirectory) : undefined);
+  const projectPath = navigator.projectPathForSession(sessionId) ?? chat?.projectPath;
   const lineage = (
     includeChatTitle
       ? navigator.lineageForTarget({

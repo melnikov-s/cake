@@ -10,12 +10,20 @@ export function createConversationIdentityScenario(
   return {
     name: "conversation-identity",
     description: "Bottom-docked identity, long-title ellipsis, and persistent Appearance toggle",
-    states: ["project-chat", "long-title", "hidden", "browser", "global-chat"],
+    states: [
+      "project-chat",
+      "long-title",
+      "hidden",
+      "browser",
+      "global-chat",
+      "staged",
+      "staged-browser",
+    ],
     seed: titles.seed,
     async prepare(page, state, application) {
       await titles.prepare(
         page,
-        state === "project-chat" ? "project-chat" : "long-title",
+        state === "project-chat" || state.startsWith("staged") ? "project-chat" : "long-title",
         application,
       );
       // The title scenario ends over the dynamic rail; dismiss its intentional overlay before hit tests.
@@ -25,6 +33,34 @@ export function createConversationIdentityScenario(
         .toBe(54);
       const header = page.getByRole("navigation", { name: "Conversation breadcrumb" });
       const identity = page.getByRole("navigation", { name: "Conversation identity" });
+      if (state.startsWith("staged")) {
+        await page.getByRole("button", { name: "New session", exact: true }).click();
+        await page.getByRole("option", { name: /visual-capture-project/ }).click();
+        await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
+        await expect(header).toHaveText("visual-capture-project›New chat");
+        await expect(identity).toHaveText("visual-capture-project›New chat");
+        await expect(
+          identity.getByRole("button", { name: "New chat", exact: true }),
+        ).toHaveAttribute("aria-current", "page");
+        if (state === "staged-browser") {
+          await page.getByRole("button", { name: "Browser", exact: true }).click();
+          await expect(header).toHaveText("visual-capture-project›New chat");
+          await page
+            .getByRole("group", { name: "Companion content" })
+            .getByRole("button", { name: "Chat", exact: true })
+            .click();
+          await expect(identity).toHaveText("visual-capture-project›New chat");
+        }
+        await page
+          .getByRole("combobox", { name: "Message", exact: true })
+          .fill("Unsent project draft");
+        await expect(
+          page
+            .getByRole("navigation", { name: "Conversation breadcrumb" })
+            .getByRole("button", { name: "Cake Chat", exact: true }),
+        ).toHaveCount(0);
+        return;
+      }
       if (state === "global-chat") {
         await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
         await expect(header).toHaveText("Cake Chat");

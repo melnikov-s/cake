@@ -11,6 +11,7 @@ import { isActiveSessionActivity } from "../lib/session-activity";
 import type { RootProjection } from "../models/RootProjection";
 import { conversationOwnedNavigation } from "../lib/conversation-owned-navigation";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SidebarSessionListStore } from "./SidebarSessionListStore";
 import { sessionKinds, type SessionKind } from "../lib/session-kind";
@@ -33,6 +34,7 @@ import {
 export class ConversationNavigatorStore extends Store<{
   projection: RootProjection;
   catalog: SessionCatalogStore;
+  registry: SessionRegistryStore;
   sessionList: SidebarSessionListStore;
   selected(): ConversationNavigationTarget | undefined;
   interact(target: ConversationNavigationTarget): void;
@@ -335,6 +337,21 @@ export class ConversationNavigatorStore extends Store<{
     return this.sessionLineage(target.sessionId);
   }
 
+  /** Presentation ownership includes staged identities, without adding them to Sessions. */
+  projectPathForSession(sessionId: string): string | undefined {
+    const catalogPath = this.props.catalog.find(sessionId)?.projectPath;
+    if (catalogPath) return catalogPath;
+    const chat = this.props.projection.cakeChatCatalog.sessions.find(
+      (chat) => chat.sessionId === sessionId,
+    );
+    if (chat) return chat.projectPath;
+    const registry = this.props.registry;
+    if (!registry.pendingSessions.isStaged(sessionId) && !registry.isForkPreview(sessionId))
+      return undefined;
+    const directory = registry.findSession(sessionId)?.workspacePath;
+    return directory ? this.props.catalog.projectPathFor(directory) : undefined;
+  }
+
   private sessionLineage(sessionId: string): readonly ConversationNavigationEntry[] {
     const projection = this.props.projection;
     const session = this.props.catalog.find(sessionId);
@@ -358,6 +375,20 @@ export class ConversationNavigatorStore extends Store<{
     }
     const home = projection.cakeChatCatalog.sessions.find((chat) => chat.sessionId === sessionId);
     if (home || sessionId === CAKE_CHAT_SESSION_ID) return this.homeLineage(home?.projectPath);
+    if (this.props.registry.pendingSessions.isStaged(sessionId)) {
+      const projectPath = this.projectPathForSession(sessionId);
+      const conversation = this.props.registry.pendingSessions.conversation(sessionId);
+      if (projectPath && conversation)
+        return [
+          ...this.homeLineage(projectPath),
+          {
+            key: conversationNavigationKey(sessionId),
+            title: conversation.title,
+            relationship: "grouped",
+            target: { kind: "project-session", sessionId },
+          },
+        ];
+    }
     const thread = this.discussionsBySidecar.get(sessionId);
     if (!thread) return [];
     const parent = this.sessionLineage(thread.parentSessionId);

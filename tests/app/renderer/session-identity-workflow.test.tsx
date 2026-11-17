@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -44,6 +44,33 @@ function inputs() {
 }
 
 describe("Session identity workflows", () => {
+  it("shows an unsent manual name in Main, Browser and VS Code, including after a rejected first send", async () => {
+    const start = vi.fn<Client["projectSessions"]["start"]>(async () => {
+      throw new Error("First start rejected");
+    });
+    using fixture = renderSessionIdentity({ client: { projectSessions: { start } } });
+    const header = () => screen.getByRole("navigation", { name: "Conversation breadcrumb" });
+    const dock = () => screen.getByRole("navigation", { name: "Conversation identity" });
+    expect(header().textContent).toBe("Project›New chat");
+    expect(dock().textContent).toBe("Project›New chat");
+    act(() =>
+      fixture.root.sessionRegistry.pendingSessions
+        .conversation("staged-original")!
+        .setName("Manual staged title"),
+    );
+    for (const mode of ["Browser", "VS Code", "Main"]) {
+      await fixture.user.click(screen.getByRole("button", { name: mode }));
+      expect(header().textContent).toBe("Project›Manual staged title");
+    }
+    await fixture.user.type(inputs()[0]!, "Start this session");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("First start rejected", { exact: true })).toBeDefined();
+    expect(start).toHaveBeenCalledOnce();
+    expect(header().textContent).toBe("Project›Manual staged title");
+    expect(dock().textContent).toBe("Project›Manual staged title");
+    expect(fixture.root.sessionCatalogStore.find("staged-original")).toBeUndefined();
+  });
+
   it("routes terminal actions through authoritative identity and falls back to the loaded directory after catalog removal", async () => {
     const open = vi.fn<Client["terminals"]["open"]>(async ({ target }) => ({
       terminalId: target.workingDirectory,
