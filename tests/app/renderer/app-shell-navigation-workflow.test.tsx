@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import { applySessionSignalsUpdate } from "../../../src/renderer/reducers/SessionSignalsReducer";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 
@@ -50,6 +51,25 @@ const expectProjectChat = async (name: string) => {
 const expectCakeChat = async () => {
   expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
 };
+
+function registerLocalChats(fixture: ReturnType<typeof renderAppShellNavigation>) {
+  const global = toSnapshot(fixture.models.cakeChatCatalog).sessions![0]!;
+  act(() =>
+    applySnapshot(fixture.models.cakeChatCatalog, {
+      loaded: true,
+      sessions: [
+        global,
+        ...["alpha", "beta"].map((name, index) => ({
+          ...global,
+          sessionId: `project-chat:${(index === 0 ? "a" : "b").repeat(64)}`,
+          title: name,
+          projectPath: `/${name}`,
+        })),
+      ],
+    }),
+  );
+  return `project-chat:${"b".repeat(64)}`;
+}
 
 async function selectProjectSession(
   fixture: ReturnType<typeof renderAppShellNavigation>,
@@ -395,12 +415,13 @@ describe("App shell navigation workflow", () => {
   });
 
   it.each(["agent", "automatic"] as const)(
-    "%s resolution retains the viewed session, pane, and draft",
+    "%s live resolution returns to the owning local chat and removes retired selection",
     async (origin) => {
       const resolve = vi.fn<Client["projectSessions"]["resolve"]>(async () => undefined);
       using fixture = renderAppShellNavigation({ projectSessions: { resolve } });
       await selectProjectSession(fixture, "beta");
       await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Keep my draft");
+      const localId = registerLocalChats(fixture);
       const session = fixture.root.sessionRegistry.findSession("beta");
       if (origin === "agent") {
         await act(async () => {
@@ -418,18 +439,117 @@ describe("App shell navigation workflow", () => {
         );
       }
       await fixture.publishResolved("beta");
-      expect(fixture.root.appShellStore.activeConversation).toEqual({
-        kind: "project-session",
-        sessionId: "beta",
-      });
-      expect(fixture.root.sessionRegistry.findSession("beta")).toBe(session);
-      expect(screen.getByTestId("resolved-session-notice")).toBeDefined();
-      expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty(
-        "value",
-        "Keep my draft",
+      await waitFor(() =>
+        expect(fixture.root.appShellStore.activeConversation).toEqual({
+          kind: "cake-chat",
+          sessionId: localId,
+        }),
       );
+      expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeDefined();
+      expect(screen.queryByTestId("resolved-session-notice")).toBeNull();
+      expect(screen.queryByRole("navigation", { name: "Conversation identity" })).toBeNull();
+      expect(fixture.root.sessionLayoutStore.history).not.toContain("beta");
+      // Retained observers can finish landing receipts; their composer is no longer displayed.
+      expect(fixture.root.sessionRegistry.findSession("beta")).toBe(session);
+      expect(session?.conversationSessionStore.composerStore.draftStore.text).toBe("Keep my draft");
     },
   );
+
+  it.each(["Resolved", "Snapshot"] as const)(
+    "routes a selected session's %s signal without list details using its owning project",
+    async (update) => {
+      using fixture = renderAppShellNavigation({}, { transcriptViewport: true });
+      const localId = registerLocalChats(fixture);
+      await selectProjectSession(fixture, "beta");
+      await fixture.publishCakeChatProjection(
+        localId,
+        [
+          {
+            id: "local-history",
+            kind: "text",
+            role: "assistant",
+            text: "Owning project transcript",
+            status: "complete",
+          },
+        ],
+        "Snapshot",
+      );
+      act(() => {
+        applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+          _tag: "Snapshot",
+          sessions: [
+            {
+              sessionId: "beta",
+              projectPath: "/beta",
+              workingDirectory: "/worktrees/beta",
+              running: false,
+              unread: false,
+            },
+          ],
+        });
+        // The currently selected project is not routing authority for the visible session.
+        fixture.root.projectWorkbenchStore.projectOpenStore.activate("/alpha");
+        // Hidden Sessions releases details. The background stream still knows ownership.
+        applySnapshot(fixture.models.sessionCatalog, { sessions: [] });
+      });
+      expect(fixture.root.conversationNavigatorStore.projectPathForSession("beta")).toBe("/beta");
+      await act(async () => {
+        applySessionSignalsUpdate(
+          fixture.models.sessionCatalog,
+          update === "Resolved"
+            ? { _tag: "Resolved", sessionId: "beta" }
+            : { _tag: "Snapshot", sessions: [], resolvedSessionIds: ["beta"] },
+        );
+      });
+      await waitFor(() =>
+        expect(fixture.root.appShellStore.activeConversation).toEqual({
+          kind: "cake-chat",
+          sessionId: localId,
+        }),
+      );
+      expect(await screen.findByText("Owning project transcript")).toBeDefined();
+      expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeDefined();
+      expect(screen.getByRole("navigation", { name: "Conversation breadcrumb" }).textContent).toBe(
+        "beta",
+      );
+      expect(screen.queryByRole("navigation", { name: "Conversation identity" })).toBeNull();
+      expect(fixture.root.sessionLayoutStore.history).not.toContain("beta");
+    },
+  );
+
+  it("ignores an unrelated background resolution signal without changing selection or draft", async () => {
+    using fixture = renderAppShellNavigation();
+    registerLocalChats(fixture);
+    await selectProjectSession(fixture, "alpha");
+    await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Current draft");
+    await act(async () =>
+      applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+        _tag: "Resolved",
+        sessionId: "beta",
+      }),
+    );
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId: "alpha",
+    });
+    expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty(
+      "value",
+      "Current draft",
+    );
+  });
+
+  it("does not redirect on first learning that an unknown selection was already archived", async () => {
+    using fixture = renderAppShellNavigation();
+    registerLocalChats(fixture);
+    await selectProjectSession(fixture, "beta");
+    act(() => applySnapshot(fixture.models.sessionCatalog, { sessions: [] }));
+    await fixture.publishResolved("beta");
+    expect(fixture.root.appShellStore.activeConversation).toEqual({
+      kind: "project-session",
+      sessionId: "beta",
+    });
+    expect(screen.getByTestId("resolved-session-notice")).toBeDefined();
+  });
 
   it("does not redirect a session opened while its background resolution was pending", async () => {
     let finish!: () => void;

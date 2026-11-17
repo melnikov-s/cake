@@ -20,6 +20,7 @@ export function createConversationIdentityScenario(
       "global-chat",
       "staged",
       "staged-browser",
+      "resolved",
     ],
     seed: titles.seed,
     async prepare(page, state, application) {
@@ -64,6 +65,33 @@ export function createConversationIdentityScenario(
           page
             .getByRole("navigation", { name: "Conversation breadcrumb" })
             .getByRole("button", { name: "Cake Chat", exact: true }),
+        ).toHaveCount(0);
+        return;
+      }
+      if (state === "resolved") {
+        await expect(identity).toBeVisible();
+        const title = await identity.locator('[aria-current="page"]').getAttribute("title");
+        await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+        await page.getByRole("combobox").last().fill(title!);
+        // Search populates the session catalog, but resolution is the normal Sessions action.
+        await page.keyboard.press("Escape");
+        const openWorkspace = page.getByRole("button", { name: "Open Workspace", exact: true });
+        if (await openWorkspace.isVisible()) await openWorkspace.click();
+        await page
+          .getByRole("complementary", { name: "Workspace", exact: true })
+          .getByRole("button", { name: /^Sessions/ })
+          .click();
+        await page.getByRole("button", { name: `Resolve ${title}`, exact: true }).click();
+        await expect(
+          page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+        ).toBeVisible();
+        await expect(header).toHaveText("visual-capture-project");
+        await expect(identity).toHaveCount(0);
+        await expect(
+          page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          page.getByRole("button", { name: "Merge & resolve", exact: true }),
         ).toHaveCount(0);
         return;
       }

@@ -13,6 +13,7 @@ import type { WorktreeStatus } from "../../../src/contracts/worktrees/worktree-c
 import type { Client } from "../../../src/renderer/client/Client";
 import { ToastHost } from "../../../src/renderer/components/toast-host";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
+import { applySessionSignalsUpdate } from "../../../src/renderer/reducers/SessionSignalsReducer";
 import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -179,6 +180,11 @@ function renderSessions(selectedSessionId = "parent", landing: "merge" | "pull-r
     cancelLanding,
     resolveWorkingDirectory,
     pane: (sessionId: string) => within(screen.getByRole("region", { name: sessionId })),
+    async publishResolution(sessionId: string) {
+      await act(async () =>
+        applySessionSignalsUpdate(fixture.models.sessionCatalog, { _tag: "Resolved", sessionId }),
+      );
+    },
     /** Publishes main's process-lifetime landing projection to every observing Store. */
     async publish(...next: WorktreeLandingOperation[]) {
       for (const operation of next) operations.set(operation.workspacePath, operation);
@@ -317,6 +323,33 @@ describe("Worktree landing completion toasts", () => {
       sessionId: `project-chat:${"c".repeat(64)}`,
     });
   });
+
+  it.each([false, true])(
+    "resolution before terminal landing navigates locally without aborting receipts (automatic: %s)",
+    async (automatic) => {
+      using fixture = renderSessions();
+      await fixture.user.click(
+        await fixture.pane("parent").findByRole("button", { name: "Merge & resolve" }),
+      );
+      const operationId = fixture.startLanding.mock.calls[0]![0].operationId;
+      await fixture.publishResolution("parent");
+      expect(fixture.activeConversation()).toEqual({
+        kind: "cake-chat",
+        sessionId: `project-chat:${"c".repeat(64)}`,
+      });
+      expect(fixture.root.sessionLayoutStore.history).not.toContain("parent");
+      await fixture.publish({
+        ...landed(operationId, "/family", "parent", ["parent", "child-1", "child-2", "grandchild"]),
+        ...(automatic ? { automatic: true as const } : null),
+      });
+      await waitFor(() =>
+        expect(
+          fixture.cancelLanding.mock.calls.filter(([request]) => request.intent === "acknowledge"),
+        ).toHaveLength(4),
+      );
+      expect(fixture.activeConversation()?.sessionId).toBe(`project-chat:${"c".repeat(64)}`);
+    },
+  );
 
   it.each(["background", "navigated-away"] as const)(
     "keeps the current conversation after %s manual merge-and-resolve",

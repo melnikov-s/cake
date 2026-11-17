@@ -9,6 +9,6 @@ export const SessionRetirementContext =
       | "setProjectSessionResolved"
       | "setProjectSessionsResolved"
       | "deleteProjectSession"
-      | "returnToProjectChatAfterManualResolution"
+      | "returnToProjectChatAfterResolution"
     >
   >();

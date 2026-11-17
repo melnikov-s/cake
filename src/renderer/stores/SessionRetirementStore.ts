@@ -84,8 +84,8 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
       await this.props.createProjectSession(fallbackProjectPath);
   }
 
-  /** A manual landing keeps its observers alive to finish their completion receipts. */
-  async returnToProjectChatAfterManualResolution(
+  /** Live retirement drops selection/history, keeping landing observers alive for their receipts. */
+  async returnToProjectChatAfterResolution(
     sessionIds: readonly string[],
     viewedSessionId: string,
     fallbackProjectPath?: string,
@@ -100,7 +100,15 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
       return;
     const projectPath =
       this.props.catalog.find(viewedSessionId)?.projectPath ?? fallbackProjectPath;
-    if (projectPath) await this.props.openProjectChat(projectPath);
+    if (!projectPath) return;
+    const opening = this.props.openProjectChat(projectPath);
+    // Project Chat commits its selection before its async runtime/focus work. Retire
+    // the old visits now, not after an await that could outlive a user's archive reopen.
+    if (this.props.shell.activeConversation?.kind === "cake-chat") {
+      this.props.shell.removeSessionsFromHistory(sessionIds);
+      this.props.layout.removeSessions(sessionIds);
+    }
+    await opening;
   }
 
   /** Retires resolved sessions; only a removed selection returns to its local Project Chat. */

@@ -522,6 +522,36 @@ describe("Worktree operation workflows", () => {
     expect(fixture.root.toastStore.toasts).toEqual([]);
   });
 
+  it("discard-and-resolve returns to the owning local chat and clears the retired layout", async () => {
+    const discard = vi.fn<Client["managedWorktrees"]["discard"]>(async () => undefined);
+    const resolveWorkingDirectory = vi.fn<Client["projectSessions"]["resolveWorkingDirectory"]>(
+      async () => ({
+        projectPath: "/project",
+        workingDirectory: "/worktree",
+        resolvedSessionIds: ["session-1"],
+        failures: [],
+        cleanupFailures: [],
+      }),
+    );
+    using fixture = renderWorktree({
+      client: { managedWorktrees: { discard }, projectSessions: { resolveWorkingDirectory } },
+    });
+    await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
+    await fixture.user.click(screen.getByRole("button", { name: "Discard & resolve" }));
+    await fixture.user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Discard & resolve" }),
+    );
+    await waitFor(() =>
+      expect(fixture.root.appShellStore.activeConversation).toEqual({
+        kind: "cake-chat",
+        sessionId: `project-chat:${"c".repeat(64)}`,
+      }),
+    );
+    expect(discard).toHaveBeenCalledOnce();
+    expect(resolveWorkingDirectory).toHaveBeenCalledOnce();
+    expect(fixture.root.sessionLayoutStore.history).not.toContain("session-1");
+  });
+
   it("keeps merge disabled without changes and offers rebase only after the target advances", async () => {
     using fixture = renderWorktree({ status: status({ aheadCount: 0 }), streaming: true });
     await waitFor(() => expect(fixture.landing).toHaveBeenCalled());

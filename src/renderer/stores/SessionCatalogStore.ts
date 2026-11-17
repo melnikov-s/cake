@@ -142,6 +142,13 @@ export class SessionCatalogStore extends Store<{
     );
   }
 
+  /** Unlike isResolved, an absent authority is unknown, not a live session. */
+  resolutionState(sessionId: string): boolean | undefined {
+    if (this.props.model.signals.isResolved(sessionId)) return true;
+    if (this.props.model.signals.find(sessionId)) return false;
+    return this.find(sessionId)?.resolved;
+  }
+
   /** Reconcile one explicit identity without reloading the Project catalog or a transcript. */
   async lookup(sessionId: string) {
     const existing = this.find(sessionId);

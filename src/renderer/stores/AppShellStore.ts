@@ -41,6 +41,7 @@ export interface AppShellStoreProps {
     workspace: "project-sessions" | "cake-chat" | "automation-sessions",
   ): string | undefined;
   automationSessionResolved?(sessionId: string): boolean;
+  onProjectSessionResolved?(sessionId: string, projectPath: string | undefined): void;
   onProjectSessionSelectionChanged(current: string | undefined, previous: string | undefined): void;
 }
 
@@ -148,7 +149,11 @@ export class AppShellStore extends Store<AppShellStoreProps> {
           resolved:
             active.kind === "automation-session"
               ? this.props.automationSessionResolved?.(active.sessionId)
-              : this.metadata.isResolved(active.sessionId),
+              : this.metadata.resolutionState(active.sessionId),
+          projectPath:
+            active.kind === "project-session"
+              ? this.metadata.projectPath(active.sessionId)
+              : undefined,
         };
       },
       (current, previous) => {
@@ -156,12 +161,22 @@ export class AppShellStore extends Store<AppShellStoreProps> {
           !current ||
           !previous ||
           current.kind !== previous.kind ||
-          current.sessionId !== previous.sessionId ||
-          previous.resolved !== true ||
-          current.resolved !== false
+          current.sessionId !== previous.sessionId
         )
           return;
-        this.recordCurrentConversationVisit();
+        // Only a known live selection becoming resolved is a retirement. Opening an
+        // archive (or first learning its state) remains an intentional history view.
+        if (
+          current.kind === "project-session" &&
+          previous.resolved === false &&
+          current.resolved === true
+        )
+          this.props.onProjectSessionResolved?.(
+            current.sessionId,
+            previous.projectPath ?? current.projectPath,
+          );
+        else if (previous.resolved === true && current.resolved === false)
+          this.recordCurrentConversationVisit();
       },
     );
   }

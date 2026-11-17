@@ -1275,6 +1275,13 @@ export class RootStore extends Store<{
       automationSessionResolved: (sessionId) => this.automationSessionsStore.isResolved(sessionId),
       onProjectSessionSelectionChanged: (current, previous) =>
         this.projectWorkbenchStore.changeSelectedSession(current, previous),
+      onProjectSessionResolved: (sessionId, projectPath) => {
+        void this.sessionRetirementStore.returnToProjectChatAfterResolution(
+          [sessionId],
+          sessionId,
+          projectPath,
+        );
+      },
     });
   }
 

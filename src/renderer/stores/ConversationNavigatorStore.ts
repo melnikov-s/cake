@@ -339,15 +339,13 @@ export class ConversationNavigatorStore extends Store<{
 
   /** Presentation ownership includes staged identities, without adding them to Sessions. */
   projectPathForSession(sessionId: string): string | undefined {
-    const catalogPath = this.props.catalog.find(sessionId)?.projectPath;
+    const catalogPath = this.props.catalog.backgroundSession(sessionId)?.projectPath;
     if (catalogPath) return catalogPath;
     const chat = this.props.projection.cakeChatCatalog.sessions.find(
       (chat) => chat.sessionId === sessionId,
     );
     if (chat) return chat.projectPath;
     const registry = this.props.registry;
-    if (!registry.pendingSessions.isStaged(sessionId) && !registry.isForkPreview(sessionId))
-      return undefined;
     const directory = registry.findSession(sessionId)?.workspacePath;
     return directory ? this.props.catalog.projectPathFor(directory) : undefined;
   }

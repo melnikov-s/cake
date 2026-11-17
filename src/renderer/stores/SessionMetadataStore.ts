@@ -23,6 +23,18 @@ export class SessionMetadataStore extends Store<{
     );
   }
 
+  projectPath(sessionId: string) {
+    const directory = this.workingDirectory(sessionId);
+    return (
+      this.props.catalog.backgroundSession(sessionId)?.projectPath ??
+      (directory ? this.props.catalog.projectPathFor(directory) : undefined)
+    );
+  }
+
+  resolutionState(sessionId: string) {
+    return this.props.catalog.resolutionState(sessionId);
+  }
+
   sessionContributionStats(sessionId: string) {
     const directory = this.workingDirectory(sessionId);
     return directory ? this.props.catalog.managedWorktree(directory)?.contributionStats : undefined;

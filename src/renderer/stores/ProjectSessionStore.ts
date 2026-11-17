@@ -286,7 +286,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         // snapshots can be observed by siblings, other windows, or after reconnect.
         if (this.props.worktreeOperation()?.automatic) return;
         if (result.manualResolution && this.selected) {
-          await SessionRetirementContext.consume(this)!.returnToProjectChatAfterManualResolution(
+          await SessionRetirementContext.consume(this)!.returnToProjectChatAfterResolution(
             result.resolvedSessionIds ?? [this.sessionId],
             this.sessionId,
             record.projectPath,
