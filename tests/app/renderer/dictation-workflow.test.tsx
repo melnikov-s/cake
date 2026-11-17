@@ -2584,6 +2584,69 @@ describe("Dictation writing-field workflow", () => {
     }
   });
 
+  it("preserves annotation capture and deliberate stop across unrelated streaming rerenders", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    const close = vi.fn();
+    // ChatMessage passes fresh inline callbacks when transcript updates rerender it.
+    const surface = (streamedText: string) => (
+      <StoreProvider store={fixture.root.dictationStore}>
+        <output>{streamedText}</output>
+        <AnnotationItemPopover
+          anchor={document.body}
+          annotation={{ selectedText: "Selected passage", comment: "Existing note" }}
+          onClose={() => close(streamedText)}
+          onSave={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      </StoreProvider>
+    );
+    const view = render(surface("First token"));
+    try {
+      await fixture.user.click(screen.getByRole("button", { name: "Edit annotation" }));
+      const input = screen.getByRole<HTMLTextAreaElement>("textbox", {
+        name: "Edit annotation comment",
+      });
+      await waitFor(() => expect(fixture.root.dictationStore.phase).toBe("listening"));
+      const target = fixture.root.dictationStore.activeTargetId!;
+      const focus = vi.spyOn(input, "focus");
+      const preparations = fixture.prepare.mock.calls.length;
+      const claims = fixture.claim.mock.calls.length;
+      const microphones = fixture.audio.getUserMedia.mock.calls.length;
+      await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+      for (const text of ["First token second", "First token second third"]) {
+        view.rerender(surface(text));
+        expect(document.activeElement).toBe(input);
+        expect(fixture.root.dictationStore.activeTargetId).toBe(target);
+        expect(fixture.root.dictationStore.phase).toBe("listening");
+      }
+      expect(focus).not.toHaveBeenCalled();
+      await fixture.recognize(0, "Speech during streaming");
+      expect(input.value).toBe("Speech during streaming");
+      expect(fixture.prepare).toHaveBeenCalledTimes(preparations);
+      expect(fixture.claim).toHaveBeenCalledTimes(claims);
+      expect(fixture.audio.getUserMedia).toHaveBeenCalledTimes(microphones);
+
+      // Capture survives a deliberate focus park; streaming must not undo it.
+      const save = screen.getByRole("button", { name: "Save annotation" });
+      act(() => save.focus());
+      view.rerender(surface("Another token"));
+      expect(document.activeElement).toBe(save);
+      expect(fixture.root.dictationStore.phase).toBe("listening");
+      // A user stop while parked must not become an intentional field refocus.
+      act(() => fixture.root.dictationStore.stop(target));
+      const stoppedPreparations = fixture.prepare.mock.calls.length;
+      view.rerender(surface("Final token"));
+      expect(document.activeElement).toBe(save);
+      expect(fixture.root.dictationStore.phase).toBe("paused");
+      expect(fixture.prepare).toHaveBeenCalledTimes(stoppedPreparations);
+      expect(input.value).toBe("Speech during streaming");
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+    }
+  });
+
   it("keeps a silent annotation field dictating after blur", async () => {
     using fixture = renderDictation();
     await fixture.user.click(mode());

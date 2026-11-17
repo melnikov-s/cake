@@ -135,6 +135,66 @@ describe("Annotation dismissal protection", () => {
   });
 });
 
+describe("Annotation focus lifetime", () => {
+  it("keeps the already-stable draft focused through streaming callback refreshes", async () => {
+    const user = userEvent.setup();
+    const surface = (token: string) => (
+      <>
+        <output>{token}</output>
+        <AnnotationDraftPopover anchor={document.body} onSave={vi.fn()} onClose={() => {}} />
+      </>
+    );
+    const view = render(surface("First token"));
+    const input = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Annotation comment" });
+    await user.type(input, "Unfinished annotation");
+    input.setSelectionRange(3, 9);
+    const focus = vi.spyOn(input, "focus");
+    view.rerender(surface("First token second token"));
+    expect(focus).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("Unfinished annotation");
+    expect([input.selectionStart, input.selectionEnd]).toEqual([3, 9]);
+  });
+
+  it("uses current dismissal callbacks and restores the original focus only at removal", async () => {
+    const user = userEvent.setup();
+    const original = document.createElement("button");
+    document.body.append(original);
+    original.focus();
+    const firstClose = vi.fn();
+    const latestClose = vi.fn();
+    const surface = (onClose: () => void, comment: string) => (
+      <AnnotationItemPopover
+        anchor={document.body}
+        annotation={{ selectedText: "Selected passage", comment }}
+        onClose={onClose}
+        onSave={vi.fn()}
+        onRemove={vi.fn()}
+      />
+    );
+    const view = render(surface(firstClose, "Saved note"));
+    try {
+      await user.click(screen.getByRole("button", { name: "Edit annotation" }));
+      const input = screen.getByRole("textbox", { name: "Edit annotation comment" });
+      const focus = vi.spyOn(input, "focus");
+      view.rerender(surface(latestClose, "Updated saved note"));
+      expect(focus).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(input);
+      await user.click(screen.getByRole("button", { name: "Cancel editing" }));
+      await user.click(screen.getByRole("button", { name: "Discard" }));
+      expect(screen.queryByRole("textbox", { name: "Edit annotation comment" })).toBeNull();
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(firstClose).not.toHaveBeenCalled();
+      expect(latestClose).toHaveBeenCalledOnce();
+      view.unmount();
+      expect(document.activeElement).toBe(original);
+    } finally {
+      view.unmount();
+      original.remove();
+    }
+  });
+});
+
 describe("Existing annotation edits", () => {
   it.each(["outside", "Escape", "Cancel editing"])(
     "protects changed comments on %s",

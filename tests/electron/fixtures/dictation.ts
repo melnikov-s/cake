@@ -202,6 +202,8 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       env: {
         ...process.env,
         CAKE_ELECTRON_SMOKE: "1",
+        // A coding session can inherit the live dev URL; always test this worktree's build.
+        ELECTRON_RENDERER_URL: "",
         CAKE_SMOKE_DICTATION_HELPER: helper,
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: cakeHome,

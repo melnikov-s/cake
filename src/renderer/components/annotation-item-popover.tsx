@@ -37,6 +37,8 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [position, setPosition] = useState<CSSProperties>({ visibility: "hidden" });
+  const dismissalState = useRef({ isEditing, onClose });
+  dismissalState.current = { isEditing, onClose };
 
   useEffect(() => {
     if (!isEditing) {
@@ -81,22 +83,28 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
     }
   }, [isEditing]);
 
+  // Restoration belongs to the popover lifetime, not inline callbacks refreshed by streaming.
   useEffect(() => {
     const previouslyFocused =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dismiss = (event: PointerEvent) => {
       if (
-        !isEditing &&
+        !dismissalState.current.isEditing &&
         (!(event.target instanceof Node) || !surfaceRef.current?.contains(event.target))
       ) {
-        onClose();
+        dismissalState.current.onClose();
       }
     };
     const keydown = (event: KeyboardEvent) => {
-      if (!isEditing && event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
+      if (
+        !dismissalState.current.isEditing &&
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !event.isComposing
+      ) {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        dismissalState.current.onClose();
       }
     };
     document.addEventListener("pointerdown", dismiss);
@@ -106,7 +114,7 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
       document.removeEventListener("keydown", keydown);
       if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
     };
-  }, [isEditing, onClose, annotation.comment]);
+  }, []);
 
   const dismissal = useAnnotationDismissal({
     surface: surfaceRef,
