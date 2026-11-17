@@ -16,6 +16,8 @@ export default {
     "scripts/performance/backend-amplification.mjs",
     "tests/integration/fixtures/headless-backend.ts",
     "tests/integration/fixtures/restart-backend.ts",
+    // Bundled dynamically by the isolated tooltip lifecycle Electron test.
+    "tests/electron/tooltip-lifecycle-fixture.tsx",
     // Forked dynamically by the Node validation-queue suite.
     "tests/fixtures/validation-queue-client.mjs",
     "tests/fixtures/validation-queue-job.mjs",

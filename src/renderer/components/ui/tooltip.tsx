@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 /** Hover/focus delay before the tooltip appears; far snappier than native titles. */
@@ -7,25 +7,53 @@ const TOOLTIP_DELAY_MS = 120;
 
 export function useTooltip(enabled = true) {
   const timer = useRef<number | undefined>(undefined);
+  const cleanup = useRef<(() => void) | undefined>(undefined);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
-  const show = (target: HTMLElement) => {
-    if (!enabled) return;
+  const clear = useCallback(() => {
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setAnchor(target), TOOLTIP_DELAY_MS);
-  };
-  const hide = () => {
-    window.clearTimeout(timer.current);
+    cleanup.current?.();
+    cleanup.current = undefined;
+  }, []);
+  const hide = useCallback(() => {
+    clear();
     setAnchor(null);
+  }, [clear]);
+
+  const show = (target: HTMLElement) => {
+    hide();
+    if (!enabled || !target.isConnected) return;
+
+    // A fixed portal can outlive hover when its trigger moves or disappears.
+    // Watch only while this tooltip is pending/visible, not for every icon button.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") hide();
+    };
+    const observer = new MutationObserver(() => {
+      if (!target.isConnected) hide();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    window.addEventListener("blur", hide);
+    document.addEventListener("keydown", onKeyDown, true);
+    cleanup.current = () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
+      window.removeEventListener("blur", hide);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+    timer.current = window.setTimeout(() => {
+      if (target.isConnected) setAnchor(target);
+      else hide();
+    }, TOOLTIP_DELAY_MS);
   };
 
   useLayoutEffect(() => {
-    if (!enabled) {
-      window.clearTimeout(timer.current);
-      setAnchor(null);
-    }
-  }, [enabled]);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+    if (!enabled) hide();
+  }, [enabled, hide]);
+  useEffect(() => clear, [clear]);
 
   return { anchor, hide, show };
 }
