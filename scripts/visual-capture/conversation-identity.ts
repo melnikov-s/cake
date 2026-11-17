@@ -186,12 +186,18 @@ export function createConversationIdentityScenario(
         await expect(identity).toBeVisible();
         await expect(header).toHaveText(beforeHeader!);
         // Exercise real navigation from the floating label, not just its header counterpart.
+        const sessionTitle = await identity.locator('[aria-current="page"]').getAttribute("title");
         await identity.getByRole("button", { name: "visual-capture-project", exact: true }).click();
         await expect(
           page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
         ).toBeVisible();
         await expect(identity).toHaveCount(0);
-        await page.getByRole("button", { name: "Go back in session history", exact: true }).click();
+        await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+        await page.keyboard.type(sessionTitle!);
+        await page
+          .getByRole("option", { name: new RegExp(sessionTitle!) })
+          .first()
+          .click();
         await expect(identity).toBeVisible();
         await expect(input).toHaveValue("Keep this draft");
         console.log("CONVERSATION_IDENTITY_GEOMETRY", JSON.stringify({ state, ...geometry }));
