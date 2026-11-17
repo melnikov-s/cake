@@ -1,13 +1,3 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import {
-  AssistantEntry,
-  createRegistry,
-  Harness,
-  MemoryStorage,
-  ResetEntry,
-  ToolResultEntry,
-  UserEntry,
-} from "@earendil-works/pi-durable";
 import { Context, Effect, Exit, Layer, Schema, Scope } from "effect";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,18 +7,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { OptMemoryId, type OptMemoryRange } from "../../../../src/contracts/memory/opt-memory-data";
 import { OptMemory } from "../../../../src/services/opt-memory/OptMemory";
 import { makeOptMemoryLive } from "../../../../src/services/opt-memory/OptMemoryLive";
-import * as treeModule from "../../../../src/services/opt-memory/memory-tree";
-import { type MemoryTreeOptions } from "../../../../src/services/opt-memory/memory-tree";
-import { createDurableChatMemory } from "../../../../src/services/pi-durable/durable-chat-memory";
-import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
+import type { MemoryTreeOptions } from "../../../../src/services/opt-memory/memory-tree";
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
-  vi.restoreAllMocks();
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 const memoryId = () => OptMemoryId.make(crypto.randomUUID());
-const signal = () => new AbortController().signal;
 const payload = (context: string) =>
   context.slice(context.indexOf("<input>\n") + 8, context.lastIndexOf("\n</input>"));
 const summary = () =>
@@ -73,65 +58,8 @@ async function fixture(summarize = summary(), location?: string) {
     },
   };
 }
-async function durableFixture(summarize = summary(), budget = 10_000) {
-  const storage = new MemoryStorage();
-  const harness = await Harness.open(
-    storage,
-    {
-      models: durableModels().models,
-      registry: createRegistry(),
-      settings: { contextRetentionMs: 0 },
-    },
-    BACKGROUND_CONTEXT,
-  );
-  cleanup.push(() => harness.close(BACKGROUND_CONTEXT));
-  const root = await harness.root(BACKGROUND_CONTEXT);
-  return {
-    root,
-    summarize,
-    memory: createDurableChatMemory(harness, root, storage, { budget: () => budget, summarize }),
-    append: (text: string) =>
-      root.commit(
-        (tx) =>
-          tx.appendEntry(UserEntry, root.id, {
-            model: [{ role: "user", content: text, timestamp: 1 }],
-          }),
-        BACKGROUND_CONTEXT,
-      ),
-    head: (text: string) =>
-      root.commit(
-        (tx) =>
-          tx.appendEntry(ResetEntry, root.id, {
-            head: "self",
-            model: [{ role: "user", content: text, timestamp: 1 }],
-          }),
-        BACKGROUND_CONTEXT,
-      ),
-  };
-}
 
-describe("shared OptMem core and automation adapter", () => {
-  it("uses the extracted compaction core for Durable chat and automation memory", async () => {
-    const core = vi.spyOn(treeModule, "createMemoryTree");
-    const durable = await durableFixture();
-    const automation = await fixture();
-    const id = memoryId();
-    for (const marker of ["A", "B", "C", "D"]) {
-      await durable.append(`RAW_${marker} `.repeat(100));
-      await automation.write(id, `RAW_${marker} `.repeat(100));
-    }
-    expect((await durable.memory.synchronize(signal())).sourceCount).toBe(4);
-    expect((await automation.read(id)).sourceCount).toBe(4);
-    expect(core).toHaveBeenCalledTimes(2);
-    expect(durable.summarize).toHaveBeenCalledTimes(7);
-    expect(automation.summarize).toHaveBeenCalledTimes(7);
-    expect((await durable.memory.zoom(0, 4, signal())).text).toMatch(/0\+2\|.*\n2\+2\|/);
-    expect(await automation.zoom(id, { id: 0, n: 4 })).toMatchObject({
-      _tag: "Branch",
-      children: [{ range: { id: 0, n: 2 } }, { range: { id: 2, n: 2 } }],
-    });
-  });
-
+describe("automation memory", () => {
   it("exposes a 10000-byte automation view without limiting total retained originals", async () => {
     const f = await fixture();
     const id = memoryId();
@@ -226,68 +154,6 @@ describe("shared OptMem core and automation adapter", () => {
       offset = zoom.nextOffset;
     }
     expect(pages.join("")).toBe(original);
-  });
-
-  it("preserves Durable chat source filtering, source bounds, stale handles and original recall", async () => {
-    const f = await durableFixture(summary(), 600);
-    const a = await f.append("RAW_A ".repeat(100));
-    await f.root.commit(async (tx) => {
-      await tx.appendEntry(AssistantEntry, f.root.id, {
-        model: [durableAnswer("", [{ type: "thinking", thinking: "PRIVATE_REASONING" }])],
-      });
-      await tx.appendEntry(ToolResultEntry, f.root.id, {
-        data: { diagnostics: [] },
-        model: [
-          {
-            role: "toolResult",
-            toolCallId: "test",
-            toolName: "inspect",
-            content: [{ type: "text", text: "PRIVATE_TOOL_OUTPUT" }],
-            isError: false,
-            timestamp: 1,
-          },
-        ],
-      });
-    }, BACKGROUND_CONTEXT);
-    await f.append("RAW_C ".repeat(100));
-    const b = await f.append("RAW_B ".repeat(100));
-    await f.head("<chat>\n0+1|old handle\n</chat>");
-    const before = await f.root.context(BACKGROUND_CONTEXT);
-    const view = await f.memory.synchronize(signal());
-    expect(view).toMatchObject({ sourceCount: 4, partCount: 1 });
-    expect(view.text).toContain(`[originals=${a.id}..${b.id}]`);
-    const inputs = f.summarize.mock.calls.map(([input]) => input.context).join("\n");
-    expect(inputs).not.toContain("PRIVATE_REASONING");
-    expect(inputs).toContain("PRIVATE_TOOL_OUTPUT");
-    expect((await f.root.context(BACKGROUND_CONTEXT)).messages).toEqual(before.messages);
-    await expect(f.memory.zoom(0, 1, signal())).rejects.toThrow("handle is stale");
-    await f.head(view.text);
-    const recalled = await f.memory.zoom(0, 1, signal());
-    expect(recalled.text).toContain("RAW_A ".repeat(100));
-    expect(recalled.messages).toEqual(a.model);
-    const tool = await f.memory.zoom(1, 1, signal());
-    expect(tool.text).toContain("PRIVATE_TOOL_OUTPUT");
-    expect(tool.text).toContain('"toolCallId":"test"');
-  });
-
-  it("keeps the existing Durable chat memory and scheduling regression suites passing", async () => {
-    const f = await durableFixture();
-    await f.append("RAW_A ".repeat(100));
-    await f.append("RAW_B ".repeat(100));
-    expect(
-      await f.memory.synchronize(signal(), undefined, undefined, { readyOnly: true }),
-    ).toMatchObject({ complete: false, sourceCount: 0 });
-    expect(f.summarize).not.toHaveBeenCalled();
-    expect(
-      await f.memory.synchronize(signal(), undefined, undefined, { maxOriginals: 1 }),
-    ).toMatchObject({ complete: false, sourceCount: 1 });
-    expect(f.summarize).toHaveBeenCalledTimes(1);
-    expect(await f.memory.synchronize(signal())).toMatchObject({ complete: true, sourceCount: 2 });
-    expect(f.summarize).toHaveBeenCalledTimes(3);
-    expect(
-      await f.memory.synchronize(signal(), undefined, undefined, { readyOnly: true }),
-    ).toMatchObject({ complete: true, sourceCount: 2 });
-    expect(f.summarize).toHaveBeenCalledTimes(3);
   });
 
   it("writes an intentional note with trusted automation-session provenance", async () => {

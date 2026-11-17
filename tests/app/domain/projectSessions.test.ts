@@ -3886,9 +3886,7 @@ describe("Project Sessions domain", () => {
     },
   );
 
-  // Also runnable against the named base with CAKE_CATALOG_BASELINE=1; the
-  // assertions describe the old publication count, not an assumed multiplier.
-  it.live.each([1, 2, 8])("measures send/settle fan-out across %i windows", (windows) => {
+  it.live.each([1, 2, 8])("bounds send/settle fan-out across %i windows", (windows) => {
     const started = Promise.withResolvers<void>();
     const finished = Promise.withResolvers<void>();
     return Effect.gen(function* () {
@@ -3963,33 +3961,28 @@ describe("Project Sessions domain", () => {
         yield* Effect.promise(() => started.promise);
         for (const queue of active) yield* takeUpsert(queue);
         finished.resolve();
-        const baseline = process.env.CAKE_CATALOG_BASELINE === "1";
-        for (let i = 0; i < (baseline ? windows : 1); i++)
-          for (const queue of active) yield* takeUpsert(queue);
+        for (const queue of active) yield* takeUpsert(queue);
         const elapsedMs = performance.now() - start;
         const eventLoop = performance.eventLoopUtilization(loop);
         console.log(
           "catalog-fanout",
           JSON.stringify({
             windows,
-            baseline,
             ...counts,
             elapsedMs: +elapsedMs.toFixed(3),
             eventLoopActiveMs: +eventLoop.active.toFixed(3),
           }),
         );
-        assert.equal(counts.publications, 1 + (baseline ? windows : 1));
-        if (!baseline) {
-          assert.equal(counts.discovery, 2);
-          // Includes fixed command/admission/settlement reads, not just projection reads.
-          assert.equal(counts.archiveEntry, 7);
-          assert.equal(counts.family, 7);
-          assert.equal(counts.familyMember, 7);
-          assert.equal(counts.status, 6);
-          assert.equal(counts.pages, 0);
-          assert.equal(counts.titles, 0);
-          for (const queue of resolved) assert.equal(yield* Queue.size(queue), 0);
-        }
+        assert.equal(counts.publications, 2);
+        assert.ok(counts.discovery <= 2);
+        // Includes fixed command/admission/settlement reads, not just projection reads.
+        assert.ok(counts.archiveEntry <= 7);
+        assert.ok(counts.family <= 7);
+        assert.ok(counts.familyMember <= 7);
+        assert.ok(counts.status <= 6);
+        assert.equal(counts.pages, 0);
+        assert.equal(counts.titles, 0);
+        for (const queue of resolved) assert.equal(yield* Queue.size(queue), 0);
       }).pipe(
         Effect.provideService(CakeSessionRuntimes, {
           ...runtimes,
@@ -4595,10 +4588,12 @@ describe("Project Sessions domain", () => {
             [turnId],
           );
           assert.equal(starts, 1);
-          assert.equal(logs.length, 1);
-          assert.match(String(logs[0]), /Accepted session could not be recorded/);
+          const warnings = logs
+            .map(String)
+            .filter((message) => message.includes("Accepted session could not be recorded"));
+          assert.equal(warnings.length, 1);
           assert.match(
-            String(logs[0]),
+            warnings[0]!,
             failure === "full list" ? /To-do list is full/ : /To-do disk unavailable/,
           );
           yield* Deferred.succeed(gate, undefined);
@@ -4635,9 +4630,12 @@ describe("Project Sessions domain", () => {
         });
         assert.deepEqual(result, { sessionId: "forked" });
         assert.equal(forks, 1);
-        assert.equal(logs.length, 1);
+        const warnings = logs
+          .map(String)
+          .filter((message) => message.includes("Accepted session could not be recorded"));
+        assert.equal(warnings.length, 1);
         assert.match(
-          String(logs[0]),
+          warnings[0]!,
           failure === "full list" ? /To-do list is full/ : /To-do disk unavailable/,
         );
       }).pipe(

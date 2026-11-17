@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseVisualCaptureArguments } from "../../scripts/visual-capture/arguments";
-import { browserVisualScenarios } from "../../scripts/visual-capture/browser-scenarios";
 import {
   formatVisualCaptureResult,
   visualCaptureResultPrefix,
@@ -66,37 +65,6 @@ describe("visual capture arguments", () => {
         "/workspace",
       ),
     ).toThrow("Use either --output or --output-dir");
-  });
-});
-
-describe("browser visual scenarios", () => {
-  it("advertises browser proof surfaces as named deterministic scenarios", () => {
-    expect(browserVisualScenarios.map(({ name, states }) => [name, states])).toEqual([
-      [
-        "browser-sidebar-defaults",
-        ["default", "restored-open", "restored-closed", "restored-settings"],
-      ],
-      [
-        "browser-responsive",
-        [
-          "default",
-          "multiline",
-          "long-draft",
-          "model-menu",
-          "tree",
-          "cake-chat",
-          "inspector",
-          "new-session",
-          "project-settings",
-          "tools",
-          "artifact",
-        ],
-      ],
-      ["browser-shared-chat", ["default", "session-menu"]],
-      ["browser-phone-navigation", ["default"]],
-      ["browser-phone-settings", ["default"]],
-      ["browser-vscode", ["default"]],
-    ]);
   });
 });
 

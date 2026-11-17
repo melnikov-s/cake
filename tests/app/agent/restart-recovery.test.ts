@@ -78,7 +78,6 @@ describe("restart transcript reconciliation", () => {
   it("only resubmits input which Pi has not consumed", () => {
     expect(restartDecision([], "turn").kind).toBe("pending");
     expect(restartDecision([marker()], "turn").kind).toBe("pending");
-    expect(restartDecision([marker(), user()], "turn").kind).toBe("resume");
   });
   it("resumes both crash-at-user and clean-quit aborted streams without replaying the user message", () => {
     expect(restartDecision([marker(), user()], "turn").kind).toBe("resume");
@@ -92,7 +91,6 @@ describe("restart transcript reconciliation", () => {
       kind: "settled",
       result: { entryId: expect.any(String), stopReason: "stop", text: "Done" },
     });
-    expect(restartDecision(branch, "turn")).toEqual(restartDecision(branch, "turn"));
   });
   it("preserves failed outcomes instead of automatically restarting failed work", () => {
     expect(

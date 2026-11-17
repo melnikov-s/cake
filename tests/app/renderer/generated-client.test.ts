@@ -1,19 +1,12 @@
-import { Effect, Schema, Stream } from "effect";
+import { Schema } from "effect";
 import { ArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import { automation, automationDefinition, automationId } from "./fixtures/automation-fixtures";
 import { retainedDeliveryUncertainty } from "../../../src/renderer/client/command-delivery-policy";
-import { RpcSchema } from "effect/rpc";
 import type { FromClientEncoded, FromServerEncoded, RequestEncoded } from "effect/rpc/RpcMessage";
-import { describe, expect, expectTypeOf, it } from "vitest";
-import {
-  CakeClientRpc,
-  CakeIpcClient,
-  type CakeIpcClientService,
-} from "../../../src/ipc/client/CakeIpcClient";
+import { describe, expect, it } from "vitest";
 import { makeClient } from "../../../src/renderer/client/ClientLive";
 import { makeRuntime } from "../../../src/renderer/runtime";
 import type { Client } from "../../../src/renderer/client/Client";
-import type { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { ClientError } from "../../../src/renderer/client/Client";
 
 function harness(
@@ -286,43 +279,6 @@ describe("generated renderer command adaptation", () => {
         await test.client.projectSessions.resolveWorkingDirectory({ workingDirectory: "/tree" }),
       ).toMatchObject(result);
       expect(requests(test.messages)).toHaveLength(1);
-    } finally {
-      await test.runtime.dispose();
-    }
-  });
-
-  it("derives every transport method, including Streams, from the shared protocol", async () => {
-    const test = harness(() => {
-      throw new Error("Assembly must not dispatch a command");
-    });
-    try {
-      const service = await test.runtime.execute(Effect.service(CakeIpcClient));
-      for (const rpc of CakeClientRpc.requests.values()) {
-        const [group, name] = rpc._tag.split(".");
-        const methods = Object.entries(service).find(([key]) => key === group)?.[1];
-        expect(methods, rpc._tag).toBeDefined();
-        expect(
-          Object.entries(methods ?? {}).find(([key]) => key === name)?.[1],
-          rpc._tag,
-        ).toBeTypeOf("function");
-      }
-      expect(Stream.isStream(service.foundation.stream({ count: 2, intervalMs: 1 }))).toBe(true);
-      // Commands and observations are different paths even though they share a
-      // protocol group. Synthesis is the one explicit command Stream consumer.
-      const expected = [...CakeClientRpc.requests.values()]
-        .filter(
-          (rpc) =>
-            rpc._tag.startsWith("speechOutput.") && !RpcSchema.isStreamSchema(rpc.successSchema),
-        )
-        .map((rpc) => rpc._tag.slice("speechOutput.".length));
-      expect(Object.keys(test.client.speechOutput).sort()).toEqual(
-        [...expected, "synthesize"].sort(),
-      );
-      expect(requests(test.messages)).toEqual([]);
-      expectTypeOf<Parameters<Client["speechOutput"]["setSpeed"]>[0]>().toEqualTypeOf<
-        Parameters<CakeIpcClientService["speechOutput"]["setSpeed"]>[0]
-      >();
-      expectTypeOf<Awaited<ReturnType<Client["sessionChats"]["prompt"]>>>().toEqualTypeOf<TurnId>();
     } finally {
       await test.runtime.dispose();
     }

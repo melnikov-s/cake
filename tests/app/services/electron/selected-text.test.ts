@@ -1,3 +1,4 @@
+import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import {
   readSelectedText,
@@ -59,10 +60,96 @@ describe("Selected text capture", () => {
     await expect(readSelectedText(garbled.options)).resolves.toMatchObject({ kind: "failed" });
   });
 
-  it("saves and restores the pasteboard around the copy fallback", () => {
-    // The fallback must never leave the user's clipboard replaced by the copied selection.
-    const copy = SELECTED_TEXT_SCRIPT.slice(SELECTED_TEXT_SCRIPT.indexOf("function readByCopying"));
-    expect(copy.indexOf("dataForType")).toBeLessThan(copy.indexOf("CGEventPost"));
-    expect(copy.indexOf("CGEventPost")).toBeLessThan(copy.indexOf("writeObjects"));
+  it("returns the copied selection and restores every pasteboard item and representation", () => {
+    const value = (text: string) => ({ text, isNil: () => false });
+    const array = <A>(items: A[]) => ({
+      count: items.length,
+      isNil: () => false,
+      objectAtIndex: (index: number) => items[index],
+    });
+    const original: Record<string, ReturnType<typeof value>>[] = [
+      {
+        "public.utf8-plain-text": value("Original clipboard"),
+        "public.html": value("<b>Original</b>"),
+      },
+      { "public.png": value("original image bytes") },
+    ];
+    let contents: Record<string, ReturnType<typeof value>>[] = original;
+    const board = {
+      changeCount: 0,
+      get pasteboardItems() {
+        return array(
+          contents.map((item) => ({
+            types: array(Object.keys(item)),
+            dataForType: (type: string) => item[type],
+          })),
+        );
+      },
+      stringForType: (type: string) => contents[0]![type],
+      get clearContents() {
+        contents = [];
+        return ++this.changeCount;
+      },
+      writeObjects: (items: { values: typeof contents }) => {
+        contents = items.values;
+      },
+    };
+    const objc = Object.assign((text: string) => text, {
+      NSPasteboard: { generalPasteboard: board },
+      NSPasteboardTypeString: "public.utf8-plain-text",
+      NSMutableArray: {
+        get array() {
+          const values: typeof contents = [];
+          return {
+            values,
+            get count() {
+              return values.length;
+            },
+            addObject: (item: (typeof contents)[number]) => values.push(item),
+          };
+        },
+      },
+      NSPasteboardItem: {
+        alloc: {
+          get init() {
+            const item: (typeof contents)[number] = {};
+            Object.defineProperty(item, "setDataForType", {
+              value: (data: ReturnType<typeof value>, type: string) => {
+                item[type] = data;
+              },
+            });
+            return item;
+          },
+        },
+      },
+      NSWorkspace: {
+        sharedWorkspace: {
+          frontmostApplication: { isNil: () => false, localizedName: value("Safari") },
+        },
+      },
+      AXUIElementCreateSystemWide: () => ({}),
+      AXUIElementCopyAttributeValue: () => 1,
+      CGEventCreateKeyboardEvent: (_source: unknown, _key: number, down: boolean) => ({ down }),
+      CGEventSetFlags: () => {},
+      CGEventPost: (_tap: unknown, event: { down: boolean }) => {
+        if (!event.down) {
+          contents = [{ "public.utf8-plain-text": value("Selected words") }];
+          board.changeCount++;
+        }
+      },
+    });
+    const output: unknown = runInNewContext(`${SELECTED_TEXT_SCRIPT}\nrun(["copy"]);`, {
+      $: objc,
+      ObjC: { import: () => {}, unwrap: (wrapped: ReturnType<typeof value>) => wrapped.text },
+      Ref: () => [],
+      delay: () => {},
+    });
+    if (typeof output !== "string") throw new Error("Expected selected-text JSON");
+    expect(JSON.parse(output)).toEqual({
+      text: "Selected words",
+      application: "Safari",
+      source: "clipboard",
+    });
+    expect(contents).toEqual(original);
   });
 });

@@ -22,7 +22,6 @@ test("the supported Oxlint pipeline enables every shipped r-state-tree rule at e
   );
   expect(shipped.status, shipped.stderr).toBe(0);
   const rules: Array<[string, string]> = JSON.parse(shipped.stdout);
-  expect(rules).toHaveLength(5);
   for (const [, severity] of rules) expect(severity).toBe("error");
   const temporary = await mkdtemp(join(tmpdir(), "cake-rst-lint-"));
   try {

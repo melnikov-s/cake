@@ -31,7 +31,7 @@ const fixture = async (exitCode = 0) => {
           await writeFile(
             join(directory, "package.json"),
             JSON.stringify({
-              private: true,
+              ...JSON.parse(await readFile(join(directory, "package.json"), "utf8")),
               dependencies: command.args[0] === "install" ? { "vis-network": "9.1.9" } : {},
             }),
           );

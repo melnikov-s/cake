@@ -8,7 +8,6 @@ import { describe } from "vitest";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
 import * as deliveries from "../../../src/domain/session-families/workboardDeliveries";
 import * as families from "../../../src/domain/session-families/sessionFamilies";
-import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import * as chats from "../../../src/domain/conversations/sessionChats";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -238,13 +237,6 @@ describe("default board-driven execution", () => {
                   }),
                 );
             }
-            // Controlled baseline reproduces the old delivery pass's storage traversal.
-            const board = yield* MessageBoardStorage;
-            const before = f.boardReads();
-            for (let pass = 0; pass < 10; pass++)
-              for (const family of yield* storage.list())
-                yield* board.entries(boards.boardIdFor(family.familyId));
-            assert.equal(f.boardReads() - before, 14240);
           }),
         );
         const before = f.boardReads();

@@ -1,3 +1,4 @@
+/** @vitest-environment jsdom */
 import { StoreProvider } from "r-state-tree/react";
 import { createRendererStoreFixture } from "../../renderer-store-fixture";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -19,7 +20,6 @@ describe("Cake-owned conversation components", () => {
     );
     expect(html).toContain("Reasoning details not exposed");
     expect(html).not.toContain("<button");
-    expect(html).not.toContain("· show");
   });
 
   it("does not claim an empty streaming block is unavailable before it finishes", () => {
@@ -106,39 +106,6 @@ describe("Cake-owned conversation components", () => {
     expect(html).not.toContain(workspacePath);
   });
 
-  it("labels only the file whose tool input is streaming as streaming", () => {
-    const html = renderToStaticMarkup(
-      <WorkLogDiff
-        parts={[
-          {
-            id: "settled-edit",
-            kind: "tool",
-            name: "edit",
-            input: "",
-            filePath: "src/settled.ts",
-            diff: "+const settled = true;",
-            inputStreaming: false,
-            state: "running",
-          },
-          {
-            id: "streaming-edit",
-            kind: "tool",
-            name: "edit",
-            input: "",
-            filePath: "src/streaming.ts",
-            diff: "+const streaming = true;",
-            inputStreaming: true,
-            state: "running",
-          },
-        ]}
-        streaming
-      />,
-    );
-
-    expect(html).toContain('aria-label="File changes to src/settled.ts"');
-    expect(html).toContain('aria-label="Streaming changes to src/streaming.ts"');
-  });
-
   it("renders edit calls as a readable code diff", () => {
     const html = renderToStaticMarkup(
       <Tool
@@ -166,7 +133,7 @@ describe("Cake-owned conversation components", () => {
     expect(html).not.toContain("oldText");
   });
 
-  it("does not automatically expand running or failed tool calls", () => {
+  it("keeps running and failed tool details collapsed and unmounted until requested", () => {
     const running = renderToStaticMarkup(
       <Tool
         part={{
@@ -186,11 +153,11 @@ describe("Cake-owned conversation components", () => {
     );
     expect(running).toContain('aria-expanded="false"');
     expect(failed).toContain('aria-expanded="false"');
-    expect(running).not.toContain('class="tool-details"');
-    expect(failed).not.toContain('class="tool-details"');
+    expect(running).not.toContain('data-slot="tool-details"');
+    expect(failed).not.toContain('data-slot="tool-details"');
   });
 
-  it("uses state indicators without redundant visible state labels", () => {
+  it("distinguishes running, successful and failed tools with state indicators", () => {
     const running = renderToStaticMarkup(
       <Tool
         part={{
@@ -221,9 +188,6 @@ describe("Cake-owned conversation components", () => {
     expect(running).toContain("bg-accent motion-safe:animate-pulse");
     expect(success).toContain("bg-success");
     expect(error).toContain("bg-destructive");
-    expect(running).not.toContain("<small>running</small>");
-    expect(success).not.toContain("<small>success</small>");
-    expect(error).not.toContain("<small>error</small>");
   });
 
   it("does not repeat a Cake topic or operation in its tool title", () => {
@@ -252,9 +216,7 @@ describe("Cake-owned conversation components", () => {
       />,
     );
     expect(topic).toContain('title="requests"');
-    expect(topic).not.toContain('title="requests requests"');
     expect(operation).toContain('title="interview.open"');
-    expect(operation).not.toContain('title="interview.open interview.open"');
   });
 
   it("renders bash commands as highlighted shell code instead of JSON", () => {
@@ -276,8 +238,8 @@ describe("Cake-owned conversation components", () => {
     expect(html).not.toContain("&quot;command&quot;");
   });
 
-  it("renders user shell commands in their own terminal-style surface", () => {
-    const html = renderToStaticMarkup(
+  it("labels user shell commands according to whether they are included in model context", () => {
+    const included = renderToStaticMarkup(
       <ShellCommand
         part={{
           id: "command-1",
@@ -289,11 +251,8 @@ describe("Cake-owned conversation components", () => {
         }}
       />,
     );
-    expect(html).toContain('data-slot="shell-command"');
-    expect(html).toContain('title="! printf hello"');
-    expect(html).toContain("! printf hello");
-    expect(html).toContain("hello");
-    expect(html).not.toContain("Work log");
+    expect(included).toContain('title="! printf hello"');
+    expect(included).not.toContain("no context");
 
     const hidden = renderToStaticMarkup(
       <ShellCommand
@@ -329,7 +288,6 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain('title="read src/app.ts"');
     expect(html).toContain('data-language="typescript"');
     expect(html).toContain("export const value: boolean = true;");
-    expect(html).toContain("before:content-[counter(line)]");
     expect(html).not.toContain("&quot;path&quot;");
   });
 

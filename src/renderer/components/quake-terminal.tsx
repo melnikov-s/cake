@@ -14,7 +14,6 @@ import {
   ConfirmationAction,
   ConfirmationActions,
   ConfirmationDescription,
-  ConfirmationRequest,
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
 import { Button } from "@/components/ui/button";
@@ -247,28 +246,25 @@ export const QuakeTerminal = observer(function QuakeTerminal({
         >
           <Confirmation
             className="w-full max-w-md"
-            state="requested"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <ConfirmationRequest>
-              <ConfirmationTitle id={resolutionTitleId}>
-                Retire and stop running{" "}
-                {retirement.confirmationRequest.runningProgramCount === 1 ? "program" : "programs"}?
-              </ConfirmationTitle>
-              <ConfirmationDescription>
-                {retirement.confirmationRequest.runningProgramCount === 1
-                  ? "This Working Directory has a running terminal program. Continuing will stop it and close this directory’s terminals in every Cake window."
-                  : `These Working Directories have ${retirement.confirmationRequest.runningProgramCount} running terminal programs across Cake windows. Continuing will stop them and close those directories’ terminals in every window.`}
-              </ConfirmationDescription>
-              <ConfirmationActions>
-                <ConfirmationAction variant="outline" onClick={() => retirement.cancel()}>
-                  Cancel
-                </ConfirmationAction>
-                <ConfirmationAction onClick={() => void retirement.confirm()}>
-                  Continue and stop
-                </ConfirmationAction>
-              </ConfirmationActions>
-            </ConfirmationRequest>
+            <ConfirmationTitle id={resolutionTitleId}>
+              Retire and stop running{" "}
+              {retirement.confirmationRequest.runningProgramCount === 1 ? "program" : "programs"}?
+            </ConfirmationTitle>
+            <ConfirmationDescription>
+              {retirement.confirmationRequest.runningProgramCount === 1
+                ? "This Working Directory has a running terminal program. Continuing will stop it and close this directory’s terminals in every Cake window."
+                : `These Working Directories have ${retirement.confirmationRequest.runningProgramCount} running terminal programs across Cake windows. Continuing will stop them and close those directories’ terminals in every window.`}
+            </ConfirmationDescription>
+            <ConfirmationActions>
+              <ConfirmationAction variant="outline" onClick={() => retirement.cancel()}>
+                Cancel
+              </ConfirmationAction>
+              <ConfirmationAction onClick={() => void retirement.confirm()}>
+                Continue and stop
+              </ConfirmationAction>
+            </ConfirmationActions>
           </Confirmation>
         </DialogBackdrop>
       )}

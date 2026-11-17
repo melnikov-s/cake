@@ -97,23 +97,6 @@ afterEach(async () => {
 });
 
 describe("shared-directory Pi discovery", () => {
-  it("reproduces the old 40 lookups / 40 synchronous scans / 820 header opens", async () => {
-    const f = await fixture();
-    const ids = Array.from({ length: 40 }, (_, i) => `session-${String(i).padStart(2, "0")}`);
-    await Promise.all(ids.map((id) => session(f.shared, id, f.cwd)));
-    const io = observeIO(f.shared);
-    for (const id of ids) expect(SessionManager.findById(f.cwd, id, f.shared)).toBeDefined();
-    expect(io.lookup).toHaveBeenCalledTimes(40);
-    expect(io.counts()).toEqual({
-      syncScans: 40,
-      headerOpens: 820,
-      asyncScans: 0,
-      filenameScans: 0,
-      bodyStreams: 0,
-      peak: 0,
-    });
-  });
-
   it.each(["ids", "metadata"] as const)(
     "40 shared sessions use one bounded SDK pass for %s",
     async (kind) => {

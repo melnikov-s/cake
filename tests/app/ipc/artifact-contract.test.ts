@@ -118,15 +118,6 @@ describe("cake.artifact/v1 contract", () => {
       assistantEntryId: "assistant/entry+1=",
       toolCallId: "functions.cake/0#call+abc=",
     });
-    expect(
-      Schema.decodeUnknownSync(artifactPointerSchema)({
-        ...pointer,
-        lineageId: "historical-architecture",
-        stableRef: "cake://artifact/historical-architecture",
-        exactRef: "cake://artifact/historical-architecture@r1",
-        kind: "architecture",
-      }).kind,
-    ).toBe("architecture");
   });
 
   it.each(["architecture", "request"])(

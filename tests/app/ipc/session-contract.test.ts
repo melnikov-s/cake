@@ -2,19 +2,13 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   RendererApplicationProjection,
-  RendererApplicationState,
   defaultApplicationState,
 } from "../../../src/contracts/application/application-data";
 import {
-  applicationStateSchema,
   parseBuiltinCommand,
   builtinSlashCommands,
   cakeChatBuiltinSlashCommands,
 } from "../../../src/contracts/conversations/session-contract";
-
-it("uses the domain-owned renderer application schema at the IPC boundary", () => {
-  expect(applicationStateSchema).toBe(RendererApplicationState);
-});
 
 it("rejects invalid model-preset invariants at the application projection wire boundary", () => {
   const duplicate = {
@@ -87,7 +81,7 @@ describe("parseBuiltinCommand", () => {
     });
   });
 
-  it("names deterministic tool pruning separately from model compaction, without old aliases", () => {
+  it("distinguishes deterministic tool pruning from model compaction", () => {
     expect(builtinSlashCommands.find((command) => command.name === "toolprune")).toMatchObject({
       description: "Prune tool calls/results, preserve dialogue; no model call",
       argumentHint: "[first instruction]",
@@ -95,7 +89,6 @@ describe("parseBuiltinCommand", () => {
     expect(
       builtinSlashCommands.find((command) => command.name === "compact")?.description,
     ).toContain("with a model");
-    expect(parseBuiltinCommand("/toolcompact")).toBeUndefined();
   });
 
   it("ignores non-commands and unknown commands", () => {

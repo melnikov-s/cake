@@ -3,15 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { cakeAgentDocumentationDirectory } from "../../../src/services/pi/runtime/cake-agent-documentation";
-import workgroups from "../../../docs/agent/workgroups.md?raw";
-import startup from "../../../docs/agent/family-startup.md?raw";
-import delegation from "../../../docs/agent/family-delegation.md?raw";
-import coordination from "../../../docs/agent/family-coordination.md?raw";
-import lifecycle from "../../../docs/agent/family-lifecycle.md?raw";
-import communication from "../../../docs/agent/communication.md?raw";
-import interactions from "../../../docs/agent/interactions.md?raw";
-import presentation from "../../../docs/agent/presentation.md?raw";
-import chatDelegation from "../../../docs/agent/delegation.md?raw";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -20,23 +11,43 @@ afterEach(async () => {
   );
 });
 
-it("publishes the family entry guide and every linked task guide from repository sources", async () => {
-  const agentDirectory = await mkdtemp(join(tmpdir(), "cake-family-docs-"));
-  directories.push(agentDirectory);
-  const directory = await cakeAgentDocumentationDirectory(agentDirectory);
-  for (const [name, source] of Object.entries({
-    workgroups,
-    "family-startup": startup,
-    "family-delegation": delegation,
-    "family-coordination": coordination,
-    "family-lifecycle": lifecycle,
-    communication,
-  })) {
-    expect(await readFile(join(directory, `${name}.md`), "utf8"), name).toBe(source);
+it("publishes every shipped guide at a stable readable path with resolvable local references", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-published-guides-"));
+  directories.push(directory);
+  const docs = await cakeAgentDocumentationDirectory(directory);
+  expect(await cakeAgentDocumentationDirectory(directory)).toBe(docs);
+  const sourceDirectory = new URL("../../../docs/agent/", import.meta.url);
+  const names = (await readdir(sourceDirectory)).filter((name) => name.endsWith(".md"));
+  expect((await readdir(docs)).sort()).toEqual(names.sort());
+  for (const name of names) {
+    const content = await readFile(join(docs, name), "utf8");
+    expect(content, name).toBe(await readFile(new URL(name, sourceDirectory), "utf8"));
+    // Every local read trigger must resolve in the deployed bundle.
+    for (const [, reference] of content.matchAll(/`([a-z-]+\.md)`/g)) {
+      expect(names, `${name} -> ${reference}`).toContain(reference);
+    }
   }
-  for (const name of ["family-delegation", "family-coordination", "family-lifecycle"])
-    expect(workgroups).toContain(`${name}.md`);
-  expect(await cakeAgentDocumentationDirectory(agentDirectory)).toBe(directory);
+  expect(await readFile(join(docs, "cake-chat.md"), "utf8")).toContain("no prerequisite reads");
+  const reports = await readFile(join(docs, "reports.md"), "utf8");
+  expect(reports).toContain("sessions.completions");
+  for (const rule of [
+    "Ordinary session messages and passive notices need no acknowledgment-only reply or per-message tool acknowledgment",
+    "Only for pending reports actually communicated",
+    "exact already-emitted communicatedText",
+    "do not emit another notice just to acknowledge",
+    "persisted visible text, not semantic adequacy",
+    "Dismiss only when the user says so",
+    "interruption leaves obligations pending",
+    "Listing/reading does not handle reports",
+    "visible communication alone does not mark them handled automatically",
+  ])
+    expect(reports).toContain(rule);
+  expect(reports).toContain("Scope complete + relevant checks passed = ready");
+  expect(reports).toContain(
+    "known relevant failures and uncommitted/unvalidated task changes block readiness",
+  );
+  expect(await readFile(join(docs, "artifacts.md"), "utf8")).toContain("exact @rN preview pixels");
+  expect(await readFile(join(docs, "presentation.md"), "utf8")).toContain("Images:");
 });
 
 it("publishes the shipped fresh-task delegation default for installed backends", async () => {
@@ -44,7 +55,6 @@ it("publishes the shipped fresh-task delegation default for installed backends",
   directories.push(agentDirectory);
   const directory = await cakeAgentDocumentationDirectory(agentDirectory);
   const published = await readFile(join(directory, "delegation.md"), "utf8");
-  expect(published).toBe(chatDelegation);
   expect(published).toContain("Default to a fresh scoped session");
   expect(published).toContain("Reuse only for genuine continuation of the same task");
   expect(published).toContain("authorized worktree/concurrency limits");
@@ -62,8 +72,7 @@ it("publishes the shipped fresh-task delegation default for installed backends",
       "notification by default",
     ])
       expect(guidance.toLowerCase(), `${name}: ${rule}`).toContain(rule.toLowerCase());
-    expect(guidance).not.toContain("Prefer sessions.fork for project");
-    expect(guidance).toContain("Private subagents require an explicit request");
+    expect(guidance).toContain("Fresh-context subagents require an explicit request");
     expect(guidance).toContain("only when explicitly authorized");
   }
 });
@@ -221,13 +230,12 @@ it("keeps specialist detail behind discoverable task-specific doors", async () =
   }
 });
 
-it("publishes static HTML styling and visual-verification guidance without losing source content", async () => {
+it("publishes static HTML styling and visual-verification guidance", async () => {
   const agentDirectory = await mkdtemp(join(tmpdir(), "cake-static-html-docs-"));
   directories.push(agentDirectory);
   const directory = await cakeAgentDocumentationDirectory(agentDirectory);
-  for (const [name, source] of Object.entries({ interactions, presentation })) {
+  for (const name of ["interactions", "presentation"]) {
     const published = await readFile(join(directory, `${name}.md`), "utf8");
-    expect(published).toBe(source);
     expect(published).toContain("html.present");
     expect(published).toMatch(/no scripts\/network\/host styles/i);
     expect(published).toMatch(/pixel|visual/);

@@ -291,6 +291,10 @@ it("persists one-original slices, indexes only new raw input, and merges existin
   const f = await fixture();
   await f.append("RAW_A ".repeat(100));
   await f.append("RAW_B ".repeat(100));
+  expect(
+    await f.memory.synchronize(signal(), undefined, undefined, { readyOnly: true }),
+  ).toMatchObject({ complete: false, sourceCount: 0 });
+  expect(f.summarize).not.toHaveBeenCalled();
   const first = await f.memory.synchronize(signal(), undefined, undefined, { maxOriginals: 1 });
   expect(first).toMatchObject({ sourceCount: 1, complete: false });
   expect(f.summarize).toHaveBeenCalledOnce();
@@ -302,7 +306,9 @@ it("persists one-original slices, indexes only new raw input, and merges existin
   expect(payloads[2]).toContain("summary-A");
   expect(payloads[2]).toContain("summary-B");
   expect(payloads[2]).not.toContain("RAW_");
-  await f.view();
+  expect(
+    await f.memory.synchronize(signal(), undefined, undefined, { readyOnly: true }),
+  ).toMatchObject({ complete: true, sourceCount: 2 });
   expect(f.summarize).toHaveBeenCalledTimes(3);
   expect((await f.memory.zoom(0, 1, signal())).text).toContain("RAW_A ".repeat(100));
 });
@@ -541,7 +547,6 @@ it("accepts exactly 512 UTF-8 bytes and enforces that bound on both leaves and m
   expect(f.summarize).toHaveBeenCalledTimes(3);
   expect(await f.nodes()).toHaveLength(3);
   for (const node of await f.nodes()) expect(node.data).toMatchObject({ text: exact });
-  expect(Buffer.byteLength(exact)).toBe(512);
 });
 
 it("finishes a catch-up across more than 32 model calls while preserving every original", async () => {

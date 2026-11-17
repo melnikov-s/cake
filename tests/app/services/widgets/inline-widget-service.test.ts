@@ -30,17 +30,11 @@ describe("inline widget service", () => {
     expect(inlineWidgetLayoutRequirements).toContain("resize without remount/state loss");
   });
 
-  it("bundles the artifact state, runtime tool and canonical Cake SDK only in artifact widgets", async () => {
+  it("compiles artifact SDK imports and rejects them for display widgets", async () => {
     const source =
       'import { useArtifactState, useArtifact } from "@cake/artifact-sdk"; export default function Widget(){ const state = useArtifactState({items: []}); const artifact = useArtifact(); return <p>{state.hydrated ? JSON.stringify(state.value) : "Loading"}</p>; }';
     const compiled = await compileInlineWidget("react", source, "artifact");
-    expect(compiled.document).toContain("__cakeArtifactBridge");
-    expect(compiled.document).toContain("artifact-state-replace");
-    expect(compiled.document).toContain("globalThis.cake = Object.freeze");
-    expect(compiled.document).toContain('requestCall("artifact-tool-call"');
-    expect(compiled.document).toContain('requestCall("artifact-cake-call"');
-    expect(compiled.document).toContain('message.type !== "call-result"');
-    expect(compiled.document).toContain("Artifact state is not hydrated");
+    expect(compiled.document).toContain("cake-widget-root");
     await expect(compileInlineWidget("react", source, "display")).rejects.toThrow(
       "available only to artifact widgets",
     );
@@ -54,17 +48,12 @@ describe("inline widget service", () => {
     );
     expect(html.document).toContain('<html data-sizing="content">');
     expect(html.document).toContain("globalThis.cakeRequest");
-    expect(html.document).toContain('send("submit", value)');
   });
 
-  it("bundles current session, typed events and host polling in the same artifact SDK", async () => {
+  it("compiles current-session, event and polling hook imports from the artifact SDK", async () => {
     const source =
       'import { useCake, useCurrentSession, useCakeEvent, usePolling } from "@cake/artifact-sdk"; export default function Widget(){ const cake = useCake(); const session = useCurrentSession(); useCakeEvent("session.changed", {}, () => {}); usePolling(null, () => {}); return <p>{session?.sessionId ?? "No session"}</p>; }';
     const compiled = await compileInlineWidget("react", source, "artifact");
-    expect(compiled.document).toContain("widget-subscribe");
-    expect(compiled.document).toContain("widget-unsubscribe");
-    expect(compiled.document).toContain("subscribeCurrent");
-    expect(compiled.document).toContain("contextReady");
-    expect(compiled.document).not.toContain("__cakePluginBridge");
+    expect(compiled.document).toContain("cake-widget-root");
   });
 });

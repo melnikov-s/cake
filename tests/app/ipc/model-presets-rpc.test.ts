@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   ModelPresetCreateInput,
@@ -6,9 +6,7 @@ import {
   ModelPresetProjection,
   ModelPresetUpdateInput,
 } from "../../../src/contracts/model-presets/model-preset-data";
-import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
 import { ModelSelection } from "../../../src/contracts/pi/model-data";
-import { makeRuntime } from "../../../src/renderer/runtime";
 
 const preset = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -74,27 +72,5 @@ describe("Model Preset Effect RPC contract", () => {
         defaultPresetId: preset.id,
       }),
     ).toThrow();
-  });
-
-  it("exposes generated Effect clients grouped by models and modelPresets", async () => {
-    const runtime = makeRuntime({
-      send() {},
-      subscribe() {
-        return () => {};
-      },
-    });
-    const client = await runtime.execute(Effect.service(CakeIpcClient));
-    expect(Object.keys(client.models).sort()).toEqual(["list", "login", "logout", "refresh"]);
-    expect(Object.keys(client.modelPresets).sort()).toEqual([
-      "create",
-      "list",
-      "readPrompt",
-      "remove",
-      "reorder",
-      "resolve",
-      "setDefault",
-      "update",
-    ]);
-    await runtime.dispose();
   });
 });

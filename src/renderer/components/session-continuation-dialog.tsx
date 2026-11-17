@@ -5,7 +5,6 @@ import {
   ConfirmationAction,
   ConfirmationActions,
   ConfirmationDescription,
-  ConfirmationRequest,
   ConfirmationTitle,
 } from "./ai-elements/confirmation";
 import { FullscreenSurface } from "./fullscreen-surface";
@@ -132,92 +131,89 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
       onClose={() => store.cancelPrompt()}
     >
       <Confirmation
-        state="requested"
         aria-labelledby="session-continuation-title"
         aria-describedby="session-continuation-description"
       >
-        <ConfirmationRequest>
-          <form onSubmit={submit}>
-            <ConfirmationTitle id="session-continuation-title">{title}</ConfirmationTitle>
-            <ConfirmationDescription id="session-continuation-description">
-              Choose where the new conversation should make its changes.
-            </ConfirmationDescription>
-            <div className="mt-4 grid gap-2" role="group" aria-label="Working directory">
-              {visibleDestinations.map((destination) => {
-                const unavailable =
-                  destination.value === "branch-worktree" && !prompt.canBranchFromCurrentWorktree;
-                return (
-                  <ActionCard
-                    ref={(element) => {
-                      if (element) destinationRefs.set(destination.value, element);
-                      else destinationRefs.delete(destination.value);
-                    }}
-                    key={destination.value}
-                    autoFocus={prompt.destination === destination.value}
-                    aria-pressed={prompt.destination === destination.value}
-                    aria-label={destination.title}
-                    title={destination.title}
-                    description={
-                      unavailable
-                        ? "The current working directory is not a managed worktree."
-                        : destination.description
-                    }
-                    disabled={unavailable}
-                    className={
-                      prompt.destination === destination.value
-                        ? "border-ring bg-accent/40"
-                        : undefined
-                    }
-                    onClick={() => store.selectDestination(destination.value)}
-                  />
-                );
-              })}
-            </div>
-            {createsWorktree && (
-              <label className="mt-3 block text-sm font-medium">
-                Worktree name
-                <Input
-                  ref={worktreeNameRef}
-                  className="mt-1.5"
-                  size="lg"
-                  value={prompt.worktreeName}
-                  onChange={(event) => store.setWorktreeName(event.target.value)}
-                  pattern={"[a-z0-9][a-z0-9\\-]{0,62}"}
-                  maxLength={63}
-                  required
-                  autoFocus
-                  aria-describedby="worktree-name-help"
+        <form onSubmit={submit}>
+          <ConfirmationTitle id="session-continuation-title">{title}</ConfirmationTitle>
+          <ConfirmationDescription id="session-continuation-description">
+            Choose where the new conversation should make its changes.
+          </ConfirmationDescription>
+          <div className="mt-4 grid gap-2" role="group" aria-label="Working directory">
+            {visibleDestinations.map((destination) => {
+              const unavailable =
+                destination.value === "branch-worktree" && !prompt.canBranchFromCurrentWorktree;
+              return (
+                <ActionCard
+                  ref={(element) => {
+                    if (element) destinationRefs.set(destination.value, element);
+                    else destinationRefs.delete(destination.value);
+                  }}
+                  key={destination.value}
+                  autoFocus={prompt.destination === destination.value}
+                  aria-pressed={prompt.destination === destination.value}
+                  aria-label={destination.title}
+                  title={destination.title}
+                  description={
+                    unavailable
+                      ? "The current working directory is not a managed worktree."
+                      : destination.description
+                  }
+                  disabled={unavailable}
+                  className={
+                    prompt.destination === destination.value
+                      ? "border-ring bg-accent/40"
+                      : undefined
+                  }
+                  onClick={() => store.selectDestination(destination.value)}
                 />
-                <span
-                  id="worktree-name-help"
-                  className="mt-1 block text-xs font-normal text-muted-foreground"
-                >
-                  Lowercase letters, numbers, and hyphens.
-                </span>
-              </label>
-            )}
-            <div className="mt-4 flex items-center justify-between gap-4">
-              <span id="resolve-parent-label" className="text-sm">
-                Resolve the parent conversation after forking
-              </span>
-              <Switch
-                checked={prompt.resolveParent}
-                onCheckedChange={(checked) => store.setResolveParent(checked)}
-                aria-labelledby="resolve-parent-label"
+              );
+            })}
+          </div>
+          {createsWorktree && (
+            <label className="mt-3 block text-sm font-medium">
+              Worktree name
+              <Input
+                ref={worktreeNameRef}
+                className="mt-1.5"
+                size="lg"
+                value={prompt.worktreeName}
+                onChange={(event) => store.setWorktreeName(event.target.value)}
+                pattern={"[a-z0-9][a-z0-9\\-]{0,62}"}
+                maxLength={63}
+                required
+                autoFocus
+                aria-describedby="worktree-name-help"
               />
-            </div>
-            <ConfirmationActions>
-              <ConfirmationAction
-                type="button"
-                variant="outline"
-                onClick={() => store.cancelPrompt()}
+              <span
+                id="worktree-name-help"
+                className="mt-1 block text-xs font-normal text-muted-foreground"
               >
-                Cancel
-              </ConfirmationAction>
-              <ConfirmationAction type="submit">Fork conversation</ConfirmationAction>
-            </ConfirmationActions>
-          </form>
-        </ConfirmationRequest>
+                Lowercase letters, numbers, and hyphens.
+              </span>
+            </label>
+          )}
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <span id="resolve-parent-label" className="text-sm">
+              Resolve the parent conversation after forking
+            </span>
+            <Switch
+              checked={prompt.resolveParent}
+              onCheckedChange={(checked) => store.setResolveParent(checked)}
+              aria-labelledby="resolve-parent-label"
+            />
+          </div>
+          <ConfirmationActions>
+            <ConfirmationAction
+              type="button"
+              variant="outline"
+              onClick={() => store.cancelPrompt()}
+            >
+              Cancel
+            </ConfirmationAction>
+            <ConfirmationAction type="submit">Fork conversation</ConfirmationAction>
+          </ConfirmationActions>
+        </form>
       </Confirmation>
     </FullscreenSurface>
   );

@@ -57,12 +57,6 @@ async function expectPairedDetails(
 }
 
 describe("Settings error ownership", () => {
-  it("has no experimental navigation or Dynamic workflows toggle", async () => {
-    using f = await renderSettingsErrors({});
-    expect(f.root.settingsStore).toBeDefined();
-    expect(screen.queryByRole("button", { name: /^Experimental/ })).toBeNull();
-    expect(screen.queryByRole("switch", { name: "Dynamic workflows" })).toBeNull();
-  });
   it("simultaneous failures keep message/details paired, including a failure completed on a hidden page", async () => {
     const utility = failure("Utility save failed");
     const provider = failure("Provider sign-in failed");

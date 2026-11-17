@@ -266,17 +266,17 @@ const advance = (ms: number) => TestClock.adjust(`${ms} millis`);
 
 describe("updateBatchDueAt", () => {
   it("uses the 5-minute window for unknown or expired caches", () => {
-    assert.equal(updateBatchDueAt(START, undefined, START), START + UPDATE_BATCH_WINDOW_MS);
-    assert.equal(updateBatchDueAt(START, START - 1, START), START + UPDATE_BATCH_WINDOW_MS);
+    assert.equal(updateBatchDueAt(START, undefined, START), Date.parse("2026-03-01T12:05:00.000Z"));
+    assert.equal(updateBatchDueAt(START, START - 1, START), Date.parse("2026-03-01T12:05:00.000Z"));
   });
   it("delivers shortly before an earlier cache expiry", () => {
     const expiry = START + 2 * 60_000;
-    assert.equal(updateBatchDueAt(START, expiry, START), expiry - UPDATE_BATCH_CACHE_MARGIN_MS);
+    assert.equal(updateBatchDueAt(START, expiry, START), Date.parse("2026-03-01T12:01:30.000Z"));
   });
   it("keeps the window when the cache outlives it", () => {
     assert.equal(
       updateBatchDueAt(START, START + 60 * 60_000, START),
-      START + UPDATE_BATCH_WINDOW_MS,
+      Date.parse("2026-03-01T12:05:00.000Z"),
     );
   });
   it("delivers immediately when the cache expires within the margin", () => {

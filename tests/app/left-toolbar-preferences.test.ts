@@ -7,24 +7,24 @@ import {
 } from "../../src/contracts/application/application-data";
 import {
   changeLeftToolbarPreferences,
-  defaultLeftToolbarPreferences,
   normalizeLeftToolbarPreferences,
   type LeftToolbarPreferences,
 } from "../../src/utils/left-toolbar-preferences";
 
 describe("left toolbar preference policy", () => {
-  it("upgrades missing preferences to the unchanged persistent Dynamic default", () => {
+  it("defaults missing saved preferences to a persistent Dynamic toolbar", () => {
     const old = Schema.decodeUnknownSync(ApplicationState)(defaultApplicationState());
-    expect(normalizeLeftToolbarPreferences(old.leftToolbar)).toEqual(
-      defaultLeftToolbarPreferences(),
-    );
+    expect(normalizeLeftToolbarPreferences(old.leftToolbar)).toEqual({
+      autoHide: false,
+      layout: "dynamic",
+    });
   });
   it.each([
     { autoHide: false, layout: "full" },
     { autoHide: false, layout: "slim" },
     { autoHide: false, layout: "dynamic" },
-    { autoHide: true, layout: "full" },
-    { autoHide: true, layout: "slim" },
+    { autoHide: true, layout: "full", previousLayout: "full" },
+    { autoHide: true, layout: "slim", previousLayout: "slim" },
   ] satisfies LeftToolbarPreferences[])("round trips $autoHide / $layout", (value) => {
     const normalized = normalizeLeftToolbarPreferences(value);
     const saved = Schema.encodeSync(ApplicationState)({
@@ -33,14 +33,15 @@ describe("left toolbar preference policy", () => {
     });
     expect(
       Schema.decodeUnknownSync(ApplicationState)(JSON.parse(JSON.stringify(saved))).leftToolbar,
-    ).toEqual(normalized);
+    ).toEqual(value);
   });
   it("repairs Auto-hide + Dynamic, retaining Dynamic for restoration", () => {
     const repaired = normalizeLeftToolbarPreferences({ autoHide: true, layout: "dynamic" });
     expect(repaired).toEqual({ autoHide: true, layout: "full", previousLayout: "dynamic" });
-    expect(changeLeftToolbarPreferences(repaired, { autoHide: false })).toEqual(
-      defaultLeftToolbarPreferences(),
-    );
+    expect(changeLeftToolbarPreferences(repaired, { autoHide: false })).toEqual({
+      autoHide: false,
+      layout: "dynamic",
+    });
   });
   it.each(["full", "slim", "dynamic"] as const)(
     "restores %s even after changing the auto-hidden form",

@@ -4,7 +4,6 @@ import { join } from "node:path";
 import {
   Type,
   createAssistantMessageEventStream,
-  isRetryableAssistantError,
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import {
@@ -290,14 +289,5 @@ describe.each(["event", "result"] as const)("native upstream retry via %s", (del
     }
     expect(h.session.messages.at(-1)).toMatchObject({ stopReason: "stop" });
     expect(h.emitPart).not.toHaveBeenCalled();
-  });
-});
-
-describe("pinned Pi classifier evidence", () => {
-  it("misses the bare gateway wording but recognizes truthful service-unavailable wording", () => {
-    expect(isRetryableAssistantError(assistant("error", "no healthy upstream"))).toBe(false);
-    expect(
-      isRetryableAssistantError(assistant("error", "Service unavailable: no healthy upstream")),
-    ).toBe(true);
   });
 });

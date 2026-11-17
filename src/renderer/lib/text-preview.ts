@@ -1,5 +1,5 @@
 /** Medium-length cap for one-glance previews such as Activity rows. */
-export const PREVIEW_MAX_CHARACTERS = 240;
+const PREVIEW_MAX_CHARACTERS = 240;
 
 /**
  * Single-paragraph preview of arbitrary text: whitespace runs (including newlines)

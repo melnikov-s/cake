@@ -68,9 +68,8 @@ describe("ContentTransition", () => {
     expect(live.textContent).toBe("b transcript");
   });
 
-  it("reveals a ready destination immediately without cloning, animating, or blocking interaction", () => {
+  it("reveals a ready destination immediately without an outgoing snapshot, animation or interaction block", () => {
     const view = render(content("a"));
-    const clone = vi.spyOn(Node.prototype, "cloneNode");
     view.rerender(content("b"));
     const live = view.container.querySelector<HTMLElement>(
       '[data-slot="content-transition-live"]',
@@ -79,7 +78,9 @@ describe("ContentTransition", () => {
     expect(live.classList.contains("opacity-0")).toBe(false);
     expect(live.inert).not.toBe(true);
     expect(live.hasAttribute("aria-hidden")).toBe(false);
-    expect(clone).not.toHaveBeenCalled();
+    expect(
+      view.container.querySelector('[data-slot="content-transition-outgoing"]')?.childElementCount,
+    ).toBe(0);
     expect(animate).not.toHaveBeenCalled();
   });
 
@@ -92,7 +93,9 @@ describe("ContentTransition", () => {
       '[data-slot="content-transition-live"]',
     )!;
     expect(exit.cancel).toHaveBeenCalledOnce();
-    expect(exit.onfinish).toBeNull();
+    expect(
+      view.container.querySelector('[data-slot="content-transition-outgoing"]')?.childElementCount,
+    ).toBe(0);
     expect(live.textContent).toBe("c transcript");
     expect(live.classList.contains("opacity-0")).toBe(false);
     expect(live.inert).toBe(false);
@@ -105,10 +108,18 @@ describe("ContentTransition", () => {
     const exit = animations[0]!.animation;
     view.rerender(content("a", "c"));
     expect(exit.cancel).toHaveBeenCalledOnce();
-    expect(exit.onfinish).toBeNull();
     view.rerender(content("b", "c"));
+    const live = view.container.querySelector<HTMLElement>(
+      '[data-slot="content-transition-live"]',
+    )!;
+    expect(live.classList.contains("opacity-0")).toBe(true);
+    expect(live.inert).toBe(true);
+    expect(live.getAttribute("aria-hidden")).toBe("true");
     expect(animate).toHaveBeenCalledTimes(1);
     view.rerender(content("c"));
+    expect(live.textContent).toBe("c transcript");
+    expect(live.classList.contains("opacity-0")).toBe(false);
+    expect(live.inert).toBe(false);
     expect(animate).toHaveBeenCalledTimes(2);
     const entrance = animations[1]!.animation;
     view.unmount();
@@ -125,18 +136,38 @@ describe("ContentTransition", () => {
     expect((outgoing.firstElementChild as HTMLElement).inert).toBe(true);
   });
 
-  it("switches immediately under reduced motion or when disabled", () => {
-    vi.stubGlobal("matchMedia", () => ({ matches: true }));
-    const view = render(content("a"));
-    view.rerender(content("b"));
-    expect(animate).not.toHaveBeenCalled();
-    expect(
-      view.container
-        .querySelector('[data-slot="content-transition-live"]')
-        ?.classList.contains("opacity-0"),
-    ).toBe(false);
-    vi.stubGlobal("matchMedia", () => ({ matches: false }));
-    view.rerender(<ContentTransition contentKey="c">c transcript</ContentTransition>);
-    expect(animate).not.toHaveBeenCalled();
-  });
+  it.each(["reduced motion", "disabled"])(
+    "keeps content readable while a destination loads with %s",
+    (mode) => {
+      vi.stubGlobal("matchMedia", () => ({ matches: mode === "reduced motion" }));
+      const destination = (contentKey: string, requestedKey = contentKey, ready = true) => (
+        <ContentTransition
+          enabled={mode !== "disabled"}
+          contentKey={contentKey}
+          requestedKey={requestedKey}
+          ready={ready}
+        >
+          {contentKey} transcript
+        </ContentTransition>
+      );
+      const view = render(destination("a"));
+      view.rerender(destination("a", "b", false));
+      const live = view.container.querySelector<HTMLElement>(
+        '[data-slot="content-transition-live"]',
+      )!;
+      expect(live.textContent).toBe("a transcript");
+      expect(live.classList.contains("opacity-0")).toBe(false);
+      expect(live.inert).not.toBe(true);
+      expect(live.hasAttribute("aria-hidden")).toBe(false);
+      expect(
+        view.container.querySelector('[data-slot="content-transition-outgoing"]')
+          ?.childElementCount,
+      ).toBe(0);
+      view.rerender(destination("b"));
+      expect(live.textContent).toBe("b transcript");
+      expect(live.classList.contains("opacity-0")).toBe(false);
+      expect(live.inert).not.toBe(true);
+      expect(animate).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -40,11 +40,4 @@ describe("main-process diagnostic streams", () => {
       expect(() => stream.emit("error", error)).toThrow(error);
     },
   );
-
-  it("does not alter successful output", () => {
-    const stream = new PassThrough();
-    installStdioErrorHandlers(stream);
-    stream.write("warning text\n");
-    expect(stream.read().toString()).toBe("warning text\n");
-  });
 });

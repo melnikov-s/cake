@@ -37,7 +37,6 @@ describe("DiffView", () => {
     const rows = [...container.querySelectorAll<HTMLElement>('[role="row"]')].slice(1);
     expect(rows[0]?.querySelector("code")?.textContent).toBe("+  const value = true;");
     expect(rows[1]?.querySelector("code")?.textContent).toBe("+\treturn value;");
-    expect(container.querySelector(".syntax-token")).not.toBeNull();
   });
 
   it("copies the file path from the diff header", async () => {

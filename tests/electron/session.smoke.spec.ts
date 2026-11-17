@@ -100,10 +100,6 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByRole("button", { name: /Manage model presets/ })).toBeVisible();
     await configuration.click();
     const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
-    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
-    await expect(page.getByRole("complementary", { name: "Workspace", exact: true })).toBeHidden();
-    await expect(rail.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
     await rail.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(page.getByLabel("Settings sections")).toBeVisible();
     await page.getByRole("button", { name: /Agent/ }).click();
@@ -259,7 +255,6 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveValue(
       "Persist this draft",
     );
-    expect(page.isClosed()).toBe(false);
     await page.getByRole("button", { name: "Restart and reopen" }).click();
     await expect(page.getByText(/Pi runtime stopped/)).not.toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveValue(

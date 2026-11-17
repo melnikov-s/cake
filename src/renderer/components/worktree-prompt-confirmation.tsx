@@ -6,7 +6,6 @@ import {
   ConfirmationAction,
   ConfirmationActions,
   ConfirmationDescription,
-  ConfirmationRequest,
   ConfirmationTitle,
 } from "./ai-elements/confirmation";
 
@@ -49,7 +48,6 @@ export const WorktreePromptConfirmation = observer(function WorktreePromptConfir
 
   return (
     <Confirmation
-      state="requested"
       className="mx-2"
       role="group"
       aria-label="Agent request confirmation"
@@ -65,73 +63,71 @@ export const WorktreePromptConfirmation = observer(function WorktreePromptConfir
         }
       }}
     >
-      <ConfirmationRequest>
-        <ConfirmationTitle>Run this agent request?</ConfirmationTitle>
-        <ConfirmationDescription>
-          About {Math.round(confirmation.estimatedTokens / 1000)}K context tokens; prompt cache may
-          have expired. Tool prune keeps dialogue and removes tool activity without a model summary.
-        </ConfirmationDescription>
-        <ConfirmationActions>
-          <ConfirmationAction
-            variant="outline"
-            disabled={submitting || actions.confirmingPrompt}
-            onClick={() => choose("cancel")}
+      <ConfirmationTitle>Run this agent request?</ConfirmationTitle>
+      <ConfirmationDescription>
+        About {Math.round(confirmation.estimatedTokens / 1000)}K context tokens; prompt cache may
+        have expired. Tool prune keeps dialogue and removes tool activity without a model summary.
+      </ConfirmationDescription>
+      <ConfirmationActions>
+        <ConfirmationAction
+          variant="outline"
+          disabled={submitting || actions.confirmingPrompt}
+          onClick={() => choose("cancel")}
+        >
+          Cancel
+        </ConfirmationAction>
+        <ConfirmationAction
+          variant="outline"
+          disabled={submitting || actions.confirmingPrompt}
+          onClick={() => choose("tool-prune")}
+        >
+          Tool prune and run
+        </ConfirmationAction>
+        <ConfirmationAction
+          aria-label="Run"
+          disabled={submitting || actions.confirmingPrompt}
+          onClick={() => choose("run")}
+        >
+          <svg
+            key={confirmation.id}
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            role="img"
+            aria-label="Runs automatically when countdown completes"
           >
-            Cancel
-          </ConfirmationAction>
-          <ConfirmationAction
-            variant="outline"
-            disabled={submitting || actions.confirmingPrompt}
-            onClick={() => choose("tool-prune")}
-          >
-            Tool prune and run
-          </ConfirmationAction>
-          <ConfirmationAction
-            aria-label="Run"
-            disabled={submitting || actions.confirmingPrompt}
-            onClick={() => choose("run")}
-          >
-            <svg
-              key={confirmation.id}
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              role="img"
-              aria-label="Runs automatically when countdown completes"
+            <circle
+              cx="8"
+              cy="8"
+              r="6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              opacity="0.25"
+            />
+            <circle
+              cx="8"
+              cy="8"
+              r="6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              pathLength="1"
+              strokeDasharray="1"
+              transform="rotate(-90 8 8)"
             >
-              <circle
-                cx="8"
-                cy="8"
-                r="6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                opacity="0.25"
+              <animate
+                attributeName="stroke-dashoffset"
+                from="0"
+                to="1"
+                dur={`${RUN_DELAY_MS}ms`}
+                fill="freeze"
               />
-              <circle
-                cx="8"
-                cy="8"
-                r="6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                pathLength="1"
-                strokeDasharray="1"
-                transform="rotate(-90 8 8)"
-              >
-                <animate
-                  attributeName="stroke-dashoffset"
-                  from="0"
-                  to="1"
-                  dur={`${RUN_DELAY_MS}ms`}
-                  fill="freeze"
-                />
-              </circle>
-            </svg>
-            Run
-          </ConfirmationAction>
-        </ConfirmationActions>
-      </ConfirmationRequest>
+            </circle>
+          </svg>
+          Run
+        </ConfirmationAction>
+      </ConfirmationActions>
     </Confirmation>
   );
 });

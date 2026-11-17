@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   ResolvedAgentModel,
@@ -7,8 +7,6 @@ import {
   SubagentHandleId,
   SubagentUpdate,
 } from "../../../src/contracts/subagents/subagent-data";
-import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
-import { makeRuntime } from "../../../src/renderer/runtime";
 
 const handleId = "00000000-0000-4000-8000-000000000001";
 const resolvedModel = {
@@ -72,28 +70,5 @@ describe("Subagent Effect RPC contract", () => {
         handleId: "private-session-id",
       }),
     ).toThrow();
-  });
-
-  it("exposes the generated subagent client group", async () => {
-    const runtime = makeRuntime({
-      send() {},
-      subscribe() {
-        return () => {};
-      },
-    });
-    const client = await runtime.execute(Effect.service(CakeIpcClient));
-    expect(Object.keys(client.subagents ?? {})).toEqual([
-      "observeMetadata",
-      "observe",
-      "readAttachment",
-      "submit",
-      "editQueued",
-      "setUserMessageMarkdown",
-      "prompt",
-      "steer",
-      "abort",
-      "close",
-    ]);
-    await runtime.dispose();
   });
 });

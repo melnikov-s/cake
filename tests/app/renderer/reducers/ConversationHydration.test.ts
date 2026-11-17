@@ -1,4 +1,3 @@
-import { performance } from "node:perf_hooks";
 import { applySnapshot, effect, onSnapshot, toSnapshot } from "r-state-tree";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../../src/contracts/conversations/conversation-data";
@@ -196,65 +195,3 @@ it("never reuses another session's messages or skips a field changed by a live d
   expect(part.renderAs).toBeUndefined();
   expect(first.uiParts).toEqual(second.uiParts);
 });
-
-it.runIf(process.env.CAKE_HYDRATION_BENCHMARK === "1")(
-  "reports end-to-end reducer timings without a wall-clock assertion",
-  () => {
-    for (const size of [240, 1_000]) {
-      const snapshot = conversationHydrationFixture(size);
-      const modes = [
-        { mode: "previous-full-fields", apply: applyFullFields },
-        { mode: "equal-field-pruning", apply: applyConversationSnapshot },
-      ].map((mode) => ({
-        ...mode,
-        elapsed: { cold: [], same: [], changed: [], reopened: [] } as Record<string, number[]>,
-        fields: {} as Record<string, number>,
-      }));
-      // Alternate order within one process so separate queue/load/JIT conditions
-      // are not mistaken for a causal improvement. Cold work is a control.
-      for (let sample = 0; sample < 9; sample += 1) {
-        for (const mode of sample % 2 ? modes.toReversed() : modes) {
-          using model = Conversation.create({ sessionId: snapshot.sessionId });
-          const same = structuredClone(snapshot);
-          const changed = structuredClone(snapshot);
-          const last = changed.parts.at(-1)!;
-          if (last.kind !== "text") throw new Error("Expected final assistant text");
-          changed.parts[changed.parts.length - 1] = { ...last, text: "Changed answer" };
-          const measure = (label: string, value = snapshot) => {
-            vi.mocked(applySnapshot).mockClear();
-            vi.mocked(messageSnapshotChanges).mockClear();
-            const start = performance.now();
-            mode.apply(model, value);
-            const duration = performance.now() - start;
-            mode.fields[label] = hydratedFieldCount();
-            if (sample >= 2) mode.elapsed[label]!.push(duration);
-          };
-          measure("cold");
-          measure("same", same);
-          measure("changed", changed);
-          unloadConversationProjection(model);
-          measure("reopened");
-        }
-      }
-      for (const { mode, elapsed, fields } of modes)
-        console.log(
-          JSON.stringify({
-            mode,
-            fields,
-            parts: size,
-            jsonBytes: Buffer.byteLength(JSON.stringify(snapshot)),
-            samples: 7,
-            warmup: 2,
-            medianMs: Object.fromEntries(
-              Object.entries(elapsed).map(([label, times]) => [
-                label,
-                Number(times.sort((a, b) => a - b)[3]!.toFixed(2)),
-              ]),
-            ),
-          }),
-        );
-      vi.mocked(applySnapshot).mockClear();
-    }
-  },
-  60_000,
-);

@@ -32,7 +32,7 @@ describe("HTML widget compilation", () => {
     expect(widgetPackageResolver).not.toHaveBeenCalled();
   });
 
-  it("does not grant artifact persistence to display, request or plugin HTML", async () => {
+  it("does not grant artifact persistence to display or request HTML", async () => {
     for (const capability of ["display", "request"] as const) {
       const compiled = await compileInlineWidget("html", "<button>Count</button>", capability);
       expect(compiled.document).not.toContain("globalThis.cakeArtifact =");

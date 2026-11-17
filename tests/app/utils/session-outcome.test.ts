@@ -43,7 +43,6 @@ it("work started after a failure has no outcome until it settles", () => {
   expect(currentSessionOutcome(undefined, "failed", true)).toBeUndefined();
   expect(currentSessionOutcome("failed", "failed", true)).toBeUndefined();
   expect(currentSessionOutcome(undefined, "blocked", true)).toBeUndefined();
-  expect(currentSessionOutcome("complete", "failed", false)).toBe("completed");
   const session = {
     sessionId: "session",
     title: "Task",

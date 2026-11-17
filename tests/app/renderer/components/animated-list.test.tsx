@@ -106,39 +106,30 @@ describe("AnimatedList", () => {
     itemTops.set("third", 20);
     renderItems(["second", "third"]);
 
-    expect(operations).toEqual([
-      "measure:second",
-      "measure:third",
-      "animate:second",
-      "animate:third",
-    ]);
-    expect(animate).toHaveBeenNthCalledWith(
-      1,
-      [{ translate: "0 20px" }, { translate: "none" }],
-      expect.objectContaining({ duration: 160 }),
-    );
-    expect(animate).toHaveBeenNthCalledWith(
-      2,
-      [{ translate: "0 20px" }, { translate: "none" }],
-      expect.objectContaining({ duration: 160 }),
-    );
+    const firstAnimation = operations.findIndex((operation) => operation.startsWith("animate:"));
+    const measurements = operations
+      .map((operation, index) => (operation.startsWith("measure:") ? index : -1))
+      .filter((index) => index !== -1);
+    expect(measurements).toHaveLength(2);
+    expect(firstAnimation).toBeGreaterThan(Math.max(...measurements));
+    expect(animate).toHaveBeenCalledTimes(2);
+    for (const call of [1, 2]) {
+      expect(animate).toHaveBeenNthCalledWith(
+        call,
+        [{ translate: "0 20px" }, { translate: "none" }],
+        expect.objectContaining({ duration: 160 }),
+      );
+    }
 
     // A new destination interrupts the affected animation; removed rows clean up too.
-    operations.length = 0;
+    const previousAnimations = animate.mock.results.map((result) => result.value);
     itemTops.set("third", 0);
     renderItems(["third"]);
-    expect(operations).toEqual(["measure:third", "cancel:second", "cancel:third", "animate:third"]);
+    for (const animation of previousAnimations) expect(animation.cancel).toHaveBeenCalledOnce();
+    expect(animate).toHaveBeenCalledTimes(3);
     const lastAnimation = animate.mock.results.at(-1)!.value;
     act(() => root.render(null));
     expect(lastAnimation.cancel).toHaveBeenCalledOnce();
-  });
-
-  it("does not animate unchanged positions or rows present at mount", () => {
-    itemTops.set("first", 0);
-    itemTops.set("second", 20);
-    renderItems(["first", "second"]);
-    renderItems(["first", "second"]);
-    expect(animate).not.toHaveBeenCalled();
   });
 
   it("preserves an in-flight reorder across repeated content updates and scrolling", () => {
@@ -163,12 +154,8 @@ describe("AnimatedList", () => {
     renderItems(["first"]);
     itemTops.set("second", 20);
     renderItems(["first", "second"]);
-    expect(operations).toEqual([
-      "measure:first",
-      "measure:first",
-      "measure:second",
-      "animate:second",
-    ]);
+    expect(animate).toHaveBeenCalledOnce();
+    expect(animate.mock.contexts[0]?.dataset.animatedListKey).toBe("second");
     expect(animate).toHaveBeenCalledWith(
       [
         { opacity: 0, transform: "translateY(-4px) scale(0.97)" },
@@ -177,10 +164,10 @@ describe("AnimatedList", () => {
       expect.objectContaining({ duration: 260 }),
     );
 
-    // Measuring layout coordinates does not disturb the entering row's transform.
-    operations.length = 0;
+    const entrance = animate.mock.results[0]!.value;
     renderItems(["first", "second"]);
-    expect(operations).toEqual(["measure:first", "measure:second"]);
+    expect(animate).toHaveBeenCalledOnce();
+    expect(entrance.cancel).not.toHaveBeenCalled();
   });
 
   it("treats a bulk insertion as a load rather than an arrival", () => {

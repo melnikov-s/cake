@@ -1,10 +1,9 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createCakeSessionRuntimeCapabilities } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
-import { cakeAgentDocumentationDirectory } from "../../../src/services/pi/runtime/cake-agent-documentation";
 import type * as WorktreePrompt from "../../../src/services/pi/runtime/worktree-system-prompt";
 import { detectGitWorktree } from "../../../src/services/pi/runtime/worktree-system-prompt";
 import { researchSystemPrompt } from "../../../src/services/pi/subagent-system-prompt";
@@ -165,44 +164,4 @@ describe("role-specific prompt assembly", () => {
       );
     },
   );
-
-  it("deploys all deferred Cake Chat guidance to a stable readable directory", async () => {
-    const directory = await temporaryDirectory();
-    const docs = await cakeAgentDocumentationDirectory(directory);
-    expect(await cakeAgentDocumentationDirectory(directory)).toBe(docs);
-    const sourceDirectory = new URL("../../../docs/agent/", import.meta.url);
-    const names = (await readdir(sourceDirectory)).filter((name) => name.endsWith(".md"));
-    expect((await readdir(docs)).sort()).toEqual(names.sort());
-    for (const name of names) {
-      const content = await readFile(join(docs, name), "utf8");
-      expect(content, name).toBe(await readFile(new URL(name, sourceDirectory), "utf8"));
-      // Every local read trigger must resolve in the deployed bundle.
-      for (const [, reference] of content.matchAll(/`([a-z-]+\.md)`/g)) {
-        expect(names, `${name} -> ${reference}`).toContain(reference);
-      }
-    }
-    expect(await readFile(join(docs, "cake-chat.md"), "utf8")).toContain("no prerequisite reads");
-    const reports = await readFile(join(docs, "reports.md"), "utf8");
-    expect(reports).toContain("sessions.completions");
-    for (const rule of [
-      "Ordinary session messages and passive notices need no acknowledgment-only reply or per-message tool acknowledgment",
-      "Only for pending reports actually communicated",
-      "exact already-emitted communicatedText",
-      "do not emit another notice just to acknowledge",
-      "persisted visible text, not semantic adequacy",
-      "Dismiss only when the user says so",
-      "interruption leaves obligations pending",
-      "Listing/reading does not handle reports",
-      "visible communication alone does not mark them handled automatically",
-    ])
-      expect(reports).toContain(rule);
-    expect(reports).toContain("Scope complete + relevant checks passed = ready");
-    expect(reports).toContain(
-      "known relevant failures and uncommitted/unvalidated task changes block readiness",
-    );
-    expect(await readFile(join(docs, "artifacts.md"), "utf8")).toContain(
-      "exact @rN preview pixels",
-    );
-    expect(await readFile(join(docs, "presentation.md"), "utf8")).toContain("Images:");
-  });
 });

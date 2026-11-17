@@ -9,7 +9,6 @@ import { CakeChatPaneHeader } from "../../../src/renderer/components/cake-chat-p
 import { CakeChatWorkspaceControls } from "../../../src/renderer/components/cake-chat-workspace-controls";
 import { ProjectPaneHeader } from "../../../src/renderer/components/project-pane-header";
 import { ProjectWorkspaceControls } from "../../../src/renderer/components/project-workspace-controls";
-import { SETTINGS_NAV_GROUPS } from "../../../src/renderer/lib/settings-search";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -99,8 +98,4 @@ it("preserves defaults and restores toolbar choices from the existing window sna
   for (const name of ["Diff view mode", "Compact work logs"]) {
     expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
   }
-});
-
-it("removes obsolete Settings search destinations for work-log display", () => {
-  expect(JSON.stringify(SETTINGS_NAV_GROUPS)).not.toContain("setting-work-log-display");
 });

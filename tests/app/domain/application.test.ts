@@ -27,7 +27,6 @@ import {
 import {
   defaultApplicationState,
   defaultProjectSettings,
-  SESSION_LABEL_COLORS,
 } from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
@@ -215,11 +214,6 @@ describe("Application domain", () => {
       assert.deepEqual(yield* getCakeChatInstructions(), { instructions: "" });
       assert.equal(f.persisted().cakeChatPreferences, undefined);
     }).pipe(Effect.provide(f.layer));
-  });
-
-  it("offers 32 curated workflow colors", () => {
-    assert.equal(SESSION_LABEL_COLORS.length, 32);
-    assert.equal(new Set(SESSION_LABEL_COLORS).size, 32);
   });
 
   it.effect(

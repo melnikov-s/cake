@@ -11,7 +11,6 @@ import {
   ConfirmationAction,
   ConfirmationActions,
   ConfirmationDescription,
-  ConfirmationRequest,
   ConfirmationTitle,
 } from "./ai-elements/confirmation";
 import { Button } from "./ui/button";
@@ -476,29 +475,27 @@ export const WorktreePill = observer(function WorktreePill({
                     : "Discard & resolve"}
               </WorktreePillAction>
               <PopoverContent align="end" side="top" className="!w-80 !p-0">
-                <Confirmation state="requested" className="border-0 shadow-none">
-                  <ConfirmationRequest>
-                    <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
-                    <ConfirmationDescription>
-                      {isFamilyChild
-                        ? "The worktree and its branch will be deleted, and all unmerged work will be lost. The Session Family will remain active."
-                        : "The worktree and its branch will be deleted, all unmerged work will be lost, and its sessions will be resolved."}
-                    </ConfirmationDescription>
-                    <ConfirmationActions>
-                      <ConfirmationAction
-                        variant="outline"
-                        onClick={() => setDiscardConfirmationOpen(false)}
-                      >
-                        Cancel
-                      </ConfirmationAction>
-                      <ConfirmationAction
-                        variant="destructive"
-                        onClick={() => run(actions.discard(false, !isFamilyChild))}
-                      >
-                        {isFamilyChild ? "Discard" : "Discard & resolve"}
-                      </ConfirmationAction>
-                    </ConfirmationActions>
-                  </ConfirmationRequest>
+                <Confirmation className="border-0 shadow-none">
+                  <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
+                  <ConfirmationDescription>
+                    {isFamilyChild
+                      ? "The worktree and its branch will be deleted, and all unmerged work will be lost. The Session Family will remain active."
+                      : "The worktree and its branch will be deleted, all unmerged work will be lost, and its sessions will be resolved."}
+                  </ConfirmationDescription>
+                  <ConfirmationActions>
+                    <ConfirmationAction
+                      variant="outline"
+                      onClick={() => setDiscardConfirmationOpen(false)}
+                    >
+                      Cancel
+                    </ConfirmationAction>
+                    <ConfirmationAction
+                      variant="destructive"
+                      onClick={() => run(actions.discard(false, !isFamilyChild))}
+                    >
+                      {isFamilyChild ? "Discard" : "Discard & resolve"}
+                    </ConfirmationAction>
+                  </ConfirmationActions>
                 </Confirmation>
               </PopoverContent>
             </Popover>

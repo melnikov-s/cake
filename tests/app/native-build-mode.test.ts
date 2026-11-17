@@ -15,13 +15,12 @@ describe("native build modes", () => {
     expect(nativeBuildMode({ CAKE_BUILD_MODE: "slim" })).toBe("slim");
     expect(() => nativeBuildMode({ CAKE_BUILD_MODE: "typo" })).toThrow("Choose full or slim");
   });
-  it("full builds invoke both native builders in order", async () => {
+  it("full builds request both native helpers in the requested output directory", async () => {
     const run = vi.fn(async () => undefined);
     await buildNativeAssets("/output/native", run, { CAKE_BUILD_MODE: "full" });
-    expect(run.mock.calls).toEqual([
-      ["build-dictation.mjs", "/output/native"],
-      ["build-speech.mjs", "/output/native"],
-    ]);
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run).toHaveBeenCalledWith("build-dictation.mjs", "/output/native");
+    expect(run).toHaveBeenCalledWith("build-speech.mjs", "/output/native");
   });
   it.each([false, true])(
     "slim skips every native builder even with existing native output: %s",

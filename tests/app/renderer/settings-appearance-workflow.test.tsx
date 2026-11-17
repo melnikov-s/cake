@@ -70,12 +70,6 @@ afterEach(() => {
 });
 
 describe("Appearance settings workflow", () => {
-  it("does not duplicate toolbar work-log options in Appearance", () => {
-    using fixture = renderAppearanceSettings();
-    expect(screen.queryByText("Work logs", { exact: true })).toBeNull();
-    expect(fixture.container.querySelector("#setting-work-log-display")).toBeNull();
-  });
-
   it.each([false, true])(
     "switches only session icons and restores the saved preference (custom project icon: %s)",
     async (customIcon) => {

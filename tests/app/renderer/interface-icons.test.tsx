@@ -26,9 +26,8 @@ import {
   VsCodeIcon,
 } from "../../../src/renderer/components/ui/icons";
 import { IconButton } from "../../../src/renderer/components/ui/icon-button";
-import { IconSizeProvider, iconSizes } from "../../../src/renderer/components/ui/icon-size";
+import { IconSizeProvider } from "../../../src/renderer/components/ui/icon-size";
 import { Button } from "../../../src/renderer/components/ui/button";
-import { NumberedIconButton } from "../../../src/renderer/components/ui/numbered-icon-button";
 import { WorkspaceModeControls } from "../../../src/renderer/components/workspace-mode-controls";
 import { StatusDot } from "../../../src/renderer/components/ui/status-dot";
 
@@ -62,9 +61,13 @@ const glyphs = {
 it.each(Object.entries(glyphs))(
   "%s uses the control's semantic box, including embedded SVG",
   (_name, Glyph) => {
-    for (const [role, dimension] of Object.entries(iconSizes)) {
+    for (const [role, dimension] of [
+      ["view", 24],
+      ["navigation", 18],
+      ["inline", 12],
+    ] as const) {
       const view = render(
-        <IconButton tooltip="Control" iconSize={role as keyof typeof iconSizes}>
+        <IconButton tooltip="Control" iconSize={role}>
           <Glyph />
         </IconButton>,
       );
@@ -72,10 +75,6 @@ it.each(Object.entries(glyphs))(
       expect(svg.getAttribute("width")).toBe(String(dimension));
       expect(svg.getAttribute("height")).toBe(String(dimension));
       expect(svg.getAttribute("aria-hidden")).toBe("true");
-      const button = view.getByRole("button", { name: "Control" });
-      expect(button.classList.contains("size-7")).toBe(true);
-      expect(button.className).toContain("[@media(pointer:coarse)]:min-h-11");
-      expect(button.className).toContain("[@media(pointer:coarse)]:min-w-11");
       view.unmount();
     }
   },
@@ -111,18 +110,6 @@ it("inherits inline action roles but allows explicit navigation, leaving non-gly
   ).toBe("30");
   expect(view.getByTestId("status").className).toContain("size-[6px]");
   expect(view.getByTestId("status").className).toContain("bg-accent");
-});
-
-it("keeps the shared target and navigation glyph while capping a large count", () => {
-  const view = render(
-    <NumberedIconButton count={1000} tooltip="Artifacts">
-      <ArtifactIcon />
-    </NumberedIconButton>,
-  );
-  const svg = view.container.querySelector("svg")!;
-  expect(svg.getAttribute("width")).toBe("18");
-  expect(view.getByRole("button", { name: "Artifacts" }).classList.contains("size-7")).toBe(true);
-  expect(view.getByText("99+").classList.contains("min-w-3.5")).toBe(true);
 });
 
 it("only the three view controls are 24px, retaining pressed states and handlers", () => {

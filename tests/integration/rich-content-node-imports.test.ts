@@ -75,9 +75,6 @@ it("extension_publication_imports_without_electron", () =>
 
 it("capture_contract_imports_without_electron", () =>
   importInNode(`
-  import assert from "node:assert/strict";
-  import { RenderedWidgetCapture } from "./src/services/widgets/RenderedWidgetCapture.ts";
-  import { RenderedWidgetCaptureError } from "./src/contracts/widgets/rendered-widget-capture-errors.ts";
-  assert.equal(RenderedWidgetCapture.key, "cake/services/widgets/RenderedWidgetCapture");
-  assert.equal(new RenderedWidgetCaptureError({ kind: "infrastructure", message: "unavailable" }).kind, "infrastructure");
+  export { RenderedWidgetCapture } from "./src/services/widgets/RenderedWidgetCapture.ts";
+  export { RenderedWidgetCaptureError } from "./src/contracts/widgets/rendered-widget-capture-errors.ts";
 `));

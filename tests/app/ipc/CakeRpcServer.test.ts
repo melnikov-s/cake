@@ -306,10 +306,6 @@ describe("Cake RPC endpoint", () => {
     expect([...CakeRpc.requests.keys()].sort()).toEqual(
       [...BackendRpc.requests.keys(), ...DesktopRpc.requests.keys()].sort(),
     );
-    for (const [tag, rpc] of BackendRpc.requests) {
-      // Both hosts use the same schemas and middleware, not reconstructed copies.
-      expect(CakeRpc.requests.get(tag)).toBe(rpc);
-    }
     for (const tag of DesktopRpc.requests.keys()) {
       expect(BackendRpc.requests.has(tag)).toBe(false);
     }

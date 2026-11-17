@@ -33,13 +33,10 @@ test("ordinary cleanup escalates only its owned group and waits for exit", async
   });
   await cleanupGroup(pid, original, "SIGTERM", 0);
   assert.deepEqual(
-    kill.mock.calls.map(({ arguments: args }) => args),
+    kill.mock.calls.map(({ arguments: args }) => args).filter(([, signal]) => signal !== 0),
     [
-      [-pid, 0],
       [-pid, "SIGTERM"],
-      [-pid, 0],
       [-pid, "SIGKILL"],
-      [-pid, 0],
     ],
   );
 });

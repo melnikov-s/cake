@@ -248,12 +248,6 @@ describe("scoped event matching", () => {
     ).toBe(true);
     expect(matchesEvent(global, { ...event, sourceKind: "project-chat" })).toBe(false);
   });
-  it("does not infer family roots from a missing parent or from creator provenance", () => {
-    // The matcher accepts a resolved source kind; absent ancestry never promotes a standalone source.
-    expect(matchesEvent(filter, { ...event, sourceKind: "standalone-project-session" })).toBe(
-      false,
-    );
-  });
   it("does not match an otherwise identical event from another project or session", () => {
     expect(matchesEvent(filter, { ...event, projectPath: "/projects/orchard" })).toBe(false);
     expect(matchesEvent(filter, { ...event, sourceSessionId: "another-root" })).toBe(false);

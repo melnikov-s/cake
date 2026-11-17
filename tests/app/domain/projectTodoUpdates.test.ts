@@ -2,7 +2,6 @@ import { it } from "@effect/vitest";
 import { seedHistoricalTodo } from "../helpers/projectTodoHarness";
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { expect } from "vitest";
-import { TestClock } from "effect/testing";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { PiModels } from "../../../src/services/pi/PiModels";
@@ -228,44 +227,6 @@ it.effect(
     }).pipe(Effect.provide(f.layer));
   },
 );
-
-it.effect("list changes never request model sorting while report summaries still work", () => {
-  const inputs: BoundedCompletionInput[] = [];
-  const f = fixture((input) =>
-    Effect.sync(() => {
-      inputs.push(input);
-      return "Fix committed; awaiting merge.";
-    }),
-  );
-  return Effect.gen(function* () {
-    yield* updates.initialize();
-    const first = yield* setup();
-    const second = yield* todos.create("/project", {
-      title: "Review choices",
-      description: "Choose the target.",
-    });
-    yield* todos.update("/project", {
-      id: second.id,
-      expectedRevision: 0,
-      description: "Choose the deployment target.",
-    });
-    yield* TestClock.adjust("10 seconds");
-    expect(inputs).toHaveLength(0);
-
-    const updated = yield* (yield* ApplicationState).changes().pipe(
-      Stream.filter(({ state }) => state.projects[0]?.todos?.items[0]?.revision === 1),
-      Stream.take(1),
-      Stream.runCollect,
-      Effect.forkChild,
-    );
-    yield* updates.offer(report);
-    yield* Fiber.join(updated);
-    yield* TestClock.adjust("10 seconds");
-    expect(inputs).toHaveLength(1);
-    expect(JSON.parse(inputs[0]!.context).title).toBe(first.title);
-    expect(inputs[0]!.instructions).toContain(PROJECT_TODO_SUMMARY_GUIDANCE);
-  }).pipe(Effect.provide(f.layer), Effect.scoped);
-});
 
 it.effect(
   "the background queue accepts a report immediately and publishes its summary without chat delivery",

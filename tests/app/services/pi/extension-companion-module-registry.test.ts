@@ -17,13 +17,16 @@ describe("ExtensionCompanionModuleRegistry", () => {
     expect(registry.source(first.token)).toBeUndefined();
   });
 
-  it("makes publication release idempotent", () => {
+  it("does not revoke another publication when one release is repeated", () => {
     const registry = new ExtensionCompanionModuleRegistry();
     const publication = registry.publish("export default 2");
+    const retained = registry.publish("export default 2");
 
     publication.release();
     publication.release();
 
-    expect(registry.source(publication.token)).toBeUndefined();
+    expect(registry.source(retained.token)).toBe("export default 2");
+    retained.release();
+    expect(registry.source(retained.token)).toBeUndefined();
   });
 });

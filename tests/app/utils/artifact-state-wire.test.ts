@@ -4,7 +4,6 @@ import { artifactStateWireError } from "../../../src/contracts/widgets/artifact-
 describe("artifact JSON wire boundary", () => {
   it("rejects own undefined native defaults before they become a silent save timeout", () => {
     const scene = structuredClone({ elements: [{ customData: undefined }] });
-    expect(Object.hasOwn(scene.elements[0]!, "customData")).toBe(true);
     expect(artifactStateWireError(scene)).toBe(
       "value/elements/0/customData must be JSON (received undefined)",
     );

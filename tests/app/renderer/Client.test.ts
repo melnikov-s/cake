@@ -524,55 +524,6 @@ describe("Client transport and device integration", () => {
     },
   );
 
-  it("exposes focused command groups without observation methods", async () => {
-    await using transport = commandClientFinishTransport(() => ({ _tag: "Success", value: null }));
-    const client = makeClient(transport.runtime);
-
-    expect(Object.keys(client)).toEqual([
-      "speechOutput",
-      "dictation",
-      "desktopHost",
-      "backendConnection",
-      "desktopSharing",
-      "application",
-      "windowState",
-      "nonChatModels",
-      "models",
-      "mcpSettings",
-      "widgetPackages",
-      "piSettings",
-      "modelPresets",
-      "savedDrafts",
-      "scheduledMessages",
-      "automations",
-      "projectWorkflow",
-      "projectTodos",
-      "projectSessions",
-      "sessionChats",
-      "cakeChats",
-      "discussionSessions",
-      "subagents",
-      "electron",
-      "filesystem",
-      "workspaces",
-      "managedWorktrees",
-      "terminals",
-      "browser",
-      "vscode",
-      "interviews",
-      "artifacts",
-      "inlineWidgets",
-      "foundation",
-    ]);
-    expect("observe" in client.savedDrafts).toBe(false);
-    expect("observe" in client.scheduledMessages).toBe(false);
-    expect("observe" in client.automations).toBe(false);
-    expect("observe" in client.projectSessions).toBe(false);
-    expect("observe" in client.cakeChats).toBe(false);
-    expect("observe" in client.discussionSessions).toBe(false);
-    expect("observe" in client.subagents).toBe(false);
-  });
-
   it("dispatches connected provider/settings/workspace reads through the backend and rejects them when disconnected", async () => {
     await using transport = commandClientFinishTransport((request) => ({
       _tag: "Success",

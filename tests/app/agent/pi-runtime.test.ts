@@ -2421,7 +2421,7 @@ describe("Pi 1.0.0 foundation contract", () => {
 
   it("loads Pi's bundled changelog through its public package directory", () => {
     expect(loadPiChangelog()).toContain("# Changelog");
-    expect(loadPiChangelog()).toContain("1.0.0");
+    expect(loadPiChangelog()).toMatch(/^## \[\d+\.\d+\.\d+\]/m);
   });
 
   it("uses Pi's fuzzy @ provider for project file suggestions", async () => {

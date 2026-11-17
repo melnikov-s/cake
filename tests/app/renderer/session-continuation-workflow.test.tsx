@@ -211,7 +211,11 @@ describe("Session continuation workflow", () => {
       within(dialog).getByRole("button", { name: "Use the project root (no worktree)" }),
     );
     await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
-    expect(screen.getByText("Fork of Source conversation")).toBeDefined();
+    expect(
+      within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByText(
+        "Fork of Source conversation",
+      ),
+    ).toBeDefined();
     expect(screen.getByRole("status", { name: "Preparing fork in progress" })).toBeDefined();
     const previewId = visibleSessionId();
     expect(previewId).not.toBe("source");
@@ -277,7 +281,11 @@ describe("Session continuation workflow", () => {
     );
     await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getByText("Fork of Source conversation")).toBeDefined();
+    expect(
+      within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByText(
+        "Fork of Source conversation",
+      ),
+    ).toBeDefined();
     const previewId = visibleSessionId();
     expect(previewId).not.toBe("source");
     expect(fork).not.toHaveBeenCalled();
@@ -286,7 +294,11 @@ describe("Session continuation workflow", () => {
     expect(visibleSessionId()).toBe(previewId);
     await fixture.resolveSource();
     expect(visibleSessionId()).toBe(previewId);
-    expect(screen.getByText("Fork of Source conversation")).toBeDefined();
+    expect(
+      within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByText(
+        "Fork of Source conversation",
+      ),
+    ).toBeDefined();
     expect(screen.queryByText("Conversation resolved")).toBeNull();
     await act(async () => pendingFork.resolve({ sessionId: "forked" }));
     expect(create).toHaveBeenCalledWith(
@@ -426,7 +438,11 @@ describe("Session continuation workflow", () => {
     const dialog = await openFork(fixture.user);
     await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
     expect(visibleSessionId()).not.toBe("source");
-    expect(screen.getByText("Fork of Source conversation")).toBeDefined();
+    expect(
+      within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByText(
+        "Fork of Source conversation",
+      ),
+    ).toBeDefined();
     expect(screen.getByRole("status", { name: "Preparing fork in progress" })).toBeDefined();
     await openSessionFromSearch(fixture.user, /^Source conversation/);
     await waitFor(() => expect(visibleSessionId()).toBe("source"));

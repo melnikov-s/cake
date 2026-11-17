@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { PREVIEW_MAX_CHARACTERS, textPreview } from "../../../src/renderer/lib/text-preview";
+import { textPreview } from "../../../src/renderer/lib/text-preview";
 
 it("leaves short text unchanged", () => {
   expect(textPreview("Inspect the boundary")).toBe("Inspect the boundary");
@@ -11,9 +11,9 @@ it("collapses newlines and whitespace runs into single spaces", () => {
   );
 });
 
-it("caps long text at the medium preview length with an ellipsis", () => {
+it("caps long text at 240 characters with an ellipsis", () => {
   const preview = textPreview(`${"word ".repeat(400)}tail`);
-  expect(preview).toHaveLength(PREVIEW_MAX_CHARACTERS);
+  expect(preview).toHaveLength(240);
   expect(preview.endsWith("word…")).toBe(true);
   expect(preview).not.toContain("tail");
   expect(textPreview("x".repeat(10), 10)).toBe("x".repeat(10));

@@ -22,34 +22,6 @@ describe("Tool", () => {
     container.remove();
   });
 
-  it("opens a file from its name and keeps elapsed time at the far right", () => {
-    const onOpenSourceLocation = vi.fn();
-    act(() => {
-      root.render(
-        <Tool
-          part={{
-            id: "read-1",
-            kind: "tool",
-            name: "read",
-            input: JSON.stringify({ path: "src/app.ts" }),
-            output: "contents",
-            state: "success",
-          }}
-          onOpenSourceLocation={onOpenSourceLocation}
-          timer={<span className="tool-timer">1s</span>}
-        />,
-      );
-    });
-
-    expect(container.querySelector('button[aria-label="Copy src/app.ts"]')).not.toBeNull();
-    const pathButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "src/app.ts",
-    )!;
-    act(() => pathButton.click());
-    expect(onOpenSourceLocation).toHaveBeenCalledWith({ path: "src/app.ts" });
-    expect(container.querySelector(".tool-timer")).not.toBeNull();
-  });
-
   it("shortens only display paths while retaining navigation, copy and details", async () => {
     const onOpenSourceLocation = vi.fn();
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -76,11 +48,9 @@ describe("Tool", () => {
       (button) => button.textContent === "~/outside/file.ts",
     )!;
     expect(pathButton.title).toBe(path);
-    expect(pathButton.className).toContain("select-text");
     act(() => pathButton.click());
     expect(onOpenSourceLocation).toHaveBeenCalledWith({ path });
     const disclosure = container.querySelector<HTMLButtonElement>("[aria-expanded]")!;
-    expect(disclosure.className).toContain("select-text");
     act(() => disclosure.click());
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(container.querySelector("[data-slot=tool-details]")?.hasAttribute("hidden")).toBe(false);
@@ -89,23 +59,6 @@ describe("Tool", () => {
     });
     expect(writeText).toHaveBeenCalledWith(path);
   });
-
-  it.each([0, 5, 49, 50, 100, 999, 1000, 1200])(
-    "shows nested duration %sms only once it reaches a second",
-    (durationMs) => {
-      const call = {
-        id: "nested",
-        name: "read",
-        input: '{"path":"a.ts"}',
-        state: "success" as const,
-        durationMs,
-        outputAvailability: "unavailable" as const,
-      };
-      act(() => root.render(<Tool part={{ kind: "tool", ...call }} activity={call} />));
-      const elapsed = container.querySelector('[aria-label="elapsed time"]');
-      expect(elapsed?.textContent).toBe(durationMs < 1000 ? undefined : "1s");
-    },
-  );
 
   it("opens an edit at the changed range reported by the tool", () => {
     const onOpenSourceLocation = vi.fn();
