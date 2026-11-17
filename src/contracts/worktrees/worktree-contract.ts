@@ -54,5 +54,10 @@ export type WorktreeLandOutcome =
   | { readonly outcome: "landed"; readonly commit?: string }
   /** A clean rebase changed HEAD; the target is untouched until this commit is validated. */
   | { readonly outcome: "revalidation-required"; readonly commit: string }
-  | { readonly outcome: "resolving"; readonly files: ReadonlyArray<string> }
+  | {
+      readonly outcome: "resolving";
+      readonly files: ReadonlyArray<string>;
+      /** Automatic repair identity: source content, target commit and unmerged index entries. */
+      readonly repairFingerprint?: string;
+    }
   | { readonly outcome: "proposal" };

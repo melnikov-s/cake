@@ -8,6 +8,8 @@ export interface WorktreeLandingCoordinatorState {
   readonly autoMergeProjects?: ReadonlyArray<ProjectAutoMerge>;
   readonly autoMergeRunId?: string;
   readonly autoMergeRequests?: ReadonlyArray<AutoMergeRequest>;
+  /** Current-run repair checkpoints keyed by immutable declaration ID. No restart replay. */
+  readonly autoMergeRepairProgress?: ReadonlyMap<string, string>;
 }
 
 export interface WorktreeLandingCoordinatorService {

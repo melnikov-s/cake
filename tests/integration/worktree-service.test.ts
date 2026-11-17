@@ -879,7 +879,11 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
         operationId: "automatic-before-repair",
         request: { strategy: "preserve", expectedSourceCommit: validated },
       }),
-    ).resolves.toEqual({ outcome: "resolving", files: ["shared.txt"] });
+    ).resolves.toEqual({
+      outcome: "resolving",
+      files: ["shared.txt"],
+      repairFingerprint: expect.any(String),
+    });
     expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(target);
     await expect(worktrees.status(first.worktreePath)).resolves.toMatchObject({
       rebasing: true,
@@ -929,6 +933,44 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(
       (await worktrees.records()).find((item) => item.worktreePath === first.worktreePath),
     ).not.toHaveProperty("pendingAutomaticLanding");
+  });
+
+  it("identifies recurring automatic conflicts by content, not rewritten commit IDs, while main and content changes make progress", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const source = await worktrees.create(repo);
+    await writeFile(join(source.worktreePath, "README.md"), "source version\n");
+    await commitAll(source.worktreePath, "source change");
+    await writeFile(join(repo, "README.md"), "main version\n");
+    await commitAll(repo, "main change");
+    const fingerprints: string[] = [];
+    const heads: string[] = [];
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const validated = (await git(source.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+      heads.push(validated);
+      const target = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
+      const outcome = await worktrees.land(source.worktreePath, {
+        request: { strategy: "preserve", expectedSourceCommit: validated },
+      });
+      expect(outcome).toMatchObject({ outcome: "resolving", files: ["README.md"] });
+      if (outcome.outcome !== "resolving" || !outcome.repairFingerprint)
+        throw new Error("Automatic conflict must include its Git progress identity");
+      fingerprints.push(outcome.repairFingerprint);
+      expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(target);
+      await git(source.worktreePath, "rebase", "--abort");
+      if (attempt === 0)
+        await git(source.worktreePath, "commit", "--allow-empty", "-m", "no content progress");
+      if (attempt === 1) await git(repo, "commit", "--allow-empty", "-m", "main advances");
+      if (attempt === 2) {
+        await writeFile(join(source.worktreePath, "repair.txt"), "real content progress\n");
+        await commitAll(source.worktreePath, "repair changes content");
+      }
+    }
+    expect(heads[1]).not.toBe(heads[0]);
+    expect(fingerprints[1]).toBe(fingerprints[0]);
+    expect(fingerprints[2]).not.toBe(fingerprints[1]);
+    expect(fingerprints[3]).not.toBe(fingerprints[2]);
+    await worktrees.discard(source.worktreePath, false);
   });
 
   it("lands unchanged validated HEAD without a revalidation or conflict outcome", async () => {

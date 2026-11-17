@@ -392,7 +392,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
           requestId: request.id,
           commit: request.commit,
           authorize,
-          revalidate: (text, reason) => {
+          revalidate: (text, reason, repairFingerprint) => {
             const cleanRebase = reason === "clean-rebase";
             const label = cleanRebase ? "Automatic clean-rebase validation" : "Automatic repair";
             const operation = cleanRebase ? "revalidation" : "repair";
@@ -401,13 +401,40 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
               // Retire the immutable declaration before admitting a follow-up input.
               // A toggle cycle must not resurrect validation of the old commit.
               yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
-              if ((request.repairAttempt ?? 0) >= 2)
-                return yield* new WorktreeLandingError({
-                  operation,
-                  message: cleanRebase
-                    ? `${label} stopped after two validation turns; no merge or resolution occurred.`
-                    : "Automatic repair stopped after two repair turns with recurring conflicts; no merge or resolution occurred.",
-                });
+              if (!cleanRebase) {
+                if (!repairFingerprint)
+                  return yield* new WorktreeLandingError({
+                    operation,
+                    message:
+                      "Automatic repair stopped: Git repair progress could not be determined; no merge or resolution occurred.",
+                  });
+                const progress = (yield* SubscriptionRef.get(coordinator.state))
+                  .autoMergeRepairProgress;
+                let ancestor: AutoMergeRequest | undefined = request;
+                while (ancestor) {
+                  if (progress?.get(ancestor.id) === repairFingerprint)
+                    return yield* new WorktreeLandingError({
+                      operation,
+                      message:
+                        "Automatic repair stopped: the same conflicts recurred with unchanged source content and target commit after an earlier repair; no progress, merge or resolution occurred.",
+                    });
+                  const predecessorId: string | undefined = ancestor.repairOfRequestId;
+                  ancestor = requests.find(
+                    (item) =>
+                      item.id === predecessorId &&
+                      item.sessionId === request.sessionId &&
+                      item.workspacePath === request.workspacePath &&
+                      item.runId === request.runId,
+                  );
+                }
+                yield* SubscriptionRef.update(coordinator.state, (state) => ({
+                  ...state,
+                  autoMergeRepairProgress: new Map(state.autoMergeRepairProgress).set(
+                    request.id,
+                    repairFingerprint,
+                  ),
+                }));
+              }
               const outcome = yield* agent.promptAndWait({
                 sessionId: request.sessionId,
                 text: cleanRebase

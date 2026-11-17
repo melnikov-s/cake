@@ -267,6 +267,28 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
     }
     return { outcome: "landed", commit: yield* squashMerge(record, requested) };
   });
+  const resolvingOutcome = Effect.fn("ManagedWorktrees.resolvingOutcome")(function* (
+    record: WorktreeRecord,
+    request: WorktreeLandRequest,
+    files: ReadonlyArray<string>,
+  ) {
+    if (request.strategy !== "preserve" || !request.expectedSourceCommit)
+      return { outcome: "resolving" as const, files };
+    // Commit-only rewrites are not repair progress. Compare immutable content plus
+    // the target and actual conflict stages, rather than prompt text or turn counts.
+    const sourceTree = (yield* git(
+      record.worktreePath,
+      "rev-parse",
+      `${request.expectedSourceCommit}^{tree}`,
+    )).trim();
+    const target = (yield* git(record.worktreePath, "rev-parse", record.baseBranch)).trim();
+    const unmerged = yield* git(record.worktreePath, "ls-files", "--unmerged", "-z");
+    return {
+      outcome: "resolving" as const,
+      files,
+      repairFingerprint: JSON.stringify([sourceTree, target, unmerged]),
+    };
+  });
   const requireSourceBranch = Effect.fn("ManagedWorktrees.requireSourceBranch")(function* (
     record: WorktreeRecord,
   ) {
@@ -331,7 +353,7 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
       (yield* revParseExists(record.worktreePath, "MERGE_HEAD"))
     ) {
       yield* rememberPendingLanding(record, request.strategy);
-      return { outcome: "resolving", files: yield* unmergedFiles(record.worktreePath) };
+      return yield* resolvingOutcome(record, request, yield* unmergedFiles(record.worktreePath));
     }
     if ((yield* dirtyFileCount(record.worktreePath)) > 0)
       return yield* internalError(
@@ -387,7 +409,7 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
       const conflicts = yield* rebaseOntoTarget(record);
       if (conflicts) {
         yield* rememberPendingLanding(record, "preserve");
-        return { outcome: "resolving", files: conflicts };
+        return yield* resolvingOutcome(record, request, conflicts);
       }
       const rebasedHead = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
       if (request.expectedSourceCommit && rebasedHead !== request.expectedSourceCommit) {

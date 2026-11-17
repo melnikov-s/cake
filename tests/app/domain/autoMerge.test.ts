@@ -79,6 +79,7 @@ function fixture(
     conflict?: boolean;
     /** Emulate a successful engine rebase, not a conflict or an agent-created commit. */
     cleanRebaseHead?: string;
+    repairFingerprint?: string;
     failure?: boolean;
     resolveFailure?: boolean;
     wait?: Effect.Effect<void>;
@@ -277,7 +278,12 @@ function fixture(
           if (options.failure)
             return yield* new ManagedWorktreeError({ operation: "land", message: "Target dirty" });
           if (conflict ?? options.conflict)
-            return { outcome: "resolving" as const, files: ["conflict.ts"] };
+            return {
+              outcome: "resolving" as const,
+              files: ["conflict.ts"],
+              repairFingerprint:
+                options.repairFingerprint ?? JSON.stringify([head, "target", "conflict-index"]),
+            };
           if (options.cleanRebaseHead && head !== options.cleanRebaseHead) {
             head = options.cleanRebaseHead;
             return { outcome: "revalidation-required" as const, commit: head };
@@ -1043,6 +1049,34 @@ it.effect("revalidates cleanly rebased HEAD without conflict state or an extra c
   }).pipe(Effect.provide(test.layer));
 });
 
+it.effect("keeps validating clean rebases as main advances, without a turn budget", () => {
+  const options = { cleanRebaseHead: "b".repeat(40) };
+  const test = fixture(options);
+  return Effect.gen(function* () {
+    yield* ready;
+    for (const [index, next] of ["b", "c", "d", "e", "f"].entries()) {
+      options.cleanRebaseHead = next.repeat(40);
+      test.setRepair(yield* completedRepair(test, `validation-${index}`, options.cleanRebaseHead));
+      yield* runPass();
+      yield* terminal;
+      expect((yield* requests).at(-1)).toMatchObject({
+        commit: options.cleanRebaseHead,
+        state: "ready",
+        readyToMerge: true,
+        repairAttempt: index + 1,
+      });
+      expect((yield* requests).slice(0, -1).every((item) => !item.readyToMerge)).toBe(true);
+      expect(test.events).not.toContain("resolve");
+    }
+    yield* runPass();
+    yield* terminal;
+    yield* runPass();
+    expect((yield* requests).at(-1)).toMatchObject({ state: "landed", commit: "f".repeat(40) });
+    expect(test.events.filter((event) => event === "revalidate")).toHaveLength(5);
+    expect(test.events.filter((event) => event === "resolve")).toHaveLength(1);
+  }).pipe(Effect.provide(test.layer));
+});
+
 it.effect("clean-rebase reminder asks only for final-HEAD validation, never repair", () => {
   const test = fixture({ cleanRebaseHead: "b".repeat(40) });
   return Effect.gen(function* () {
@@ -1234,29 +1268,71 @@ it.effect.each(["aborted", "failed"] as const)(
   },
 );
 
-it.effect("bounds recurring conflicts across fresh repair declarations", () => {
-  const test = fixture({ conflict: true });
-  return Effect.gen(function* () {
-    yield* ready;
-    for (const [index, head] of ["b", "c"].entries()) {
-      test.setRepair(yield* completedRepair(test, `repair-${index}`, head.repeat(40)));
+it.effect.each(["source content", "target commit", "conflict stages"] as const)(
+  "continues repairs with changed %s, stopping only when the Git state recurs",
+  (progress) => {
+    const options = { conflict: true, repairFingerprint: "" };
+    const test = fixture(options);
+    return Effect.gen(function* () {
+      yield* ready;
+      for (const [index, head] of ["b", "c", "d", "e"].entries()) {
+        options.repairFingerprint = JSON.stringify([
+          progress === "source content" ? head : "source",
+          progress === "target commit" ? head : "target",
+          progress === "conflict stages" ? head : "stages",
+        ]);
+        test.setRepair(yield* completedRepair(test, `repair-${index}`, head.repeat(40)));
+        yield* runPass();
+        yield* terminal;
+        expect((yield* requests).at(-1)?.state).toBe("ready");
+      }
       yield* runPass();
       yield* terminal;
-    }
-    yield* runPass();
-    yield* terminal;
-    yield* runPass();
-    expect(test.events.filter((event) => event === "repair")).toHaveLength(2);
-    expect(test.events.filter((event) => event === "land")).toHaveLength(3);
-    expect((yield* requests).at(-1)).toMatchObject({
-      state: "failed",
-      readyToMerge: false,
-      repairAttempt: 2,
-    });
-    expect((yield* requests).at(-1)?.message).toContain("two repair turns");
-    expect(test.events).not.toContain("resolve");
-  }).pipe(Effect.provide(test.layer));
-});
+      yield* runPass();
+      expect(test.events.filter((event) => event === "repair")).toHaveLength(4);
+      expect(test.events.filter((event) => event === "land")).toHaveLength(5);
+      expect((yield* requests).at(-1)).toMatchObject({
+        state: "failed",
+        readyToMerge: false,
+        repairAttempt: 4,
+      });
+      expect((yield* requests).at(-1)?.message).toContain(
+        "same conflicts recurred with unchanged source content and target commit",
+      );
+      expect(test.events).not.toContain("resolve");
+      expect(test.notices).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect.each([false, true])(
+  "stops recurring no-progress repair despite fresh commit IDs (cycle=%s)",
+  (cycle) => {
+    const options = { conflict: true, repairFingerprint: "unchanged-content-and-target" };
+    const test = fixture(options);
+    return Effect.gen(function* () {
+      yield* ready;
+      test.setRepair(yield* completedRepair(test, "repair-0", "b".repeat(40)));
+      yield* runPass();
+      yield* terminal;
+      if (cycle) {
+        options.repairFingerprint = "different-content-same-target";
+        test.setRepair(yield* completedRepair(test, "repair-1", "c".repeat(40)));
+        yield* runPass();
+        yield* terminal;
+        options.repairFingerprint = "unchanged-content-and-target";
+      }
+      yield* runPass();
+      yield* terminal;
+      yield* runPass();
+      expect(test.prompts).toHaveLength(cycle ? 2 : 1);
+      expect((yield* requests).at(-1)).toMatchObject({ state: "failed", readyToMerge: false });
+      expect((yield* requests).at(-1)?.message).toContain("no progress, merge or resolution");
+      expect(test.events).not.toContain("resolve");
+      expect(test.notices).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
 
 it.effect("reports a failed repair without resurrecting validation or resolving", () => {
   const test = fixture({ conflict: true });

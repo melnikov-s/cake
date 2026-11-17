@@ -39,21 +39,23 @@ import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees"
 const exec = promisify(execFile);
 
 it.each([
-  { scenario: "conflict", ending: "complete" },
-  { scenario: "clean-rebase", ending: "complete" },
-  { scenario: "clean-rebase", ending: "revoked" },
-  { scenario: "clean-rebase", ending: "aborted" },
-  { scenario: "clean-rebase", ending: "canceled" },
+  { scenario: "conflict", ending: "complete", advances: 0 },
+  { scenario: "clean-rebase", ending: "complete", advances: 0 },
+  { scenario: "clean-rebase", ending: "complete", advances: 2 },
+  { scenario: "clean-rebase", ending: "revoked", advances: 0 },
+  { scenario: "clean-rebase", ending: "aborted", advances: 0 },
+  { scenario: "clean-rebase", ending: "canceled", advances: 0 },
 ] as const)(
-  "revalidates a real Git $scenario with $ending completion and fresh authorization",
+  "revalidates a real Git $scenario with $ending completion and $advances additional main advances",
   { timeout: 30_000 },
-  async ({ scenario, ending }) => {
+  async ({ scenario, ending, advances }) => {
     const root = await mkdtemp(join(tmpdir(), "cake-auto-repair-"));
     const engine = makeTestWorktreeService(join(root, ".git", "cake-test-worktrees.json"));
     const git = (cwd: string, ...args: string[]) => exec("git", args, { cwd });
     const events: string[] = [];
     let executingTurn = "task-turn";
     let validated = "";
+    let validationRound = 0;
     const head = async (cwd: string) => (await git(cwd, "rev-parse", "HEAD")).stdout.trim();
     try {
       await git(root, "init", "-b", "main");
@@ -83,7 +85,7 @@ it.each([
       );
       await git(root, "add", upstreamModule, "upstream.test.mjs");
       await git(root, "commit", "-m", "upstream requirement");
-      const targetBeforeRepair = await head(root);
+      let targetBeforeRepair = await head(root);
       const target = {
         sessionId: "owner",
         workingDirectory: source.worktreePath,
@@ -235,7 +237,7 @@ it.each([
                   catch: (error) =>
                     new WorktreeLandingAgentError({ operation: "repair", message: String(error) }),
                 });
-                executingTurn = "repair-turn";
+                executingTurn = `repair-turn-${validationRound++}`;
                 expect(yield* report(target, ready(validated))).toEqual({ eligible: true });
                 if (ending === "revoked") yield* setEnabled(root, false);
                 events.push("fresh-readiness");
@@ -251,7 +253,7 @@ it.each([
                 });
                 yield* hooks.onTurnSettled({
                   sessionId: "owner",
-                  turnId: "repair-turn",
+                  turnId: executingTurn,
                   outcome: ending === "aborted" ? "aborted" : "complete",
                   result: {
                     stopReason: "stop",
@@ -296,6 +298,25 @@ it.each([
             expect(requests?.some((request) => request.state === "landed")).toBe(false);
             return;
           }
+          // A busy main keeps moving between successful validations. Every new
+          // rebased HEAD needs its own checks and immutable readiness, beyond two turns.
+          for (let advance = 0; advance < advances; advance++) {
+            yield* Effect.promise(async () => {
+              await writeFile(
+                join(root, `upstream-${advance}.mjs`),
+                `export const n = ${advance};\n`,
+              );
+              await git(root, "add", `upstream-${advance}.mjs`);
+              await git(root, "commit", "-m", `main advances ${advance}`);
+              targetBeforeRepair = await head(root);
+            });
+            yield* pass;
+            yield* terminal;
+            const fresh = (yield* families.state()).autoMergeRequests ?? [];
+            expect(fresh.at(-1)).toMatchObject({ commit: validated, state: "ready" });
+            expect(fresh.slice(0, -1).every((request) => !request.readyToMerge)).toBe(true);
+            expect(events).not.toContain("resolve");
+          }
           // Scheduler passes alone resume: no merge, Retry or resolve tool invocation.
           yield* pass;
           yield* terminal;
@@ -304,16 +325,18 @@ it.each([
           yield* pass;
           const requests = (yield* families.state()).autoMergeRequests;
           expect(requests?.[0]).toMatchObject({ commit: original, readyToMerge: false });
-          expect(requests?.[1]).toMatchObject({
+          expect(requests?.at(-1)).toMatchObject({
             commit: validated,
-            repairAttempt: 1,
-            repairOfRequestId: "task-turn",
+            repairAttempt: advances + 1,
+            repairOfRequestId: advances ? `repair-turn-${advances - 1}` : "task-turn",
             state: "landed",
           });
           expect(events).toEqual([
-            "repair-handoff",
-            "scoped-validation-passed",
-            "fresh-readiness",
+            ...Array.from({ length: advances + 1 }, () => [
+              "repair-handoff",
+              "scoped-validation-passed",
+              "fresh-readiness",
+            ]).flat(),
             "landed-notice",
             "resolve",
           ]);

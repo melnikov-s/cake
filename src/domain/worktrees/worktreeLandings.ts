@@ -313,6 +313,7 @@ interface AutomaticLanding {
   readonly revalidate: (
     text: string,
     reason: "conflict" | "clean-rebase",
+    repairFingerprint?: string,
   ) => Effect.Effect<void, WorktreeLandingError>;
 }
 
@@ -426,6 +427,7 @@ const performLanding: (
         files: outcome.files,
       }),
       "conflict",
+      outcome.repairFingerprint,
     );
     yield* update(operation.workspacePath, operation.operationId, (current) => ({
       ...current,
