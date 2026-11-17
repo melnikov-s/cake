@@ -1,6 +1,7 @@
 import { useContext, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { LoadingState } from "@/components/ui/loading-state";
+import { ConversationHistoryControls } from "./conversation-history-controls";
 import { ShellHeaderContext, WorkspaceHeader } from "./ui/workspace-header";
 import type { SessionLayoutStore } from "../stores/SessionLayoutStore";
 import {
@@ -55,7 +56,7 @@ export const FocusedConversationLayout = observer(function FocusedConversationLa
     >
       <WorkspaceHeader
         compact={compactHeader}
-        titleLeading={compactHeader ? titleLeading?.(sessionId) : undefined}
+        titleLeading={compactHeader ? titleLeading?.(sessionId) : <ConversationHistoryControls />}
         title={
           renderTitle ? (
             renderTitle(sessionId)

@@ -289,6 +289,14 @@ describe("Workspace mode navigation", () => {
     const layout = () => {
       const tools = screen.getByRole("group", { name: "Workspace tools" });
       const header = tools.closest("header")!;
+      const history = within(header).getByRole("group", { name: "Conversation history" });
+      expect(screen.getAllByRole("group", { name: "Conversation history" })).toHaveLength(1);
+      expect(
+        within(history)
+          .getAllByRole("button")
+          .map((button) => button.getAttribute("aria-label")),
+      ).toEqual(["Go back in session history", "Go forward in session history"]);
+      expect(header.querySelector('[data-slot="workspace-title"]')?.contains(history)).toBe(true);
       const modes = within(header).getByRole("group", { name: "Conversation workspace" });
       expect(
         within(modes)

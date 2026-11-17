@@ -54,6 +54,7 @@ export function WorkspaceHeader({
             windowCentered && "pr-(--workspace-mode-clearance)",
           )}
         >
+          {!compact && titleLeading}
           {title}
         </div>
         {!compact && (

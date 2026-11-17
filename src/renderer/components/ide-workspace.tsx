@@ -16,6 +16,7 @@ import { SideChatLayout } from "./side-chat-layout";
 import { NestedChat } from "./nested-chat";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
 import { WorkspaceHeader } from "./ui/workspace-header";
+import { ConversationHistoryControls } from "./conversation-history-controls";
 import { SidePanel } from "./ui/side-panel";
 import { IconButton } from "./ui/icon-button";
 import { ReloadIcon } from "./ui/icons";
@@ -170,7 +171,11 @@ export const IdeWorkspace = observer(function IdeWorkspace({
           </div>
         </div>
       }
-      workspaceHeader={<WorkspaceHeader title={headerLeading}>{headerActions}</WorkspaceHeader>}
+      workspaceHeader={
+        <WorkspaceHeader title={headerLeading} titleLeading={<ConversationHistoryControls />}>
+          {headerActions}
+        </WorkspaceHeader>
+      }
       workspaceLabel="VS Code workspace"
       chatSidebarVisible={editor.chatSidebarVisible}
       chatSidebarReplacement={

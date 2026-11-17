@@ -65,9 +65,15 @@ describe("navigation snapshot migrations", () => {
       "child",
       "forward",
     ]);
-    expect(focused.goBack()).toBe("parent");
-    expect(focused.goForward()).toBe("child");
-    expect(focused.goForward()).toBe("forward");
+    for (const [direction, sessionId] of [
+      [-1, "parent"],
+      [1, "child"],
+      [1, "forward"],
+    ] as const) {
+      expect(focused.prepareTraversal(direction)?.sessionId).toBe(sessionId);
+      focused.showSession(sessionId);
+      expect(focused.focusedSessionId).toBe(sessionId);
+    }
     expect(saved).toEqual(before);
   });
   it.each(["project-session", "cake-chat"] as const)(

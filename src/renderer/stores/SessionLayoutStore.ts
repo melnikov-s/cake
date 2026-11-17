@@ -4,6 +4,19 @@ import { Store, snapshot } from "r-state-tree";
 export class SessionLayoutStore extends Store {
   @snapshot history: readonly string[] = [];
   @snapshot historyCursor = -1;
+  private pendingTraversal: { sessionId: string; cursor: number } | undefined;
+
+  /** Async navigation stages a visit; only a landed selection may move the cursor. */
+  prepareTraversal(direction: -1 | 1) {
+    const cursor = this.historyCursor + direction;
+    const sessionId = this.history[cursor];
+    if (!sessionId) return undefined;
+    return (this.pendingTraversal = { sessionId, cursor });
+  }
+
+  cancelTraversal(traversal: { sessionId: string; cursor: number }) {
+    if (this.pendingTraversal === traversal) this.pendingTraversal = undefined;
+  }
 
   get focusedSessionId() {
     return this.history[this.historyCursor];
@@ -25,6 +38,12 @@ export class SessionLayoutStore extends Store {
   }
 
   showSession(sessionId: string) {
+    const traversal = this.pendingTraversal;
+    this.pendingTraversal = undefined;
+    if (traversal?.sessionId === sessionId && this.history[traversal.cursor] === sessionId) {
+      this.historyCursor = traversal.cursor;
+      return;
+    }
     if (this.focusedSessionId === sessionId) return;
     this.history = [...this.history.slice(0, this.historyCursor + 1), sessionId];
     this.historyCursor = this.history.length - 1;
@@ -35,6 +54,7 @@ export class SessionLayoutStore extends Store {
   }
 
   removeSessions(sessionIds: readonly string[]) {
+    this.pendingTraversal = undefined;
     const removed = new Set(sessionIds);
     const retainedBefore = this.history
       .slice(0, this.historyCursor + 1)
@@ -44,19 +64,8 @@ export class SessionLayoutStore extends Store {
   }
 
   clear() {
+    this.pendingTraversal = undefined;
     this.history = [];
     this.historyCursor = -1;
-  }
-
-  goBack() {
-    if (this.historyCursor <= 0) return undefined;
-    this.historyCursor -= 1;
-    return this.focusedSessionId;
-  }
-
-  goForward() {
-    if (this.historyCursor >= this.history.length - 1) return undefined;
-    this.historyCursor += 1;
-    return this.focusedSessionId;
   }
 }

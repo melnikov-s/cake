@@ -583,26 +583,44 @@ export class NavigationStore extends Store<{
     await ProjectOpenContext.consume(this)!.chooseProject();
   }
 
+  get canGoBack() {
+    return (
+      (this.props.shell.workspace === "project-sessions" &&
+        !this.props.shell.applicationSurface &&
+        this.props.layout.historyCursor > 0) ||
+      this.props.shell.canGoBack
+    );
+  }
+
+  get canGoForward() {
+    return (
+      (this.props.shell.workspace === "project-sessions" &&
+        !this.props.shell.applicationSurface &&
+        this.props.layout.historyCursor < this.props.layout.history.length - 1) ||
+      this.props.shell.canGoForward
+    );
+  }
+
   navigateBack() {
     // Traverse focused conversation visits; covered surfaces use window-wide history.
-    const sessionId =
+    const traversal =
       this.props.shell.workspace === "project-sessions" &&
       !this.props.shell.applicationSurface &&
-      this.props.layout.goBack();
-    if (sessionId) {
-      this.props.shell.prepareProjectSessionTraversal(sessionId, -1);
-      void this.openSession(sessionId);
+      this.props.layout.prepareTraversal(-1);
+    if (traversal) {
+      this.props.shell.prepareProjectSessionTraversal(traversal.sessionId, -1);
+      void this.openProjectHistoryEntry(traversal);
     } else void this.navigateToHistoryEntry(this.props.shell.goBack());
   }
 
   navigateForward() {
-    const sessionId =
+    const traversal =
       this.props.shell.workspace === "project-sessions" &&
       !this.props.shell.applicationSurface &&
-      this.props.layout.goForward();
-    if (sessionId) {
-      this.props.shell.prepareProjectSessionTraversal(sessionId, 1);
-      void this.openSession(sessionId);
+      this.props.layout.prepareTraversal(1);
+    if (traversal) {
+      this.props.shell.prepareProjectSessionTraversal(traversal.sessionId, 1);
+      void this.openProjectHistoryEntry(traversal);
     } else void this.navigateToHistoryEntry(this.props.shell.goForward());
   }
 
@@ -614,10 +632,25 @@ export class NavigationStore extends Store<{
     else void this.openSession(target.sessionId);
   }
 
+  private async openProjectHistoryEntry(traversal: { sessionId: string; cursor: number }) {
+    try {
+      await this.navigateToHistoryEntry({
+        kind: "project-session",
+        sessionId: traversal.sessionId,
+      });
+    } finally {
+      this.props.layout.cancelTraversal(traversal);
+    }
+  }
+
   async navigateToHistoryEntry(entry: SessionHistoryEntry | undefined) {
     if (!entry) return;
-    if (entry.kind === "cake-chat") await this.openCakeChat(entry.sessionId);
-    else await this.openSession(entry.sessionId);
+    try {
+      if (entry.kind === "cake-chat") await this.openCakeChat(entry.sessionId);
+      else await this.openSession(entry.sessionId);
+    } catch (error) {
+      if (!this.signal.aborted) this.workbench.setError(error, "Opening session history");
+    }
   }
 
   showWorkbench() {

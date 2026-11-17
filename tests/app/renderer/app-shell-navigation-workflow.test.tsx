@@ -344,6 +344,18 @@ describe("App shell navigation workflow", () => {
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
       expect(global.conversationSessionStore.composerStore.draftStore.text).toBe("Global draft");
+      if (priorVisit) {
+        await fixture.user.click(
+          screen.getByRole("button", { name: "Go back in session history" }),
+        );
+        await expectProjectChat("alpha");
+        await fixture.user.click(
+          screen.getByRole("button", { name: "Go forward in session history" }),
+        );
+        expect(await screen.findByRole("combobox", { name: "Message Project Chat" })).toBeDefined();
+        expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(localId);
+        expect(screen.queryByRole("combobox", { name: "Message Cake Chat" })).toBeNull();
+      }
       await fixture.publishResolved("beta");
       await selectProjectSession(fixture, "beta");
       expect(fixture.root.appShellStore.activeConversation).toEqual({

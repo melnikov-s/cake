@@ -3,6 +3,31 @@ import { describe, expect, it } from "vitest";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 
 describe("Focused conversation navigation", () => {
+  it("stages traversal without moving focus and cancels only the matching attempt", () => {
+    using fixture = createRendererStoreFixture();
+    const store = fixture.root.sessionLayoutStore;
+    expect(store.prepareTraversal(-1)).toBeUndefined();
+    expect(store.prepareTraversal(1)).toBeUndefined();
+    store.showSession("first");
+    store.showSession("last");
+    const cancelled = store.prepareTraversal(-1)!;
+    const current = store.prepareTraversal(-1)!;
+    store.cancelTraversal(cancelled);
+    expect(store.focusedSessionId).toBe("last");
+    store.showSession(current.sessionId);
+    expect(store.history).toEqual(["first", "last"]);
+    expect(store.historyCursor).toBe(0);
+    expect(store.prepareTraversal(-1)).toBeUndefined();
+    const forward = store.prepareTraversal(1)!;
+    store.cancelTraversal(forward);
+    store.showSession("last");
+    expect(store.history).toEqual(["first", "last"]);
+    expect(store.historyCursor).toBe(1);
+    const back = store.prepareTraversal(-1)!;
+    store.cancelTraversal(back);
+    store.showSession("first");
+    expect(store.history).toEqual(["first", "last", "first"]);
+  });
   it("retains backward and forward history without duplicate visits on reopening the selection", () => {
     using fixture = createRendererStoreFixture();
     const store = fixture.root.sessionLayoutStore;
@@ -10,12 +35,18 @@ describe("Focused conversation navigation", () => {
     store.showSession("parent");
     store.showSession("child");
     store.showSession("child");
-    expect(store.goBack()).toBe("parent");
-    expect(store.goBack()).toBe("home");
-    expect(store.goForward()).toBe("parent");
+    expect(store.prepareTraversal(-1)?.sessionId).toBe("parent");
+    expect(store.focusedSessionId).toBe("child");
+    store.showSession("parent");
+    expect(store.prepareTraversal(-1)?.sessionId).toBe("home");
+    store.showSession("home");
+    expect(store.prepareTraversal(1)?.sessionId).toBe("parent");
+    store.showSession("parent");
     using restored = createRendererStoreFixture({ snapshot: toSnapshot(fixture.root) });
     expect(restored.root.sessionLayoutStore.focusedSessionId).toBe("parent");
-    expect(restored.root.sessionLayoutStore.goForward()).toBe("child");
+    expect(restored.root.sessionLayoutStore.prepareTraversal(1)?.sessionId).toBe("child");
+    restored.root.sessionLayoutStore.showSession("child");
+    expect(restored.root.sessionLayoutStore.focusedSessionId).toBe("child");
   });
 
   it("retains conversation-owned drafts and reading selection while navigating ancestors and history", () => {
@@ -49,12 +80,14 @@ describe("Focused conversation navigation", () => {
     store.showSession("first");
     store.showSession("staged");
     store.showSession("last");
-    expect(store.goBack()).toBe("staged");
+    expect(store.prepareTraversal(-1)?.sessionId).toBe("staged");
+    store.showSession("staged");
     store.replaceSession("staged", "saved");
     expect(store.focusedSessionId).toBe("saved");
     store.removeSessions(["first"]);
     expect(store.focusedSessionId).toBe("saved");
-    expect(store.goForward()).toBe("last");
+    expect(store.prepareTraversal(1)?.sessionId).toBe("last");
+    store.showSession("last");
     store.removeSessions(["saved", "last"]);
     expect(store.focusedSessionId).toBeUndefined();
   });

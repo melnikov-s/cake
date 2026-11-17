@@ -10,6 +10,7 @@ import { SideChatLayout } from "./side-chat-layout";
 import { NestedChat } from "./nested-chat";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
 import { WorkspaceHeader } from "./ui/workspace-header";
+import { ConversationHistoryControls } from "./conversation-history-controls";
 import { IconButton } from "./ui/icon-button";
 import { Input } from "./ui/input";
 import { BrowserSharingMenu } from "./browser-sharing-menu";
@@ -157,7 +158,11 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   return (
     <WorkspaceChatLayout
       workspace={workspace}
-      workspaceHeader={<WorkspaceHeader title={headerLeading}>{headerActions}</WorkspaceHeader>}
+      workspaceHeader={
+        <WorkspaceHeader title={headerLeading} titleLeading={<ConversationHistoryControls />}>
+          {headerActions}
+        </WorkspaceHeader>
+      }
       workspaceLabel="Browser workspace"
       chatSidebarVisible={browser.chatSidebarVisible}
       chatSidebarWidth={browser.chatSidebarWidth}
