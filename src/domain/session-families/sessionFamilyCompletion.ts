@@ -34,6 +34,12 @@ import {
   formatCrossSessionReportText,
   parseCrossSessionMessage,
 } from "../../contracts/conversations/cross-session-message";
+/** Execution failure/stop must not promote an earlier progress report to success. */
+const reportForTurn = (turn: FamilyTurn) =>
+  turn.outcome === "complete" || (turn.outcome === "failed" && turn.report?.outcome === "failed")
+    ? turn.report
+    : undefined;
+
 const failure = (message: string) =>
   new SessionFamilyStorageError({ operation: "familyLifecycle", message });
 
@@ -165,10 +171,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     turn.outcome === "aborted" ? "canceled" : turn.outcome === "failed" ? "failed" : "stopped";
   const stoppedBy =
     turn.outcome === "aborted" && turn.stop ? describeTurnStop(turn.stop, "agent") : undefined;
-  const report =
-    turn.outcome === "complete" || (turn.outcome === "failed" && turn.report?.outcome === "failed")
-      ? turn.report
-      : undefined;
+  const report = reportForTurn(turn);
   const childSummary = yield* sessions
     .catalogEntry(
       {
@@ -361,7 +364,7 @@ const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(fun
   isolated = false,
   notify?: boolean,
 ) {
-  const report = turn.report;
+  const report = reportForTurn(turn);
   const status = launchStatus(turn, report);
   yield* completionInbox.queue({
     id: turn.turnId,
@@ -401,15 +404,16 @@ export const retainNotification = Effect.fn("SessionFamilies.retainNotification"
   if (!current?.outcome) return;
   turn = current;
   yield* queueTurnCompletion(turn, spawn);
+  const report = reportForTurn(turn);
   yield* storage.digestNotice(turn.turnId, {
     id: turn.turnId,
     coordinatorSessionId: turn.senderSessionId,
     sessionId: turn.sessionId,
     title: (spawn?.title ?? `Session ${turn.sessionId}`).slice(0, 500),
-    status: launchStatus(turn, turn.report),
-    summary: digestSummary(turn, turn.report),
+    status: launchStatus(turn, report),
+    summary: digestSummary(turn, report),
     reportedAt: DateTime.formatIso(yield* DateTime.now),
-    ...(turn.report?.resultMessageRef ? { resultMessageRef: turn.report.resultMessageRef } : null),
+    ...(report?.resultMessageRef ? { resultMessageRef: report.resultMessageRef } : null),
   });
   if (spawn)
     yield* (yield* SessionCatalogChanges).publish({
@@ -433,10 +437,7 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
 ) {
   const storage = yield* SessionFamilyStorage;
   const catalogs = yield* SessionCatalogChanges;
-  const report =
-    turn.outcome === "complete" || (turn.outcome === "failed" && turn.report?.outcome === "failed")
-      ? turn.report
-      : undefined;
+  const report = reportForTurn(turn);
   const status = launchStatus(turn, report);
   const launchReport = {
     status,

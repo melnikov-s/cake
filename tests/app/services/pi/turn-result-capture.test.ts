@@ -176,6 +176,76 @@ describe("Pi run result evidence", () => {
     expect(results).toHaveLength(2);
   });
 
+  it.each(["stop", "aborted", "error"] as const)(
+    "retains an answered input's exact source before a late reply and empty %s follow-on",
+    (stopReason) => {
+      const results = new Map<string, PiTurnResult>();
+      let executing = ["assignment"];
+      const final = assistant(finalAnswer);
+      const empty = assistant("", stopReason);
+      const capture = createTurnResultCapture(
+        () => executing,
+        (id, result) => results.set(id, result),
+        (message) => {
+          if (final.type === "message_end" && message === final.message) return "substantive-final";
+          if (empty.type === "message_end" && message === empty.message) return "empty-follow-on";
+          return undefined;
+        },
+      );
+      capture(fromSession(parent));
+      capture(final);
+      capture(
+        fromSession(grandchild, { replyToMessageId: "00000000-0000-4000-8000-200000000000" }),
+      );
+      executing = ["assignment", "late-reply"];
+      capture(empty);
+      capture({ type: "agent_settled", aborted: false });
+      expect(results.get("assignment")).toMatchObject({
+        stopReason: "stop",
+        text: finalAnswer,
+        entryId: "substantive-final",
+      });
+      expect(implicitTurnResultFor(results.get("assignment"), parent)).toBe(finalAnswer);
+      expect(results.get("late-reply")).toMatchObject({
+        stopReason,
+        text: "",
+        entryId: "empty-follow-on",
+      });
+      expect(substantiveTurnResult(results.get("late-reply"))).toBeUndefined();
+      // A separate later run never borrows the earlier answer.
+      executing = ["new-reply"];
+      capture(fromSession(grandchild, { generatedNotice: true }));
+      capture(empty);
+      capture({ type: "agent_settled", aborted: false });
+      expect(substantiveTurnResult(results.get("new-reply"))).toBeUndefined();
+    },
+  );
+
+  it("does not promote thinking or tool calls into final evidence before a late reply", () => {
+    const results: PiTurnResult[] = [];
+    const capture = createTurnResultCapture(
+      () => ["assignment"],
+      (_id, result) => results.push(result),
+    );
+    const interim = assistant("", "toolUse");
+    if (interim.type !== "message_end" || interim.message.role !== "assistant") throw new Error();
+    interim.message.content = [
+      { type: "thinking", thinking: "Checks pending" },
+      { type: "toolCall", id: "send", name: "cake", arguments: { command: "sessions.send" } },
+    ];
+    capture(fromSession(parent));
+    capture(interim);
+    capture(fromSession(grandchild, { generatedNotice: true }));
+    capture(assistant("", "error"));
+    capture({ type: "agent_settled", aborted: false });
+    expect(results[0]).toMatchObject({
+      stopReason: "error",
+      text: "",
+      errorMessage: "Provider failed",
+    });
+    expect(substantiveTurnResult(results[0])).toBeUndefined();
+  });
+
   it("does not report a historical assistant tail for an empty new run", () => {
     const results: PiTurnResult[] = [];
     const capture = createTurnResultCapture(

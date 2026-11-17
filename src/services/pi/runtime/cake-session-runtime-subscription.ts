@@ -42,10 +42,10 @@ export function createCakeSessionRuntimeSubscription(input: {
   const captureTurnResult = createTurnResultCapture(
     () => turnController.executingTurnIds(),
     (turnId, result) => options.onTurnResult?.(turnId, result),
-    () =>
+    (message) =>
       session.sessionManager
         .getBranch()
-        .findLast((entry) => entry.type === "message" && entry.message.role === "assistant")?.id,
+        .findLast((entry) => entry.type === "message" && entry.message === message)?.id,
     () => session.model,
   );
   const unsubscribe = session.subscribe((event) => {

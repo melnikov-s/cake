@@ -2434,6 +2434,67 @@ describe("automatic spawned-session reporting", () => {
       }),
   );
 
+  it.effect.each(["stop", "error"] as const)(
+    "settled %s evidence replaces an interim send without claiming verified task readiness",
+    (stopReason) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const created = yield* createFromChat([], "notification");
+            yield* Deferred.await(f.entered);
+            const receipt = yield* coordinatorMessageRouting.routeCoordinatorMessage(
+              created.sessionId,
+              "sessions.send",
+              {
+                sessionId: CAKE_CHAT_SESSION_ID,
+                text: "Implementation update: checks are still pending.",
+              },
+              location,
+              undefined,
+              "interim-tool-call",
+            );
+            assert.ok(receipt);
+            assert.equal(
+              (yield* onlyTurn()).report?.resultMessageRef,
+              messageReference(created.sessionId, "interim-tool-call"),
+            );
+            yield* Deferred.succeed(f.finish, {
+              stopReason,
+              text: stopReason === "stop" ? resultText : "",
+              entryId: "final-evidence",
+              ...(stopReason === "error"
+                ? { errorMessage: "Provider failed during verification" }
+                : null),
+            });
+            yield* Deferred.await(f.settled);
+            const turn = yield* onlyTurn();
+            assert.equal(turn.report?.outcome, stopReason === "stop" ? "result" : "failed");
+            assert.equal(
+              turn.report?.text,
+              stopReason === "stop" ? resultText : "Provider failed during verification",
+            );
+            assert.equal(
+              turn.report?.resultMessageRef,
+              messageReference(created.sessionId, "final-evidence"),
+            );
+            yield* sessionFamilyCompletion.deliver(turn);
+            const { items: inbox } = yield* completionInbox.list(CAKE_CHAT_SESSION_ID);
+            assert.equal(
+              inbox[0]?.resultMessageRef,
+              messageReference(created.sessionId, "final-evidence"),
+            );
+            assert.equal(inbox[0]?.kind, stopReason === "stop" ? "investigation" : "blocked");
+            assert.equal(
+              (yield* f.storage.state()).coordinatorDigest?.[0]?.status,
+              stopReason === "stop" ? "completed" : "failed",
+            );
+            assert.equal(f.deliveries.length, 0);
+          }),
+        );
+      }),
+  );
+
   it.effect("explicit coordination can target Cake Chat without a spawning association", () =>
     Effect.gen(function* () {
       const f = yield* fixture();
@@ -2805,6 +2866,49 @@ describe("automatic spawned-session reporting", () => {
             assert.match(message?.text ?? "", /Provider unavailable during session startup/);
             yield* sessionFamilyCompletion.deliver(turn);
             assert.equal(f.deliveries.length, 1);
+          }),
+        );
+      }),
+  );
+
+  it.effect.each(["failed", "aborted", "complete"] as const)(
+    "quiet %s without a final result never presents interim tool text as verified success",
+    (outcome) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const workerId = "979ff4c0-f820-45ab-8b7a-1233c94087a2";
+            yield* f.storage.recordTurn({
+              sessionId: workerId,
+              senderSessionId: CAKE_CHAT_SESSION_ID,
+              turnId: "82f2585c-b3cf-4b8f-8a18-4c58b5ca4c4c",
+              resultDelivery: "notification",
+              requestMessageId: workerId,
+              threadId: workerId,
+              reported: false,
+              outcome,
+              ...(outcome !== "complete"
+                ? {
+                    report: {
+                      outcome: "result" as const,
+                      text: "Implementation update: verification is still pending.",
+                      resultMessageRef: messageReference(workerId, "interim-tool-call"),
+                    },
+                  }
+                : null),
+            });
+            yield* sessionFamilyCompletion.deliver(yield* onlyTurn());
+            const { items } = yield* completionInbox.list(CAKE_CHAT_SESSION_ID);
+            assert.equal(items[0]?.kind, "blocked");
+            assert.equal(items[0]?.resultMessageRef, undefined);
+            assert.equal(items[0]?.resultText, undefined);
+            const state = yield* f.storage.state();
+            assert.equal(
+              state.coordinatorDigest?.[0]?.status,
+              outcome === "failed" ? "failed" : outcome === "aborted" ? "interrupted" : "stopped",
+            );
+            assert.equal(state.coordinatorDigest?.[0]?.resultMessageRef, undefined);
           }),
         );
       }),

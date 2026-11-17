@@ -1009,7 +1009,10 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           update((document) => ({
             ...document,
             turns: document.turns.map((turn) =>
-              turn.turnId === turnId && !turn.reported && !turn.report && turn.outcome === undefined
+              turn.turnId === turnId &&
+              !turn.reported &&
+              (!turn.report || turn.report.outcome === "result") &&
+              turn.outcome === undefined
                 ? { ...turn, report }
                 : turn,
             ),
@@ -1036,7 +1039,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                         ...(report || turn.report
                           ? {
                               report: {
-                                ...(outcome === "failed"
+                                // An unclassified send can be a progress update. Prefer the
+                                // settled answer and its source as one piece of evidence.
+                                ...(outcome === "failed" || turn.report?.outcome === "result"
                                   ? (report ?? turn.report!)
                                   : (turn.report ?? report!)),
                                 ...(report?.resultMessageRef &&

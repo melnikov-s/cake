@@ -1,6 +1,6 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
+import { substantiveTurnResult, type PiTurnResult } from "../../../contracts/pi/turn-result-data";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 import { splitContextReminders } from "./session-context-reminders";
 import { textFromContent } from "./tool-projection";
@@ -41,22 +41,43 @@ const counterpart = (content: string, current: string | null | undefined) => {
   return message.metadata.sender.sessionId;
 };
 
-/** Captures only this consumed run's final assistant message, never a historical snapshot tail. */
+/** Captures this run's answers; a late coordination reply cannot erase an already answered input. */
 export function createTurnResultCapture(
   executingIds: () => ReadonlyArray<string>,
   emit: (turnId: string, result: PiTurnResult) => void,
-  resultEntryId?: () => string | undefined,
+  resultEntryId?: (message: AssistantMessage) => string | undefined,
   modelLimits?: () => TurnModelLimits | undefined,
 ) {
   let finalAssistantResult: PiTurnResult | undefined;
+  let finalAssistantMessage: AssistantMessage | undefined;
+  const answeredInputs = new Map<string, PiTurnResult>();
+  const withSource = (result: PiTurnResult): PiTurnResult => {
+    const entryId = finalAssistantMessage ? resultEntryId?.(finalAssistantMessage) : undefined;
+    return { ...result, ...(entryId ? { entryId } : null) };
+  };
   // undefined: no attributable input yet in this run; null: the local user.
   let respondsTo: string | null | undefined;
   return (event: AgentSessionEvent) => {
     if (event.type === "message_end" && event.message.role === "user") {
+      const content = textFromContent(event.message.content);
+      const coordination = parseCrossSessionMessage(splitContextReminders(content).text);
+      if (
+        (coordination?.metadata.replyToMessageId || coordination?.metadata.generatedNotice) &&
+        finalAssistantResult &&
+        substantiveTurnResult(finalAssistantResult)
+      ) {
+        // The subscription calls us before consuming this new input. These IDs
+        // therefore belong to the answer before the late reply, not its follow-on.
+        const result = withSource(finalAssistantResult);
+        for (const id of executingIds())
+          if (!answeredInputs.has(id)) answeredInputs.set(id, result);
+      }
       finalAssistantResult = undefined;
-      respondsTo = counterpart(textFromContent(event.message.content), respondsTo);
+      finalAssistantMessage = undefined;
+      respondsTo = counterpart(content, respondsTo);
     }
     if (event.type === "message_end" && event.message.role === "assistant") {
+      finalAssistantMessage = event.message;
       const errorMessage =
         event.message.errorMessage ??
         (event.message.stopReason === "length"
@@ -70,12 +91,14 @@ export function createTurnResultCapture(
       };
     }
     if (event.type !== "agent_settled") return;
-    if (finalAssistantResult) {
-      const entryId = resultEntryId?.();
-      for (const id of executingIds())
-        emit(id, { ...finalAssistantResult, ...(entryId ? { entryId } : null) });
+    const tail = finalAssistantResult ? withSource(finalAssistantResult) : undefined;
+    for (const id of executingIds()) {
+      const result = answeredInputs.get(id) ?? tail;
+      if (result) emit(id, result);
     }
+    answeredInputs.clear();
     finalAssistantResult = undefined;
+    finalAssistantMessage = undefined;
     respondsTo = undefined;
   };
 }

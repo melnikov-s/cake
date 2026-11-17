@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-/** Evidence from the final assistant message of the Pi run that consumed an input. */
+/** Assistant evidence for a consumed input; late coordination follow-ons retain their own result. */
 export const PiTurnResult = Schema.Struct({
   stopReason: Schema.String,
   /** Exact authoritative Pi assistant entry, captured by the application. */

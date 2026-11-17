@@ -4,6 +4,7 @@ import type {
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
 import { createCakeSessionRuntimeSubscription } from "../../../../src/services/pi/runtime/cake-session-runtime-subscription";
 import type { CakeSessionRuntimeOptions } from "../../../../src/services/pi/runtime/cake-session-runtime";
 import type { CakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
@@ -141,6 +142,54 @@ describe("Cake runtime subscription", () => {
     expect(f.options.onTurnResult).toHaveBeenCalledWith("turn-1", {
       stopReason: "error",
       text: "answer",
+    });
+  });
+
+  it("links the answered input to its exact persisted final, not the late empty assistant tail", () => {
+    const f = fixture();
+    f.emit(userEnd());
+    const final = assistantEnd();
+    if (final.type !== "message_end" || final.message.role !== "assistant") throw new Error();
+    final.message.content = [
+      { type: "text", text: "Implemented and verified the focused regression suite." },
+    ];
+    f.emit(final);
+    f.entries.push({
+      type: "message",
+      id: "final-source",
+      parentId: null,
+      timestamp: "2026-01-01T00:00:00.000Z",
+      message: final.message,
+    });
+    f.emit(
+      userEnd(
+        encodeCrossSessionMessage("A delayed third-party reply", {
+          version: 1,
+          messageId: "00000000-0000-4000-8000-000000000001",
+          threadId: "00000000-0000-4000-8000-000000000002",
+          replyToMessageId: "00000000-0000-4000-8000-000000000003",
+          sequence: 1,
+          expectsResponse: false,
+          sender: { sessionId: "third-party", title: "Reviewer", kind: "project-session" },
+        }),
+      ),
+    );
+    const empty = assistantEnd();
+    if (empty.type !== "message_end" || empty.message.role !== "assistant") throw new Error();
+    empty.message.content = [];
+    f.emit(empty);
+    f.entries.push({
+      type: "message",
+      id: "empty-tail",
+      parentId: "final-source",
+      timestamp: "2026-01-01T00:00:01.000Z",
+      message: empty.message,
+    });
+    f.emit({ type: "agent_settled", aborted: false });
+    expect(f.options.onTurnResult).toHaveBeenCalledWith("turn-1", {
+      stopReason: "stop",
+      text: "Implemented and verified the focused regression suite.",
+      entryId: "final-source",
     });
   });
 

@@ -308,6 +308,36 @@ describe("SessionFamilyStorage", () => {
     },
   );
 
+  it.effect(
+    "updates unclassified sends and replaces interim text and source together at settlement",
+    () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        yield* storage.recordTurn(turn({ resultDelivery: "notification" }));
+        yield* storage.recordReport("turn", {
+          outcome: "result",
+          text: "Implementation update: checks pending.",
+          resultMessageRef: "cake://session/child?message=first-tool-call",
+        });
+        yield* storage.recordReport("turn", {
+          outcome: "result",
+          text: "Updated evidence: final verification is running.",
+          resultMessageRef: "cake://session/child?message=second-tool-call",
+        });
+        assert.equal(
+          (yield* storage.state()).turns[0]?.report?.resultMessageRef,
+          "cake://session/child?message=second-tool-call",
+        );
+        const final = {
+          outcome: "result" as const,
+          text: "Implemented the change and verified the regression tests.",
+          resultMessageRef: "cake://session/child?message=final",
+        };
+        yield* storage.settleTurn("turn", "complete", final);
+        assert.deepEqual((yield* storage.state()).turns[0]?.report, final);
+      }).pipe(Effect.provide(testLayer())),
+  );
+
   it.effect.each([undefined, "cake://session/child?message=explicit"])(
     "preserves the exact classified report source, or captures the final source for legacy reports (%s)",
     (resultMessageRef) =>
