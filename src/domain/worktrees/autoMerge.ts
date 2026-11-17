@@ -1,4 +1,4 @@
-import { Effect, SubscriptionRef } from "effect";
+import { Effect, Option, SubscriptionRef } from "effect";
 import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
@@ -64,8 +64,12 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
   const agent = yield* WorktreeLandingAgent;
   yield* landings.reconcileCancellations();
   const requests = (yield* storage.state()).autoMergeRequests ?? emptyRequests;
-  yield* SubscriptionRef.update(coordinator.state, (state) =>
-    state.autoMergeRequests === requests ? state : { ...state, autoMergeRequests: requests },
+  // SubscriptionRef.update publishes even when its callback returns the same state.
+  // An idle worker pass must not resend every retained operation to the renderer.
+  yield* SubscriptionRef.updateSome(coordinator.state, (state) =>
+    state.autoMergeRequests === requests
+      ? Option.none()
+      : Option.some({ ...state, autoMergeRequests: requests }),
   );
   const finish = Effect.fn("AutoMerge.finish")(function* (
     request: AutoMergeRequest,

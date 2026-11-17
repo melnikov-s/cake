@@ -1007,13 +1007,14 @@ export const revokeReadiness = Effect.fn("WorktreeLandings.revokeReadiness")(fun
 export const reconcileCancellations = Effect.fn("WorktreeLandings.reconcileCancellations")(
   function* () {
     const coordinator = yield* WorktreeLandingCoordinator;
-    yield* SubscriptionRef.modifyEffect(coordinator.state, (state) =>
+    yield* SubscriptionRef.updateSomeEffect(coordinator.state, (state) =>
       Effect.gen(function* () {
         const canceled = [...state.operations].filter(
           ([, operation]) =>
             operation.cancellationRequested && operation.automatic && operation.autoMergeRequestId,
         );
-        if (!canceled.length) return [undefined, state] as const;
+        // This runs on every auto-merge tick; no cancellation means no publication.
+        if (!canceled.length) return Option.none();
         const operations = new Map(state.operations);
         for (const [path, operation] of canceled) {
           yield* revokeRetiredReadiness(operation);
@@ -1027,7 +1028,7 @@ export const reconcileCancellations = Effect.fn("WorktreeLandings.reconcileCance
             }),
           );
         }
-        return [undefined, { ...state, operations }] as const;
+        return Option.some({ ...state, operations });
       }),
     ).pipe(Effect.uninterruptible);
   },

@@ -2,6 +2,12 @@ import { sessionNotificationEntries } from "../../../src/contracts/cake-chats/se
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, FiberMap, Layer, Option, Stream, SubscriptionRef } from "effect";
 import { expect } from "vitest";
+import { applySnapshot, effect as reactiveEffect } from "r-state-tree";
+import { createRendererStoreFixture } from "../renderer/renderer-store-fixture";
+import { projectRecord, sessionSummary } from "../renderer/fixtures/catalog-fixtures";
+import { emptyProjectTodos, type ProjectTodo } from "../../../src/contracts/projects/project-todos";
+import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
+import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
 import * as digest from "../../../src/domain/cake-chats/cakeChatDigest";
 import { snapshot } from "../helpers/piRuntimeFixture";
 import { runPass } from "../../../src/domain/worktrees/autoMerge";
@@ -16,6 +22,7 @@ import {
   inspect,
   retry,
   mergeAndResolve,
+  observeOperations,
 } from "../../../src/domain/worktrees/worktreeLandings";
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
@@ -520,6 +527,143 @@ it.effect("queued automatic execution rechecks the project policy before Git", (
     }).pipe(Effect.provide(test.layer));
   });
 });
+
+it.effect(
+  "unchanged auto-merge passes do no renderer projection work and preserve real updates",
+  () => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      const items: ProjectTodo[] = Array.from({ length: 1000 }, (_, index) => ({
+        id: `todo-${index}`,
+        title: `Task ${index}`,
+        description: "",
+        status: "",
+        revision: 0,
+        state: index < 30 ? "open" : "done",
+        associations: index === 0 ? [{ kind: "session", sessionId: "owner", title: "Owner" }] : [],
+      }));
+      using renderer = createRendererStoreFixture({
+        projects: [
+          { ...projectRecord({ path: "/project" }), todos: { ...emptyProjectTodos(), items } },
+        ],
+        sessions: [
+          sessionSummary({
+            sessionId: "owner",
+            projectPath: "/project",
+            workingDirectory: "/tree",
+          }),
+        ],
+      });
+      const chatId = projectChatSessionId("/project");
+      applySnapshot(renderer.models.cakeChatCatalog, {
+        loaded: true,
+        sessions: [{ sessionId: chatId, title: "Project Chat", projectPath: "/project" }],
+      });
+      const todos = renderer.root.cakeChatCollectionStore.registry.load(chatId).todos;
+      expect(todos.value?.items).toHaveLength(1000);
+      let classifications = 0;
+      const stopClassification = reactiveEffect(() => {
+        todos.classifiedItems;
+        classifications++;
+      });
+      using _classification = { [Symbol.dispose]: stopClassification };
+      const coordinator = yield* WorktreeLandingCoordinator;
+      const operations = new Map<string, WorktreeLandingOperation>(
+        Array.from({ length: 40 }, (_, index) => {
+          const workspacePath = `/retained-${index}`;
+          return [
+            workspacePath,
+            {
+              operationId: `operation-${index}`,
+              workspacePath,
+              sessionId: `session-${index}`,
+              kind: "landing",
+              phase: "failed",
+              allowDirtyTarget: false,
+              queue: {
+                blockingOperationId: "blocker",
+                position: index + 1,
+                queuedAt: 1_767_225_600_000,
+              },
+            },
+          ];
+        }),
+      );
+      yield* SubscriptionRef.update(coordinator.state, (state) => ({ ...state, operations }));
+      yield* runPass(); // Synchronize the initial readiness array before counting idle passes.
+      const initial = yield* Deferred.make<void>();
+      const drained = yield* Deferred.make<void>();
+      const changed = yield* Deferred.make<void>();
+      let projections = 0;
+      let operationSnapshots = 0;
+      let reducerMs = 0;
+      const observer = yield* (yield* observeOperations()).pipe(
+        Stream.runForEach((update) =>
+          Effect.gen(function* () {
+            const started = performance.now();
+            applyWorktreeOperationCatalogUpdate(renderer.models.worktreeOperations, update);
+            reducerMs += performance.now() - started;
+            projections++;
+            operationSnapshots += update.operations.length;
+            yield* Deferred.succeed(initial, undefined);
+            if (update.autoMergeProjects?.some((project) => project.status === "drained"))
+              yield* Deferred.succeed(drained, undefined);
+            if (
+              update.autoMergeRequests?.some(
+                (request) => request.id === "turn" && request.readyToMerge,
+              )
+            )
+              yield* Deferred.succeed(changed, undefined);
+          }),
+        ),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(initial);
+      projections = 0;
+      operationSnapshots = 0;
+      reducerMs = 0;
+      const initialClassifications = classifications;
+      for (let index = 0; index < 100; index++) yield* runPass();
+      // An ordered real state change drains every earlier publication; no sleeps/polling.
+      yield* SubscriptionRef.update(coordinator.state, (state) => ({
+        ...state,
+        autoMergeProjects: [
+          { projectPath: "/project", enabled: false, epoch: "test", status: "drained" },
+        ],
+      }));
+      yield* Deferred.await(drained);
+      const idle = {
+        projections: projections - 1,
+        operationSnapshots: operationSnapshots - 40,
+        classifications: classifications - initialClassifications,
+      };
+      console.info("auto-merge idle probe (100 controlled passes, 40 operations, 1000 todos)", {
+        ...idle,
+        reducerMsIncludingDrain: reducerMs,
+      });
+      expect(idle).toEqual({ projections: 0, operationSnapshots: 0, classifications: 0 });
+      expect(todos.classifiedItems.active).toHaveLength(30);
+      expect(todos.classifiedItems.done).toHaveLength(970);
+      // New readiness still reaches the to-do classifier through the same stream/reducer.
+      expect(yield* report(target, readiness)).toEqual({ eligible: true });
+      yield* runPass();
+      yield* Deferred.await(changed);
+      expect(todos.classifiedItems.ready.map((item) => item.id)).toEqual(["todo-0"]);
+      // A real to-do edit must not be hidden by suppression of unrelated worker ticks.
+      const project = renderer.models.projects.find("/project")!;
+      project.todos = {
+        ...project.todos,
+        items: project.todos.items.map((item) =>
+          item.id === "todo-0" ? { ...item, state: "done", revision: 1 } : item,
+        ),
+      };
+      expect(todos.classifiedItems.ready).toEqual([]);
+      expect(todos.classifiedItems.done).toHaveLength(971);
+      expect(classifications).toBeGreaterThan(initialClassifications);
+      yield* Fiber.interrupt(observer);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
 
 const requests = Effect.flatMap(SessionFamilyStorage, (storage) =>
   storage.state().pipe(Effect.map((state) => state.autoMergeRequests ?? [])),
