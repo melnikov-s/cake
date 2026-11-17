@@ -133,6 +133,31 @@ it("does not promote historical fallback IDs or unlinked telemetry into a title"
   expect(batch.textContent).not.toContain("Session producer");
 });
 
+it.each(["Named source review", "cake / Project Chat", undefined])(
+  "recovers ID-only report titles from the source catalog (%s)",
+  (catalogTitle) => {
+    using store = mount(
+      createStore(SessionUpdateEntryStore, {
+        partId: "report",
+        entry: sessionNotificationEntries(reminder().replace(title, "Session producer"))[0]!,
+      }),
+    );
+    render(
+      <MarkdownLinkProvider
+        actions={{
+          openSession: vi.fn(),
+          openExternalUrl: vi.fn(),
+          sessionTitle: (id) => (id === "producer" ? catalogTitle : undefined),
+        }}
+      >
+        <SessionUpdateEntry store={store} />
+      </MarkdownLinkProvider>,
+    );
+    expect(screen.getByRole("button", { name: catalogTitle ?? "Untitled session" })).toBeTruthy();
+    expect(screen.queryByText("Session producer")).toBeNull();
+  },
+);
+
 it("keeps successful unlinked telemetry quiet without a misleading navigation target", () => {
   const raw = "Auto-merge backend outcome: merged=true; resolutionSucceeded=true";
   using fixture = show(`<system-reminder>\nCake session updates\n${raw}\n</system-reminder>`);

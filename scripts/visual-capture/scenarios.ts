@@ -5498,6 +5498,127 @@ const sessionMessagesScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
+const compactReportSourcesScenario: VisualCaptureScenario = {
+  name: "compact-report-sources",
+  description:
+    "Catalog-named report, Project Chat report and genuinely unnamed source in compact cards",
+  states: ["collapsed", "expanded", "keyboard"],
+  async seed(paths, theme) {
+    await sessionMessagesScenario.seed(paths, theme);
+    const directory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const file = join(directory, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl");
+    const projectChatId = `project-chat:${createHash("sha256").update(paths.project).digest("hex")}`;
+    const content = formatSessionDigestReminder({
+      lines: [
+        {
+          reference: "source-review",
+          sessionId: "visual-report-source",
+          title: "Session visual-report-source",
+          status: "completed",
+          summary:
+            "Installed the manual post-mortem skill. Focused verification passed; no merge performed.",
+        },
+        {
+          reference: "project-chat-report",
+          sessionId: projectChatId,
+          title: "cake / Project Chat",
+          status: "completed",
+          summary:
+            "Reviewed the implementation and retained the remaining product decisions in Project Chat.",
+        },
+        {
+          reference: "unnamed-review",
+          sessionId: "unnamed-review",
+          title: "Session unnamed-review",
+          status: "blocked",
+          summary:
+            "Historical source has no recorded name. Publication still needs independent verification.",
+        },
+      ],
+    })!;
+    await writeFile(
+      file,
+      `${await readFile(file, "utf8")}${JSON.stringify({
+        type: "message",
+        id: "compact-report-batch",
+        parentId: "incoming-1",
+        timestamp: new Date(0).toISOString(),
+        message: { role: "user", content, timestamp: 12 },
+      })}\n`,
+    );
+  },
+  async prepare(page, state) {
+    await openSeededSession(
+      page,
+      "visual-capture-project",
+      "How should agents capture Cake UI changes?",
+    );
+    const batch = page.getByRole("status", { name: "Session results" });
+    const cards = batch.locator('[data-slot="session-message"]');
+    // The detailed catalog is demand-loaded by Sessions, not by the title-only search dialog.
+    const openWorkspace = page.getByRole("button", { name: "Open Workspace", exact: true });
+    if (await openWorkspace.isVisible()) await openWorkspace.click();
+    await page
+      .getByRole("complementary", { name: "Workspace", exact: true })
+      .getByRole("button", { name: /^Sessions / })
+      .click();
+    await expect(
+      page
+        .getByRole("region", { name: "Sessions", exact: true })
+        .getByRole("button", { name: /^Add and globally install manual post-mortem skill/ }),
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '[data-slot="conversation-navigator-row"][data-session-id="visual-report-source"]',
+      ),
+    ).toHaveCount(1);
+    await expect(cards).toHaveCount(3);
+    await expect(cards.first().locator('[data-slot="response-disclosure"]')).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(
+      await cards
+        .locator('[data-slot="response-disclosure"]')
+        .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
+    ).toContain("Add and globally install manual post-mortem skill");
+    await expect(
+      batch.getByRole("button", { name: "Untitled session", exact: true }),
+    ).toBeVisible();
+    await expect(batch.locator('[data-slot="message-action-clearance"]')).toHaveCount(0);
+    for (const card of await cards.all()) {
+      expect((await card.boundingBox())!.height).toBeLessThanOrEqual(60);
+      await expect(card.locator('[data-placement="inline"]')).toHaveCSS("opacity", "1");
+    }
+    const disclosure = cards.first().locator('[data-slot="response-disclosure"]');
+    await disclosure.click();
+    await expect(cards.first().getByText(/Installed the manual post-mortem skill/)).toBeVisible();
+    await expect(cards.first().locator('[data-slot="message-action-clearance"]')).toHaveCount(1);
+    if (state !== "expanded") await disclosure.click();
+    if (state === "keyboard") {
+      // Plain Tab is Cake's writing shortcut; Shift+Tab traverses native controls.
+      await cards.nth(1).locator('[data-slot="response-disclosure"]').focus();
+      await page.keyboard.press("Shift+Tab");
+      await expect(
+        cards.first().getByRole("link", { name: "Open session", exact: true }),
+      ).toBeFocused();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await batch.evaluate((element) =>
+      element.scrollIntoView({ block: "center", behavior: "instant" }),
+    );
+    const composer = page.locator('[data-slot="composer-dock"] .workbench-composer').last();
+    expect(
+      (await batch.boundingBox())!.y + (await batch.boundingBox())!.height,
+    ).toBeLessThanOrEqual((await composer.boundingBox())!.y);
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.getByRole("status", { name: "Session results" }),
+};
+
 const incomingReportRecapScenario: VisualCaptureScenario = {
   name: "incoming-report-recap",
   description: "One sender-attributed incoming report, with a recap link but no duplicate source",
@@ -9568,6 +9689,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   subagentReportsScenario,
   reportHeadersScenario,
   resultTodoActionsScenario,
+  compactReportSourcesScenario,
   relativeChatImagesScenario,
   incomingTaskSectionsScenario,
   cakeChatArtifactScenario,

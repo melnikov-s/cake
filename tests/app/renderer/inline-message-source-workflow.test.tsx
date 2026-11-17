@@ -28,6 +28,14 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { isWorkLogPart } from "../../../src/utils/work-log-groups";
+import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
+import {
+  handleId,
+  parentSessionId,
+  renderSubagentActivity,
+  workerActivity,
+  workerTranscript,
+} from "./subagent-activity-workflow-fixture";
 
 afterEach(() => {
   cleanup();
@@ -44,6 +52,32 @@ const usage = {
 };
 
 describe("exact response presentation", () => {
+  it("names a public worker source by its assignment, not its parent conversation", () => {
+    const reference = subagentLink(parentSessionId, handleId, "worker-result");
+    using fixture = renderSubagentActivity({
+      activity: workerActivity({
+        task: "Audit report source labels\nKeep full evidence in the body.",
+      }),
+      parts: [
+        ...workerTranscript(),
+        {
+          id: "present-worker",
+          kind: "text",
+          role: "assistant",
+          text: appendMessageReferences("Review the worker findings.", [reference]),
+          status: "complete",
+        },
+      ],
+    });
+    const card = screen.getByRole("region", { name: "Message from another session" });
+    expect(within(card).getByRole("button", { name: "Audit report source labels" })).toBeTruthy();
+    expect(within(card).getByRole("link", { name: "Open source" }).getAttribute("href")).toBe(
+      reference,
+    );
+    expect(within(card).queryByRole("button", { name: "Untitled session" })).toBeNull();
+    expect(card.querySelector('[data-slot="message-action-clearance"]')).toBeNull();
+  });
+
   it("consolidates a batch into title-only disclosures while preserving distinct reports and batch-only notes", async () => {
     const source = SessionManager.inMemory("/producer");
     const report = (text: string) =>

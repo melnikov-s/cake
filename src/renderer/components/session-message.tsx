@@ -2,6 +2,8 @@ import { useId, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { MarkdownLink, useMarkdownLinkActions } from "./ai-elements/markdown";
 import { Message } from "./ai-elements/message";
+import { MessageActions } from "./ai-elements/message-actions";
+import { FullscreenButton } from "./ui/fullscreen-button";
 import type { CrossSessionBadge } from "../lib/cross-session-presentation";
 import { markdownSummary } from "../lib/message-summary";
 import { reportMessagePresentation } from "../lib/report-message-presentation";
@@ -110,6 +112,15 @@ export const SessionMessage = observer(function SessionMessage({
         </MarkdownLink>
       )}
       {replyAction}
+      {canOpenFullscreen && (
+        <FullscreenButton
+          label={`View message fullscreen: ${title}`}
+          onClick={() => {
+            for (const store of [...sources, ...originals]) store.openFullscreen();
+            setFullscreen(true);
+          }}
+        />
+      )}
     </>
   );
   const renderTodos = () =>
@@ -127,18 +138,9 @@ export const SessionMessage = observer(function SessionMessage({
       aria-label={
         relation === "notice" ? "Notice about another session" : "Message from another session"
       }
-      actions={messageToolbar}
-      fullscreen={
-        canOpenFullscreen
-          ? {
-              label: `View message fullscreen: ${title}`,
-              onClick: () => {
-                for (const store of [...sources, ...originals]) store.openFullscreen();
-                setFullscreen(true);
-              },
-            }
-          : undefined
-      }
+      data-state={open ? "open" : "closed"}
+      className={!open ? "gap-0" : undefined}
+      actions={open ? messageToolbar : undefined}
     >
       <div
         data-slot="session-message-card"
@@ -178,6 +180,7 @@ export const SessionMessage = observer(function SessionMessage({
               )}
             </div>
           </div>
+          {!open && <MessageActions inline>{messageToolbar}</MessageActions>}
           {badges.length > 0 && (
             <div
               data-slot="session-message-badges"

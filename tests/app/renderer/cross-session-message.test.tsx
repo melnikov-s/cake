@@ -190,6 +190,47 @@ describe("cross-session message presentation", () => {
     },
   );
 
+  it("keeps collapsed actions in the header, reachable by keyboard, without empty action rows", async () => {
+    const openSession = vi.fn();
+    render(
+      <MarkdownLinkProvider actions={{ openSession, openExternalUrl: vi.fn() }}>
+        <SessionMessage
+          source={{ sessionId: "source-session", title: "API review" }}
+          defaultOpen={false}
+          preview="Scoped checks passed; review the implementation."
+        >
+          Expanded findings
+        </SessionMessage>
+      </MarkdownLinkProvider>,
+    );
+    const user = userEvent.setup();
+    const card = screen.getByRole("region");
+    const disclosure = screen.getByRole("button", { name: "API review" });
+    const assertCompact = () => {
+      expect(card.getAttribute("data-state")).toBe("closed");
+      expect(card.querySelector('[data-slot="message-action-clearance"]')).toBeNull();
+      expect(card.querySelector('[data-slot="message-actions"]')).toBeNull();
+      expect(card.querySelectorAll('[data-slot="message-action-toolbar"]')).toHaveLength(1);
+      expect(card.querySelector('[data-placement="inline"]')).not.toBeNull();
+    };
+    assertCompact();
+    await user.tab();
+    expect(document.activeElement).toBe(disclosure);
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "Open session" }));
+    await user.keyboard("{Enter}");
+    expect(openSession).toHaveBeenCalledExactlyOnceWith("source-session");
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    await user.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Expanded findings")).toBeTruthy();
+    expect(card.querySelector('[data-slot="message-action-clearance"]')).not.toBeNull();
+    expect(card.querySelectorAll('[data-slot="message-action-toolbar"]')).toHaveLength(1);
+    await user.click(disclosure);
+    expect(screen.queryByText("Expanded findings")).toBeNull();
+    assertCompact();
+  });
+
   it("opens a private worker through its public parent/handle, never a private session ID", async () => {
     const openSubagent = vi.fn();
     const openSession = vi.fn();

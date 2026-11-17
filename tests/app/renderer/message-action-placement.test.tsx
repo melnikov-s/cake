@@ -321,9 +321,13 @@ describe("shared message action bar", () => {
       expect(link.querySelectorAll("svg")).toHaveLength(1);
       expect(link.querySelector('[data-slot="session-purpose"]')).toBeNull();
       expect(container.querySelector('[data-slot="session-purpose"]')).toBeNull();
-      // Nothing sits in the header beside the disclosure any more.
+      // Collapsed cards keep the same controls inline; expanded cards use the exterior bar.
       const header = card.querySelector('[data-slot="session-message-card"]')!;
-      expect(header.querySelector("a, .fullscreen-trigger")).toBeNull();
+      expect(header.contains(toolbar)).toBe(!open);
+      expect(toolbar.dataset.placement).toBe(open ? "footer" : "inline");
+      expect(card.querySelectorAll('[data-slot="message-action-clearance"]')).toHaveLength(
+        open ? 1 : 0,
+      );
       expect(
         within(card).getByRole("button", { name: "Widget worker" }).getAttribute("aria-expanded"),
       ).toBe(String(open));

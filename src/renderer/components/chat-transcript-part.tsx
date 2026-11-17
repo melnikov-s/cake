@@ -35,12 +35,28 @@ import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 import { WidgetItemAttachment } from "./widget-item-attachment";
 import { SessionMessage } from "./session-message";
-import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
+import { parseSessionLink } from "../../contracts/conversations/message-reference";
+import { subagentTaskTitle } from "../../contracts/subagents/subagent-presentation";
 import { parseSubagentLink, subagentLink } from "../../contracts/subagents/subagent-reference";
 import { referenceTodoOrigin, resultTodoOrigin } from "../lib/result-todo-origin";
 
 const artifactReferenceInText =
   /(?:^|\s)cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?(?=$|[\s),.;!?])/;
+
+/** Source identity is independent of the conversation used to navigate to it. */
+function messageSourceIdentity(reference: string, behavior: CanonicalTranscriptBehavior) {
+  const worker = parseSubagentLink(reference);
+  return worker
+    ? {
+        title: subagentTaskTitle(
+          worker.parentSessionId === behavior.subagents?.parentSessionId
+            ? behavior.subagents.run(worker.handleId)?.task
+            : undefined,
+        ),
+        href: reference,
+      }
+    : { sessionId: parseSessionLink(reference)?.sessionId };
+}
 
 const TranscriptPartContent = observer(function TranscriptPartContent({
   part,
@@ -250,7 +266,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       if (source)
         return (
           <SessionMessage
-            source={{ sessionId: messageNavigationTarget(part.messageReference).sessionId }}
+            source={messageSourceIdentity(part.messageReference, behavior)}
             sources={[source]}
             todo={
               behavior.hideTodoAssociations
@@ -465,7 +481,7 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
             .map((source) => (
               <SessionMessage
                 key={source.props.reference}
-                source={{ sessionId: messageNavigationTarget(source.props.reference!).sessionId }}
+                source={messageSourceIdentity(source.props.reference!, props.behavior)}
                 sources={[source]}
                 todo={
                   props.behavior.hideTodoAssociations

@@ -14,9 +14,12 @@ import {
  */
 export function MessageActions({
   align = "start",
+  inline = false,
   children,
 }: {
   align?: MessageActionAlign;
+  /** Compact disclosures keep actions in their header, without exterior reserved rows. */
+  inline?: boolean;
   children: ReactNode;
 }) {
   const clearanceRef = useRef<HTMLDivElement>(null);
@@ -27,6 +30,7 @@ export function MessageActions({
   const [clearanceHeight, setClearanceHeight] = useState(28);
 
   useLayoutEffect(() => {
+    if (inline) return;
     const slot = slotRef.current;
     const toolbar = toolbarRef.current;
     const message = slot?.parentElement;
@@ -136,7 +140,19 @@ export function MessageActions({
       observer?.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
-  }, [align, children]);
+  }, [align, children, inline]);
+
+  if (inline)
+    return (
+      <div
+        data-slot="message-action-toolbar"
+        data-placement="inline"
+        aria-label="Message actions"
+        className="flex shrink-0 items-center gap-1"
+      >
+        <IconSizeProvider size="inline">{children}</IconSizeProvider>
+      </div>
+    );
 
   const floating = "top" in placement;
   const hidden = placement.kind === "hidden";

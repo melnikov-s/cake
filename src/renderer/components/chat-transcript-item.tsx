@@ -77,6 +77,8 @@ export const ChatTranscriptItem = memo(
         aria-current={selected ? "true" : undefined}
         className={cn(
           "relative mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5 [&:has([data-slot=artifact-disclosure])_[data-slot=margin-rail]]:hidden [&:has([data-widget-view-id])_[data-slot=margin-rail]]:hidden",
+          // A collapsed report is one compact row; expanded prose retains normal spacing.
+          "has-[[data-slot=session-message][data-state=closed]]:not-has-[[data-slot=session-message][data-state=open]]:pb-2",
           // Folded task headings are compact list rows, not full message sections.
           taskSection && !taskSection.expanded && "pb-1 in-[.chat-layout-compact]:pb-1",
           errorFollowsUser && "pt-3",

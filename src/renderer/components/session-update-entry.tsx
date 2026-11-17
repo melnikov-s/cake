@@ -119,7 +119,8 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
   return (
     <SessionMessage
       source={entry.sessionId ? { sessionId: entry.sessionId, title: entry.title } : undefined}
-      title={title}
+      // Let the source catalog recover ID-only metadata and follow source renames.
+      title={entry.sessionId ? undefined : title}
       sources={source ? [source] : undefined}
       preview={source ? undefined : (entry.body ?? entry.text)}
       open={store.expanded}
