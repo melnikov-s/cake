@@ -1311,6 +1311,12 @@ describe("agent-owned context forks", () => {
             ...cakeChatParent(fixture),
             parentSessionId: projectChatSessionId("/project"),
           };
+          const standalone = yield* subagents.start(
+            { task: "Investigate without an outcome link", projectPath: "/project" },
+            caller,
+          );
+          assert.ok(standalone.handleId);
+          assert.deepEqual((yield* projectTodos.list("/project")).items, []);
           const task = yield* projectTodos.create("/project", {
             title: "Outcome",
             description: "Investigation feeds implementation.",

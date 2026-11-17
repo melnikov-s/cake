@@ -9,6 +9,10 @@ import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessi
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyMember } from "../../../src/contracts/session-families/session-family-document";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import {
+  RuntimeRecoveryStorage,
+  type RuntimeRecoveryRecord,
+} from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
@@ -43,6 +47,99 @@ const modelLayer = Layer.mock(PiModels, { resolve: (selection) => Effect.succeed
 const archiveLayer = Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) });
 
 describe("Session Family creation", () => {
+  for (const association of ["none", "explicit", "historical"] as const) {
+    it.effect.each(["active", "blocked", "complete", "failed", "stopped"] as const)(
+      `retries a %s child across restart without new tasks, preserving ${association} associations`,
+      (state) =>
+        Effect.gen(function* () {
+          const familyFiles = new Map<string, string>();
+          const boardFiles = new Map<string, string>();
+          const started = yield* Deferred.make<void>();
+          let launches = 0;
+          let acquisitions = 0;
+          const requests: ProjectTodoInitialDescription[] = [];
+          const factory = (id: string) => {
+            acquisitions++;
+            return Effect.succeed(
+              options({ cwd: location.workingDirectory, sessionId: id, newSession: true }),
+            );
+          };
+          const environment = (records: ReadonlyArray<RuntimeRecoveryRecord> = []) =>
+            Layer.mergeAll(
+              familyStorageHarness(familyFiles).layer,
+              messageBoardHarness(boardFiles).layer,
+              modelLayer,
+              archiveLayer,
+              SessionCatalogChanges.layer,
+              makeCakeSessionRuntimesLayer({
+                sessionIds: () => Stream.empty,
+                catalog: () => Stream.empty,
+                catalogEntry: () => Effect.succeed(undefined),
+                inspect: () => Effect.succeed(undefined),
+                changelog: () => Effect.succeed(""),
+                createRuntime: (runtimeOptions) =>
+                  Effect.succeed({
+                    ...fakeRuntime(runtimeOptions, () => undefined),
+                    sessionId: runtimeOptions.sessionId ?? "missing",
+                    prompt: async () => {
+                      launches++;
+                      Deferred.doneUnsafe(started, Effect.void);
+                    },
+                  }),
+              }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer(records))),
+            );
+          yield* Effect.gen(function* () {
+            yield* todos.ensureAdmittedSession("/project", "parent", "Outcome", "Do the work.");
+            const parent = (yield* todos.list("/project")).items[0];
+            assert.ok(parent);
+            const admitted = yield* Effect.gen(function* () {
+              const child = yield* createChild("parent", location, input, factory);
+              assert.equal(child.launch.status, "accepted");
+              yield* Deferred.await(started);
+              assert.deepEqual((yield* todos.list("/project")).items, [parent]);
+              const record = yield* (yield* RuntimeRecoveryStorage).get(child.childSessionId);
+              assert.ok(record);
+              return { child, record };
+            }).pipe(Effect.provide(environment()));
+            if (association === "explicit")
+              yield* todos.attachExisting("/project", parent.id, {
+                kind: "session",
+                sessionId: admitted.child.childSessionId,
+                title: input.title,
+              });
+            if (association === "historical")
+              yield* todos.ensureSession(
+                "/project",
+                admitted.child.childSessionId,
+                "Historical child task",
+                "",
+              );
+            const before = yield* todos.list("/project");
+            for (let pass = 0; pass < 2; pass++)
+              yield* Effect.gen(function* () {
+                const retried = yield* createChild("parent", location, input, factory);
+                assert.equal(retried.childSessionId, admitted.child.childSessionId);
+                assert.deepEqual(retried.launch, { status: "already-admitted", state });
+                assert.deepEqual(yield* todos.list("/project"), before);
+              }).pipe(Effect.provide(environment([{ ...admitted.record, state }])));
+            assert.equal(acquisitions, 1);
+            assert.equal(launches, 1);
+            assert.equal(requests.length, 1, "Only the parent's automatic task queues a brief");
+          }).pipe(
+            Effect.provide(projectTodoLayer()),
+            Effect.provide(
+              Layer.mock(ProjectTodoReports, {
+                offerInitial: (request) =>
+                  Effect.sync(() => {
+                    requests.push(request);
+                  }),
+              }),
+            ),
+          );
+        }),
+    );
+  }
+
   it.effect("retains the reservation and worktree for retry when runtime acquisition fails", () =>
     Effect.gen(function* () {
       let discardedWorkingDirectory: string | undefined;
@@ -221,7 +318,7 @@ describe("Session Family creation", () => {
     ),
   );
 
-  it.effect("retries a creation receipt without starting the same child twice", () =>
+  it.effect("admits and retries a child without creating a to-do or starting it twice", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>();
       let launches = 0;
@@ -253,6 +350,8 @@ describe("Session Family creation", () => {
             options({ cwd: location.workingDirectory, sessionId: id, newSession: true }),
           );
         const first = yield* createChild("parent", location, input, factory);
+        assert.deepEqual((yield* todos.list("/project")).items, []);
+        assert.equal(requests.length, 0);
         assert.equal(
           disposed,
           false,
@@ -265,15 +364,8 @@ describe("Session Family creation", () => {
         assert.equal(second.familyChildOrder, 0);
         assert.equal(second.launch.status, "already-admitted");
         assert.equal(launches, 1);
-        const items = (yield* todos.list("/project")).items;
-        assert.equal(items.length, 1);
-        assert.equal(items[0]?.title, input.title);
-        assert.equal(items[0]?.description, `Continue work on ${input.title}.`);
-        assert.equal(requests.length, 1);
-        assert.equal(requests[0]?.brief, input.assignment.description);
-        assert.deepEqual(items[0]?.associations, [
-          { kind: "session", sessionId: first.childSessionId, title: input.title },
-        ]);
+        assert.deepEqual((yield* todos.list("/project")).items, []);
+        assert.equal(requests.length, 0);
         assert.deepEqual(parseCrossSessionMessage(initialMessage ?? ""), {
           text: parseCrossSessionMessage(initialMessage ?? "")?.text,
           metadata: {

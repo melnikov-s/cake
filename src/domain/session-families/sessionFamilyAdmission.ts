@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { ensureAdmittedSession as ensureSessionTodo } from "../projects/projectTodos";
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import { childSessionStartup } from "./childSessionStartup";
 import {
@@ -268,13 +267,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
         // A runtime or transcript alone is not evidence of initial-turn admission.
         // Any durable journal (including stopped/canceled work) forbids relaunch.
         const record = yield* (yield* RuntimeRecoveryStorage).get(child.sessionId);
-        if (record) {
-          yield* ensureSessionTodo(
-            location.projectPath,
-            child.sessionId,
-            input.title,
-            assignment.description,
-          );
+        if (record)
           return {
             family,
             child,
@@ -283,7 +276,6 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
             assignmentReceipt: assigned.success,
             admissionState: record.state,
           };
-        }
         const archived = yield* archive.locate(
           child.sessionId,
           archiveLocation(childLocation.workingDirectory),
@@ -372,20 +364,9 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
       },
     );
     const handle = prepared.handle;
-    const launched = yield* Effect.result(
-      Effect.uninterruptibleMask((restore) =>
-        Effect.gen(function* () {
-          const turnId = yield* restore(handle.prompt(initialMessage, [], false));
-          yield* ensureSessionTodo(
-            location.projectPath,
-            prepared.child.sessionId,
-            input.title,
-            input.assignment.description,
-          );
-          return turnId;
-        }),
-      ),
-    );
+    // Family children support their parent's outcome; only independent session
+    // admission creates automatic to-dos. Retries must not backfill child tasks either.
+    const launched = yield* Effect.result(handle.prompt(initialMessage, [], false));
     if (launched._tag === "Failure") {
       return {
         ...identity,
