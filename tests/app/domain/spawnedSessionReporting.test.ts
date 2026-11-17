@@ -1416,6 +1416,111 @@ describe("automatic spawned-session reporting", () => {
   });
 
   it.effect(
+    "keeps history evidence scoped to the latest consumed input and fails closed on incomplete history",
+    () =>
+      Effect.gen(function* () {
+        const input = {
+          id: "input",
+          kind: "text" as const,
+          role: "user" as const,
+          text: "Question",
+          status: "complete" as const,
+        };
+        const reply = {
+          id: "reply",
+          kind: "text" as const,
+          role: "assistant" as const,
+          text: "Investigation ready",
+          status: "complete" as const,
+          entryId: "original",
+        };
+        for (const invalid of [
+          { ...reply, status: "streaming" as const },
+          { ...reply, status: "error" as const },
+          { ...reply, entryId: undefined },
+          { id: "intake", kind: "context" as const, title: "Intake", text: reply.text },
+          {
+            id: "reasoning",
+            kind: "reasoning" as const,
+            text: reply.text,
+            status: "complete" as const,
+          },
+          {
+            id: "tool",
+            kind: "tool" as const,
+            name: "cake",
+            input: reply.text,
+            state: "success" as const,
+          },
+        ]) {
+          assert.equal(
+            yield* pendingReports.readCommunicationEvidence(
+              {
+                snapshot: () =>
+                  Effect.succeed({ ...snapshot, parts: [invalid], historyCursor: "older" }),
+                history: () => Effect.succeed({ parts: [input] }),
+              },
+              reply.text,
+            ),
+            undefined,
+          );
+        }
+        // An older matching reply cannot cross a newer consumed input on an earlier page.
+        assert.equal(
+          yield* pendingReports.readCommunicationEvidence(
+            {
+              snapshot: () => Effect.succeed({ ...snapshot, parts: [], historyCursor: "older" }),
+              history: () => Effect.succeed({ parts: [reply, input], cursor: "still-older" }),
+            },
+            reply.text,
+          ),
+          undefined,
+        );
+        // Queued input is not a consumed boundary; absence of any consumed boundary still fails.
+        assert.equal(
+          yield* pendingReports.readCommunicationEvidence(
+            {
+              snapshot: () =>
+                Effect.succeed({
+                  ...snapshot,
+                  parts: [reply, { ...input, deliveryState: "queued" }],
+                }),
+            },
+            reply.text,
+          ),
+          undefined,
+        );
+        assert.equal(
+          (yield* Effect.result(
+            pendingReports.readCommunicationEvidence(
+              {
+                snapshot: () =>
+                  Effect.succeed({ ...snapshot, parts: [reply], historyCursor: "loop" }),
+                history: () => Effect.succeed({ parts: [], cursor: "loop" }),
+              },
+              reply.text,
+            ),
+          ))._tag,
+          "Failure",
+        );
+        assert.equal(
+          (yield* Effect.result(
+            pendingReports.readCommunicationEvidence(
+              {
+                snapshot: () =>
+                  Effect.succeed({ ...snapshot, parts: [reply], historyCursor: "broken" }),
+                history: () =>
+                  Effect.fail(new PiSessionError({ operation: "history", message: "Read failed" })),
+              },
+              reply.text,
+            ),
+          ))._tag,
+          "Failure",
+        );
+      }),
+  );
+
+  it.effect(
     "replays an omitted substantive worker report after unrelated input, abort and storage reopen until explicit visible handling",
     () =>
       Effect.gen(function* () {
@@ -1485,6 +1590,19 @@ describe("automatic spawned-session reporting", () => {
             );
             assert.equal((yield* f.storage.state()).deferredReferences?.length, 1);
             f.reply(planned.communicatedText);
+            for (const [caller, ids] of [
+              ["wrong-caller", planned.ids],
+              [CAKE_CHAT_SESSION_ID, ["unknown-report"]],
+              [CAKE_CHAT_SESSION_ID, [...planned.ids, "unknown-report"]],
+            ] as const) {
+              assert.equal(
+                (yield* Effect.result(
+                  pendingReports.acknowledge(caller, { ...planned, ids: [...ids] }),
+                ))._tag,
+                "Failure",
+              );
+              assert.equal((yield* f.storage.state()).deferredReferences?.length, 1);
+            }
             yield* pendingReports.acknowledge(CAKE_CHAT_SESSION_ID, planned);
             yield* pendingReports.acknowledge(CAKE_CHAT_SESSION_ID, planned); // Idempotent tool retry.
             assert.deepEqual((yield* f.storage.state()).deferredReferences, []);

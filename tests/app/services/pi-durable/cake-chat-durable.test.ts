@@ -39,6 +39,9 @@ import { join } from "node:path";
 import { Type, createAssistantMessageEventStream } from "@earendil-works/pi-durable-ai";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
 import { afterEach, expect, it, vi } from "vitest";
+import { Effect } from "effect";
+import { PiSessionError } from "../../../../src/services/pi/CakeSessionRuntimes";
+import { snapshot as emptySnapshot } from "../../helpers/piRuntimeFixture";
 import { ChatMetadataDoc } from "../../../../src/services/pi-durable/durable-chat-metadata";
 import type { DurableMemoryOptions } from "../../../../src/services/pi-durable/durable-chat-memory";
 import { durableContextMetadata } from "../../../../src/services/pi-durable/durable-context-metadata";
@@ -101,6 +104,7 @@ async function fixture(
   setup: {
     summarize?: DurableMemoryOptions["summarize"];
     retry?: HarnessSettings["retry"];
+    toolExecution?: HarnessSettings["toolExecution"];
     onInputConsumed?: Parameters<typeof openDurableChatEngine>[0]["onInputConsumed"];
   } = {},
 ) {
@@ -119,7 +123,29 @@ async function fixture(
     parameters: Type.Object({ id: Type.Integer(), n: Type.Integer() }),
     replay: "safe",
     async execute(input, _api, context) {
-      if (onZoom) await onZoom((await readDurableOriginalPage(engine.root)).parts);
+      if (onZoom)
+        await onZoom(
+          (
+            await engine.root.commit(async (tx) => {
+              const live = await tx.doc(LiveDoc, engine.root.id);
+              return readDurableOriginalPage(
+                {
+                  entries: (query, limit, cursor) =>
+                    tx.scanEntries({ ...query, conversationId: engine.root.id }, limit, cursor),
+                },
+                undefined,
+                await readDurableActiveTools(tx, engine.root.id),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                live?.generation?.message
+                  ? { id: `live-${live.run?.taskId}`, message: live.generation.message }
+                  : undefined,
+              );
+            }, BACKGROUND_CONTEXT)
+          ).parts,
+        );
       const found = await engine.memory.zoom(
         input.id,
         input.n,
@@ -145,6 +171,7 @@ async function fixture(
       contextRetentionMs: 0,
       compaction: { enabled: sdkCompaction, keepRecentTokens },
       retry: setup.retry,
+      toolExecution: setup.toolExecution,
     },
     onChanged: vi.fn(),
     onInputConsumed: setup.onInputConsumed,
@@ -535,49 +562,140 @@ it("keeps abandoned calls interrupted even while a later tool is active", async 
   ]);
 });
 
-it("anchors report acknowledgment to persisted user-visible Pi text before a tool runs", async () => {
-  const item = {
-    id: "quiet-report",
-    recipientSessionId: "chat",
-    text: "Investigation found a lifecycle regression.",
-  };
-  const notice =
-    "The background investigation found a reporting lifecycle regression; no performance changes were made.";
-  let checked = false;
-  const f = await fixture(
-    (_context, index) =>
-      index === 1
-        ? durableAnswer("", [
-            { type: "text", text: notice },
-            { type: "toolCall", id: "ack", name: "zoom", arguments: { id: 0, n: 1 } },
-          ])
-        : durableAnswer("That answers your question."),
-    20_000,
-    new MemoryStorage(),
-    async (parts) => {
-      expect(parts).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            kind: "text",
-            role: "assistant",
-            text: notice,
-            status: "complete",
-            entryId: expect.any(String),
-          }),
-        ]),
-      );
-      expect(pendingReports.communicationEvidence(parts, notice)).toEqual(expect.any(String));
-      expect(pendingReports.communicationEvidence(parts, "A future final answer")).toBeUndefined();
-      checked = true;
-    },
-  );
-  await f.send(
-    durableInputText(addReferenceNotifications("What does the s: prefix mean?", [item]), [], false),
-    "with-report",
-  );
-  expect(checked).toBe(true);
-  // This verifies evidence/lifecycle plumbing, not the semantic quality of an LLM-written notice.
-});
+it.each(["before", "after"] as const)(
+  "finds persisted report evidence emitted %s a 200-original tool round",
+  async (position) => {
+    const notice =
+      "The investigation found a reporting regression. [Full agent response](cake://session/worker?message=result)";
+    let calls = 0;
+    const f = await fixture(
+      (_context, index) =>
+        index === 1
+          ? durableAnswer("", [
+              ...(position === "before" ? [{ type: "text" as const, text: notice }] : []),
+              ...Array.from({ length: 205 }, (_, i) => ({
+                type: "toolCall" as const,
+                id: `ack-${i}`,
+                name: "zoom",
+                arguments: { id: 0, n: 1 },
+              })),
+            ])
+          : index === 2 && position === "after"
+            ? durableAnswer("", [
+                { type: "text", text: notice },
+                { type: "toolCall", id: "ack-latest", name: "zoom", arguments: { id: 0, n: 1 } },
+              ])
+            : durableAnswer("Done"),
+      20_000,
+      new MemoryStorage(),
+      async () => {
+        if (++calls !== (position === "before" ? 205 : 206)) return;
+        const page = await readDurableOriginalPage(f.engine.root);
+        expect(page.cursor).toBeDefined();
+        expect(page.parts.some((part) => part.kind === "text" && part.role === "user")).toBe(false);
+        // Snapshot-only validation rejects when the persisted report and input are outside the GUI page.
+        expect(pendingReports.communicationEvidence(page.parts, notice)).toBeUndefined();
+        const handle = {
+          snapshot: () =>
+            Effect.succeed({ ...emptySnapshot, parts: page.parts, historyCursor: page.cursor }),
+          history: (cursor: string) =>
+            Effect.tryPromise({
+              try: () => readDurableOriginalPage(f.engine.root, cursor),
+              catch: (cause) =>
+                new PiSessionError({ operation: "history", message: String(cause) }),
+            }),
+        };
+        expect(
+          await Effect.runPromise(pendingReports.readCommunicationEvidence(handle, notice)),
+        ).toEqual(expect.any(String));
+        expect(
+          await Effect.runPromise(
+            pendingReports.readCommunicationEvidence(handle, "Planned final answer"),
+          ),
+        ).toBeUndefined();
+      },
+      false,
+      false,
+      { toolExecution: "sequential" },
+    );
+    await f.send("Report the investigation", "long-tool-round");
+    expect(calls).toBe(position === "before" ? 205 : 206);
+    // A newer consumed input must invalidate the earlier report, even if it is loaded from history.
+    await f.send("Next question", "next-input");
+    const page = await readDurableOriginalPage(f.engine.root);
+    expect(
+      await Effect.runPromise(
+        pendingReports.readCommunicationEvidence(
+          {
+            snapshot: () =>
+              Effect.succeed({ ...emptySnapshot, parts: page.parts, historyCursor: page.cursor }),
+            history: () => Effect.die("Must not page beyond the latest consumed input"),
+          },
+          notice,
+        ),
+      ),
+    ).toBeUndefined();
+  },
+);
+
+it.each(["memory", "sqlite"] as const)(
+  "anchors report acknowledgment to persisted user-visible Pi text before a tool runs (%s)",
+  async (backend) => {
+    let storage: Storage = new MemoryStorage();
+    if (backend === "sqlite") {
+      const directory = await mkdtemp(join(tmpdir(), "cake-report-evidence-"));
+      cleanup.push(() => rm(directory, { recursive: true, force: true }));
+      storage = await openNodeSqliteStorage(join(directory, "chat.sqlite"));
+    }
+    const item = {
+      id: "quiet-report",
+      recipientSessionId: "chat",
+      text: "Investigation found a lifecycle regression.",
+    };
+    const notice =
+      "The background investigation found a reporting lifecycle regression; no performance changes were made.";
+    let checked = false;
+    const f = await fixture(
+      (_context, index) =>
+        index === 1
+          ? durableAnswer("", [
+              { type: "text", text: notice },
+              { type: "toolCall", id: "ack", name: "zoom", arguments: { id: 0, n: 1 } },
+            ])
+          : durableAnswer("That answers your question."),
+      20_000,
+      storage,
+      async (parts) => {
+        expect(parts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              kind: "text",
+              role: "assistant",
+              text: notice,
+              status: "complete",
+              entryId: expect.any(String),
+            }),
+          ]),
+        );
+        expect(pendingReports.communicationEvidence(parts, notice)).toEqual(expect.any(String));
+        expect(
+          pendingReports.communicationEvidence(parts, "A future final answer"),
+        ).toBeUndefined();
+        checked = true;
+      },
+    );
+    await f.send(
+      durableInputText(
+        addReferenceNotifications("What does the s: prefix mean?", [item]),
+        [],
+        false,
+      ),
+      "with-report",
+    );
+    expect(checked).toBe(true);
+    // This verifies evidence/lifecycle plumbing, not the semantic quality of an LLM-written notice.
+  },
+);
 
 it("keeps mixed worker evidence out of user-labelled memory through compression and retains exact originals", async () => {
   const f = await fixture();

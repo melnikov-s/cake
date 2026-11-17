@@ -211,7 +211,12 @@ remain attached. No report-only wakeup, timer or poll is introduced. Resume deli
 `sessions.reports.acknowledge` is an explicit agent attestation, not a semantic classifier.
 It requires exact assistant text already emitted in the requesting conversation after its
 latest consumed user input, with a persisted Pi entry and complete text status. Reasoning,
-context, tools, queued inputs and planned final answers are not evidence. The agent emits
+context, tools, queued inputs and planned final answers are not evidence. Durable appends the
+assistant original before starting its tool round; a whole turn need not finish first.
+Acknowledgment pages Pi-owned originals back to the latest consumed input when the bounded
+GUI snapshot starts mid-turn. It stops at that boundary, never broadening eligibility to
+older replies, and fails closed on missing or non-advancing history. No replay token or
+second transcript is maintained. The agent emits
 a grouped notice first, then acknowledges its IDs as communicated (or dismissed only on
 the user's decision). Backend validation proves the evidence exists, not that the words
 adequately summarize the report. Successful or unrelated answers never auto-acknowledge.

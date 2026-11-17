@@ -11,7 +11,7 @@ import {
 } from "../../contracts/conversations/pending-report";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
-import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
+import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 
 export const list = Effect.fn("PendingReports.list")(function* (
@@ -96,6 +96,34 @@ export function communicationEvidence(
     )?.id;
 }
 
+/** Resolve the current input boundary even when Durable's bounded snapshot starts mid-turn.
+ * Read only Pi-owned history, stopping at the first consumed input; never reuse an older reply.
+ */
+export const readCommunicationEvidence = Effect.fn("PendingReports.readCommunicationEvidence")(
+  function* (handle: Pick<CakeSessionHandle, "snapshot" | "history">, communicatedText: string) {
+    const snapshot = yield* handle.snapshot();
+    let parts = snapshot.parts;
+    let cursor = snapshot.historyCursor;
+    const visited = new Set<string>();
+    while (
+      !parts.some((part) => part.kind === "text" && part.role === "user" && !part.deliveryState) &&
+      cursor !== undefined &&
+      handle.history
+    ) {
+      if (visited.has(cursor))
+        return yield* new SessionChatError({
+          operation: "reports.acknowledge",
+          message: "Earlier report evidence history did not advance. Retry acknowledgment.",
+        });
+      visited.add(cursor);
+      const page = yield* handle.history(cursor);
+      parts = [...page.parts, ...parts];
+      cursor = page.cursor;
+    }
+    return communicationEvidence(parts, communicatedText);
+  },
+);
+
 /** Explicit agent attestation, anchored to already-visible Pi text, never inferred from turn success. */
 export const acknowledge = Effect.fn("PendingReports.acknowledge")(function* (
   sessionId: string,
@@ -118,11 +146,9 @@ export const acknowledge = Effect.fn("PendingReports.acknowledge")(function* (
         });
       if (!pending.length)
         return { acknowledged: input.ids, alreadyHandled: true, receipts: handled };
-      const snapshot = yield* (yield* (yield* CakeSessionRuntimes).acquireSession(
-        sessionId,
-      )).snapshot();
+      const handle = yield* (yield* CakeSessionRuntimes).acquireSession(sessionId);
       // Do not accept an old reply, queued input, reasoning, context pill or a future final answer.
-      const evidence = communicationEvidence(snapshot.parts, input.communicatedText);
+      const evidence = yield* readCommunicationEvidence(handle, input.communicatedText);
       if (!evidence)
         return yield* new SessionChatError({
           operation: "reports.acknowledge",
