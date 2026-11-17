@@ -91,6 +91,9 @@ export class ScreenCaptureOverlayStore extends Store<{
           prerollMs: recognition.prerollMs,
           maximumUtteranceSeconds: recognition.maximumUtteranceSeconds,
         };
+        // Seed mute before annotation focus can start capture. The live shared observation
+        // may have arrived during snapshot loading; never overwrite it with older routing.
+        this.dictationStore.muted = this.dictationStore.state?.muted ?? voice.muted;
         this.dictationStore.enabled = voice.enabled;
         this.dictationStore.phase = voice.enabled ? "paused" : "off";
         this.dictationStore.deviceId = voice.deviceId;

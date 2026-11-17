@@ -350,6 +350,7 @@ describe("Client transport and device integration", () => {
           annotationColor: "yellow",
           dictation: {
             enabled: false,
+            muted: false,
             deviceId: "",
             textProcessingMode: "raw",
             recognition: {

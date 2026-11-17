@@ -15,6 +15,7 @@ export const captureRouting: CapturePreferences = {
   },
   dictation: {
     enabled: false,
+    muted: false,
     deviceId: "",
     textProcessingMode: "raw",
     recognition: {

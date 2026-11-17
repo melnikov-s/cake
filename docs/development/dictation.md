@@ -22,6 +22,10 @@ pages, widgets or OS-wide typing. It requires Apple Silicon and macOS 14+.
    Existing multiline and slash-menu behavior remains available.
 4. Use the circular waveform to mute/unmute. Escape stops dictation before the field's
    usual Escape action. Muting preserves visible text; unmuting resumes at the caret.
+   Mute is shared across windows, including screen-capture annotations. The capture
+   overlay inherits the originating window's mute before annotation focus and then
+   follows live shared mute updates; an already-observed update takes precedence
+   over its initial routing snapshot.
 
 Recognition re-decodes a bounded recent-audio window with fresh decoder state.
 Recent words and punctuation can change as more speech arrives, including across

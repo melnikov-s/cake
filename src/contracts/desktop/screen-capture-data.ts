@@ -71,6 +71,7 @@ export const CapturePreferences = Schema.Struct({
   }),
   dictation: Schema.Struct({
     enabled: Schema.Boolean,
+    muted: Schema.Boolean,
     deviceId: Schema.String,
     textProcessingMode: TextProcessingMode,
     recognition: SpeechRecognitionSettings,

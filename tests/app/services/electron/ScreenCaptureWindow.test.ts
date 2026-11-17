@@ -280,6 +280,34 @@ describe("Native screen capture lifetime", () => {
     expect(native.windows).toHaveLength(1);
     capture.stop();
   });
+  it("closes the overlay when its origin closes and removes origin listeners on teardown", async () => {
+    const { owner, capture } = fixture();
+    const { running, created } = startOverlay(capture, owner);
+    const overlay = await created;
+    expect(owner.listenerCount("closed")).toBe(1);
+    owner.destroy();
+    expect(await running).toEqual({ annotationColor: "yellow" });
+    expect(overlay.isDestroyed()).toBe(true);
+    expect(owner.listenerCount("closed")).toBe(0);
+    expect(() => capture.state(overlay.webContents.id)).toThrow("does not own");
+    capture.stop();
+  });
+  it("creates no overlay when its origin closes during screen acquisition", async () => {
+    let resolve!: (sources: unknown[]) => void;
+    native.sources.mockImplementation(
+      () =>
+        new Promise((complete) => {
+          resolve = complete;
+        }),
+    );
+    const { owner, capture } = fixture();
+    const running = capture.start(owner, captureRouting, new AbortController().signal);
+    owner.destroy();
+    resolve([]);
+    expect(await running).toEqual({ annotationColor: "yellow" });
+    expect(native.windows).toHaveLength(1);
+    capture.stop();
+  });
   it("cancels when the overlay closes and unregisters only its own shortcut on shutdown", async () => {
     const { owner, capture, requestCapture } = fixture();
     native.registered.get("CommandOrControl+Shift+6")?.();

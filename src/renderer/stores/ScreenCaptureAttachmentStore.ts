@@ -95,6 +95,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
       },
       dictation: {
         enabled: this.props.dictation().enabled,
+        muted: this.props.dictation().muted,
         deviceId: this.props.dictation().deviceId,
         textProcessingMode: this.props.dictation().textProcessingMode,
         recognition: speechRecognitionSettings(this.props.dictation().props.preferences.values),
