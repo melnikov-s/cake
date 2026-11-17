@@ -2609,6 +2609,11 @@ describe("Dictation writing-field workflow", () => {
       });
       await waitFor(() => expect(fixture.root.dictationStore.phase).toBe("listening"));
       const target = fixture.root.dictationStore.activeTargetId!;
+      // The dismissal hook schedules initial editor focus for the next frame.
+      // Measure streaming churn only after that intentional focus has completed.
+      await act(async () => {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
       const focus = vi.spyOn(input, "focus");
       const preparations = fixture.prepare.mock.calls.length;
       const claims = fixture.claim.mock.calls.length;
