@@ -12,6 +12,7 @@ import {
 } from "../../../src/domain/subagents/subagentTaskPreparation";
 import * as subagentLifetime from "../../../src/domain/subagents/subagentLifetime";
 import * as subagentObservation from "../../../src/domain/subagents/subagentObservation";
+import { requireHandle } from "../../../src/domain/subagents/subagentHandleState";
 import * as subagentInputs from "../../../src/domain/subagents/subagentInputs";
 import * as subagentData from "../../../src/contracts/subagents/subagent-data";
 import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
@@ -49,7 +50,10 @@ import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-ope
 import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import type { SubagentControlRequirements } from "../../../src/domain/subagents/subagentControl";
-import { makeSubagentControl } from "../../../src/domain/subagents/subagentControl";
+import {
+  makeSubagentControl,
+  makeSubagentParent,
+} from "../../../src/domain/subagents/subagentControl";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { AttachmentUploadError } from "../../../src/contracts/filesystem/attachment-uploads-errors";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -621,15 +625,23 @@ const invokeWorker = (registry: CakeOperationRegistry, command: string, input: o
 describe("subagent exact message references", () => {
   it.effect.each(
     (["running", "queued"] as const).flatMap((status) =>
-      (["none", "resume"] as const).map((continuation) => ({ status, continuation })),
+      (["none", "resume"] as const).flatMap((continuation) =>
+        (["session", "subagent"] as const).map((kind) => ({ status, continuation, kind })),
+      ),
     ),
   )(
-    "queues active $status evidence with $continuation results and worker-scoped grants",
-    ({ status, continuation }) =>
+    "queues active $status $kind evidence with $continuation results and worker-scoped grants",
+    ({ status, continuation, kind }) =>
       Effect.gen(function* () {
         const fixture = yield* makeFixture(false, [], "Evidence assessed");
-        const ref = "cake://session/source?message=exact";
-        const outside = "cake://session/outside?message=private";
+        const ref =
+          kind === "session"
+            ? "cake://session/source?message=exact"
+            : subagentLink("source-parent", "00000000-0000-4000-8000-000000000003", "exact");
+        const outside =
+          kind === "session"
+            ? "cake://session/outside?message=private"
+            : subagentLink("foreign-parent", "00000000-0000-4000-8000-000000000004", "private");
         const grants = new Map<string, readonly TaskInputReference[]>();
         const authorizeForward = vi.fn<TaskInputStorage["Service"]["authorizeForward"]>(
           (owner, refs, recipient) =>
@@ -841,7 +853,14 @@ describe("subagent exact message references", () => {
           yield* Effect.promise(() =>
             assert.rejects(
               invokeWorker(worker, "messages.read", {
-                ref: "cake://session/source?message=unselected",
+                ref:
+                  kind === "session"
+                    ? "cake://session/source?message=unselected"
+                    : subagentLink(
+                        "source-parent",
+                        "00000000-0000-4000-8000-000000000003",
+                        "unselected",
+                      ),
               }),
               /not forwarded/,
             ),
@@ -915,13 +934,19 @@ describe("subagent exact message references", () => {
       }),
   );
 
-  it.effect(
-    "forwards identities without reading and gates initial/follow-up reads to explicitly selected messages",
-    () =>
+  it.effect.each(["session", "subagent"] as const)(
+    "forwards $0 identities without reading and gates initial/follow-up reads to explicitly selected messages",
+    (kind) =>
       Effect.gen(function* () {
         const fixture = yield* makeFixture();
-        const first = "cake://session/source?message=entry-1";
-        const second = "cake://session/source?message=entry-2";
+        const first =
+          kind === "session"
+            ? "cake://session/source?message=entry-1"
+            : subagentLink("source-parent", "00000000-0000-4000-8000-000000000003", "entry-1");
+        const second =
+          kind === "session"
+            ? "cake://session/source?message=entry-2"
+            : subagentLink("source-parent", "00000000-0000-4000-8000-000000000003", "entry-2");
         const read = vi.fn<MessageOperationControl["read"]>(async (input) => ({
           message: {
             ref: input.ref,
@@ -1389,6 +1414,30 @@ describe("agent-owned context forks", () => {
                 },
               },
             };
+            const sourceRef = subagentLink(
+              sessionId,
+              "00000000-0000-4000-8000-000000000003",
+              "report",
+            );
+            const readSource = vi.fn<MessageOperationControl["read"]>(async () => ({
+              message: {
+                ref: sourceRef,
+                link: sourceRef,
+                sessionId,
+                entryId: "report",
+                parentId: null,
+                timestamp: "now",
+                role: "assistant",
+                active: true,
+                inputRefs: [],
+                hasImages: false,
+              },
+              text: "EXACT_WORKER_REPORT",
+              totalChars: 19,
+              offset: 0,
+              nextOffset: null,
+              truncated: false,
+            }));
             const inherited: PiContextFork = {
               entryId: "settled-42",
               messages: [
@@ -1432,6 +1481,28 @@ describe("agent-owned context forks", () => {
             yield* Effect.gen(function* () {
               const environment = yield* SubagentEnvironment;
               yield* Effect.gen(function* () {
+                const context = yield* Effect.context<SubagentControlRequirements>();
+                const forwardingCaller = makeSubagentParent(
+                  {
+                    ...caller.options,
+                    runtime: {
+                      ...caller.options.runtime,
+                      messageReferenceControl: {
+                        read: readSource,
+                        list: async () => {
+                          throw new Error("No broad history");
+                        },
+                        open: async () => {
+                          throw new Error("No navigation");
+                        },
+                      },
+                    },
+                  },
+                  sessionId,
+                  caller.workingDirectory,
+                  (effect, signal) =>
+                    Effect.runPromise(Effect.provide(effect, context), { signal }),
+                );
                 const outcome = attachTodo
                   ? yield* projectTodos.create(root, {
                       title: "One outcome",
@@ -1449,9 +1520,10 @@ describe("agent-owned context forks", () => {
                     name: "Investigate",
                     worktreeName: "research",
                     initialPrompt: "Explicit details from the unfinished exchange",
+                    messageRefs: [sourceRef],
                     resultDelivery,
                   },
-                  caller,
+                  forwardingCaller,
                   projectPath,
                   "tool-real-fork-call",
                 );
@@ -1470,6 +1542,8 @@ describe("agent-owned context forks", () => {
                 assert.equal(before?.parentProfile, "CakeChatSession");
                 assert.equal(before?.anchorPartId, "tool-real-fork-call");
                 assert.equal(before?.allowMutations, false);
+                assert.deepEqual(before?.messageReferences, [sourceRef]);
+                assert.equal(readSource.mock.calls.length, 0);
                 const options = (yield* Ref.get(fixture.constructedOptions)).find(
                   (item) => item.sessionId === child,
                 );
@@ -1482,6 +1556,23 @@ describe("agent-owned context forks", () => {
                 assert.equal(options?.allowMutations, false);
                 assert.equal(options?.newSession, false);
                 assert.equal(options?.cwd, "/managed/research");
+                const worker = workerRegistry(options);
+                const source = yield* Effect.promise(() =>
+                  invokeWorker(worker, "messages.read", { ref: sourceRef }),
+                );
+                assert.ok(source.text.includes("EXACT_WORKER_REPORT"));
+                yield* Effect.promise(() =>
+                  assert.rejects(
+                    invokeWorker(worker, "messages.read", {
+                      ref: subagentLink(
+                        sessionId,
+                        "00000000-0000-4000-8000-000000000003",
+                        "unselected",
+                      ),
+                    }),
+                    /not forwarded/,
+                  ),
+                );
                 const initialInput = (yield* Ref.get(fixture.childPrompts))[0];
                 assert.ok(initialInput?.text.includes("unfinished exchange"));
                 assert.ok(initialInput?.text.includes("Assignment guidance"));
@@ -1553,8 +1644,20 @@ describe("agent-owned context forks", () => {
                   fixture.familyFiles,
                 );
                 yield* Effect.gen(function* () {
-                  yield* subagents.restore(saved, caller, true);
-                  yield* subagents.restore(saved, caller, true);
+                  yield* subagents.restore(saved, forwardingCaller, true);
+                  yield* subagents.restore(saved, forwardingCaller, true);
+                  assert.equal(readSource.mock.calls.length, 1);
+                  yield* requireHandle(sessionId, saved.handleId);
+                  const restoredOptions = (yield* Ref.get(restarted.constructedOptions)).find(
+                    (item) => item.sessionId === saved.privateSessionId,
+                  );
+                  assert.ok(restoredOptions);
+                  const restoredSource = yield* Effect.promise(() =>
+                    invokeWorker(workerRegistry(restoredOptions), "messages.read", {
+                      ref: sourceRef,
+                    }),
+                  );
+                  assert.ok(restoredSource.text.includes("EXACT_WORKER_REPORT"));
                   assert.deepEqual(yield* Ref.get(restarted.completions), []);
                   assert.equal(
                     (yield* (yield* SubagentCoordinator).storage.get(saved.handleId))
@@ -1580,7 +1683,7 @@ describe("agent-owned context forks", () => {
                     const read = yield* pendingReports.read(sessionId, { id: saved.completionId });
                     assert.ok(read.text.includes("cake://session/source?message=original"));
                   }
-                }).pipe(Effect.provide(restarted.layer));
+                }).pipe(Effect.provide(Layer.fresh(restarted.layer)));
               }).pipe(
                 Effect.provideService(SubagentEnvironment, {
                   ...environment,

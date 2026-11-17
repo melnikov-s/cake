@@ -34,7 +34,7 @@ const openOriginal = Effect.fn("PiMessageHistory.openOriginal")(function* (targe
 
 export const list = Effect.fn("PiMessageHistory.list")(function* (
   target: Target,
-  input: MessageListInput,
+  input: MessageListInput & { readonly entryId?: string },
 ) {
   const manager = yield* openOriginal(target);
   return listMessageReferences(manager, input);

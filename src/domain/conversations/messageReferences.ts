@@ -8,6 +8,7 @@ import {
   MessageListResult,
   MessageReadInput,
   MessageReadResult,
+  type MessageMetadata,
   messageNavigationTarget,
 } from "../../contracts/conversations/message-reference";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
@@ -107,21 +108,21 @@ export const read = Effect.fn("MessageReferences.read")(
   asError("messages.read"),
 );
 
-/** Resolve a public worker source using persisted ownership even after release/restart. */
-const readSubagentOriginal = Effect.fn("MessageReferences.readSubagentOriginal")(function* (
-  input: MessageReadInput,
+/** Ownership locates the original; it does not authorize a caller to read its body. */
+const subagentOriginalTarget = Effect.fn("MessageReferences.subagentOriginalTarget")(function* (
+  ref: string,
+  operation: "messages.read" | "messages.forward",
 ) {
-  const decoded = yield* Schema.decodeUnknownEffect(MessageReadInput)(input);
-  const worker = parseSubagentLink(decoded.ref);
+  const worker = parseSubagentLink(ref);
   if (!worker?.messageId)
     return yield* new SessionChatError({
-      operation: "messages.read",
+      operation,
       message: "Expected an exact public subagent message reference",
     });
   const available = yield* Effect.serviceOption(SubagentStorage);
   if (Option.isNone(available))
     return yield* new SessionChatError({
-      operation: "messages.read",
+      operation,
       message: "Subagent source ownership is unavailable in this runtime",
     });
   const storage = available.value;
@@ -131,7 +132,7 @@ const readSubagentOriginal = Effect.fn("MessageReferences.readSubagentOriginal")
   const record = saved ?? history;
   if (!record || record.parentSessionId !== worker.parentSessionId)
     return yield* new SessionChatError({
-      operation: "messages.read",
+      operation,
       message: "Unknown subagent handle or wrong parent for this exact source",
     });
   let sessionDirectory = history?.sessionDirectory ?? saved?.privateSessionDirectory;
@@ -139,23 +140,59 @@ const readSubagentOriginal = Effect.fn("MessageReferences.readSubagentOriginal")
     const environment = yield* Effect.serviceOption(SubagentEnvironment);
     if (Option.isNone(environment))
       return yield* new SessionChatError({
-        operation: "messages.read",
+        operation,
         message: "The saved worker's original session directory is unavailable",
       });
     sessionDirectory = (yield* environment.value.location(record.workingDirectory))
       .sessionDirectory;
   }
-  const page = yield* PiMessageHistory.read(
-    {
+  return {
+    worker: { ...worker, messageId: worker.messageId },
+    target: {
       sessionId: record.privateSessionId,
       workingDirectory: record.workingDirectory,
       sessionDirectory,
     },
-    { entryId: worker.messageId, offset: decoded.offset, maxChars: decoded.maxChars },
-  );
-  const ref = subagentLink(worker.parentSessionId, worker.handleId, page.message.entryId);
-  return {
-    ...page,
-    message: { ...page.message, ref, link: ref, sessionId: worker.parentSessionId },
   };
+});
+
+const publicSubagentMetadata = (
+  worker: { readonly parentSessionId: string; readonly handleId: string },
+  message: MessageMetadata,
+): MessageMetadata => {
+  const ref = subagentLink(worker.parentSessionId, worker.handleId, message.entryId);
+  return { ...message, ref, link: ref, sessionId: worker.parentSessionId };
+};
+
+/** Exact metadata only: never read a body or substitute the parent's transcript/latest entry. */
+export const describeSubagentOriginal = Effect.fn("MessageReferences.describeSubagentOriginal")(
+  function* (ref: string) {
+    const { worker, target } = yield* subagentOriginalTarget(ref, "messages.forward");
+    const page = yield* PiMessageHistory.list(target, {
+      sessionId: target.sessionId,
+      branch: "all",
+      entryId: worker.messageId,
+      limit: 1,
+    });
+    const metadata = page.messages.find((message) => message.entryId === worker.messageId);
+    if (!metadata)
+      return yield* new SessionChatError({
+        operation: "messages.forward",
+        message: "The referenced Pi message does not exist in this subagent",
+      });
+    return publicSubagentMetadata(worker, metadata);
+  },
+);
+
+/** Resolve a public worker source using persisted ownership even after release/restart. */
+const readSubagentOriginal = Effect.fn("MessageReferences.readSubagentOriginal")(function* (
+  input: MessageReadInput,
+) {
+  const { worker, target } = yield* subagentOriginalTarget(input.ref, "messages.read");
+  const page = yield* PiMessageHistory.read(target, {
+    entryId: worker.messageId,
+    offset: input.offset,
+    maxChars: input.maxChars,
+  });
+  return { ...page, message: publicSubagentMetadata(worker, page.message) };
 });

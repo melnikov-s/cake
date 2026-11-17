@@ -1,7 +1,18 @@
 import { unusedMessageLookupLayer } from "../helpers/heldAttentionHarness";
+import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
+import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import * as messageReferences from "../../../src/domain/conversations/messageReferences";
+import {
+  describeMessageReferences,
+  validateMessageReferenceControl,
+} from "../../../src/domain/conversations/messageReferenceForwarding";
+import * as PiMessageHistory from "../../../src/services/pi/PiMessageHistory";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { makeSubagentParent } from "../../../src/domain/subagents/subagentControl";
+import { jsonValueSchema } from "../../../src/contracts/serialization/json-contract";
 import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
 import { MessageReadInput } from "../../../src/contracts/conversations/message-reference";
 import { Schema } from "effect";
@@ -13,7 +24,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Stream } from "effect";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 
 import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import {
@@ -189,6 +200,186 @@ it.effect(
         storage.history.list(),
       ).pipe(Effect.provide(f.layer()));
       expect(retained).toEqual([unrelated]);
+    }).pipe(Effect.provide(platform)),
+);
+
+it.effect.each(["active", "released"] as const)(
+  "forwards exact $0 worker metadata across restart without reading bodies or acquiring a parent runtime",
+  (state) =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const entryId = f.session.appendMessage(assistant([{ type: "text", text: "SELECTED_BODY" }]));
+      f.session.appendMessage(assistant([{ type: "text", text: "LATEST_UNRELATED_BODY" }]));
+      const ref = subagentLink(f.record.parentSessionId, f.record.handleId, entryId);
+      yield* Effect.gen(function* () {
+        const storage = yield* SubagentStorage;
+        if (state === "released") yield* storage.history.update(f.record);
+        else
+          yield* storage.update({
+            handleId: f.record.handleId,
+            privateSessionId: f.record.privateSessionId,
+            privateSessionDirectory: f.record.sessionDirectory,
+            parentSessionId: f.record.parentSessionId,
+            parentProfile: "CakeChatSession",
+            parentWorkingDirectory: f.record.parentWorkingDirectory,
+            parentSessionDirectory: "/parent-sessions",
+            anchorPartId: f.record.anchorPartId,
+            workingDirectory: f.record.workingDirectory,
+            task: f.record.task,
+            allowMutations: false,
+            resolvedModel: f.record.resolvedModel,
+            fastMode: false,
+            tools: ["read"],
+            inputReferences: [],
+            messageReferences: [],
+            continuation: "none",
+            notifyOnCompletion: false,
+            completionId: crypto.randomUUID(),
+            completionDisposition: "waited",
+            status: "complete",
+            pendingInputs: [],
+          });
+      }).pipe(Effect.provide(f.layer()));
+      const read = vi.spyOn(PiMessageHistory, "read");
+      const list = vi.spyOn(PiMessageHistory, "list");
+      yield* Effect.gen(function* () {
+        for (let restart = 0; restart < 2; restart++) {
+          const sourceLayer = Layer.mergeAll(
+            AgentControlTestLive,
+            makeProjectSessionRuntimeTestLayer(),
+            f.layer(),
+            unusedMessageLookupLayer,
+            projectTodoLayer(),
+            familyStorageHarness().layer,
+            Layer.mock(TaskInputStorage, {}),
+            Layer.mock(ApplicationState, {
+              snapshot: () => {
+                throw new Error("Unexpected runtime assembly");
+              },
+            }),
+          );
+          yield* Effect.gen(function* () {
+            const metadata = yield* describeMessageReferences([ref]);
+            expect(metadata[0]).toMatchObject({
+              ref,
+              link: ref,
+              sessionId: f.record.parentSessionId,
+              entryId,
+              role: "assistant",
+            });
+            expect(JSON.stringify(metadata)).not.toMatch(/SELECTED_BODY|LATEST_UNRELATED_BODY/);
+            expect(JSON.stringify(metadata)).not.toContain(f.record.privateSessionId);
+            for (const name of ["sessions.create", "sessions.send"])
+              yield* validateMessageReferenceControl({ name, arguments: { messageRefs: [ref] } });
+            for (const [invalid, reason] of [
+              [subagentLink("wrong-parent", f.record.handleId, entryId), /wrong parent/],
+              [
+                subagentLink(f.record.parentSessionId, crypto.randomUUID(), entryId),
+                /Unknown subagent/,
+              ],
+              [
+                subagentLink(f.record.parentSessionId, f.record.handleId, "missing"),
+                /does not exist/,
+              ],
+            ] as const) {
+              const error = yield* describeMessageReferences([invalid]).pipe(Effect.flip);
+              expect(String(error)).toMatch(reason);
+            }
+            const parent = makeSubagentParent(
+              {
+                profile: { _tag: "ProjectSession" },
+                runtime: {
+                  cwd: f.record.workingDirectory,
+                  agentDir: "/agent",
+                  sessionDir: "/parent-sessions",
+                  requestUi: async () => undefined,
+                  messageReferenceControl: {
+                    read: (input, signal) =>
+                      Effect.runPromise(
+                        messageReferences
+                          .read(input)
+                          .pipe(
+                            Effect.map(Schema.decodeUnknownSync(jsonValueSchema)),
+                            Effect.provide(sourceLayer),
+                          ),
+                        { signal },
+                      ),
+                    list: async () => {
+                      throw new Error("No source listing");
+                    },
+                    open: async () => {
+                      throw new Error("No source navigation");
+                    },
+                  },
+                },
+              },
+              f.record.parentSessionId,
+              f.record.workingDirectory,
+              (effect, signal) =>
+                Effect.runPromise(Effect.provide(effect, sourceLayer), { signal }),
+            );
+            const selected = parent.messages?.("selected-recipient");
+            const sibling = parent.messages?.("sibling-recipient");
+            expect(selected).toBeDefined();
+            expect(sibling).toBeDefined();
+            if (!selected || !sibling) throw new Error("Missing message access");
+            selected.forward([ref]);
+            expect(read).not.toHaveBeenCalled();
+            const signal = new AbortController().signal;
+            const page = yield* Effect.promise(() => selected.control.read({ ref }, signal));
+            expect(page).toMatchObject({ text: "SELECTED_BODY", message: { ref, entryId } });
+            yield* Effect.promise(() =>
+              expect(sibling.control.read({ ref }, signal)).rejects.toThrow(/not forwarded/),
+            );
+            yield* Effect.promise(() =>
+              expect(
+                selected.control.read(
+                  { ref: subagentLink(f.record.parentSessionId, f.record.handleId, "missing") },
+                  signal,
+                ),
+              ).rejects.toThrow(/not forwarded/),
+            );
+            expect(read).toHaveBeenCalledTimes(1);
+            read.mockClear();
+          }).pipe(Effect.provide(sourceLayer));
+        }
+        expect(read).not.toHaveBeenCalled();
+        expect(list).toHaveBeenCalledWith(
+          {
+            sessionId: f.record.privateSessionId,
+            workingDirectory: f.record.workingDirectory,
+            sessionDirectory: f.record.sessionDirectory,
+          },
+          {
+            sessionId: f.record.privateSessionId,
+            branch: "all",
+            entryId,
+            limit: 1,
+          },
+        );
+        yield* f.fs.remove(f.session.getSessionFile()!);
+        const missing = yield* describeMessageReferences([ref]).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              AgentControlTestLive,
+              makeProjectSessionRuntimeTestLayer(),
+              f.layer(),
+              unusedMessageLookupLayer,
+              projectTodoLayer(),
+              familyStorageHarness().layer,
+            ),
+          ),
+          Effect.flip,
+        );
+        expect(String(missing)).toMatch(/missing or inaccessible/);
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            read.mockRestore();
+            list.mockRestore();
+          }),
+        ),
+      );
     }).pipe(Effect.provide(platform)),
 );
 

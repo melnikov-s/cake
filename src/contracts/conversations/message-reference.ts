@@ -71,7 +71,10 @@ export const ReadableMessageReference = Schema.String.check(
   ),
 );
 
-export const messageRefsSchema = Schema.Array(MessageReference).check(Schema.isMaxLength(20));
+/** Exact readable sources for forwarding, not session-navigation targets. */
+export const messageRefsSchema = Schema.Array(ReadableMessageReference).check(
+  Schema.isMaxLength(20),
+);
 
 export const MessageListInput = Schema.Struct({
   sessionId: id,

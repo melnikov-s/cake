@@ -8,6 +8,12 @@ import type {
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createAgentControlOperations } from "../../../src/domain/subagents/cake-subagent-operations";
 import { subagentTaskSchema } from "../../../src/contracts/subagents/subagent-tool-input";
+import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
+import { AgentContextFork } from "../../../src/contracts/cake-chats/agent-context-fork";
+import {
+  MessageOpenInput,
+  messageRefsSchema,
+} from "../../../src/contracts/conversations/message-reference";
 
 describe("subagent contract", () => {
   it.each([false, true])(
@@ -100,141 +106,181 @@ describe("subagent contract", () => {
     ).toEqual({ task: "Inspect the adapter", projectPath: "/registered/project" });
   });
 
-  it("forwards exact inputRefs on every task and follow-up operation without reading content", async () => {
-    const first = "00000000-0000-4000-8000-000000000001";
-    const second = "00000000-0000-4000-8000-000000000002";
-    const messageRef = "cake://session/source?message=entry-1";
-    const control = {
-      run: vi.fn(async () => ({ status: "complete" })),
-      start: vi.fn(async () => ({ status: "queued" })),
-      parallel: vi.fn(async () => ({ status: "complete" })),
-      prompt: vi.fn(async () => ({ status: "complete" })),
-      wait: vi.fn(async () => ({ status: "complete" })),
-      abort: vi.fn(async () => ({ status: "aborted" })),
-      close: vi.fn(async () => ({ status: "closed" })),
-    };
-    const registry = new CakeOperationRegistry(
-      createAgentControlOperations(
-        control,
-        () => "cake-chat",
-        () => ({ provider: "test", modelId: "model", thinkingLevel: "off", fastMode: false }),
-        true,
-      ),
-    );
-    const context = {
-      signal: new AbortController().signal,
-      toolCallId: "attachments",
-      runtime: {},
-    };
-    for (const command of ["subagents.run", "subagents.start"])
-      await registry.invoke(
-        {
-          command,
-          input: { task: "Inspect selected input", inputRefs: [first], messageRefs: [messageRef] },
-        },
-        context,
+  it.each([
+    "cake://session/source?message=entry-1",
+    subagentLink("source-parent", "00000000-0000-4000-8000-000000000003", "entry-1"),
+  ])(
+    "forwards exact inputRefs/messageRefs on every operation without reading content: %s",
+    async (messageRef) => {
+      const first = "00000000-0000-4000-8000-000000000001";
+      const second = "00000000-0000-4000-8000-000000000002";
+      const control = {
+        run: vi.fn(async () => ({ status: "complete" })),
+        start: vi.fn(async () => ({ status: "queued" })),
+        parallel: vi.fn(async () => ({ status: "complete" })),
+        prompt: vi.fn(async () => ({ status: "complete" })),
+        wait: vi.fn(async () => ({ status: "complete" })),
+        abort: vi.fn(async () => ({ status: "aborted" })),
+        close: vi.fn(async () => ({ status: "closed" })),
+      };
+      const registry = new CakeOperationRegistry(
+        createAgentControlOperations(
+          control,
+          () => "cake-chat",
+          () => ({ provider: "test", modelId: "model", thinkingLevel: "off", fastMode: false }),
+          true,
+        ),
       );
-    expect(control.run).toHaveBeenCalledWith(
-      expect.objectContaining({ inputRefs: [first], messageRefs: [messageRef] }),
-      "cake-chat",
-      expect.any(AbortSignal),
-      undefined,
-      "tool-attachments",
-    );
-    expect(control.start).toHaveBeenCalledWith(
-      expect.objectContaining({ inputRefs: [first], messageRefs: [messageRef] }),
-      "cake-chat",
-      expect.any(AbortSignal),
-      "tool-attachments",
-    );
-    await registry.invoke(
-      {
-        command: "subagents.parallel",
-        input: {
-          tasks: [
-            { task: "First", inputRefs: [first] },
-            { task: "Second", inputRefs: [second] },
-          ],
-        },
-      },
-      context,
-    );
-    expect(control.parallel).toHaveBeenCalledWith(
-      {
-        tasks: [
-          expect.objectContaining({ inputRefs: [first] }),
-          expect.objectContaining({ inputRefs: [second] }),
-        ],
-      },
-      "cake-chat",
-      expect.any(AbortSignal),
-      undefined,
-      "tool-attachments",
-    );
-    for (const [command, delivery] of [
-      ["subagents.prompt", "prompt"],
-      ["subagents.follow-up", "follow-up"],
-    ]) {
+      const context = {
+        signal: new AbortController().signal,
+        toolCallId: "attachments",
+        runtime: {},
+      };
+      for (const command of ["subagents.run", "subagents.start"])
+        await registry.invoke(
+          {
+            command,
+            input: {
+              task: "Inspect selected input",
+              inputRefs: [first],
+              messageRefs: [messageRef],
+            },
+          },
+          context,
+        );
+      expect(control.run).toHaveBeenCalledWith(
+        expect.objectContaining({ inputRefs: [first], messageRefs: [messageRef] }),
+        "cake-chat",
+        expect.any(AbortSignal),
+        undefined,
+        "tool-attachments",
+      );
+      expect(control.start).toHaveBeenCalledWith(
+        expect.objectContaining({ inputRefs: [first], messageRefs: [messageRef] }),
+        "cake-chat",
+        expect.any(AbortSignal),
+        "tool-attachments",
+      );
       await registry.invoke(
         {
-          command,
+          command: "subagents.parallel",
           input: {
-            handleId: first,
-            text: "Inspect this too",
-            inputRefs: [second],
-            messageRefs: [messageRef],
+            tasks: [
+              { task: "First", inputRefs: [first] },
+              { task: "Second", inputRefs: [second], messageRefs: [messageRef] },
+            ],
           },
         },
         context,
       );
-      expect(control.prompt).toHaveBeenLastCalledWith(
+      expect(control.parallel).toHaveBeenCalledWith(
         {
-          handleId: first,
-          text: "Inspect this too",
-          inputRefs: [second],
-          messageRefs: [messageRef],
-          delivery,
+          tasks: [
+            expect.objectContaining({ inputRefs: [first] }),
+            expect.objectContaining({ inputRefs: [second], messageRefs: [messageRef] }),
+          ],
         },
         "cake-chat",
         expect.any(AbortSignal),
+        undefined,
+        "tool-attachments",
       );
-    }
-    await expect(
-      registry.invoke(
-        {
-          command: "subagents.start",
-          input: { task: "Too many", inputRefs: Array.from({ length: 21 }, () => first) },
-        },
-        context,
-      ),
-    ).rejects.toThrow();
-    const help = await registry.invoke({ command: "subagents.start.help" }, context);
-    expect(help.text).toContain("inputRefs");
-    expect(help.text).toContain("messageRefs");
-    await expect(
-      registry.invoke(
-        {
-          command: "subagents.start",
-          input: { task: "Bad ref", messageRefs: ["not-a-message-link"] },
-        },
-        context,
-      ),
-    ).rejects.toThrow();
-    expect(help.text).toContain("attachments.read");
-    const followUpHelp = await registry.invoke({ command: "subagents.follow-up.help" }, context);
-    for (const rule of [
-      "queued, running or idle",
-      "without interrupting active work",
-      "subagents.prompt is idle-only",
-      "no agent subagents.steer operation",
-      "inputRefs and messageRefs",
-      "separate from continuation/result delivery",
-      "without duplicate results",
+      for (const [command, delivery] of [
+        ["subagents.prompt", "prompt"],
+        ["subagents.follow-up", "follow-up"],
+      ]) {
+        await registry.invoke(
+          {
+            command,
+            input: {
+              handleId: first,
+              text: "Inspect this too",
+              inputRefs: [second],
+              messageRefs: [messageRef],
+            },
+          },
+          context,
+        );
+        expect(control.prompt).toHaveBeenLastCalledWith(
+          {
+            handleId: first,
+            text: "Inspect this too",
+            inputRefs: [second],
+            messageRefs: [messageRef],
+            delivery,
+          },
+          "cake-chat",
+          expect.any(AbortSignal),
+        );
+      }
+      await expect(
+        registry.invoke(
+          {
+            command: "subagents.start",
+            input: { task: "Too many", inputRefs: Array.from({ length: 21 }, () => first) },
+          },
+          context,
+        ),
+      ).rejects.toThrow();
+      const help = await registry.invoke({ command: "subagents.start.help" }, context);
+      expect(help.text).toContain("inputRefs");
+      expect(help.text).toContain("messageRefs");
+      await expect(
+        registry.invoke(
+          {
+            command: "subagents.start",
+            input: { task: "Bad ref", messageRefs: ["not-a-message-link"] },
+          },
+          context,
+        ),
+      ).rejects.toThrow();
+      expect(help.text).toContain("attachments.read");
+      const followUpHelp = await registry.invoke({ command: "subagents.follow-up.help" }, context);
+      for (const rule of [
+        "queued, running or idle",
+        "without interrupting active work",
+        "subagents.prompt is idle-only",
+        "no agent subagents.steer operation",
+        "inputRefs and messageRefs",
+        "separate from continuation/result delivery",
+        "without duplicate results",
+      ])
+        expect(followUpHelp.text).toContain(rule);
+      expect((await registry.invoke({ command: "subagents.steer.help" }, context)).text).toContain(
+        "Unknown Cake command",
+      );
+    },
+  );
+
+  it("accepts exact worker refs for context forks without widening session navigation", () => {
+    const ref = subagentLink("parent", "00000000-0000-4000-8000-000000000003", "entry");
+    expect(
+      Schema.decodeUnknownSync(AgentContextFork)({
+        workspacePath: "/project",
+        name: "Investigate",
+        worktreeName: "research",
+        initialPrompt: "Read the exact report",
+        messageRefs: [ref],
+      }).messageRefs,
+    ).toEqual([ref]);
+    expect(() => Schema.decodeUnknownSync(MessageOpenInput)({ ref })).toThrow();
+    expect(Schema.decodeUnknownSync(messageRefsSchema)([])).toEqual([]);
+    for (const invalid of [
+      "",
+      "not-a-reference",
+      subagentLink("parent", "00000000-0000-4000-8000-000000000003"),
+      ref.replace("?message=entry", "?message="),
+      ref + "&message=other",
+      ref + "&extra=value",
+      ref + "#fragment",
+      ref.replace("parent", "%GG"),
+      ref.replace("entry", "x".repeat(257)),
+      "x".repeat(4_097),
     ])
-      expect(followUpHelp.text).toContain(rule);
-    expect((await registry.invoke({ command: "subagents.steer.help" }, context)).text).toContain(
-      "Unknown Cake command",
-    );
+      expect(() => Schema.decodeUnknownSync(messageRefsSchema)([invalid])).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(messageRefsSchema)(Array.from({ length: 21 }, () => ref)),
+    ).toThrow();
   });
 
   it("uses the shared preset-or-explicit model selection schema", () => {

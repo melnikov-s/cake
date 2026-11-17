@@ -1,4 +1,6 @@
 import { Effect, Schema } from "effect";
+import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
+import { describeSubagentOriginal } from "./messageReferences";
 import {
   MessageListResult,
   messageNavigationTarget,
@@ -20,6 +22,7 @@ export const describeMessageReferences = Effect.fn("MessageReferences.describeFo
     const refs = yield* Schema.decodeUnknownEffect(messageRefsSchema)(references);
     return yield* Effect.forEach(refs, (ref) =>
       Effect.gen(function* () {
+        if (parseSubagentLink(ref)?.messageId) return yield* describeSubagentOriginal(ref);
         const target = messageNavigationTarget(ref);
         const handle =
           cakeChatSideChatConversationId(target.sessionId) !== undefined
