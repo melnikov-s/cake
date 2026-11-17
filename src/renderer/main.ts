@@ -1,7 +1,13 @@
 import { observeDictation } from "./observers/dictation";
 import { observeSpeechOutput } from "./observers/speech-output";
 import { Schema } from "effect";
-import { createStore, mount, effect as reactiveEffect, untracked } from "r-state-tree";
+import {
+  createStore,
+  mount,
+  effect as reactiveEffect,
+  untracked,
+  type StoreSnapshot,
+} from "r-state-tree";
 import { cakeBuildId } from "../ipc/protocol/BackendConnectionRpc";
 import { DesktopConnectionStore } from "./stores/DesktopConnectionStore";
 import { DesktopConnectionScreen } from "./components/desktop-connection-screen";
@@ -166,29 +172,28 @@ async function mountDesktop(
   const projection = RootProjection.create();
   let hydrationError: unknown;
   let savedDraftsReady = false;
+  let windowStateReady = false;
   rendererStartupTiming("window-state-load-start");
   const loadedWindow = await client.windowState.load().catch((error: unknown) => {
     hydrationError = error;
-    return { state: {}, children: {} };
+    return undefined;
   });
   rendererStartupTiming("window-state-load-end");
-  let windowSnapshot = loadedWindow;
-  if (!overlay)
+  let snapshot: StoreSnapshot = { state: {}, children: {} };
+  if (loadedWindow !== undefined)
     try {
-      windowSnapshot = await migrateSavedDrafts(client, loadedWindow);
-      savedDraftsReady = true;
+      // Missing storage returns a valid empty snapshot. A failed load/decode must not
+      // authorize migration writes or replacement of a recoverable document with defaults.
+      snapshot = Schema.decodeUnknownSync(storeSnapshotSchema)(loadedWindow);
+      if (!overlay) {
+        const migratedWindow = await migrateSavedDrafts(client, loadedWindow);
+        snapshot = Schema.decodeUnknownSync(storeSnapshotSchema)(migratedWindow);
+        savedDraftsReady = true;
+      }
+      windowStateReady = true;
     } catch (error) {
-      // Remote disconnect/uncertain delivery cannot erase the still-local legacy record.
       hydrationError = error;
     }
-  const snapshot = (() => {
-    try {
-      return Schema.decodeUnknownSync(storeSnapshotSchema)(windowSnapshot);
-    } catch (error) {
-      hydrationError = error;
-      return { state: {}, children: {} };
-    }
-  })();
   const persistenceRef: PersistenceRef = {};
   const rootStore = mountRootStore(
     client,
@@ -220,18 +225,19 @@ async function mountDesktop(
   window.addEventListener("blur", stopVoiceOnBlur);
   rendererStartupTiming("renderer-observers-end");
   rendererStartupTiming("window-persistence-start");
-  const persistence = overlay
-    ? undefined
-    : new WindowStatePersistence(
-        client,
-        (error) =>
-          rootStore.toastStore.show({
-            tone: "error",
-            title: "Window state could not be saved",
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        savedDraftsReady,
-      );
+  const persistence =
+    overlay || !windowStateReady
+      ? undefined
+      : new WindowStatePersistence(
+          client,
+          (error) =>
+            rootStore.toastStore.show({
+              tone: "error",
+              title: "Window state could not be saved",
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          savedDraftsReady,
+        );
   persistenceRef.current = persistence;
   persistence?.observe(rootStore);
   rendererStartupTiming("window-persistence-end");
@@ -281,11 +287,15 @@ async function mountDesktop(
         message: error instanceof Error ? error.message : String(error),
       });
     });
-  if (hydrationError)
+  if (!windowStateReady)
     rootStore.toastStore.show({
       tone: "warning",
       title: "Window state could not be restored",
-      message: hydrationError instanceof Error ? hydrationError.message : String(hydrationError),
+      message: `${hydrationError instanceof Error ? hydrationError.message : String(hydrationError)}${
+        overlay
+          ? ""
+          : " Window-state saving is disabled for this window to preserve the original document. New unsent input and window changes will not be saved; restart after correcting the load error."
+      }`,
     });
   const reportLinkError = (error: unknown) =>
     rootStore.toastStore.show({
