@@ -206,7 +206,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   async refresh(requestedWorkspacePath?: string) {
-    if (!this.shouldRefresh || this.signal.aborted) return;
+    if (this.signal.aborted || !this.shouldRefresh) return;
     const workspacePath = requestedWorkspacePath ?? this.props.workspacePath();
     const sessionId = this.props.sessionId();
     if (!workspacePath || !sessionId) return;
@@ -228,7 +228,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
     this.refreshingWorkspacePaths.add(workspacePath);
     try {
-      const snapshot = await this.managedWorktrees.landing({ workspacePath, sessionId });
+      const snapshot = await this.managedWorktrees.landing(
+        { workspacePath, sessionId },
+        { signal: this.signal },
+      );
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
       const operation = this.props.operation();
       // Merge-and-resolve retires the worktree before publishing its terminal operation.
@@ -243,12 +246,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       // Transient Git or transport failures surface through the next projected operation or intent.
     } finally {
       this.refreshingWorkspacePaths.delete(workspacePath);
+      const refreshAgain = this.refreshAgainWorkspacePaths.delete(workspacePath);
       // An operation projection can advance while its preceding status RPC is in flight.
-      // Coalesce those requests, but do not lose the refresh proving queue/completion state.
-      if (
-        this.refreshAgainWorkspacePaths.delete(workspacePath) &&
-        this.props.workspacePath() === workspacePath
-      )
+      // Drain coalesced demand only while its owning Store is still alive.
+      if (!this.signal.aborted && refreshAgain && this.props.workspacePath() === workspacePath)
         void this.refresh(workspacePath);
     }
   }
