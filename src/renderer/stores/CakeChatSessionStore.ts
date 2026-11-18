@@ -175,6 +175,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   @child
   get todos(): ProjectTodosStore {
     return createStore(ProjectTodosStore, {
+      conversationId: this.sessionId,
       list: () => {
         if (this.sessionId === CAKE_CHAT_SESSION_ID) {
           const owner = this.props.cakeChatTodos?.();

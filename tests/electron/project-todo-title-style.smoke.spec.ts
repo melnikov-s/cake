@@ -75,9 +75,10 @@ for (const theme of ["light", "dark"] as const) {
       const associated = panel.getByRole("button", { name: "Startup investigation", exact: true });
       await expect(associated).toHaveAttribute("aria-pressed", "true");
       await expect(associated.locator("..")).toHaveAttribute("data-associated", "true");
-      // Association is an advisory cue, not actual navigation selection.
+      // To-do focus is persistent view focus, not actual navigation selection.
       await expect(associated).not.toHaveAttribute("aria-current");
-      await expect(associated.locator("..")).toHaveClass(/outline-dashed/);
+      await expect(associated.locator("..")).toHaveAttribute("data-view-focused", "true");
+      await expect(associated.locator("..")).toHaveClass(/ring-accent/);
 
       for (const [name, done] of [
         ["Startup investigation", false],
@@ -100,11 +101,10 @@ for (const theme of ["light", "dark"] as const) {
           const foreground = await row.evaluate((element) => getComputedStyle(element).color);
           expect.soft(resting.color).toBe(foreground);
         } else {
-          const status = page
-            .getByRole("tooltip")
-            .getByText("Agree on the next milestone’s scope and priorities.");
-          expect(resting.color).toBe(
-            await status.evaluate((element) => getComputedStyle(element).color),
+          // Done titles stay muted even when the description uses popover foreground.
+          await expect(title).toHaveClass(/\btext-muted-foreground\b/);
+          expect(resting.color).not.toBe(
+            await row.evaluate((element) => getComputedStyle(element).color),
           );
         }
         expect.soft(hovered).toEqual(resting);
@@ -113,7 +113,7 @@ for (const theme of ["light", "dark"] as const) {
         );
         // Hovering leading controls must not move or recolor the title either.
         await row
-          .getByRole("button", { name: `${done ? "Reopen" : "Mark done"}: ${name}`, exact: true })
+          .getByRole("button", { name: `Change label for ${name}. Current label: Unlabelled` })
           .hover();
         expect(await titleAppearance(title)).toEqual(resting);
         await row
@@ -145,7 +145,7 @@ for (const theme of ["light", "dark"] as const) {
         selectedRects.map(({ width, height }) => ({ width, height })),
       );
 
-      // Completion precedes the title; attachment occupies the same right-hand slot at both widths.
+      // The label precedes the title; completion and attachment use fixed right-hand slots.
       for (const width of [1500, 600]) {
         await page.setViewportSize({ width, height: 900 });
         for (const [name, done] of [
@@ -163,24 +163,45 @@ for (const theme of ["light", "dark"] as const) {
             name: `Attach to-do as context: ${name}`,
             exact: true,
           });
+          const label = row.getByRole("button", {
+            name: `Change label for ${name}. Current label: Unlabelled`,
+            exact: true,
+          });
           await expect(attach).toBeVisible();
           await expect(attach.locator("svg")).toHaveAttribute("aria-hidden", "true");
-          await expect(attach.locator("svg")).toHaveCSS("width", "9px");
-          await expect(attach.locator("svg")).toHaveCSS("height", "9px");
+          await expect(attach.locator("svg")).toHaveCSS("width", "12px");
+          await expect(attach.locator("svg")).toHaveCSS("height", "12px");
           await expect(row.locator("button button")).toHaveCount(0);
           // Responsive pane transitions must settle before comparing independently read bounds.
           await expect(async () => {
             const completionBox = (await completion.boundingBox())!;
             const attachBox = (await attach.boundingBox())!;
             const titleBox = (await action.boundingBox())!;
-            expect(completionBox.x + completionBox.width).toBeLessThan(titleBox.x);
-            const gap = attachBox.x - (titleBox.x + titleBox.width);
+            const labelBox = (await label.boundingBox())!;
+            expect(labelBox.x + labelBox.width).toBeLessThan(titleBox.x);
+            expect(completionBox.x + completionBox.width).toBeCloseTo(attachBox.x, 1);
+            const gap = completionBox.x - (titleBox.x + titleBox.width);
             expect(gap).toBeGreaterThanOrEqual(0);
             expect(gap).toBeLessThanOrEqual(10.1);
             const rowBox = (await row.boundingBox())!;
+            const actionsBox = (await row.locator('[data-slot="todo-actions"]').boundingBox())!;
+            const layout = await row.evaluate((element) => {
+              const style = getComputedStyle(element);
+              return {
+                tracks: style.gridTemplateColumns,
+                rowWidth: element.clientWidth,
+                scrollWidth: element.scrollWidth,
+                viewport: innerWidth,
+              };
+            });
             expect(
-              Math.abs(rowBox.x + rowBox.width - attachBox.x - attachBox.width - 32),
-            ).toBeLessThan(0.1);
+              actionsBox.x + actionsBox.width,
+              `${width}px: ${name} action group stays inside the row (${JSON.stringify(layout)})`,
+            ).toBeLessThanOrEqual(rowBox.x + rowBox.width + 0.1);
+            expect(
+              actionsBox.x + actionsBox.width - attachBox.x - attachBox.width,
+              `${width}px: ${name} keeps the existing trailing action slot`,
+            ).toBeCloseTo(20, 1);
             expect(attachBox.width).toBeGreaterThanOrEqual(28);
             expect(attachBox.height).toBeGreaterThanOrEqual(28);
             const alignment = await action.evaluate((element) => {
@@ -192,7 +213,7 @@ for (const theme of ["light", "dark"] as const) {
                 parseFloat(style.lineHeight) / 2;
               const icons = Array.from(
                 row.querySelectorAll(
-                  '[data-slot="nav-trailing"] svg, [data-slot="todo-actions"] svg',
+                  '[data-slot="nav-trailing"] button, [data-slot="todo-actions"] svg',
                 ),
               );
               const rowStyle = getComputedStyle(row);
@@ -212,7 +233,7 @@ for (const theme of ["light", "dark"] as const) {
                 lineHeight: parseFloat(style.lineHeight),
               };
             });
-            expect(alignment.iconCenters).toHaveLength(2);
+            expect(alignment.iconCenters).toHaveLength(3);
             for (const center of alignment.iconCenters)
               expect(Math.abs(center - alignment.titleCenter)).toBeLessThan(0.02);
             if (!done) expect(alignment.bodyLefts.length).toBeGreaterThan(0);
@@ -223,7 +244,7 @@ for (const theme of ["light", "dark"] as const) {
             expect(
               await row.evaluate((element) => element.scrollWidth <= element.clientWidth),
             ).toBe(true);
-          }).toPass();
+          }).toPass({ timeout: 3500 });
         }
       }
     } finally {

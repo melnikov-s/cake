@@ -3,7 +3,7 @@ import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { describe, expect } from "vitest";
 import * as todos from "../../../src/domain/projects/projectTodos";
-import { upsertProject } from "../../../src/domain/application/application";
+import { mutateProjectWorkflow, upsertProject } from "../../../src/domain/application/application";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import {
   ApplicationState as StateSchema,
@@ -193,6 +193,66 @@ const create = () =>
     description: "Conversations report.",
     status: "Investigating",
   });
+
+it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
+  "reloads legacy unlabelled rows and explicit set/change/clear in %s",
+  (scope) => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const local = {
+        id: "10000000-0000-4000-8000-000000000001",
+        name: "Regression",
+        color: "rose",
+      } as const;
+      yield* mutateProjectWorkflow(project, { _tag: "AddLabel", label: local });
+      const globals = f.persisted().globalSessionLabels;
+      const feature = globals.find((label) => label.name === "Feature")!.id;
+      const bug = globals.find((label) => label.name === "Bug")!.id;
+      const legacy = yield* todos.create(scope, { title: "Bug", description: "Feature review." });
+      const item = yield* todos.create(scope, { title: "Review", description: "Check the draft." });
+      const reload = Effect.gen(function* () {
+        yield* (yield* ApplicationState).initialize();
+        expect(yield* todos.read(scope, legacy.id)).not.toHaveProperty("labelId");
+        return yield* todos.read(scope, item.id);
+      });
+      const set = (item: ProjectTodo, labelId: string | null) =>
+        todos.mutateUser(scope, {
+          _tag: "SetLabel",
+          id: item.id,
+          expectedRevision: item.revision,
+          labelId,
+        });
+      expect(yield* reload).not.toHaveProperty("labelId");
+      yield* todos.mutateUser(scope, { _tag: "Select", selectedId: item.id });
+      if (scope === CAKE_CHAT_TODO_SCOPE)
+        expect((yield* Effect.flip(set(item, local.id))).message).toContain("no longer exists");
+      yield* set(item, feature);
+      const labelled = yield* reload;
+      expect(labelled.labelId).toBe(feature);
+      expect(labelled.state).toBe("open");
+      expect((yield* todos.list(scope)).selectedId).toBe(item.id);
+      expect((yield* Effect.flip(set(item, null))).message).toContain("changed");
+      yield* todos.mutateUser(scope, {
+        _tag: "SetState",
+        id: item.id,
+        expectedRevision: labelled.revision,
+        state: "done",
+      });
+      const done = yield* reload;
+      expect(done.labelId).toBe(feature);
+      expect(done.completion?.by).toBe("user");
+      const next = scope === project ? local.id : bug;
+      yield* set(done, next);
+      const changed = yield* reload;
+      expect(changed.labelId).toBe(next);
+      expect(changed.state).toBe("done");
+      expect(changed.completion).toEqual(done.completion);
+      yield* set(changed, null);
+      expect(yield* reload).not.toHaveProperty("labelId");
+    }).pipe(Effect.provide(f.layer));
+  },
+);
 
 describe("to-do title mutation limits", () => {
   it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(

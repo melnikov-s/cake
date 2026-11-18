@@ -54,9 +54,13 @@ export class SessionMetadataStore extends Store<{
     return this.props.catalog.isResolved(sessionId);
   }
 
+  get globalLabels() {
+    return this.props.globalLabels();
+  }
+
   projectLabels(projectPath: string) {
     const local = this.props.projects.find(projectPath)?.workflow.labels ?? [];
-    return [...this.props.globalLabels(), ...local];
+    return [...this.globalLabels, ...local];
   }
 
   availableSessionLabels(sessionId: string) {

@@ -2,6 +2,7 @@ import { computed, observable, snapshot, Store } from "r-state-tree";
 import type { AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
 import { classifyProjectTodos } from "../lib/classify-project-todos";
 import {
+  isCakeChatTodoScope,
   projectTodoCategory,
   type ProjectTodo,
   type ProjectTodos,
@@ -12,6 +13,7 @@ import { parseSessionLink } from "../../contracts/conversations/message-referenc
 import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import { ClientContext } from "./context/ClientContext";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
+import { ToastContext } from "./context/ToastContext";
 import { describeError } from "../lib/error-details";
 
 /** A main-owned to-do list projection: a Project's list or global Cake Chat's own list. */
@@ -39,6 +41,7 @@ export interface TodoResultOrigin {
 }
 
 export class ProjectTodosStore extends Store<{
+  conversationId?: string;
   list(): TodoListSource | undefined;
   /** Display-only project groups; the chat's own list stays scoped. */
   projectGroups?(): readonly (TodoListSource & { readonly title: string })[] | undefined;
@@ -391,17 +394,46 @@ export class ProjectTodosStore extends Store<{
       [key]: !this.transcriptSectionExpanded(key, todoId),
     };
   }
-  /** User done/reopen from the pane or a result message; reported to the agent as a user change. */
-  setDone(item: ProjectTodo) {
-    return this.mutate(item, {
-      _tag: "SetState",
-      id: item.id,
-      expectedRevision: item.revision,
-      state: item.state === "done" ? "open" : "done",
-    });
+  ownsConversation(conversationId: string) {
+    return this.available && this.props.conversationId === conversationId;
+  }
+  availableLabels(item: ProjectTodo) {
+    const scope = this.sourceFor(item)?.scope;
+    const metadata = SessionMetadataContext.consume(this);
+    if (!scope || !metadata) return [];
+    return isCakeChatTodoScope(scope) ? metadata.globalLabels : metadata.projectLabels(scope);
+  }
+  setLabel(item: ProjectTodo, labelId: string | null, options?: { notifyOnError?: boolean }) {
+    return this.mutate(
+      item,
+      {
+        _tag: "SetLabel",
+        id: item.id,
+        expectedRevision: item.revision,
+        labelId,
+      },
+      options,
+    );
+  }
+  /** User done/reopen, reported to the agent as a user change. */
+  setDone(item: ProjectTodo, options?: { notifyOnError?: boolean }) {
+    return this.mutate(
+      item,
+      {
+        _tag: "SetState",
+        id: item.id,
+        expectedRevision: item.revision,
+        state: item.state === "done" ? "open" : "done",
+      },
+      options,
+    );
   }
   /** Reject overlapping local edits. Domain serialization handles other windows and the agent. */
-  private async mutate(item: ProjectTodo, mutation: ProjectTodoUserMutation) {
+  private async mutate(
+    item: ProjectTodo,
+    mutation: ProjectTodoUserMutation,
+    options?: { notifyOnError?: boolean },
+  ) {
     const scope = this.sourceFor(item)?.scope;
     if (!scope || this.busy || this.signal.aborted) return;
     this.busy = true;
@@ -413,7 +445,15 @@ export class ProjectTodosStore extends Store<{
       );
       return true;
     } catch (error) {
-      if (!this.signal.aborted) this.error = describeError(error).message;
+      if (!this.signal.aborted) {
+        this.error = describeError(error).message;
+        if (options?.notifyOnError)
+          ToastContext.consume(this)?.show({
+            title: "Could not update to-do",
+            message: this.error,
+            tone: "error",
+          });
+      }
     } finally {
       if (!this.signal.aborted) this.busy = false;
     }

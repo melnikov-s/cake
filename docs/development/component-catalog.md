@@ -37,6 +37,8 @@ See `AGENTS.md` for renderer implementation rules.
 
 [FilePicker](../../src/renderer/components/ui/file-picker.tsx) opens a native file or folder chooser and supplies only user-selected `File` data. It supports JSON/JSONC source sets for theme imports.
 
+[`LabelPicker`](../../src/renderer/components/ui/label-picker.tsx) selects or clears one label from the caller's session label catalog. Its compact swatch shows the current catalog name on hover and keyboard focus.
+
 [`AnnotationColorPicker`](../../src/renderer/components/ui/annotation-color-picker.tsx) is a compact dot trigger and preset-dot popover for image annotations. Its explicit image colors are independent of Cake's theme; screenshot preferences own the selected value.
 
 [`NumberedIconButton`](../../src/renderer/components/ui/numbered-icon-button.tsx) composes `IconButton` and `Badge` for toolbar counts. The target stays the shared 28px icon square so title-bar rows keep one width and rhythm; the opaque bubble overlays the top-right corner (extending at most into the 4px gap) and caps at `99+`. Zero and undefined counts show the plain icon. Supply the exact count in the accessible label or description. `PopoverNumberedIconTrigger` supplies the same popover semantics and focus restoration as `PopoverIconTrigger`.

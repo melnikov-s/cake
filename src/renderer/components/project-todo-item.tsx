@@ -13,13 +13,15 @@ import { ProjectTodoWorkLink } from "./project-todo-work-link";
 import { ProjectTodoSnoozePicker } from "./project-todo-snooze-picker";
 import { ProjectTodoAttentionEditor } from "./project-todo-attention-editor";
 import { IconButton } from "@/components/ui/icon-button";
-import { CircleIcon, CheckIcon, PaperclipIcon, CloseIcon } from "@/components/ui/icons";
+import { PaperclipIcon, CloseIcon } from "@/components/ui/icons";
+import { ProjectTodoStateAction } from "./project-todo-state-action";
+import { LabelPicker } from "@/components/ui/label-picker";
 import { cn } from "@/lib/utils";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 
 const hoverActionClassName =
-  "opacity-0 disabled:opacity-0 group-hover/nav-item:opacity-100 group-hover/nav-item:disabled:opacity-30 group-has-[:focus-visible]/nav-item:opacity-100 group-has-[:focus-visible]/nav-item:disabled:opacity-30";
+  "opacity-0 disabled:opacity-0 group-hover/nav-item:opacity-100 group-hover/nav-item:disabled:opacity-30 group-has-[:focus-visible]/nav-item:opacity-100 group-has-[:focus-visible]/nav-item:disabled:opacity-30 [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:disabled:opacity-30";
 
 export const ProjectTodoItem = observer(function ProjectTodoItem({
   item,
@@ -143,26 +145,30 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
               </span>
             }
             trailing={
-              <div className="flex items-start gap-2.5">
-                <IconButton
-                  iconSize="inline"
-                  className="-ml-0.5 size-5"
-                  disabled={store.busy}
-                  tooltip={`${item.state === "done" ? "Reopen" : "Mark done"}: ${item.title}`}
-                  onClick={() => void store.setDone(item)}
-                >
-                  {item.state === "done" ? <CheckIcon /> : <CircleIcon />}
-                </IconButton>
-              </div>
+              <LabelPicker
+                labelId={item.labelId}
+                labels={store.availableLabels(item)}
+                ariaLabel={`Change label for ${item.title}`}
+                disabled={store.busy}
+                className="-my-1 -ml-1 size-7 [@media(pointer:coarse)]:my-0"
+                onChange={(labelId) => store.setLabel(item, labelId)}
+              />
             }
           >
             <div
               data-slot="todo-actions"
-              className="col-start-3 row-start-1 grid grid-cols-[1.75rem_1.25rem] items-start"
+              className="col-start-3 row-start-1 grid grid-cols-[1.75rem_1.75rem_1.25rem] items-start [@media(pointer:coarse)]:grid-cols-[repeat(3,2.75rem)]"
             >
+              <ProjectTodoStateAction
+                item={item}
+                title={item.title}
+                done={item.state === "done"}
+                store={store}
+                className={cn("-my-1 size-7 [@media(pointer:coarse)]:my-0", hoverActionClassName)}
+              />
               <IconButton
                 iconSize="inline"
-                className={cn("-my-1 size-7", hoverActionClassName)}
+                className={cn("-my-1 size-7 [@media(pointer:coarse)]:my-0", hoverActionClassName)}
                 tooltip={`Attach to-do as context: ${item.title}`}
                 onClick={(event) => {
                   event.stopPropagation();

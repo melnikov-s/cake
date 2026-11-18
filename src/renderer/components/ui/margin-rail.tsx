@@ -1,13 +1,14 @@
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
-import { CheckIcon, ChevronIcon, CircleIcon, ExpandIcon } from "./icons";
+import type { ReactNode } from "react";
+import { ChevronIcon, ExpandIcon } from "./icons";
 import { IconButton } from "./icon-button";
-import { IconSizeProvider } from "./icon-size";
 
 /** An unbordered task heading above the section's message rule. */
 export function MarginRail({
   title,
-  done,
+  label,
+  completion,
   start,
   onOpen,
   onFocus,
@@ -16,7 +17,8 @@ export function MarginRail({
   showRail = true,
 }: {
   title: string;
-  done: boolean;
+  label?: ReactNode;
+  completion?: ReactNode;
   start: boolean;
   onOpen(): void;
   onFocus(): void;
@@ -43,20 +45,9 @@ export function MarginRail({
           data-slot="task-section-label"
           // Keep a modest outdent from the message column, bounded by the
           // transcript inset when the pane is narrow.
-          className="col-start-1 row-start-1 mb-3 ml-[clamp(-6rem,calc((100%_-_100cqw)/2_+_1.5rem),-0.75rem)] flex min-w-0 items-start"
+          className="group/task-heading col-start-1 row-start-1 mb-3 ml-[clamp(-6rem,calc((100%_-_100cqw)/2_+_1.5rem),-0.75rem)] flex min-w-0 items-start"
         >
-          <span
-            role="img"
-            aria-label={done ? "Done" : "Open"}
-            className={cn(
-              "mt-1.5 mr-2 ml-1 shrink-0 text-muted-foreground",
-              done && "text-success",
-            )}
-          >
-            <IconSizeProvider size="inline">
-              {done ? <CheckIcon /> : <CircleIcon />}
-            </IconSizeProvider>
-          </span>
+          {label}
           <Button
             variant="ghost"
             size="sm"
@@ -91,6 +82,7 @@ export function MarginRail({
               <ChevronIcon className={cn("mt-1 shrink-0", !expanded && "-rotate-90")} />
             </IconButton>
           )}
+          {completion}
         </div>
       )}
     </>

@@ -153,6 +153,7 @@ const ProjectTodoSnoozeUntil = Schema.String.check(
 const ProjectTodoAttentionRequestId = text(4096).check(Schema.isTrimmed(), Schema.isMinLength(1));
 
 const ProjectTodoRemainingWork = text(512).check(Schema.isTrimmed(), Schema.isMinLength(1));
+const ProjectTodoLabelId = Schema.String.check(Schema.isUUID(4));
 
 export const ProjectTodo = Schema.Struct({
   id: identity,
@@ -161,6 +162,8 @@ export const ProjectTodo = Schema.Struct({
     description: "The latest update, usually one or two short sentences; not a task restatement.",
   }),
   status: text(4096),
+  /** Explicit reference into the owning list's session label catalog. Missing means unlabelled. */
+  labelId: Schema.optionalKey(ProjectTodoLabelId),
   /** Remaining-work context; never vetoes completion when all required sessions resolve. */
   remainingWork: Schema.optionalKey(ProjectTodoRemainingWork),
   state: Schema.Literals(["open", "done"]),
@@ -300,6 +303,11 @@ export const ProjectTodoUserMutation = Schema.TaggedUnion({
   Snooze: ProjectTodoSnooze.fields,
   Unsnooze: ProjectTodoUnsnooze.fields,
   Select: ProjectTodoSelection.fields,
+  SetLabel: {
+    id: identity,
+    expectedRevision: revision,
+    labelId: Schema.NullOr(ProjectTodoLabelId),
+  },
   SetState: { id: identity, expectedRevision: revision, state: ProjectTodo.fields.state },
   SetAttention: {
     id: identity,

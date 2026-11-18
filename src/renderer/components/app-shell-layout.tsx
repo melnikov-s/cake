@@ -136,7 +136,7 @@ export const AppShellLayout = observer(function AppShellLayout({
           )}
         </section>
         {navigatorVisible && (
-          <div className="col-start-3 row-start-2 min-h-0 min-w-0 max-[700px]:absolute max-[700px]:bottom-0 max-[700px]:top-[calc(var(--title-bar-height)+1px)] max-[700px]:left-[var(--project-rail-width)] max-[700px]:right-0 max-[700px]:z-30">
+          <div className="col-start-3 row-start-2 min-h-0 min-w-0 max-[700px]:absolute max-[700px]:col-auto max-[700px]:row-auto max-[700px]:bottom-0 max-[700px]:top-[calc(var(--title-bar-height)+1px)] max-[700px]:left-[var(--project-rail-width)] max-[700px]:right-0 max-[700px]:z-30">
             <WorkspaceNavigator />
           </div>
         )}

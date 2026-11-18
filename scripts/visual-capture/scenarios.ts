@@ -5,6 +5,7 @@ import { createSessionOutcomesScenario } from "./session-outcomes";
 import { createWorkspacePanelGeometryScenario } from "./workspace-panel-geometry";
 import { createTodoResponseFocusScenario } from "./todo-response-focus";
 import { createTodoFocusDescriptionScenario } from "./todo-focus-description";
+import { createTodoInlineLabelsScenario } from "./todo-inline-labels";
 import { createTodoResolvedSessionScenario } from "./todo-resolved-session";
 import { createServer } from "node:net";
 import { sideChatTabsScenario } from "./side-chat-tabs";
@@ -3067,11 +3068,14 @@ const bundledColorThemeScenario: VisualCaptureScenario = {
 
 const projectChatTodos: VisualCaptureScenario = {
   name: "project-chat-todos",
-  description: "Project Chat to-do focus, reply context, session readiness and compact work links",
+  description:
+    "Project Chat to-do labels, row actions, focus, reply context and compact work links",
   states: [
     "open",
     "hover",
     "done",
+    "label-hover",
+    "restore-hover",
     "empty",
     "unselected",
     "multi-focus",
@@ -3266,7 +3270,38 @@ const projectChatTodos: VisualCaptureScenario = {
       await panel.getByRole("button", { name: "Mark done: Startup investigation" }).click();
       await panel.getByRole("button", { name: "Mark done: Improve project navigation" }).click();
     }
-    if (state === "done") await page.getByRole("button", { name: "Done (1)" }).click();
+    if (state === "done" || state === "restore-hover")
+      await page.getByRole("button", { name: "Done (1)" }).click();
+    if (state === "label-hover" || state === "restore-hover") {
+      const title =
+        state === "label-hover" ? "Improve project navigation" : "Discuss the next milestone";
+      const row = workspace.getByRole("button", { name: title, exact: true }).locator("..");
+      await row.getByRole("button", { name: /Change label for / }).click();
+      await page.getByRole("menuitemradio", { name: "Feature", exact: true }).click();
+      const label = row.getByRole("button", { name: /Current label: Feature/ });
+      await expect(label).toHaveAttribute("aria-expanded", "false");
+      await expect(row.getByRole("button", { name: title, exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      await page.waitForFunction(() => document.fonts.status === "loaded");
+      if (state === "label-hover") {
+        await label.hover();
+        await expect(page.getByRole("tooltip", { name: "Feature", exact: true })).toBeVisible();
+        await expect(row.getByRole("button", { name: `Mark done: ${title}` })).toHaveCSS(
+          "opacity",
+          "1",
+        );
+      } else {
+        const restore = row.getByRole("button", { name: `Reopen: ${title}`, exact: true });
+        await restore.hover();
+        await expect(restore).toHaveCSS("opacity", "1");
+        await expect(
+          page.getByRole("tooltip", { name: `Reopen: ${title}`, exact: true }),
+        ).toBeVisible();
+      }
+      return;
+    }
     if (state === "search" || state === "search-empty") {
       await page
         .getByRole("searchbox", { name: "Search to-dos" })
@@ -3336,7 +3371,9 @@ const projectChatTodos: VisualCaptureScenario = {
       ? page.getByRole("dialog", { name: "Custom", exact: true })
       : state === "snooze-menu"
         ? page.getByRole("menu", { name: "Actions for Improve project navigation", exact: true })
-        : page.locator('[data-slot="side-chat-layout"]'),
+        : state === "label-hover" || state === "restore-hover"
+          ? page.getByRole("complementary", { name: "Workspace", exact: true })
+          : page.locator('[data-slot="side-chat-layout"]'),
 };
 
 const globalChatTodos: VisualCaptureScenario = {
@@ -9796,6 +9833,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   stickyTaskHeadings,
   createTodoResponseFocusScenario(projectChatTaskRails.seed),
   createTodoFocusDescriptionScenario(projectChatTaskRails.seed),
+  createTodoInlineLabelsScenario(projectChatTaskRails.seed),
   adjacentTaskHeadings,
   pendingTaskTurn,
   pdfTaskSwitch,

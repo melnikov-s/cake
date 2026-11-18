@@ -564,6 +564,34 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
     );
     return yield* list(scope);
   }
+  if (input._tag === "SetLabel") {
+    return yield* change(scope, (value, current) =>
+      Effect.gen(function* () {
+        const item = value.items.find((candidate) => candidate.id === input.id);
+        if (!item) return yield* error("Unknown to-do in this list");
+        if (item.revision !== input.expectedRevision) return yield* conflict(item, input);
+        const projectLabels =
+          current.projects.find((project) => project.path === scope)?.workflow?.labels ?? [];
+        if (
+          input.labelId !== null &&
+          !current.globalSessionLabels.some((label) => label.id === input.labelId) &&
+          !projectLabels.some((label) => label.id === input.labelId)
+        )
+          return yield* error("A selected label no longer exists in this list");
+        if (item.labelId === (input.labelId ?? undefined)) return value;
+        const { labelId: _, ...rest } = item;
+        const updated = {
+          ...rest,
+          ...(input.labelId !== null ? { labelId: input.labelId } : null),
+          revision: item.revision + 1,
+        };
+        return {
+          ...value,
+          items: value.items.map((candidate) => (candidate.id === item.id ? updated : candidate)),
+        };
+      }),
+    );
+  }
   if (input._tag === "SetAttention") {
     yield* update(
       scope,

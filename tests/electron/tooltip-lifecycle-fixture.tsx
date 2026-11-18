@@ -17,7 +17,6 @@ function Fixture() {
             <MarginRail
               key={revision}
               title="Show all projects"
-              done={false}
               start
               onOpen={() => {}}
               onFocus={() => {}}

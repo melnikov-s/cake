@@ -219,6 +219,11 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await reply.press("Shift+Tab");
     await expect(done).toBeFocused();
     await done.press("Shift+Tab");
+    const label = row.getByRole("button", {
+      name: `Change label for ${title}. Current label: Unlabelled`,
+    });
+    await expect(label).toBeFocused();
+    await label.press("Shift+Tab");
     await expect(action).toBeFocused();
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");

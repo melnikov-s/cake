@@ -913,11 +913,26 @@ it.each(chats)(
     expect(screen.getAllByRole("button", { name: "Show in To-do: Startup findings" })).toHaveLength(
       2,
     );
-    await f.clickPane("Mark done", "Startup findings");
+    const taskHeading = screen.getAllByRole("button", {
+      name: "Show in To-do: Startup findings",
+    })[0]!.parentElement!;
+    const label = within(taskHeading).getByRole("button", {
+      name: /Change label for Startup findings/,
+    });
+    await f.user.click(label);
+    expect(label.getAttribute("aria-expanded")).toBe("true");
+    expect(f.mutateUser).not.toHaveBeenCalled();
+    await f.user.keyboard("{Escape}");
+    await f.user.click(
+      within(taskHeading).getByRole("button", { name: "Mark done: Startup findings" }),
+    );
+    expect((await f.read(A)).state).toBe("done");
     for (const heading of screen.getAllByRole("button", {
       name: "Show in To-do: Startup findings",
     }))
-      expect(within(heading.parentElement!).getByRole("img", { name: "Done" })).toBeDefined();
+      expect(
+        within(heading.parentElement!).getByRole("button", { name: "Reopen: Startup findings" }),
+      ).toBeDefined();
     expect(f.view.container.querySelectorAll("[data-part-id]")).toHaveLength(messageCount);
     expect(screen.getAllByRole("button", { name: "Show in To-do: Startup findings" })).toHaveLength(
       2,

@@ -653,6 +653,7 @@ export const ChatTranscript = observer(function ChatTranscript({
               todoId={section.todoId}
               start
               headingOnly
+              editable={behavior.todos.ownsConversation(store.id)}
               todos={behavior.todos}
               expanded={section.expanded}
               onToggle={() => behavior.todos?.toggleTranscriptSection(section.key, section.todoId!)}
