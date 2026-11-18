@@ -61,7 +61,6 @@ interface ConversationChatCapabilities {
   estimatedContextUsage?: boolean;
   history?: ChatStoreProps["history"];
   commands(): ConversationSnapshot["commands"];
-  stagedCommands?: ChatStoreProps["stagedCommands"];
   placeholder(): string;
   inputLabel(): string;
   /** Kind-specific context shown ahead of the transcript, such as a Discussion anchor. */
@@ -258,7 +257,6 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
         this.model.activeTurnIds.length > 0,
       configuration: () => this.configurationStore,
       commands: capabilities.commands,
-      stagedCommands: capabilities.stagedCommands,
       placeholder: capabilities.placeholder,
       inputLabel: capabilities.inputLabel,
       canSubmit: () => this.canSubmit,

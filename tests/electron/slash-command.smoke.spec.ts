@@ -6,11 +6,60 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { installLocalModelHttpGuard } from "./main-harness";
-import { windowState } from "../fixtures/window-state";
 
 import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+
+test("shows home-workspace skills in an unsent one-off chat", async ({}, testInfo) => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-one-off-slash-smoke-"));
+  const home = join(temporaryRoot, "home");
+  const cakeHome = join(temporaryRoot, "cake-home");
+  const skillDirectory = join(home, ".agents", "skills", "one-off-fixture");
+  await mkdir(skillDirectory, { recursive: true });
+  await writeFile(
+    join(skillDirectory, "SKILL.md"),
+    "---\nname: one-off-fixture\ndescription: One-off fixture skill\n---\nFixture.\n",
+  );
+  const application = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      PATH: process.env.PATH,
+      TMPDIR: process.env.TMPDIR,
+      LANG: process.env.LANG,
+      HOME: home,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: join(temporaryRoot, "user-data"),
+      CAKE_HOME: cakeHome,
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
+    },
+  });
+  try {
+    const page = await application.firstWindow();
+    // Navigate from the default Cake Chat to the workbench without choosing a folder.
+    await application.evaluate(({ dialog }) => {
+      dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+    });
+    await page.getByRole("button", { name: "Add project", exact: true }).click();
+    await page.getByRole("button", { name: "One-off chat", exact: true }).click();
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.pressSequentially("/");
+    const menu = page.getByRole("listbox", { name: "Slash commands" });
+    await expect(menu.getByRole("option", { name: /\/model/ })).toBeInViewport();
+    const skill = menu.getByRole("option", { name: /skill:one-off-fixture/ });
+    await expect(skill).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Skills", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("one-off-skills-before-first-message.png") });
+    await composer.pressSequentially("one-off");
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("/skill:one-off-fixture ");
+  } finally {
+    await application.close();
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
 
 test("selects a skill before the first turn and runs slash commands from the composer", async ({}, testInfo) => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-slash-command-smoke-"));
@@ -77,7 +126,6 @@ test("selects a skill before the first turn and runs slash commands from the com
     join(skillDirectory, "SKILL.md"),
     "---\nname: desktop-fixture\ndescription: Desktop fixture skill\n---\nFixture.\n",
   );
-  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
     join(cakeHome, "state", "application.json"),
@@ -176,7 +224,8 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await composer.fill("existing prompt");
     await composer.press("Home");
     await composer.pressSequentially("/");
-    await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
+    const slashMenu = page.getByRole("listbox", { name: "Slash commands" });
+    await expect(slashMenu).toBeVisible();
     await expect(page.getByRole("option", { name: /compact/ })).toHaveCount(0);
     await expect(page.getByRole("option", { name: /toolprune/ })).toHaveCount(0);
     await composer.press("Tab");
@@ -191,20 +240,30 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await expect(page.getByRole("complementary", { name: "Session tree" })).toBeVisible();
 
     await page.getByRole("button", { name: "Close Session tree" }).click();
-    await page.getByRole("button", { name: "Skills", exact: true }).click();
-    const skillPicker = page.getByRole("dialog", { name: "Choose a skill" });
-    const firstSkill = skillPicker.getByRole("option", {
-      name: /desktop-fixture Desktop fixture skill/,
+    // An isolated profile has no Cake default preset. Choose the local model without sending.
+    await composer.fill("/model slash-provider/slash-fixture");
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    await composer.pressSequentially("/");
+    await expect(slashMenu.getByRole("option", { name: /\/model/ })).toBeVisible();
+    const firstSkill = slashMenu.getByRole("option", {
+      name: /skill:desktop-fixture Desktop fixture skill/,
     });
-    await expect(firstSkill).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath("skills-before-first-message.png") });
+    await expect(firstSkill).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Skills", exact: true })).toHaveCount(0);
+    expect(requests).toHaveLength(0);
+    const screenshot = testInfo.outputPath("skills-before-first-message.png");
+    await page.screenshot({ path: screenshot });
+    await testInfo.attach("Unsent Project Session slash menu", {
+      path: screenshot,
+      contentType: "image/png",
+    });
     await firstSkill.click();
     await expect(composer).toHaveValue("/skill:desktop-fixture ");
     await expect(composer).toBeFocused();
     expect(requests).toHaveLength(0);
     await composer.pressSequentially("Review the fixture before answering");
     await composer.press("Enter");
-    await expect(page.getByRole("button", { name: "Skills", exact: true })).toHaveCount(0);
     await expect(composer).toHaveValue("");
 
     // Tool Prune must send the continuation through ordinary attachment admission,

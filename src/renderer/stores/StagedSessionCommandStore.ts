@@ -10,7 +10,7 @@ type SlashCommand = ConversationSnapshot["commands"][number];
 
 /** Owns the finite, non-executable command preview for one unsent session. */
 export class StagedSessionCommandStore extends Store {
-  readonly resourceCommands: SlashCommand[] = observable([]);
+  private readonly resourceCommands: SlashCommand[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
   private workspacePath: string | undefined;
@@ -18,21 +18,13 @@ export class StagedSessionCommandStore extends Store {
   private loadRevision = 0;
   private loadController: AbortController | undefined;
 
-  get loading() {
-    return this.pending !== undefined;
-  }
-
-  retry() {
-    if (this.workspacePath) return this.load(this.workspacePath, true);
-  }
-
   get commands(): ConversationSnapshot["commands"] {
     return [...stagedSessionSlashCommands, ...this.resourceCommands];
   }
 
-  load(workspacePath: string, force = false) {
+  load(workspacePath: string) {
     if (this.signal.aborted) return;
-    if (!force && this.workspacePath === workspacePath) return this.pending;
+    if (this.workspacePath === workspacePath && !this.error) return this.pending;
     this.workspacePath = workspacePath;
     this.pending = this.discover(workspacePath);
     return this.pending;

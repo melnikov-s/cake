@@ -217,10 +217,17 @@ describe("Project opening workflow", () => {
     // The former landing-page button is gone; exercise the retained explicit navigation operation.
     await act(() => fixture.root.navigationStore.startOneOffChat());
     const composer = await screen.findByPlaceholderText("Ask Cake to work in user…");
-    await fixture.user.type(composer, "/skill:per");
-    await fixture.user.keyboard("{Enter}");
+    expect(loadStagedSlashCommands).toHaveBeenCalledExactlyOnceWith(
+      "/home/user",
+      expect.anything(),
+    );
+    await fixture.user.type(composer, "/");
+    const menu = screen.getByRole("listbox", { name: "Slash commands" });
+    expect(within(menu).getByRole("option", { name: /\/model/ })).toBeDefined();
+    expect(within(menu).getByRole("option", { name: /skill:personal/ })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Skills" })).toBeNull();
+    await fixture.user.keyboard("per{Enter}");
     expect(composer).toHaveProperty("value", "/skill:personal ");
-    expect(loadStagedSlashCommands).toHaveBeenCalledWith("/home/user", expect.anything());
     expect(fixture.root.projectSessionObservationTargets).toEqual([]);
     expect(registerProject).toHaveBeenCalledWith(
       "/home/user",

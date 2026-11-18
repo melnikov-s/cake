@@ -594,9 +594,13 @@ describe("Saved Draft workflows", () => {
       workspaces: { loadStagedSlashCommands },
     });
     await fixture.user.click(screen.getByRole("button", { name: "Edit latest prompt" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Skills" }));
-    await fixture.user.click(await screen.findByRole("option", { name: /review changes/i }));
-    expect(input()).toHaveProperty("value", "/skill:review Implement the plan");
+    expect(input()).toHaveProperty("value", "Implement the plan");
+    await fixture.user.clear(input());
+    await fixture.user.type(input(), "/rev");
+    await screen.findByRole("option", { name: /review changes/i });
+    await fixture.user.keyboard("{Enter}");
+    expect(input()).toHaveProperty("value", "/skill:review ");
+    await fixture.user.type(input(), "Implement the plan");
     await fixture.user.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() =>
       expect(drafts.records.get(sessionId)?.text).toBe("/skill:review Implement the plan"),

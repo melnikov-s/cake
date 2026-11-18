@@ -588,8 +588,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           pending.isTemporary(this.sessionId)
             ? this.stagedCommandStore.commands
             : this.model.commands,
-        stagedCommands: () =>
-          pending.isTemporary(this.sessionId) ? this.stagedCommandStore : undefined,
         placeholder: () =>
           this.isStreaming
             ? "Add the next instruction…"

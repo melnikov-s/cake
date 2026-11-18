@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { applySnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
@@ -210,26 +211,23 @@ describe("Staged session command workflow", () => {
       ),
     );
     await staged.materialize("/project");
-    expect(screen.queryByRole("button", { name: "Skills" })).toBeNull();
   });
 
-  it("shows loading and retry in the skill picker, then adds a skill without replacing the prompt", async () => {
+  it("adds skills to the open slash menu when discovery started on entry finishes", async () => {
     const first = deferred<Commands>();
-    const load = vi
-      .fn<Client["workspaces"]["loadStagedSlashCommands"]>()
-      .mockReturnValueOnce(first.promise)
-      .mockResolvedValueOnce([skill("review")]);
-    using staged = await renderStaged(load);
+    using staged = await renderStaged(() => first.promise);
     const input = screen.getByRole("combobox", { name: "Message" });
-    await staged.user.type(input, "My task");
-    await staged.user.click(screen.getByRole("button", { name: "Skills" }));
-    const picker = screen.getByRole("dialog", { name: "Choose a skill" });
-    expect(within(picker).getByText("Loading skills")).toBeDefined();
-    await act(async () => first.reject(new Error("Preview unavailable")));
-    expect(within(picker).getByText(/Could not load skills: Preview unavailable/)).toBeDefined();
-    await staged.user.click(within(picker).getByRole("button", { name: "Retry" }));
-    await staged.user.click(await within(picker).findByRole("option", { name: /review/ }));
-    expect(input).toHaveProperty("value", "/skill:review My task");
+    expect(staged.loadCommands).toHaveBeenCalledExactlyOnceWith("/project", expect.anything());
+    expect(screen.queryByRole("button", { name: "Skills" })).toBeNull();
+    await staged.user.type(input, "/");
+    const menu = screen.getByRole("listbox", { name: "Slash commands" });
+    expect(within(menu).getByRole("option", { name: /\/model/ })).toBeDefined();
+    expect(within(menu).queryByRole("option", { name: /review skill/ })).toBeNull();
+    await act(async () => first.resolve([skill("review")]));
+    expect(within(menu).getByRole("option", { name: /\/model/ })).toBeDefined();
+    expect(within(menu).getByRole("option", { name: /review skill/ })).toBeDefined();
+    await staged.user.keyboard("{ArrowUp}{Enter}");
+    expect(input).toHaveProperty("value", "/skill:review ");
     expect(staged.start).not.toHaveBeenCalled();
   });
 
@@ -318,9 +316,28 @@ describe("Staged session command workflow", () => {
     expect(command("name")).not.toBeNull();
     expect(command("previous")).not.toBeNull();
     expect(command("compact")).toBeNull();
-    await startInWorktree(fixture.user);
-    await waitFor(() => expect(fixture.start).toHaveBeenCalled());
+    act(() =>
+      applySnapshot(fixture.fixture.models.worktrees, {
+        worktrees: [
+          {
+            projectPath: "/project",
+            worktreePath: "/worktree",
+            branch: "agent/task",
+            baseBranch: "main",
+            state: "active",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Choose existing worktree" }));
+    await fixture.user.click(
+      within(screen.getByRole("dialog", { name: "Existing worktrees" })).getByRole("option", {
+        name: /task/,
+      }),
+    );
     await showCommands(fixture.user);
+    expect(fixture.start).not.toHaveBeenCalled();
     expect(command("previous")).toBeNull();
     expect(command("model")).not.toBeNull();
     await act(async () => replacement.resolve([skill("replacement")]));
