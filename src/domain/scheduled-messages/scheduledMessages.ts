@@ -3,10 +3,13 @@ import {
   CAKE_CHAT_SESSION_ID,
   SESSION_ASSISTANT_ID,
   isCakeChatSessionId,
+  cakeChatSideChatConversationId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import * as projectSessionMetadata from "../project-sessions/projectSessionMetadata";
 import * as projectSessionOperations from "../project-sessions/projectSessionOperations";
 import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
+import * as discussionSessions from "../discussion-sessions/discussionSessions";
+import * as discussionSessionReferences from "../discussion-sessions/discussionSessionReferences";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
@@ -22,6 +25,7 @@ import {
   scheduledMessageOrigin,
 } from "../../contracts/conversations/scheduled-message-envelope";
 import { ScheduledMessages } from "../../services/scheduled-messages/ScheduledMessages";
+import type { ScheduledInputReceipt } from "../../contracts/scheduled-messages/scheduled-input-receipt";
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -51,6 +55,10 @@ const validateTarget = Effect.fn("ScheduledMessages.validateTarget")(function* (
   targetSessionId: string,
 ) {
   if (targetSessionId === CAKE_CHAT_SESSION_ID || targetSessionId === SESSION_ASSISTANT_ID) return;
+  if (cakeChatSideChatConversationId(targetSessionId) !== undefined) {
+    yield* discussionSessionReferences.lookup(targetSessionId).pipe(asError("schedule"));
+    return;
+  }
   if (isCakeChatSessionId(targetSessionId)) {
     const projects = (yield* ApplicationState).snapshot().projects;
     if (projects.some((project) => projectChatSessionId(project.path) === targetSessionId)) return;
@@ -97,17 +105,49 @@ export const schedule = Effect.fn("ScheduledMessages.schedule")(function* (
   return message;
 });
 
+/** Called under the delivery gate, after the transcript import commits. Ownership is
+ * one atomic write; any reserved occurrence still belongs to its old receipt scope. */
+export const transferOwnership = Effect.fn("ScheduledMessages.transferOwnership")(function* (
+  sourceSessionId: string,
+  targetSessionId: string,
+) {
+  const messages = yield* ScheduledMessages;
+  if (!messages.snapshot().messages.some((item) => item.targetSessionId === sourceSessionId))
+    return;
+  yield* messages.transact((current) =>
+    Effect.succeed(
+      current.map((item) =>
+        item.targetSessionId === sourceSessionId
+          ? {
+              ...item,
+              targetSessionId,
+              ...(item.pendingOccurrenceId === undefined
+                ? null
+                : {
+                    pendingOccurrenceSessionId: item.pendingOccurrenceSessionId ?? sourceSessionId,
+                  }),
+            }
+          : item,
+      ),
+    ),
+  );
+});
+
 export const cancel = Effect.fn("ScheduledMessages.cancel")(function* (id: string) {
   const messages = yield* ScheduledMessages;
-  const message = messages.snapshot().messages.find((item) => item.id === id);
-  if (!message)
-    return yield* new ScheduledMessageError({
-      operation: "cancel",
-      message: "Cake could not find that scheduled message",
-    });
   // Keep a durable cancellation intent until only this schedule's pending inputs are removed.
-  // The delivery gate prevents admission racing past a completed cancellation.
-  yield* messages.withDelivery(updateMessage(id, (item) => ({ ...item, cancelRequested: true })));
+  const message = yield* messages.withDelivery(
+    Effect.gen(function* () {
+      const current = messages.snapshot().messages.find((item) => item.id === id);
+      if (!current)
+        return yield* new ScheduledMessageError({
+          operation: "cancel",
+          message: "Cake could not find that scheduled message",
+        });
+      yield* updateMessage(id, (item) => ({ ...item, cancelRequested: true }));
+      return current;
+    }),
+  );
   yield* reconcile(message).pipe(asError("cancel"));
 });
 
@@ -187,6 +227,8 @@ const acquireDeliveryTarget = Effect.fn("ScheduledMessages.acquireDeliveryTarget
   sessionId: string,
 ) {
   // Revalidate permanent addresses too: a removed project must not be silently resurrected.
+  if (cakeChatSideChatConversationId(sessionId) !== undefined)
+    return yield* discussionSessions.acquireBySessionId(sessionId);
   yield* validateTarget(sessionId);
   return isCakeChatSessionId(sessionId)
     ? yield* cakeChatTargets.acquireAvailable(sessionId)
@@ -200,7 +242,12 @@ const acknowledgeDelivery = Effect.fn("ScheduledMessages.acknowledgeDelivery")(f
   const next = nextSendAt(message, consumedAt);
   yield* updateMessage(message.id, (item) => {
     if (!next) return undefined; // Explicit one-shot, or the repeat's end boundary.
-    const { pendingOccurrenceId: _, deliveryError: __, ...rest } = item;
+    const {
+      pendingOccurrenceId: _,
+      pendingOccurrenceSessionId: __,
+      deliveryError: ___,
+      ...rest
+    } = item;
     return { ...rest, sendAt: next };
   });
 });
@@ -209,6 +256,18 @@ const reconcileInput = Effect.fn("ScheduledMessages.reconcileInput")(function* (
   message: ScheduledMessage,
   handle: CakeSessionHandle,
 ) {
+  if (message.pendingOccurrenceSessionId !== undefined && !message.cancelRequested) {
+    // The merge drained Pi's queue and active turns before switching ownership.
+    // If this occurrence was reserved but never admitted, retry the SAME ID at
+    // the new target next pass. Never submit a transferred occurrence here.
+    const receipt = yield* readReceipt(message.pendingOccurrenceId, handle);
+    if (!receipt) {
+      yield* updateMessage(message.id, ({ pendingOccurrenceSessionId: _, ...item }) => item);
+    } else {
+      yield* settleReceipt(message, receipt);
+    }
+    return;
+  }
   const queued = (yield* handle.pendingMessages()).items
     .flatMap((item) => {
       const scheduled = parseScheduledMessage(item.text);
@@ -248,30 +307,14 @@ const reconcileInput = Effect.fn("ScheduledMessages.reconcileInput")(function* (
     // Persist identity before touching Pi, including one-shots. A restart retries the same ID.
     yield* updateMessage(message.id, () => pending);
   }
-  if (!handle.scheduledInputReceipt)
-    return yield* new ScheduledMessageError({
-      operation: "deliver",
-      message: "Target has no Pi consumption acknowledgement",
-    });
   const occurrenceId = message.pendingOccurrenceId;
   if (!occurrenceId)
     return yield* new ScheduledMessageError({
       operation: "deliver",
       message: "Missing persisted occurrence identity",
     });
-  const receipt = yield* handle.scheduledInputReceipt(occurrenceId);
-  if (receipt?.status === "consumed") {
-    yield* acknowledgeDelivery(message, receipt.consumedAt);
-    return;
-  }
-  if (receipt?.status === "canceled") {
-    // Withdrawing an occurrence never silently re-injects it or restarts recurrence.
-    yield* updateMessage(message.id, () => undefined);
-    return;
-  }
-  if (receipt?.status === "failed")
-    return yield* new ScheduledMessageError({ operation: "deliver", message: receipt.message });
-  if (receipt?.status === "pending") return;
+  const receipt = yield* readReceipt(occurrenceId, handle);
+  if (receipt) return yield* settleReceipt(message, receipt);
   yield* handle.submit({
     turnId: occurrenceId,
     text: encodeScheduledMessage(message.text, scheduledMessageOrigin(message)),
@@ -284,8 +327,38 @@ const reconcileInput = Effect.fn("ScheduledMessages.reconcileInput")(function* (
   yield* handle.publishSessionChanged();
   // Idle Pi intake can already be consumed by now; observe its real receipt without
   // delaying status publication to the next worker pass (or waiting for its reply).
-  const delivered = yield* handle.scheduledInputReceipt(occurrenceId);
+  const delivered = yield* readReceipt(occurrenceId, handle);
   if (delivered?.status === "consumed") yield* acknowledgeDelivery(message, delivered.consumedAt);
+});
+
+const readReceipt = Effect.fn("ScheduledMessages.readReceipt")(function* (
+  occurrenceId: string | undefined,
+  handle: CakeSessionHandle,
+) {
+  if (!occurrenceId)
+    return yield* new ScheduledMessageError({
+      operation: "deliver",
+      message: "Missing persisted occurrence identity",
+    });
+  if (!handle.scheduledInputReceipt)
+    return yield* new ScheduledMessageError({
+      operation: "deliver",
+      message: "Target has no Pi consumption acknowledgement",
+    });
+  return yield* handle.scheduledInputReceipt(occurrenceId);
+});
+
+const settleReceipt = Effect.fn("ScheduledMessages.settleReceipt")(function* (
+  message: ScheduledMessage,
+  receipt: ScheduledInputReceipt,
+) {
+  if (receipt.status === "consumed") yield* acknowledgeDelivery(message, receipt.consumedAt);
+  if (receipt.status === "canceled") {
+    // Withdrawing an occurrence never silently re-injects it or restarts recurrence.
+    yield* updateMessage(message.id, () => undefined);
+  }
+  if (receipt.status === "failed")
+    return yield* new ScheduledMessageError({ operation: "deliver", message: receipt.message });
 });
 
 const reconcile = Effect.fn("ScheduledMessages.reconcile")(function* (
@@ -293,6 +366,16 @@ const reconcile = Effect.fn("ScheduledMessages.reconcile")(function* (
   existingOnly = false,
 ) {
   const messages = yield* ScheduledMessages;
+  const sessionId = candidate.pendingOccurrenceSessionId ?? candidate.targetSessionId;
+  const currentCandidate = () =>
+    messages
+      .snapshot()
+      .messages.find(
+        (item) =>
+          item.id === candidate.id &&
+          item.targetSessionId === candidate.targetSessionId &&
+          item.pendingOccurrenceSessionId === candidate.pendingOccurrenceSessionId,
+      );
   const result = yield* Effect.scoped(
     Effect.gen(function* () {
       // Future legacy schedules may inspect an already assembled queue, but must not open
@@ -300,7 +383,7 @@ const reconcile = Effect.fn("ScheduledMessages.reconcile")(function* (
       // the short cancellation/admission gate so an unavailable target cannot hold it.
       const handle = existingOnly
         ? yield* (yield* CakeSessionRuntimes)
-            .acquireSession(candidate.targetSessionId)
+            .acquireSession(sessionId)
             .pipe(
               Effect.catchTag("PiSessionError", (error) =>
                 error.operation === "acquireSession" &&
@@ -309,12 +392,13 @@ const reconcile = Effect.fn("ScheduledMessages.reconcile")(function* (
                   : Effect.fail(error),
               ),
             )
-        : yield* acquireDeliveryTarget(candidate.targetSessionId);
+        : yield* acquireDeliveryTarget(sessionId);
       if (!handle) return;
-      if (existingOnly) yield* validateTarget(candidate.targetSessionId);
+      if (existingOnly) yield* validateTarget(sessionId);
       yield* messages.withDelivery(
         Effect.gen(function* () {
-          const message = messages.snapshot().messages.find((item) => item.id === candidate.id);
+          // A merge may have changed ownership while target acquisition was in progress.
+          const message = currentCandidate();
           if (!message) return;
           yield* reconcileInput(message, handle);
           const latest = messages.snapshot().messages.find((item) => item.id === message.id);
@@ -329,9 +413,13 @@ const reconcile = Effect.fn("ScheduledMessages.reconcile")(function* (
   ).pipe(Effect.result);
   if (result._tag === "Failure") {
     const error = result.failure instanceof Error ? result.failure.message : String(result.failure);
-    const current = messages.snapshot().messages.find((item) => item.id === candidate.id);
-    if (current && current.deliveryError !== error)
-      yield* updateMessage(candidate.id, (item) => ({ ...item, deliveryError: error }));
+    yield* messages.withDelivery(
+      Effect.gen(function* () {
+        const current = currentCandidate();
+        if (current && current.deliveryError !== error)
+          yield* updateMessage(candidate.id, (item) => ({ ...item, deliveryError: error }));
+      }),
+    );
     return yield* Effect.fail(result.failure);
   }
 });

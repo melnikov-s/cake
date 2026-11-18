@@ -1,16 +1,18 @@
 import { it } from "@effect/vitest";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
-import { Clock, Effect, Fiber, FileSystem, Layer, Queue, Stream } from "effect";
+import { Clock, Deferred, Effect, Fiber, FileSystem, Layer, Queue, Stream } from "effect";
 import { makeScheduledMessageStorageLive } from "../../../src/services/storage/ScheduledMessageStorage";
 import * as TestClock from "effect/testing/TestClock";
 import { afterEach, describe, expect, vi } from "vitest";
 import {
   CAKE_CHAT_SESSION_ID,
   SESSION_ASSISTANT_ID,
+  cakeChatSideChatSessionId,
 } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import * as cakeChatTargets from "../../../src/domain/cake-chats/cakeChatTargets";
+import * as discussionSessions from "../../../src/domain/discussion-sessions/discussionSessions";
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionMetadata from "../../../src/domain/project-sessions/projectSessionMetadata";
 import {
@@ -179,6 +181,7 @@ const fixture = Effect.fn("ScheduledMessagesTest.fixture")(function* (initial = 
     },
     start,
     admitted,
+    handle,
     receipts,
     queue,
     removed,
@@ -195,6 +198,102 @@ const fixture = Effect.fn("ScheduledMessagesTest.fixture")(function* (initial = 
   };
 });
 
+describe("ScheduledMessages Side Chat transfer", () => {
+  const source = cakeChatSideChatSessionId(7);
+  const move = Effect.gen(function* () {
+    const messages = yield* ScheduledMessages;
+    yield* messages.withDelivery(scheduledMessages.transferOwnership(source, CAKE_CHAT_SESSION_ID));
+  });
+
+  it.effect(
+    "checks old receipt scope after reload, preserves cadence, and retries only unadmitted work",
+    () =>
+      Effect.gen(function* () {
+        const recurring = { ...message, targetSessionId: source, pendingOccurrenceId: "consumed" };
+        const waiting = {
+          ...recurring,
+          id: "b4e2a064-09ab-428b-a479-33546d017746",
+          pendingOccurrenceId: "not-admitted",
+        };
+        const completed = {
+          ...recurring,
+          id: "c47760a4-ad81-49e0-bb14-a7d6c021d180",
+          pendingOccurrenceId: "one-shot",
+        };
+        const { repeatEverySeconds: _, ...oneShot } = completed;
+        const failed = {
+          ...recurring,
+          id: "a11cfb4d-166c-4dc0-a1ea-a0cf2af46830",
+          pendingOccurrenceId: "failed",
+        };
+        const f = yield* fixture([recurring, waiting, oneShot, failed]);
+        const oldSubmit = vi.fn(f.handle.submit);
+        const oldReceipt: NonNullable<CakeSessionHandle["scheduledInputReceipt"]> = (id) =>
+          Effect.succeed(
+            id === "not-admitted"
+              ? undefined
+              : id === "failed"
+                ? { status: "failed", message: "Pi could not answer" }
+                : { status: "consumed", consumedAt: 1_000 },
+          );
+        vi.spyOn(discussionSessions, "acquireBySessionId").mockReturnValue(
+          Effect.succeed({ ...f.handle, submit: oldSubmit, scheduledInputReceipt: oldReceipt }),
+        );
+        yield* Effect.gen(function* () {
+          yield* scheduledMessages.initialize();
+          yield* move;
+        }).pipe(Effect.provide(f.layer));
+        yield* Effect.gen(function* () {
+          yield* f.start();
+          yield* TestClock.adjust("1 second");
+          expect(oldSubmit).not.toHaveBeenCalled();
+          expect(f.admitted.map((input) => input.turnId)).toEqual(["not-admitted"]);
+          expect(f.disk()).toEqual([
+            { ...waiting, targetSessionId: CAKE_CHAT_SESSION_ID },
+            {
+              ...failed,
+              targetSessionId: CAKE_CHAT_SESSION_ID,
+              pendingOccurrenceSessionId: source,
+              deliveryError: "Pi could not answer",
+            },
+            { ...message, sendAt: iso(121) },
+          ]);
+          yield* TestClock.adjust("120 seconds");
+          expect(f.admitted).toHaveLength(2);
+          expect(f.admitted[1]?.turnId).not.toBe("consumed");
+          expect(oldSubmit).not.toHaveBeenCalled();
+        }).pipe(Effect.provide(f.layer), Effect.scoped);
+      }),
+  );
+
+  it.effect("discards a due dispatch that acquired the old target across a transfer", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture([{ ...message, targetSessionId: source, sendAt: iso(0) }]);
+      const acquiring = yield* Deferred.make<void>();
+      const acquired = yield* Deferred.make<void>();
+      const oldSubmit = vi.fn(f.handle.submit);
+      vi.spyOn(discussionSessions, "acquireBySessionId").mockReturnValue(
+        Deferred.succeed(acquiring, undefined).pipe(
+          Effect.andThen(Deferred.await(acquired)),
+          Effect.as({ ...f.handle, submit: oldSubmit }),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        yield* f.start();
+        yield* Deferred.await(acquiring);
+        yield* move;
+        yield* Deferred.succeed(acquired, undefined);
+        yield* TestClock.adjust("2 seconds");
+        expect(oldSubmit).not.toHaveBeenCalled();
+        expect(f.openedTargets.length).toBeGreaterThan(0);
+        expect(f.openedTargets.every((id) => id === CAKE_CHAT_SESSION_ID)).toBe(true);
+        expect(f.admitted).toHaveLength(1);
+        expect(f.disk()[0]).toMatchObject({ targetSessionId: CAKE_CHAT_SESSION_ID });
+      }).pipe(Effect.provide(f.layer), Effect.scoped);
+    }),
+  );
+});
+
 describe("ScheduledMessages delivery-relative recurrence", () => {
   it.effect(
     "persists pending occurrence identity, cancellation and failure metadata through real storage reload",
@@ -206,6 +305,7 @@ describe("ScheduledMessages delivery-relative recurrence", () => {
         const pending = {
           ...message,
           pendingOccurrenceId: "occurrence",
+          pendingOccurrenceSessionId: cakeChatSideChatSessionId(7),
           cancelRequested: true,
           deliveryError: "Target unavailable",
         };

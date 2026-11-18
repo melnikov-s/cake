@@ -11,7 +11,7 @@ export const ScheduleRepeatSeconds = Schema.Int.check(
 );
 
 /** Cake-owned intent waiting to become an ordinary Pi user message. The target is a
- * Project Session or a permanent chat (global Cake Chat or a Project Chat). A recurring
+ * Project Session, permanent chat, or native Side Chat. A recurring
  * message keeps its ID and advances `sendAt` after each delivery until cancelled or
  * past `repeatUntil`. */
 export const ScheduledMessage = Schema.Struct({
@@ -22,6 +22,8 @@ export const ScheduledMessage = Schema.Struct({
   createdAt: isoTimestamp,
   /** Persisted before admission; retained until Pi acknowledges consumption. */
   pendingOccurrenceId: Schema.optionalKey(boundedId),
+  /** After a merge, check the old conversation's receipt before any new admission. */
+  pendingOccurrenceSessionId: Schema.optionalKey(boundedId),
   cancelRequested: Schema.optionalKey(Schema.Boolean),
   deliveryError: Schema.optionalKey(Schema.String),
   createdBySessionId: Schema.optionalKey(boundedId),

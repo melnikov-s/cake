@@ -15,7 +15,7 @@ export class ScheduledMessages extends Context.Service<
       ScheduledMessageSnapshot,
       ScheduledMessageStorageError
     >;
-    /** Serializes cancellation with short, nonblocking delivery reconciliation. */
+    /** Serializes delivery admission, cancellation and Side Chat ownership transfer. */
     readonly withDelivery: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
     readonly snapshot: () => ScheduledMessageSnapshot;
     readonly changes: () => Stream.Stream<ScheduledMessageSnapshot>;

@@ -16,6 +16,13 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Logger, Queue, Scope, Stream, Schema } from "effect";
 import { DiscussionTitleRequests } from "../../../src/services/discussion-sessions/DiscussionTitleRequests";
+import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
+import {
+  ScheduledMessageStorage,
+  ScheduledMessageStorageError,
+} from "../../../src/services/storage/ScheduledMessageStorage";
+import type { ScheduledMessage } from "../../../src/contracts/scheduled-messages/scheduled-message-data";
+import * as scheduledMessages from "../../../src/domain/scheduled-messages/scheduledMessages";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { describe, expect } from "vitest";
 import * as discussionSessions from "../../../src/domain/discussion-sessions/discussionSessions";
@@ -124,6 +131,7 @@ const makeLayer = (
     readonly mergeQueued?: "parent" | "source";
     readonly mergeReferences?: readonly string[];
     readonly mergeFailure?: boolean;
+    readonly schedules?: ReadonlyArray<ScheduledMessage>;
     readonly lateImportDialogue?: boolean;
     readonly mergeGate?: { entered: Deferred.Deferred<void>; complete: Deferred.Deferred<void> };
     readonly activityGate?: { entered: Deferred.Deferred<void>; complete: Deferred.Deferred<void> };
@@ -133,6 +141,10 @@ const makeLayer = (
   const forkedEntries: string[] = [];
   const isolatedInputs: unknown[] = [];
   const importedHistories: unknown[] = [];
+  const importedEntries = new Set<string>();
+  let storedSchedules = options.schedules ?? [];
+  let scheduleSaves = 0;
+  let failScheduleSave = false;
   const grantedInputs: unknown[] = [];
   const mergeOptions = options;
   const busyChats = new Set(
@@ -238,7 +250,11 @@ const makeLayer = (
         }
         if (mergeOptions.mergeFailure) throw new Error("Import failed");
         importedHistories.push(history);
-        return { importedMessages: 2 };
+        const newEntries = history.messages.filter(
+          (entry) => !importedEntries.has(entry.sourceEntryId),
+        );
+        for (const entry of newEntries) importedEntries.add(entry.sourceEntryId);
+        return { importedMessages: newEntries.length };
       },
       getReviewParentContext: options.directSessionDir
         ? undefined
@@ -495,6 +511,28 @@ const makeLayer = (
       AgentControlTestLive,
       DiscussionTitleRequests.layer,
       SessionCatalogChanges.layer,
+      ScheduledMessages.layer.pipe(
+        Layer.provide(
+          Layer.succeed(ScheduledMessageStorage, {
+            load: () => Effect.sync(() => storedSchedules),
+            save: (messages) =>
+              Effect.suspend(() => {
+                if (failScheduleSave) {
+                  failScheduleSave = false;
+                  return Effect.fail(
+                    new ScheduledMessageStorageError({
+                      operation: "save",
+                      message: "Disk unavailable",
+                    }),
+                  );
+                }
+                storedSchedules = messages;
+                scheduleSaves += 1;
+                return Effect.void;
+              }),
+          }),
+        ),
+      ),
       Layer.succeed(CakeChatConfiguration, {
         location: { workingDirectory: "/home", sessionDirectory: "/cake/cake-chat" },
         agentDirectory: "/cake",
@@ -596,6 +634,11 @@ const makeLayer = (
     isolatedInputs,
     importedHistories,
     historyMessages,
+    savedSchedules: () => storedSchedules,
+    scheduleSaves: () => scheduleSaves,
+    failNextScheduleSave: () => {
+      failScheduleSave = true;
+    },
     settleChat: (chat: "parent" | "source") => {
       busyChats.delete(chat);
       queuedChats.delete(chat);
@@ -642,25 +685,115 @@ describe("Cake Chat side-chat merge", () => {
     threadId: "thread-1",
   };
 
-  it.effect("imports to the parent without prompting and resolves the preserved source", () => {
-    const fixture = makeLayer({ cakeChat: true, persistedSidecar: true });
-    return Effect.gen(function* () {
-      yield* assembleCakeChat;
-      const result = yield* discussionSessions.merge(target);
-      assert.deepEqual(result, { importedMessages: 2 });
-      assert.deepEqual(fixture.importedHistories, [
-        {
-          sourceSessionId: cakeChatSideChatSessionId(7),
-          inputReferenceIds: [],
-          messages: fixture.historyMessages,
-          threadId: "thread-1",
-          title: "Side chat",
-        },
-      ]);
-      assert.deepEqual(fixture.prompts, []);
-      assert.equal(fixture.record().status, "resolved");
-    }).pipe(Effect.provide(fixture.layer), Effect.scoped);
-  });
+  const source = cakeChatSideChatSessionId(7);
+  const sourceSchedule: ScheduledMessage = {
+    id: "44ee6b4e-e2f5-4103-b0d1-fc1fa91c5b60",
+    targetSessionId: source,
+    createdBySessionId: source,
+    text: "Check the build",
+    sendAt: "2026-02-02T09:00:00.000Z",
+    createdAt: "2026-02-01T09:00:00.000Z",
+    repeatEverySeconds: 600,
+    repeatUntil: "2026-03-01T09:00:00.000Z",
+  };
+
+  it.effect(
+    "merges and resolves a source with no schedules without writing schedule storage",
+    () => {
+      const fixture = makeLayer({ cakeChat: true, persistedSidecar: true });
+      return Effect.gen(function* () {
+        yield* assembleCakeChat;
+        const result = yield* discussionSessions.merge(target);
+        assert.deepEqual(result, { importedMessages: 2 });
+        assert.deepEqual(fixture.importedHistories, [
+          {
+            sourceSessionId: cakeChatSideChatSessionId(7),
+            inputReferenceIds: [],
+            messages: fixture.historyMessages,
+            threadId: "thread-1",
+            title: "Side chat",
+          },
+        ]);
+        assert.deepEqual(fixture.prompts, []);
+        assert.equal(fixture.record().status, "resolved");
+        assert.equal(fixture.scheduleSaves(), 0);
+      }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+    },
+  );
+
+  it.effect(
+    "moves source schedules without replacing destination schedules, even after an import-only retry",
+    () => {
+      const pending: ScheduledMessage = {
+        ...sourceSchedule,
+        id: "7bca8eb0-65a6-4233-8a28-0cdfaf97157a",
+        text: "Check the deployment",
+        pendingOccurrenceId: "awaiting-receipt",
+        cancelRequested: true,
+        deliveryError: "Previous delivery error",
+      };
+      const existing = {
+        ...sourceSchedule,
+        id: "876070c8-58bb-4395-b656-a33eefcd860c",
+        targetSessionId: target.parentSessionId,
+        text: "Already in main chat",
+      };
+      const fixture = makeLayer({
+        cakeChat: true,
+        persistedSidecar: true,
+        schedules: [sourceSchedule, pending, existing],
+      });
+      return Effect.gen(function* () {
+        yield* scheduledMessages.initialize();
+        yield* assembleCakeChat;
+        fixture.failNextScheduleSave();
+        const error = yield* discussionSessions.merge(target).pipe(Effect.flip);
+        assert.match(
+          error.message,
+          /Dialogue was imported, but schedules could not be moved.*Disk unavailable/,
+        );
+        assert.equal(fixture.record().status, "open");
+        assert.deepEqual(fixture.savedSchedules(), [sourceSchedule, pending, existing]);
+        assert.deepEqual(yield* scheduledMessages.list(source), [sourceSchedule, pending]);
+        assert.deepEqual(yield* discussionSessions.merge(target), { importedMessages: 0 });
+        assert.equal(fixture.record().status, "resolved");
+        assert.deepEqual(yield* scheduledMessages.list(source), []);
+        assert.deepEqual(yield* scheduledMessages.list(target.parentSessionId), [
+          { ...sourceSchedule, targetSessionId: target.parentSessionId },
+          {
+            ...pending,
+            targetSessionId: target.parentSessionId,
+            pendingOccurrenceSessionId: source,
+          },
+          existing,
+        ]);
+        yield* discussionSessions.merge(target);
+        assert.equal(fixture.scheduleSaves(), 1);
+        assert.deepEqual(fixture.savedSchedules(), yield* scheduledMessages.list());
+        assert.deepEqual(fixture.prompts, []);
+      }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+    },
+  );
+
+  it.effect(
+    "accepts a schedule addressed to the actual native Side Chat and moves it on merge",
+    () => {
+      const fixture = makeLayer({ cakeChat: true, persistedSidecar: true });
+      return Effect.gen(function* () {
+        yield* scheduledMessages.initialize();
+        yield* assembleCakeChat;
+        const scheduled = yield* scheduledMessages.schedule({
+          targetSessionId: source,
+          text: "Check the build",
+          sendAt: "2099-02-02T09:00:00.000Z",
+        });
+        yield* discussionSessions.merge(target);
+        assert.deepEqual(fixture.savedSchedules(), [
+          { ...scheduled, targetSessionId: target.parentSessionId },
+        ]);
+      }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+    },
+  );
 
   for (const activity of ["parent", "source", "both", "queued-parent", "queued-source"] as const) {
     it.effect(
@@ -672,6 +805,7 @@ describe("Cake Chat side-chat merge", () => {
             cakeChat: true,
             persistedSidecar: true,
             mergeCheck,
+            schedules: [sourceSchedule],
             ...(activity === "queued-parent"
               ? { mergeQueued: "parent" as const }
               : activity === "queued-source"
@@ -679,11 +813,13 @@ describe("Cake Chat side-chat merge", () => {
                 : { mergeBusy: activity }),
           });
           yield* Effect.gen(function* () {
+            yield* scheduledMessages.initialize();
             yield* assembleCakeChat;
             const merging = yield* discussionSessions.merge(target).pipe(Effect.forkChild);
             yield* Deferred.await(mergeCheck);
             assert.deepEqual(fixture.importedHistories, []);
             assert.equal(fixture.record().status, "open");
+            assert.deepEqual(fixture.savedSchedules(), [sourceSchedule]);
             fixture.historyMessages.push({
               ...fixture.historyMessages[1]!,
               sourceEntryId: "late-answer",
@@ -702,6 +838,9 @@ describe("Cake Chat side-chat merge", () => {
             assert.deepEqual(fixture.prompts, []);
             assert.deepEqual(fixture.queueOperations, []);
             assert.equal(fixture.record().status, "resolved");
+            assert.deepEqual(fixture.savedSchedules(), [
+              { ...sourceSchedule, targetSessionId: target.parentSessionId },
+            ]);
           }).pipe(Effect.provide(fixture.layer), Effect.scoped);
         }),
     );
@@ -795,11 +934,19 @@ describe("Cake Chat side-chat merge", () => {
   );
 
   it.effect("surfaces import failures without resolving or prompting", () => {
-    const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeFailure: true });
+    const fixture = makeLayer({
+      cakeChat: true,
+      persistedSidecar: true,
+      mergeFailure: true,
+      schedules: [sourceSchedule],
+    });
     return Effect.gen(function* () {
+      yield* scheduledMessages.initialize();
       yield* assembleCakeChat;
       const error = yield* discussionSessions.merge(target).pipe(Effect.flip);
       assert.match(error.message, /Import failed/);
+      assert.deepEqual(fixture.savedSchedules(), [sourceSchedule]);
+      assert.equal(fixture.scheduleSaves(), 0);
       assert.deepEqual(fixture.importedHistories, []);
       assert.deepEqual(fixture.prompts, []);
       assert.equal(fixture.record().status, "open");

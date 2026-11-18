@@ -292,15 +292,20 @@ and stored in `state/session-families.json`. The document never stores messages,
 assignments, transcript history, or a competing resolved-state list.
 
 Scheduled messages are Cake-owned delivery intents stored in
-`state/scheduled-messages.json`. A target is a Project Session or a permanent chat
-(global Cake Chat or a Project Chat); an agent that omits the target schedules to its
-own conversation. They remain visible and cancellable until their deadline. Once Cake
-submits one through the target's normal prompt or follow-up operation, Pi owns the
-resulting user message and turn. A one-off intent is then removed. A recurring intent
-keeps its ID and advances to the first interval boundary after the delivery,
-skipping boundaries missed while Cake was closed, until it is cancelled or passes
-its optional end time. Scheduled delivery is not user input: it never carries
-passive notices waiting for the user's next message.
+`state/scheduled-messages.json`. A target is a Project Session, a permanent chat, or
+a native Side Chat; an agent that omits the target schedules to its own conversation.
+Cake persists an occurrence ID before admission. Pi owns the resulting input and
+turn. A one-off intent is removed when Pi acknowledges consumption. A recurring
+intent keeps its ID and schedules its next occurrence one interval after consumption,
+until canceled or past its optional end time. Scheduled delivery is not user input:
+it never carries passive notices waiting for the user's next message.
+
+A human Side Chat merge waits for both chats to finish their accepted work. After
+importing the dialogue and before resolving the Side Chat, Cake atomically moves its
+schedule records into the main chat without changing their timing or provenance.
+Any unreconciled occurrence still checks the old chat's Pi receipt before the worker
+can deliver to the new owner. If the schedule write fails, the Side Chat stays open
+and the transcript import can be retried without duplicating dialogue.
 
 ### Primary-session restart recovery
 

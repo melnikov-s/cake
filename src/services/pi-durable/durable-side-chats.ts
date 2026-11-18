@@ -63,6 +63,7 @@ import {
 } from "./durable-message-presentation";
 import { abortDurableActiveTurn, createDurableConversationQueue } from "./durable-chat-queue";
 import { createDurableTurnStop } from "./durable-turn-stop";
+import { scheduledInputReceipt } from "./durable-scheduled-inputs";
 import {
   DURABLE_SIDE_CHAT_NOTE,
   durableInputText,
@@ -310,6 +311,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       agentConfiguration = await harness.snapshot(AgentDoc, conversation.id, BACKGROUND_CONTEXT);
       publish();
     };
+    const canceledScheduledInputs = new Set<string>();
     const runtime: CakeSessionRuntime = {
       sessionId,
       sessionFile: host.sessionFile,
@@ -317,6 +319,18 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         return !turnStop.stopped() && streaming;
       },
       executingTurnIds: () => activeTurnIds,
+      scheduledInputReceipt: (turnId) => scheduledInputReceipt(conversation, turnId),
+      async cancelScheduledInput(turnId) {
+        if ((await scheduledInputReceipt(conversation, turnId))?.status === "consumed") return;
+        canceledScheduledInputs.add(turnId);
+        const submission = await storage.submissionByRequest(
+          conversation.id,
+          turnId,
+          BACKGROUND_CONTEXT,
+        );
+        if (submission)
+          await harness.abortSubmission(submission.id, BACKGROUND_CONTEXT, conversation.id);
+      },
       recordReviewRun() {
         throw new Error("Project review runs do not belong to Cake Chat side chats");
       },
@@ -467,6 +481,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           (await inbox()).length === 0 &&
           (await history()).parts.every((part) => part.originalHistory);
         assertCurrent();
+        if (turnId && canceledScheduledInputs.has(turnId)) throw new TurnCanceledError();
         const submission = await conversation.submit(
           {
             type: "input",
@@ -500,6 +515,8 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           },
           BACKGROUND_CONTEXT,
         );
+        if (turnId && canceledScheduledInputs.has(turnId))
+          await harness.abortSubmission(submission.id, BACKGROUND_CONTEXT, conversation.id);
         const settled = await submission.wait(BACKGROUND_CONTEXT).catch((cause: unknown) => {
           throw new TurnDetachedError(cause instanceof Error ? cause.message : String(cause));
         });

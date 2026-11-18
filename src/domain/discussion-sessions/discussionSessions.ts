@@ -13,6 +13,8 @@ import { cakeChatControlTools } from "../../contracts/application/window-control
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { CAKE_CHAT_TODO_SCOPE } from "../../contracts/projects/project-todos";
 import { completeLinked } from "../projects/projectTodoResolution";
+import { ScheduledMessages } from "../../services/scheduled-messages/ScheduledMessages";
+import { transferOwnership } from "../scheduled-messages/scheduledMessages";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import { Effect, Option, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
@@ -717,6 +719,7 @@ export const merge = Effect.fn("DiscussionSessions.merge")(function* (
   const sourceSessionId = record.sidecarSessionId;
   const parent = yield* sessions.acquireSession(record.parentSessionId).pipe(asError("merge"));
   const { handle: source } = yield* prepare(record);
+  const schedules = yield* ScheduledMessages;
   // Runtime updates already provide a snapshot followed by buffered activity events.
   // Keep this request scoped/cancellable; do not enqueue a prompt or interrupt either turn.
   const attempt = Effect.gen(function* () {
@@ -740,11 +743,32 @@ export const merge = Effect.fn("DiscussionSessions.merge")(function* (
         yield* inputs.grant(record.parentSessionId, grants).pipe(asError("merge"));
       }
     }
-    return yield* parent.importSideChatHistory({
-      ...history,
-      threadId: record.id,
-      title: "Side chat",
-    });
+    return yield* schedules.withDelivery(
+      Effect.gen(function* () {
+        // A scheduled input can be accepted by Cake before reaching Durable's inbox.
+        // Check again under the admission gate; Durable also checks both chats and
+        // the freshness of the export inside the import transaction.
+        if ((yield* parent.currentTurnIds()).length || (yield* source.currentTurnIds()).length)
+          return undefined;
+        const imported = yield* parent.importSideChatHistory({
+          ...history,
+          threadId: record.id,
+          title: "Side chat",
+        });
+        // Import is idempotent by source entry ID. If schedule storage fails, the
+        // source stays open, ownership is unchanged, and even a zero-import retry moves it.
+        yield* transferOwnership(sourceSessionId, record.parentSessionId).pipe(
+          Effect.mapError(
+            (error) =>
+              new DiscussionSessionError({
+                operation: "merge",
+                message: `Dialogue was imported, but schedules could not be moved. Retry the merge. ${error.message}`,
+              }),
+          ),
+        );
+        return imported;
+      }).pipe(Effect.uninterruptible),
+    );
   }).pipe(
     Effect.catch((error) =>
       error instanceof PiSessionError && error.reason === "side-chat-busy"

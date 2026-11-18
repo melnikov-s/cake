@@ -17,6 +17,8 @@ import type { UiPart } from "../../../../src/contracts/conversations/session-con
 import { addReferenceNotifications } from "../../../../src/contracts/conversations/reference-notification";
 import * as pendingReports from "../../../../src/domain/conversations/pendingReports";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createDurableSideChats } from "../../../../src/services/pi-durable/durable-side-chats";
 import {
   createRegistry,
   defineExtension,
@@ -291,6 +293,59 @@ it("acknowledges scheduled input at the generation boundary, not placement or re
   expect(await scheduledInputReceipt(f.engine.root, id)).toEqual(receipt);
   heldStream.push({ type: "done", reason: "stop", message: durableAnswer("Done") });
   await submission.wait(BACKGROUND_CONTEXT);
+});
+
+it("acknowledges a scheduled Side Chat input in the fork before its response finishes", async () => {
+  const f = await fixture();
+  await f.send("Fork from this reply", "anchor");
+  const chats = createDurableSideChats({
+    harness: f.engine.harness,
+    root: f.engine.root,
+    storage: f.storage,
+    sessionFile: "/fixture/chat.sqlite",
+    catalog: { getModel: () => durableModel },
+    settings: SettingsManager.inMemory(),
+    models: () => [],
+    fastMode: () => false,
+  });
+  const side = await chats.open({
+    sessionId: await chats.fork(),
+    cwd: "/fixture",
+    agentDir: "/agent",
+    sessionDir: "/sessions",
+    requestUi: async () => undefined,
+    onEvent: () => {},
+  });
+  const requested = Promise.withResolvers<void>();
+  const heldStream = createAssistantMessageEventStream();
+  vi.mocked(f.models.streamSimple).mockImplementation(() => {
+    requested.resolve();
+    return heldStream;
+  });
+  const text = encodeScheduledMessage("Check the build in the fork", {
+    version: 1,
+    id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+    createdAt: new Date(0).toISOString(),
+    sendAt: new Date(5_000).toISOString(),
+  });
+  const id = "b4e2a064-09ab-428b-a479-33546d017746";
+  const running = side.prompt(text, "steer", [], false, id);
+  try {
+    await Promise.race([
+      requested.promise,
+      running.then(() => {
+        throw new Error("Scheduled input finished without a model request");
+      }),
+    ]);
+    expect(await side.scheduledInputReceipt?.(id)).toMatchObject({
+      status: "consumed",
+      consumedAt: expect.any(Number),
+    });
+    expect(await scheduledInputReceipt(f.engine.root, id)).toBeUndefined();
+  } finally {
+    heldStream.push({ type: "done", reason: "stop", message: durableAnswer("Done") });
+    await running.finally(() => side.dispose());
+  }
 });
 
 it("retains the exact scheduled consumption receipt and submission identity across SQLite reopen", async () => {

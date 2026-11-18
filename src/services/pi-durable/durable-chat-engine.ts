@@ -265,10 +265,11 @@ export async function openDurableChatEngine(options: {
             ? await harness.conversation(target.conversationId as ConversationId, context)
             : undefined;
           const provider = fork ? await harness.snapshot(ProviderDoc, fork.id, context) : undefined;
+          const verifiedFork = provider?.sessionId === streamOptions.sessionId ? fork : undefined;
           const project =
-            fork && provider?.sessionId === streamOptions.sessionId && options.todos
+            verifiedFork && options.todos
               ? await prepareTaskAttribution({
-                  conversation: fork,
+                  conversation: verifiedFork,
                   harness,
                   storage: options.storage,
                   signal,
@@ -276,6 +277,7 @@ export async function openDurableChatEngine(options: {
                   linkResponses: options.todoResponses !== undefined,
                 })
               : undefined;
+          if (verifiedFork) await acknowledgeScheduledInputs(verifiedFork, options.storage, now());
           preparing = false;
           const source = options.models.streamSimple(
             model,
