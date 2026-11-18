@@ -568,6 +568,51 @@ describe("Saved Draft workflows", () => {
     expect(input()).toBeDefined();
   });
 
+  it("discovers skills when reopening a saved draft and keeps the selection through activation", async () => {
+    const drafts = fakeSavedDrafts();
+    drafts.records.set(sessionId, savedDraft());
+    const start = vi.fn<Client["projectSessions"]["start"]>();
+    const activate = vi.fn(drafts.client.activate);
+    const loadStagedSlashCommands = vi.fn<Client["workspaces"]["loadStagedSlashCommands"]>(
+      async () => [
+        {
+          name: "skill:review",
+          description: "Review changes",
+          source: "skill",
+          sourceInfo: {
+            path: "/project/.agents/skills/review/SKILL.md",
+            source: "Project",
+            scope: "project",
+            origin: "top-level",
+          },
+        },
+      ],
+    );
+    using fixture = await renderDrafts(drafts, {
+      savedDrafts: { activate },
+      projectSessions: { start },
+      workspaces: { loadStagedSlashCommands },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Edit latest prompt" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Skills" }));
+    await fixture.user.click(await screen.findByRole("option", { name: /review changes/i }));
+    expect(input()).toHaveProperty("value", "/skill:review Implement the plan");
+    await fixture.user.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() =>
+      expect(drafts.records.get(sessionId)?.text).toBe("/skill:review Implement the plan"),
+    );
+    expect(activate).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Activate draft" }));
+    await waitFor(() => expect(drafts.records.get(sessionId)?.status).toBe("activated"));
+    expect(activate).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ sessionId, expectedRevision: 2 }),
+      expect.anything(),
+    );
+    expect(loadStagedSlashCommands).toHaveBeenCalledWith(projectPath, expect.anything());
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it("edits a saved prompt as Markdown source, renders it, and activates the saved revision without losing source", async () => {
     const drafts = fakeSavedDrafts();
     drafts.records.set(sessionId, savedDraft());

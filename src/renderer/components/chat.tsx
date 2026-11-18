@@ -2,6 +2,7 @@ import { WidgetSlotLayout } from "./widget-slot-layout";
 import type { ComposerInputElement } from "../lib/composer-input-element";
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
+import { ChatSkillPicker } from "./chat-skill-picker";
 import { flushSync } from "react-dom";
 import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
@@ -210,6 +211,7 @@ export const Chat = observer(function Chat({
   const composerVisible = store.composerVisible;
   const composerConfiguration = store.modelPickerVisible ? store.configuration : undefined;
   const activatingDraft = store.isDraftSession && !store.editingMessage;
+  const stagedCommands = composerVisible && !activatingDraft ? store.stagedCommands : undefined;
   useComposerEnterContinuation(
     store,
     composerVisible && !activatingDraft && composerFocusEnabled,
@@ -380,6 +382,9 @@ export const Chat = observer(function Chat({
           toolbarLeading={
             !activatingDraft && (
               <>
+                {stagedCommands && (
+                  <ChatSkillPicker key={store.id} store={store} commands={stagedCommands} />
+                )}
                 {store.conversationMode && (
                   <ChatConversationControls
                     conversation={store.conversationMode.workflow}

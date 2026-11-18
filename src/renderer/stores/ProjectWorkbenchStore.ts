@@ -18,6 +18,7 @@ import { CommandPaneStore } from "./CommandPaneStore";
 import { SessionManagementContext } from "./context/SessionManagementContext";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
+import { ProjectSessionCreationContext } from "./context/ProjectSessionCreationContext";
 import { SessionContinuationStore } from "./SessionContinuationStore";
 import { ProjectOpenStore, type ProjectOpenResult } from "./ProjectOpenStore";
 import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";
@@ -461,7 +462,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     session.conversationSessionStore.composerStore.draftStore.requestFocus();
-    void session.stagedCommandStore.load(path);
+    void ProjectSessionCreationContext.consume(this)!.loadStagedCommands(sessionId);
   }
 
   openSession(sessionId: string) {
@@ -729,6 +730,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     session.conversationSessionStore.composerStore.draftStore.requestFocus();
+    void ProjectSessionCreationContext.consume(this)!.loadStagedCommands(sessionId);
     return true;
   }
 
@@ -739,7 +741,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       // In particular it must not dismiss Settings opened while inspection ran.
       const session = result.sessionId && this.sessionRegistry.findSession(result.sessionId);
       if (!session || result.sessionId !== this.activeSessionId) return;
-      if (result.kind === "new-session") await session.stagedCommandStore.load(result.path);
+      if (result.kind === "new-session")
+        await ProjectSessionCreationContext.consume(this)!.loadStagedCommands(session.sessionId);
       else await this.openSessionTarget(session.sessionId, true, true);
       if (
         this.props.canRestorePresentation() &&

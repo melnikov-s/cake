@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { observer } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -136,14 +136,14 @@ async function renderStaged(load: Client["workspaces"]["loadStagedSlashCommands"
         }),
       );
     },
-    async materialize() {
+    async materialize(workspacePath = "/worktree") {
       await act(async () => {
         started.resolve(TurnId.make("10000000-0000-4000-8000-000000000001"));
         await started.promise;
       });
       act(() =>
         applyConversationUpdate(
-          fixture.models.projectConversation(session.sessionId, "/worktree"),
+          fixture.models.projectConversation(session.sessionId, workspacePath),
           {
             _tag: "Snapshot",
             revision: 1,
@@ -188,6 +188,67 @@ function command(name: string) {
 afterEach(cleanup);
 
 describe("Staged session command workflow", () => {
+  it("completes a staged skill with Enter without starting a runtime, then sends it with the first prompt", async () => {
+    using staged = await renderStaged(async () => [skill("review")]);
+    const input = screen.getByRole("combobox", { name: "Message" });
+    await staged.user.type(input, "/skill:rev");
+    expect(await screen.findByRole("option", { name: /review skill/ })).toBeDefined();
+    await staged.user.keyboard("{Enter}");
+
+    expect(input).toHaveProperty("value", "/skill:review ");
+    expect(staged.fixture.root.projectSessionObservationTargets).toEqual([]);
+    expect(staged.start).not.toHaveBeenCalled();
+    await staged.user.type(input, "Review the plan{Enter}");
+    await waitFor(() =>
+      expect(staged.start).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          sessionId: staged.session.sessionId,
+          text: "/skill:review Review the plan",
+          workingDirectory: "/project",
+        }),
+        expect.anything(),
+      ),
+    );
+    await staged.materialize("/project");
+    expect(screen.queryByRole("button", { name: "Skills" })).toBeNull();
+  });
+
+  it("shows loading and retry in the skill picker, then adds a skill without replacing the prompt", async () => {
+    const first = deferred<Commands>();
+    const load = vi
+      .fn<Client["workspaces"]["loadStagedSlashCommands"]>()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce([skill("review")]);
+    using staged = await renderStaged(load);
+    const input = screen.getByRole("combobox", { name: "Message" });
+    await staged.user.type(input, "My task");
+    await staged.user.click(screen.getByRole("button", { name: "Skills" }));
+    const picker = screen.getByRole("dialog", { name: "Choose a skill" });
+    expect(within(picker).getByText("Loading skills")).toBeDefined();
+    await act(async () => first.reject(new Error("Preview unavailable")));
+    expect(within(picker).getByText(/Could not load skills: Preview unavailable/)).toBeDefined();
+    await staged.user.click(within(picker).getByRole("button", { name: "Retry" }));
+    await staged.user.click(await within(picker).findByRole("option", { name: /review/ }));
+    expect(input).toHaveProperty("value", "/skill:review My task");
+    expect(staged.start).not.toHaveBeenCalled();
+  });
+
+  it("keeps the draft when the prepared checkout does not have the selected skill", async () => {
+    using staged = await renderStaged(async (path) =>
+      path === "/project" ? [skill("review")] : [skill("worktree")],
+    );
+    const input = screen.getByRole("combobox", { name: "Message" });
+    await staged.user.type(input, "/skill:review Review the plan");
+    await staged.user.click(screen.getByRole("button", { name: "New worktree" }));
+    await staged.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(
+      await screen.findByText("/skill:review is not available in the selected working directory."),
+    ).toBeDefined();
+    expect(input).toHaveProperty("value", "/skill:review Review the plan");
+    expect(staged.start).not.toHaveBeenCalled();
+    expect(staged.fixture.root.projectSessionObservationTargets).toEqual([]);
+  });
+
   it("rejects /sidechat before a conversation exists without starting a session", async () => {
     using staged = await renderStaged(async () => []);
     await staged.user.type(screen.getByRole("combobox", { name: "Message" }), "/sidechat");

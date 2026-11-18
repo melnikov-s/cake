@@ -421,7 +421,9 @@ export function SlashCommandCombobox({
       event.keyCode !== 229
     ) {
       event.preventDefault();
-      executeCommand(filteredCommands[selectedIndex]!);
+      const command = filteredCommands[selectedIndex]!;
+      if (command.source === "skill") chooseCommand(command);
+      else executeCommand(command);
     } else if (
       menuKind === "commands" &&
       (event.key === "ArrowLeft" ||

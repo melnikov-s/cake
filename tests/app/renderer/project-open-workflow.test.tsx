@@ -191,17 +191,37 @@ describe("Project opening workflow", () => {
       defaultApplicationState(),
     );
     const start = vi.fn<Client["projectSessions"]["start"]>();
+    const loadStagedSlashCommands = vi.fn<Client["workspaces"]["loadStagedSlashCommands"]>(
+      async () => [
+        {
+          name: "skill:personal",
+          source: "skill",
+          sourceInfo: {
+            scope: "user",
+            origin: "top-level",
+            source: "User",
+            path: "/home/user/.agents/skills/personal/SKILL.md",
+          },
+        },
+      ],
+    );
     using fixture = renderProjectOpen({
       application: { getHomeDirectory },
       projectSessions: { start },
       workspaces: {
         inspect: async (request) => ({ ...request }),
+        loadStagedSlashCommands,
         registerProject,
       },
     });
     // The former landing-page button is gone; exercise the retained explicit navigation operation.
     await act(() => fixture.root.navigationStore.startOneOffChat());
-    expect(await screen.findByPlaceholderText("Ask Cake to work in user…")).toBeDefined();
+    const composer = await screen.findByPlaceholderText("Ask Cake to work in user…");
+    await fixture.user.type(composer, "/skill:per");
+    await fixture.user.keyboard("{Enter}");
+    expect(composer).toHaveProperty("value", "/skill:personal ");
+    expect(loadStagedSlashCommands).toHaveBeenCalledWith("/home/user", expect.anything());
+    expect(fixture.root.projectSessionObservationTargets).toEqual([]);
     expect(registerProject).toHaveBeenCalledWith(
       "/home/user",
       "user",
@@ -212,6 +232,46 @@ describe("Project opening workflow", () => {
     );
     expect(start).not.toHaveBeenCalled();
   });
+  it("does not show a late skill catalog from a different draft and workspace", async () => {
+    type Commands = Awaited<ReturnType<Client["workspaces"]["loadStagedSlashCommands"]>>;
+    function catalog(name: string): Commands {
+      return [
+        {
+          name: `skill:${name}`,
+          source: "skill",
+          sourceInfo: {
+            scope: "project",
+            origin: "top-level",
+            source: name,
+            path: `/${name}/SKILL.md`,
+          },
+        },
+      ];
+    }
+    const first = deferred<Commands>();
+    using fixture = renderProjectOpen(
+      {
+        workspaces: {
+          loadStagedSlashCommands: (path) =>
+            path === "/alpha" ? first.promise : Promise.resolve(catalog("beta")),
+        },
+      },
+      [
+        projectRecord({ path: "/alpha", name: "Alpha" }),
+        projectRecord({ path: "/beta", name: "Beta" }),
+      ],
+    );
+    await createSessionInProject(fixture.user, /^Alpha/i);
+    expect(await screen.findByPlaceholderText("Ask Cake to work in Alpha…")).toBeDefined();
+    await createSessionInProject(fixture.user, /^Beta/i);
+    const input = await screen.findByPlaceholderText("Ask Cake to work in Beta…");
+    await fixture.user.type(input, "/skill:");
+    expect(await screen.findByRole("option", { name: /skill:beta/ })).toBeDefined();
+    await act(async () => first.resolve(catalog("alpha")));
+    expect(screen.getByRole("option", { name: /skill:beta/ })).toBeDefined();
+    expect(screen.queryByRole("option", { name: /skill:alpha/ })).toBeNull();
+  });
+
   it("opens the picker first, then a prefilled dialog and adds with one click without a model call", async () => {
     const registerProject = vi.fn<Client["workspaces"]["registerProject"]>(async () =>
       defaultApplicationState(),

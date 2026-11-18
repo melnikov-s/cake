@@ -185,8 +185,10 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
   }
 
   async activateDraftSession(choice?: WorktreeDraftChoice): Promise<boolean> {
-    if (this.props.activateSavedDraftSession && this.pendingSessionDraftStore.prompt)
+    if (this.props.activateSavedDraftSession && this.pendingSessionDraftStore.prompt) {
+      this.clearError();
       return this.props.activateSavedDraftSession(choice);
+    }
     const staged = this.pendingSessionDraftStore.takeForActivation(choice);
     if (!staged) return false;
     this.draftStore.restore(staged.text, staged.attachments);

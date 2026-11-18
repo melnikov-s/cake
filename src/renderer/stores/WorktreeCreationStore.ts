@@ -17,6 +17,7 @@ export interface WorktreeCreationStoreProps {
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
   relocateTemporarySession(sessionId: string, workspacePath: string): void;
+  onSelectionChanged?(sessionId: string): void;
   reportError(error: unknown): void;
 }
 
@@ -44,6 +45,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
   select(sessionId: string, choice: WorktreeDraftChoice) {
     if (this.isPreparing(sessionId)) return;
     this.choicesBySession[sessionId] = choice;
+    this.props.onSelectionChanged?.(sessionId);
   }
 
   clear(sessionId: string) {

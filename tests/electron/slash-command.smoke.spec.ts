@@ -12,7 +12,7 @@ import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("selects and runs slash commands from the composer with the keyboard", async () => {
+test("selects a skill before the first turn and runs slash commands from the composer", async ({}, testInfo) => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-slash-command-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -133,6 +133,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
 
   try {
     const page = await application.firstWindow();
+    await createSessionInProject(page, /^project(?: |$)/i);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     expect(await installLocalModelHttpGuard(application, origin)).toEqual({
@@ -189,15 +190,21 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await composer.press("Enter");
     await expect(page.getByRole("complementary", { name: "Session tree" })).toBeVisible();
 
-    await createSessionInProject(page, /^project(?: |$)/i);
-    await composer.fill("/skill:desktop");
-    await expect(
-      page.getByRole("option", { name: /skill:desktop-fixture Desktop fixture skill/ }),
-    ).toBeVisible();
-    await composer.press("ArrowRight");
+    await page.getByRole("button", { name: "Close Session tree" }).click();
+    await page.getByRole("button", { name: "Skills", exact: true }).click();
+    const skillPicker = page.getByRole("dialog", { name: "Choose a skill" });
+    const firstSkill = skillPicker.getByRole("option", {
+      name: /desktop-fixture Desktop fixture skill/,
+    });
+    await expect(firstSkill).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("skills-before-first-message.png") });
+    await firstSkill.click();
     await expect(composer).toHaveValue("/skill:desktop-fixture ");
+    await expect(composer).toBeFocused();
+    expect(requests).toHaveLength(0);
+    await composer.pressSequentially("Review the fixture before answering");
     await composer.press("Enter");
-    await expect(page.locator(".session-item.active")).toHaveCount(1, { timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Skills", exact: true })).toHaveCount(0);
     await expect(composer).toHaveValue("");
 
     // Tool Prune must send the continuation through ordinary attachment admission,
@@ -207,6 +214,13 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         .getByLabel("Conversation", { exact: true })
         .getByText("Fixture response.", { exact: true }),
     ).toBeVisible();
+    expect(requests).toHaveLength(1);
+    const firstUserMessages = requests[0]!.messages.filter((message) => message.role === "user");
+    expect(firstUserMessages).toHaveLength(1);
+    const firstContent = JSON.stringify(firstUserMessages[0]!.content);
+    expect(firstContent).toContain('<skill name=\\"desktop-fixture\\"');
+    expect(firstContent).toContain("Fixture.");
+    expect(firstContent).toContain("Review the fixture before answering");
     await composer.click();
     await expect(composer).toBeFocused();
     const log = "ATTACHED_LOG\n" + "log details\n".repeat(50);

@@ -8,6 +8,7 @@ export const ProjectSessionCreationContext =
       ProjectSessionCreationStore,
       | "start"
       | "request"
+      | "loadStagedCommands"
       | "activateSavedDraft"
       | "configureDraftActivation"
       | "choice"

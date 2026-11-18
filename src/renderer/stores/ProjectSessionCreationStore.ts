@@ -13,6 +13,10 @@ import { ProjectSessionNavigationContext } from "./context/ProjectSessionNavigat
 import { ProjectOpenContext } from "./context/ProjectOpenContext";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 
+function firstSkillCommand(text: string) {
+  return /^\s*\/(skill:[^\s]+)/.exec(text)?.[1];
+}
+
 export interface CreatePromptedProjectSessionInput {
   purpose?: SessionPurpose;
   todoId?: string;
@@ -69,6 +73,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
         if (ProjectSessionNavigationContext.consume(this)!.activeSessionId === sessionId)
           ProjectOpenContext.consume(this)!.activate(workspacePath);
       },
+      onSelectionChanged: (sessionId) => void this.loadStagedCommands(sessionId),
       reportError: this.props.reportError,
     });
   }
@@ -203,6 +208,23 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     return this.worktrees.candidates(projectPath);
   }
 
+  loadStagedCommands(sessionId: string) {
+    const session = this.registry.findSession(sessionId);
+    if (!session || !this.pending.isTemporary(sessionId)) return;
+    const choice = this.choice(sessionId);
+    const candidate =
+      choice.kind === "reuse"
+        ? choice.worktreePath
+        : choice.kind === "new"
+          ? choice.baseWorktreePath
+          : undefined;
+    const path =
+      candidate && this.candidates(sessionId).some((record) => record.worktreePath === candidate)
+        ? candidate
+        : session.workspacePath;
+    return session.stagedCommandStore.load(path);
+  }
+
   private async prepare(sessionId: string, firstUserMessage: string) {
     const session = this.registry.findSession(sessionId);
     if (!session || !this.pending.isTemporary(sessionId)) return true;
@@ -215,6 +237,15 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     );
   }
 
+  private async validateFirstSkill(sessionId: string, path: string, command: string) {
+    const session = this.registry.findSession(sessionId);
+    if (!session) return false;
+    await session.stagedCommandStore.load(path);
+    if (session.signal.aborted || !this.pending.isTemporary(sessionId)) return false;
+    session.stagedCommandStore.requireSkill(path, command);
+    return true;
+  }
+
   async activateSavedDraft(sessionId: string, choice?: WorktreeDraftChoice) {
     const saved = this.pending.savedRecord(sessionId);
     if (saved?.status !== "saved") return false;
@@ -223,6 +254,17 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     if (!(await this.prepare(sessionId, saved.text)) || this.signal.aborted) return false;
     const prepared = this.request(sessionId);
     if (!prepared) return false;
+    const skill = firstSkillCommand(saved.text);
+    if (skill) {
+      try {
+        if (!(await this.validateFirstSkill(sessionId, prepared.path, skill))) return false;
+      } catch (error) {
+        this.registry
+          .findSession(sessionId)
+          ?.conversationSessionStore.composerStore.reportError(error);
+        return false;
+      }
+    }
     const activated = await this.client.savedDrafts.activate(
       {
         sessionId,
@@ -297,10 +339,17 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
         ...(prepared.name !== undefined ? { name: prepared.name } : null),
         ...(labelIds.length > 0 ? { labelIds } : null),
       };
+      const skill = firstSkillCommand(input.text);
+      if (skill && !(await this.validateFirstSkill(sessionId, prepared.path, skill))) {
+        namingController.abort();
+        this.pending.cancelSubmission(sessionId);
+        return false;
+      }
       // Pi extension commands can complete without ever writing a transcript.
       // Attach the scoped observation first, rather than relying on the turn's
       // temporary lease to survive the start RPC / renderer promotion handoff.
-      if (input.text.startsWith("/")) {
+      // A skill is prompt input; start acquires Pi and sends it in the same operation.
+      if (input.text.startsWith("/") && !skill) {
         this.registry.observationRetention.materialize(sessionId);
         const runtimeReady = await this.waitForRuntime(sessionId);
         if (this.signal.aborted) {

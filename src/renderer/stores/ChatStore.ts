@@ -1,5 +1,6 @@
 import { DraftMoveContext } from "./context/DraftMoveContext";
 import type { ComposerDraftStore } from "./ComposerDraftStore";
+import type { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import type { CaptureDestination } from "../../contracts/desktop/screen-capture-data";
 import { CaptureDestinationPickerStore } from "./CaptureDestinationPickerStore";
 import { SessionReferenceContext } from "./context/SessionReferenceContext";
@@ -89,6 +90,7 @@ export interface ChatStoreProps {
   stoppable?(): boolean;
   configuration(): ChatConfigurationStore | undefined;
   commands(): ConversationSnapshot["commands"];
+  stagedCommands?(): StagedSessionCommandStore | undefined;
   placeholder(): string;
   inputLabel(): string;
   composerDraft?(): ComposerDraftStore;
@@ -397,6 +399,12 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   get commands() {
     return this.props.commands();
+  }
+  requestDraftFocus() {
+    this.props.composerDraft?.().requestFocus({ explicit: true });
+  }
+  get stagedCommands() {
+    return this.props.stagedCommands?.();
   }
   get placeholder() {
     return this.props.placeholder();
