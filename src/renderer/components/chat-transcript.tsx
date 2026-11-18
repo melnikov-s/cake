@@ -82,7 +82,7 @@ function revealMargin(list: LegendListRef, key: string) {
 // LegendList paint containment would clip the heading’s existing narrow-pane
 // outdent and keyboard rings. Relax it only for header containers; isolate their z-order.
 const scrollerClassName =
-  "transcript isolate @container/transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none] [&_:has(>[data-slot=task-section-header])]:[contain:layout_style]!";
+  "transcript isolate @container/transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [overflow-anchor:none] [&_:has(>[data-slot=task-section-header])]:[contain:layout_style]!";
 
 type TranscriptRow = TranscriptPresentationRow<TranscriptItem>;
 
