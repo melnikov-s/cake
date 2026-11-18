@@ -165,6 +165,8 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
                     userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"
                   }
                   aria-pressed={userMessageRendersAsMarkdown}
+                  pressedAppearance="subtle"
+                  className="[&>svg]:size-2.75"
                   disabled={behavior.store.transcriptInteraction.updatingUserMessagePresentation.has(
                     part.entryId,
                   )}

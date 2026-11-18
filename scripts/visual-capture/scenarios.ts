@@ -360,6 +360,80 @@ const assistantMarkdownCode: VisualCaptureScenario = {
   },
 };
 
+const userMessageMarkdown: VisualCaptureScenario = {
+  name: "user-message-markdown",
+  description: "Inline Markdown toggle on a user message",
+  states: ["inactive", "active", "focus"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    // The saved session's model must resolve to start its runtime for formatting edits.
+    // The fixture never submits a prompt; this provider points only to loopback.
+    await writeFile(
+      join(paths.cakeHome, "pi", "models.json"),
+      JSON.stringify({
+        providers: {
+          anthropic: {
+            baseUrl: "http://127.0.0.1:9",
+            apiKey: "fixture-only",
+            api: "anthropic-messages",
+            models: [
+              {
+                id: "visual-fixture",
+                name: "Visual fixture",
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 4096,
+                maxTokens: 1024,
+              },
+            ],
+          },
+        },
+      }),
+    );
+  },
+  async prepare(page, state) {
+    await openSeededSession(
+      page,
+      "visual-capture-project",
+      "How should agents capture Cake UI changes?",
+    );
+    const toggle = page.getByRole("button", { name: "Render as Markdown", exact: true });
+    const message = page
+      .getByRole("button", { name: "Copy message", exact: true })
+      .locator("xpath=ancestor::article");
+    const toolbar = message.locator('[data-slot="message-action-toolbar"]');
+    await message.scrollIntoViewIfNeeded();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    if (state === "focus") {
+      await page.mouse.move(1, 1);
+      await message.getByRole("button", { name: "Continue from message in session tree" }).focus();
+      // Plain Tab is Cake's composer shortcut; Shift+Tab traverses controls.
+      await page.keyboard.press("Shift+Tab");
+      await expect(toggle).toBeFocused();
+      await expect(toggle).toHaveCSS("outline-style", "solid");
+      await expect(toggle).toHaveCSS("outline-width", "2px");
+    } else {
+      await message.hover();
+      if (state === "active") {
+        const inactiveColor = await toggle.evaluate((button) => getComputedStyle(button).color);
+        await toggle.click();
+        await message.hover();
+        const active = message.getByRole("button", { name: "Render as plain text", exact: true });
+        await expect(active).toBeEnabled();
+        await expect(active).toHaveAttribute("aria-pressed", "true");
+        await expect(active).not.toHaveCSS("color", inactiveColor);
+        await expect(active).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      }
+    }
+    await expect(toolbar).toHaveCSS("opacity", "1");
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region: (page) =>
+    page.locator('[data-slot="transcript-item"]').filter({
+      has: page.getByRole("button", { name: "Copy message", exact: true }),
+    }),
+};
+
 const sideChatActions: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "side-chat-actions",
@@ -9857,6 +9931,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   widgetTabsScenario,
   widgetSpeechScenario,
   assistantMarkdownCode,
+  userMessageMarkdown,
   assistantDiagrams,
   assistantMarkdownTable,
   contextPillsScenario,
