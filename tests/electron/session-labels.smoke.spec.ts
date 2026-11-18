@@ -9,7 +9,7 @@ import { openProjectSettings, showSessions } from "./fixtures/workspace-navigati
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("customizes labels and assigns multiple labels from the Sessions avatar", async () => {
+test("session label icons show assigned names without changing picker or row navigation", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-session-labels-"));
   const userData = join(temporaryRoot, "user-data");
@@ -133,8 +133,8 @@ test("customizes labels and assigns multiple labels from the Sessions avatar", a
       .getByRole("button", { name: "Open Project Chat for Label project", exact: true })
       .locator('[data-slot="avatar"]');
     await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
-    await expect(projectIcon).toHaveCSS("width", "20px");
-    await expect(projectIcon).toHaveCSS("height", "20px");
+    await expect(projectIcon).toHaveCSS("width", "32.5px");
+    await expect(projectIcon).toHaveCSS("height", "32.5px");
     const projectImageSource = await projectIcon.locator("img").getAttribute("src");
     expect(projectImageSource).toBeTruthy();
     await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -158,14 +158,28 @@ test("customizes labels and assigns multiple labels from the Sessions avatar", a
       name: "Change session labels. Current labels: In review, Project QA",
     });
     await expect(selectedPicker).toBeVisible();
+    const tooltip = page.getByRole("tooltip");
+    await selectedPicker.hover();
+    await expect(tooltip).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(selectedPicker).toBeFocused();
     // Closing disables the content immediately, then removes the visual shell.
     await expect(page.getByRole("group", { name: "Session labels" })).toHaveCount(0);
     await expect(page.locator('[role="dialog"][data-state="closed"]')).toHaveCount(0);
-    await selectedPicker.click();
-    await page.keyboard.press("Escape");
-    await selectedPicker.click();
+    const selectSession = sessionItem.locator(".session-row > button");
+    await selectSession.hover();
+    await selectedPicker.hover();
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toHaveText("In review, Project QA");
+    await selectSession.hover();
+    await expect(tooltip).toHaveCount(0);
+    await selectSession.focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(selectedPicker).toBeFocused();
+    await expect(tooltip).toHaveText("In review, Project QA");
+    await page.keyboard.press("Enter");
+    await expect(popup).toBeVisible();
+    await expect(tooltip).toHaveCount(0);
     await expect(page.getByRole("checkbox", { name: "In review" })).toHaveAttribute(
       "aria-checked",
       "true",
@@ -201,6 +215,8 @@ test("customizes labels and assigns multiple labels from the Sessions avatar", a
     await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
     await expect(projectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
     await expect(selectedPicker.locator('[data-slot="session-character"]')).toBeVisible();
+    await selectedPicker.hover();
+    await expect(tooltip).toHaveText("In review, Project QA");
     await selectedPicker.click();
     await expect(page.getByRole("checkbox", { name: "In review" })).toHaveAttribute(
       "aria-checked",
@@ -219,13 +235,47 @@ test("customizes labels and assigns multiple labels from the Sessions avatar", a
     await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
     await expect(projectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
 
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: /^Session labels/ }).click();
+    await page.getByRole("button", { name: "Edit In review", exact: true }).click();
+    await page.getByLabel("In review label name").fill("Ready for review");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(page.getByText("Ready for review", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to chat" }).click();
+
+    const renamedLabels = "Ready for review, Project QA";
+    await sessionItem
+      .getByRole("button", {
+        name: `Change session labels. Current labels: ${renamedLabels}`,
+      })
+      .hover();
+    await expect(tooltip).toHaveText(renamedLabels);
+
+    await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+    const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
+    const searchInput = search.getByRole("combobox", { name: "Search session titles" });
+    await searchInput.fill("Categorize");
+    await search.getByRole("img", { name: `Labels: ${renamedLabels}` }).hover();
+    await expect(tooltip).toHaveText(renamedLabels);
+    await expect(searchInput).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(search).toBeHidden();
+    await expect(tooltip).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    await page.getByRole("switch", { name: "Session avatars", exact: true }).click();
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await sessionItem.getByRole("img", { name: `Labels: ${renamedLabels}` }).hover();
+    await expect(tooltip).toHaveText(renamedLabels);
+
     await expect
       .poll(async () => {
         const stored = JSON.parse(await readFile(applicationDocument, "utf8"));
         const state = stored.data ?? stored;
         const workflow = state.projects[0].workflow;
         const status = state.globalSessionLabels.find(
-          (candidate: { name: string }) => candidate.name === "In review",
+          (candidate: { name: string }) => candidate.name === "Ready for review",
         );
         const hasProjectStatus = workflow.labels.some(
           (candidate: { name: string }) => candidate.name === "Project QA",

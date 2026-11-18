@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MouseEventHandler, type ReactNode } from "react";
+import { useEffect, useRef, type MouseEvent, type MouseEventHandler, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { ProjectIcon, SessionLabel } from "../../../contracts/application/application-data";
 import type { WorktreeCatalogEntry } from "../../../contracts/worktrees/managed-worktree-data";
@@ -8,7 +8,7 @@ import { SessionPurposeIndicator } from "./session-purpose-indicator";
 import type { SessionPurpose } from "../../../contracts/project-sessions/session-purpose";
 import { SessionActivityIndicator } from "../session-activity-indicator";
 import { WorktreeStatusIcon } from "../worktree-status-icon";
-import { Avatar } from "./avatar";
+import { Avatar, type AvatarProps } from "./avatar";
 import { AvatarLabelPicker } from "./avatar-label-picker";
 import { Badge } from "./badge";
 import { DepthRails } from "./depth-rails";
@@ -18,6 +18,7 @@ import { LabelSwatch } from "./label-swatch";
 import { associationHighlightClassName, NavItem, type NavItemProps } from "./nav-item";
 import { SessionActivityTime } from "./session-activity-time";
 import { ContributionStatsText } from "./contribution-stats";
+import { TooltipBubble, useTooltip } from "./tooltip";
 
 export interface SessionListItemProps {
   session: {
@@ -75,6 +76,56 @@ export interface SessionListItemProps {
   onSetLabels?(sessionId: string, labelIds: readonly string[]): void;
   onResolve?(sessionId: string, resolved: boolean): void;
   onContextMenu?: MouseEventHandler<HTMLDivElement>;
+}
+
+/** Read-only avatar or compact swatch; hover adds no tab stop to the row. */
+function SessionLabelIndicator({
+  avatar,
+  labels,
+  resolved,
+  isFamilyParent,
+}: {
+  avatar?: Pick<AvatarProps, "seed" | "variant" | "interaction">;
+  labels: readonly SessionLabel[];
+  resolved: boolean;
+  isFamilyParent: boolean;
+}) {
+  const primary = labels[0];
+  const names = labels.map((label) => label.name).join(", ");
+  const tooltip = avatar && resolved ? undefined : names || undefined;
+  const fallback = resolved ? "Resolved session" : "No labels";
+  const { anchor, show, hide } = useTooltip(Boolean(tooltip));
+  const indicatorProps = {
+    role: "img",
+    "aria-label": tooltip ? `Labels: ${tooltip}` : fallback,
+    onMouseEnter: (event: MouseEvent<HTMLSpanElement>) => show(event.currentTarget),
+    onMouseLeave: hide,
+  };
+
+  return (
+    <>
+      {avatar ? (
+        <Avatar
+          {...avatar}
+          {...indicatorProps}
+          kind="session"
+          className="col-start-2 row-start-1"
+          resolved={resolved}
+          labelColors={labels.map((label) => label.color)}
+          title={tooltip ? undefined : fallback}
+        />
+      ) : (
+        primary && (
+          <LabelSwatch
+            {...indicatorProps}
+            color={primary.color}
+            className={isFamilyParent ? "absolute -left-2" : undefined}
+          />
+        )
+      )}
+      {tooltip && anchor && <TooltipBubble label={tooltip} anchor={anchor} wrap />}
+    </>
+  );
 }
 
 /** Authoritative session-row presentation, shared by navigation and destination pickers. */
@@ -211,49 +262,27 @@ export const SessionListItem = observer(function SessionListItem({
               <ChevronIcon />
             </IconButton>
           )}
-          {avatarsEnabled ? (
-            canSetLabels ? (
-              <AvatarLabelPicker
-                variant={avatarVariant}
-                interaction={avatarInteraction}
-                seed={avatarSeed}
-                labels={availableLabels}
-                value={labelIds}
-                className="col-start-2 row-start-1 size-6"
-                onChange={(next) => onSetLabels?.(session.sessionId, next)}
-              />
-            ) : (
-              <Avatar
-                variant={avatarVariant}
-                interaction={avatarInteraction}
-                kind="session"
-                className="col-start-2 row-start-1"
-                resolved={resolved}
-                seed={avatarSeed}
-                labelColors={labels.map((label) => label.color)}
-                title={
-                  resolved
-                    ? "Resolved session"
-                    : labels.map((label) => label.name).join(", ") || "No labels"
-                }
-                role="img"
-                aria-label={
-                  resolved
-                    ? "Resolved session"
-                    : labels.length
-                      ? `Labels: ${labels.map((label) => label.name).join(", ")}`
-                      : "No labels"
-                }
-              />
-            )
+          {avatarsEnabled && canSetLabels ? (
+            <AvatarLabelPicker
+              variant={avatarVariant}
+              interaction={avatarInteraction}
+              seed={avatarSeed}
+              labels={availableLabels}
+              value={labelIds}
+              className="col-start-2 row-start-1 size-6"
+              onChange={(next) => onSetLabels?.(session.sessionId, next)}
+            />
           ) : (
-            labels[0] && (
-              <LabelSwatch
-                color={labels[0].color}
-                className={isFamilyParent ? "absolute -left-2" : undefined}
-                title={labels.map((label) => label.name).join(", ")}
-                role="img"
-                aria-label={`Labels: ${labels.map((label) => label.name).join(", ")}`}
+            (avatarsEnabled || labels.length > 0) && (
+              <SessionLabelIndicator
+                avatar={
+                  avatarsEnabled
+                    ? { seed: avatarSeed, variant: avatarVariant, interaction: avatarInteraction }
+                    : undefined
+                }
+                labels={labels}
+                resolved={resolved}
+                isFamilyParent={isFamilyParent}
               />
             )
           )}

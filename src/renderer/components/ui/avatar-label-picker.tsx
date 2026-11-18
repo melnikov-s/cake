@@ -35,7 +35,7 @@ export function AvatarLabelPicker({
     const label = byId.get(labelId);
     return label ? [label] : [];
   });
-  const names = selected.map((label) => label.name).join(", ") || "Unlabelled";
+  const names = selected.map((label) => label.name).join(", ");
   const toggle = (labelId: string) =>
     onChange(
       value.includes(labelId)
@@ -49,7 +49,9 @@ export function AvatarLabelPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverIconTrigger
         className={cn("size-7 rounded-md p-0 hover:bg-muted", className)}
-        ariaLabel={`Change session labels. Current labels: ${names}`}
+        ariaLabel={`Change session labels. Current labels: ${names || "Unlabelled"}`}
+        tooltip={open ? undefined : names || undefined}
+        wrapTooltip
         disabled={disabled}
       >
         <Avatar

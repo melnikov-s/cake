@@ -36,7 +36,10 @@ import {
   seedMessageBoardFixture,
   MESSAGE_BOARD_FIXTURE_ID,
 } from "../../tests/fixtures/message-board.ts";
-import { defaultApplicationState } from "../../src/contracts/application/application-data.ts";
+import {
+  defaultApplicationState,
+  defaultProjectWorkflow,
+} from "../../src/contracts/application/application-data.ts";
 import {
   CAKE_CHAT_SESSION_ID,
   cakeChatSideChatSessionId,
@@ -2854,6 +2857,51 @@ const appearanceSettingsScenario: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region: cakePromptsSettingsScenario.region,
+};
+
+const sessionLabelTooltipScenario: VisualCaptureScenario = {
+  name: "session-label-tooltip",
+  description: "Assigned label name on hover in the Sessions workspace",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const document = JSON.parse(await readFile(file, "utf8")) as {
+      version: number;
+      data: ReturnType<typeof defaultApplicationState>;
+    };
+    const feature = document.data.globalSessionLabels.find((label) => label.name === "Feature")!;
+    const projects = document.data.projects.map((project) => ({
+      ...project,
+      workflow: {
+        ...defaultProjectWorkflow(),
+        assignments: [{ sessionId: "visual-assistant-markdown-code", labelIds: [feature.id] }],
+      },
+    }));
+    await writeFile(file, JSON.stringify({ ...document, data: { ...document.data, projects } }));
+  },
+  async prepare(page) {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page
+      .getByRole("button", {
+        name: "Open Project Chat for visual-capture-project",
+        exact: true,
+      })
+      .click();
+    await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+    if (!(await workspace.isVisible())) {
+      await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
+    }
+    await workspace.getByRole("button", { name: /^Sessions / }).click();
+    const session = workspace.locator('[data-session-id="visual-assistant-markdown-code"]');
+    const trigger = session.getByRole("button", { name: /Current labels: Feature$/ });
+    await trigger.hover();
+    const tooltip = page.getByRole("tooltip");
+    await expect(tooltip).toHaveText("Feature");
+    await expect(tooltip).toBeVisible();
+  },
+  region: (page) => page.getByRole("complementary", { name: "Workspace", exact: true }),
 };
 
 const importedColorThemeScenario: VisualCaptureScenario = {
@@ -9702,6 +9750,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   localMcpSettingsScenario,
   mcpSettingsLayoutScenario,
   appearanceSettingsScenario,
+  sessionLabelTooltipScenario,
   modelsSettingsScenario,
   workLogControlsScenario,
   importedColorThemeScenario,
