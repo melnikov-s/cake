@@ -18,12 +18,7 @@ export const ToastHost = observer(function ToastHost({
   return (
     <div className="fixed right-4 top-[60px] z-50 flex max-w-sm flex-col gap-2" aria-live="polite">
       {store.toasts.map((toast) => (
-        <ToastItem
-          key={toast.id}
-          toast={toast}
-          onAction={() => store.runAction(toast.id)}
-          onDismiss={() => store.dismiss(toast.id)}
-        />
+        <ToastItem key={toast.id} toast={toast} store={store} />
       ))}
       {children}
     </div>

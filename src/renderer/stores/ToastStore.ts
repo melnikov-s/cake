@@ -1,4 +1,5 @@
 import { Store, observable } from "r-state-tree";
+import { TOAST_TIMEOUT_MS, ToastExpiry } from "./toast-expiry";
 
 export interface Toast {
   id: string;
@@ -11,7 +12,6 @@ export interface Toast {
 }
 
 export interface ToastInput {
-  autoDismiss?: boolean;
   tone?: Toast["tone"];
   title: string;
   message: string;
@@ -21,22 +21,20 @@ export interface ToastInput {
 }
 
 const MAX_TOASTS = 4;
-const TOAST_TIMEOUT_MS = 8_000;
+const ACTIONABLE_TOAST_TIMEOUT_MS = 20_000;
 
 /** Owns transient app-level toast notifications shown in the window corner. */
 export class ToastStore extends Store {
   toasts: Toast[] = observable([]);
-  private timers = observable(new Map<string, ReturnType<typeof setTimeout>>());
+  private readonly expiry = new ToastExpiry();
 
   constructor(props: Record<string, never>) {
     super(props);
-    this.effect(() => () => {
-      for (const timer of this.timers.values()) clearTimeout(timer);
-      this.timers.clear();
-    });
+    this.effect(() => () => this.expiry.clear());
   }
 
   show(toast: ToastInput) {
+    if (this.signal.aborted) return;
     const existing = toast.coalesceKey
       ? this.toasts.find((item) => item.coalesceKey === toast.coalesceKey)
       : undefined;
@@ -53,17 +51,15 @@ export class ToastStore extends Store {
     if (existing) this.toasts.splice(this.toasts.indexOf(existing), 1, next);
     else this.toasts.push(next);
     if (this.toasts.length > MAX_TOASTS) this.dismiss(this.toasts[0]!.id);
-    const previousTimer = this.timers.get(id);
-    if (previousTimer) clearTimeout(previousTimer);
-    this.timers.delete(id);
-    if (toast.autoDismiss === false) return;
-    this.timers.set(
+    this.expiry.start(
       id,
-      setTimeout(() => {
-        this.timers.delete(id);
-        this.dismiss(id);
-      }, TOAST_TIMEOUT_MS),
+      next.action || next.details ? ACTIONABLE_TOAST_TIMEOUT_MS : TOAST_TIMEOUT_MS,
+      () => this.dismiss(id),
     );
+  }
+
+  setToastPaused(id: string, paused: boolean) {
+    this.expiry.setPaused(id, paused);
   }
 
   runAction(id: string) {
@@ -73,11 +69,7 @@ export class ToastStore extends Store {
   }
 
   dismiss(id: string) {
-    const timer = this.timers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      this.timers.delete(id);
-    }
+    this.expiry.remove(id);
     const index = this.toasts.findIndex((item) => item.id === id);
     if (index >= 0) this.toasts.splice(index, 1);
   }

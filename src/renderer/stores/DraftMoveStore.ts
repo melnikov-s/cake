@@ -298,7 +298,6 @@ export class DraftMoveStore extends Store<{
           ? "Destination saved. Source cleanup could not be saved; a copy may remain after reload."
           : "Open in the destination for review. Nothing was sent.",
         tone: cleanupFailed ? "warning" : "info",
-        autoDismiss: false,
         action: {
           label: "Undo",
           run: async () => {

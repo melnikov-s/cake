@@ -475,7 +475,6 @@ export class NavigationStore extends Store<{
       title,
       message: described.message,
       details: described.details,
-      autoDismiss: false,
       coalesceKey: "chat-open",
       action: {
         label: "Retry",

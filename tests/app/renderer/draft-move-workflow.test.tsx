@@ -63,7 +63,10 @@ const savedDraft: SavedDraft = {
   configuration: { provider: "openai", modelId: "gpt-5", thinkingLevel: "high", fastMode: false },
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function deferred() {
   let resolve!: () => void;
@@ -263,6 +266,23 @@ describe.each([false, true])("move draft (embedded=%s)", (embedded) => {
     expect(fixture.snapshots).toHaveLength(4);
     expect(fixture.prompt).not.toHaveBeenCalled();
   });
+});
+
+it("expires the move's Undo toast without reverting or sending the saved draft", async () => {
+  vi.useFakeTimers();
+  using fixture = setup();
+  await act(() =>
+    fixture.root.draftMoveStore.move(sourceId, fixture.source.composerStore.draftStore, {
+      kind: "project-session",
+      sessionId: destinationId,
+    }),
+  );
+  expect(screen.getByRole("button", { name: "Undo" })).toBeDefined();
+  act(() => vi.advanceTimersByTime(20_000));
+  expect(screen.queryByText("Draft moved")).toBeNull();
+  expect(fixture.input("Source").value).toBe("");
+  expect(fixture.input("Destination").value).toContain("Move me");
+  expect(fixture.prompt).not.toHaveBeenCalled();
 });
 
 it("uses a persisted composer snapshot without replacing newer in-memory destination edits", async () => {

@@ -5,6 +5,7 @@ import { ClientContext } from "./context/ClientContext";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";
 import { describeError } from "../lib/error-details";
+import { TOAST_TIMEOUT_MS, ToastExpiry } from "./toast-expiry";
 
 export interface UiRequestState {
   operationId: string;
@@ -44,8 +45,14 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
 
   request: UiRequestState | undefined;
   readonly notifications: ExtensionNotification[] = observable([]);
+  private readonly notificationExpiry = new ToastExpiry();
   error: string | undefined;
   errorDetails: string | undefined;
+
+  constructor(props: ExtensionUiStore["props"]) {
+    super(props);
+    this.effect(() => () => this.notificationExpiry.clear());
+  }
 
   get title() {
     return this.props.activeSessionModel()?.extensionUi.title;
@@ -96,17 +103,24 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     });
   }
 
+  setToastPaused(id: string, paused: boolean) {
+    this.notificationExpiry.setPaused(id, paused);
+  }
+
   dismissNotification(id: string) {
+    this.notificationExpiry.remove(id);
     const index = this.notifications.findIndex((notification) => notification.id === id);
     if (index >= 0) this.notifications.splice(index, 1);
   }
 
   clear() {
     this.request = undefined;
+    this.notificationExpiry.clear();
     this.notifications.splice(0);
   }
 
   receive(event: StoreEvent) {
+    if (this.signal.aborted) return;
     if (event.type === "extension-ui-intent") {
       if (event.sessionId !== this.props.sessionContext()?.sessionId) return;
       const intent = event.intent;
@@ -114,8 +128,10 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
         const index = this.notifications.findIndex((notification) => notification.id === intent.id);
         if (index >= 0) this.notifications.splice(index, 1);
         this.notifications.push(intent);
-        if (this.notifications.length > 8)
-          this.notifications.splice(0, this.notifications.length - 8);
+        if (this.notifications.length > 8) this.dismissNotification(this.notifications[0]!.id);
+        this.notificationExpiry.start(intent.id, TOAST_TIMEOUT_MS, () =>
+          this.dismissNotification(intent.id),
+        );
         return;
       }
       this.props.setDraft(

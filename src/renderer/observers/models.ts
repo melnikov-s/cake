@@ -850,7 +850,6 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
     root.toastStore.show({
       tone: "error",
       title: "Updates stopped",
-      autoDismiss: false,
       message: error instanceof Error ? error.message : String(error),
       details: observationFailureDetails(key, error),
       coalesceKey: `observation:${key}`,

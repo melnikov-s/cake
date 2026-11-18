@@ -19,7 +19,9 @@ function renderExtensionUi(respondToUi: Client["artifacts"]["respondToUi"], with
   const fixture = createRendererStoreFixture({
     projects: withSession ? [projectRecord({ path: "/project", name: "Project" })] : [],
     sessions: withSession
-      ? [sessionSummary({ sessionId: "session-1", projectPath: "/project" })]
+      ? ["session-1", "session-2"].map((sessionId) =>
+          sessionSummary({ sessionId, projectPath: "/project" }),
+        )
       : [],
     client: {
       projectSessions: { open: async () => undefined },
@@ -68,6 +70,12 @@ function renderExtensionUi(respondToUi: Client["artifacts"]["respondToUi"], with
   return {
     user: userEvent.setup(),
     publish,
+    navigateToSession(sessionId: string) {
+      act(() => {
+        fixture.root.sessionRegistry.load(sessionId, "/project");
+        fixture.root.navigationStore.showLoadedProjectSession(sessionId);
+      });
+    },
     request(overrides: Partial<UiRequest> = {}) {
       return publish({
         type: "ui-request",
@@ -105,6 +113,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
   vi.unstubAllGlobals();
 });
@@ -227,5 +236,40 @@ describe("Extension UI workflow", () => {
     });
     await fixture.user.click(screen.getByRole("button", { name: "Extension Connected" }));
     expect(screen.queryByText("Connected")).toBeNull();
+  });
+
+  it("expires extension notices, restarts matching notices, and clears them on session navigation", async () => {
+    using fixture = renderExtensionUi(async () => undefined, true);
+    vi.useFakeTimers();
+    const notify = (message: string, sessionId = "session-1") =>
+      fixture.publish({
+        type: "extension-ui-intent",
+        sessionId,
+        intent: { kind: "notify", id: "notice", message, tone: "error" },
+      });
+    await notify("Old message");
+    act(() => vi.advanceTimersByTime(4_000));
+    await notify("Replacement");
+    expect(screen.queryByText("Old message")).toBeNull();
+    act(() => vi.advanceTimersByTime(7_999));
+    const notice = screen.getByRole("button", { name: "Extension Replacement" });
+    act(() => notice.focus());
+    act(() => vi.advanceTimersByTime(8_000));
+    expect(document.activeElement).toBe(notice);
+    act(() => notice.blur());
+    act(() => vi.advanceTimersByTime(8_000));
+    expect(screen.queryByText("Replacement")).toBeNull();
+
+    await notify("Cleared by navigation");
+    act(() => vi.advanceTimersByTime(4_000));
+    fixture.navigateToSession("session-2");
+    expect(screen.queryByText("Cleared by navigation")).toBeNull();
+    await notify("Wrong session");
+    expect(screen.queryByText("Wrong session")).toBeNull();
+    await notify("Same ID in the new session", "session-2");
+    act(() => vi.advanceTimersByTime(4_000));
+    expect(screen.getByText("Same ID in the new session")).toBeDefined();
+    act(() => vi.advanceTimersByTime(4_000));
+    expect(screen.queryByText("Same ID in the new session")).toBeNull();
   });
 });

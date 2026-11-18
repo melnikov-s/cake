@@ -5,21 +5,16 @@ import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { IconButton } from "./ui/icon-button";
 import { CloseIcon } from "./ui/icons";
 import { CopyErrorDetailsButton } from "./copy-error-details-button";
-import type { Toast } from "../stores/ToastStore";
+import type { Toast, ToastStore } from "../stores/ToastStore";
+import { useToastInteraction } from "../hooks/use-toast-interaction";
 
-export function ToastItem({
-  toast,
-  onAction,
-  onDismiss,
-}: {
-  toast: Toast;
-  onAction(): void;
-  onDismiss(): void;
-}) {
+export function ToastItem({ toast, store }: { toast: Toast; store: ToastStore }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const interaction = useToastInteraction(store, toast.id);
 
   return (
     <Callout
+      {...interaction}
       variant={toast.tone === "error" ? "error" : toast.tone === "warning" ? "warning" : "default"}
       className="relative bg-popover text-popover-foreground shadow-lg motion-safe:animate-toast-enter"
       role={toast.tone === "error" ? "alert" : "status"}
@@ -29,7 +24,7 @@ export function ToastItem({
           className="h-auto w-full flex-col items-start gap-1 whitespace-normal p-0 pr-7 text-left font-normal text-foreground"
           variant="ghost"
           aria-label={toast.action.label}
-          onClick={onAction}
+          onClick={() => store.runAction(toast.id)}
         >
           <strong>{toast.title}</strong>
           <span className="text-muted-foreground">{toast.message}</span>
@@ -44,7 +39,7 @@ export function ToastItem({
       <IconButton
         className="absolute right-1.5 top-1.5 size-7"
         tooltip="Dismiss notification"
-        onClick={onDismiss}
+        onClick={() => store.dismiss(toast.id)}
       >
         <CloseIcon size={15} />
       </IconButton>

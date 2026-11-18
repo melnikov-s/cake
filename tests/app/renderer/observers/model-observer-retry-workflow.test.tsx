@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Stream } from "effect";
 import { afterEach, expect, it, vi } from "vitest";
@@ -11,9 +11,12 @@ import { createRendererStoreFixture } from "../renderer-store-fixture";
 import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
 import { observerClient, observerRuntime } from "./observer-test-runtime";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
-it("offers an actionable retry when a Discussion observation is no longer available", async () => {
+it.each(["retry", "expire"])("can %s a stopped observation toast", async (mode) => {
   const observe = vi
     .fn<CakeIpcClientService["discussionSessions"]["observe"]>()
     .mockReturnValueOnce(
@@ -88,10 +91,26 @@ it("offers an actionable retry when a Discussion observation is no longer availa
   try {
     await waitFor(() => expect(parent.props.discussionCatalog.threads).toHaveLength(1));
     expect(observe).not.toHaveBeenCalled();
-    parent.openSideChat("thread-1");
-    expect(await screen.findByText("Updates stopped")).toBeDefined();
+    if (mode === "expire") vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await act(async () => {
+      parent.openSideChat("thread-1");
+      await vi.waitFor(() =>
+        expect(fixture.root.toastStore.toasts[0]?.title).toBe("Updates stopped"),
+      );
+    });
+    expect(screen.getByText("Updates stopped")).toBeDefined();
     expect(screen.getByText("That session is no longer available")).toBeDefined();
     expect(observe).toHaveBeenCalledOnce();
+    if (mode === "expire") {
+      act(() => vi.advanceTimersByTime(20_000));
+      expect(screen.queryByText("Updates stopped")).toBeNull();
+      expect(observe).toHaveBeenCalledOnce();
+      // The failed open still has status and Retry on its owning pane.
+      const pending = parent.conversationSessionStore.sideChatStore.target?.pending;
+      expect(pending?.message()).toContain("That session is no longer available");
+      expect(pending?.retry).toBeDefined();
+      return;
+    }
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(observe).toHaveBeenCalledTimes(2));
     expect(observe).toHaveBeenLastCalledWith({

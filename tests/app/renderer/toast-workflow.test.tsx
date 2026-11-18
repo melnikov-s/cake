@@ -1,11 +1,14 @@
 /**
  * @vitest-environment jsdom
  */
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastHost } from "../../../src/renderer/components/toast-host";
-import type { ToastInput } from "../../../src/renderer/stores/ToastStore";
+import { applyCakeChatLookup } from "../../../src/renderer/reducers/CatalogReducer";
+import { fixtureTimestamp, projectRecord } from "./fixtures/catalog-fixtures";
+import { ToastStore, type ToastInput } from "../../../src/renderer/stores/ToastStore";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 function renderToasts(initial: readonly ToastInput[] = []) {
@@ -60,32 +63,86 @@ describe("Toast workflow", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("keeps a persistent error until dismissed and allows a later matching error", async () => {
+  it("pauses for pointer or keyboard focus and gives the toast a fresh reading interval after both leave", () => {
     vi.useFakeTimers();
     using fixture = renderToasts([
       {
         tone: "error",
         title: "Updates stopped",
         message: "Updates for this view stopped.",
-        autoDismiss: false,
+        details: "Stream disconnected",
+        action: { label: "Retry", run: vi.fn() },
         coalesceKey: "observation:catalog",
       },
     ]);
-    act(() => vi.advanceTimersByTime(60_000));
-    expect(screen.getByRole("alert").textContent).toContain("Updates stopped");
-    vi.useRealTimers();
+    const toast = screen.getByRole("alert");
+    const details = screen.getByRole("button", { name: "Technical details" });
+    act(() => vi.advanceTimersByTime(19_999));
+    fireEvent.pointerOver(toast);
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(screen.getByRole("alert")).toBe(toast);
 
-    await fixture.user.click(screen.getByRole("button", { name: "Dismiss notification" }));
-    expect(screen.queryByRole("alert")).toBeNull();
+    act(() => details.focus());
+    fireEvent.click(details);
+    fireEvent.pointerOut(toast, { relatedTarget: document.body });
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(screen.getByText("Stream disconnected")).toBeDefined();
+    expect(document.activeElement).toBe(details);
 
+    // Coalescing in place must preserve focus and the pause.
     fixture.deliver({
       tone: "error",
       title: "Updates stopped",
       message: "A later failure",
-      autoDismiss: false,
+      details: "Still disconnected",
       coalesceKey: "observation:catalog",
     });
-    expect(screen.getByRole("alert").textContent).toContain("A later failure");
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(screen.getByText("Still disconnected")).toBeDefined();
+    expect(document.activeElement).toBe(details);
+    act(() => details.blur());
+    act(() => vi.advanceTimersByTime(19_999));
+    expect(screen.getByRole("alert")).toBe(toast);
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("expires a failed chat-open toast and can still Retry a later failure before expiry", async () => {
+    vi.useFakeTimers();
+    const projectPath = "/project";
+    const sessionId = `project-chat:${"a".repeat(64)}`;
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: projectPath })],
+    });
+    const { root } = fixture;
+    const view = render(<ToastHost store={root.toastStore} />);
+    using _view = { [Symbol.dispose]: () => view.unmount() };
+
+    const open = () => act(() => root.navigationStore.openProjectChat(projectPath));
+    await open();
+    expect(screen.getByText("Could not open Project Chat")).toBeDefined();
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(screen.queryByText("Could not open Project Chat")).toBeNull();
+
+    await open();
+    act(() => {
+      applyCakeChatLookup(fixture.models.cakeChatCatalog, {
+        sessionId,
+        projectPath,
+        title: "Project Chat",
+        createdAt: fixtureTimestamp,
+        modifiedAt: fixtureTimestamp,
+        messageCount: 0,
+        unstarted: true,
+        resolved: false,
+        unread: false,
+        running: false,
+      });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await act(() => vi.advanceTimersByTimeAsync(100));
+    expect(root.appShellStore.activeConversation?.sessionId).toBe(sessionId);
+    expect(screen.queryByText("Could not open Project Chat")).toBeNull();
   });
 
   it("reveals technical details on request and copies the full diagnostic text", async () => {
@@ -101,7 +158,6 @@ describe("Toast workflow", () => {
         title: "Updates stopped",
         message: "Updates for this view stopped. Retry to reconnect.",
         details,
-        autoDismiss: false,
       },
     ]);
     expect(screen.queryByText(/Session IDs: session-1/)).toBeNull();
@@ -112,6 +168,27 @@ describe("Toast workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Copy full error details" }));
     expect(screen.getByRole("button", { name: "Copied full error details" })).toBeDefined();
     expect(await navigator.clipboard.readText()).toBe(details);
+  });
+
+  it("clears timers on manual dismissal, replacement, overflow, and Store disposal", () => {
+    vi.useFakeTimers();
+    const store = mount(createStore(ToastStore, {}));
+    try {
+      const view = render(<ToastHost store={store} />);
+      using _view = { [Symbol.dispose]: () => view.unmount() };
+      act(() => store.show({ title: "Build", message: "First", coalesceKey: "build" }));
+      act(() => store.show({ title: "Build", message: "Replacement", coalesceKey: "build" }));
+      expect(vi.getTimerCount()).toBe(1);
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss notification" }));
+      expect(vi.getTimerCount()).toBe(0);
+      act(() => {
+        for (let i = 0; i < 5; i++) store.show({ title: "Build", message: String(i) });
+      });
+      expect(vi.getTimerCount()).toBe(4);
+    } finally {
+      store[Symbol.dispose]();
+    }
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("limits the visible stack to the four most recent notifications", () => {
