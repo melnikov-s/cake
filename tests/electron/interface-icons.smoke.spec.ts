@@ -15,8 +15,6 @@ for (const [scenario, state, width, theme] of [
   ["interface-icons", "terminal", 760, "dark"],
   ["interface-icons", "actions", 1280, "light"],
   ["interface-icons", "actions", 1280, "dark"],
-  ["interface-icons-auto-merge", "default", 1280, "light"],
-  ["interface-icons-auto-merge", "default", 1280, "dark"],
 ] as const) {
   test(`${scenario} ${state} at ${width}px in ${theme}`, async () => {
     test.setTimeout(90_000);

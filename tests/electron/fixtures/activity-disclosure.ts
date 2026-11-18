@@ -7,21 +7,7 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   const form = dock.locator("form");
   const collapsedInput = (await form.boundingBox())!;
   await expect(activity).toHaveAttribute("aria-expanded", "false");
-  const autoMerge = dock.getByRole("switch", { name: /^Auto-merge:/ });
-  if (await autoMerge.count()) {
-    await expect(autoMerge).toBeVisible();
-    await expect(autoMerge).toHaveAttribute("aria-checked", "false");
-    await autoMerge.focus();
-    await autoMerge.press("Shift+Tab");
-    await expect(activity).toBeFocused();
-    await autoMerge.focus();
-    await expect(autoMerge).toBeFocused();
-    await autoMerge.press("Space");
-    await expect(autoMerge).toHaveAttribute("aria-checked", "true");
-    await expect(activity).toHaveAttribute("aria-expanded", "false");
-    await autoMerge.press("Enter");
-    await expect(autoMerge).toHaveAttribute("aria-checked", "false");
-  }
+  await expect(dock.getByRole("switch", { name: /^Auto-merge:/ })).toHaveCount(0);
   await activity.click();
   await expect(activity).toHaveAttribute("aria-expanded", "true");
   await expect(details).toHaveAttribute("id", (await activity.getAttribute("aria-controls"))!);
@@ -34,23 +20,12 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   expect(expanded.height).toBeLessThanOrEqual(168);
   expect(expanded.y).toBeGreaterThan(0);
 
-  await expect(details.getByRole("switch")).toHaveCount(0);
-  if (await autoMerge.count()) {
-    await autoMerge.click();
-    await expect(autoMerge).toHaveAttribute("aria-checked", "true");
-    await expect(details).toBeVisible();
-    await autoMerge.click();
-    await expect(autoMerge).toHaveAttribute("aria-checked", "false");
-  }
+  await expect(dock.getByRole("switch", { name: /^Auto-merge:/ })).toHaveCount(0);
   const firstItem = details
     .getByRole("button", { name: /^(Open session|Inspect subagent):/ })
     .first();
   await firstItem.focus();
   await firstItem.press("Shift+Tab");
-  if (await autoMerge.count()) {
-    await expect(autoMerge).toBeFocused();
-    await autoMerge.press("Shift+Tab");
-  }
   await expect(activity).toBeFocused();
   await composer.click();
   await expect(composer).toBeFocused();

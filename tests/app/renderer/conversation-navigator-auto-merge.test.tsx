@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { AutoMergeToggle } from "../../../src/renderer/components/auto-merge-toggle";
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
 import { fixtureTimestamp, projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -19,7 +19,7 @@ const sessions = ["/project", "/other"].flatMap((projectPath) =>
 afterEach(cleanup);
 
 it.each([false, true])(
-  "omits header Auto-merge controls without changing project authorization or collapse behavior (global=%s)",
+  "puts Auto-merge on project headers independently of disclosure and navigation (global=%s)",
   async (global) => {
     const setAutoMerge = vi.fn(async (projectPath: string, enabled: boolean) => {
       act(() =>
@@ -58,57 +58,68 @@ it.each([false, true])(
         ],
       }),
     );
-    const surface = () => (
+    const view = render(
       <StoreProvider store={fixture.root}>
         <ConversationNavigator projectPath={global ? undefined : "/project"} />
-        <section aria-label="Existing control">
-          <AutoMergeToggle projectPath="/project" />
-        </section>
-      </StoreProvider>
+      </StoreProvider>,
     );
-    const view = render(surface());
     const user = userEvent.setup();
-    const groups = screen.getAllByRole("region", { name: "Delegated" });
-    expect(groups).toHaveLength(global ? 2 : 1);
     const navigator = within(screen.getByRole("region", { name: "Sessions" }));
-    expect(navigator.queryByRole("switch")).toBeNull();
-    expect(navigator.queryByText("Auto-merge", { exact: true })).toBeNull();
-    const delegated = groups.find((group) => within(group).queryByText("/project-delegated"))!;
-    const group = within(delegated);
-    const collapse = group.getByRole("button", { name: "Delegated" });
-    const existing = within(screen.getByRole("region", { name: "Existing control" }));
-    expect(existing.getByRole("switch", { name: "Auto-merge: on" })).toBeTruthy();
+    const row = (sessionId: string) =>
+      within(
+        navigator
+          .getByRole("button", { name: sessionId })
+          .closest<HTMLElement>('[data-slot="conversation-navigator-row"]')!,
+      );
+    const project = row("project");
+    const other = global ? row("other") : undefined;
+    const toggle = project.getByRole("switch");
+    const collapse = project.getByRole("button", { name: "Collapse project" });
+    expect(navigator.getAllByRole("switch")).toHaveLength(global ? 2 : 1);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(other?.getByRole("switch").getAttribute("aria-checked")).toBe(
+      global ? "false" : undefined,
+    );
+    expect(toggle.parentElement?.closest("button, [role=button]")).toBeNull();
     expect(setAutoMerge).not.toHaveBeenCalled();
+
+    await user.click(project.getByText("Auto-merge", { exact: true }));
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("false"));
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    expect(navigator.getByText("/project-delegated")).toBeTruthy();
 
     await user.click(collapse);
     expect(collapse.getAttribute("aria-expanded")).toBe("false");
-    expect(group.queryByText("/project-delegated")).toBeNull();
-    expect(setAutoMerge).not.toHaveBeenCalled();
-    await user.click(existing.getByRole("switch", { name: "Auto-merge: on" }));
-    await waitFor(() =>
-      expect(existing.getByRole("switch", { name: "Auto-merge: off" })).toBeTruthy(),
-    );
+    expect(navigator.queryByText("/project-delegated")).toBeNull();
+    const title = project.getByRole("button", { name: "project" });
+    title.focus();
+    await user.tab();
+    expect(document.activeElement).toBe(toggle);
+    await user.keyboard(" ");
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
     expect(collapse.getAttribute("aria-expanded")).toBe("false");
-    await user.click(collapse);
-    expect(collapse.getAttribute("aria-expanded")).toBe("true");
-    expect(group.getByText("/project-delegated")).toBeTruthy();
-    await user.click(existing.getByText("Auto-merge", { exact: true }));
-    await waitFor(() =>
-      expect(existing.getByRole("switch", { name: "Auto-merge: on" })).toBeTruthy(),
+    expect(other?.getByRole("switch").getAttribute("aria-checked")).toBe(
+      global ? "false" : undefined,
     );
     expect(setAutoMerge.mock.calls).toEqual([
       ["/project", false],
       ["/project", true],
     ]);
-    expect(fixture.root.autoMergeStore.forProject("/other")?.enabled).toBe(false);
-    expect(navigator.queryByRole("switch")).toBeNull();
-    view.unmount();
-    const remounted = render(surface());
-    expect(
-      within(screen.getByRole("region", { name: "Sessions" })).queryByRole("switch"),
-    ).toBeNull();
-    expect(screen.getByRole("switch", { name: "Auto-merge: on" })).toBeTruthy();
+    act(() =>
+      applySnapshot(fixture.models.projects, {
+        projects: [
+          projectRecord({
+            path: "/project",
+            settings: { ...defaultProjectSettings(), worktreeLanding: "pull-request" },
+          }),
+          projectRecord({ path: "/other" }),
+        ],
+      }),
+    );
+    expect(project.queryByRole("switch")).toBeNull();
+    expect(collapse.getAttribute("aria-expanded")).toBe("false");
+    expect(fixture.root.autoMergeStore.forProject("/project")?.enabled).toBe(true);
     expect(setAutoMerge).toHaveBeenCalledTimes(2);
-    remounted.unmount();
+    view.unmount();
   },
 );

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 import type { VisualCaptureScenario } from "./scenarios";
 
 async function expectGlyph(control: Locator, size: number) {
@@ -312,36 +312,5 @@ export function createProjectThumbnailsScenario(
       );
     },
     region: navigation.region,
-  };
-}
-
-/** Exercise the real activity-bar toggle without changing its ownership/persistence. */
-export function createAutoMergeIconsScenario(
-  activity: VisualCaptureScenario,
-  startSession: (page: Page, title: string) => Promise<void>,
-): VisualCaptureScenario {
-  return {
-    name: "interface-icons-auto-merge",
-    description: "12px Auto-merge in the real activity/worktree composer cap",
-    states: ["default"],
-    seed: activity.seed,
-    async prepare(page) {
-      // Use search rather than assuming the startup selection or an open Sessions accessory.
-      await startSession(page, "fix-x");
-      await page.getByRole("button", { name: "Search sessions", exact: true }).click();
-      const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
-      await search
-        .getByRole("combobox", { name: "Search session titles" })
-        .fill("How should agents");
-      await search.getByRole("option").first().click();
-      const toggle = page.getByRole("switch", { name: "Auto-merge: off", exact: true });
-      await expectGlyph(toggle.locator(".."), 12);
-      expect((await toggle.boundingBox())!.height).toBe(20);
-      await expect(toggle).toHaveAttribute("aria-checked", "false");
-      const copy = page.getByRole("button", { name: "Copy response", exact: true }).first();
-      await copy.locator("xpath=ancestor::article").hover();
-      await expectGlyph(copy, 12);
-    },
-    region: (page) => page.locator("body"),
   };
 }

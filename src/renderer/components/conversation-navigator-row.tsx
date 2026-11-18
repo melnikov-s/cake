@@ -7,6 +7,7 @@ import { formatRelativeSessionTime } from "../../utils/format-relative-session-t
 import { RootStore } from "../stores/RootStore";
 import { SidebarSessionItem } from "./sidebar-session-item";
 import { SessionActivityIndicator } from "./session-activity-indicator";
+import { AutoMergeToggle } from "./auto-merge-toggle";
 import { Avatar } from "./ui/avatar";
 import { DepthRails } from "./ui/depth-rails";
 import { IconButton } from "./ui/icon-button";
@@ -206,14 +207,19 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
             )
           }
           trailing={
-            <span
-              className="flex size-6 items-center justify-center"
-              data-slot="own-activity"
-              aria-label={activity ? undefined : "Idle"}
-              title={activity ? undefined : "Idle"}
-            >
-              <SessionActivityIndicator activity={activity} />
-            </span>
+            <div className="flex items-center">
+              <span
+                className="flex size-6 items-center justify-center"
+                data-slot="own-activity"
+                aria-label={activity ? undefined : "Idle"}
+                title={activity ? undefined : "Idle"}
+              >
+                <SessionActivityIndicator activity={activity} />
+              </span>
+              {node.relationship === "home" && rowProjectPath !== undefined && (
+                <AutoMergeToggle projectPath={rowProjectPath} />
+              )}
+            </div>
           }
           onClick={() => void store.open(node)}
           onContextMenu={

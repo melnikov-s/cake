@@ -4,16 +4,11 @@ import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
 import { visualCaptureResultPrefix } from "../../scripts/visual-capture/result";
 
-// Maintained Electron scenario drives real setAutoMerge RPC and its renderer projection.
-// No task readiness exists in the fixture, so authorizing it cannot start a Git landing.
 for (const [state, theme] of [
   ["default", "light"],
-  ["auto-merge-on", "light"],
-  ["auto-merge-pending", "light"],
-  ["narrow-off", "dark"],
-  ["narrow-on", "dark"],
+  ["open", "dark"],
 ] as const) {
-  test(`collapsed Activity Auto-merge ${state} (${theme})`, async ({}, testInfo) => {
+  test(`worktree composer Activity ${state} (${theme})`, async ({}, testInfo) => {
     test.setTimeout(60_000);
     const repository = resolve(import.meta.dirname, "../..");
     const output = testInfo.outputPath(`activity-${state}-${theme}.png`);
@@ -39,6 +34,6 @@ for (const [state, theme] of [
       state,
       outputPath: output,
     });
-    await testInfo.attach("Collapsed Activity", { path: output, contentType: "image/png" });
+    await testInfo.attach("Worktree Activity", { path: output, contentType: "image/png" });
   });
 }

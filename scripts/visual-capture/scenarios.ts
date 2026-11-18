@@ -1,4 +1,3 @@
-import { verifyActivityAutoMerge } from "./activity-auto-merge";
 import { createIncomingMessageProposalsScenario } from "./incoming-message-proposals";
 import { verifyStackedAttentionPrototype } from "./stacked-attention-prototype";
 import { createSessionOutcomesScenario } from "./session-outcomes";
@@ -16,11 +15,7 @@ import { createConversationIdentityScenario } from "./conversation-identity.ts";
 import { createConversationHistoryScenario } from "./conversation-history.ts";
 import { createSidebarSurfacesScenario } from "./sidebar-surfaces.ts";
 import { sidebarSessionGroupsScenarios } from "./sidebar-session-groups.ts";
-import {
-  createInterfaceIconsScenario,
-  createAutoMergeIconsScenario,
-  createProjectThumbnailsScenario,
-} from "./interface-icons";
+import { createInterfaceIconsScenario, createProjectThumbnailsScenario } from "./interface-icons";
 import { projectSetupScenario } from "./project-setup.ts";
 import { serializeModelReference } from "../../src/contracts/model-presets/model-reference.ts";
 import { toolCallRowsScenario } from "./tool-call-rows";
@@ -7126,7 +7121,7 @@ const activityLongPromptScenario: VisualCaptureScenario = {
 const activityWorktreeScenario: VisualCaptureScenario = {
   name: "activity-worktree-cap",
   description: "Attached activity band above real worktree tools and the shared composer",
-  states: ["default", "open", "auto-merge-on", "auto-merge-pending", "narrow-off", "narrow-on"],
+  states: ["default", "open"],
   async seed(paths, theme) {
     const cleanup = await cakeChatSessionUpdatesScenario.seed(paths, theme);
     if (cleanup) await cleanup();
@@ -7191,46 +7186,12 @@ const activityWorktreeScenario: VisualCaptureScenario = {
     const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
     await search.getByRole("combobox", { name: "Search session titles" }).fill("How should agents");
     await search.getByRole("option").first().click();
-    if (state.startsWith("narrow-")) {
-      if (!application) throw new Error("Narrow Activity capture requires Electron");
-      await application.evaluate(({ BrowserWindow }) => {
-        BrowserWindow.getAllWindows()[0]!.setContentSize(560, 800);
-      });
-    }
     const cap = page.getByTestId("worktree-pill");
     await expect(cap.getByRole("button", { name: "Rebase", exact: true })).toBeVisible();
     const activity = cap.getByRole("button", { name: "Activity · 1 running" });
     await expect(activity).toBeVisible();
-    await verifyActivityAutoMerge(page, cap, state === "auto-merge-on" || state === "narrow-on");
-    if (state === "auto-merge-pending") {
-      if (!application) throw new Error("Pending Auto-merge capture requires Electron");
-      await application.evaluate(async () => {
-        const hold = Reflect.get(
-          globalThis,
-          "cakeSmokeHoldApplicationCommit",
-        ) as () => Promise<void>;
-        await hold();
-      });
-      const toggle = cap.getByRole("switch", { name: /^Auto-merge:/ });
-      await toggle.click();
-      await expect(cap.getByRole("status")).toHaveText("Enabling…");
-      await expect(toggle).toBeDisabled();
-      await expect(toggle).toHaveAttribute("aria-checked", "false");
-      await expect(toggle).toHaveAttribute("aria-busy", "true");
-      await page.mouse.move(1, 1);
-      // Capture the working pending state, then release and verify durable acceptance.
-      return async () => {
-        await application.evaluate(async () => {
-          const release = Reflect.get(
-            globalThis,
-            "cakeSmokeReleaseApplicationCommit",
-          ) as () => Promise<void>;
-          await release();
-        });
-        await expect(toggle).toHaveAttribute("aria-checked", "true");
-        await expect(toggle).toBeEnabled();
-      };
-    }
+    await expect(activity).toHaveAttribute("aria-expanded", "false");
+    await expect(cap.getByRole("switch", { name: /^Auto-merge:/ })).toHaveCount(0);
     if (state === "open") {
       await activity.click();
       await expect(page.getByRole("region", { name: "Conversation activity" })).toBeVisible();
@@ -9913,7 +9874,6 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   globalChatTodos,
   createTodoResolvedSessionScenario(projectChatTodos),
   createInterfaceIconsScenario(projectChatTodos, seedDurableChat),
-  createAutoMergeIconsScenario(activityWorktreeScenario, startActivityFixtureSession),
   projectChatAttention,
   projectChatAttentionResults,
   projectChatTaskRails,

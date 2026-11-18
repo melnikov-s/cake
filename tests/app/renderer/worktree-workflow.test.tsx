@@ -388,7 +388,7 @@ describe("Worktree operation workflows", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("reacts to live workflow changes without mutating global auto-merge", async () => {
+  it("reacts to live workflow changes without mutating project auto-merge", async () => {
     using fixture = renderWorktree();
     await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
     await fixture.setLanding("pull-request");
