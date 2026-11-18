@@ -15,7 +15,7 @@ import { ProjectTodoAttentionEditor } from "./project-todo-attention-editor";
 import { IconButton } from "@/components/ui/icon-button";
 import { PaperclipIcon, CloseIcon } from "@/components/ui/icons";
 import { ProjectTodoStateAction } from "./project-todo-state-action";
-import { LabelPicker } from "@/components/ui/label-picker";
+import { ProjectTodoLabelPicker } from "./project-todo-label-picker";
 import { cn } from "@/lib/utils";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
@@ -170,13 +170,10 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
               </span>
             }
             trailing={
-              <LabelPicker
-                labelId={item.labelId}
-                labels={store.availableLabels(item)}
-                ariaLabel={`Change label for ${item.title}`}
-                disabled={store.busy}
+              <ProjectTodoLabelPicker
+                item={item}
+                store={store}
                 className="-my-1 -ml-1 size-7 [@media(pointer:coarse)]:my-0"
-                onChange={(labelId) => store.setLabel(item, labelId)}
               />
             }
           >

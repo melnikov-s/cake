@@ -1,6 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { build } from "esbuild";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import {
@@ -8,6 +10,8 @@ import {
   defaultProjectWorkflow,
 } from "../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
+import { mergedSessionLabelColor } from "../../src/utils/session-label-color";
+import { sessionLabelPalette } from "../../src/utils/session-label-palette";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -137,5 +141,125 @@ test("label picker never completes or selects the row, and right actions remain 
   } finally {
     await app?.close();
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("linked session labels render in the workspace and transcript and clearing restores them", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cake-inherited-todo-labels-"));
+  const paths = {
+    cakeHome: join(root, "cake"),
+    project: join(root, "project"),
+    userData: join(root, "user-data"),
+  };
+  const captures = join(repository, ".visual-captures");
+  const seedModule = join(
+    repository,
+    "scripts",
+    "visual-capture",
+    `.todo-label-fixture-${process.pid}.mjs`,
+  );
+  let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+  const title = "Investigate slow project startup and repeated configuration reads";
+  const labels = defaultApplicationState().globalSessionLabels;
+  const labelId = (name: string) => labels.find((label) => label.name === name)!.id;
+  try {
+    // The visual harness loads raw assets and JSON; bundle it as its CLI does.
+    await build({
+      entryPoints: [join(repository, "scripts", "visual-capture", "scenarios.ts")],
+      outfile: seedModule,
+      bundle: true,
+      packages: "external",
+      platform: "node",
+      format: "esm",
+      jsx: "automatic",
+      loader: { ".css": "text", ".svg": "text", ".png": "dataurl" },
+    });
+    const { findVisualCaptureScenario } = (await import(
+      pathToFileURL(seedModule).href
+    )) as typeof import("../../scripts/visual-capture/scenarios");
+    const scenario = findVisualCaptureScenario("project-chat-task-rails")!;
+    await scenario.seed(paths, "dark");
+    const file = join(paths.cakeHome, "state", "application.json");
+    const application = JSON.parse(await readFile(file, "utf8"));
+    application.data.projects[0].workflow = {
+      ...defaultProjectWorkflow(),
+      assignments: [
+        {
+          sessionId: "visual-assistant-markdown-code",
+          labelIds: [labelId("Bug"), labelId("Maintenance"), labelId("Feature")],
+        },
+        { sessionId: "visual-todo-waiting", labelIds: [labelId("Feature")] },
+      ],
+    };
+    await writeFile(file, JSON.stringify(application));
+    app = await electron.launch({
+      args: [repository],
+      cwd: repository,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_HOME: paths.cakeHome,
+        CAKE_ELECTRON_USER_DATA: paths.userData,
+        PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+      },
+    });
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 1050),
+    );
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+    const transcript = page.locator(".transcript").last();
+    await transcript
+      .getByRole("button", { name: `Show in To-do: ${title}`, exact: true })
+      .first()
+      .click();
+    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+    const name = `Change label for ${title}. Current labels: Bug, Maintenance, Feature (from linked sessions)`;
+    const color = mergedSessionLabelColor(["rose", "amber", "blue"])!;
+    const swatch = (parent: ReturnType<typeof page.locator>, label: string) =>
+      parent
+        .getByRole("button", { name: label, exact: true })
+        .first()
+        .locator("[data-session-label-color]");
+    await expect(swatch(workspace, name)).toHaveAttribute("data-session-label-color", color);
+    await expect(swatch(transcript, name)).toHaveAttribute("data-session-label-color", color);
+    await expect(swatch(workspace, name)).toHaveCSS("color", /^oklch\(/);
+    await expect(swatch(transcript, name)).toHaveCSS("color", /^oklch\(/);
+    await expect(
+      swatch(
+        workspace,
+        "Change label for Improve project navigation. Current label: Feature (from linked sessions)",
+      ),
+    ).toHaveAttribute("data-session-label-color", sessionLabelPalette.blue);
+
+    const picker = workspace.getByRole("button", { name, exact: true });
+    await picker.click();
+    const menu = page.getByRole("menu", { name: "Choose label" });
+    await expect(menu.getByText("From linked sessions: Bug, Maintenance, Feature")).toBeVisible();
+    await mkdir(captures, { recursive: true });
+    await page.screenshot({
+      path: join(captures, "todo-inherited-session-labels.png"),
+      animations: "disabled",
+    });
+    await menu.getByRole("menuitemradio", { name: "Testing", exact: true }).click();
+    const explicitName = `Change label for ${title}. Current label: Testing`;
+    await expect(swatch(transcript, explicitName)).toHaveAttribute(
+      "data-session-label-color",
+      sessionLabelPalette.green,
+    );
+    await workspace.getByRole("button", { name: explicitName, exact: true }).click();
+    await menu.getByRole("menuitem", { name: "Use session labels", exact: true }).click();
+    await expect(picker).toHaveAttribute("aria-expanded", "false");
+    await expect(swatch(transcript, name)).toHaveAttribute("data-session-label-color", color);
+  } finally {
+    await app?.close();
+    await rm(seedModule, { force: true });
+    await rm(root, { recursive: true, force: true });
   }
 });

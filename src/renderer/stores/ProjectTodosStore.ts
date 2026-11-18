@@ -4,6 +4,7 @@ import { classifyProjectTodos } from "../lib/classify-project-todos";
 import {
   isCakeChatTodoScope,
   projectTodoCategory,
+  projectTodoSessionIds,
   type ProjectTodo,
   type ProjectTodos,
   type ProjectTodoUserMutation,
@@ -397,11 +398,27 @@ export class ProjectTodosStore extends Store<{
   ownsConversation(conversationId: string) {
     return this.available && this.props.conversationId === conversationId;
   }
-  availableLabels(item: ProjectTodo) {
+  labelPickerState(item: ProjectTodo, open: boolean) {
+    // Read the owning projection, since snapshots can update an item in place.
     const scope = this.sourceFor(item)?.scope;
     const metadata = SessionMetadataContext.consume(this);
-    if (!scope || !metadata) return [];
-    return isCakeChatTodoScope(scope) ? metadata.globalLabels : metadata.projectLabels(scope);
+    const labelId = item.labelId;
+    const labels =
+      scope && metadata && (labelId || open)
+        ? isCakeChatTodoScope(scope)
+          ? metadata.globalLabels
+          : metadata.projectLabels(scope)
+        : [];
+    // Explicit overrides need not observe linked metadata until the picker offers clearing.
+    // First association wins, then each session's primary-first order. Shared global labels
+    // resolve to the same catalog entry; locals are project-scoped.
+    const inheritedLabels = new Set<(typeof labels)[number]>();
+    if (metadata && (!labelId || open)) {
+      for (const id of new Set(projectTodoSessionIds(item))) {
+        for (const label of metadata.linkedSessionLabels(id)) inheritedLabels.add(label);
+      }
+    }
+    return { labelId, labels, inheritedLabels: [...inheritedLabels] };
   }
   setLabel(item: ProjectTodo, labelId: string | null, options?: { notifyOnError?: boolean }) {
     return this.mutate(

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { SessionLabel } from "../../../contracts/application/application-data";
 import { Button } from "./button";
 import { CheckIcon } from "./icons";
@@ -7,32 +6,42 @@ import { Popover, PopoverContent, PopoverIconTrigger } from "./popover";
 
 /** A compact, single-label picker using the shared session label palette. */
 export function LabelPicker({
+  open,
+  onOpenChange,
   labelId,
   labels,
+  inheritedLabels,
   ariaLabel,
   disabled,
   className,
   onChange,
 }: {
+  open: boolean;
+  onOpenChange(open: boolean): void;
   labelId?: string;
   labels: readonly SessionLabel[];
+  inheritedLabels: readonly SessionLabel[];
   ariaLabel: string;
   disabled?: boolean;
   className?: string;
   onChange(labelId: string | null): Promise<true | undefined>;
 }) {
-  const [open, setOpen] = useState(false);
   const selected = labels.find((label) => label.id === labelId);
-  const name = selected?.name ?? "Unlabelled";
+  const inherited = !labelId && inheritedLabels.length > 0;
+  const inheritedNames = inheritedLabels.map((label) => label.name).join(", ");
+  const name = inherited
+    ? `${inheritedNames} (from linked sessions)`
+    : (selected?.name ?? "Unlabelled");
+  const labelNoun = inherited && inheritedLabels.length > 1 ? "labels" : "label";
   const choose = async (id: string | null) => {
-    if ((await onChange(id)) === true) setOpen(false);
+    if ((await onChange(id)) === true) onOpenChange(false);
   };
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverIconTrigger
         className={className}
         iconSize="inline"
-        ariaLabel={`${ariaLabel}. Current label: ${name}`}
+        ariaLabel={`${ariaLabel}. Current ${labelNoun}: ${name}`}
         tooltip={open ? undefined : name}
         wrapTooltip
         aria-haspopup="menu"
@@ -45,7 +54,7 @@ export function LabelPicker({
           if (disabled || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
           event.preventDefault();
           if (!open) {
-            setOpen(true);
+            onOpenChange(true);
             return;
           }
           const id = event.currentTarget.getAttribute("aria-controls");
@@ -59,6 +68,8 @@ export function LabelPicker({
       >
         {selected ? (
           <LabelSwatch color={selected.color} />
+        ) : inherited ? (
+          <LabelSwatch colors={inheritedLabels.map((label) => label.color)} />
         ) : (
           <span
             aria-hidden="true"
@@ -86,10 +97,15 @@ export function LabelPicker({
               disabled={disabled}
               onClick={() => void choose(null)}
             >
-              Clear label
+              {inheritedNames ? "Use session labels" : "Clear label"}
             </Button>
           )}
         </div>
+        {inheritedNames && (
+          <p className="px-2 pb-2 text-xs text-muted-foreground">
+            From linked sessions: {inheritedNames}
+          </p>
+        )}
         <div className="grid gap-0.5" role="group" aria-label="Available labels">
           {labels.map((label) => (
             <Button

@@ -98,6 +98,35 @@ export class SessionMetadataStore extends Store<{
     });
   }
 
+  /** Linked work can be resolved or absent from the demand-loaded Sessions list. */
+  linkedSessionLabels(sessionId: string): readonly SessionLabel[] {
+    const session = this.props.catalog.backgroundSession(sessionId);
+    let projectPath = session?.projectPath;
+    let labelIds: readonly string[] | undefined;
+    if (projectPath && this.props.sessions.pendingSessions.isTemporary(sessionId)) {
+      labelIds = this.sessionLabelIds(sessionId);
+    } else if (projectPath) {
+      labelIds = this.props.projects
+        .find(projectPath)
+        ?.workflow.assignments.find((assignment) => assignment.sessionId === sessionId)?.labelIds;
+    } else if (this.props.catalog.resolutionState(sessionId) === true) {
+      // The cold archive signal retains identity, not project ownership. A unique retained
+      // assignment supplies both; do not guess if metadata is missing or ambiguous.
+      for (const project of this.props.projects.projects) {
+        const assignment = project.workflow.assignments.find(
+          (entry) => entry.sessionId === sessionId,
+        );
+        if (!assignment) continue;
+        if (projectPath !== undefined) return [];
+        projectPath = project.path;
+        labelIds = assignment.labelIds;
+      }
+    }
+    if (!projectPath || !labelIds?.length) return [];
+    const byId = new Map(this.projectLabels(projectPath).map((label) => [label.id, label]));
+    return labelIds.flatMap((id) => byId.get(id) ?? []);
+  }
+
   /** Sparse active membership for list ordering, without loading/querying every session. */
   @computed
   get activeSessionIds() {

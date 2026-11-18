@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import { LabelPicker } from "./ui/label-picker";
+import { ProjectTodoLabelPicker } from "./project-todo-label-picker";
 import { MarginRail } from "./ui/margin-rail";
 import { ProjectTodoStateAction } from "./project-todo-state-action";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
@@ -29,13 +29,12 @@ export const TaskSectionRail = observer(function TaskSectionRail({
       title={item.title}
       label={
         start && (
-          <LabelPicker
-            labelId={item.labelId}
-            labels={todos.availableLabels(item)}
-            ariaLabel={`Change label for ${item.title}`}
-            disabled={todos.busy || !editable}
+          <ProjectTodoLabelPicker
+            item={item}
+            store={todos}
+            disabled={!editable}
             className="-ml-0.5 size-6"
-            onChange={(labelId) => todos.setLabel(item, labelId, { notifyOnError: true })}
+            notifyOnError
           />
         )
       }
