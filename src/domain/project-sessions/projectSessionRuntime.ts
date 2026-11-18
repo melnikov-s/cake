@@ -884,7 +884,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                           command === "sessions.reply" ||
                           command === "sessions.thread" ||
                           command === "sessions.close-thread" ||
-                          command === "sessions.set-model")
+                          command === "sessions.set-model" ||
+                          command === "sessions.abort")
                           ? sideChatSessionId
                           : sessionId,
                       title: sideChatSessionId

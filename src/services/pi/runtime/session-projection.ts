@@ -145,6 +145,7 @@ export function projectSessionEntries(
       entry.type === "message" &&
       entry.message.role === "assistant" &&
       entry.message.stopReason === "error" &&
+      abortPresentations.get(entry.message.timestamp)?.kind !== "stopped" &&
       nextContextRole === "assistant"
     )
       intermediateRetryErrors.add(entry.id);

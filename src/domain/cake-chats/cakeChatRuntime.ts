@@ -1110,6 +1110,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                             "sessions.thread",
                             "sessions.close-thread",
                             "sessions.set-model",
+                            "sessions.abort",
                           ].includes(forwarded.name)
                             ? senderSessionId
                             : target.sessionId,

@@ -1,4 +1,7 @@
-import { TURN_STOPPED_NOTICE_TITLE } from "../../contracts/conversations/turn-stop";
+import {
+  TURN_INTERRUPTED_NOTICE_TITLE,
+  TURN_STOPPED_NOTICE_TITLE,
+} from "../../contracts/conversations/turn-stop";
 
 /**
  * `stopped` is a deliberate stop by the user or an agent: a neutral outcome that never asks
@@ -45,8 +48,10 @@ export function settledSessionActivity(
     }
     if (part.kind === "notice" && part.tone === "error" && part.title === "Model request failed")
       return "error";
-    if (part.kind === "notice" && part.tone === "info" && part.title === TURN_STOPPED_NOTICE_TITLE)
-      return "stopped";
+    if (part.kind === "notice" && part.tone === "info") {
+      if (part.title === TURN_STOPPED_NOTICE_TITLE) return "stopped";
+      if (part.title === TURN_INTERRUPTED_NOTICE_TITLE) return "error";
+    }
   }
   // An unattributed abort is an interruption, not a successful response or deliberate stop.
   return outcome === "aborted" ? "error" : "unread";

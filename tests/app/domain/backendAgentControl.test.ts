@@ -59,6 +59,8 @@ import {
 import type { SessionContextMetadata } from "../../../src/contracts/conversations/session-context-metadata";
 import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
+import { sessionLink } from "../../../src/contracts/conversations/message-reference";
+import type { TurnStop } from "../../../src/contracts/conversations/turn-stop";
 import {
   CAKE_CHAT_SESSION_ID,
   SESSION_ASSISTANT_ID,
@@ -216,6 +218,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   const received: Array<{ connectionId: number; event: CakeEvent }> = [];
   const deliveries = yield* Queue.unbounded<{ connectionId: number; event: CakeEvent }>();
   const runtimeCreates: string[] = [];
+  const stops: (TurnStop | undefined)[] = [];
   const runtimeFactories = new Map<string, () => Promise<CakeSessionRuntime>>();
   const internalInputs: InternalInput[] = [];
   const httpRequests: HttpClientRequest.HttpClientRequest[] = [];
@@ -347,6 +350,10 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             return active.has(sessionId);
           },
           snapshot: async () => ({ ...snapshot, sessionId, streaming: active.has(sessionId) }),
+          abort: async (stop) => {
+            stops.push(stop);
+            active.delete(sessionId);
+          },
           listQueuedMessages: async () => ({
             steering: [],
             followUp: pending.has(sessionId) ? ["Pending input"] : [],
@@ -715,6 +722,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     queries,
     runtimeCreates,
     runtimeFactories,
+    stops,
     inspections,
     contextBySession,
     listReads,
@@ -776,6 +784,99 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     protectedSessions,
   };
 });
+
+it.effect("Project Chat and Project Session stops record only trusted attribution", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    const chatId = projectChatSessionId("/project");
+    const options = yield* cakeChatRuntime
+      .acquireOptions({
+        configuration: {
+          location: { workingDirectory: "/home", sessionDirectory: "/cake/global" },
+          agentDirectory: "/cake",
+        },
+        target: { sessionId: chatId, tools: backendAgentTools() },
+        newSession: false,
+      })
+      .pipe(Effect.provide(f.context));
+    const control = options.runtime.globalControl;
+    assert.ok(control);
+    const input = { sessionId: target, reason: "Changed direction", source: { title: "Spoofed" } };
+
+    f.active.add(target);
+    expect(
+      yield* Effect.promise(() =>
+        control.invoke({ name: "sessions.abort", arguments: input }, signal()),
+      ),
+    ).toMatchObject({ ok: true, status: "stopping" });
+    f.active.add(target);
+    expect(yield* f.call("sessions.abort", input)).toMatchObject({ ok: true, status: "stopping" });
+    expect(f.stops).toEqual([
+      {
+        by: "conversation",
+        source: { title: "Project / Project Chat", href: sessionLink(chatId) },
+        reason: "Changed direction",
+      },
+      {
+        by: "conversation",
+        source: { title: "Source", href: sessionLink(source) },
+        reason: "Changed direction",
+      },
+    ]);
+
+    f.active.add(target);
+    yield* f.call("sessions.abort", { sessionId: target, reason: `See ${sessionLink(third)}` });
+    expect(f.stops.at(-1)).toEqual({
+      by: "conversation",
+      source: { title: "Source", href: sessionLink(source) },
+    });
+    expect(yield* f.call("sessions.abort", input)).toMatchObject({ ok: false });
+    expect(f.stops).toHaveLength(3);
+  }),
+);
+
+it.effect("unattributed and out-of-scope callers do not disclose a title, link or reason", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(true);
+    const input = { sessionId: target, reason: "Caller-only details" };
+    f.active.add(target);
+    expect(yield* f.background("sessions.abort", input)).toMatchObject({ ok: true });
+    const privateOptions = yield* acquireOptions({
+      location,
+      sessionId: third,
+      newSession: false,
+    }).pipe(Effect.provide(f.context));
+    yield* Context.get(f.context, CakeSessionRuntimes).acquire({
+      ...privateOptions,
+      profile: { _tag: "SubagentSession" },
+      runtime: {
+        ...privateOptions.runtime,
+        auxiliary: true,
+        globalControl: undefined,
+        sessionControl: undefined,
+        currentSessionControl: undefined,
+      },
+    });
+    f.deny("/private-worktree");
+    for (const sender of [
+      { ...caller, sessionId: third, title: "Private runtime" },
+      { ...caller, projectPath: "/different-project" },
+      { ...caller, workingDirectory: "/private-worktree" },
+      {
+        ...caller,
+        kind: "cake-chat" as const,
+        sessionId: projectChatSessionId("/different-project"),
+      },
+    ]) {
+      f.active.add(target);
+      expect(yield* f.direct("sessions.abort", input, sender)).toMatchObject({ ok: true });
+    }
+    f.deny("/project");
+    f.active.add(target);
+    expect(yield* f.call("sessions.abort", input)).toMatchObject({ ok: true });
+    expect(f.stops).toEqual(Array.from({ length: 6 }, () => ({ by: "unattributed" })));
+  }),
+);
 
 const switchSelection = {
   provider: "fixture",

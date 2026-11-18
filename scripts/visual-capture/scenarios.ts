@@ -47,6 +47,8 @@ import {
   formatCrossSessionNoticeText,
   formatCrossSessionReportText,
 } from "../../src/contracts/conversations/cross-session-message.ts";
+import { projectChatSessionId } from "../../src/domain/cake-chats/cakeChatLocations.ts";
+import { sessionLink } from "../../src/contracts/conversations/message-reference.ts";
 import { appendMessageReferences } from "../../src/contracts/conversations/message-reference-forwarding.ts";
 import { protectedResponseNotice } from "../../src/contracts/conversations/reference-notification.ts";
 import {
@@ -5949,6 +5951,81 @@ const incomingReportRecapScenario: VisualCaptureScenario = {
     state === "fullscreen" ? page.getByRole("dialog") : page.locator(".transcript"),
 };
 
+const projectSessionStopScenario: VisualCaptureScenario = {
+  name: "project-session-stop",
+  description: "A Project Session's attributed stop notice, with its linked source and reason",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const file = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    const [header] = (await readFile(file, "utf8")).split("\n");
+    const timestamp = new Date(0).toISOString();
+    const entries = [
+      {
+        type: "message",
+        id: "user",
+        parentId: null,
+        timestamp,
+        message: { role: "user", content: "Update the Auto-merge controls.", timestamp: 1 },
+      },
+      {
+        type: "custom",
+        id: "stop",
+        parentId: "user",
+        timestamp,
+        customType: "cake.turn-stop/v1",
+        data: {
+          timestamp: 2,
+          stop: {
+            by: "conversation",
+            source: {
+              title: "visual-capture-project / Project Chat",
+              href: sessionLink(projectChatSessionId(paths.project)),
+            },
+            reason: "Keep Auto-merge in Sessions only.",
+          },
+        },
+      },
+      {
+        type: "message",
+        id: "assistant",
+        parentId: "stop",
+        timestamp,
+        message: {
+          ...nestedAssistant,
+          content: [],
+          timestamp: 2,
+          stopReason: "error",
+          errorMessage: "This operation was aborted",
+        },
+      },
+    ];
+    await writeFile(
+      file,
+      `${header}\n${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+    );
+  },
+  async prepare(page) {
+    await openSeededSession(page, "visual-capture-project", "Update the Auto-merge controls.");
+    const notice = page.getByRole("status").filter({ hasText: "Stopped by" });
+    const source = notice.getByRole("link", { name: "visual-capture-project / Project Chat" });
+    await expect(source).toHaveAttribute("href", /^cake:\/\/session\/project-chat%3A/);
+    await source.click();
+    await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toHaveText(
+      "visual-capture-project",
+    );
+    await expect(notice).toHaveCount(0);
+    await openSeededSession(page, "visual-capture-project", "Update the Auto-merge controls.");
+    await expect(notice.getByText("Keep Auto-merge in Sessions only.")).toBeVisible();
+    await expect(page.getByText("Model request failed", { exact: true })).toHaveCount(0);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region: (page) => page.getByRole("status").filter({ hasText: "Stopped by" }),
+};
+
 const sessionMessageVariantsScenario: VisualCaptureScenario = {
   name: "session-message-variants",
   description:
@@ -9786,6 +9863,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionMessagesScenario,
   createSessionOutcomesScenario(),
   sessionMessageVariantsScenario,
+  projectSessionStopScenario,
   incomingReportRecapScenario,
   sessionUpdateReportsScenario,
   messageActionBarScenario,

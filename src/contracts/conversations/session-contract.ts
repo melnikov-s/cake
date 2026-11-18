@@ -2,6 +2,7 @@ import { PresetContext } from "../model-presets/preset-context";
 import { EditorDiffDocument } from "../editor/editor-selection";
 import { Effect, Schema } from "effect";
 import { AgentUpdateSource } from "./agent-update";
+import { TurnNoticeSource } from "./turn-stop";
 import type { SessionContextMetadata } from "./session-context-metadata";
 import { CakeChatContextStatus } from "../cake-chats/context-policy";
 import { MessageReference } from "./message-reference";
@@ -468,6 +469,7 @@ export const uiPartSchema = Schema.Union([
     tone: Schema.Literals(["info", "warning", "error"]),
     title: ipcProjectionString(512),
     detail: Schema.optional(boundedText),
+    stopSource: Schema.optional(TurnNoticeSource),
     retryAt: Schema.optional(nonNegativeInt),
   }),
   Schema.Struct({

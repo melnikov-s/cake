@@ -47,6 +47,7 @@ import type {
   ProjectSessionSummary,
 } from "../../contracts/project-sessions/project-session-data";
 import { sessionLink } from "../../contracts/conversations/message-reference";
+import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import type { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
@@ -187,6 +188,69 @@ const lookupSession = Effect.fn("AgentControl.lookupSession")(function* (session
         : Effect.fail(error),
     ),
   );
+});
+
+/** Keep a stop reason short and literal. Do not publish references, identifiers or control text. */
+function safeStopText(text: string | undefined, maxLength: number) {
+  const value = text?.trim();
+  if (
+    !value ||
+    value.length > maxLength ||
+    /[\p{Cc}\p{Cf}]|cake:\/\/|project-chat:|:side-chat:|\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/iu.test(
+      value,
+    )
+  )
+    return undefined;
+  return value;
+}
+
+const projectSessionStop = Effect.fn("AgentControl.projectSessionStop")(function* (
+  location: ProjectSessionLocation,
+  caller: AgentControlCaller | undefined,
+  reason: string | undefined,
+): Effect.fn.Return<
+  TurnStop,
+  never,
+  ApplicationState | ProjectAccess | CakeSessionRuntimes | Scope.Scope
+> {
+  const unattributed = { by: "unattributed" } as const;
+  if (!caller) return unattributed;
+  const access = yield* ProjectAccess;
+  if (!(yield* access.isAllowed(location.workingDirectory))) return unattributed;
+  const project = (yield* ApplicationState)
+    .snapshot()
+    .projects.find((project) => project.path === location.projectPath);
+  if (!project) return unattributed;
+  let title: string | undefined;
+  if (caller.kind === "cake-chat") {
+    if (caller.sessionId === projectChatSessionId(project.path)) {
+      if (!(yield* access.isAllowed(project.path))) return unattributed;
+      title = `${project.name} / Project Chat`;
+    } else if (caller.sessionId === CAKE_CHAT_SESSION_ID) {
+      title = "Cake Chat";
+    }
+  } else if (caller.projectPath === project.path) {
+    // Check the already assembled caller; do not open a guessed ID or attribute a
+    // private runtime (including a Side Chat) to its visible parent.
+    const source = yield* (yield* CakeSessionRuntimes)
+      .acquireSession(caller.sessionId)
+      .pipe(Effect.option);
+    if (
+      Option.isSome(source) &&
+      source.value.profile === "ProjectSession" &&
+      caller.workingDirectory &&
+      (yield* access.isAllowed(caller.workingDirectory))
+    )
+      title = caller.title.includes(caller.sessionId) ? undefined : caller.title;
+  }
+  const safeTitle = safeStopText(title, 500);
+  if (!safeTitle) return unattributed;
+  const safeReason = safeStopText(reason, 160);
+  const stop = {
+    by: "conversation" as const,
+    source: { title: safeTitle, href: sessionLink(caller.sessionId) },
+  };
+  return safeReason ? { ...stop, reason: safeReason } : stop;
 });
 
 /** Undefined means a genuinely window/device-owned operation. Errors never fall back to a renderer. */
@@ -789,25 +853,28 @@ export const invoke: (
             invocation.arguments.sessionId,
             caller?.sessionId,
           );
-          const handle =
-            cakeChatSideChatConversationId(sessionId) !== undefined
+          const discussion = cakeChatSideChatConversationId(sessionId) !== undefined;
+          const location =
+            !discussion && !isCakeChatSessionId(sessionId)
+              ? yield* metadata.findLocation({ sessionId })
+              : undefined;
+          const handle = location
+            ? yield* projectSessions.acquireTarget(location, sessionId, false)
+            : discussion
               ? yield* discussionSessions.acquireBySessionId(sessionId)
-              : isCakeChatSessionId(sessionId)
-                ? yield* chatTargets.acquireAvailable(sessionId)
-                : yield* projectSessions.acquireTarget(
-                    yield* metadata.findLocation({ sessionId }),
-                    sessionId,
-                    false,
-                  );
+              : yield* chatTargets.acquireAvailable(sessionId);
           const snapshot = yield* handle.snapshot();
           if (!snapshot.streaming) return fail("That session is not currently running.");
-          const reason = invocation.arguments.reason ? { reason: invocation.arguments.reason } : {};
-          yield* sessionChats.abort({
-            sessionId,
-            stop: caller
-              ? { by: "session", sessionId: caller.sessionId, title: caller.title, ...reason }
-              : { by: "user", ...reason },
-          });
+          const reason = invocation.arguments.reason;
+          if (location && handle.profile === "ProjectSession") {
+            const stop = yield* projectSessionStop(location, caller, reason);
+            yield* sessionChats.abort({ sessionId, stop });
+          } else {
+            const stop: TurnStop = caller
+              ? { by: "session", sessionId: caller.sessionId, title: caller.title }
+              : { by: "user" };
+            yield* sessionChats.abort({ sessionId, stop: reason ? { ...stop, reason } : stop });
+          }
           return toJsonValue({
             ok: true,
             command,

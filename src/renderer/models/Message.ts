@@ -82,6 +82,7 @@ export class Message extends Model {
   widgetItem: Extract<UiPart, { kind: "attachment" }>["widgetItem"];
   annotations: Annotation[] | undefined;
   tone: NoticeTone | undefined;
+  stopSource: Extract<UiPart, { kind: "notice" }>["stopSource"];
   detail: string | undefined;
   retryAt: number | undefined;
   operationId: string | undefined;
@@ -190,6 +191,7 @@ export class Message extends Model {
         this.tone = part.tone;
         this.title = part.title;
         this.detail = part.detail;
+        this.stopSource = part.stopSource;
         this.retryAt = part.retryAt;
         return true;
       case "review-run":
@@ -333,6 +335,7 @@ export class Message extends Model {
           tone: this.tone!,
           title: this.title!,
           detail: this.detail,
+          stopSource: this.stopSource,
           retryAt: this.retryAt,
         };
       case "review-run":

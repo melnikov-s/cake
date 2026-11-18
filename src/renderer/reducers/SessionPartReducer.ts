@@ -83,6 +83,7 @@ export function messageSnapshots(
       const { firstKeptEntryId, ...fields } = part;
       return { ...fields, ...identity, firstKeptPiId: firstKeptEntryId };
     }
+    if (part.kind === "notice") return { ...part, ...identity, stopSource: part.stopSource };
     if (part.kind === "annotation")
       return { ...part, ...identity, annotations: [...part.annotations] };
     if (part.kind === "review-run") return { ...part, ...identity, threadIds: [...part.threadIds] };

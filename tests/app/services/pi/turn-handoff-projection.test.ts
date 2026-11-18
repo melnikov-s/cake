@@ -63,7 +63,7 @@ describe("Intentional send-now handoff presentation", () => {
     ]);
     const normal = createLiveMessageProjector();
     expect(normal({ type: "message_end", message: assistant() })).toEqual([
-      expect.objectContaining({ kind: "notice", tone: "error" }),
+      expect.objectContaining({ kind: "notice", tone: "info", title: "Turn interrupted" }),
     ]);
   });
   it("retains the handoff distinction when reopening the persisted Pi branch", () => {
@@ -73,7 +73,7 @@ describe("Intentional send-now handoff presentation", () => {
     ]);
     const failedParts = projectSessionEntries(entries("", false));
     expect(failedParts).toEqual([
-      expect.objectContaining({ title: "Model request failed", detail: "Request was aborted" }),
+      expect.objectContaining({ title: "Turn interrupted", tone: "info" }),
     ]);
     expect(settledSessionActivity("aborted", failedParts)).toBe("error");
     expect(settledSessionActivity(undefined, failedParts)).toBe("error");
@@ -95,7 +95,7 @@ describe("Intentional send-now handoff presentation", () => {
     };
     expect(persisted(true)).toEqual([]);
     expect(persisted(false)).toEqual([
-      expect.objectContaining({ tone: "error", detail: "This operation was aborted" }),
+      expect.objectContaining({ tone: "info", title: "Turn interrupted" }),
     ]);
   });
 });
@@ -110,21 +110,46 @@ describe("Deliberate stop presentation", () => {
     data: { timestamp: 10, stop },
   });
 
-  it("shows an agent-initiated stop as a neutral notice naming the agent and reason", () => {
-    const project = createLiveMessageProjector({
-      abortPresentation: () => ({
-        kind: "stopped",
-        stop: { by: "session", sessionId: "cake-chat", title: "Cake Chat", reason: "user asked" },
-      }),
-    });
-    expect(project({ type: "message_end", message: assistant("Partial work") })).toEqual([
-      expect.objectContaining({ text: "Partial work", status: "complete" }),
-      expect.objectContaining({
-        kind: "notice",
-        tone: "info",
-        title: "Stopped",
-        detail: "Stopped by Cake Chat (user asked)",
-      }),
+  it.each(["aborted", "error"] as const)(
+    "projects a deliberate %s cancellation live and on reopen",
+    (stopReason) => {
+      const source = {
+        title: "Cake / Project Chat",
+        href: `cake://session/project-chat%3A${"a".repeat(64)}`,
+      };
+      const stop = { by: "conversation", source, reason: "Changed direction" } as const;
+      const project = createLiveMessageProjector({
+        abortPresentation: () => ({ kind: "stopped", stop }),
+        deferProviderErrors: true,
+      });
+      const message = {
+        ...assistant("Partial work"),
+        stopReason,
+        errorMessage: "This operation was aborted",
+      };
+      const expected = [
+        expect.objectContaining({ text: "Partial work", status: "complete" }),
+        expect.objectContaining({
+          kind: "notice",
+          tone: "info",
+          title: "Stopped",
+          stopSource: source,
+          detail: "Changed direction",
+        }),
+      ];
+      expect(project({ type: "message_end", message })).toEqual(expected);
+      const [entry] = entries("", false);
+      if (entry?.type !== "message") throw new Error("Expected assistant fixture");
+      expect(projectSessionEntries([{ ...entry, message }, stopEntry(stop)])).toEqual(expected);
+    },
+  );
+
+  it.each([
+    { by: "unattributed" },
+    { by: "session", sessionId: "private-id", title: "Unverified title", reason: "Private reason" },
+  ])("shows only Stopped for an unverified stop ($by)", (stop) => {
+    expect(projectSessionEntries([...entries("", false), stopEntry(stop)])).toEqual([
+      { id: "entry-assistant-stopped", kind: "notice", tone: "info", title: "Stopped" },
     ]);
   });
 
@@ -144,8 +169,10 @@ describe("Deliberate stop presentation", () => {
     ]);
     const failed = [...entries("", false), stopEntry({ by: "user" })];
     const entry = failed[0]!;
-    if (entry.type === "message" && entry.message.role === "assistant")
+    if (entry.type === "message" && entry.message.role === "assistant") {
       entry.message.stopReason = "error";
+      entry.message.errorMessage = "Provider unavailable";
+    }
     expect(projectSessionEntries(failed)).toEqual([
       expect.objectContaining({ tone: "error", title: "Model request failed" }),
     ]);

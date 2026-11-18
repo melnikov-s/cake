@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Callout } from "@/components/ui/callout";
+import { MarkdownLink } from "./ai-elements/markdown";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 
 function retryDuration(milliseconds: number) {
@@ -37,7 +38,24 @@ export function RetryNotice({ part }: { part: Extract<UiPart, { kind: "notice" }
       variant={part.tone === "error" ? "error" : part.tone === "warning" ? "warning" : "default"}
       role={part.tone === "error" ? "alert" : "status"}
     >
-      <strong className="block text-xs font-semibold">{part.title}</strong>
+      <strong className="block text-xs font-semibold">
+        {part.stopSource ? (
+          <>
+            Stopped by{" "}
+            <MarkdownLink
+              href={part.stopSource.href}
+              presentation="text"
+              className="inline font-semibold underline [&>span]:inline"
+              showIcon={false}
+              showSessionPurpose={false}
+            >
+              <span>{part.stopSource.title}</span>
+            </MarkdownLink>
+          </>
+        ) : (
+          part.title
+        )}
+      </strong>
       {part.detail && <span className="block text-xs text-muted-foreground">{part.detail}</span>}
       {countdown && <span className="block text-xs text-muted-foreground">{countdown}</span>}
     </Callout>

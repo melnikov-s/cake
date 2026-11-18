@@ -13,6 +13,7 @@ import { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifac
 import { familyBootstrapContext } from "../../../contracts/conversations/family-bootstrap";
 import {
   describeTurnStop,
+  TURN_INTERRUPTED_NOTICE_TITLE,
   TURN_STOPPED_NOTICE_TITLE,
   type TurnStop,
 } from "../../../contracts/conversations/turn-stop";
@@ -56,6 +57,15 @@ export type AbortPresentation =
   | { readonly kind: "handoff" }
   | { readonly kind: "stopped"; readonly stop: TurnStop };
 const interruptedAbort: AbortPresentation = { kind: "interrupted" };
+
+/** Pi can surface an explicit cancellation as an error when Stop lands during a tool. */
+export function isCanceledAssistantRequest(stopReason: unknown, errorMessage: unknown) {
+  return (
+    stopReason === "aborted" ||
+    (stopReason === "error" &&
+      (errorMessage === "This operation was aborted" || errorMessage === "Request was aborted"))
+  );
+}
 export function partsFromMessage(
   message: unknown,
   baseId: string,
@@ -325,9 +335,13 @@ export function partsFromMessage(
     const stopReason = Reflect.get(message, "stopReason");
     // A send-now handoff also hides the `error` a run can end with when the abort lands
     // between a cancelled tool and the next request: the handoff caused it.
+    const errorMessage = Reflect.get(message, "errorMessage");
+    const stopped =
+      abortPresentation.kind === "stopped" && isCanceledAssistantRequest(stopReason, errorMessage);
     const deliberateAbort =
-      (stopReason === "aborted" && abortPresentation.kind !== "interrupted") ||
-      (stopReason === "error" && abortPresentation.kind === "handoff");
+      stopped ||
+      (abortPresentation.kind === "handoff" &&
+        (stopReason === "aborted" || stopReason === "error"));
     const takeResponse = () => {
       const current = response;
       response = undefined;
@@ -417,34 +431,43 @@ export function partsFromMessage(
       }
       return [];
     });
-    if (
-      !streaming &&
-      Reflect.get(message, "stopReason") === "aborted" &&
-      abortPresentation.kind === "stopped"
-    ) {
-      parts.push({
+    if (!streaming && stopped) {
+      const stop = abortPresentation.stop;
+      const notice = {
         id: `${baseId}-stopped`,
-        kind: "notice",
-        tone: "info",
+        kind: "notice" as const,
+        tone: "info" as const,
         title: TURN_STOPPED_NOTICE_TITLE,
-        detail: capitalize(describeTurnStop(abortPresentation.stop)),
-      });
+      };
+      if (stop.by === "conversation")
+        parts.push({ ...notice, stopSource: stop.source, detail: stop.reason });
+      else if (stop.by === "user")
+        parts.push({ ...notice, detail: capitalize(describeTurnStop(stop)) });
+      else parts.push(notice);
       return parts;
     }
-    const errorMessage = Reflect.get(message, "errorMessage");
     if (
       !deliberateAbort &&
       !parts.some((part) => part.kind === "text") &&
       typeof errorMessage === "string" &&
       errorMessage.trim()
     ) {
-      parts.push({
-        id: `${baseId}-error`,
-        kind: "notice",
-        tone: "error",
-        title: "Model request failed",
-        detail: errorMessage.trim(),
-      });
+      if (isCanceledAssistantRequest(stopReason, errorMessage)) {
+        parts.push({
+          id: `${baseId}-error`,
+          kind: "notice",
+          tone: "info",
+          title: TURN_INTERRUPTED_NOTICE_TITLE,
+        });
+      } else {
+        parts.push({
+          id: `${baseId}-error`,
+          kind: "notice",
+          tone: "error",
+          title: "Model request failed",
+          detail: errorMessage.trim(),
+        });
+      }
     }
     return parts;
   }
@@ -642,8 +665,14 @@ export function createLiveMessageProjector(
       // Pi decides whether an error will retry immediately after message_end.
       // Defer its final live projection until the settled snapshot so an
       // intermediate failure never flashes in the transcript.
+      const presentation = options.abortPresentation?.() ?? interruptedAbort;
       const parts =
-        options.deferProviderErrors && event.message.stopReason === "error"
+        options.deferProviderErrors &&
+        event.message.stopReason === "error" &&
+        !(
+          presentation.kind === "stopped" &&
+          isCanceledAssistantRequest(event.message.stopReason, event.message.errorMessage)
+        )
           ? []
           : partsFromMessage(
               event.message,
@@ -652,7 +681,7 @@ export function createLiveMessageProjector(
               undefined,
               false,
               undefined,
-              options.abortPresentation?.() ?? interruptedAbort,
+              presentation,
             );
       for (const part of parts) activeAssistantPartIds.add(part.id);
       lastAssistantPartIds = [...activeAssistantPartIds];

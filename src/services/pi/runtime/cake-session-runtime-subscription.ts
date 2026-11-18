@@ -4,7 +4,7 @@ import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 import type { CakeSessionRuntimeTurnController } from "./cake-session-runtime-turn-controller";
 import type { CakeSessionRuntimeContinuations } from "./cake-session-runtime-continuations";
 import type { RuntimeEventProjection } from "./cake-session-runtime-event-projection";
-import type { AbortPresentation } from "./message-projection";
+import { isCanceledAssistantRequest, type AbortPresentation } from "./message-projection";
 import { internalInputEntryType } from "./internal-input-projection";
 import { createTurnResultCapture } from "./turn-result-capture";
 import { reportSlowCakeToolExecution } from "./cake-tool-timing";
@@ -58,13 +58,16 @@ export function createCakeSessionRuntimeSubscription(input: {
       (event.message.stopReason === "aborted" || event.message.stopReason === "error")
     ) {
       const presentation = abortPresentation();
-      // Aborting during a tool makes Pi's follow-up request end as `error` ("This operation
-      // was aborted"). Only a handoff claims that ending; a stop keeps today's presentation.
+      // A Stop during a tool can end as a Pi request error. Record attribution only
+      // for cancellation, never an unrelated error that happened to race with Stop.
       if (presentation.kind === "handoff")
         session.sessionManager.appendCustomEntry(turnHandoffEntryType, {
           timestamp: event.message.timestamp,
         });
-      else if (presentation.kind === "stopped" && event.message.stopReason === "aborted")
+      else if (
+        presentation.kind === "stopped" &&
+        isCanceledAssistantRequest(event.message.stopReason, event.message.errorMessage)
+      )
         session.sessionManager.appendCustomEntry(turnStopEntryType, {
           timestamp: event.message.timestamp,
           stop: presentation.stop,
