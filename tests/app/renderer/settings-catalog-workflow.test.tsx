@@ -395,13 +395,12 @@ describe("settings catalog through the cake tool", () => {
 
     await h.call("settings.update", { key: "pi.codemodeInlineBudget", value: 500 });
     expect(h.document()).toMatchObject({ codemode: { inlineBudget: 500 } });
-    await h.call("settings.update", {
-      key: "pi.defaultModel",
-      value: { provider: "fixture", modelId: "model-1" },
-    });
-    expect(await h.call("settings.get", { key: "pi.defaultModel" })).toMatchObject({
-      value: { provider: "fixture", modelId: "model-1" },
-    });
+    await expect(h.call("settings.get", { key: "pi.defaultModel" })).rejects.toThrow(
+      /Unknown setting/,
+    );
+    await expect(h.call("settings.get", { key: "pi.defaultThinkingLevel" })).rejects.toThrow(
+      /Unknown setting/,
+    );
 
     await h.call("settings.update", {
       key: "cakeChat.summarizationModel",

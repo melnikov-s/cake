@@ -36,6 +36,12 @@ const options = (cwd: string): CakeSessionRuntimeOptions => ({
   agentDir: join(cwd, "agent"),
   sessionDir: join(cwd, "sessions"),
   newSession: true,
+  initialConfiguration: {
+    provider: "openai",
+    modelId: "gpt-4o",
+    thinkingLevel: "off",
+    fastMode: false,
+  },
   requestUi: async () => undefined,
   onEvent: () => undefined,
 });

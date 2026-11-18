@@ -273,8 +273,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   target,
   newSession,
   sideChatSessionId,
+  initialConfiguration,
 }: {
   readonly sideChatSessionId?: string;
+  readonly initialConfiguration?: CakeSessionRuntimeAcquireOptions["runtime"]["initialConfiguration"];
   readonly configuration: CakeChatRuntimeConfiguration;
   readonly target: CakeChatTarget;
   readonly newSession: boolean;
@@ -697,6 +699,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       agentDir: configuration.agentDirectory,
       sessionDir: configuration.location.sessionDirectory,
       newSession,
+      initialConfiguration,
       sessionId: target.sessionId,
       // Pin the complete Cake Chat toolset instead of relying on Pi's default-tool
       // selection, which does not necessarily activate extension tools.

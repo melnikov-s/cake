@@ -77,16 +77,6 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
           Model Presets
         </h2>
         <div className="flex items-center gap-1.5">
-          {settings.defaultPresetId && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="rounded-sm"
-              onClick={() => void settings.setDefaultPreset(undefined)}
-            >
-              Clear default
-            </Button>
-          )}
           <Button
             variant="outline"
             size="sm"
@@ -104,7 +94,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
       <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
         {settings.presets.length === 0 && !editingId && (
           <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
-            No presets yet. Create one for your preferred setup.
+            Your first preset becomes the default model for new chats and sessions.
           </p>
         )}
         {settings.presets.map((preset) => {

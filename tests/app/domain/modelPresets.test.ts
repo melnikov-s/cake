@@ -246,18 +246,36 @@ describe("Model Presets domain", () => {
     return effect;
   });
 
-  it.effect("sets, clears, and rejects an unknown default", () => {
-    const { effect } = run(
-      Effect.gen(function* () {
-        const preset = yield* createOne;
-        assert.equal((yield* setDefault(preset.id)).defaultPresetId, preset.id);
-        assert.equal((yield* setDefault(undefined)).defaultPresetId, undefined);
-        const error = yield* Effect.flip(setDefault("00000000-0000-4000-8000-000000000099"));
-        assert.equal(error._tag, "DefaultModelPresetNotFoundError");
-      }),
-    );
-    return effect;
-  });
+  it.effect(
+    "defaults the first preset, preserves it on addition and reorder, and promotes a remaining preset after deletion",
+    () => {
+      const { effect } = run(
+        Effect.gen(function* () {
+          const first = yield* create(input("First"));
+          const firstId = first.presets[0]!.id;
+          assert.equal(first.defaultPresetId, firstId);
+          const second = yield* create(input("Second"));
+          const secondId = second.presets[1]!.id;
+          assert.equal(second.defaultPresetId, firstId);
+          const third = yield* create(input("Third"));
+          const thirdId = third.presets[2]!.id;
+          assert.equal(
+            (yield* reorder({ ids: [thirdId, firstId, secondId] })).defaultPresetId,
+            firstId,
+          );
+          assert.equal((yield* setDefault(secondId)).defaultPresetId, secondId);
+          assert.equal(
+            (yield* Effect.flip(setDefault(undefined)))._tag,
+            "ModelPresetValidationError",
+          );
+          const error = yield* Effect.flip(setDefault("00000000-0000-4000-8000-000000000099"));
+          assert.equal(error._tag, "DefaultModelPresetNotFoundError");
+          assert.equal((yield* remove(secondId)).defaultPresetId, thirdId);
+        }),
+      );
+      return effect;
+    },
+  );
 
   it.effect("rejects duplicate IDs and the 100-preset limit", () =>
     Effect.gen(function* () {

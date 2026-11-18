@@ -2818,6 +2818,22 @@ const workLogControlsScenario: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="session-pane"]'),
 };
 
+const modelsSettingsScenario: VisualCaptureScenario = {
+  name: "models-settings",
+  description: "Models settings on an unconfigured Cake installation",
+  states: ["default"],
+  async seed() {},
+  async prepare(page) {
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    // Models is the first Settings page.
+    await expect(page.getByRole("heading", { name: "Model Presets", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "New preset", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Current chat", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Default agent model", { exact: true })).toHaveCount(0);
+  },
+  region: cakePromptsSettingsScenario.region,
+};
+
 const appearanceSettingsScenario: VisualCaptureScenario = {
   name: "appearance-settings",
   description: "Session-only sidebar character preference in Cake Appearance settings",
@@ -9668,6 +9684,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   localMcpSettingsScenario,
   mcpSettingsLayoutScenario,
   appearanceSettingsScenario,
+  modelsSettingsScenario,
   workLogControlsScenario,
   importedColorThemeScenario,
   themeGalleryScenario,

@@ -20,6 +20,35 @@ afterEach(async () => {
 });
 
 describe("ApplicationStorage filesystem integration", () => {
+  it("selects the first saved preset when older Cake data has no default", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-preset-storage-"));
+    directories.push(directory);
+    const target = join(directory, APPLICATION_DOCUMENT_NAME);
+    const first = {
+      id: "00000000-0000-4000-8000-000000000001",
+      name: "First",
+      provider: "openai",
+      modelId: "gpt-4o",
+      thinkingLevel: "off",
+      fastMode: false,
+    } as const;
+    const second = { ...first, id: "00000000-0000-4000-8000-000000000002", name: "Second" };
+    const data = { ...defaultApplicationState(), modelPresets: [first, second] };
+    const live = makeApplicationStorageLive(directory, join(directory, "prompts")).pipe(
+      Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+    );
+    const load = Effect.gen(function* () {
+      return yield* (yield* ApplicationStorage).load();
+    }).pipe(Effect.provide(live));
+    await writeFile(target, JSON.stringify({ version: 11, data }));
+    assert.equal((await Effect.runPromise(load)).state.defaultModelPresetId, first.id);
+    await writeFile(
+      target,
+      JSON.stringify({ version: 11, data: { ...data, defaultModelPresetId: second.id } }),
+    );
+    assert.equal((await Effect.runPromise(load)).state.defaultModelPresetId, second.id);
+  });
+
   it("repairs invalid stored Auto-hide + Dynamic without dropping old settings", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cake-toolbar-storage-"));
     directories.push(directory);

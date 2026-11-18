@@ -282,9 +282,9 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
         );
         const acquired = yield* Effect.result(
           Effect.gen(function* () {
-            const handle = yield* sessions.acquire(
-              yield* runtimeOptions(child.sessionId, childLocation, !archived),
-            );
+            const options = yield* runtimeOptions(child.sessionId, childLocation, !archived);
+            options.runtime.initialConfiguration = configuration;
+            const handle = yield* sessions.acquire(options);
             yield* handle.applyConfiguration(configuration);
             yield* handle.rename(input.title);
             return handle;

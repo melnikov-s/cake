@@ -80,10 +80,6 @@ const typed = <T>(schema: Schema.ConstraintDecoder<T, never>, key: string, value
   );
 
 function piValue(settings: PiSettingsValue, key: string): JsonValue {
-  if (key === "defaultModel")
-    return settings.defaultProvider && settings.defaultModel
-      ? { provider: settings.defaultProvider, modelId: settings.defaultModel }
-      : null;
   return toJsonValue(Object.entries(settings).find(([name]) => name === key)?.[1] ?? null);
 }
 
@@ -274,16 +270,7 @@ export const get = Effect.fn("SettingsCatalog.get")(function* (input: SettingsGe
 const write = Effect.fn("SettingsCatalog.write")(function* (key: string, value: JsonValue) {
   if (key.startsWith("pi.")) {
     const piKey = key.slice(3);
-    const update = yield* typed(
-      piSettingUpdateSchema,
-      key,
-      piKey === "defaultModel"
-        ? {
-            key: piKey,
-            ...(yield* typed(Schema.Record(Schema.String, Schema.Json), key, value)),
-          }
-        : { key: piKey, value },
-    );
+    const update = yield* typed(piSettingUpdateSchema, key, { key: piKey, value });
     yield* piSettings.update(update);
     return;
   }

@@ -1435,6 +1435,12 @@ it.effect(
       // Keep catalog/storage routing isolated, but acquire the real Pi target runtime and transcript.
       f.runtimeFactories.set(sessionId, () =>
         createCakeSessionRuntime({
+          initialConfiguration: {
+            provider: "openai",
+            modelId: "gpt-4o",
+            thinkingLevel: "off",
+            fastMode: false,
+          },
           cwd: directory,
           agentDir: join(directory, "agent"),
           sessionDir,
@@ -2707,6 +2713,12 @@ it.effect(
             agentDir: join(directory, "agent"),
             sessionDir: join(directory, "sessions"),
             newSession: true,
+            initialConfiguration: {
+              provider: "openai",
+              modelId: "gpt-4o",
+              thinkingLevel: "off",
+              fastMode: false,
+            },
             onEvent: () => undefined,
           }),
         ),

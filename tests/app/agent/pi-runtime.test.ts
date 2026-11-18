@@ -1,5 +1,5 @@
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
-import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../../src/layers/CakeOperations";
+import { createProjectSessionRuntime } from "../../../src/layers/CakeOperations";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { snapshotPromptFiles } from "../../../src/services/filesystem/prompt-files";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
@@ -52,6 +52,20 @@ import {
   type ExtensionUiIntent,
   type ConversationSnapshot,
 } from "../../../src/contracts/conversations/session-contract";
+
+const fixturePreset = {
+  provider: "openai",
+  modelId: "gpt-4o",
+  thinkingLevel: "off",
+  fastMode: false,
+  id: "00000000-0000-4000-8000-000000000001",
+  name: "Fixture default",
+} as const;
+const createCakeSessionRuntime = (options: Parameters<typeof createProjectSessionRuntime>[0]) =>
+  createProjectSessionRuntime({
+    modelPresets: () => ({ presets: [fixturePreset], defaultPresetId: fixturePreset.id }),
+    ...options,
+  });
 
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeSessionRuntime> = [];
@@ -1220,7 +1234,7 @@ describe("Pi 1.0.0 foundation contract", () => {
     });
     runtimes.push(runtime);
 
-    const preset = { id: "00000000-0000-4000-8000-000000000001", prompt: "Be concise." };
+    const preset = { id: "00000000-0000-4000-8000-000000000099", prompt: "Be concise." };
     // A stale preset may request fast mode for a model that does not support it.
     // The configuration must still apply and emit exactly one snapshot.
     await expect(
@@ -3005,9 +3019,9 @@ describe("S1 Pi runtime", () => {
     source.appendMessage({
       role: "assistant",
       content: [{ type: "toolCall", id: "historical-read", name: "read", arguments: {} }],
-      api: "anthropic-messages",
-      provider: "anthropic",
-      model: "fixture",
+      api: "openai-completions",
+      provider: "openai",
+      model: "gpt-4o",
       usage: zeroUsage,
       stopReason: "toolUse",
       timestamp: Date.now(),
@@ -3023,9 +3037,9 @@ describe("S1 Pi runtime", () => {
     const compactedLeafId = source.appendMessage({
       role: "assistant",
       content: [{ type: "text", text: "Hi" }],
-      api: "anthropic-messages",
-      provider: "anthropic",
-      model: "fixture",
+      api: "openai-completions",
+      provider: "openai",
+      model: "gpt-4o",
       usage: zeroUsage,
       stopReason: "stop",
       timestamp: Date.now(),
@@ -3035,9 +3049,9 @@ describe("S1 Pi runtime", () => {
     const forkPointId = source.appendMessage({
       role: "assistant",
       content: [{ type: "text", text: "Ready" }],
-      api: "anthropic-messages",
-      provider: "anthropic",
-      model: "fixture",
+      api: "openai-completions",
+      provider: "openai",
+      model: "gpt-4o",
       usage: zeroUsage,
       stopReason: "stop",
       timestamp: Date.now(),
@@ -3129,9 +3143,9 @@ describe("S1 Pi runtime", () => {
           { type: "text", text: "I will inspect it." },
           { type: "toolCall", id: "call-1", name: "read", arguments: { path: "large.ts" } },
         ],
-        api: "anthropic-messages",
-        provider: "anthropic",
-        model: "fixture",
+        api: "openai-completions",
+        provider: "openai",
+        model: "gpt-4o",
         usage: zeroUsage,
         stopReason: "toolUse",
         timestamp: Date.now(),
@@ -3147,9 +3161,9 @@ describe("S1 Pi runtime", () => {
       const assistantEntryId = source.appendMessage({
         role: "assistant",
         content: [{ type: "text", text: "Investigation complete" }],
-        api: "anthropic-messages",
-        provider: "anthropic",
-        model: "fixture",
+        api: "openai-completions",
+        provider: "openai",
+        model: "gpt-4o",
         usage: zeroUsage,
         stopReason: "stop",
         timestamp: Date.now(),
@@ -3158,9 +3172,9 @@ describe("S1 Pi runtime", () => {
         source.appendMessage({
           role: "assistant",
           content: [{ type: "text", text: "Incomplete later response" }],
-          api: "anthropic-messages",
-          provider: "anthropic",
-          model: "fixture",
+          api: "openai-completions",
+          provider: "openai",
+          model: "gpt-4o",
           usage: zeroUsage,
           stopReason: "aborted",
           timestamp: Date.now(),
@@ -3344,7 +3358,7 @@ describe("S1 Pi runtime", () => {
       content: [{ type: "text", text: "Done" }],
       api: "openai-responses",
       provider: "openai",
-      model: "fixture",
+      model: "gpt-4o",
       usage: zeroUsage,
       stopReason: "stop",
       timestamp: 2,
@@ -3460,9 +3474,9 @@ describe("S1 Pi runtime", () => {
             content: [
               { type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } },
             ],
-            api: "anthropic-messages",
-            provider: "anthropic",
-            model: "fixture",
+            api: "openai-completions",
+            provider: "openai",
+            model: "gpt-4o",
             usage: {
               input: 0,
               output: 0,
@@ -3530,9 +3544,9 @@ describe("S1 Pi runtime", () => {
                 arguments: { path: "src/app.ts", edits: [{ oldText: "old", newText: "new" }] },
               },
             ],
-            api: "anthropic-messages",
-            provider: "anthropic",
-            model: "fixture",
+            api: "openai-completions",
+            provider: "openai",
+            model: "gpt-4o",
             usage: {
               input: 0,
               output: 0,
@@ -3577,9 +3591,9 @@ describe("S1 Pi runtime", () => {
           message: {
             role: "assistant",
             content: [{ type: "text", text: "Hi" }],
-            api: "anthropic-messages",
-            provider: "anthropic",
-            model: "fixture",
+            api: "openai-completions",
+            provider: "openai",
+            model: "gpt-4o",
             usage: {
               input: 0,
               output: 0,
@@ -3613,9 +3627,9 @@ describe("S1 Pi runtime", () => {
           message: {
             role: "assistant",
             content: [],
-            api: "anthropic-messages",
-            provider: "anthropic",
-            model: "fixture",
+            api: "openai-completions",
+            provider: "openai",
+            model: "gpt-4o",
             usage: {
               input: 0,
               output: 0,

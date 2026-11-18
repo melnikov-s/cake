@@ -64,6 +64,12 @@ it("runs /cake-artifacts without a provider and retains executable browser outpu
               sessionDir: join(root, "sessions"),
               sessionId: "diagnostic-session",
               newSession: true,
+              initialConfiguration: {
+                provider: "openai",
+                modelId: "gpt-4o",
+                thinkingLevel: "off",
+                fastMode: false,
+              },
               onEvent: () => undefined,
               persistArtifact: (artifact) => {
                 const input = {

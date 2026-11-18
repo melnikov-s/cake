@@ -20,6 +20,7 @@ import {
 import { projectArtifactPointers, projectDurableArtifactLineageIds } from "./session-projection";
 import { sessionTitleFromFile } from "./session-title";
 import { projectSessionContextMetadata } from "./session-context-metadata";
+import { savedSessionModel } from "./saved-session-model";
 import {
   findSessionFileMetadataById,
   findSessionFileById,
@@ -263,22 +264,13 @@ export async function loadWorkspacePiSessionPreview(
   // Pi opens a missing explicit path as a new session; stale catalog evidence is not creation.
   if (!target || (options.sessionFile !== undefined && !existsSync(target))) return undefined;
   const manager = SessionManager.open(target, dirname(target), cwd);
-  const branch = manager.getBranch();
-  let model: { provider: string; modelId: string } | undefined;
-  for (const entry of branch) {
-    if (entry.type === "model_change") model = { provider: entry.provider, modelId: entry.modelId };
-    else if (entry.type === "message" && entry.message.role === "assistant")
-      model = {
-        provider: entry.message.provider,
-        modelId: entry.message.responseModel ?? entry.message.model,
-      };
-  }
+  const model = savedSessionModel(manager.getBranch());
   return {
     workspacePath: cwd,
     sessionId,
     sessionFile: target,
     parts: options.includeParts === false ? [] : projectConversationDisplay(manager),
     contextMetadata: projectSessionContextMetadata(manager),
-    ...(model ? { currentModel: model } : undefined),
+    ...(model ? { currentModel: { provider: model.provider, modelId: model.modelId } } : undefined),
   };
 }

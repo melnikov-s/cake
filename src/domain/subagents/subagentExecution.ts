@@ -409,6 +409,13 @@ export const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
     const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
       profile: { _tag: "SubagentSession" },
       runtime: {
+        initialConfiguration: {
+          provider: prepared.resolvedModel.provider,
+          modelId: prepared.resolvedModel.modelId,
+          thinkingLevel: prepared.resolvedModel.thinkingLevel,
+          fastMode: prepared.input.fastMode,
+          ...(prepared.input.preset ? { preset: prepared.input.preset } : null),
+        },
         cwd: location.workingDirectory,
         agentDir: location.agentDirectory,
         sessionDir: restored?.privateSessionDirectory ?? location.sessionDirectory,

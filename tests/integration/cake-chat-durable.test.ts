@@ -45,7 +45,10 @@ import {
   makeCakeChatDurableLive,
 } from "../../src/services/pi-durable/CakeChatDurable";
 import { projectChatSessionId } from "../../src/domain/cake-chats/cakeChatLocations";
-import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  SESSION_ASSISTANT_ID,
+} from "../../src/contracts/cake-chats/cake-chat-identity";
 import type {
   CakeSessionRuntime,
   CakeSessionRuntimeEvent,
@@ -60,6 +63,59 @@ import { familyStorageHarness } from "../app/helpers/familyStorageHarness";
 import { toJsonValue } from "../../src/utils/to-json-value";
 import { passiveNoticeContext } from "../../src/contracts/conversations/passive-notice";
 import type { InternalInput } from "../../src/contracts/conversations/internal-input";
+
+it("keeps a zero-preset Cake Chat usable for setup without sending to the available catalog model", async () => {
+  const h = await fixture();
+  let catalog: ReturnType<NonNullable<CakeSessionRuntimeSetup["modelPresets"]>> = { presets: [] };
+  const { runtime } = await h.open(undefined, undefined, { modelPresets: () => catalog });
+  expect((await runtime.snapshot()).model).toBeUndefined();
+  await expect(runtime.prompt("Do not send", "prompt", [])).rejects.toThrow(
+    /create a preset in Settings/i,
+  );
+  expect(h.requests).toHaveLength(0);
+
+  const preset = {
+    id: ids.first,
+    name: "First preset",
+    provider: "openai",
+    modelId: "switched",
+    thinkingLevel: "off" as const,
+    fastMode: false,
+  };
+  catalog = { presets: [preset], defaultPresetId: preset.id };
+  await runtime.prompt("Use the first preset", "prompt", []);
+  expect(h.selectedModels).toEqual(["switched"]);
+  expect((await runtime.snapshot()).preset?.id).toBe(preset.id);
+});
+
+it("prefers an explicit Cake Chat launch and restores it without a configured default", async () => {
+  const h = await fixture();
+  const one = await h.open(undefined, undefined, {
+    initialConfiguration: {
+      provider: "openai",
+      modelId: "switched",
+      thinkingLevel: "off",
+      fastMode: false,
+    },
+  });
+  expect((await one.runtime.snapshot()).model?.id).toBe("switched");
+  await one.close();
+  const two = await h.open(undefined, undefined, { modelPresets: () => ({ presets: [] }) });
+  expect((await two.runtime.snapshot()).model?.id).toBe("switched");
+  await two.runtime.prompt("Resume with saved model", "prompt", []);
+  expect(h.selectedModels).toEqual(["switched"]);
+});
+
+it("launches the companion with the utility model instead of the Cake default", async () => {
+  const h = await fixture();
+  const { runtime } = await h.open(undefined, undefined, {
+    sessionId: SESSION_ASSISTANT_ID,
+    utilityModel: () => ({ provider: "openai", modelId: "switched", thinkingLevel: "off" }),
+  });
+  expect((await runtime.snapshot()).model?.id).toBe("switched");
+  await runtime.prompt("Use the utility model", "prompt", []);
+  expect(h.selectedModels).toEqual(["switched"]);
+});
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -176,9 +232,17 @@ async function fixture() {
   const open = async (
     globalControl?: CakeSessionRuntimeSetup["globalControl"],
     attachmentReferenceControl?: CakeSessionRuntimeSetup["attachmentReferenceControl"],
-    scope?: Pick<
-      CakeSessionRuntimeSetup,
-      "sessionId" | "sessionDir" | "additionalSystemPrompt" | "personalInstructions"
+    scope?: Partial<
+      Pick<
+        CakeSessionRuntimeSetup,
+        | "sessionId"
+        | "sessionDir"
+        | "additionalSystemPrompt"
+        | "personalInstructions"
+        | "modelPresets"
+        | "initialConfiguration"
+        | "utilityModel"
+      >
     >,
     onRuntimeEvent?: (event: CakeSessionRuntimeEvent) => void,
   ) => {
@@ -192,19 +256,21 @@ async function fixture() {
         requestUi: async () => undefined,
         globalControl: globalControl ?? { tools: [], invoke: async () => ({}) },
         attachmentReferenceControl,
-        modelPresets: () => ({
-          presets: [
-            {
-              id: ids.first,
-              name: "Fixture",
-              provider: "openai",
-              modelId: "fixture",
-              thinkingLevel: "off",
-              fastMode: false,
-            },
-          ],
-          defaultPresetId: ids.first,
-        }),
+        modelPresets:
+          scope?.modelPresets ??
+          (() => ({
+            presets: [
+              {
+                id: ids.first,
+                name: "Fixture",
+                provider: "openai",
+                modelId: "fixture",
+                thinkingLevel: "off",
+                fastMode: false,
+              },
+            ],
+            defaultPresetId: ids.first,
+          })),
         cakeChatMemory: {
           preferences: () => ({
             memoryViewBytes: 4_000,

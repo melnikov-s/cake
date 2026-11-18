@@ -61,3 +61,24 @@ export interface CakeModelPresetCatalog {
   readonly utilityModel?: UtilityModel;
   readonly subagentDefaultModel?: CakeModelChoice;
 }
+
+export const modelPresetConfiguration = (preset: ModelPreset): ExplicitCakeModelSelection => ({
+  provider: preset.provider,
+  modelId: preset.modelId,
+  thinkingLevel: preset.thinkingLevel,
+  fastMode: preset.fastMode,
+  preset: {
+    id: preset.id,
+    ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
+  },
+});
+
+export function cakeDefaultModelConfiguration(
+  catalog: CakeModelPresetCatalog | undefined,
+): ExplicitCakeModelSelection | undefined {
+  const preset = catalog?.presets.find((entry) => entry.id === catalog.defaultPresetId);
+  return preset && modelPresetConfiguration(preset);
+}
+
+export const missingCakeDefaultModel =
+  "Choose a model to continue: no default model preset is configured. Create a preset in Settings → Models, or explicitly select a model.";

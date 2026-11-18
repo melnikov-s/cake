@@ -1,4 +1,9 @@
 import { Predicate } from "effect";
+import {
+  cakeDefaultModelConfiguration,
+  modelPresetConfiguration,
+  missingCakeDefaultModel,
+} from "../../contracts/model-presets/cake-model-selection";
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
@@ -6,19 +11,8 @@ import type {
   CakeModelPresetCatalog,
   CakeModelChoice,
 } from "../../contracts/model-presets/cake-model-selection";
-import type { ApplicationState, ModelPreset } from "../../contracts/application/application-data";
+import type { ApplicationState } from "../../contracts/application/application-data";
 import { cakeChatModelSettingDefaults } from "../../contracts/cake-chats/cake-chat-preferences";
-
-const presetConfiguration = (preset: ModelPreset): ExplicitCakeModelSelection => ({
-  provider: preset.provider,
-  modelId: preset.modelId,
-  thinkingLevel: preset.thinkingLevel,
-  fastMode: preset.fastMode,
-  preset: {
-    id: preset.id,
-    ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
-  },
-});
 
 /** Snapshots the application's model configuration for execution-time resolution. */
 export const cakeModelCatalog = (
@@ -67,7 +61,7 @@ export function resolveCakeModelSelection(
     );
   if (matches.length > 1)
     throw new Error(`Model preset name "${selection}" is ambiguous. Rename the duplicate presets.`);
-  return presetConfiguration(matches[0]!);
+  return modelPresetConfiguration(matches[0]!);
 }
 
 /**
@@ -98,21 +92,17 @@ export function resolveCakeModelChoice(
         throw new Error(
           "The chosen model preset no longer exists. Choose another model in Settings → Cake Chat.",
         );
-      return presetConfiguration(preset);
+      return modelPresetConfiguration(preset);
     }
     case "default":
     case "inherit": {
-      const preset = findPreset(catalog.defaultPresetId);
-      const defaultConfiguration = preset ? presetConfiguration(preset) : undefined;
+      const defaultConfiguration = cakeDefaultModelConfiguration(catalog);
       const callerConfiguration = caller ? { ...caller } : undefined;
       const resolved =
         source.source === "inherit"
           ? (callerConfiguration ?? defaultConfiguration)
           : (defaultConfiguration ?? callerConfiguration);
-      if (!resolved)
-        throw new Error(
-          "A model selection is required because the caller has no current model and no default model preset is configured",
-        );
+      if (!resolved) throw new Error(missingCakeDefaultModel);
       return resolved;
     }
   }

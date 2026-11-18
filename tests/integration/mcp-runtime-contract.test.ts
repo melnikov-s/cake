@@ -603,6 +603,12 @@ describe("Cake native MCP runtime contract", () => {
           agentDir,
           sessionDir: join(cwd, "sessions"),
           newSession: true,
+          initialConfiguration: {
+            provider: "openai",
+            modelId: "gpt-4o",
+            thinkingLevel: "off",
+            fastMode: false,
+          },
           onEvent: () => {},
           emitExtensionUiIntent: (intent) => intents.push(intent),
           requestUi: async (request) => {
@@ -670,6 +676,12 @@ describe("Cake native MCP runtime contract", () => {
       agentDir,
       sessionDir: join(cwd, "sessions"),
       newSession: true,
+      initialConfiguration: {
+        provider: "openai",
+        modelId: "gpt-4o",
+        thinkingLevel: "off",
+        fastMode: false,
+      },
       requestUi: async () => undefined,
       emitExtensionUiIntent: (intent) => intents.push(intent),
       onEvent: () => {},

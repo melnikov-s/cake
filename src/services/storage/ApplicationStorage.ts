@@ -644,8 +644,11 @@ export const makeApplicationStorageLive = (userDataDirectory: string, promptsDir
         const cakeChatTodos =
           decoded.cakeChatTodos && clearProjectTodoSelection(decoded.cakeChatTodos);
         if (cakeChatTodos !== decoded.cakeChatTodos) repaired = true;
+        // Older Cake states allowed presets with no default. Use the first in saved order.
+        const defaultModelPresetId = decoded.defaultModelPresetId ?? decoded.modelPresets[0]?.id;
         const state = {
           ...decoded,
+          ...(defaultModelPresetId ? { defaultModelPresetId } : null),
           ...(leftToolbar ? { leftToolbar } : null),
           ...(cakeChatTodos ? { cakeChatTodos } : null),
           projects: decoded.projects.map((project) => {

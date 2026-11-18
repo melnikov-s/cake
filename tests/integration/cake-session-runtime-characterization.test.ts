@@ -160,6 +160,15 @@ async function createFixtureRuntime(
 ) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
   const runtime = await createCakeSessionRuntime({
+    initialConfiguration:
+      options.sessionFile && !options.projectInvestigation
+        ? undefined
+        : {
+            provider: "fixture-provider",
+            modelId: "fixture-model",
+            thinkingLevel: "off",
+            fastMode: false,
+          },
     cwd: directory,
     agentDir: join(directory, "agent"),
     sessionDir: join(directory, "sessions"),
@@ -496,8 +505,8 @@ describe("CakeSessionRuntime characterization", () => {
         role: "assistant",
         content: [{ type: "text", text: "Persisted discussion answer" }],
         api: "openai-completions",
-        provider: "fixture-provider",
-        model: "fixture-model",
+        provider: "openai",
+        model: "gpt-4o",
         usage: {
           input: 10,
           output: 5,
@@ -531,7 +540,16 @@ describe("CakeSessionRuntime characterization", () => {
         );
         await runtime.dispose();
       }
-      const fresh = await createCakeSessionRuntime({ ...options, newSession: true });
+      const fresh = await createCakeSessionRuntime({
+        ...options,
+        newSession: true,
+        initialConfiguration: {
+          provider: "openai",
+          modelId: "gpt-4o",
+          thinkingLevel: "off",
+          fastMode: false,
+        },
+      });
       runtimes.push(fresh);
       expect(dirname(fresh.sessionFile)).toBe(sessionDir);
     },

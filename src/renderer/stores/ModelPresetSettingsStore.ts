@@ -156,7 +156,7 @@ export class ModelPresetSettingsStore extends Store {
     const optimisticId = crypto.randomUUID();
     const revision = this.beginOptimistic(
       [...this.presets, { ...configuration, id: optimisticId }],
-      this.defaultPresetId,
+      this.defaultPresetId ?? optimisticId,
     );
     return this.enqueue(revision, async () => {
       const knownIds = new Set(this.persistedPresets.map((candidate) => candidate.id));
@@ -223,9 +223,10 @@ export class ModelPresetSettingsStore extends Store {
   }
 
   deletePreset(id: string) {
+    const remaining = this.presets.filter((preset) => preset.id !== id);
     const revision = this.beginOptimistic(
-      this.presets.filter((preset) => preset.id !== id),
-      this.defaultPresetId === id ? undefined : this.defaultPresetId,
+      remaining,
+      this.defaultPresetId === id ? remaining[0]?.id : this.defaultPresetId,
     );
     return this.enqueue(revision, () =>
       this.client.modelPresets.remove(this.resolveAuthoritativeId(id), {

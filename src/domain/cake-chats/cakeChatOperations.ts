@@ -1,4 +1,5 @@
 import { Effect, Stream, type Schema } from "effect";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { JsonObject } from "../../contracts/serialization/json-contract";
 import { cakeChatControlTools } from "../../contracts/application/window-control-definitions";
 import { prepareForChat } from "../projects/projectTodos";
@@ -28,11 +29,17 @@ export const acquireTarget = Effect.fn("CakeChats.acquireTarget")(function* (
   target: CakeChatTarget,
   newSession: boolean,
   configuration: CakeChatRuntimeConfiguration,
+  initialConfiguration?: ChatConfiguration,
 ) {
   const location = yield* cakeChatLocations.resolve(configuration.location, target.sessionId);
   const sessions = yield* CakeSessionRuntimes;
   const options = yield* cakeChatRuntime
-    .acquireOptions({ configuration: { ...configuration, location }, target, newSession })
+    .acquireOptions({
+      configuration: { ...configuration, location },
+      target,
+      newSession,
+      initialConfiguration,
+    })
     .pipe(asError("acquire"));
   return yield* acquireConversation(sessions, options).pipe(asError("acquire"));
 });
@@ -127,7 +134,12 @@ export const start = Effect.fn("CakeChats.start")(function* (
     target.sessionId,
     yield* cakeChatLocations.resolve(configuration.location, target.sessionId),
   );
-  const handle = yield* acquireTarget(target, !exists, configuration);
+  const handle = yield* acquireTarget(
+    target,
+    !exists,
+    configuration,
+    exists ? undefined : input.newSession.configuration,
+  );
   if (input.newSession.configuration)
     yield* handle.applyConfiguration(input.newSession.configuration).pipe(asError("start"));
   const prepared = yield* prepareForChat(input.sessionId, input.text).pipe(asError("start"));

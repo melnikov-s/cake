@@ -195,6 +195,12 @@ describe("skill-supplied widget templates", () => {
       agentDir: join(f.root, "agent"),
       sessionDir: join(f.root, "sessions"),
       newSession: true,
+      initialConfiguration: {
+        provider: "openai",
+        modelId: "gpt-4o",
+        thinkingLevel: "off",
+        fastMode: false,
+      },
       requestUi: async () => undefined,
       compileArtifactBrowser: f.compile,
       captureWidgetInstance: f.captureWidgetInstance,

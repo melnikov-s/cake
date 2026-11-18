@@ -23,11 +23,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  assertInitialModelRegistered,
   registerPendingExtensionProviders,
   requireRegisteredModel,
 } from "../../src/services/pi/runtime/extension-providers";
 import { createCakeSessionRuntimeCapabilities } from "../../src/services/pi/runtime/cake-session-runtime-capabilities";
+
+import { savedSessionModel } from "../../src/services/pi/runtime/saved-session-model";
 
 const directories: string[] = [];
 const sessions: AgentSession[] = [];
@@ -122,8 +123,9 @@ async function runtimeFixture(factory: ExtensionFactory, sessionless = false) {
 
 async function open(fixture: Awaited<ReturnType<typeof runtimeFixture>>) {
   const manager = SessionManager.inMemory(fixture.cwd);
-  assertInitialModelRegistered(fixture.runtime, fixture.settings, manager);
   const { session } = await createAgentSession({
+    model: requireRegisteredModel(fixture.runtime, { provider, modelId }),
+    thinkingLevel: "off",
     cwd: fixture.cwd,
     agentDir: fixture.agentDir,
     modelRuntime: fixture.runtime,
@@ -179,9 +181,9 @@ describe("Cake extension embedding boundaries", () => {
       const manager = SessionManager.inMemory(second.cwd);
       manager.appendModelChange(provider, modelId);
       const before = manager.getBranch();
-      expect(() => assertInitialModelRegistered(second.runtime, second.settings, manager)).toThrow(
-        /register in every extension factory invocation.*session_start/,
-      );
+      expect(() =>
+        requireRegisteredModel(second.runtime, savedSessionModel(manager.getBranch())!),
+      ).toThrow(/register in every extension factory invocation.*session_start/);
       expect(manager.getBranch()).toEqual(before);
       expect(second.runtime.getModel(provider, modelId)).toBeUndefined();
     },

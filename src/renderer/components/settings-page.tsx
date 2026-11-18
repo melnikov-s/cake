@@ -65,7 +65,6 @@ export const SettingsPage = observer(function SettingsPage({
   // Static server-supplied presentation capability, never an authorization decision.
   const googleSignIn =
     browserMode && document.querySelector('meta[name="cake-google-sign-in"]') !== null;
-  const session = settings.activeSession;
   const configuration = settings.configuration;
   const pi = settings.piSettings;
   const authNotice = settings.authNotice;
@@ -338,12 +337,15 @@ export const SettingsPage = observer(function SettingsPage({
 
           {activePage === "models" && (
             <div className="grid gap-5">
-              <section className="grid gap-1.5" aria-labelledby="pi-settings-title">
-                <h2 id="pi-settings-title" className="px-0.5 text-xs font-semibold text-foreground">
-                  Current chat
-                </h2>
-                <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
-                  {session && configuration ? (
+              {configuration?.session?.model && (
+                <section className="grid gap-1.5" aria-labelledby="pi-settings-title">
+                  <h2
+                    id="pi-settings-title"
+                    className="px-0.5 text-xs font-semibold text-foreground"
+                  >
+                    Current chat
+                  </h2>
+                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
                     <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">
@@ -355,71 +357,11 @@ export const SettingsPage = observer(function SettingsPage({
                       </span>
                       <ChatConfigurationSelector configuration={configuration} />
                     </div>
-                  ) : (
-                    <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
-                      Open a project or start a one-off chat to choose a model and reasoning level.
-                    </p>
-                  )}
-                </div>
-              </section>
+                  </div>
+                </section>
+              )}
 
               <ModelPresetSettings settings={settings.modelPresets} />
-
-              <section className="grid gap-1.5" aria-labelledby="default-model-title">
-                <h2
-                  id="default-model-title"
-                  className="px-0.5 text-xs font-semibold text-foreground"
-                >
-                  Default agent model
-                </h2>
-                {pi ? (
-                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
-                    <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <strong className="text-xs font-medium text-foreground">
-                          Model & reasoning
-                        </strong>
-                        <small className="text-xs text-muted-foreground">
-                          Default model and reasoning profile for new project chats.
-                        </small>
-                      </span>
-                      <ModelPicker
-                        ariaLabel="Default agent model"
-                        placeholder="Choose default model"
-                        groups={() => providerGroups}
-                        currentModelName={
-                          providerGroups
-                            .find((group) => group.id === pi.defaultProvider)
-                            ?.models.find((model) => model.id === pi.defaultModel)?.name
-                        }
-                        value={
-                          pi.defaultProvider && pi.defaultModel
-                            ? {
-                                provider: pi.defaultProvider,
-                                modelId: pi.defaultModel,
-                                thinkingLevel: pi.defaultThinkingLevel,
-                              }
-                            : undefined
-                        }
-                        showFastMode={false}
-                        onSelect={({ provider, modelId, thinkingLevel }) => {
-                          void providers.setPiSetting({
-                            key: "defaultModel",
-                            provider,
-                            modelId,
-                          });
-                          void providers.setPiSetting({
-                            key: "defaultThinkingLevel",
-                            value: thinkingLevel,
-                          });
-                        }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
-                )}
-              </section>
 
               <section className="grid gap-1.5" aria-labelledby="utility-model-title">
                 <h2

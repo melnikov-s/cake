@@ -113,9 +113,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   newSession,
   preserveResolution = false,
   sideChatSessionId,
+  initialConfiguration,
 }: {
   readonly sideChatSessionId?: string;
   readonly preserveResolution?: boolean;
+  readonly initialConfiguration?: CakeSessionRuntimeAcquireOptions["runtime"]["initialConfiguration"];
   readonly location: ProjectSessionLocation;
   readonly sessionId: string;
   readonly newSession: boolean;
@@ -349,6 +351,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     ...(yield* makeTurnLifecycle({ sessionId, location })),
     runtime: {
       ...runtimeIntegrations,
+      initialConfiguration,
       sessionReferences: {
         resolve: (reference, signal) =>
           reference === "parent" && sideChatSessionId

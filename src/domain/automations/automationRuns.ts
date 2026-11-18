@@ -244,6 +244,7 @@ const acquireOptions = Effect.fn("Automations.acquireOptions")(function* (
     onTurnSettled: (event) =>
       settle(run.id, event.outcome, event.message).pipe(Effect.provide(services)),
     runtime: {
+      initialConfiguration: newSession ? occurrence.definition.task.configuration : undefined,
       cwd: run.workingDirectory,
       allowedCakeOperations: [
         ...[

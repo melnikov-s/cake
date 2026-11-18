@@ -179,7 +179,9 @@ export function createCakeSessionRuntimeConfiguration(input: {
   const setModel = async (provider: string, modelId: string) => {
     const model = modelRuntime.getModel(provider, modelId);
     if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
+    const level = session.thinkingLevel;
     await session.setModel(model);
+    session.setThinkingLevel(level);
     state.setPreset(undefined);
     updateModel();
     await emitSnapshot();

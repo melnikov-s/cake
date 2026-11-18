@@ -111,6 +111,12 @@ async function createFixtureRuntime(
     agentDir: join(directory, "agent"),
     sessionDir: join(directory, "sessions"),
     newSession: true,
+    initialConfiguration: {
+      provider: "fixture-provider",
+      modelId: "fixture-model",
+      thinkingLevel: "off",
+      fastMode: false,
+    },
     requestUi: async () => undefined,
     onEvent,
     customTools,

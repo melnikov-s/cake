@@ -36,10 +36,12 @@ import type {
   UiPart,
 } from "../../contracts/conversations/session-contract";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
-import type {
-  CakeModelSelection,
-  ExplicitCakeModelSelection,
-  CakeModelLaunch,
+import {
+  cakeDefaultModelConfiguration,
+  missingCakeDefaultModel,
+  type CakeModelSelection,
+  type ExplicitCakeModelSelection,
+  type CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
 import { CakeOperationRegistry } from "../pi/runtime/cake-operation-registry";
 import { withCakeOperationDeadline } from "../pi/runtime/cake-operation-deadline";
@@ -147,11 +149,13 @@ export async function createDurableCakeChatRuntime(
   const preferences = options.cakeChatMemory;
   const sessionId = options.sessionId;
   const companion = sessionId === SESSION_ASSISTANT_ID;
-  const utilitySelection = () => {
-    const model = options.utilityModel?.();
-    if (!model) throw new Error("Configure a utility model in Settings before using the companion");
-    return model;
-  };
+  const defaultConfiguration = () =>
+    cakeDefaultModelConfiguration(
+      options.modelPresets?.() ?? options.coordinator?.modelPresets?.(),
+    );
+  const missingSelection = companion
+    ? "Configure a utility model in Settings before using the companion"
+    : missingCakeDefaultModel;
   const sessionFile = durableChatDatabase(options.sessionDir);
   const settings = SettingsManager.create(options.cwd, options.agentDir, {
     projectTrusted: true,
@@ -197,30 +201,19 @@ export async function createDurableCakeChatRuntime(
     options.sessionReferences,
     sessionId,
   );
-  const available = await catalogRuntime.getAvailable();
-  const presets = options.coordinator.modelPresets?.();
-  const preset = companion
-    ? undefined
-    : presets?.presets.find((entry) => entry.id === presets.defaultPresetId);
-  const defaultProvider = settings.getDefaultProvider();
-  const defaultModelId = settings.getDefaultModel();
-  const selection =
-    (companion ? utilitySelection() : undefined) ??
-    preset ??
-    (defaultProvider && defaultModelId
-      ? { provider: defaultProvider, modelId: defaultModelId }
-      : undefined);
-  const defaultModel = selection ? requireRegisteredModel(catalogRuntime, selection) : available[0];
-  if (!defaultModel)
-    throw new Error("Configure an authenticated chat model in Settings before opening Cake Chat");
-  let thinkingLevel: ThinkingLevel =
-    (companion ? utilitySelection().thinkingLevel : undefined) ??
-    preset?.thinkingLevel ??
-    settings.getDefaultThinkingLevel() ??
-    "off";
-  let selected = defaultModel;
+  const initial = companion ? undefined : (options.initialConfiguration ?? defaultConfiguration());
+  type ModelRef = { provider: string; modelId: string };
+  const modelRef = ({ provider, modelId }: ModelRef): ModelRef => ({ provider, modelId });
+  let selection = initial && modelRef(initial);
+  let thinkingLevel: ThinkingLevel = initial?.thinkingLevel ?? "off";
   let activePreset: ChatConfiguration["preset"];
-  let unavailableModel: { provider: string; modelId: string } | undefined;
+  const selectedModel = (ref: ModelRef | undefined) =>
+    ref && catalogRuntime.getModel(ref.provider, ref.modelId);
+  const requireSelection = () => {
+    if (!selection) throw new Error(missingSelection);
+    return requireRegisteredModel(catalogRuntime, selection);
+  };
+  const operationModel = () => selection && { provider: selection.provider, id: selection.modelId };
   const projectModels = async () =>
     (await projectModelCatalog(catalogRuntime, getSupportedThinkingLevels)).map(
       ({ supportedThinkingLevels, ...model }) => ({
@@ -236,13 +229,13 @@ export async function createDurableCakeChatRuntime(
   let streaming = false;
   let activeTurnIds: string[] = [];
   const diagnostics: string[] = [...agentExtensions.errors];
-  const currentConfiguration = (): ExplicitCakeModelSelection => ({
-    provider: selected.provider,
-    modelId: selected.id,
-    thinkingLevel,
-    fastMode,
-    ...(activePreset ? { preset: activePreset } : null),
-  });
+  const currentConfiguration = (): ExplicitCakeModelSelection | undefined =>
+    selection && {
+      ...selection,
+      thinkingLevel,
+      fastMode,
+      ...(activePreset ? { preset: activePreset } : null),
+    };
   const resolveModel = (
     selection: CakeModelSelection | undefined,
     launch?: CakeModelLaunch,
@@ -252,7 +245,9 @@ export async function createDurableCakeChatRuntime(
       return options.resolveModelSelection(selection, caller, launch);
     if (typeof selection === "string")
       throw new Error("Model preset resolution is unavailable in this runtime");
-    return { ...(selection ?? caller) };
+    const configuration = selection ?? caller;
+    if (!configuration) throw new Error(missingSelection);
+    return { ...configuration };
   };
   const operationBridge = {
     sessionId,
@@ -261,12 +256,13 @@ export async function createDurableCakeChatRuntime(
     usage: async () =>
       Schema.decodeUnknownSync(Schema.Json)((await runtime.snapshot()).usage ?? {}),
     contextStatus: async () => {
+      const model = requireSelection();
       const context = await engine.root.context(BACKGROUND_CONTEXT);
       const { tokens } = estimateContextTokens(context.messages);
       return {
         tokens,
-        contextWindow: selected.contextWindow,
-        percent: (tokens / selected.contextWindow) * 100,
+        contextWindow: model.contextWindow,
+        percent: (tokens / model.contextWindow) * 100,
       };
     },
     compact: async () => {
@@ -337,7 +333,7 @@ export async function createDurableCakeChatRuntime(
             runtime: {
               sessionId,
               assistantEntryId: await durableAssistantEntryId(api, context),
-              model: { provider: selected.provider, id: selected.id },
+              model: operationModel(),
             },
             onUpdate: (value) => {
               void api.details(copyJson(value), context).catch(() => undefined);
@@ -531,7 +527,7 @@ export async function createDurableCakeChatRuntime(
     get compaction() {
       // The engine disables SDK automatic compaction and owns both limit resets
       // and bounded overflow recovery without background prefix rewriting.
-      return settings.getCompactionSettings(selected);
+      return settings.getCompactionSettings(selectedModel(selection));
     },
   };
   const newCoordinator = !(await storage.conversation(ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT));
@@ -543,7 +539,7 @@ export async function createDurableCakeChatRuntime(
     settings: sdkSettings,
     env: sideSessionExecutionEnv(scratchDirectory),
     agent: {
-      model: { provider: selected.provider, modelId: selected.id },
+      model: selection,
       thinkingLevel,
       tools,
       instructions: await instructions(),
@@ -611,21 +607,14 @@ export async function createDurableCakeChatRuntime(
     );
   const configureAgent = async () => {
     if (companion) {
-      const utility = utilitySelection();
-      selected = requireRegisteredModel(catalogRuntime, utility);
-      thinkingLevel = utility.thinkingLevel;
-      unavailableModel = undefined;
+      const utility = options.utilityModel?.();
+      selection = utility && modelRef(utility);
+      thinkingLevel = utility?.thinkingLevel ?? "off";
       activePreset = undefined;
     }
-    // Publication reads AgentDoc back into the live selection. Snapshot the requested
-    // change before yielding, and commit preset + agent together: a preset-only
-    // publication must not restore the old model over an in-flight switch.
-    const next = { selected, unavailableModel, thinkingLevel, activePreset };
+    const next = { selection, thinkingLevel, activePreset };
     const change = {
-      model: next.unavailableModel ?? {
-        provider: next.selected.provider,
-        modelId: next.selected.id,
-      },
+      model: next.selection ?? null,
       thinkingLevel: next.thinkingLevel,
       // Saved coordinators predate some tools; the offered set is code-owned, not persisted policy.
       tools,
@@ -637,8 +626,7 @@ export async function createDurableCakeChatRuntime(
       else delete state.preset;
       await configureDurableAgent(tx, engine.root.id, change);
     }, BACKGROUND_CONTEXT);
-    selected = next.selected;
-    unavailableModel = next.unavailableModel;
+    selection = next.selection;
     thinkingLevel = next.thinkingLevel;
     activePreset = next.activePreset;
   };
@@ -655,6 +643,16 @@ export async function createDurableCakeChatRuntime(
     presentationMode?: ProjectSessionPresentationMode,
   ) => {
     const assertCurrent = await turnStop.beforeInput();
+    if (!companion && !selection) {
+      const preset = defaultConfiguration();
+      if (preset) {
+        selection = modelRef(preset);
+        thinkingLevel = preset.thinkingLevel;
+        activePreset = preset.preset;
+        fastMode = preset.fastMode;
+        await options.fastMode?.set(fastMode);
+      }
+    }
     // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
     // Annotations quote Cake Chat's own transcript and stay inline.
     if (
@@ -678,6 +676,7 @@ export async function createDurableCakeChatRuntime(
       applyArtifactExitTransition(text, previousArtifactTarget, internal),
     );
     await configureAgent();
+    requireSelection();
     const busy =
       delivery === "steer" &&
       (await engine.harness.snapshot(LiveDoc, engine.root.id, BACKGROUND_CONTEXT))?.run !==
@@ -835,14 +834,7 @@ export async function createDurableCakeChatRuntime(
               (await storage.submission(id, BACKGROUND_CONTEXT))?.requestId ?? String(id),
           ),
         );
-        if (agent.model) {
-          const restored = catalogRuntime.getModel(agent.model.provider, agent.model.modelId);
-          unavailableModel = restored
-            ? undefined
-            : { provider: agent.model.provider, modelId: agent.model.modelId };
-          selected = restored ?? selected;
-        }
-        thinkingLevel = agent.thinkingLevel ?? thinkingLevel;
+        const selected = selectedModel(agent.model);
         const parts: UiPart[] = [...page.parts];
         for (const item of items)
           if (item.mode !== "write") {
@@ -882,14 +874,14 @@ export async function createDurableCakeChatRuntime(
                 ).items,
           ),
           historyCursor: page.cursor,
-          model: {
-            provider: unavailableModel?.provider ?? selected.provider,
-            id: unavailableModel?.modelId ?? selected.id,
-            name: unavailableModel?.modelId ?? selected.name,
+          model: agent.model && {
+            provider: agent.model.provider,
+            id: agent.model.modelId,
+            name: selected?.name ?? agent.model.modelId,
           },
           models: modelOptions,
-          thinkingLevel,
-          availableThinkingLevels: getSupportedThinkingLevels(selected),
+          thinkingLevel: agent.thinkingLevel ?? thinkingLevel,
+          availableThinkingLevels: selected ? getSupportedThinkingLevels(selected) : ["off"],
           streaming,
           fastMode,
           preset: activePreset,
@@ -909,7 +901,8 @@ export async function createDurableCakeChatRuntime(
       // Context reads acquire the Session line themselves: never nest one in
       // the transcript transaction. This accounting is an advisory projection.
       const accountingStartedAt = performance.now();
-      const cakeChatContext = await engine.contextStatus(selected);
+      const selected = selectedModel(selection);
+      const cakeChatContext = selected && (await engine.contextStatus(selected));
       if (measureInitial)
         Effect.runSync(
           startupDiagnostics.mark("durable-chat-initial-projection", {
@@ -998,13 +991,13 @@ export async function createDurableCakeChatRuntime(
       await setDurableUserMessageMarkdown(engine.root, entryId, markdown);
     },
     async compact(instructions) {
+      requireSelection();
       const job = await engine.root.compact(instructions, BACKGROUND_CONTEXT);
       await engine.harness.waitForTask(job, BACKGROUND_CONTEXT);
     },
     async compactMemory() {
       if (disposed) throw new Error("The Cake runtime has been disposed");
-      if (unavailableModel) throw new Error("Select an available model before compacting.");
-      await engine.compact(selected);
+      await engine.compact(requireSelection());
       publish();
     },
     abort: turnStop.abort,
@@ -1012,11 +1005,9 @@ export async function createDurableCakeChatRuntime(
     async setModel(provider, modelId) {
       if (companion)
         throw new Error("The companion follows the utility model configured in Settings");
-      const model = catalogRuntime.getModel(provider, modelId);
-      if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
-      selected = model;
+      requireRegisteredModel(catalogRuntime, { provider, modelId });
+      selection = { provider, modelId };
       activePreset = undefined;
-      unavailableModel = undefined;
       await configureAgent();
       publish();
     },
@@ -1028,11 +1019,8 @@ export async function createDurableCakeChatRuntime(
     async applyConfiguration(configuration: ChatConfiguration) {
       if (companion)
         throw new Error("The companion follows the utility model configured in Settings");
-      const model = catalogRuntime.getModel(configuration.provider, configuration.modelId);
-      if (!model)
-        throw new Error(`Unknown model ${configuration.provider}/${configuration.modelId}`);
-      selected = model;
-      unavailableModel = undefined;
+      requireRegisteredModel(catalogRuntime, configuration);
+      selection = modelRef(configuration);
       activePreset = configuration.preset;
       thinkingLevel = configuration.thinkingLevel;
       fastMode = configuration.fastMode;
@@ -1069,7 +1057,7 @@ export async function createDurableCakeChatRuntime(
         {
           signal,
           toolCallId: randomUUID(),
-          runtime: { sessionId, model: { provider: selected.provider, id: selected.id } },
+          runtime: { sessionId, model: operationModel() },
         },
       );
       return result.json;
@@ -1129,33 +1117,27 @@ export async function createDurableCakeChatRuntime(
       }
     },
   };
-  // Durable reuses the persisted agent on reopen. Apply only the external instruction authority;
-  // the model/thinking selection remains the saved coordinator's configuration.
+  // A saved selection wins even if its provider or model has disappeared.
   const savedAgent = await engine.root.agent(BACKGROUND_CONTEXT);
-  if (savedAgent.model && !companion) {
-    const saved = catalogRuntime.getModel(savedAgent.model.provider, savedAgent.model.modelId);
-    unavailableModel = saved
-      ? undefined
-      : { provider: savedAgent.model.provider, modelId: savedAgent.model.modelId };
-    selected = saved ?? selected;
-  }
-  thinkingLevel = savedAgent.thinkingLevel ?? thinkingLevel;
-  const savedPreset = await engine.harness.snapshot(
-    PresetContextDoc,
-    engine.root.id,
-    BACKGROUND_CONTEXT,
-  );
-  activePreset = savedPreset
-    ? resolvePresetContext(
+  if (!companion && !newCoordinator && savedAgent.model) {
+    selection = savedAgent.model;
+    thinkingLevel = savedAgent.thinkingLevel;
+    const savedPreset = await engine.harness.snapshot(
+      PresetContextDoc,
+      engine.root.id,
+      BACKGROUND_CONTEXT,
+    );
+    activePreset =
+      savedPreset &&
+      resolvePresetContext(
         Schema.decodeUnknownSync(PresetState)(savedPreset).preset,
         options.modelPresets?.().presets,
-      )
-    : newCoordinator && preset
-      ? {
-          id: preset.id,
-          ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
-        }
-      : undefined;
+      );
+  } else if (initial) {
+    activePreset = initial.preset;
+    fastMode = initial.fastMode;
+    if (fastMode !== (options.fastMode?.get() ?? false)) await options.fastMode?.set(fastMode);
+  }
   await configureAgent();
   if (companion) await transitionAssistantContext(engine.root, null);
   engine.harness.resume();

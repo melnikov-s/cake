@@ -52,7 +52,17 @@ async function setup() {
     }),
   );
   vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
-  return { cwd, agentDir, trace };
+  return {
+    cwd,
+    agentDir,
+    trace,
+    initialConfiguration: {
+      provider: "non-chat-fixture",
+      modelId: "chat",
+      thinkingLevel: "off",
+      fastMode: false,
+    } as const,
+  };
 }
 const reference = (modelId: string) => ({ provider: "non-chat-fixture", modelId });
 

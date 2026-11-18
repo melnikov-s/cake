@@ -10,6 +10,7 @@ it("reads cold regular-session history without provider calls or transcript writ
   const directory = await mkdtemp(join(tmpdir(), "cake-cold-inspection-"));
   const sessionDir = join(directory, "sessions");
   const session = SessionManager.create(directory, sessionDir);
+  session.appendModelChange("openai", "gpt-4o");
   session.appendMessage({ role: "user", content: "Recorded input", timestamp: 1 });
   session.appendMessage(durableAnswer("Recorded answer"));
   const sessionFile = session.getSessionFile();

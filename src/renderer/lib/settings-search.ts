@@ -25,11 +25,12 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       {
         page: "models",
         label: "Models",
-        description: "Defaults and presets",
+        description: "Model presets and utility",
+        introduction:
+          "Your default preset sets the model and reasoning for new Cake chats and sessions.",
         settings: [
           { label: "Current chat model configuration", targetId: "pi-settings-title" },
           { label: "Model presets", targetId: "model-presets-title", keywords: "fast mode" },
-          { label: "Default agent model", targetId: "default-model-title", keywords: "reasoning" },
           { label: "Utility model", targetId: "utility-model-title", keywords: "background tasks" },
         ],
       },

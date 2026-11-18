@@ -17,12 +17,12 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import {
-  assertInitialModelRegistered,
   registerAgentDirectoryExtensionProviders,
   requireRegisteredModel,
 } from "./extension-providers";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import { emptyToolErrorExtension } from "./tool-error-text";
+import { savedSessionModel } from "./saved-session-model";
 import { createWidgetContextExtension } from "./widget-context-extension";
 import { createWidgetBranchTools } from "./widget-branch-tools";
 import { cakeBuiltinSkillsOverride } from "./cake-builtin-skills";
@@ -243,23 +243,22 @@ export async function runIsolatedSession(
       })
     : [];
   const selectedTools = widgetBranch ? branchTools.map((tool) => tool.name) : options.tools;
-  const selectedModel = options.model
-    ? requireRegisteredModel(modelRuntime, {
-        provider: options.model.provider,
-        modelId: options.model.id,
-      })
-    : undefined;
-  const initialModel =
-    selectedModel ??
-    assertInitialModelRegistered(modelRuntime, settingsManager, options.sessionManager);
-  if (initialModel && options.prepareSession)
+  const saved = savedSessionModel(options.sessionManager.getBranch());
+  const selection = options.model
+    ? { provider: options.model.provider, modelId: options.model.id }
+    : saved;
+  if (!selection)
+    throw new Error(`Select a model before starting the ${options.modelPurpose} session.`);
+  const initialModel = requireRegisteredModel(modelRuntime, selection);
+  if (options.prepareSession)
     options.prepareSession({
       sessionManager: options.sessionManager,
       model: initialModel,
       reserveTokens: settingsManager.getCompactionSettings(initialModel).reserveTokens,
     });
   const agentSessionOptions = {
-    model: selectedModel,
+    model: initialModel,
+    thinkingLevel: options.thinkingLevel ?? saved?.thinkingLevel ?? ("off" as const),
     cwd: options.cwd,
     agentDir: options.agentDir,
     modelRuntime,
@@ -291,7 +290,6 @@ export async function runIsolatedSession(
         });
       if (options.bindExtensions || promptCacheLineage || inheritedSystem)
         await session.bindExtensions({ mode: "rpc" });
-      if (options.thinkingLevel) session.setThinkingLevel(options.thinkingLevel);
 
       let response = "";
       let failure = "";

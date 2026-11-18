@@ -40,6 +40,7 @@ import {
 } from "../../contracts/project-sessions/project-session-data";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import {
   archiveLocation,
@@ -54,6 +55,7 @@ export const acquireTarget = Effect.fn("ProjectSessions.acquireTarget")(function
   location: ProjectSessionLocation,
   sessionId: string,
   newSession: boolean,
+  initialConfiguration?: ChatConfiguration,
 ) {
   const sessions = yield* CakeSessionRuntimes;
   // Older implicit restores could reactivate the transcript without recreating
@@ -61,9 +63,12 @@ export const acquireTarget = Effect.fn("ProjectSessions.acquireTarget")(function
   if (!newSession && location.managedWorktree?.state === "resolved")
     yield* managedWorktrees.restoreResolved(location.workingDirectory).pipe(asError("acquire"));
   yield* (yield* ManagedWorktrees).awaitSetup(location.workingDirectory).pipe(asError("acquire"));
-  const options = yield* acquireOptions({ location, sessionId, newSession }).pipe(
-    asError("acquire"),
-  );
+  const options = yield* acquireOptions({
+    location,
+    sessionId,
+    newSession,
+    initialConfiguration,
+  }).pipe(asError("acquire"));
   return yield* acquireConversation(sessions, options).pipe(asError("acquire"));
 });
 
@@ -270,7 +275,7 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
         createdPurpose: purpose,
       })
       .pipe(asError("start"));
-    const handle = yield* acquireTarget(location, input.sessionId, true);
+    const handle = yield* acquireTarget(location, input.sessionId, true, input.configuration);
     if (input.labelIds?.length)
       yield* setProjectSessionLabels(location.projectPath, input.sessionId, input.labelIds).pipe(
         asError("start"),

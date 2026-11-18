@@ -14,7 +14,12 @@ import type { SettingsPageId } from "../../../src/contracts/application/settings
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 const pages: Array<{ page: SettingsPageId; title: string; introduction?: string }> = [
-  { page: "models", title: "Models" },
+  {
+    page: "models",
+    title: "Models",
+    introduction:
+      "Your default preset sets the model and reasoning for new Cake chats and sessions.",
+  },
   { page: "providers", title: "Providers" },
   { page: "agent", title: "Agent" },
   { page: "runtime", title: "Execution & resources" },

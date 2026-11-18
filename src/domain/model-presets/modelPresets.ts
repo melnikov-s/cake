@@ -87,7 +87,11 @@ export const create = Effect.fn("ModelPresets.create")(function* (input: ModelPr
         const promptFile = yield* prompts.write(input.prompt, input.promptFile);
         preset = { ...preset, promptFile };
       } else if (preset.promptFile) yield* prompts.read(preset.promptFile);
-      return { ...current, modelPresets: [...current.modelPresets, preset] };
+      return {
+        ...current,
+        modelPresets: [...current.modelPresets, preset],
+        defaultModelPresetId: current.defaultModelPresetId ?? current.modelPresets[0]?.id ?? id,
+      };
     }),
   );
 });
@@ -151,15 +155,13 @@ export const remove = Effect.fn("ModelPresets.remove")(function* (id: string) {
     if (!current.modelPresets.some((preset) => preset.id === id))
       return Effect.fail(new ModelPresetNotFoundError({ id }));
     const { defaultModelPresetId, ...withoutDefault } = current;
-    const next = {
+    const modelPresets = current.modelPresets.filter((preset) => preset.id !== id);
+    const nextDefault = defaultModelPresetId === id ? modelPresets[0]?.id : defaultModelPresetId;
+    return Effect.succeed({
       ...withoutDefault,
-      modelPresets: current.modelPresets.filter((preset) => preset.id !== id),
-    };
-    return Effect.succeed(
-      defaultModelPresetId === id || defaultModelPresetId === undefined
-        ? next
-        : { ...next, defaultModelPresetId },
-    );
+      modelPresets,
+      ...(nextDefault ? { defaultModelPresetId: nextDefault } : null),
+    });
   });
 });
 
@@ -167,11 +169,16 @@ export const setDefault = Effect.fn("ModelPresets.setDefault")(function* (id: st
   return yield* transact((current) => {
     if (id !== undefined && !current.modelPresets.some((preset) => preset.id === id))
       return Effect.fail(new DefaultModelPresetNotFoundError({ id }));
-    const withoutDefault = { ...current };
-    Reflect.deleteProperty(withoutDefault, "defaultModelPresetId");
-    return Effect.succeed(
-      id === undefined ? withoutDefault : { ...withoutDefault, defaultModelPresetId: id },
-    );
+    if (id === undefined)
+      return current.modelPresets.length
+        ? Effect.fail(
+            new ModelPresetValidationError({
+              message:
+                "Choose a default preset. The default cannot be cleared while presets exist.",
+            }),
+          )
+        : Effect.succeed(current);
+    return Effect.succeed({ ...current, defaultModelPresetId: id });
   });
 });
 

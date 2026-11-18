@@ -77,17 +77,6 @@ interface PiSettingMetadata {
   readonly description: string;
 }
 const piMetadata = {
-  defaultModel: {
-    category: "Models",
-    label: "Default agent model",
-    description:
-      "Pi's default provider/model for new Pi sessions without a Cake preset. Value {provider, modelId} from settings.providers.list.",
-  },
-  defaultThinkingLevel: {
-    category: "Models",
-    label: "Default reasoning",
-    description: "Pi's default thinking level.",
-  },
   autoCompact: {
     category: "Agent",
     label: "Auto-compact",
@@ -224,21 +213,26 @@ const piMetadata = {
     label: "Tree filter",
     description: "Pi terminal session-tree filter (not shown in Cake's Settings UI).",
   },
-} satisfies Record<PiSettingUpdate["key"], PiSettingMetadata>;
+} satisfies Record<
+  Exclude<PiSettingUpdate["key"], "defaultModel" | "defaultThinkingLevel">,
+  PiSettingMetadata
+>;
 
-const piDefinitions = piSettingUpdateSchema.members.map((member) => {
+// Imported Pi defaults remain compatible with the Pi CLI, not Cake settings.
+const piDefinitions = piSettingUpdateSchema.members.flatMap((member) => {
   const key = member.fields.key.literal;
-  return setting({
-    key: `pi.${key}`,
-    ...piMetadata[key],
-    value:
-      "value" in member.fields
-        ? member.fields.value
-        : Schema.Struct({ provider: member.fields.provider, modelId: member.fields.modelId }),
-    ...(key === "packages"
-      ? { type: "[source | {source,autoload?,extensions?,skills?,prompts?,themes?}]" }
-      : null),
-  });
+  if (key === "defaultModel" || key === "defaultThinkingLevel" || !("value" in member.fields))
+    return [];
+  return [
+    setting({
+      key: `pi.${key}`,
+      ...piMetadata[key],
+      value: member.fields.value,
+      ...(key === "packages"
+        ? { type: "[source | {source,autoload?,extensions?,skills?,prompts?,themes?}]" }
+        : null),
+    }),
+  ];
 });
 
 export const settingsCatalog: readonly SettingDefinition[] = [
@@ -320,7 +314,7 @@ export const settingsCatalog: readonly SettingDefinition[] = [
     category: "Models",
     label: "Default model preset",
     description:
-      "Preset ID (from settings.models.get) used for new chats and sessions; null restores Pi's default model.",
+      "Preset ID (from settings.models.get) used for new chats and sessions. Null is only valid when there are no presets.",
     value: Schema.NullOr(Schema.String.check(Schema.isUUID(4))),
   }),
   setting({

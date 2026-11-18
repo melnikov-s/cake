@@ -2,7 +2,6 @@ import {
   DefaultResourceLoader,
   SettingsManager,
   type ModelRuntime,
-  type SessionManager,
   type RegisteredMcpServer,
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
@@ -11,14 +10,8 @@ import {
  * Registers the providers that extensions queued while loading, so they exist
  * on `modelRuntime` before anything resolves a model against it.
  *
- * `createAgentSession()` picks the initial model — the settings default, or the
- * model a resumed session recorded — *before* constructing the AgentSession
- * whose extension binding flushes these registrations. On a fresh ModelRuntime
- * every extension-registered provider is therefore unknown at that moment: the
- * lookup fails, Pi falls back to the first authenticated built-in model, and
- * appends that fallback to the session file as a model change. Pi's own CLI
- * avoids this in `createAgentSessionServices()` by flushing first; this mirrors
- * that step for Cake's loader-owning runtimes.
+ * Register before Cake resolves the selected model and hands it to the SDK.
+ * Pi's standalone CLI also flushes providers before its own model selection.
  *
  * Returns registration failures and provider-only compatibility diagnostics.
  * The binding step later sees an empty queue.
@@ -121,20 +114,6 @@ export function requireRegisteredModel(
       `Selected model ${selection.provider}/${selection.modelId} is unavailable. Cake will not substitute another model. Extension providers must register in every extension factory invocation, before model selection; process-wide first-instance registration or deferring registration to session_start is unsupported. Update the extension to register per runtime, or choose an available model in Settings.`,
     );
   return model;
-}
-
-/** Returns the model a session without an explicit selection starts with, if any. */
-export function assertInitialModelRegistered(
-  runtime: Pick<ModelRuntime, "getModel">,
-  settings: SettingsManager,
-  session?: SessionManager,
-) {
-  // An assistant's physical model is not an explicit selection (for example
-  // after a virtual-model route). Only enforce persisted model-change intent.
-  const selection = session?.getBranch().findLast((entry) => entry.type === "model_change");
-  const provider = selection?.provider ?? settings.getDefaultProvider();
-  const modelId = selection?.modelId ?? settings.getDefaultModel();
-  return provider && modelId ? requireRegisteredModel(runtime, { provider, modelId }) : undefined;
 }
 
 /**

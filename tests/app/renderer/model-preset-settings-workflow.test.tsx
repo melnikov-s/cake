@@ -9,6 +9,8 @@ import type {
 } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
 
@@ -164,10 +166,18 @@ describe("Model preset settings workflow", () => {
       thinkingLevel: "off" as const,
       fastMode: false,
     };
-    const create = vi.fn<Client["modelPresets"]["create"]>(async () => ({ presets: [created] }));
-    const update = vi.fn<Client["modelPresets"]["update"]>(async (value) => ({ presets: [value] }));
+    const create = vi.fn<Client["modelPresets"]["create"]>(async () => ({
+      presets: [created],
+      defaultPresetId: created.id,
+    }));
+    const update = vi.fn<Client["modelPresets"]["update"]>(async (value) => ({
+      presets: [value],
+      defaultPresetId: value.id,
+    }));
     using fixture = await renderSettings({ modelPresets: { create, update } }, []);
-    expect(screen.getByText("No presets yet. Create one for your preferred setup.")).toBeDefined();
+    expect(
+      screen.getByText("Your first preset becomes the default model for new chats and sessions."),
+    ).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "New preset" }));
     await fixture.user.type(screen.getByRole("textbox", { name: "Name" }), "  Focused review  ");
     await fixture.user.click(screen.getByRole("button", { name: "Preset model" }));
@@ -175,6 +185,9 @@ describe("Model preset settings workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Apply" }));
     await fixture.user.click(screen.getByRole("button", { name: "Save preset" }));
     await screen.findByText("Focused review");
+    expect(
+      row("Focused review").getByRole("button", { name: "Default", pressed: true }),
+    ).toBeDefined();
     expect(create).toHaveBeenCalledWith(
       {
         name: "Focused review",
@@ -193,7 +206,7 @@ describe("Model preset settings workflow", () => {
     );
   });
 
-  it("sets and clears the new-conversation default, then deletes the preset", async () => {
+  it("uses the preset as the only default and hides the empty Current chat section", async () => {
     const setDefault = vi.fn<Client["modelPresets"]["setDefault"]>(async (id) => ({
       presets: [preset],
       defaultPresetId: id,
@@ -208,20 +221,47 @@ describe("Model preset settings workflow", () => {
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Clear default" }));
-    await screen.findByRole("button", { name: "Set default", pressed: false });
-    await waitFor(() =>
-      expect(setDefault).toHaveBeenLastCalledWith(
-        undefined,
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      ),
-    );
+    expect(screen.queryByRole("heading", { name: "Current chat" })).toBeNull();
+    expect(screen.queryByText("Default agent model")).toBeNull();
+    expect(screen.queryByText(/Open a project or start a one-off chat/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear default" })).toBeNull();
     await fixture.user.click(row(preset.name).getByRole("button", { name: "Delete" }));
-    await screen.findByText("No presets yet. Create one for your preferred setup.");
+    await screen.findByText(
+      "Your first preset becomes the default model for new chats and sessions.",
+    );
     expect(remove).toHaveBeenCalledWith(
       preset.id,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+  });
+
+  it("keeps the current chat's actual model configuration visible", async () => {
+    using fixture = createRendererStoreFixture();
+    await fixture.root.navigationStore.openCakeChat(CAKE_CHAT_SESSION_ID);
+    const chat = fixture.root.cakeChatCollectionStore.activeSession!;
+    applyConversationSnapshot(chat.model, {
+      sessionId: CAKE_CHAT_SESSION_ID,
+      sessionFile: "/cake/coordinator.sqlite",
+      model: { provider: model.provider, id: model.id, name: model.name },
+      models: [model],
+      parts: [],
+      thinkingLevel: "high",
+      availableThinkingLevels: ["off", "high"],
+      streaming: false,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    });
+    const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
+    try {
+      const current = screen.getByRole("region", { name: "Current chat" });
+      expect(within(current).getByText("Model configuration")).toBeDefined();
+      expect(within(current).getByText(model.name)).toBeDefined();
+    } finally {
+      view.unmount();
+    }
   });
 
   it("queues deletion of a pending duplicate against the server-assigned identity", async () => {
@@ -279,7 +319,7 @@ describe("Model preset settings workflow", () => {
     expect(
       row("Changed in another window").getByRole("button", { name: "Default", pressed: true }),
     ).toBeDefined();
-    expect(screen.getByRole("button", { name: "Clear default" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Clear default" })).toBeNull();
   });
 
   it("keeps unavailable presets editable and restores their saved name after failure, allowing retry", async () => {

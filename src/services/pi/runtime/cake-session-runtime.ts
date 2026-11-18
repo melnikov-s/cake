@@ -6,6 +6,11 @@ import {
   createAgentSession,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import {
+  cakeDefaultModelConfiguration,
+  missingCakeDefaultModel,
+} from "../../../contracts/model-presets/cake-model-selection";
+import { savedSessionModel } from "./saved-session-model";
 import { createCakeSessionRuntimeSubscription } from "./cake-session-runtime-subscription";
 import { shutdownDiagnostics, shutdownResource } from "../../diagnostics/shutdown-diagnostics";
 import type { ProjectTodo } from "../../../contracts/projects/project-todos";
@@ -29,7 +34,7 @@ import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Schema } from "effect";
 import { createCakeSessionRuntimeOperationApi } from "./cake-session-runtime-operation-api";
 import {
-  assertInitialModelRegistered,
+  requireRegisteredModel,
   registerAgentDirectoryExtensionProviders,
   registerPendingExtensionProviders,
 } from "./extension-providers";
@@ -137,6 +142,8 @@ export type CakeSessionRuntimeEvent =
   | { type: "extension-ui"; sessionId: string; event: ExtensionUiEvent };
 
 export interface CakeSessionRuntimeOptions {
+  /** Explicit launch choice, resolved by the caller before runtime acquisition. */
+  initialConfiguration?: ChatConfiguration;
   /** Called only after Pi has written the first conversation message to its JSONL. */
   onInitialTranscriptPersisted?(): void;
   cwd: string;
@@ -415,16 +422,25 @@ export async function createCakeSessionRuntime(
         (requestedSessionFile
           ? SessionManager.open(requestedSessionFile, sessionDir, options.cwd)
           : SessionManager.continueRecent(options.cwd, sessionDir)));
-  // Extension providers must exist before createAgentSession resolves the
-  // initial model, or a default or resumed model on one of them falls back.
+  // Extension providers must exist before resolving the Cake-selected model.
   // Auxiliary sessions take the agent directory's providers directly because
   // their isolated resource loaders run with `noExtensions`.
   const providerErrors =
     options.auxiliary && !options.projectInvestigation
       ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
       : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
-  assertInitialModelRegistered(modelRuntime, settingsManager, sessionManager);
+  const saved = savedSessionModel(sessionManager.getBranch());
+  const launch =
+    options.initialConfiguration ??
+    (saved ? undefined : cakeDefaultModelConfiguration(options.modelPresets?.()));
+  const selection = launch ?? saved;
+  if (!selection) throw new Error(missingCakeDefaultModel);
+  // The SDK falls back to Pi defaults (including auth-dependent restoration)
+  // if either option is omitted. Cake supplies both, even for imported sessions.
+  const model = requireRegisteredModel(modelRuntime, selection);
   const agentSessionOptions = {
+    model,
+    thinkingLevel: selection.thinkingLevel,
     cwd: options.cwd,
     agentDir,
     modelRuntime,
@@ -434,7 +450,7 @@ export async function createCakeSessionRuntime(
     ...(options.customTools ? { customTools: options.customTools } : null),
     ...(options.projectInvestigation ? { excludeTools: ["edit", "write"] } : null),
   };
-  const { session, extensionsResult, modelFallbackMessage } = await createAgentSession(
+  const { session, extensionsResult } = await createAgentSession(
     options.tools ? { ...agentSessionOptions, tools: options.tools } : agentSessionOptions,
   );
   if (options.messageBoardControl)
@@ -442,6 +458,20 @@ export async function createCakeSessionRuntime(
   const cakeSessionId = session.sessionManager.getSessionId();
   configurationState.attachModel(session.model);
   configurationState.attachSession(session.sessionManager);
+  if (launch) {
+    // The SDK adds launch metadata only for empty sessions. A seeded/imported
+    // transcript can have messages but no explicit selection, or record another model.
+    const branch = sessionManager.getBranch();
+    const recorded = branch.findLast((entry) => entry.type === "model_change");
+    if (recorded?.provider !== model.provider || recorded.modelId !== model.id)
+      sessionManager.appendModelChange(model.provider, model.id);
+    const thinking = branch.findLast((entry) => entry.type === "thinking_level_change");
+    if (thinking?.thinkingLevel !== session.thinkingLevel)
+      sessionManager.appendThinkingLevelChange(session.thinkingLevel);
+    if (launch.preset || configurationState.preset()) configurationState.setPreset(launch.preset);
+    if (launch.fastMode !== (options.fastMode?.get() ?? false))
+      await configurationState.setFastMode(launch.fastMode);
+  }
   capabilities.setSessionId(cakeSessionId);
   // Ancestors of a Working Directory fork live under sibling workspace session
   // directories, so lineage resolution is bounded by the shared session root.
@@ -553,7 +583,6 @@ export async function createCakeSessionRuntime(
       diagnostics: [
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
         ...providerErrors,
-        ...(modelFallbackMessage ? [modelFallbackMessage] : []),
       ],
       reloadPending: resources.reloadPending(),
     });
