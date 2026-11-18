@@ -8,6 +8,12 @@ export const inlineWidgetScrollInputMessage = Schema.Struct({
   value: Schema.Literals([-1, 0, 1]),
 });
 
+export const inlineWidgetEscapeMessage = Schema.Struct({
+  source: Schema.Literal("cake-inline-widget"),
+  token: Schema.String,
+  type: Schema.Literal("escape"),
+});
+
 /** URL syntax is checked here; the existing host opener owns allowed schemes. */
 export const inlineWidgetLinkMessage = Schema.Struct({
   source: Schema.Literal("cake-inline-widget"),

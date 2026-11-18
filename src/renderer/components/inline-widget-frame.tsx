@@ -14,11 +14,13 @@ import type { CompiledInlineWidget } from "../../contracts/widgets/inline-widget
 import { widgetDocumentUrl } from "../lib/widget-document-url";
 import { Option, Schema } from "effect";
 import {
+  inlineWidgetEscapeMessage,
   inlineWidgetLinkMessage,
   inlineWidgetScrollInputMessage,
 } from "../../utils/inline-widget-link-message";
 import { useMarkdownLinkActions } from "./ai-elements/markdown";
 import { openWidgetLink } from "../lib/open-widget-link";
+import { fullscreenFrameEscapeEvent } from "../lib/fullscreen-escape";
 
 /** Authoritative opaque-origin execution frame for compiled Cake widgets. */
 export const InlineWidgetFrame = forwardRef<
@@ -50,7 +52,13 @@ export const InlineWidgetFrame = forwardRef<
   const frame = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     const receive = (event: MessageEvent<unknown>) => {
-      if (event.source !== frame.current?.contentWindow) return;
+      const element = frame.current;
+      if (!element || event.source !== element.contentWindow) return;
+      const escape = Schema.decodeUnknownOption(inlineWidgetEscapeMessage)(event.data);
+      if (Option.isSome(escape) && escape.value.token === compiled.token) {
+        element.dispatchEvent(new Event(fullscreenFrameEscapeEvent, { bubbles: true }));
+        return;
+      }
       const input = Schema.decodeUnknownOption(inlineWidgetScrollInputMessage)(event.data);
       if (Option.isSome(input) && input.value.token === compiled.token) {
         frame.current?.dispatchEvent(

@@ -1,6 +1,13 @@
-import { forwardRef, type HTMLAttributes } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  type HTMLAttributes,
+} from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { registerFullscreenEscapeOverlay } from "@/lib/fullscreen-escape";
 
 export interface DialogBackdropProps extends HTMLAttributes<HTMLDivElement> {
   onClose?: () => void;
@@ -9,11 +16,20 @@ export interface DialogBackdropProps extends HTMLAttributes<HTMLDivElement> {
 
 export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
   function DialogBackdrop({ className, onClose, portalContainer, children, ...props }, ref) {
+    const element = useRef<HTMLDivElement>(null);
+    const close = useRef(onClose);
+    close.current = onClose;
+    useImperativeHandle(ref, () => element.current!, [portalContainer]);
+    useLayoutEffect(() => {
+      if (element.current)
+        return registerFullscreenEscapeOverlay(element.current, () => close.current?.());
+    }, [portalContainer]);
+
     if (!("document" in globalThis)) return null;
 
     return createPortal(
       <div
-        ref={ref}
+        ref={element}
         role="dialog"
         aria-modal="true"
         onClick={(e) => {

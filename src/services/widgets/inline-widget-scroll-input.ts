@@ -1,4 +1,4 @@
-/** Forward only gestures that can escape the opaque widget into its transcript. */
+/** Forward input that can leave the opaque widget for its Cake host. */
 function forwardScrollInput(token: string) {
   const send = (direction: number) =>
     parent.postMessage(
@@ -32,6 +32,22 @@ function forwardScrollInput(token: string) {
     true,
   );
   addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      if (
+        event.isTrusted &&
+        !event.defaultPrevented &&
+        !event.isComposing &&
+        !event.repeat &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !document.fullscreenElement &&
+        !document.querySelector("dialog[open]")
+      )
+        parent.postMessage({ source: "cake-inline-widget", token, type: "escape" }, "*");
+      return;
+    }
     if (
       event.target instanceof Element &&
       event.target.closest('input, textarea, select, [contenteditable="true"]')

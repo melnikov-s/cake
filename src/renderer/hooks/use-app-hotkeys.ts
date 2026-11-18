@@ -18,7 +18,11 @@ export function useAppHotkeys(
   const settings = root.settingsStore;
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented)
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !root.fullscreenSurfaceStore.hasOpenSurface
+      )
         root.navigationStore.dismissTopSecondarySurface();
     };
     window.addEventListener("keydown", closeOnEscape);

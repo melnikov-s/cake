@@ -48,39 +48,19 @@ export function FullscreenSurface({
   const titleId = useId();
   onCloseRef.current = onClose;
 
-  useEffect(
-    () => fullscreenSurfaces.open(surfaceId, () => onCloseRef.current()),
-    [fullscreenSurfaces, surfaceId],
-  );
-
   useEffect(() => {
-    const previouslyFocused =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    if (!surfaceRef.current?.contains(document.activeElement)) closeButton.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      // Fullscreen surfaces sit directly below the shared overlay band, so
-      // nested layers (diagram/table fullscreen, image preview, dialogs) stack
-      // above and handle Escape themselves. Only dismiss when this surface owns
-      // the viewport center, i.e. nothing is stacked above. Environments without
-      // layout (unit tests) are treated as topmost.
-      const topmost = document.elementFromPoint?.(window.innerWidth / 2, window.innerHeight / 2);
-      if (topmost && surfaceRef.current && !surfaceRef.current.contains(topmost)) return;
-      // Claim this dismissal before the window-level Escape handler can close
-      // the accessory pane underneath the fullscreen surface as well.
-      event.preventDefault();
-      onCloseRef.current();
-    };
-    document.addEventListener("keydown", onKeyDown);
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const release = fullscreenSurfaces.open(surfaceId, surface, () => onCloseRef.current());
+    const opener = document.activeElement;
+    if (!surface.contains(opener)) closeButton.current?.focus({ preventScroll: true });
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
+      release();
       // Returning focus to a transcript control must not scroll the transcript.
-      if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
+      if (opener instanceof HTMLElement && opener.isConnected)
+        opener.focus({ preventScroll: true });
     };
-  }, []);
+  }, [fullscreenSurfaces, surfaceId]);
 
   const showEyebrow =
     Boolean(eyebrow?.trim()) && eyebrow?.trim().toLowerCase() !== title.trim().toLowerCase();

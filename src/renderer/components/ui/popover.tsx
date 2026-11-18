@@ -17,6 +17,7 @@ import { Button, type ButtonProps } from "./button";
 import { IconButton, type IconButtonProps } from "./icon-button";
 import { NumberedIconButton, type NumberedIconButtonProps } from "./numbered-icon-button";
 import { cn } from "@/lib/utils";
+import { registerFullscreenEscapeOverlay } from "@/lib/fullscreen-escape";
 
 import { NavigationRailContext } from "./navigation-rail-context";
 
@@ -325,6 +326,14 @@ export function PopoverContent({
   updatePositionRef.current = updatePosition;
   const setOpenRef = useRef(setOpen);
   setOpenRef.current = setOpen;
+  const dismissWithFocus = useCallback(() => {
+    setOpenRef.current(false);
+    effectiveAnchorRef.current?.focus({ preventScroll: true });
+  }, [effectiveAnchorRef]);
+  useLayoutEffect(() => {
+    if (open && contentRef.current)
+      return registerFullscreenEscapeOverlay(contentRef.current, dismissWithFocus);
+  }, [open, dismissWithFocus]);
 
   useEffect(() => {
     if (!open) return;
@@ -341,8 +350,7 @@ export function PopoverContent({
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      setOpenRef.current(false);
-      effectiveAnchorRef.current?.focus({ preventScroll: true });
+      dismissWithFocus();
     };
     const reposition = () => updatePositionRef.current();
     document.addEventListener("pointerdown", dismiss, true);
@@ -366,7 +374,14 @@ export function PopoverContent({
       window.removeEventListener("resize", reposition);
       observer?.disconnect();
     };
-  }, [boundary, dismissOnEscapeCapture, effectiveAnchorRef, inheritedBoundaryRef, open]);
+  }, [
+    boundary,
+    dismissOnEscapeCapture,
+    dismissWithFocus,
+    effectiveAnchorRef,
+    inheritedBoundaryRef,
+    open,
+  ]);
 
   if ((!open && !exiting) || !("document" in globalThis)) return null;
   return createPortal(
