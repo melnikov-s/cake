@@ -11,6 +11,7 @@ for (const [scenario, state] of [
   ["incoming-report-recap", "fullscreen"],
   ["session-messages", "default"],
   ["session-messages", "project"],
+  ["project-chat-source-cards", "expanded"],
 ] as const) {
   test(`${scenario} retains its ${state} visual workflow`, async () => {
     const outputRoot = await mkdtemp(join(tmpdir(), "cake-message-scenario-"));

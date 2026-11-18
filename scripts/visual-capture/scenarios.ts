@@ -5776,6 +5776,74 @@ const sessionMessagesScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
+const projectChatSourceCards: VisualCaptureScenario = {
+  name: "project-chat-source-cards",
+  description: "Consecutive exact-source cards below one Project Chat response",
+  states: ["default", "expanded"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const source = "cake://session/visual-assistant-markdown-code?message=";
+    await seedDurableChat(join(paths.cakeHome, "pi", "project-chats", sha256(paths.project)), [
+      "Include the original request.",
+      `Here is the [original request](${source}user-1).`,
+      "Can I also see the response?",
+      `Here are the [request](${source}user-1) and [response](${source}assistant-1).`,
+    ]);
+  },
+  async prepare(page, state) {
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    const transcript = page.locator(".transcript").last();
+    const row = (text: string) =>
+      transcript.locator('[data-slot="transcript-item"]').filter({ hasText: text });
+    const singleRow = row("Here is the original request.");
+    const pairRow = row("Here are the request and response.");
+    const cards = '[data-slot="session-message-card"]';
+    const single = singleRow.locator(cards);
+    const pair = pairRow.locator(cards);
+    const disclosures = transcript.locator('[data-slot="response-disclosure"]');
+    await expect(single).toHaveCount(1);
+    await expect(pair).toHaveCount(2);
+    await expect(disclosures).toHaveCount(3);
+    for (const disclosure of await disclosures.all())
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+
+    const [first, second] = await pair.evaluateAll((elements) =>
+      elements.map((element) => element.getBoundingClientRect().toJSON()),
+    );
+    // Read both edges in the same frame while the transcript settles its scroll position.
+    const [singleBox, messageBox] = await singleRow.evaluate((element, cardSelector) => {
+      const box = (selector: string) =>
+        element.querySelector(selector)!.getBoundingClientRect().toJSON();
+      return [box(cardSelector), box('[data-slot="message"]')];
+    }, cards);
+    expect(second.top - first.bottom).toBeCloseTo(8, 0);
+    expect(singleBox.top - messageBox.bottom).toBeCloseTo(0, 0);
+    expect(first.height).toBeCloseTo(singleBox.height, 0);
+    expect(second.height).toBeCloseTo(singleBox.height, 0);
+
+    if (state === "expanded") {
+      const disclosure = pair.first().locator('[data-slot="response-disclosure"]');
+      await disclosure.click();
+      await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+      await expect(pair.first()).toContainText("How should agents capture Cake UI changes?");
+      await expect(pair.nth(1).locator('[data-slot="response-disclosure"]')).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await expect(
+        pairRow.getByRole("link", { name: "Open source", exact: true }).first(),
+      ).toHaveAttribute("href", /\?message=user-1$/);
+      await disclosure.evaluate((button) => button.blur());
+    }
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".transcript").last(),
+};
+
 const compactReportSourcesScenario: VisualCaptureScenario = {
   name: "compact-report-sources",
   description:
@@ -10014,6 +10082,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   reportHeadersScenario,
   resultTodoActionsScenario,
   compactReportSourcesScenario,
+  projectChatSourceCards,
   relativeChatImagesScenario,
   incomingTaskSectionsScenario,
   cakeChatArtifactScenario,

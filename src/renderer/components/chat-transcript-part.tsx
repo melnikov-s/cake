@@ -459,6 +459,11 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
   live?: boolean;
   omitToolDiff?: boolean;
 }) {
+  const { part, behavior } = props;
+  const attachedSources =
+    part.kind === "text" && !part.crossSession && !part.subagentReport && !part.agentSource
+      ? behavior.store.messageSources.filter((source) => source.props.partId === part.id)
+      : [];
   return (
     <InlineArtifactContext
       value={{
@@ -474,27 +479,25 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
         aria-label={props.part.pendingIncoming ? "Pending incoming update" : undefined}
       >
         <TranscriptPartContent {...props} />
-        {props.part.kind === "text" &&
-          !props.part.crossSession &&
-          !props.part.subagentReport &&
-          !props.part.agentSource &&
-          props.behavior.store.messageSources
-            .filter((source) => source.props.partId === props.part.id)
-            .map((source) => (
+        {attachedSources.length > 0 && (
+          <div className="grid min-w-0 gap-2">
+            {attachedSources.map((source) => (
               <SessionMessage
                 key={source.props.reference}
-                source={messageSourceIdentity(source.props.reference!, props.behavior)}
+                source={messageSourceIdentity(source.props.reference!, behavior)}
                 sources={[source]}
                 todo={
-                  props.behavior.hideTodoAssociations
+                  behavior.hideTodoAssociations
                     ? undefined
                     : {
                         origin: referenceTodoOrigin(source.props.reference!),
-                        todos: props.behavior.todos,
+                        todos: behavior.todos,
                       }
                 }
               />
             ))}
+          </div>
+        )}
       </div>
     </InlineArtifactContext>
   );
