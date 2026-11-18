@@ -54,7 +54,16 @@ export class ModelCatalogStore extends Store {
     const pending = Promise.resolve().then(async () => {
       try {
         if (signal.aborted) return;
-        if (refresh) await this.client.models.refresh({ signal });
+        // Provider shards can update independently. Re-read successful shards
+        // even when the refresh reports a failure from another provider.
+        let refreshError: ReturnType<typeof describeError> | undefined;
+        if (refresh) {
+          try {
+            await this.client.models.refresh({ signal });
+          } catch (error) {
+            refreshError = describeError(error);
+          }
+        }
         if (signal.aborted) return;
         const [models, nonChatModels] = await Promise.allSettled([
           this.client.models.list({ signal }),
@@ -67,7 +76,8 @@ export class ModelCatalogStore extends Store {
           if (nonChatModels.status === "fulfilled")
             this.nonChatModels.splice(0, this.nonChatModels.length, ...nonChatModels.value);
           this.loaded = models.status === "fulfilled" && nonChatModels.status === "fulfilled";
-          if (models.status === "rejected") this.error = describeError(models.reason);
+          if (refreshError) this.error = refreshError;
+          else if (models.status === "rejected") this.error = describeError(models.reason);
           else if (nonChatModels.status === "rejected")
             this.error = describeError(nonChatModels.reason);
         });

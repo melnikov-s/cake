@@ -7,6 +7,7 @@ import { WidgetPackages } from "../../services/widgets/WidgetPackages";
 import * as application from "./application";
 import * as piSettings from "./piSettings";
 import * as settingsCatalog from "./settingsCatalog";
+import { refreshModelCatalog } from "../model-preferences/refresh-model-catalog";
 import * as modelPresets from "../model-presets/modelPresets";
 import { loadMcpSettings, mutateMcpSettings } from "../mcp/mcp-settings";
 import { toJsonValue } from "../../utils/to-json-value";
@@ -106,7 +107,7 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
         return model;
       }
       case "settings.providers.refresh": {
-        yield* (yield* PiModels).refreshCatalog();
+        yield* refreshModelCatalog();
         return { refreshed: true };
       }
       case "settings.providers.logout": {

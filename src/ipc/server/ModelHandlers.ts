@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import * as modelPresets from "../../domain/model-presets/modelPresets";
+import { refreshModelCatalog } from "../../domain/model-preferences/refresh-model-catalog";
 import { PiModels } from "../../services/pi/PiModels";
 import { ModelRpc } from "../protocol/ModelRpc";
 import { updateNonChatModelPreference } from "../../domain/model-preferences/non-chat-model-preferences";
@@ -8,7 +9,7 @@ export const modelHandlers = ModelRpc.of({
   "nonChatModels.list": () => Effect.flatMap(PiModels, (models) => models.listNonChat()),
   "nonChatModels.updatePreference": (input) => updateNonChatModelPreference(input),
   "models.list": () => Effect.flatMap(PiModels, (models) => models.list()),
-  "models.refresh": () => Effect.flatMap(PiModels, (models) => models.refreshCatalog()),
+  "models.refresh": () => refreshModelCatalog(),
   "modelPresets.list": () => modelPresets.list(),
   "modelPresets.readPrompt": ({ id }) => modelPresets.readPrompt(id),
   "modelPresets.create": (input) => modelPresets.create(input),

@@ -180,6 +180,28 @@ describe("Window model catalog workflows", () => {
     expect(list).toHaveBeenCalledTimes(4); // initial, login, refresh, logout; never per-picker copies
   });
 
+  it("shows a refresh failure without hiding models fetched from successful providers", async () => {
+    let models = [{ ...model, authenticated: true }];
+    using fixture = await renderCatalog({
+      models: {
+        list: async () => models,
+        refresh: async () => {
+          models = [
+            ...models,
+            { ...model, authenticated: true, name: "New model", id: "new-model" },
+          ];
+          throw new Error("Another provider could not refresh");
+        },
+      },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Refresh models" }));
+    await within(screen.getByRole("region", { name: "Providers" })).findByText(
+      "Could not load models",
+    );
+    await fixture.user.click(picker("Deferred picker 1"));
+    expect(screen.getByRole("button", { name: "New model new-model" })).toBeDefined();
+  });
+
   it.each(["refresh", "list", "failure"] as const)(
     "concurrent refresh cannot publish stale data (%s finishes late)",
     async (phase) => {

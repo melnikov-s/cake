@@ -83,6 +83,7 @@ async function fixture(
   const files = new Map<string, string>();
   const reads: string[] = [];
   const reloads: string[] = [];
+  const catalogRefreshes: string[] = [];
   const piEvents: CakeEvent[] = [];
   const manager = SettingsManager.fromStorage(
     {
@@ -136,6 +137,7 @@ async function fixture(
       }),
       Layer.mock(ProjectAccess, { isAllowed: (path) => Effect.succeed(path === "/project") }),
       Layer.mock(CakeSessionRuntimes, {
+        refreshModels: () => Effect.sync(() => void catalogRefreshes.push("sessions")),
         reloadAll: () =>
           Effect.sync(() => {
             reloads.push("all");
@@ -286,7 +288,7 @@ async function fixture(
               PiModels.of({
                 list: () => Effect.succeed(catalogs.chat ?? []),
                 listNonChat: () => Effect.succeed(catalogs.nonChat ?? []),
-                refreshCatalog: () => Effect.void,
+                refreshCatalog: () => Effect.sync(() => void catalogRefreshes.push("network")),
                 login: () => Effect.die("Interactive login must stay renderer-owned"),
                 logout: (provider) =>
                   Effect.tryPromise({
@@ -335,6 +337,7 @@ async function fixture(
     files,
     reads,
     reloads,
+    catalogRefreshes,
     piEvents,
     registry,
     dispatch,
@@ -459,6 +462,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
         await expect(h.call("settings.providers.list", { limit })).rejects.toThrow();
       await expect(h.call("settings.providers.list", { offset: -1 })).rejects.toThrow();
       expect(value(await h.call("settings.providers.refresh"))).toEqual({ refreshed: true });
+      expect(h.catalogRefreshes).toEqual(["network", "sessions"]);
       expect(value(await h.call("settings.providers.logout", { provider: "fixture" }))).toEqual({
         provider: "fixture",
         disconnected: true,

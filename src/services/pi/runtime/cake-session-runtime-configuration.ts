@@ -30,6 +30,7 @@ import {
 } from "../fast-mode";
 import { projectModelCatalog } from "../live/PiModelsLive";
 import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
+import { refreshPiModelRuntime } from "./refresh-pi-model-runtime";
 import { applyRuntimePiSetting } from "./settings-translation";
 
 export interface CakeSessionRuntimeConfigurationState {
@@ -253,8 +254,11 @@ export function createCakeSessionRuntimeConfiguration(input: {
       await emitSnapshot();
     },
     async refreshModels() {
-      await modelRuntime.refresh({ allowNetwork: false });
-      await emitSnapshot();
+      try {
+        await refreshPiModelRuntime(modelRuntime, { allowNetwork: false });
+      } finally {
+        await emitSnapshot();
+      }
     },
     setOperationModel,
   };

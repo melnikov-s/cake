@@ -8,6 +8,7 @@ import {
   PubSub,
   RcMap,
   Ref,
+  Result,
   Schema,
   Semaphore,
   Scope,
@@ -24,7 +25,7 @@ import {
   type PiSessionEvent,
 } from "./CakeSessionRuntimes";
 import type { CakeSessionRuntime } from "./runtime/cake-session-runtime";
-import { sessionError } from "./session-runtime-operations";
+import { runtimeOperation, sessionError } from "./session-runtime-operations";
 
 export const PiSessionCapabilityProfile = Schema.TaggedUnion({
   AutomationSession: {},
@@ -152,13 +153,39 @@ export const makeSessionRuntimeRegistry = Effect.fn("CakeSessionRuntimes.makeReg
     // to fan explicit refresh intents to currently acquired runtimes; it never acquires or
     // retains a runtime.
     const activeRuntimes = new Set<SharedRuntime>();
+    let catalogRevision = 0;
+    const catalogRefreshGate = yield* Semaphore.make(1);
+    const refreshRuntimeModels = (runtime: CakeSessionRuntime) => {
+      const refresh = runtime.refreshModels;
+      return refresh ? runtimeOperation("refreshModels", () => refresh.call(runtime)) : Effect.void;
+    };
+    const refreshModels = Effect.fn("CakeSessionRuntimes.refreshModels")(
+      function* () {
+        catalogRevision++;
+        const results = yield* Effect.forEach(
+          [...activeRuntimes],
+          (shared) =>
+            (activeRuntimes.has(shared) ? refreshRuntimeModels(shared.runtime) : Effect.void).pipe(
+              Effect.result,
+            ),
+          { concurrency: "unbounded" },
+        );
+        for (const result of results) {
+          if (Result.isFailure(result)) return yield* result.failure;
+        }
+      },
+      // A sibling's failure or an abandoned request must not leave half the
+      // live runtimes on the previous shards.
+      (effect) => catalogRefreshGate.withPermit(Effect.uninterruptible(effect)),
+    );
     // RcMap is the process-local keyed resource owner. Each acquire retains a
     // reference in its caller Scope; the final release disposes the one Pi
     // runtime. Equal/Hash intentionally key only by Pi Session target, while
     // the fingerprint below rejects conflicting runtime-defining options.
     const runtimes = yield* RcMap.make({
-      lookup: (key: RuntimeKey) =>
-        Effect.acquireRelease(
+      lookup: Effect.fn("CakeSessionRuntimes.createShared")(function* (key: RuntimeKey) {
+        let revision = catalogRevision;
+        const shared = yield* Effect.acquireRelease(
           Effect.gen(function* () {
             yield* key.options.onInitialize ?? Effect.void;
             const events = yield* PubSub.unbounded<PiSessionEvent>();
@@ -259,7 +286,6 @@ export const makeSessionRuntimeRegistry = Effect.fn("CakeSessionRuntimes.makeReg
               queueEdits: Semaphore.makeUnsafe(1),
               turnAdmissions: Semaphore.makeUnsafe(1),
             };
-            activeRuntimes.add(shared);
             return shared;
           }).pipe(
             Effect.onExit((exit) =>
@@ -296,7 +322,16 @@ export const makeSessionRuntimeRegistry = Effect.fn("CakeSessionRuntimes.makeReg
                   work,
                 ),
             ),
-        ),
+        );
+        // A constructor can read the old cache before an explicit refresh but
+        // miss its fanout while it is still loading. Catch up before exposing it.
+        while (revision !== catalogRevision) {
+          revision = catalogRevision;
+          yield* refreshRuntimeModels(shared.runtime);
+        }
+        activeRuntimes.add(shared);
+        return shared;
+      }),
     });
 
     // A permanent chat keeps an application lease on its runtime, so a second runtime for
@@ -374,6 +409,6 @@ export const makeSessionRuntimeRegistry = Effect.fn("CakeSessionRuntimes.makeReg
       };
     });
     const currentRuntimes: ReadonlySet<SharedRuntime> = activeRuntimes;
-    return { acquire, activeRuntimes: currentRuntimes };
+    return { acquire, activeRuntimes: currentRuntimes, refreshModels };
   },
 );

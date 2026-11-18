@@ -3,6 +3,7 @@ import { emptyProjectTodos, projectTodoBaseline } from "../../contracts/projects
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS } from "../../contracts/cake-chats/cake-chat-preferences";
+import { refreshPiModelRuntime } from "../pi/runtime/refresh-pi-model-runtime";
 import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import {
@@ -1074,10 +1075,15 @@ export async function createDurableCakeChatRuntime(
       return result.json;
     },
     async refreshModels() {
-      await catalogRuntime.refresh();
-      models.synchronizeProviders();
-      modelOptions = await projectModels();
-      publish();
+      try {
+        await refreshPiModelRuntime(catalogRuntime, { allowNetwork: false });
+      } finally {
+        if (!disposed) {
+          models.synchronizeProviders();
+          modelOptions = await projectModels();
+          publish();
+        }
+      }
     },
     reload() {
       // Serialize resource reloads without replacing Durable's engine/history or tool binding.

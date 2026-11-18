@@ -671,18 +671,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         return yield* Effect.sync(() => shared?.runtime.executingTurnIds?.() ?? []);
       });
 
-      const refreshModels = Effect.fn("CakeSessionRuntimes.refreshModels")(function* () {
-        yield* Effect.forEach(
-          activeRuntimes,
-          (shared) => {
-            const refresh = shared.runtime.refreshModels;
-            return refresh
-              ? runtimeOperation("refreshModels", () => refresh.call(shared.runtime))
-              : Effect.void;
-          },
-          { concurrency: "unbounded", discard: true },
-        );
-      });
       const reloadShared = Effect.fn("CakeSessionRuntimes.reloadShared")(function* (
         operation: string,
         selected: ReadonlyArray<SharedRuntime>,
@@ -912,7 +900,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         currentTurnIds,
         executingTurnIds,
         turnSettlement,
-        refreshModels,
+        refreshModels: registry.refreshModels,
         reloadWorkingDirectory,
         reloadAll,
         reloadCakeChatContext,

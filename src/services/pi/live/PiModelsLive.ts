@@ -1,5 +1,6 @@
 import { composePresetPrompt } from "../../../contracts/model-presets/preset-context";
 import { loadPresetContext } from "../../storage/load-preset-context";
+import { refreshPiModelRuntime } from "../runtime/refresh-pi-model-runtime";
 import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
@@ -11,7 +12,7 @@ import type {
   SimpleStreamOptions,
   TSchema,
 } from "@earendil-works/pi-ai";
-import { Cache, Clock, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
+import { Cache, Clock, Duration, Effect, Exit, Layer, Option, Schema, Semaphore } from "effect";
 import { makePiModels, PiModels, type PiProviderAuthInteraction } from "../PiModels";
 import type { ProviderRequestObservation } from "../../../contracts/pi/request-observation";
 import type {
@@ -226,12 +227,32 @@ export const makePiModelsLive = (agentDirectory: string) =>
           catch: (cause) => cause,
         });
       });
+      const catalogRefreshGate = yield* Semaphore.make(1);
       const refreshCatalog = Effect.fn("PiModelsLive.refreshCatalog")(function* () {
         const runtime = yield* getRuntime();
-        return yield* Effect.tryPromise({
-          try: (signal) => runtime.refresh({ allowNetwork: true, force: true, signal }),
-          catch: (cause) => cause,
-        });
+        yield* catalogRefreshGate.withPermit(
+          Effect.tryPromise({
+            try: (signal) =>
+              refreshPiModelRuntime(runtime, { allowNetwork: true, force: true, signal }),
+            catch: (cause) => cause,
+          }).pipe(
+            // A shard may have reached disk just before cancellation, without
+            // reaching this runtime's in-memory snapshot.
+            Effect.onInterrupt(() =>
+              Effect.tryPromise({
+                try: () => refreshPiModelRuntime(runtime, { allowNetwork: false }),
+                catch: (cause) => cause,
+              }).pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning(
+                    "Could not rehydrate the model catalog after cancellation",
+                    cause,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
       });
       const authSettings = yield* Effect.sync(() =>
         SettingsManager.create(agentDirectory, agentDirectory, { projectTrusted: true }),
