@@ -1005,7 +1005,8 @@ export async function createDurableCakeChatRuntime(
     async setModel(provider, modelId) {
       if (companion)
         throw new Error("The companion follows the utility model configured in Settings");
-      requireRegisteredModel(catalogRuntime, { provider, modelId });
+      if (!catalogRuntime.getModel(provider, modelId))
+        throw new Error(`Unknown model ${provider}/${modelId}`);
       selection = { provider, modelId };
       activePreset = undefined;
       await configureAgent();
@@ -1019,7 +1020,9 @@ export async function createDurableCakeChatRuntime(
     async applyConfiguration(configuration: ChatConfiguration) {
       if (companion)
         throw new Error("The companion follows the utility model configured in Settings");
-      requireRegisteredModel(catalogRuntime, configuration);
+      const { provider, modelId } = configuration;
+      if (!catalogRuntime.getModel(provider, modelId))
+        throw new Error(`Unknown model ${provider}/${modelId}`);
       selection = modelRef(configuration);
       activePreset = configuration.preset;
       thinkingLevel = configuration.thinkingLevel;

@@ -112,11 +112,16 @@ it("refreshes the picker and already-open standard and Durable runtimes from one
         anthropic: { type: "api_key", key: "fixture-anthropic-key" },
       }),
     );
-    await writeFile(
-      join(agentDir, "settings.json"),
-      JSON.stringify({ defaultProvider: provider, defaultModel: existing }),
-    );
+    const defaultPreset = {
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "Startup model",
+      provider,
+      modelId: existing,
+      thinkingLevel: "off" as const,
+      fastMode: false,
+    };
     const location = {
+      modelPresets: () => ({ presets: [defaultPreset], defaultPresetId: defaultPreset.id }),
       cwd: directory,
       agentDir,
       sessionDir: join(agentDir, "sessions"),
@@ -143,9 +148,10 @@ it("refreshes the picker and already-open standard and Durable runtimes from one
           expect.objectContaining(model),
         );
         for (const runtime of [standard, durable]) {
-          expect((yield* runtime.snapshot()).models).not.toContainEqual(
-            expect.objectContaining(model),
-          );
+          const snapshot = yield* runtime.snapshot();
+          expect(snapshot.model).toMatchObject({ provider, id: existing });
+          expect(snapshot.preset?.id).toBe(defaultPreset.id);
+          expect(snapshot.models).not.toContainEqual(expect.objectContaining(model));
           const unknown = yield* runtime.applyConfiguration(configuration).pipe(Effect.result);
           expect(Result.isFailure(unknown) && unknown.failure.message).toContain(
             `Unknown model ${provider}/${remote.id}`,
