@@ -69,6 +69,7 @@ import { homedir } from "node:os";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   Harness,
+  ROOT_CONVERSATION_ID,
   createRegistry,
   UserEntry,
   AssistantEntry,
@@ -3764,6 +3765,92 @@ const projectChatTaskRails: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region: (page) => page.locator('[data-slot="session-pane"]'),
+};
+
+const compactTodoResponses: VisualCaptureScenario = {
+  name: "compact-todo-responses",
+  description: "Description-only and linked rows, and square task disclosure hover",
+  states: ["rows", "disclosure"],
+  async seed(paths, theme) {
+    await projectChatTaskRails.seed(paths, theme);
+    const hash = createHash("sha256").update(paths.project).digest("hex");
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "project-chats", hash, "coordinator.sqlite"),
+    );
+    try {
+      const root = await storage.conversation(ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
+      if (!root) throw new Error("Missing project chat fixture");
+      const entries = (
+        await storage.scanEntries(
+          { conversationId: root.id, order: "ascending" },
+          32,
+          undefined,
+          BACKGROUND_CONTEXT,
+        )
+      ).items.filter((entry) => entry.kind === "pi.assistant");
+      const first = entries[0];
+      const later = entries[3];
+      if (!first || !later) throw new Error("Missing exact fixture answers");
+      const refs = [first, later].map(
+        (entry) =>
+          `cake://session/${encodeURIComponent(`project-chat:${hash}`)}?message=${entry.id}`,
+      );
+      const file = join(paths.cakeHome, "state", "application.json");
+      const application = JSON.parse(await readFile(file, "utf8"));
+      const [linked, descriptionOnly] = application.data.projects[0].todos.items;
+      linked.associations = [{ kind: "source", ref: "README.md", title: "Investigation notes" }];
+      linked.responses = { refs, representative: refs[1], score: 59 };
+      descriptionOnly.associations = [];
+      await writeFile(file, JSON.stringify(application));
+    } finally {
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page, state) {
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+    if (!(await workspace.isVisible()))
+      await page.locator('[data-slot="shell-workspace-toggle"]').click();
+    await workspace.getByRole("button", { name: /^To-dos / }).click();
+    const row = workspace.getByRole("button", { name: "Improve project navigation", exact: true });
+    await expect(row).toBeVisible();
+    await expect(
+      workspace.getByRole("link", { name: "Agent response", exact: true }),
+    ).toBeVisible();
+    if (state === "rows") {
+      await workspace.getByText("Other responses (1)", { exact: true }).click();
+      await expect(workspace.getByRole("link", { name: "Response 1", exact: true })).toBeVisible();
+      await workspace.getByText("Other responses (1)", { exact: true }).click();
+      await workspace.getByRole("link", { name: "Agent response", exact: true }).click();
+      await expect(
+        page.getByText("I’ll add a cold-launch comparison to the same investigation.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(row).toHaveAttribute("aria-pressed", "false");
+      await row.hover();
+      await expect(
+        page.getByRole("tooltip").filter({ hasText: "Make it easier to move" }),
+      ).toBeVisible();
+    } else {
+      const disclosure = page.locator('[data-slot="task-section-disclosure"]').last();
+      await expect(disclosure).toBeVisible();
+      await disclosure.scrollIntoViewIfNeeded();
+      const bounds = await disclosure.boundingBox();
+      expect(bounds?.width).toBe(28);
+      expect(bounds?.height).toBe(28);
+      await disclosure.hover();
+      await expect(
+        page.getByRole("tooltip").filter({ hasText: "Collapse conversation:" }),
+      ).toBeVisible();
+    }
+  },
+  region: (page) => page.locator('[data-slot="side-chat-layout"]'),
 };
 
 const stickyTaskHeadings: VisualCaptureScenario = {
@@ -9830,6 +9917,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectChatAttention,
   projectChatAttentionResults,
   projectChatTaskRails,
+  compactTodoResponses,
   stickyTaskHeadings,
   createTodoResponseFocusScenario(projectChatTaskRails.seed),
   createTodoFocusDescriptionScenario(projectChatTaskRails.seed),

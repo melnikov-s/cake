@@ -649,6 +649,11 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               ? (application.snapshot().projects.find((item) => item.path === project.path)?.todos
                   ?.items ?? [])
               : (application.snapshot().cakeChatTodos?.items ?? []),
+      onCakeChatTodoResponse:
+        companion || sideChatSessionId
+          ? undefined
+          : (id, ref, score) =>
+              run(projectTodos.attachAttributedResponse(todoScope, id, ref, score)),
       onCakeChatInputConsumed: (text, signal) => {
         const receipt = projectTodoReceipt(splitSessionDigestReminder(text).text);
         return receipt === undefined

@@ -49,6 +49,26 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
     sessionIds.add(association.sessionId);
     return true;
   });
+  const representative = item.responses?.representative;
+  const existingResponse = associations.find(
+    (link) => link.kind === "source" && link.ref === representative,
+  );
+  const otherResponses =
+    item.responses?.refs.filter(
+      (ref) =>
+        ref !== representative &&
+        !associations.some((link) => link.kind === "source" && link.ref === ref),
+    ) ?? [];
+  const workLinks = representative
+    ? [
+        existingResponse ?? {
+          kind: "source" as const,
+          ref: representative,
+          title: "Agent response",
+        },
+        ...associations.filter((link) => link !== existingResponse),
+      ]
+    : associations;
   const menuItems: ContextMenuItem[] =
     item.state === "open"
       ? [
@@ -131,8 +151,13 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
             }}
             onClick={() => store.toggleFocus(item)}
             className={cn(
-              "grid items-start gap-x-2.5 gap-y-0 px-3 py-2.5 text-sm leading-5 [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [@media(pointer:coarse)]:[&>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
-              "grid-cols-[auto_minmax(0,1fr)_auto]",
+              "grid items-start gap-x-2.5 gap-y-0 px-3 text-sm leading-5 [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [@media(pointer:coarse)]:[&>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
+              "grid-cols-[auto_minmax(0,1fr)_auto] py-2",
+              description &&
+                !workLinks.length &&
+                !attentionDetail &&
+                !item.snoozedUntil &&
+                "py-1.5",
             )}
             label={
               <span
@@ -206,17 +231,33 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
                 </time>
               </p>
             )}
-            {associations.length > 0 && (
+            {workLinks.length > 0 && (
               <ul
                 aria-label={`Work for ${item.title}`}
-                className="col-span-full mt-2 flex w-full flex-col gap-1"
+                className="col-span-full mt-1.5 flex w-full flex-col gap-0.5"
               >
-                {associations.map((association) => (
+                {workLinks.map((association) => (
                   <li key={projectTodoAssociationKey(association)} className="flex min-w-0">
                     <ProjectTodoWorkLink association={association} />
                   </li>
                 ))}
               </ul>
+            )}
+            {otherResponses.length > 0 && (
+              <details className="relative col-span-full w-fit px-2 py-0.5 text-xs leading-4 text-muted-foreground">
+                <summary className="cursor-pointer hover:underline">
+                  Other responses ({otherResponses.length})
+                </summary>
+                <ul aria-label={`Other responses for ${item.title}`}>
+                  {otherResponses.map((ref, index) => (
+                    <li key={ref}>
+                      <ProjectTodoWorkLink
+                        association={{ kind: "source", ref, title: `Response ${index + 1}` }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </NavItem>
         </HoverCard>

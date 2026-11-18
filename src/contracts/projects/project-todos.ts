@@ -1,7 +1,7 @@
 import { DateTime, Option, Schema } from "effect";
 import { SubagentReference, parseSubagentLink } from "../subagents/subagent-reference";
 import { AgentListInput } from "../agent/agent-list-data";
-import { parseSessionLink } from "../conversations/message-reference";
+import { MessageReference, parseSessionLink } from "../conversations/message-reference";
 import { parseSourceLocation } from "../../utils/source-location";
 import { CAKE_CHAT_SESSION_ID } from "../cake-chats/cake-chat-identity";
 
@@ -183,6 +183,14 @@ export const ProjectTodo = Schema.Struct({
   /** Latest creation/content/lifecycle change; older saved items may have no timestamp. */
   modifiedAt: Schema.optionalKey(Schema.String),
   associations: Associations,
+  /** Automatic exact originals are independent of the editable work/source list. */
+  responses: Schema.optionalKey(
+    Schema.Struct({
+      refs: Schema.Array(MessageReference),
+      representative: MessageReference,
+      score: Schema.Int.check(Schema.isGreaterThan(0)),
+    }),
+  ),
   completion: Schema.optionalKey(ProjectTodoCompletion),
 }).check(
   Schema.makeFilter(

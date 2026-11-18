@@ -37,8 +37,78 @@ import {
 } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { addReferenceNotifications } from "../../../src/contracts/conversations/reference-notification";
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
+import { messageReference } from "../../../src/contracts/conversations/message-reference";
 
 const project = "/project";
+
+it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
+  "ranks and retains automatic originals without overwriting manual edits in %s",
+  (scope) => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const chat = scope === project ? projectChatSessionId(project) : CAKE_CHAT_SESSION_ID;
+      const first = messageReference(chat, "20");
+      const longer = messageReference(chat, "30");
+      const shorter = messageReference(chat, "40");
+      const same = messageReference(chat, "50");
+      const manual = { kind: "source" as const, ref: first, title: "Manual notes" };
+      const session = {
+        kind: "session" as const,
+        sessionId: "required",
+        title: "Required session",
+      };
+      const subagent = {
+        kind: "subagent" as const,
+        parentSessionId: chat,
+        handleId: "10000000-0000-4000-8000-000000000001",
+        title: "Investigation worker",
+      };
+      const item = yield* todos.create(scope, {
+        title: "Startup review",
+        description: "Inspect startup work.",
+        associations: [manual, session, subagent],
+      });
+      yield* todos.attachAttributedResponse(scope, item.id, first, 35);
+      expect((yield* todos.read(scope, item.id)).responses?.representative).toBe(first);
+      yield* Effect.all(
+        [
+          todos.attachAttributedResponse(scope, item.id, longer, 90),
+          todos.attachAttributedResponse(scope, item.id, shorter, 20),
+          todos.attachAttributedResponse(scope, item.id, same, 90),
+          todos.update(scope, {
+            id: item.id,
+            expectedRevision: item.revision,
+            title: "Review startup",
+            associations: [
+              manual,
+              session,
+              subagent,
+              { kind: "source", title: "PR", ref: "https://example.com/pr" },
+            ],
+          }),
+        ],
+        { concurrency: "unbounded" },
+      );
+      const after = yield* todos.read(scope, item.id);
+      expect(after.title).toBe("Review startup");
+      expect(after.revision).toBe(item.revision + 1);
+      expect(after.associations).toEqual([
+        manual,
+        session,
+        subagent,
+        { kind: "source", title: "PR", ref: "https://example.com/pr" },
+      ]);
+      expect(after.responses).toMatchObject({ representative: longer, score: 90 });
+      expect(new Set(after.responses?.refs)).toEqual(new Set([first, longer, shorter, same]));
+      expect(after.responses?.refs).toHaveLength(4);
+      const wrongScope = scope === project ? CAKE_CHAT_TODO_SCOPE : project;
+      yield* todos.attachAttributedResponse(wrongScope, item.id, messageReference(chat, "60"), 999);
+      yield* todos.attachAttributedResponse(scope, item.id, shorter, 999);
+      expect(yield* todos.read(scope, item.id)).toEqual(after);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
 
 it.effect.each([CAKE_CHAT_SESSION_ID, projectChatSessionId(project)])(
   "does not treat a side-chat follow-up as a parent to-do context submission (%s)",

@@ -44,6 +44,8 @@ Associations replace the complete list; retain required sessions and existing su
 Subagent associations use parentSessionId and public UUID handleId/title, validated against retained records. Public links are cake://subagent/<encoded-parent>/<handle>, not private Pi session IDs. If metadata was released, link the exact retained parent report instead. Subagent completion/error/abort/release never auto-closes work.
 Source links may target exact messages/reports, subagent chats/reports, attachments, artifacts, web or workspace files. Omit optional links when none are useful.
 
+Cake automatically links substantive, persisted responses that the owning chat attributed to one to-do. The longest is shown first; other automatic responses remain available. These links are separate from editable associations, so keep adding explicit sources such as findings from other sessions. Cake does not guess links for older turns.
+
 ## Historical grouping and pane behavior
 
 For an explicit attribution correction, use owning chat's messages.set-todo with exact original entryId and existing todoId/null. Only settled human-turn attribution in that chat changes; originals, task content and associations do not. Never rename/delete unrelated tasks or rewrite user text to fix a heading.

@@ -19,6 +19,7 @@ import {
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import { ProjectError } from "../../contracts/projects/project-error";
+import { parseSessionLink } from "../../contracts/conversations/message-reference";
 import {
   CAKE_CHAT_TODO_SCOPE,
   emptyProjectTodos,
@@ -273,6 +274,39 @@ export const applyReportDescription = Effect.fn("ProjectTodos.applyReportDescrip
     }),
   );
 });
+
+/** Automatic evidence does not edit work, user state, or its optimistic revision. */
+export const attachAttributedResponse = Effect.fn("ProjectTodos.attachAttributedResponse")(
+  function* (scope: string, todoId: string, ref: string, score: number) {
+    const current = stored((yield* ApplicationState).snapshot(), scope);
+    const prior = current?.items.find((item) => item.id === todoId);
+    if (!prior || prior.responses?.refs.includes(ref)) return;
+    yield* change(scope, (value) => {
+      const item = value.items.find((candidate) => candidate.id === todoId);
+      if (!item || item.responses?.refs.includes(ref)) return Effect.succeed(value);
+      const previous = item.responses;
+      // Entry IDs are monotonic within the owning chat's Durable database (including forks).
+      // Use the earliest original on ties, independent of replay order.
+      const wins =
+        !previous ||
+        score > previous.score ||
+        (score === previous.score &&
+          Number(parseSessionLink(ref)?.messageId) <
+            Number(parseSessionLink(previous.representative)?.messageId));
+      const responses = {
+        refs: [...(previous?.refs ?? []), ref],
+        representative: wins ? ref : previous.representative,
+        score: wins ? score : previous.score,
+      };
+      return Effect.succeed({
+        ...value,
+        items: value.items.map((candidate) =>
+          candidate === item ? { ...item, responses } : candidate,
+        ),
+      });
+    });
+  },
+);
 
 export const list = Effect.fn("ProjectTodos.list")(function* (scope: string) {
   const application = yield* ApplicationState;

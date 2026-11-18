@@ -548,6 +548,9 @@ export async function createDurableCakeChatRuntime(
       preferences.preferences().contextLimitTokens ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
     onInputConsumed: options.onCakeChatInputConsumed,
     todos: options.cakeChatTodos,
+    todoResponses: options.onCakeChatTodoResponse
+      ? { sessionId, attach: options.onCakeChatTodoResponse }
+      : undefined,
     memory: {
       budget: () => preferences.preferences().memoryViewBytes,
       summarize: (input) =>

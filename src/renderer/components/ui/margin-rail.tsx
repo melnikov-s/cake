@@ -77,9 +77,9 @@ export function MarginRail({
               ariaLabel={title}
               aria-expanded={expanded}
               onClick={onToggle}
-              className="flex h-auto min-h-7 w-auto min-w-7 flex-1 self-stretch items-start justify-end px-1 py-1"
+              className="ml-auto"
             >
-              <ChevronIcon className={cn("mt-1 shrink-0", !expanded && "-rotate-90")} />
+              <ChevronIcon className={cn(!expanded && "-rotate-90")} />
             </IconButton>
           )}
           {completion}

@@ -13,7 +13,9 @@ import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import { durableInputPresentation, type DurableTaskContext } from "./durable-input-presentation";
 import { isAutomaticInput } from "../pi/runtime/internal-input-projection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import { visibleTaskAttributionContent } from "../pi/runtime/task-attribution-presentation";
+import { PendingTodoResponses } from "./durable-todo-responses";
 
 /** Identity-only presentation metadata. Originals remain the only transcript. */
 export const TaskAttributionDoc = defineDoc<{
@@ -57,6 +59,7 @@ export async function prepareTaskAttribution(options: {
   storage: Storage;
   signal: AbortSignal;
   todos(): readonly ProjectTodo[];
+  linkResponses?: boolean;
 }) {
   const { conversation, harness, storage } = options;
   const live = await harness.snapshot(LiveDoc, conversation.id, BACKGROUND_CONTEXT);
@@ -77,7 +80,8 @@ export async function prepareTaskAttribution(options: {
       input.attribution.conversationId !== conversation.id ||
       isAutomaticInput(input.internal) ||
       input.subagentReport ||
-      parseCrossSessionMessage(input.text)
+      parseCrossSessionMessage(input.text) ||
+      parseScheduledMessage(input.text)
     )
       continue;
     bound.set(input.attribution.turnId, {
@@ -130,11 +134,8 @@ export async function prepareTaskAttribution(options: {
       if (decisions.size || responseStarted)
         await conversation.commit(async (tx) => {
           // A stopped/replaced run cannot settle metadata, even if its provider finishes late.
-          if (
-            options.signal.aborted ||
-            (await tx.doc(LiveDoc, conversation.id)).run?.taskId !== live?.run?.taskId
-          )
-            return;
+          const run = (await tx.doc(LiveDoc, conversation.id)).run;
+          if (options.signal.aborted || !run || run.taskId !== live?.run?.taskId) return;
           const doc = await tx.doc(TaskAttributionDoc, conversation.id);
           for (const [turnId, { entry, context }] of bound) {
             const candidates = decisions.get(turnId);
@@ -165,6 +166,20 @@ export async function prepareTaskAttribution(options: {
                 turnId,
                 responseStarted: true,
               };
+          }
+          // A generation can answer several steered inputs. Claim it only when
+          // every owned input is attributable and all agree on one task.
+          if (options.linkResponses && responseStarted && bound.size === run.inputs.length) {
+            const ids = [...bound.values()].map(({ entry }) => doc.inputs[String(entry)]?.todoId);
+            const todoId = ids[0];
+            if (todoId && ids.every((id) => id === todoId)) {
+              const pending = await tx.doc(PendingTodoResponses);
+              pending.generations[String(run.taskId)] ??= {
+                taskId: run.taskId,
+                conversationId: conversation.id,
+                todoId,
+              };
+            }
           }
         }, BACKGROUND_CONTEXT);
     }

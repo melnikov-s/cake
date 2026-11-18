@@ -350,7 +350,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             ref={(element) => attachRow(row.key, element)}
             role="presentation"
             data-todo-virtual-key={row.key}
-            className={cn("pb-2", row.section.toggle && "px-1")}
+            className={cn("pb-1.5", row.section.toggle && "px-1")}
           >
             <ProjectTodoItem
               item={row.item}

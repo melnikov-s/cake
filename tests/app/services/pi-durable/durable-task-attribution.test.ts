@@ -49,6 +49,11 @@ import {
 } from "../../../../src/services/pi-durable/durable-task-context";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import type { ProjectTodo } from "../../../../src/contracts/projects/project-todos";
+import {
+  messageReference,
+  parseSessionLink,
+} from "../../../../src/contracts/conversations/message-reference";
+import type { AttachTodoResponse } from "../../../../src/services/pi-durable/durable-todo-responses";
 import { partsFromMessage } from "../../../../src/services/pi/runtime/message-projection";
 import { textFromContent } from "../../../../src/services/pi/runtime/tool-projection";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
@@ -76,7 +81,7 @@ const turnIds = (request: Context) =>
 const metadata = (turnId: string, todoId: string | null) =>
   `<cake-todo>${JSON.stringify({ turnId, todoId })}</cake-todo>`;
 
-async function fixture(database?: string) {
+async function fixture(database?: string, attach?: AttachTodoResponse) {
   let decision: string | null | undefined = A;
   let response: ((request: Context, index: number) => AssistantMessage) | undefined;
   let items = [todo(A), todo(B)];
@@ -114,6 +119,7 @@ async function fixture(database?: string) {
     memory: { budget: () => 4000, summarize: async () => "memory" },
     contextLimitTokens: () => contextLimit,
     todos: () => items,
+    ...(attach ? { todoResponses: { sessionId: CAKE_CHAT_SESSION_ID, attach } } : null),
     onChanged: vi.fn(),
     onReport: vi.fn(),
   });
@@ -577,6 +583,143 @@ it("supports a new to-do created mid-response without an attribution-only model/
   expect((await f.doc())?.inputs[String(sent.entry)]).toMatchObject({ pending: false, todoId: B });
   expect(f.requests).toHaveLength(2);
   expect(f.classify).not.toHaveBeenCalled();
+});
+
+it("links exact persisted prose after create/select, never partials, acknowledgements or unassigned turns", async () => {
+  const attached = vi.fn<AttachTodoResponse>(async () => undefined);
+  const f = await fixture(undefined, attached);
+  f.setTodos([todo(A)]);
+  f.setResponse((request, index) =>
+    index === 1
+      ? durableAnswer("", [{ type: "toolCall", id: "create", name: "create_task", arguments: {} }])
+      : durableAnswer(
+          metadata(turnIds(request).at(-1)!, B) + "Set navigation defaults on first launch.",
+        ),
+  );
+  const first = await f.send("Create navigation work");
+  await vi.waitFor(() =>
+    expect(attached).toHaveBeenCalledExactlyOnceWith(
+      B,
+      messageReference(CAKE_CHAT_SESSION_ID, String(first.answer)),
+      "Set navigation defaults on first launch.".length,
+    ),
+  );
+  await (await f.openAttention(A)).wait(context);
+  const held = f.hold();
+  const selected = await f.submit("Please follow the selected task");
+  await held.started;
+  const message = durableAnswer("Profile config parsing twice before changing startup.");
+  held.stream.push({ type: "start", partial: message });
+  expect(attached).toHaveBeenCalledTimes(1);
+  held.stream.push({ type: "done", reason: "stop", message });
+  const result = await selected.wait(context);
+  if (result.status !== "done" || result.type !== "input") throw new Error("Expected input");
+  await vi.waitFor(() =>
+    expect(attached).toHaveBeenLastCalledWith(
+      A,
+      messageReference(CAKE_CHAT_SESSION_ID, String(result.answer)),
+      message.content[0]?.type === "text" ? message.content[0].text.length : 0,
+    ),
+  );
+  f.setResponse((request) =>
+    durableAnswer(metadata(turnIds(request).at(-1)!, A) + "**Got it. I’ll take a look.**"),
+  );
+  await f.send("Continue startup");
+  f.setResponse((request) =>
+    durableAnswer(
+      `<cake-todo>${JSON.stringify({ turnId: turnIds(request).at(-1), todoId: null, newTopic: true })}</cake-todo>Different topic: configure three hostnames.`,
+    ),
+  );
+  await f.send("New topic");
+  f.setResponse(() => durableAnswer("No assignment, although this answer has lots of details."));
+  await f.send("Unassigned");
+  await f.close();
+  expect(attached).toHaveBeenCalledTimes(2);
+});
+
+it("links persisted tool-round prose before a later acknowledgement and excludes tool output", async () => {
+  const attached = vi.fn<AttachTodoResponse>(async () => undefined);
+  const f = await fixture(undefined, attached);
+  const prose = "Navigation should load only the current project at launch.";
+  f.setResponse((request, index) =>
+    index === 1
+      ? durableAnswer("", [
+          { type: "text", text: metadata(turnIds(request).at(-1)!, A) + prose },
+          { type: "toolCall", id: "create", name: "create_task", arguments: {} },
+        ])
+      : durableAnswer("Done."),
+  );
+  const final = await f.send("Check startup before saving");
+  await f.close();
+  expect(attached).toHaveBeenCalledTimes(1);
+  const call = attached.mock.calls[0]!;
+  expect(call[0]).toBe(A);
+  expect(call[2]).toBe(prose.length);
+  expect(parseSessionLink(call[1])?.messageId).not.toBe(String(final.answer));
+});
+
+it("does not link a single combined answer to either of two different steered tasks", async () => {
+  const attached = vi.fn<AttachTodoResponse>(async () => undefined);
+  const f = await fixture(undefined, attached);
+  const held = f.hold();
+  const first = await f.submit("Check startup");
+  const request = await held.started;
+  const second = await f.submit("Also fix navigation", f.engine.root, "steer");
+  f.setResponse((req) =>
+    durableAnswer(
+      metadata(turnIds(req).at(-1)!, B) + "The two tasks need different startup changes.",
+    ),
+  );
+  held.stream.push({
+    type: "done",
+    reason: "toolUse",
+    message: durableAnswer("", [
+      { type: "text", text: metadata(turnIds(request).at(-1)!, A) },
+      { type: "toolCall", id: "create", name: "create_task", arguments: {} },
+    ]),
+  });
+  const [one, two] = await Promise.all([first.wait(context), second.wait(context)]);
+  if (
+    one.status !== "done" ||
+    two.status !== "done" ||
+    one.type !== "input" ||
+    two.type !== "input"
+  )
+    throw new Error("Expected inputs");
+  expect(one.answer).toBe(two.answer);
+  const doc = await f.doc();
+  expect(doc?.inputs[String(one.entry)]?.todoId).toBe(A);
+  expect(doc?.inputs[String(two.entry)]?.todoId).toBe(B);
+  await f.close();
+  expect(attached).not.toHaveBeenCalled();
+});
+
+it("reconciles only a proven pending generation after reopening SQLite", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cake-todo-response-"));
+  cleanup.push(() => rm(dir, { recursive: true, force: true }));
+  const database = join(dir, "coordinator.sqlite");
+  const before = await fixture(database);
+  await before.send("Historical answer");
+  await before.close();
+  const interrupted = vi.fn<AttachTodoResponse>(async () => {
+    throw new Error("Application commit interrupted");
+  });
+  const enabled = await fixture(database, interrupted);
+  const response = await enabled.send("A new proven answer");
+  await enabled.close();
+  expect(interrupted).toHaveBeenCalled();
+  const attached = vi.fn<AttachTodoResponse>(async () => undefined);
+  const resumed = await fixture(database, attached);
+  await vi.waitFor(() =>
+    expect(attached).toHaveBeenCalledExactlyOnceWith(
+      A,
+      messageReference(CAKE_CHAT_SESSION_ID, String(response.answer)),
+      "Normal streamed answer".length,
+    ),
+  );
+  await resumed.close();
+  await (await fixture(database, attached)).close();
+  expect(attached).toHaveBeenCalledTimes(1);
 });
 
 it.each(["invalid", "unknown", "completed", "missing", "duplicate"])(

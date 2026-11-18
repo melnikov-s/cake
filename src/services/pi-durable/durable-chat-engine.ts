@@ -35,6 +35,7 @@ import { isContextOverflow } from "@earendil-works/pi-durable-ai/utils/overflow"
 import { anthropicCacheEstimate, durableCacheEvidence } from "./durable-cache-evidence";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
 import { prepareTaskAttribution } from "./durable-task-attribution";
+import { observeTodoResponses, type AttachTodoResponse } from "./durable-todo-responses";
 import { durableInputPresentation } from "./durable-input-presentation";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import { durableContextMetadata } from "./durable-context-metadata";
@@ -127,6 +128,7 @@ export async function openDurableChatEngine(options: {
   onReport(error: unknown): void;
   onInputConsumed?(text: string, signal: AbortSignal): Promise<void>;
   todos?(): readonly ProjectTodo[];
+  todoResponses?: { sessionId: string; attach: AttachTodoResponse };
 }) {
   const closing = new AbortController();
   let root: Conversation;
@@ -271,6 +273,7 @@ export async function openDurableChatEngine(options: {
                   storage: options.storage,
                   signal,
                   todos: options.todos,
+                  linkResponses: options.todoResponses !== undefined,
                 })
               : undefined;
           preparing = false;
@@ -485,6 +488,7 @@ export async function openDurableChatEngine(options: {
                 storage: options.storage,
                 signal,
                 todos: options.todos,
+                linkResponses: options.todoResponses !== undefined,
               })
             : undefined;
           const requestedAt = now();
@@ -744,6 +748,9 @@ export async function openDurableChatEngine(options: {
       if (visible) queueMicrotask(options.onChanged);
       if (originals > 0 || liveChanged) queueMicrotask(maintain);
     });
+    const todoResponses = options.todoResponses
+      ? observeTodoResponses({ ...options, ...options.todoResponses, root, harness })
+      : undefined;
     // Reopen resumes the same persisted cursor, never replays indexed originals.
     pendingCutoff = (await root.entries({}, 1, undefined, BACKGROUND_CONTEXT)).items[0]?.id;
     queueMicrotask(maintain);
@@ -868,6 +875,7 @@ export async function openDurableChatEngine(options: {
       },
       async close() {
         unsubscribe();
+        await todoResponses?.close();
         // Mark the Harness closing first: a cancelled preparation must preserve
         // its request checkpoint, not settle it as an ordinary model error.
         const resource = options.shutdownResource;

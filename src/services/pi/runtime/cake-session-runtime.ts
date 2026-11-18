@@ -180,8 +180,10 @@ export interface CakeSessionRuntimeOptions {
   worktreeLanding?: "merge" | "pull-request";
   /** Permanent chats reread project-owned guidance at each message; never used by coding runtimes. */
   cakeChatSystemPrompt?(): string;
-  /** Live list for presentation-only background turn attribution. */
+  /** Live list for background turn attribution. */
   cakeChatTodos?(): readonly ProjectTodo[];
+  /** Attach a proven original to this chat's own list, independently of agent edits. */
+  onCakeChatTodoResponse?(todoId: string, ref: string, score: number): Promise<void>;
   /** Durable calls this only for committed, consumed input, never send preparation or queued rows. */
   onCakeChatInputConsumed?(text: string, signal: AbortSignal): Promise<void>;
   cakeChatMemory?: CakeChatMemoryOptions;
