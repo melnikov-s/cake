@@ -12,7 +12,7 @@ import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-async function queuedMessagesFixture(dictation = false) {
+async function queuedMessagesFixture(dictation = false, theme: "dark" | "light" = "dark") {
   const root = await mkdtemp(join(tmpdir(), "cake-queued-messages-"));
   const userData = join(root, "user-data"),
     project = join(root, "project"),
@@ -63,10 +63,7 @@ async function queuedMessagesFixture(dictation = false) {
       },
     }),
   );
-  await writeFile(
-    join(userData, "window-state.json"),
-    windowState({ project, sessionId, theme: "dark" }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, sessionId, theme }));
   const timestamp = new Date(0).toISOString();
   await writeFile(
     join(cakeHome, "state", "application.json"),
@@ -184,6 +181,116 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await rm(root, { recursive: true, force: true });
     },
   };
+}
+
+for (const theme of ["dark", "light"] as const) {
+  test(`composer annotation spacing below the queue (${theme})`, async () => {
+    test.setTimeout(60_000);
+    const { app, responses, dispose } = await queuedMessagesFixture(false, theme);
+    try {
+      const page = await app.firstWindow();
+      await page.setViewportSize({ width: 1480, height: 900 });
+      const prose = page.getByText("Ready for queue testing.", { exact: true });
+      await expect(prose).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      const form = page.locator(".workbench-composer form");
+      const input = form.getByRole("combobox", { name: "Message", exact: true });
+      const chip = form.getByRole("button", { name: "View 1 annotation", exact: true });
+      const queue = form.getByRole("list", { name: "Queued prompts" });
+      const inputOffset = () =>
+        input.evaluate(
+          (element) =>
+            element.getBoundingClientRect().top -
+            element.closest("form")!.getBoundingClientRect().top,
+        );
+      const plainOffset = await inputOffset();
+      await expect(chip).toHaveCount(0);
+      await input.fill("Hold the current response");
+      await input.press("Enter");
+      await expect.poll(() => responses.length).toBe(1);
+      await input.fill("And finally, what would you say about the development plan?");
+      await input.press("Enter");
+      await expect(queue.getByRole("listitem")).toHaveCount(1);
+      await expect(input).toHaveAttribute("placeholder", "Add the next instruction…");
+
+      // Use the real selection and menu action without opening an OS popup.
+      await app.evaluate(({ Menu }) => {
+        const build = Menu.buildFromTemplate.bind(Menu);
+        Menu.buildFromTemplate = (template) => {
+          const menu = build(template);
+          menu.popup = (options) => {
+            const item = menu.items.find((candidate) => candidate.label === "Add annotation");
+            if (!item) throw new Error("Annotation action missing");
+            item.click(item, options.window!, { triggeredByAccelerator: false });
+            options.callback?.();
+          };
+          return menu;
+        };
+      });
+      await prose.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+      await prose.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
+      const comment = page.getByLabel("Annotation comment", { exact: true });
+      await comment.fill("Follow up on this passage");
+      await comment.press("Enter");
+      await expect(chip).toBeVisible();
+      await expect(input).toHaveValue("");
+      const output = join(repositoryRoot, ".visual-captures/composer-annotation-spacing");
+      await form.screenshot({ path: join(output, `${theme}-queued.png`) });
+      const expectAlignedToInput = async () => {
+        const inputTextLeft = await input.evaluate(
+          (element) =>
+            element.getBoundingClientRect().left +
+            parseFloat(getComputedStyle(element).paddingLeft),
+        );
+        expect((await chip.boundingBox())!.x).toBeCloseTo(inputTextLeft, 0);
+      };
+      const queuedChip = (await chip.boundingBox())!;
+      const queuedList = (await queue.boundingBox())!;
+      expect(queuedChip.y - (queuedList.y + queuedList.height)).toBeGreaterThanOrEqual(6);
+      await expectAlignedToInput();
+      if (theme === "dark") {
+        await page.setViewportSize({ width: 920, height: 780 });
+        await expectAlignedToInput();
+        await page.setViewportSize({ width: 1480, height: 900 });
+      }
+
+      await queue.getByRole("button", { name: /^Cancel queued message:/ }).click();
+      await expect(queue).toHaveCount(0);
+      await expect(chip).toBeVisible();
+      if (theme === "dark") await form.screenshot({ path: join(output, "dark-no-queue.png") });
+
+      await input.evaluate((element) => {
+        const clipboardData = new DataTransfer();
+        clipboardData.setData("text/plain", "Development notes\n".repeat(100));
+        element.dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+        );
+      });
+      const tile = form.locator('[data-slot="attachment-tile"]');
+      await expect(tile).toBeVisible();
+      const chipWithAttachment = (await chip.boundingBox())!;
+      const attachment = (await tile.boundingBox())!;
+      expect(attachment.y).toBeCloseTo(chipWithAttachment.y, 0);
+      expect(attachment.x).toBeGreaterThan(chipWithAttachment.x + chipWithAttachment.width);
+      if (theme === "dark") await form.screenshot({ path: join(output, "dark-attachment.png") });
+      await tile.getByRole("button", { name: /^Remove Pasted text/ }).click();
+      await chip.click();
+      const details = page.getByRole("dialog", { name: "1 annotation", exact: true });
+      await expect(details.getByText("Follow up on this passage")).toBeVisible();
+      await details.getByRole("button", { name: "Remove annotation 1" }).click();
+      await expect(chip).toHaveCount(0);
+      expect(await inputOffset()).toBeCloseTo(plainOffset, 0);
+      if (theme === "dark") await form.screenshot({ path: join(output, "dark-default.png") });
+    } finally {
+      await dispose();
+    }
+  });
 }
 
 test("Stop preserves queued input through tool pruning and returns a working composer", async () => {

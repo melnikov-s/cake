@@ -332,6 +332,8 @@ export const Chat = observer(function Chat({
       end: selection.start + rewritten.length,
     });
   };
+  const composerAnnotations = composerVisible && !activatingDraft ? store.annotations : [];
+  const composerAttachments = composerVisible && !activatingDraft ? store.attachments : [];
   const composer = composerVisible && (
     <div
       ref={composerDockRef}
@@ -413,15 +415,22 @@ export const Chat = observer(function Chat({
             </div>
           )}
           {!activatingDraft && composerContent}
-          {!activatingDraft && (
-            <AnnotationSummary
-              annotations={store.annotations}
-              onRemove={(id) => store.removeAnnotation(id)}
-            />
-          )}
-          {!activatingDraft && store.attachments.length > 0 && (
-            <div className="flex flex-wrap items-start gap-2 px-1.5 pb-1.5 pt-0.5">
-              {store.attachments.map((attachment, index) =>
+          {(composerAnnotations.length > 0 ||
+            composerAttachments.some((attachment) => attachment.kind !== "annotation")) && (
+            <div
+              className={cn(
+                "flex flex-wrap items-start gap-2",
+                composerAnnotations.length > 0 ? "px-2 pt-2" : "px-1.5 pb-1.5 pt-0.5",
+                composerAnnotations.length > 0 &&
+                  composerLeadingAccessory?.content &&
+                  "pl-12 @4xl/composer-dock:pl-2",
+              )}
+            >
+              <AnnotationSummary
+                annotations={composerAnnotations}
+                onRemove={(id) => store.removeAnnotation(id)}
+              />
+              {composerAttachments.map((attachment, index) =>
                 attachment.kind === "annotation" ? null : attachment.kind === "source" ? (
                   <SourceAttachment
                     key={`${attachment.kind}-${attachment.name}-${index}`}
