@@ -127,7 +127,7 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               onClick={() => void navigator.open(node)}
             >
               {(node.target.kind === "project-session" || node.target.kind === "subagent") && (
-                <span aria-hidden="true" className="inline-flex shrink-0">
+                <span aria-hidden="true" className="me-1 inline-flex shrink-0">
                   <SessionPurposeIndicator
                     purpose={
                       node.target.kind === "subagent"
