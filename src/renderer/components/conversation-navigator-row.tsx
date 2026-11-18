@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import type { ConversationNavigationNode } from "../lib/conversation-navigation-tree";
 import { cn } from "../lib/utils";
@@ -18,14 +18,14 @@ import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 export const ConversationNavigatorRow = observer(function ConversationNavigatorRow({
   node,
   depth,
-  hideHomeRail = false,
+  underProjectHeading = false,
   projectPath,
   containingProjectPath = projectPath,
 }: {
   node: ConversationNavigationNode;
   depth: number;
-  /** Hide only the Project Chat grouping rail, preserving indentation and family rails. */
-  hideHomeRail?: boolean;
+  /** The Project Chat heading adds indentation, not a Session Family connector. */
+  underProjectHeading?: boolean;
   projectPath: string | undefined;
   /** Project identity already supplied by a containing heading or project-scoped layout. */
   containingProjectPath?: string;
@@ -34,6 +34,12 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
   const store = root.conversationNavigatorStore;
   const selected = store.selectedKey === node.key;
   const expanded = store.isExpanded(projectPath, node.key);
+  const avatarsEnabled = root.settingsStore.appearance.sessionAvatarsEnabled;
+  const headingIndent = underProjectHeading && depth > 0;
+  const railCount = depth - Number(headingIndent);
+  const gutterStyle: CSSProperties & { "--ancestor-count": number } = {
+    "--ancestor-count": railCount,
+  };
   const row = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (selected) row.current?.scrollIntoView?.({ block: "nearest" });
@@ -87,13 +93,22 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
       )}
     >
       {depth > 0 && (
-        <span className="flex shrink-0 items-stretch" style={{ width: Math.min(depth * 6, 24) }}>
+        <span
+          className={cn(
+            "relative w-[calc(var(--heading-indent)+var(--ancestor-count)*var(--indent-step))] shrink-0",
+            headingIndent ? "[--heading-indent:6px]" : "[--heading-indent:0px]",
+            // The avatar is centered in the second session-leading column, after the navigator's
+            // disclosure track. A 2rem step places the guide at the edge of the next row's
+            // disclosure track, outside its glyph. With avatars hidden, anchor to the disclosure.
+            avatarsEnabled
+              ? "[--icon-center:3.25rem] [--indent-step:2rem]"
+              : "[--icon-center:0.625rem] [--indent-step:1rem]",
+          )}
+          style={gutterStyle}
+        >
           <DepthRails
-            depth={depth}
-            className={cn(
-              "h-auto w-full min-w-0 max-w-none",
-              hideHomeRail && "[&>span:first-child]:border-l-0",
-            )}
+            depth={railCount}
+            className="pointer-events-none absolute inset-y-0 left-[calc(var(--heading-indent)+var(--icon-center)-0.5px)] h-auto w-max min-w-0 max-w-none justify-start gap-[calc(var(--indent-step)-1px)] [&>span]:w-px [&>span]:flex-none"
           />
         </span>
       )}
@@ -123,7 +138,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
             activity={activity}
             labels={root.sessionMetadataStore.sessionLabels(session.sessionId)}
             avatarSeed={session.sessionId}
-            avatarsEnabled={root.settingsStore.appearance.sessionAvatarsEnabled}
+            avatarsEnabled={avatarsEnabled}
             charactersEnabled={root.settingsStore.appearance.sidebarCharactersEnabled}
             showIdleStatus
             source={

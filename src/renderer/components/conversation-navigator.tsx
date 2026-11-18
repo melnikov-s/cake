@@ -16,7 +16,6 @@ export const ConversationNavigator = observer(function ConversationNavigator({
   const root = useStore(RootStore);
   const store = root.conversationNavigatorStore;
   const list = root.sidebarStore.sessionListStore;
-  const tree = store.tree(projectPath);
   const query = store.query(projectPath);
   const rows = store.rows(projectPath);
   const scope = projectPath ?? "cake-chat";
@@ -35,7 +34,6 @@ export const ConversationNavigator = observer(function ConversationNavigator({
           : undefined;
     if (path !== undefined) containingProjects.set(node.key, path);
   }
-  const home = tree.roots.find((node) => node.relationship === "home");
   const activeHasMore = store.hasMoreSessions(projectPath);
   const resolvedHasMore = store.hasMoreSessions(projectPath, true);
   const resolvedCount = store.resolvedCount(projectPath);
@@ -85,7 +83,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
                   key={node.key}
                   node={node}
                   depth={depth}
-                  hideHomeRail={home?.label === "Project Chat"}
+                  underProjectHeading={containingProjects.has(node.key)}
                   containingProjectPath={containingProjects.get(node.key)}
                   projectPath={projectPath}
                 />

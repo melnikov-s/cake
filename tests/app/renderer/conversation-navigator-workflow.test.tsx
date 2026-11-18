@@ -277,7 +277,7 @@ describe("Sessions navigator workflow", () => {
     },
   );
 
-  it("hides only the Project Chat grouping rail without changing indentation or family rails", async () => {
+  it("renders family connectors only below the Project Chat grouping level", async () => {
     using fixture = renderNavigator();
     expect(rowFor("Project Chat").querySelector('[data-slot="depth-rails"]')).toBeNull();
     const assertRails = () => {
@@ -288,13 +288,8 @@ describe("Sessions navigator workflow", () => {
         ["Nested child implementation", 3],
       ] as const) {
         const row = rowFor(name);
-        const rails = row.querySelector<HTMLElement>('[data-slot="depth-rails"]')!;
         expect(row.dataset.depth).toBe(String(depth));
-        expect(rails.parentElement!.style.width).toBe(`${depth * 6}px`);
-        // Suppress only the first ancestor's border, not its width or deeper connectors.
-        expect(rails.classList.contains("[&>span:first-child]:border-l-0")).toBe(true);
-        expect(rails.children).toHaveLength(depth);
-        for (const rail of rails.children) expect(rail.classList.contains("border-l")).toBe(true);
+        expect(row.querySelectorAll('[data-slot="depth-rails"] > span')).toHaveLength(depth - 1);
       }
     };
     assertRails();
@@ -321,12 +316,8 @@ describe("Sessions navigator workflow", () => {
       ["Nested child implementation", 2],
     ] as const) {
       const row = rowFor(name);
-      const rails = row.querySelector<HTMLElement>('[data-slot="depth-rails"]')!;
       expect(row.dataset.depth).toBe(String(depth));
-      expect(rails.parentElement!.style.width).toBe(`${depth * 6}px`);
-      expect(rails.classList.contains("[&>span:first-child]:border-l-0")).toBe(false);
-      expect(rails.children).toHaveLength(depth);
-      for (const rail of rails.children) expect(rail.classList.contains("border-l")).toBe(true);
+      expect(row.querySelectorAll('[data-slot="depth-rails"] > span')).toHaveLength(depth);
     }
   });
 

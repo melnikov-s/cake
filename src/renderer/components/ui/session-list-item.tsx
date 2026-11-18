@@ -120,6 +120,8 @@ export const SessionListItem = observer(function SessionListItem({
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
+  // The recursive navigator supplies its own indentation; keep its avatar column fixed.
+  const indentFamilyChild = isFamilyChild && session.familyDepth !== 0;
   const canResolve =
     !isFamilyChild &&
     Boolean(onResolve) &&
@@ -158,7 +160,7 @@ export const SessionListItem = observer(function SessionListItem({
         focusMode && "min-h-14 text-sm",
         focusMode && charactersEnabled && "[&_[data-slot=avatar]]:size-7",
         avatarsEnabled
-          ? isFamilyChild
+          ? indentFamilyChild
             ? focusMode
               ? "grid-cols-[4.25rem_minmax(0,1fr)]"
               : "grid-cols-[3.75rem_minmax(0,1fr)]"

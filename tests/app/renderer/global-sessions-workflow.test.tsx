@@ -110,7 +110,7 @@ describe("Global Cake Sessions scope", () => {
   it("shows project identity once under headings, retaining badges for ungrouped projects and aggregate counts", () => {
     using fixture = renderSessions();
     expect(screen.getByText("Cake Chat")).toBeTruthy();
-    expect(screen.getByText("Alpha", { selector: "span.block" })).toBeTruthy();
+    expect(within(fixture.row(alphaChat)).getByRole("button", { name: "Alpha" })).toBeTruthy();
     expect(screen.getAllByText("Alpha", { exact: true })).toHaveLength(1);
     expect(fixture.row(alphaChat).querySelector('[data-slot="avatar"]')).not.toBeNull();
     for (const id of ["alpha-session", "child"]) {
@@ -121,7 +121,11 @@ describe("Global Cake Sessions scope", () => {
     }
     const betaSource = within(fixture.row("beta-session")).getByTitle("Beta");
     expect(betaSource.querySelector('[data-slot="avatar"]')).not.toBeNull();
+    expect(fixture.row("alpha-session").querySelector('[data-slot="depth-rails"]')).toBeNull();
     expect(fixture.row("child").dataset.depth).toBe("2");
+    expect(fixture.row("child").querySelectorAll('[data-slot="depth-rails"] > span')).toHaveLength(
+      1,
+    );
     expect(screen.queryByText("Unregistered project")).toBeNull();
     expect(screen.queryByText("Archived Alpha")).toBeNull();
     expect(screen.getByRole("button", { name: "Sessions · 1 running · 1 unread" }).title).toContain(
@@ -147,6 +151,9 @@ describe("Global Cake Sessions scope", () => {
     expect(screen.getAllByText("Beta", { exact: true })).toHaveLength(1);
     expect(fixture.row("beta-session").querySelector('[data-slot="session-source"]')).toBeNull();
     expect(fixture.row("beta-session").dataset.depth).toBe("1");
+    for (const id of ["alpha-session", "beta-session"]) {
+      expect(fixture.row(id).querySelector('[data-slot="depth-rails"]')).toBeNull();
+    }
     expect(within(fixture.row("beta-session")).getByRole("img", { name: "Running" })).toBeTruthy();
     act(() => fixture.models.cakeChatCatalog.sessions.pop());
     expect(within(fixture.row("beta-session")).getByTitle("Beta")).toBeTruthy();
