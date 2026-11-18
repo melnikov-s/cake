@@ -2,6 +2,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -25,6 +26,7 @@ import type { ChatStore, TranscriptScrollPosition } from "../stores/ChatStore";
 import {
   ErrorNotice,
   captureTranscriptSelection,
+  transcriptSelectionSurface,
   chatWorkIsActive,
   errorNoticeFollowsUser,
   groupTranscriptParts,
@@ -135,15 +137,18 @@ export const ChatTranscript = observer(function ChatTranscript({
     [behavior.inlineArtifactPreviews, store],
   );
   const sideChat = useContext(SideChatContext);
+  const selectionOwnerId = useId();
+  const selectionOwner = useMemo(() => ({ store, active: false }), [store]);
   const [presentedFullscreens, setPresentedFullscreens] = useState(0);
   const fullscreenTranscript = useMemo(
     () => ({
+      selectionOwnerId,
       retain() {
         setPresentedFullscreens((count) => count + 1);
         return () => setPresentedFullscreens((count) => count - 1);
       },
     }),
-    [],
+    [selectionOwnerId],
   );
   const uncoveredExpansion = useRef(new Map<string, boolean>());
   const listRef = useRef<LegendListRef | null>(null);
@@ -153,11 +158,22 @@ export const ChatTranscript = observer(function ChatTranscript({
     setScroller(list?.getScrollableNode() ?? null);
   }, []);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
+  useLayoutEffect(() => {
+    selectionOwner.active = true;
+    return () => {
+      selectionOwner.active = false;
+      pendingSelectionRef.current = undefined;
+    };
+  }, [selectionOwner]);
   const restoredScrollPosition = useMemo(
     () => untracked(() => store.transcriptInteraction.transcriptScrollPosition),
     [store],
   );
-  const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
+  const [annotationDraft, setAnnotationDraft] = useState<{
+    owner: typeof selectionOwner;
+    capture: TranscriptSelectionCapture;
+    isCurrent(): boolean;
+  }>();
   const supportsTodoFocus = Boolean(
     (isCakeChatSessionId(store.id) || cakeChatSideChatParentId(store.id)) && behavior.todos,
   );
@@ -580,33 +596,46 @@ export const ChatTranscript = observer(function ChatTranscript({
   );
   useEffect(() => {
     const showContextMenu = behavior.showSelectionContextMenu;
-    if ((!messageComments && !store.canAnnotate) || !showContextMenu) return;
+    const canChat = Boolean(messageComments && sideChat);
+    const canAnnotate = Boolean(store.canAnnotate);
+    if ((!canChat && !canAnnotate) || !showContextMenu || !scroller) return;
+    // An outgoing transcript can remain mounted but inert while navigation loads.
+    const isCurrent = () =>
+      selectionOwner.active &&
+      !store.signal.aborted &&
+      scroller.isConnected &&
+      !scroller.closest("[inert]");
     const handler = (event: MouseEvent) => {
       const target = event.target;
+      if (event.defaultPrevented || !isCurrent() || !(target instanceof Node)) return;
+      const surface = transcriptSelectionSurface(target);
+      if (
+        surface?.dataset.transcriptSelectionOwner !== selectionOwnerId ||
+        surface.closest("[inert]")
+      )
+        return;
       pendingSelectionRef.current = undefined;
-      if (!(target instanceof Node)) return;
       const targetElement = target instanceof Element ? target : target.parentElement;
       // Editing surfaces retain the ordinary native edit menu and cannot start
       // a transcript-selection workflow.
       if (
         targetElement?.closest(
-          'input, textarea, select, [contenteditable="true"], [contenteditable=""]',
+          'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
         )
       )
         return;
-      const capture = captureTranscriptSelection(store.parts);
+      const capture = captureTranscriptSelection(store.parts, surface);
       if (!capture) return;
       event.preventDefault();
       pendingSelectionRef.current = capture;
-      void showContextMenu({
-        canChat: Boolean(messageComments && sideChat),
-        canAnnotate: Boolean(store.canAnnotate),
-      })
+      void showContextMenu({ canChat, canAnnotate })
         .then((action) => {
           if (pendingSelectionRef.current !== capture) return;
           pendingSelectionRef.current = undefined;
-          if (action === "chat-about-selection") openSelectionDraft(capture);
-          else if (action === "add-annotation") setAnnotationDraft(capture);
+          if (!isCurrent() || !surface.isConnected) return;
+          if (action === "chat-about-selection" && canChat) openSelectionDraft(capture);
+          else if (action === "add-annotation" && canAnnotate)
+            setAnnotationDraft({ owner: selectionOwner, capture, isCurrent });
         })
         .catch(() => {
           if (pendingSelectionRef.current === capture) pendingSelectionRef.current = undefined;
@@ -614,19 +643,29 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
     document.addEventListener("contextmenu", handler);
     return () => document.removeEventListener("contextmenu", handler);
-  }, [behavior.showSelectionContextMenu, messageComments, openSelectionDraft, sideChat, store]);
-  const selectionOverlays = (
-    <>
-      {annotationDraft && (
-        <AnnotationDraftPopover
-          anchor={annotationDraft.rect}
-          selection={annotationDraft.selection}
-          submitFocusRef={annotationSubmitFocusRef}
-          onAdd={(annotation) => store.addAnnotation(annotation)}
-          onClose={() => setAnnotationDraft(undefined)}
-        />
-      )}
-    </>
+  }, [
+    behavior.showSelectionContextMenu,
+    messageComments,
+    openSelectionDraft,
+    scroller,
+    selectionOwner,
+    selectionOwnerId,
+    sideChat,
+    store,
+  ]);
+  const selectionOverlays = annotationDraft?.owner === selectionOwner && (
+    <AnnotationDraftPopover
+      anchor={annotationDraft.capture.rect}
+      selection={annotationDraft.capture.selection}
+      submitFocusRef={annotationSubmitFocusRef}
+      onAdd={(annotation) => {
+        if (!annotationDraft.isCurrent()) return false;
+        return annotationDraft.owner.store.addAnnotation(annotation);
+      }}
+      onClose={() =>
+        setAnnotationDraft((current) => (current === annotationDraft ? undefined : current))
+      }
+    />
   );
   const renderItem = ({ item: row }: { item: TranscriptRow }) => {
     const { key, item, index, section } = row;
@@ -724,6 +763,7 @@ export const ChatTranscript = observer(function ChatTranscript({
           tabIndex={-1}
           role="region"
           aria-label="Conversation"
+          data-transcript-selection-owner={selectionOwnerId}
           className={scrollerClassName}
           contentContainerClassName="transcript-content mx-auto w-full max-w-[75rem] min-w-0 px-6 max-[620px]:px-4 in-[.chat-layout-compact]:px-3"
           data={rows}
@@ -775,7 +815,12 @@ export const ChatTranscript = observer(function ChatTranscript({
           ListFooterComponent={<ChatTranscriptFooter footer={footer} error={error} />}
         />
       ) : (
-        <div ref={setScroller} tabIndex={-1} className={scrollerClassName}>
+        <div
+          ref={setScroller}
+          tabIndex={-1}
+          data-transcript-selection-owner={selectionOwnerId}
+          className={scrollerClassName}
+        >
           {historyHeader}
           <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
             {focused ? (

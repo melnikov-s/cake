@@ -48,6 +48,15 @@ const test = base.extend<{
         {
           name: "asset-urls",
           setup(builder) {
+            // This isolated fixture does not run Vite's dev-only inspector plugin.
+            builder.onResolve({ filter: /^virtual:r-state-tree-inspector$/ }, () => ({
+              path: "inspector",
+              namespace: "fixture-inspector",
+            }));
+            builder.onLoad({ filter: /.*/, namespace: "fixture-inspector" }, () => ({
+              contents: "export const token = undefined;",
+              loader: "js",
+            }));
             builder.onResolve({ filter: /\?url$/ }, ({ path }) => ({
               path,
               namespace: "asset-url",
@@ -136,10 +145,17 @@ export default function Widget() {
         { html, messageCount, chatMode, widget, withUpdates, withImages, withHistory },
       );
       const page = await opened;
-      const transcript = page.locator(".transcript");
+      const transcript =
+        chatMode === "annotation"
+          ? page.getByRole("region", { name: "Main pane" }).locator(".transcript")
+          : page.locator(".transcript");
       await expect(
         transcript.getByText(
-          withUpdates ? "Make widgets follow Cake theme live" : `Message ${messageCount - 1}.`,
+          chatMode === "annotation"
+            ? "Shared guidance for this review."
+            : withUpdates
+              ? "Make widgets follow Cake theme live"
+              : `Message ${messageCount - 1}.`,
         ),
       ).toBeVisible();
       // The list stays transparent until its initial placement settles.
@@ -854,6 +870,170 @@ test("reopening a conversation restores the reader's position", async ({ fixture
   await fixtureCall(page, "switchConversation");
   await settle(page);
   await expect.poll(() => anchor(transcript)).toEqual(reading);
+});
+
+const annotationProse = "Shared guidance for this review.";
+
+async function rightClickSelection(selection: Locator, target = selection) {
+  await selection.scrollIntoViewIfNeeded();
+  await selection.evaluate((element) => {
+    const browser = window.getSelection()!;
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    browser.removeAllRanges();
+    browser.addRange(range);
+  });
+  return target.evaluate((element) =>
+    element.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })),
+  );
+}
+
+test.describe("transcript annotation ownership", () => {
+  test.use({ chatMode: "annotation" });
+
+  test("only the selected pane claims matching IDs, including in the fullscreen portal", async ({
+    fixturePage: page,
+  }, testInfo) => {
+    const main = page.getByRole("region", { name: "Main pane" });
+    const other = page.getByRole("region", { name: "Concurrent pane" });
+    const mainProse = main.getByText(annotationProse, { exact: true });
+    const otherProse = other.getByText(annotationProse, { exact: true });
+    await expect(main.locator('[data-part-id="matching-id"]')).toHaveCount(1);
+    await expect(other.locator('[data-part-id="matching-id"]')).toHaveCount(1);
+    // true means the browser event was not canceled: keep ordinary context menus.
+    expect(await rightClickSelection(mainProse, otherProse)).toBe(true);
+    const otherNode = await otherProse.elementHandle();
+    expect(
+      await mainProse.evaluate((element, end) => {
+        const range = document.createRange();
+        range.setStart(element, 0);
+        range.setEnd(end, end.childNodes.length);
+        const browser = window.getSelection()!;
+        browser.removeAllRanges();
+        browser.addRange(range);
+        return element.dispatchEvent(
+          new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+        );
+      }, otherNode),
+    ).toBe(true);
+    await rightClickSelection(mainProse, otherProse); // Restore a single-pane range.
+    // An editor inside the selected transcript must keep its own context menu too.
+    expect(
+      await mainProse.evaluate((element) => {
+        const editor = document.createElement("div");
+        editor.contentEditable = "plaintext-only";
+        element.after(editor);
+        const allowed = editor.dispatchEvent(
+          new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+        );
+        editor.remove();
+        return allowed;
+      }),
+    ).toBe(true);
+    expect(await fixtureCall(page, "selectionMenus")).toEqual([]);
+    expect(await rightClickSelection(otherProse)).toBe(false);
+    expect(await fixtureCall(page, "selectionMenus")).toEqual(["B"]);
+    // Navigate away while the menu is still pending; the surviving pane also has this ID.
+    await fixtureCall(page, "switchConversation");
+    await fixtureCall(page, "addFromSelectionMenu");
+    await settle(page);
+    await expect(page.getByRole("dialog", { name: "Add annotation" })).toHaveCount(0);
+    await fixtureCall(page, "switchConversation");
+
+    await main.getByRole("button", { name: "View response fullscreen" }).click();
+    const fullscreen = page.getByRole("dialog", { name: "Cake", exact: true });
+    const fullscreenProse = fullscreen.getByText(annotationProse, { exact: true });
+    await expect(fullscreenProse).toBeVisible();
+    expect(await rightClickSelection(fullscreenProse)).toBe(false);
+    expect(await fixtureCall(page, "selectionMenus")).toEqual(["B", "A"]);
+    await fixtureCall(page, "addFromSelectionMenu");
+    const editor = page.getByRole("textbox", { name: "Annotation comment" });
+    await editor.fill("Original note");
+    await editor.press("Enter");
+    await fullscreen.getByRole("button", { name: /Exit fullscreen/ }).click();
+    await main.getByRole("button", { name: "View annotation 1", exact: true }).click();
+    const details = page.getByRole("dialog", { name: "Annotation details" });
+    await details.getByRole("button", { name: "Edit annotation" }).click();
+    const edit = details.getByRole("textbox", { name: "Edit annotation comment" });
+    await edit.fill("Edited note");
+    await edit.press("Enter");
+    await expect(details.getByText("Edited note")).toBeVisible();
+    const path = testInfo.outputPath("edited-annotation-in-owning-pane.png");
+    await page.screenshot({ path });
+    await testInfo.attach("edited-annotation-in-owning-pane", { path, contentType: "image/png" });
+    await fixtureCall(page, "switchConversation");
+    await expect(page.getByRole("button", { name: /View annotation/ })).toHaveCount(0);
+    const composer = main.getByRole("combobox", { name: "Message", exact: true });
+    await composer.fill("Unrelated send");
+    await composer.press("Enter");
+    await expect
+      .poll(() => fixtureCall(page, "prompts"))
+      .toEqual([
+        expect.objectContaining({
+          sessionId: "empty-conversation",
+          text: "Unrelated send",
+          attachments: [],
+        }),
+      ]);
+    await fixtureCall(page, "switchConversation");
+    await expect(
+      main.getByRole("button", { name: "View annotation 1", exact: true }),
+    ).toBeVisible();
+    await composer.fill("Send the saved note");
+    await composer.press("Enter");
+    await expect
+      .poll(() => fixtureCall(page, "prompts"))
+      .toEqual([
+        expect.objectContaining({ sessionId: "empty-conversation", attachments: [] }),
+        expect.objectContaining({
+          sessionId: "ownership",
+          text: "Send the saved note",
+          attachments: [
+            {
+              kind: "annotation",
+              annotations: [
+                expect.objectContaining({
+                  messageId: "matching-id",
+                  selectedText: annotationProse,
+                  comment: "Edited note",
+                }),
+              ],
+            },
+          ],
+        }),
+      ]);
+    await expect(main.getByRole("button", { name: "View annotation 1", exact: true })).toHaveCount(
+      0,
+    );
+  });
+
+  test("discard pending annotation dictation when its transcript unmounts", async ({
+    fixturePage: page,
+  }) => {
+    const main = page.getByRole("region", { name: "Main pane" });
+    await fixtureCall(page, "enableDictation");
+    expect(await rightClickSelection(main.getByText(annotationProse, { exact: true }))).toBe(false);
+    await fixtureCall(page, "addFromSelectionMenu");
+    const editor = page.getByRole("textbox", { name: "Annotation comment" });
+    await expect(editor).toBeFocused();
+    await expect(
+      page
+        .getByRole("dialog", { name: "Add annotation" })
+        .locator('[data-slot="dictation-indicator"]'),
+    ).toHaveText("Listening");
+    await fixtureCall(page, "dictate");
+    await expect(editor).toHaveValue(/Dictated message/);
+    await editor.press("Enter");
+    // Wait for the final recognizer request, then navigate before it resolves.
+    await expect.poll(() => fixtureCall(page, "recognitionPending")).toBe(true);
+    await fixtureCall(page, "switchConversation");
+    expect(await fixtureCall(page, "finishRecognition")).toBe(true);
+    await settle(page);
+    await expect(page.getByRole("dialog", { name: "Add annotation" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /View annotation/ })).toHaveCount(0);
+    await fixtureCall(page, "switchConversation");
+    await expect(page.getByRole("button", { name: /View annotation/ })).toHaveCount(0);
+  });
 });
 
 test("evidence: accepted Enter returns to bottom; explicit navigation also follows again", async ({

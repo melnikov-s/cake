@@ -8,6 +8,7 @@ import { defaultApplicationState } from "../../src/contracts/application/applica
 import type { Annotation } from "../../src/contracts/conversations/session-contract";
 
 const repository = resolve(import.meta.dirname, "../..");
+const parentReply = "Inspect the original migration plan.";
 const reply = [
   "Wait until the migration finishes.",
   "",
@@ -19,7 +20,7 @@ const reply = [
 ].join("\n");
 
 for (const parent of ["Cake Chat", "Project Chat"] as const) {
-  test(`${parent} side chats annotate their own prose and code without nesting chats`, async () => {
+  test(`${parent} side chats annotate their own prose and code without nesting chats`, async ({}, testInfo) => {
     test.setTimeout(90_000);
     const directory = await mkdtemp(join(tmpdir(), "cake-side-chat-annotations-"));
     const project = join(directory, "project");
@@ -34,7 +35,9 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
         `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.end(
-        chunk({ role: "assistant", content: reply }, null) + chunk({}, "stop") + "data: [DONE]\n\n",
+        chunk({ role: "assistant", content: requests.length === 1 ? parentReply : reply }, null) +
+          chunk({}, "stop") +
+          "data: [DONE]\n\n",
       );
     });
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
@@ -117,9 +120,8 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
       await parentInput.pressSequentially("Explain the settings");
       await expect(parentInput).toHaveValue("Explain the settings");
       await parentInput.press("Enter");
-      await expect(
-        page.getByText("Wait until the migration finishes.", { exact: true }),
-      ).toBeVisible();
+      const parentProse = page.getByText(parentReply, { exact: true });
+      await expect(parentProse).toBeVisible();
 
       // Keep the real native menu construction, replacing only its OS popup.
       await app.evaluate(({ Menu }) => {
@@ -164,10 +166,7 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
           .toBe(word);
         await page.mouse.click(target.x, target.y, { button: "right" });
       };
-      await selectWord(
-        page.getByText("Wait until the migration finishes.", { exact: true }),
-        "migration",
-      );
+      await selectWord(parentProse, "migration");
       let side = page.getByRole("complementary", { name: "Side chat" });
       const input = side.getByRole("combobox");
       await expect(input).toBeFocused();
@@ -212,6 +211,14 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
       // Only the side-chat composer owns the draft, even with the parent visible.
       await expect(page.getByRole("button", { name: "View 2 annotations" })).toHaveCount(1);
       await expect(parentInput).toHaveValue("");
+      if (parent === "Project Chat") {
+        const path = testInfo.outputPath("project-side-chat-annotations.png");
+        await page.screenshot({ path });
+        await testInfo.attach("Project Chat and its annotated Side Chat", {
+          path,
+          contentType: "image/png",
+        });
+      }
       await side.getByRole("button", { name: "Send", exact: true }).click();
       await expect.poll(() => requests.length).toBe(3);
       const messages = JSON.parse(requests[2]!).messages as {

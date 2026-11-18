@@ -1,6 +1,7 @@
 export {
   captureMessageSelection,
   captureTranscriptSelection,
+  transcriptSelectionSurface,
   chatWorkIsActive,
   type CanonicalTranscriptBehavior,
   type ChatTranscriptBehavior,

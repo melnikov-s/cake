@@ -331,21 +331,39 @@ export interface TranscriptSelectionCapture {
   rect: MessageCommentAnchorRect;
 }
 
-/** Resolves the active browser selection against the parts this transcript
- *  owns, so every selectable surface (user messages, assistant replies, code,
- *  work logs, artifacts) can be right-clicked into a selection chat. */
+function elementAt(node: Node) {
+  return node instanceof Element ? node : node.parentElement;
+}
+
+const transcriptSurfaceSelector = "[data-transcript-selection-owner]";
+
+export function transcriptSelectionSurface(node: Node) {
+  return elementAt(node)?.closest<HTMLElement>(transcriptSurfaceSelector);
+}
+
+/** Resolve the DOM selection before looking up its part ID: IDs can repeat across panes. */
 export function captureTranscriptSelection(
   parts: UiPart[],
+  surface: HTMLElement,
 ): TranscriptSelectionCapture | undefined {
   const browser = window.getSelection();
   if (!browser || browser.rangeCount === 0 || browser.isCollapsed) return undefined;
   const range = browser.getRangeAt(0);
-  const startElement =
-    range.startContainer instanceof HTMLElement
-      ? range.startContainer
-      : range.startContainer.parentElement;
-  const partElement = startElement?.closest<HTMLElement>("[data-part-id]");
-  const partId = partElement?.dataset.partId;
+  if (
+    transcriptSelectionSurface(range.startContainer) !== surface ||
+    transcriptSelectionSurface(range.endContainer) !== surface
+  )
+    return undefined;
+  // Even with both endpoints in the outer transcript, the range can span a nested pane.
+  if (
+    Array.from(
+      elementAt(range.commonAncestorContainer)?.querySelectorAll(transcriptSurfaceSelector) ?? [],
+    ).some((nested) => range.intersectsNode(nested))
+  )
+    return undefined;
+  const partElement = elementAt(range.startContainer)?.closest<HTMLElement>("[data-part-id]");
+  if (!partElement || !surface.contains(partElement)) return undefined;
+  const partId = partElement.dataset.partId;
   const part = partId ? parts.find((candidate) => candidate.id === partId) : undefined;
   if (!partId || !part) return undefined;
   // Offsets inside streaming text are unstable, so ignore those selections.
@@ -414,6 +432,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   const [fullscreen, setFullscreen] = useState(false);
   const [openAnnotation, setOpenAnnotation] = useState<{
     id: string;
+    store: ChatStore;
     anchor: HTMLElement | MessageCommentAnchorRect;
   }>();
   const [markerPositions, setMarkerPositions] = useState<
@@ -521,9 +540,10 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           : [],
       )
     : undefined;
-  const activeAnnotation = openAnnotation
-    ? draftAnnotations.find((annotation) => annotation.id === openAnnotation.id)
-    : undefined;
+  const activeAnnotation =
+    openAnnotation?.store === behavior.store
+      ? draftAnnotations.find((annotation) => annotation.id === openAnnotation.id)
+      : undefined;
 
   return (
     <ChatTextMessage
@@ -625,7 +645,11 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               tooltip={annotation.comment || annotation.selectedText}
               ariaLabel={`View annotation ${index + 1}`}
               onClick={(event) =>
-                setOpenAnnotation({ id: annotation.id, anchor: event.currentTarget })
+                setOpenAnnotation({
+                  id: annotation.id,
+                  store: behavior.store,
+                  anchor: event.currentTarget,
+                })
               }
             >
               <ChatIcon size={15} />
@@ -634,12 +658,18 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       )}
       {activeAnnotation && (
         <AnnotationItemPopover
+          key={activeAnnotation.id}
           anchor={openAnnotation!.anchor}
           annotation={activeAnnotation}
-          onSave={(comment) =>
-            behavior.store.updateAnnotation(activeAnnotation.id, { comment: comment || undefined })
-          }
-          onRemove={() => behavior.store.removeAnnotation(activeAnnotation.id)}
+          onSave={(comment) => {
+            const store = openAnnotation!.store;
+            if (!store.signal.aborted)
+              store.updateAnnotation(activeAnnotation.id, { comment: comment || undefined });
+          }}
+          onRemove={() => {
+            const store = openAnnotation!.store;
+            if (!store.signal.aborted) store.removeAnnotation(activeAnnotation.id);
+          }}
           onClose={() => setOpenAnnotation(undefined)}
         />
       )}

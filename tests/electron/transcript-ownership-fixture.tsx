@@ -61,6 +61,23 @@ const withUpdates = parameters.get("updates") === "true";
 const withHistory = parameters.get("history") === "true";
 const historyRequests: string[] = [];
 const projectAttention = parameters.get("chatMode") === "project";
+const annotationMode = parameters.get("chatMode") === "annotation";
+type Prompt = Parameters<
+  NonNullable<NonNullable<TestClientOverrides["sessionChats"]>["prompt"]>
+>[0];
+const prompts: Prompt[] = [];
+const selectionMenus: string[] = [];
+let releaseSelectionMenu: ((action: "add-annotation") => void) | undefined;
+function annotationBehavior(pane: string) {
+  return {
+    showSelectionContextMenu: () => {
+      selectionMenus.push(pane);
+      return new Promise<"add-annotation">((resolve) => {
+        releaseSelectionMenu = resolve;
+      });
+    },
+  };
+}
 const projectChatId = `project-chat:${"a".repeat(64)}`;
 const attentionTodo: ProjectTodo = {
   id: "00000000-0000-4000-8000-000000000011",
@@ -185,6 +202,7 @@ const fixture = createRendererStoreFixture({
     },
   },
   client: {
+    electron: { setFullscreenSurfaceOpen: async () => {} },
     dictation: {
       listVocabulary: async () => ({ revision: 0, entries: [], total: 0, nextOffset: null }),
       prepare: async () =>
@@ -252,7 +270,12 @@ const fixture = createRendererStoreFixture({
           cursor: page < 2 ? String(page + 1) : undefined,
         };
       },
-      prompt: async ({ text }) => {
+      prompt: async (input) => {
+        if (annotationMode) {
+          prompts.push(input);
+          return TurnId.make("10000000-0000-4000-8000-000000000001");
+        }
+        const { text } = input;
         submittedText = text;
         await submissionReady;
         submissionReady = undefined;
@@ -324,6 +347,17 @@ let parts: UiPart[] = Array.from({ length: count }, (_, index) => ({
   status: "complete",
   text: `Message ${index}. ${"Reading context. ".repeat(20)}${parameters.get("images") === "true" && index % 2 ? `\n\n![History image ${index}](https://transcript.invalid/${index})` : ""}`,
 }));
+if (annotationMode)
+  parts = [
+    {
+      kind: "text",
+      id: "matching-id",
+      entryId: "matching-entry",
+      role: "assistant",
+      status: "complete",
+      text: `Shared guidance for this review.\n\n${"More project context for the reader.\n\n".repeat(150)}`,
+    },
+  ];
 if (widget)
   parts.splice(count - 2, 0, {
     kind: "tool",
@@ -397,7 +431,11 @@ const alternateSession = fixture.root.sessionRegistry.load("empty-conversation",
 applyConversationUpdate(alternateSession.model, {
   _tag: "Snapshot",
   revision: 1,
-  snapshot: { ...snapshot, sessionId: alternateSession.sessionId, parts: [] },
+  snapshot: {
+    ...snapshot,
+    sessionId: alternateSession.sessionId,
+    parts: annotationMode ? parts : [],
+  },
 });
 let alternateConversation = false;
 const root = createRoot(document.getElementById("root")!);
@@ -419,7 +457,29 @@ function render() {
         <StoreProvider store={fixture.root}>
           <StoreProvider store={fixture.root.dictationStore}>
             <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-              {chatMode ? (
+              {annotationMode ? (
+                <div className="grid h-full grid-cols-2">
+                  <section aria-label="Main pane" className="h-full min-h-0 min-w-0">
+                    <Chat
+                      store={
+                        alternateConversation
+                          ? alternateSession.conversationSessionStore.chatStore
+                          : store
+                      }
+                      transcriptBehavior={annotationBehavior(alternateConversation ? "B" : "A")}
+                    />
+                  </section>
+                  {!alternateConversation && (
+                    <section aria-label="Concurrent pane" className="h-full min-h-0 min-w-0">
+                      <Chat
+                        store={alternateSession.conversationSessionStore.chatStore}
+                        transcriptBehavior={annotationBehavior("B")}
+                        composerFocusEnabled={false}
+                      />
+                    </section>
+                  )}
+                </div>
+              ) : chatMode ? (
                 <Chat
                   store={
                     alternateConversation
@@ -480,6 +540,10 @@ export interface TranscriptOwnershipFixture {
   enableDictation(): Promise<void>;
   dictate(): void;
   finishRecognition(): boolean;
+  recognitionPending(): boolean;
+  selectionMenus(): readonly string[];
+  addFromSelectionMenu(): void;
+  prompts(): readonly Prompt[];
   submittedText(): string | undefined;
   renamedTitle(): string | undefined;
   /** Schedule real reminder rows through the observer, leaving mount/measurement to React/the list. */
@@ -540,6 +604,20 @@ Reflect.set(window, "transcriptFixture", {
     releaseRecognition("Dictated message. ".repeat(25) + "Final recognition.");
     releaseRecognition = undefined;
     return true;
+  },
+  recognitionPending() {
+    return !!releaseRecognition;
+  },
+  selectionMenus() {
+    return selectionMenus;
+  },
+  addFromSelectionMenu() {
+    if (!releaseSelectionMenu) throw new Error("No pending transcript menu");
+    releaseSelectionMenu("add-annotation");
+    releaseSelectionMenu = undefined;
+  },
+  prompts() {
+    return prompts;
   },
   submittedText() {
     return submittedText;
@@ -651,6 +729,11 @@ Reflect.set(window, "transcriptFixture", {
   },
   switchConversation() {
     alternateConversation = !alternateConversation;
+    if (annotationMode) {
+      const sessionId = alternateConversation ? alternateSession.sessionId : session.sessionId;
+      fixture.root.navigationStore.selectProjectSession(sessionId);
+      fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
+    }
     render();
   },
   loadAttachment(content) {

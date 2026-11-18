@@ -92,6 +92,7 @@ export function FullscreenSurface({
     // (e.g. a diagram's own fullscreen view) stack on top of it.
     <div
       ref={surfaceRef}
+      data-transcript-selection-owner={transcript?.selectionOwnerId}
       className={cn(
         "inset-0 z-45 flex flex-col bg-background text-foreground motion-safe:animate-fade-in",
         viewport ? "absolute" : "fixed",
