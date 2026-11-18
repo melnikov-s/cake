@@ -7,15 +7,18 @@ import {
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
+import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 import { cn } from "../lib/utils";
 
 /** Persistent, navigable ownership lineage; grouping never claims Session Family ancestry. */
 export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
   sessionId,
+  subagentHandleId,
   ariaLabel = "Conversation breadcrumb",
   includeChatTitle = false,
 }: {
   sessionId: string;
+  subagentHandleId?: string;
   ariaLabel?: string;
   /** The dock identifies its displayed primary chat, even while a secondary chat is selected. */
   includeChatTitle?: boolean;
@@ -28,12 +31,14 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
     : undefined;
   const projectPath = navigator.projectPathForSession(sessionId) ?? chat?.projectPath;
   const lineage = (
-    includeChatTitle
-      ? navigator.lineageForTarget({
-          kind: isCakeChatSessionId(sessionId) ? "cake-chat" : "project-session",
-          sessionId,
-        })
-      : navigator.lineageFor(sessionId)
+    subagentHandleId
+      ? navigator.lineageForTarget({ kind: "subagent", sessionId, handleId: subagentHandleId })
+      : includeChatTitle
+        ? navigator.lineageForTarget({
+            kind: isCakeChatSessionId(sessionId) ? "cake-chat" : "project-session",
+            sessionId,
+          })
+        : navigator.lineageFor(sessionId)
   ).filter(
     (node) =>
       node.relationship !== "home" &&
@@ -121,6 +126,17 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               aria-current={index === lineage.length - 1 ? "page" : undefined}
               onClick={() => void navigator.open(node)}
             >
+              {(node.target.kind === "project-session" || node.target.kind === "subagent") && (
+                <span aria-hidden="true" className="inline-flex shrink-0">
+                  <SessionPurposeIndicator
+                    purpose={
+                      node.target.kind === "subagent"
+                        ? "subagent"
+                        : (root.sessionCatalogStore.sessionPurpose(node.target.sessionId) ?? "user")
+                    }
+                  />
+                </span>
+              )}
               <span className="truncate">{node.title}</span>
             </Button>
           </Fragment>

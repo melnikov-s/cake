@@ -5,7 +5,7 @@ import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { ActivityDisclosure } from "./ui/activity-disclosure";
 import { AutoMergeToggle } from "./auto-merge-toggle";
-import { ChatIcon, ForkIcon } from "./ui/icons";
+import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 import { ComposerCap } from "./ui/composer-cap";
 import { textPreview } from "../lib/text-preview";
 import { subagentTitle } from "../lib/subagent-title";
@@ -50,7 +50,11 @@ export const ConversationActivity = observer(function ConversationActivity({
           id: `session:${session.sessionId}`,
           title: session.title,
           description: ["Running", session.projectName].filter(Boolean).join(" · "),
-          icon: <ForkIcon />,
+          icon: (
+            <SessionPurposeIndicator
+              purpose={root.sessionCatalogStore.sessionPurpose(session.sessionId) ?? "user"}
+            />
+          ),
           iconLabel: "Project Session",
           status: "running" as const,
           accessibleLabel: `Open session: ${textPreview(session.title)}`,
@@ -61,7 +65,7 @@ export const ConversationActivity = observer(function ConversationActivity({
           title: subagentTitle(run),
           fullText: run.task,
           description: "Running · Temporary subagent",
-          icon: <ChatIcon size={14} />,
+          icon: <SessionPurposeIndicator purpose="subagent" />,
           iconLabel: "Temporary subagent",
           status: "running" as const,
           accessibleLabel: `Inspect subagent: ${subagentTitle(run)}`,

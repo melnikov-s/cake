@@ -2,14 +2,9 @@ import { parseSubagentLink, subagentLink } from "../../contracts/subagents/subag
 import { parseSessionLink, sessionLink } from "../../contracts/conversations/message-reference";
 import type { ProjectTodoAssociation } from "../../contracts/projects/project-todos";
 import { parseSourceLocation } from "../../utils/source-location";
-import {
-  ArtifactIcon,
-  ChatIcon,
-  LinkIcon,
-  MarkdownIcon,
-  TreeIcon,
-  SparkleIcon,
-} from "../components/ui/icons";
+import { ArtifactIcon, ChatIcon, LinkIcon, MarkdownIcon, TreeIcon } from "../components/ui/icons";
+
+import { sessionIdentityIcons } from "./session-identity";
 
 /** Presentation only: MarkdownLink still owns destination inspection and navigation. */
 export function projectTodoAssociationDestination(association: ProjectTodoAssociation) {
@@ -19,7 +14,7 @@ export function projectTodoAssociationDestination(association: ProjectTodoAssoci
       : association.kind === "subagent"
         ? subagentLink(association.parentSessionId, association.handleId)
         : association.ref;
-  if (parseSubagentLink(href)) return { href, Icon: SparkleIcon };
+  if (parseSubagentLink(href)) return { href, Icon: sessionIdentityIcons.subagent };
   const session = parseSessionLink(href);
   if (session)
     return {

@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ChatIcon, ForkIcon } from "../../../src/renderer/components/ui/icons";
+import { BotIcon, SparkleIcon, UserIcon } from "../../../src/renderer/components/ui/icons";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { expect, it, vi } from "vitest";
@@ -396,9 +396,13 @@ it("regular sessions show only running direct children and open the selected ses
   ).not.toBeNull();
 });
 
-it.each(["project", "cake-chat"] as const)(
-  "%s counts only running rows with session forks, subagent chats and no visible Inspect action",
-  async (kind) => {
+it.each(
+  (["project", "cake-chat"] as const).flatMap((kind) =>
+    (["user", "delegated"] as const).map((purpose) => ({ kind, purpose })),
+  ),
+)(
+  "$kind counts only running rows with $purpose and subagent identity icons",
+  async ({ kind, purpose }) => {
     const launch =
       kind === "cake-chat"
         ? {
@@ -406,7 +410,7 @@ it.each(["project", "cake-chat"] as const)(
             launchedAt: "2026-01-01T00:00:00Z",
           }
         : undefined;
-    const running = child({ cakeChatLaunch: launch });
+    const running = child({ cakeChatLaunch: launch, purpose });
     const nonRunning = (
       ["completed", "stopped", "failed", "interrupted", "blocked", undefined] as const
     ).map((status, index) =>
@@ -465,8 +469,8 @@ it.each(["project", "cake-chat"] as const)(
     expect(workerIcon.getAttribute("title")).toBe("Temporary subagent");
     const referenceIcons = render(
       <>
-        <ForkIcon />
-        <ChatIcon size={14} />
+        {purpose === "user" ? <UserIcon /> : <BotIcon />}
+        <SparkleIcon />
       </>,
     ).container.querySelectorAll("svg");
     expect(sessionIcon.querySelector("svg")?.innerHTML).toBe(referenceIcons[0]!.innerHTML);

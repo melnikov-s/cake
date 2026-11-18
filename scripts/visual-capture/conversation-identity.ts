@@ -1,4 +1,6 @@
 import { expect } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { VisualCaptureScenario } from "./scenarios";
 import { createSessionHeaderTitleScenario } from "./session-header-title";
 
@@ -15,6 +17,7 @@ export function createConversationIdentityScenario(
       "project-chat",
       "long-title",
       "short-title",
+      "subagent",
       "hidden",
       "browser",
       "global-chat",
@@ -22,13 +25,35 @@ export function createConversationIdentityScenario(
       "staged-browser",
       "resolved",
     ],
-    seed: titles.seed,
+    async seed(paths, theme) {
+      const cleanup = await titles.seed(paths, theme);
+      await writeFile(
+        join(paths.cakeHome, "state", "session-families.json"),
+        JSON.stringify({
+          version: 12,
+          data: {
+            families: [],
+            turns: [],
+            spawnedSessions: [],
+            sessionPurposes: [
+              {
+                sessionId: "visual-short-header-title",
+                projectPath: paths.project,
+                purpose: "delegated",
+                createdPurpose: "delegated",
+              },
+            ],
+          },
+        }),
+      );
+      return cleanup;
+    },
     async prepare(page, state, application) {
       await titles.prepare(
         page,
         state === "project-chat" || state.startsWith("staged")
           ? "project-chat"
-          : state === "short-title"
+          : state === "short-title" || state === "subagent"
             ? "short-title"
             : "long-title",
         application,
@@ -40,6 +65,29 @@ export function createConversationIdentityScenario(
         .toBe(54);
       const header = page.getByRole("navigation", { name: "Conversation breadcrumb" });
       const identity = page.getByRole("navigation", { name: "Conversation identity" });
+      if (state === "subagent") {
+        await page.getByRole("link", { name: "Inspect header worker", exact: true }).click();
+        await expect(page.locator('[data-slot="focused-secondary-conversation"]')).toBeVisible();
+        await expect(identity).toBeVisible();
+        await expect(identity.locator('[data-purpose="delegated"]')).toHaveCount(1);
+        await expect(identity.locator('[data-purpose="subagent"]')).toHaveCount(1);
+        await expect(identity.locator('[aria-current="page"]')).toHaveAttribute(
+          "title",
+          /^Read-only/,
+        );
+        await expect(identity.locator('[aria-current="page"]')).toBeVisible();
+        await identity.getByRole("button", { name: "Review", exact: true }).click();
+        await expect(page.locator('[data-slot="focused-secondary-conversation"]')).toHaveCount(0);
+        await expect(identity).toHaveText("visual-capture-project›Review");
+        await page.getByRole("link", { name: "Inspect header worker", exact: true }).click();
+        await expect(identity.locator('[data-purpose="subagent"]')).toHaveCount(1);
+        await page.mouse.move(500, 80);
+        return;
+      }
+      if (state === "short-title")
+        await expect(identity.locator('[data-purpose="delegated"]')).toHaveCount(1);
+      if (state === "long-title")
+        await expect(identity.locator('[data-purpose="user"]')).toHaveCount(1);
       if (state.startsWith("staged")) {
         await page.getByRole("button", { name: "New session", exact: true }).click();
         await page.getByRole("option", { name: /visual-capture-project/ }).click();

@@ -129,6 +129,19 @@ it.each(["alpha", projectChatId, CAKE_CHAT_SESSION_ID])(
     );
     await act(async () => fixture.root.navigationStore.openSubagentLink(parentSessionId, handleId));
     expect(screen.getByRole("region", { name: "Read-only context investigation" })).toBeDefined();
+    const identity = screen.getByRole("navigation", { name: "Conversation identity" });
+    expect(identity.querySelector('[data-purpose="subagent"]')).not.toBeNull();
+    const current = within(identity).getByRole("button", {
+      name: "Read-only context investigation",
+    });
+    expect(current.getAttribute("aria-current")).toBe("page");
+    // Reopening the current crumb must use the public parent/handle, not the private Pi ID.
+    await fixture.user.click(current);
+    expect(
+      fixture.root.workspaceSession?.conversationSessionStore.sideChatStore.target
+        ?.navigationTarget,
+    ).toEqual({ kind: "subagent", sessionId: parentSessionId, handleId });
+    expect(screen.queryByRole("button", { name: "Close and resolve" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Message subagent" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Back to source conversation" }));
     await waitFor(() =>

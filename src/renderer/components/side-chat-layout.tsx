@@ -9,6 +9,7 @@ import { Callout } from "@/components/ui/callout";
 import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { SideChatContext } from "./side-chat-context";
+import { ConversationIdentityDock } from "./conversation-identity-dock";
 import { ArtifactMenuSurface } from "./artifact-menu-surface";
 import { ModelSummary } from "./model-summary";
 import { SideChatsMenu } from "./side-chats-menu";
@@ -103,7 +104,18 @@ export const SideChatLayout = observer(function SideChatLayout({
           className="flex h-full min-h-0 min-w-0 flex-col"
         >
           {target.merge?.error && <Callout variant="error">{target.merge.error}</Callout>}
-          <div className="min-h-0 flex-1">{renderChat(target.chatStore, composerHeader)}</div>
+          <div className="min-h-0 flex-1">
+            <ConversationIdentityDock
+              sessionId={target.navigationTarget?.sessionId}
+              subagentHandleId={
+                target.navigationTarget?.kind === "subagent"
+                  ? target.navigationTarget.handleId
+                  : undefined
+              }
+            >
+              {renderChat(target.chatStore, composerHeader)}
+            </ConversationIdentityDock>
+          </div>
         </section>
       </SideChatContext.Provider>
     );

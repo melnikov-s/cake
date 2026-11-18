@@ -12,6 +12,7 @@ import { DepthRails } from "./ui/depth-rails";
 import { IconButton } from "./ui/icon-button";
 import { CakeIcon, ChevronIcon } from "./ui/icons";
 import { NavItem } from "./ui/nav-item";
+import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 
 /** One compact native source-list row; only working state propagates through descendants. */
 export const ConversationNavigatorRow = observer(function ConversationNavigatorRow({
@@ -154,8 +155,12 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
           )}
           actionProps={{ "aria-label": node.title }}
           label={
-            <span className="block truncate" title={`${node.title} — ${relationship}`}>
-              {node.title}
+            <span
+              className="flex min-w-0 items-center gap-1.5"
+              title={`${node.title} — ${relationship}`}
+            >
+              {node.target.kind === "subagent" && <SessionPurposeIndicator purpose="subagent" />}
+              <span className="truncate">{node.title}</span>
             </span>
           }
           icon={

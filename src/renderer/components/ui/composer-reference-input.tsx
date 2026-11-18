@@ -14,7 +14,8 @@ import {
 } from "../../lib/composer-references";
 import { modelChipClassName } from "../model-picker";
 import { buttonVariants } from "./button";
-import { ChevronDownIcon, LinkIcon, UserIcon, BotIcon } from "./icons";
+import { ChevronDownIcon, LinkIcon } from "./icons";
+import { SessionPurposeIndicator } from "./session-purpose-indicator";
 import type { ComposerInputElement } from "../../lib/composer-input-element";
 import { modelReferenceChipClassName } from "./model-reference-chip";
 import { cn } from "../../lib/utils";
@@ -242,12 +243,8 @@ export function ComposerReferenceInput({
         <span className="shrink-0 text-muted-foreground">
           <ChevronDownIcon size={12} />
         </span>
-        <span className="text-muted-foreground [&>svg]:size-3">
-          <UserIcon />
-        </span>
-        <span className="text-muted-foreground [&>svg]:size-3">
-          <BotIcon />
-        </span>
+        <SessionPurposeIndicator purpose="user" />
+        <SessionPurposeIndicator purpose="delegated" />
       </span>
       <div
         {...props}

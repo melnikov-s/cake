@@ -3,19 +3,22 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { ConversationBreadcrumb } from "./conversation-breadcrumb";
 
-/** Float only the displayed Project Session's identity, with clear space below its composer. */
+/** Float the displayed session or private subagent identity below its composer. */
 export const ConversationIdentityDock = observer(function ConversationIdentityDock({
   sessionId,
+  subagentHandleId,
   children,
 }: {
   sessionId?: string;
+  subagentHandleId?: string;
   children: ReactNode;
 }) {
   const root = useStore(RootStore);
   const active = root.appShellStore.activeConversation;
   if (
     !sessionId ||
-    active?.kind !== "project-session" ||
+    !active ||
+    (active.kind !== "project-session" && !(subagentHandleId && active.kind === "cake-chat")) ||
     active.sessionId !== sessionId ||
     !root.settingsStore.appearance.conversationIdentityEnabled
   )
@@ -36,6 +39,7 @@ export const ConversationIdentityDock = observer(function ConversationIdentityDo
         >
           <ConversationBreadcrumb
             sessionId={sessionId}
+            subagentHandleId={subagentHandleId}
             ariaLabel="Conversation identity"
             includeChatTitle
           />

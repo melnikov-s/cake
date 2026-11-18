@@ -1,8 +1,5 @@
-import {
-  sessionPurposeLabel,
-  type SessionPurpose,
-} from "../../../contracts/project-sessions/session-purpose";
-import { BotIcon, UserIcon } from "./icons";
+import { sessionPurposeLabel } from "../../../contracts/project-sessions/session-purpose";
+import { sessionIdentityIcons, type SessionIdentityKind } from "../../lib/session-identity";
 import { cn } from "../../lib/utils";
 
 /** Relationship cue shared by session rows and links, never a to-do classification. */
@@ -10,10 +7,11 @@ export function SessionPurposeIndicator({
   purpose,
   className,
 }: {
-  purpose: SessionPurpose;
+  purpose: SessionIdentityKind;
   className?: string;
 }) {
-  const label = sessionPurposeLabel(purpose);
+  const label = purpose === "subagent" ? "Subagent" : sessionPurposeLabel(purpose);
+  const Icon = sessionIdentityIcons[purpose];
   return (
     <span
       role="img"
@@ -26,7 +24,7 @@ export function SessionPurposeIndicator({
         className,
       )}
     >
-      {purpose === "user" ? <UserIcon /> : <BotIcon />}
+      <Icon />
     </span>
   );
 }

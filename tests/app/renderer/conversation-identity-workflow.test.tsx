@@ -185,6 +185,16 @@ it("defaults on, follows live title metadata, and preserves the existing header 
   );
   expect(identity.textContent).toContain("Renamed identity");
   expect(header.textContent).toContain("Renamed identity");
+  for (const nav of [header, identity])
+    expect(nav.querySelector('[data-purpose="user"]')).not.toBeNull();
+  act(() => {
+    f.models.sessionCatalog.find("task")!.purpose = "delegated";
+  });
+  for (const nav of [header, identity]) {
+    expect(nav.querySelector('[data-purpose="delegated"]')).not.toBeNull();
+    expect(nav.querySelector('[data-purpose="user"]')).toBeNull();
+    expect(within(nav).getByRole("button", { name: "Renamed identity" })).toBeDefined();
+  }
   const openProjectChat = vi
     .spyOn(f.root.navigationStore, "openProjectChat")
     .mockResolvedValue(true);

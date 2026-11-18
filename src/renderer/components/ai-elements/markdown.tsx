@@ -340,7 +340,15 @@ function linkAnchor(
           event.preventDefault();
           actions?.openSubagent?.(subagent.parentSessionId, subagent.handleId, subagent.messageId);
         }}
-      />
+        showIcon={false}
+      >
+        {showSessionPurpose && presentation !== "icon" && (
+          <span aria-hidden="true" className="mr-1 inline-flex">
+            <SessionPurposeIndicator purpose="subagent" />
+          </span>
+        )}
+        {props.children}
+      </Link>
     );
   }
   const session = href ? sessionTargetFromHref(href) : undefined;
