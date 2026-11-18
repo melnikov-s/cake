@@ -2,11 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
+import { Avatar } from "@/components/ui/avatar";
 import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { cn } from "@/lib/utils";
-import type { ProjectTodo } from "../../contracts/projects/project-todos";
+import type { ProjectIcon } from "../../contracts/application/application-data";
+import { CAKE_CHAT_TODO_SCOPE, type ProjectTodo } from "../../contracts/projects/project-todos";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
+import { ConversationNavigatorGroupHeader } from "./conversation-navigator-group-header";
 import { ProjectTodoItem } from "./project-todo-item";
 
 type Section = {
@@ -17,7 +20,12 @@ type Section = {
   toggle?: () => void;
 };
 type Row =
-  | { key: string; kind: "group"; title: string }
+  | {
+      key: string;
+      kind: "group";
+      title: string;
+      project?: { scope: string; icon?: ProjectIcon; expanded: boolean };
+    }
   | { key: string; kind: "header"; section: Section; first: boolean }
   | { key: string; kind: "todo"; section: Section; item: ProjectTodo };
 
@@ -43,8 +51,8 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
     void store.reconcile();
   }, [store]);
   const rows: Row[] = store.paneGroups.flatMap((group) => {
-    const allowsCakeMerge =
-      root.projectCatalogStore.find(group.scope)?.settings.worktreeLanding !== "pull-request";
+    const project = root.projectCatalogStore.find(group.scope);
+    const allowsCakeMerge = project?.settings.worktreeLanding !== "pull-request";
     const classified = store.classifyItems(group.owner.todos.items);
     const sections: Section[] = [
       { key: "focus", title: "Focus", items: classified.focused, open: true },
@@ -80,10 +88,26 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
     ].filter((section) => section.items.length > 0);
 
     if (!sections.length) return [];
+    const headers: Row[] = [];
+    if (store.grouped) {
+      const disclosure =
+        group.scope === CAKE_CHAT_TODO_SCOPE
+          ? undefined
+          : {
+              scope: group.scope,
+              icon: project?.settings.icon,
+              expanded: store.isProjectExpanded(group.scope),
+            };
+      headers.push({
+        key: `group:${group.scope}`,
+        kind: "group",
+        title: group.title,
+        project: disclosure,
+      });
+      if (disclosure?.expanded === false) return headers;
+    }
     return [
-      ...(store.grouped
-        ? [{ key: `group:${group.scope}`, kind: "group" as const, title: group.title }]
-        : []),
+      ...headers,
       ...sections.flatMap((section, index): Row[] => [
         {
           key: `section:${group.scope}:${section.key}`,
@@ -158,7 +182,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
       role="list"
       aria-label="To-dos"
       className="h-full overflow-y-auto [overflow-anchor:none]"
-      contentContainerClassName="px-3 pb-4 pt-4"
+      contentContainerClassName={cn("px-3 pb-4", !store.grouped && "pt-4")}
       dataKey={projectPath}
       data={rows}
       keyExtractor={(row) => row.key}
@@ -211,7 +235,12 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
         let index = rows.findIndex((row) => row.key === owner.dataset.todoVirtualKey) - 1;
         while (index >= 0 && index < rows.length) {
           const row = rows[index]!;
-          if (row.kind === "todo" || (row.kind === "header" && row.section.toggle)) break;
+          if (
+            row.kind === "todo" ||
+            (row.kind === "header" && row.section.toggle) ||
+            (row.kind === "group" && row.project)
+          )
+            break;
           index -= 1;
         }
         const next = rows[index];
@@ -252,12 +281,36 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
       }
       renderItem={({ item: row, index }) =>
         row.kind === "group" ? (
-          <h2
+          <div
+            ref={(element) => attachRow(row.key, element)}
+            role="listitem"
             data-todo-group={row.key}
-            className="border-b border-border px-3 pb-2 pt-3 text-sm font-semibold"
+            data-todo-virtual-key={row.key}
+            aria-posinset={index + 1}
+            aria-setsize={rows.length}
           >
-            {row.title}
-          </h2>
+            {row.project ? (
+              <div className="pb-1">
+                <ConversationNavigatorGroupHeader
+                  label={row.title}
+                  icon={
+                    <Avatar
+                      kind="project"
+                      seed={row.title}
+                      customIcon={row.project.icon}
+                      className="size-[18px]"
+                    />
+                  }
+                  expanded={row.project.expanded}
+                  onToggle={() => store.toggleProjectExpanded(row.project!.scope)}
+                />
+              </div>
+            ) : (
+              <h2 className="border-b border-border px-3 pb-2 pt-3 text-sm font-semibold">
+                {row.title}
+              </h2>
+            )}
+          </div>
         ) : row.kind === "header" ? (
           <div
             ref={(element) => attachRow(row.key, element)}

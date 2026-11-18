@@ -1,9 +1,10 @@
 /** @vitest-environment jsdom */
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { applySnapshot } from "r-state-tree";
+import { applySnapshot, toSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { expect, it, vi } from "vitest";
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import {
   CAKE_CHAT_TODO_SCOPE,
@@ -11,9 +12,9 @@ import {
   type ProjectTodo,
 } from "../../../src/contracts/projects/project-todos";
 import type { Client } from "../../../src/renderer/client/Client";
-import { ProjectTodosPanel } from "../../../src/renderer/components/project-todos-panel";
+import { WorkspaceNavigatorContent } from "../../../src/renderer/components/workspace-navigator-content";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
-import { projectRecord } from "./fixtures/catalog-fixtures";
+import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
 const projectChat = `project-chat:${"a".repeat(64)}`;
 const task = (index: number, title: string, extra: Partial<ProjectTodo> = {}): ProjectTodo => ({
@@ -42,7 +43,14 @@ function setup(sessionId = CAKE_CHAT_SESSION_ID) {
   const fixture = createRendererStoreFixture({
     projects: [
       {
-        ...projectRecord({ path: "/alpha", name: "Alpha" }),
+        ...projectRecord({
+          path: "/alpha",
+          name: "Alpha",
+          settings: {
+            ...defaultProjectSettings(),
+            icon: { mimeType: "image/png", data: "YWJj" },
+          },
+        }),
         todos: { ...emptyProjectTodos(), items: [a] },
       },
       projectRecord({ path: "/empty", name: "Empty" }),
@@ -58,6 +66,7 @@ function setup(sessionId = CAKE_CHAT_SESSION_ID) {
         },
       },
     ],
+    sessions: [sessionSummary({ sessionId: "alpha-session", projectPath: "/alpha" })],
     client: { projectTodos: { mutateUser, activateAttention, reconcile } },
   });
   applySnapshot(fixture.models.cakeChatTodos, {
@@ -76,7 +85,7 @@ function setup(sessionId = CAKE_CHAT_SESSION_ID) {
   store.open();
   const view = render(
     <StoreProvider store={fixture.root}>
-      <ProjectTodosPanel store={store} />
+      <WorkspaceNavigatorContent />
     </StoreProvider>,
   );
   return {
@@ -97,10 +106,7 @@ function setup(sessionId = CAKE_CHAT_SESSION_ID) {
 it("projects multiple registered lists and global items without copying, omitting empty projects", async () => {
   using f = setup();
   expect(
-    screen
-      .getAllByRole("heading", { level: 2 })
-      .filter((heading) => heading.hasAttribute("data-todo-group"))
-      .map((heading) => heading.textContent),
+    Array.from(document.querySelectorAll("[data-todo-group]"), (group) => group.textContent),
   ).toEqual(["Alpha", "Beta", "Global"]);
   expect(screen.queryByText("Empty")).toBeNull();
   for (const title of ["Investigate startup", "Improve navigation", "Plan my week", "Later"])
@@ -142,6 +148,87 @@ it("projects multiple registered lists and global items without copying, omittin
   );
   expect(screen.queryByText("Beta")).toBeNull();
   expect(f.mutateUser).not.toHaveBeenCalled();
+});
+
+it("discloses each project independently and retains disclosure across pane switches and snapshots", async () => {
+  using f = setup();
+  const header = (name: string) => screen.getByRole("button", { name });
+  const taskRow = (name: string) => screen.queryByRole("button", { name });
+  const alpha = header("Alpha");
+  const beta = header("Beta");
+  expect(headingIcon(alpha)).toBe("data:image/png;base64,YWJj");
+  expect(headingIcon(beta)).toMatch(/^data:image\/svg\+xml/);
+  expect(alpha.getAttribute("aria-expanded")).toBe("true");
+  expect(beta.getAttribute("aria-expanded")).toBe("true");
+
+  await f.user.click(header("Done (1)"));
+  act(() => alpha.focus());
+  await f.user.keyboard("{Enter}");
+  expect(document.activeElement).toBe(alpha);
+  expect(alpha.getAttribute("aria-expanded")).toBe("false");
+  expect(taskRow("Investigate startup")).toBeNull();
+  expect(taskRow("Improve navigation")).not.toBeNull();
+  expect(taskRow("Plan my week")).not.toBeNull();
+
+  await f.user.click(beta);
+  expect(beta.getAttribute("aria-expanded")).toBe("false");
+  expect(taskRow("Shipped")).toBeNull();
+  expect(taskRow("Later")).toBeNull();
+  expect(alpha.getAttribute("aria-expanded")).toBe("false");
+
+  const workspace = f.root.workspaceNavigatorStore;
+  act(() => workspace.show("sessions"));
+  const sessionDisclosure = header("Collapse Alpha");
+  expect(sessionDisclosure.getAttribute("aria-expanded")).toBe("true");
+  expect(headingIcon(header("Alpha"))).toBe("data:image/png;base64,YWJj");
+  await f.user.click(sessionDisclosure);
+  act(() => workspace.show("todos"));
+  expect(header("Alpha").getAttribute("aria-expanded")).toBe("false");
+  expect(header("Beta").getAttribute("aria-expanded")).toBe("false");
+  act(() => header("Alpha").focus());
+  await f.user.keyboard(" ");
+  expect(header("Alpha").getAttribute("aria-expanded")).toBe("true");
+  expect(taskRow("Investigate startup")).not.toBeNull();
+  expect(header("Beta").getAttribute("aria-expanded")).toBe("false");
+  act(() => workspace.show("sessions"));
+  expect(header("Expand Alpha")).toBeDefined();
+  act(() => workspace.show("todos"));
+
+  const saved = toSnapshot(f.store);
+  await f.user.click(header("Beta"));
+  expect(taskRow("Shipped")).not.toBeNull();
+  act(() => applySnapshot(f.store, saved));
+  expect(header("Beta").getAttribute("aria-expanded")).toBe("false");
+  expect(taskRow("Shipped")).toBeNull();
+});
+
+function headingIcon(button: HTMLElement) {
+  return button.querySelector('[data-slot="avatar"] img')?.getAttribute("src");
+}
+
+it("searches collapsed projects without overwriting disclosure and reveals only the selected task's project", async () => {
+  using f = setup();
+  const header = (name: string) => screen.getByRole("button", { name });
+  await f.user.click(header("Alpha"));
+  await f.user.click(header("Beta"));
+  const search = screen.getByRole("searchbox", { name: "Search to-dos" });
+  await f.user.type(search, "navigation");
+  expect(screen.queryByRole("button", { name: "Alpha" })).toBeNull();
+  expect(header("Beta").getAttribute("aria-expanded")).toBe("true");
+  expect(header("Improve navigation")).toBeDefined();
+  await f.user.click(header("Beta"));
+  expect(screen.queryByRole("button", { name: "Improve navigation" })).toBeNull();
+  await f.user.clear(search);
+  expect(header("Alpha").getAttribute("aria-expanded")).toBe("false");
+  expect(header("Beta").getAttribute("aria-expanded")).toBe("false");
+
+  const done = f.models.projects.find("/beta")!.todos.items.find((item) => item.state === "done")!;
+  act(() => f.store.reveal(done));
+  expect(header("Beta").getAttribute("aria-expanded")).toBe("true");
+  expect(header("Shipped")).toBeDefined();
+  expect(header("Alpha").getAttribute("aria-expanded")).toBe("false");
+  expect(f.store.inspectedItemId).toBe(done.id);
+  expect(f.store.focusedItems).toEqual([]);
 });
 
 it("keeps Project Chat scoped to its original list without aggregate headings", () => {

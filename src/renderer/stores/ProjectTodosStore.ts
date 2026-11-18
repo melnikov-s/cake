@@ -1,4 +1,4 @@
-import { computed, Store } from "r-state-tree";
+import { computed, observable, snapshot, Store } from "r-state-tree";
 import type { AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
 import { classifyProjectTodos } from "../lib/classify-project-todos";
 import {
@@ -50,6 +50,8 @@ export class ProjectTodosStore extends Store<{
   activeExpanded = true;
   doneExpanded = false;
   snoozedExpanded = true;
+  @snapshot private readonly collapsedProjects: Record<string, boolean> = observable({});
+  private readonly searchCollapsedProjects: Record<string, boolean> = observable({});
   inspectedItemId: string | undefined;
   /** Window-local view overlay; independent of lifecycle, attention and message context. */
   focusedItemIds: string[] = [];
@@ -174,6 +176,19 @@ export class ProjectTodosStore extends Store<{
   }
   setQuery(query: string) {
     this.query = query;
+    for (const scope of Object.keys(this.searchCollapsedProjects))
+      delete this.searchCollapsedProjects[scope];
+  }
+  private get projectDisclosures() {
+    return this.query.trim() ? this.searchCollapsedProjects : this.collapsedProjects;
+  }
+  isProjectExpanded(scope: string) {
+    return !this.projectDisclosures[scope];
+  }
+  toggleProjectExpanded(scope: string) {
+    const collapsed = this.projectDisclosures;
+    if (collapsed[scope]) delete collapsed[scope];
+    else collapsed[scope] = true;
   }
   get visible() {
     return this.props.pane().visible;
@@ -247,7 +262,7 @@ export class ProjectTodosStore extends Store<{
   reveal(item: ProjectTodo) {
     this.query = "";
     this.inspectedItemId = item.id;
-    this.requestPane(item.id, "nearest", false);
+    this.requestPane(item, "nearest", false);
     if (item.state === "done") this.doneExpanded = true;
     else if (item.snoozedUntil) this.snoozedExpanded = true;
     else if (this.isReadyToMerge(item)) this.readyExpanded = true;
@@ -332,7 +347,8 @@ export class ProjectTodosStore extends Store<{
     }
     this.focusedItemIds = [item.id];
     this.transcriptFocusRequest = { todoId: item.id };
-    this.requestPane(item.id, "top", true);
+    // Focus is first within its project, not necessarily first in the aggregate pane.
+    this.requestPane(item, this.grouped ? "nearest" : "top", true);
   }
   unfocus(item: ProjectTodo) {
     if (!this.isFocused(item.id)) return;
@@ -341,7 +357,7 @@ export class ProjectTodosStore extends Store<{
     else if (item.snoozedUntil) this.snoozedExpanded = true;
     else if (this.isReadyToMerge(item)) this.readyExpanded = true;
     else if (!item.needsAttention) this.activeExpanded = true;
-    this.requestPane(item.id, "none", true);
+    this.requestPane(item, "none", true);
   }
   clearFocus() {
     this.focusedItemIds = [];
@@ -353,8 +369,13 @@ export class ProjectTodosStore extends Store<{
   completePaneRequest() {
     this.paneRequest = undefined;
   }
-  private requestPane(id: string, scroll: "top" | "nearest" | "none", focus: boolean) {
-    this.paneRequest = { id, scroll, focus };
+  private requestPane(item: ProjectTodo, scroll: "top" | "nearest" | "none", focus: boolean) {
+    const scope = this.grouped ? this.sourceFor(item)?.scope : undefined;
+    if (scope !== undefined) {
+      delete this.collapsedProjects[scope];
+      delete this.searchCollapsedProjects[scope];
+    }
+    this.paneRequest = { id: item.id, scroll, focus };
   }
   transcriptSectionExpanded(key: string, todoId: string) {
     return (

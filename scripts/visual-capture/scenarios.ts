@@ -3293,8 +3293,8 @@ const projectChatTodos: VisualCaptureScenario = {
 
 const globalChatTodos: VisualCaptureScenario = {
   name: "global-chat-todos",
-  description: "Global Cake Chat projects existing project lists and a separate global list",
-  states: ["open"],
+  description: "Global Cake Chat shows collapsible project to-do groups and a separate global list",
+  states: ["open", "project-collapsed"],
   async seed(paths, theme) {
     await projectChatTodos.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
@@ -3341,7 +3341,7 @@ const globalChatTodos: VisualCaptureScenario = {
     };
     await writeFile(file, JSON.stringify(application));
   },
-  async prepare(page) {
+  async prepare(page, state) {
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await expect(
       page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
@@ -3350,19 +3350,37 @@ const globalChatTodos: VisualCaptureScenario = {
     if (!(await workspace.isVisible()))
       await page.locator('[data-slot="shell-workspace-toggle"]').click();
     await workspace.getByRole("button", { name: "To-dos 4", exact: true }).click();
-    try {
-      for (const name of ["Cake", "Website", "Global"])
-        await expect(workspace.getByRole("heading", { name, exact: true })).toBeVisible();
-    } catch (error) {
-      console.error("Global to-do workspace:", await workspace.innerText());
-      throw error;
+    const button = (name: string) => workspace.getByRole("button", { name, exact: true });
+    const cake = button("Cake");
+    const website = button("Website");
+    const documentation = button("Review the documentation layout");
+    const startup = button("Startup investigation");
+    await expect(cake).toHaveAttribute("aria-expanded", "true");
+    await expect(website).toHaveAttribute("aria-expanded", "true");
+    await expect(documentation).toBeVisible();
+    if (state === "project-collapsed") {
+      await startup.press("Shift+Tab");
+      await expect(cake).toBeFocused();
+      await documentation.press("Enter");
+      await expect(documentation).toHaveAttribute("aria-pressed", "true");
+      await expect(documentation).toBeFocused();
+      await documentation.press("Enter");
+      await expect(documentation).toHaveAttribute("aria-pressed", "false");
+      await website.press("Enter");
+      await expect(website).toHaveAttribute("aria-expanded", "false");
+      await expect(website).toBeFocused();
+      await expect(documentation).toHaveCount(0);
+      await website.press("Space");
+      await expect(documentation).toBeVisible();
+      await website.click();
+      await expect(website).toHaveAttribute("aria-expanded", "false");
+      await expect(documentation).toHaveCount(0);
+      await website.blur();
     }
-    for (const name of [
-      "Startup investigation",
-      "Review the documentation layout",
-      "Plan the next milestone",
-    ])
-      await expect(workspace.getByRole("button", { name, exact: true })).toBeVisible();
+    await expect(cake).toHaveAttribute("aria-expanded", "true");
+    await expect(workspace.getByRole("heading", { name: "Global", exact: true })).toBeVisible();
+    await expect(startup).toBeVisible();
+    await expect(button("Plan the next milestone")).toBeVisible();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },

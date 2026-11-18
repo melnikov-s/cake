@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import type { SessionActivity } from "../lib/session-activity";
 import { cn } from "../lib/utils";
 import { SessionActivityIndicator, sessionActivityLabel } from "./session-activity-indicator";
@@ -6,18 +6,20 @@ import { Button } from "./ui/button";
 import { ChevronIcon } from "./ui/icons";
 
 /**
- * Collapsible Sessions group header: label, a quiet count and, while collapsed,
- * the most urgent hidden row state in the same column as row status dots.
+ * Collapsible Workspace source-list header. Session groups can show a quiet count
+ * and the most urgent hidden row state in the same column as row status dots.
  */
 export function ConversationNavigatorGroupHeader({
   label,
+  icon,
   count,
   expanded,
   hiddenActivity,
   onToggle,
 }: {
   label: string;
-  count: number | undefined;
+  icon?: ReactNode;
+  count?: number;
   expanded: boolean;
   hiddenActivity?: SessionActivity;
   onToggle(): void;
@@ -40,6 +42,11 @@ export function ConversationNavigatorGroupHeader({
           <span className={cn("shrink-0", !expanded && "-rotate-90")}>
             <ChevronIcon />
           </span>
+          {icon && (
+            <span aria-hidden="true" className="flex w-6 shrink-0 items-center justify-center">
+              {icon}
+            </span>
+          )}
           <span className="min-w-0 truncate">{label}</span>
           {count !== undefined && (
             <span
