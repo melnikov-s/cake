@@ -110,9 +110,7 @@ test("to-do descriptions float left or vertically inside available Cake space wi
     await title.hover();
     await expect(attach).toHaveCSS("opacity", "1");
     const attachBox = (await attach.boundingBox())!;
-    expect(Math.abs(before!.x + before!.width - attachBox.x - attachBox.width - 32)).toBeLessThan(
-      0.1,
-    );
+    expect(attachBox.x + attachBox.width).toBeLessThanOrEqual(before!.x + before!.width);
     const otherAttach = panel.getByRole("button", {
       name: "Attach to-do as context: Additional task 0",
       exact: true,

@@ -206,7 +206,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
       onClick={() => store.toggleFocus(item)}
       className={cn(
         "grid items-start gap-x-2.5 gap-y-0 px-3 py-2 text-sm leading-5 [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [@media(pointer:coarse)]:[&>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
-        "grid-cols-[auto_minmax(0,1fr)_auto]",
+        "grid-cols-[auto_minmax(0,1fr)]",
       )}
       label={
         <span
@@ -229,18 +229,21 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
     >
       <div
         data-slot="todo-actions"
-        className="col-start-3 row-start-1 grid grid-cols-[1.75rem_1.75rem_1.25rem] items-start [@media(pointer:coarse)]:grid-cols-[repeat(3,2.75rem)]"
+        className={cn(
+          "absolute top-1.5 right-2 z-10 flex items-center gap-0.5 rounded-md border border-border/75 bg-card/95 p-0.5 shadow-xs backdrop-blur-sm transition-opacity",
+          hoverActionClassName,
+        )}
       >
         <ProjectTodoStateAction
           item={item}
           title={item.title}
           done={item.state === "done"}
           store={store}
-          className={cn("-my-1 size-7 [@media(pointer:coarse)]:my-0", hoverActionClassName)}
+          className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
         />
         <IconButton
           iconSize="inline"
-          className={cn("-my-1 size-7 [@media(pointer:coarse)]:my-0", hoverActionClassName)}
+          className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
           tooltip={`Attach to-do as context: ${item.title}`}
           onClick={(event) => {
             event.stopPropagation();
@@ -252,7 +255,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         {(selected || attention) && (
           <IconButton
             iconSize="inline"
-            className={cn("size-5", hoverActionClassName)}
+            className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
             tooltip={`${selected ? "Unfocus to-do" : "Dismiss attention"}: ${item.title}`}
             disabled={!selected && store.busy}
             onClick={(event) => {
@@ -266,7 +269,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         )}
       </div>
       {attentionDetail && (
-        <p className="col-start-2 col-span-2 mt-1.5 min-w-0 break-words rounded-md bg-attention/15 px-2 py-1 text-xs leading-4 text-foreground">
+        <p className="col-start-2 mt-1.5 min-w-0 break-words rounded-md bg-attention/15 px-2 py-1 text-xs leading-4 text-foreground">
           {attentionDetail}
         </p>
       )}
@@ -274,14 +277,14 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         <p
           id={descriptionId}
           className={cn(
-            "col-start-2 col-span-2 mt-1 min-w-0 break-words text-xs leading-4 text-muted-foreground",
+            "col-start-2 mt-1 min-w-0 break-words text-xs leading-4 text-muted-foreground",
             !linksExpanded && "line-clamp-2",
           )}
         >
           {description}
         </p>
       )}
-      <div className="col-start-2 col-span-2 mt-1.5 flex items-center justify-between gap-2 text-xs">
+      <div className="col-start-2 mt-1.5 flex items-center justify-between gap-2 text-xs">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
           <ProjectTodoLabelPicker
             item={item}
@@ -333,7 +336,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         )}
       </div>
       {linksExpanded && totalLinks > 0 && (
-        <div className="col-start-2 col-span-2 mt-2 border-t border-border/65 pt-2">
+        <div className="col-start-2 mt-2 border-t border-border/65 pt-2">
           {workLinks.length > 0 && (
             <ul aria-label={`Work for ${item.title}`} className="flex w-full flex-col gap-0.5">
               {workLinks.map((association) => (
