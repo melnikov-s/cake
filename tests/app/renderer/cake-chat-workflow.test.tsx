@@ -129,7 +129,10 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
     }
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(within(header).getByText(researchOrigin.task)).toBeDefined();
-    expect(within(header).getByText("Completed")).toBeDefined();
+    // The outcome badge sits beside the disclosure header, not inside it.
+    expect(response.querySelector('[data-slot="session-message-badges"]')?.textContent).toBe(
+      "Completed",
+    );
     const details = within(response as HTMLElement).getByRole("button", {
       name: "Assignment details",
     });

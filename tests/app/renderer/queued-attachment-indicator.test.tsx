@@ -20,13 +20,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it("omits empty payloads and shows the exact live count, including large counts", () => {
+it("omits empty payloads and names the exact live count, capping only the visible bubble", () => {
   const { rerender } = render(<QueuedAttachmentIndicator attachments={[]} />);
   expect(screen.queryByRole("button")).toBeNull();
   rerender(<QueuedAttachmentIndicator attachments={[image, text]} />);
   expect(screen.getByRole("button", { name: "View 2 attachments" }).textContent).toBe("2");
   rerender(<QueuedAttachmentIndicator attachments={Array.from({ length: 123 }, () => file)} />);
-  expect(screen.getByRole("button", { name: "View 123 attachments" }).textContent).toBe("123");
+  // The shared corner bubble caps at 99+; the accessible name keeps the exact count.
+  expect(screen.getByRole("button", { name: "View 123 attachments" }).textContent).toBe("99+");
   rerender(<QueuedAttachmentIndicator attachments={[file]} />);
   expect(screen.getByRole("button", { name: "View 1 attachment" }).textContent).toBe("1");
   rerender(<QueuedAttachmentIndicator attachments={[]} />);

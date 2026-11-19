@@ -133,6 +133,9 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   private readonly preroll: Float32Array[] = observable([]);
   private onset = 0;
   private cleanup: Promise<void> = Promise.resolve();
+  // The owning root serves no child reads once its disposal begins, yet disposal still exits
+  // voice mode. Keep the last live answer so that cleanup can decide without the root.
+  private releaseRecognitionOnDisposal = true;
 
   constructor(props: ConversationModeStore["props"]) {
     super(props);
@@ -154,6 +157,13 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       const copy = parts?.map((part) => ({ ...part }));
       untracked(() => {
         if (copy && this.phase === "active") this.consumeParts(copy);
+      });
+    });
+    this.effect(() => {
+      if (this.phase === "off") return;
+      const releasable = this.props.canReleaseRecognition();
+      untracked(() => {
+        this.releaseRecognitionOnDisposal = releasable;
       });
     });
     this.effect(() => () => {
@@ -263,7 +273,10 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       .catch(() => {})
       .then(() => {
         // Dictation's enabled preference retains the shared model across voice handoffs.
-        if (this.props.canReleaseRecognition()) return this.props.recognition.release();
+        const releasable = this.signal.aborted
+          ? this.releaseRecognitionOnDisposal
+          : this.props.canReleaseRecognition();
+        if (releasable) return this.props.recognition.release();
       })
       .catch(() => {});
     await this.cleanup;

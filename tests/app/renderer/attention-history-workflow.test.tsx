@@ -89,6 +89,8 @@ it.each([false, true])(
       </StoreProvider>
     );
     const view = render(content);
+    // Attention items live in the collapsed inset disclosure above the composer.
+    fireEvent.click(screen.getByRole("button", { name: /^Needs attention ·/ }));
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Open attention: Review" })),
     );

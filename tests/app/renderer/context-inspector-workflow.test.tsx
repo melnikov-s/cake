@@ -16,6 +16,21 @@ import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
 afterEach(cleanup);
 
+/** Startup reconciles the global chat by exact lookup; these readers browse a started one. */
+const startedCakeChat = {
+  lookup: async () => ({
+    sessionId: CAKE_CHAT_SESSION_ID,
+    title: "Cake Chat",
+    createdAt: "2026-01-01T00:00:00Z",
+    modifiedAt: "2026-01-01T00:00:00Z",
+    messageCount: 2,
+    unstarted: false,
+    resolved: false,
+    unread: false,
+    running: false,
+  }),
+};
+
 it("does not acquire an unsent chat and reads its Pi context once materialized", async () => {
   const inspect = vi
     .fn<Client["sessionChats"]["inspect"]>()
@@ -78,7 +93,9 @@ it("distinguishes loading, failed reads and true emptiness, then refreshes real 
     .mockReturnValueOnce(pending.promise)
     .mockResolvedValueOnce({ sources: [] })
     .mockResolvedValue(toJsonValue(context));
-  using fixture = createRendererStoreFixture({ client: { sessionChats: { inspect } } });
+  using fixture = createRendererStoreFixture({
+    client: { sessionChats: { inspect }, cakeChats: startedCakeChat },
+  });
   const store =
     fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID)
       .conversationSessionStore.contextInspectorStore;
@@ -112,7 +129,7 @@ it("routes selection changes to the new conversation and ignores the previous la
   );
   using fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" })],
-    client: { sessionChats: { inspect } },
+    client: { sessionChats: { inspect }, cakeChats: startedCakeChat },
   });
   const global =
     fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID)
@@ -224,7 +241,7 @@ it.each(["project-chat", "global"])(
     });
     using fixture = createRendererStoreFixture({
       projects: [projectRecord({ path: "/project" })],
-      client: { sessionChats: { inspect } },
+      client: { sessionChats: { inspect }, cakeChats: startedCakeChat },
     });
     const sessionId = scope === "global" ? CAKE_CHAT_SESSION_ID : projectChatSessionId("/project");
     const owner = fixture.root.cakeChatCollectionStore.registry.load(sessionId);
@@ -310,7 +327,9 @@ it("offers retry for failed history without losing the current summary", async (
     }
     return toJsonValue(originals);
   });
-  using fixture = createRendererStoreFixture({ client: { sessionChats: { inspect } } });
+  using fixture = createRendererStoreFixture({
+    client: { sessionChats: { inspect }, cakeChats: startedCakeChat },
+  });
   const store =
     fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID)
       .conversationSessionStore.contextInspectorStore;
@@ -347,7 +366,9 @@ it("aborts a closed reader, ignores its late result, and refreshes from the curr
         }),
     )
     .mockResolvedValue(toJsonValue(context));
-  using fixture = createRendererStoreFixture({ client: { sessionChats: { inspect } } });
+  using fixture = createRendererStoreFixture({
+    client: { sessionChats: { inspect }, cakeChats: startedCakeChat },
+  });
   const store =
     fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID)
       .conversationSessionStore.contextInspectorStore;

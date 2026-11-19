@@ -57,6 +57,11 @@ const MarkdownSurface = memo(function MarkdownSurface() {
   ));
 });
 
+/** Profiler ids of the Markdown blocks that committed since `start`, deduplicated. */
+function committedBlocks(start: number) {
+  return [...new Set(markdownCommits.mock.calls.slice(start).map(([id]) => id as string))];
+}
+
 function mountRoot(client: TestClientOverrides = {}) {
   const fixture = createRendererStoreFixture({
     client,
@@ -96,7 +101,7 @@ it.each(["project catalog", "automation catalog", "open automation runs"] as con
     using fixture = mountRoot();
     const actions = currentActions!;
     const resources = currentResources;
-    const observations: { markdownCommits: number; providerRenders: number }[] = [];
+    const observations: { markdownCommits: string[]; providerRenders: number }[] = [];
     const callbackMembership: boolean[] = [];
     const sessionId = source === "project catalog" ? "unrelated" : "automation-run-1";
     const publish = (added: boolean) => {
@@ -131,7 +136,7 @@ it.each(["project catalog", "automation catalog", "open automation runs"] as con
       const commits = markdownCommits.mock.calls.length;
       await act(async () => publish(added));
       observations.push({
-        markdownCommits: markdownCommits.mock.calls.length - commits,
+        markdownCommits: committedBlocks(commits),
         providerRenders: providerRenders.mock.calls.length - renders,
       });
       callbackMembership.push(actions.sessionIds!().includes(sessionId));
@@ -146,9 +151,11 @@ it.each(["project catalog", "automation catalog", "open automation runs"] as con
           : undefined,
       );
     }
+    // Session links observe catalog membership (it decides their short display ids), so only
+    // the block that contains them commits; the provider and the other 11 blocks never do.
     expect(observations).toEqual([
-      { markdownCommits: 0, providerRenders: 0 },
-      { markdownCommits: 0, providerRenders: 0 },
+      { markdownCommits: ["markdown-0"], providerRenders: 0 },
+      { markdownCommits: ["markdown-0"], providerRenders: 0 },
     ]);
     expect(callbackMembership).toEqual([true, false]);
     expect(currentActions).toBe(actions);
@@ -190,16 +197,20 @@ it("reads the current conversation and titles through callbacks captured before 
   });
   expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("beta");
   expect(currentActions).toBe(actions);
-  expect(markdownCommits.mock.calls.length - commits).toBe(0);
+  // Only the observed session links re-render with the new title; no block is broadcast to.
+  expect(committedBlocks(commits)).toEqual(["markdown-0"]);
+  expect(
+    screen.getByRole("link", { name: "User Session Message" }).getAttribute("aria-description"),
+  ).toContain("Renamed Beta");
   expect(actions.sessionTitle!("beta")).toBe("Renamed Beta");
   actions.openArtifact!("cake://artifact/report@r2");
   expect(openArtifact).toHaveBeenLastCalledWith("beta", "report", 2);
   // A preview rendered before the switch must not retain the old active session either.
   preview.props.onOpen("report", 1);
   expect(openArtifact).toHaveBeenLastCalledWith("beta", "report", 1);
-  fireEvent.click(screen.getByRole("link", { name: "Message" }));
+  fireEvent.click(screen.getByRole("link", { name: "User Session Message" }));
   expect(fixture.callbacks.openSession).toHaveBeenLastCalledWith("beta", "entry-42");
-  fireEvent.click(screen.getByRole("link", { name: "Attachment" }));
+  fireEvent.click(screen.getByRole("link", { name: "User Session Attachment" }));
   expect(fixture.callbacks.openSession).toHaveBeenLastCalledWith("beta", undefined, attachmentId);
   openArtifact.mockRestore();
 });
@@ -284,7 +295,7 @@ it("publishes intentional navigation capability changes instead of retaining sta
   expect(callbacks.openExternalUrl).toHaveBeenCalledWith("https://example.com");
   currentActions!.openSubagent!("parent", "worker", "message");
   expect(callbacks.openSubagent).toHaveBeenCalledWith("parent", "worker", "message");
-  fireEvent.click(screen.getByRole("link", { name: "Attachment" }));
+  fireEvent.click(screen.getByRole("link", { name: "User Session Attachment" }));
   expect(callbacks.openSession).toHaveBeenCalledWith("beta", undefined, attachmentId);
   expect(fixture.callbacks.openSession).not.toHaveBeenCalled();
 });

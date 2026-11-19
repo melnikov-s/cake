@@ -32,6 +32,18 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+/** The transcript list finishes its scroll settling in animation frames and may then arm a 2s
+ * fallback timer. Run pending frames on real time before faking timers, so that list timer
+ * never lands in assertions about conversation-mode timers. */
+function settleTranscriptFrames() {
+  return act(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+}
+
 function untilAborted(signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) resolve();
@@ -434,7 +446,10 @@ describe("Project Session conversation mode", () => {
     vi.useFakeTimers();
     await act(async () => preparation.resolve());
     expect(screen.getByRole("alert").textContent).toContain("Speech preparation failed");
+    // The toast offers a settings action, so it gets the longer actionable reading interval.
     act(() => vi.advanceTimersByTime(8_000));
+    expect(screen.getByRole("alert")).toBeDefined();
+    act(() => vi.advanceTimersByTime(12_000));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: "Enter conversation mode" })).toBeDefined();
   });
@@ -639,6 +654,7 @@ describe("Project Session conversation mode", () => {
     f.publish([consumed(), assistant("Still speaking. ")]);
     await waitFor(() => expect(f.playback.drain).toHaveBeenCalled());
     const stops = vi.mocked(f.playback.stop).mock.calls.length;
+    await settleTranscriptFrames();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     await f.detectorFrames(0.1, 3);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
@@ -1255,6 +1271,7 @@ describe("Project Session conversation mode", () => {
     await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
     const stops = vi.mocked(f.playback.stop).mock.calls.length;
     const releases = f.release.mock.calls.length;
+    await settleTranscriptFrames();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     await f.frames(0.1, 8);
     expect(f.transcribe).toHaveBeenCalledTimes(1);
@@ -1289,6 +1306,7 @@ describe("Project Session conversation mode", () => {
       await f.enter();
       f.publish([consumed(), assistant("Speaking. ")]);
       await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
+      await settleTranscriptFrames();
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
       await f.frames(0.1, 8);
       expect(f.root.conversationModeStore.transcript).toBe("all right");

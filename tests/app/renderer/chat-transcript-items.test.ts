@@ -20,6 +20,13 @@ describe("groupTranscriptParts", () => {
       status: "complete",
     });
     const blank = text("blank", " \n ");
+    const attachment: UiPart = {
+      id: "user-file",
+      kind: "attachment",
+      attachmentKind: "file",
+      name: "notes.txt",
+      mediaType: "text/plain",
+    };
     const parts: UiPart[] = [
       blank,
       { ...blank, id: "inherited", originalHistory: true },
@@ -30,10 +37,15 @@ describe("groupTranscriptParts", () => {
         id: "source-card",
         agentSource: { href: "cake://session/source", title: "Source" },
       },
+      // Blank human text survives this filter; it renders as the header of its attachment.
       { ...blank, id: "user-anchor", role: "user" },
+      attachment,
     ];
-    expect(groupTranscriptParts(parts)).toEqual(parts.slice(2));
-    expect(parts).toHaveLength(6);
+    expect(groupTranscriptParts(parts)).toEqual([
+      ...parts.slice(2, 5),
+      { ...parts[5]!, userContent: [attachment] },
+    ]);
+    expect(parts).toHaveLength(7);
   });
 
   it("presents attached content before the user body in attachment order without mutating history", () => {

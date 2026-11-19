@@ -104,7 +104,7 @@ function renderChat(
   };
   const snapshot: ConversationSnapshot = {
     sessionId,
-    sessionFile: options.pending ? "" : "/chat.sqlite",
+    sessionFile: "/chat.sqlite",
     parts: options.empty
       ? []
       : [
@@ -137,7 +137,9 @@ function renderChat(
     extensionUi: { statuses: [] },
     tree: [],
   };
-  applyConversationUpdate(chat.model, { _tag: "Snapshot", revision: 1, snapshot });
+  // An unsent chat has no runtime projection; an observed snapshot would prove it materialized.
+  if (!options.pending)
+    applyConversationUpdate(chat.model, { _tag: "Snapshot", revision: 1, snapshot });
   chat.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
     kind: "top",
   });
@@ -177,7 +179,8 @@ function renderChat(
         },
       });
     },
-    publish() {
+    /** Publishes the started side chat; its canonical question is the one the user sent. */
+    publish(question = "A separate question") {
       applyDiscussionCatalogUpdate(fixture.models.discussionCatalog(sessionId), sessionId, {
         _tag: "Snapshot",
         revision: 1,
@@ -215,7 +218,7 @@ function renderChat(
                   entryId: "new-1",
                   kind: "text",
                   role: "user",
-                  text: "A separate question",
+                  text: question,
                   status: "complete",
                 },
               ]
@@ -350,7 +353,8 @@ describe.each([
       thinkingLevel: "high",
     });
     // Catalog delivery switches the existing draft panel to the real side-chat conversation.
-    act(() => fixture.publish());
+    // Its canonical question reconciles the optimistic draft message transferred to it.
+    act(() => fixture.publish("Explain that reply"));
     expect(
       await within(panel).findByRole("combobox", { name: "Reply to side chat" }),
     ).toBeDefined();
@@ -358,7 +362,7 @@ describe.each([
       fixture.chat.sideChats.chatStore(fixture.thread.id)?.parts.map((part) => part.id),
     ).toEqual(["inherited-question", "inherited-answer", "side-question"]);
     expect(within(panel).queryByText("Completed reply")).toBeNull();
-    expect(within(panel).getByText("A separate question")).toBeDefined();
+    expect(within(panel).getByText("Explain that reply")).toBeDefined();
     expect(within(panel).queryByText("Original history")).toBeNull();
     expect(within(panel).getByText("The main answer")).toBeDefined();
     await fixture.user.click(within(panel).getByRole("button", { name: "Close and resolve" }));

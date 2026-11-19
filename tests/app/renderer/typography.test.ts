@@ -21,6 +21,10 @@ test("small interface typography shares a root-relative readable floor", () => {
   expect(htmlRule).not.toMatch(/font-size/);
 });
 
+// The only sanctioned sub-floor size: the aria-hidden corner count bubble (49244c03, 3d1fb588),
+// whose exact count is carried by the button's accessible name. Nothing else may go below.
+const countBubble = [join(renderer, "components/ui/numbered-icon-button.tsx"), "text-[0.625rem]"];
+
 test("interface font sizes use relative tokens rather than pixel or undersized overrides", () => {
   const violations = sourceFiles(renderer).flatMap((path) => {
     const source = readFileSync(path, "utf8");
@@ -29,5 +33,5 @@ test("interface font sizes use relative tokens rather than pixel or undersized o
       unit === "px" || Number(amount) < 0.875 ? [`${path}: ${utility}`] : [],
     );
   });
-  expect(violations).toEqual([]);
+  expect(violations).toEqual([countBubble.join(": ")]);
 });

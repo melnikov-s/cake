@@ -56,24 +56,26 @@ function renderChat(sessionId: string, options: { fail?: boolean; pending?: bool
   if (options.pending) collection.pendingSessions.create(sessionId);
   collection.sessionLayoutStore.showSession(sessionId);
   fixture.root.navigationStore.selectCakeChat(sessionId);
-  applyConversationUpdate(chat.model, {
-    _tag: "Snapshot",
-    revision: 1,
-    snapshot: {
-      sessionId,
-      sessionFile: options.pending ? "" : "/chat.sqlite",
-      parts: [],
-      models: [],
-      thinkingLevel: "off",
-      availableThinkingLevels: ["off"],
-      streaming: false,
-      diagnostics: [],
-      commands: cakeChatBuiltinSlashCommands,
-      compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
-      tree: [],
-    },
-  });
+  // An unsent chat has no runtime projection; an observed snapshot would prove it materialized.
+  if (!options.pending)
+    applyConversationUpdate(chat.model, {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId,
+        sessionFile: "/chat.sqlite",
+        parts: [],
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: cakeChatBuiltinSlashCommands,
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
   const catalog = fixture.models.scheduledMessageCatalog(sessionId);
   applyScheduledMessageUpdate(catalog, { _tag: "Snapshot", revision: 1, messages: [] });
   const view = render(

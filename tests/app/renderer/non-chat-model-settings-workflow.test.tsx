@@ -182,7 +182,9 @@ describe("Non-chat model settings workflow", () => {
       screen.getByText(/does not enable background classification or Auto routing/),
     ).toBeTruthy();
     await h.user.click(screen.getByRole("button", { name: /^Models\b/ }));
-    await h.user.click(screen.getByRole("button", { name: "Default agent model" }));
+    // The chat-model picker on Models (the Utility model since presets replaced the
+    // default agent model) still lists only chat models.
+    await h.user.click(screen.getByRole("button", { name: "Utility model" }));
     await screen.findByRole("button", { name: /Chat fixture/ });
     expect(screen.queryByRole("button", { name: /Jev|Image A|Image B/ })).toBeNull();
   });
