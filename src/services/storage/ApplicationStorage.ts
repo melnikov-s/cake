@@ -17,7 +17,7 @@ import {
 } from "../../contracts/application/application-data";
 import { CakePrompts } from "../../contracts/application/cake-prompt-data";
 import { makeModelPresetPrompts, type ModelPresetPrompts } from "./ModelPresetPrompts";
-import versionFivePromptDefaults from "./internal/application-v5-prompt-defaults.json";
+import versionFivePromptDefaults from "./internal/application-v5-prompt-defaults.json" with { type: "json" };
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 import {
   ApplicationEncodeError,
