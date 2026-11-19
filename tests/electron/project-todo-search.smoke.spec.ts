@@ -38,7 +38,10 @@ for (const theme of ["light", "dark"] as const) {
       await scenario.prepare(page, "open", app);
       const panel = page.getByRole("complementary", { name: "To-do", exact: true });
       const search = panel.getByRole("searchbox", { name: "Search to-dos" });
-      const selected = panel.getByRole("button", { name: "Startup investigation", exact: true });
+      const selected = panel.getByRole("button", {
+        name: "Focus to-do: Startup investigation",
+        exact: true,
+      });
       const clear = panel.getByRole("button", { name: "Clear search to-dos" });
 
       await expect(panel.getByRole("combobox", { name: "Sort to-dos" })).toHaveCount(0);

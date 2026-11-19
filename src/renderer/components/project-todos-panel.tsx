@@ -149,10 +149,17 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
           if (
             request.focus &&
             (document.activeElement === focusOwner || document.activeElement === document.body)
-          )
-            element
-              .querySelector<HTMLButtonElement>("[aria-pressed]")
-              ?.focus({ preventScroll: true });
+          ) {
+            const slot =
+              focusOwner instanceof HTMLElement &&
+              focusOwner.dataset.slot === "todo-focus" &&
+              focusOwner.closest<HTMLElement>("[data-todo-id]")?.dataset.todoId === request.id
+                ? "todo-focus"
+                : "todo-disclosure";
+            element.querySelector<HTMLButtonElement>(`[data-slot="${slot}"]`)?.focus({
+              preventScroll: true,
+            });
+          }
           store.completePaneRequest();
         },
       };

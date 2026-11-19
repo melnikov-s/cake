@@ -23,7 +23,7 @@ for (const theme of ["light", "dark"] as const) {
         index < 2
           ? `Active task ${index}`
           : `Completed task ${index}${index % 3 === 0 ? " — investigate variable-height history with a longer finding that wraps across several lines" : ""}`,
-      description: `Detailed findings for task ${index}. Descriptions remain available on hover.`,
+      description: `Detailed findings for task ${index}. ${"Review the original session findings and verify the expected project behavior before taking the next action. ".repeat(4).trim()}`,
       status: "",
       state: index < 2 ? "open" : "done",
       revision: 0,
@@ -167,24 +167,19 @@ for (const theme of ["light", "dark"] as const) {
       // Changing the actual accessory width remeasures wrapped rows, not a mocked size.
       const resize = page.getByRole("separator", { name: "Resize Workspace", exact: true });
       const beforeWidth = await pane.evaluate((element) => element.clientWidth);
-      const probe = await pane.evaluate((element) => {
-        const row = Array.from(element.querySelectorAll<HTMLElement>("[data-todo-id]")).find(
-          (row) => row.getBoundingClientRect().height > 60,
-        )!;
-        return { id: row.dataset.todoId!, height: row.getBoundingClientRect().height };
-      });
+      const probe = pane.locator(`[data-todo-id="${anchor.id}"]`);
+      const disclosure = probe.locator('[data-slot="todo-disclosure"]');
+      const height = () => probe.evaluate((row) => row.getBoundingClientRect().height);
+      const collapsedHeight = await height();
+      await disclosure.evaluate((button: HTMLButtonElement) => button.click());
+      await expect.poll(height).toBeGreaterThan(collapsedHeight);
+      const expandedHeight = await height();
       await resize.focus();
       for (let index = 0; index < 10; index++) await resize.press("ArrowLeft");
       await expect
         .poll(() => pane.evaluate((element) => element.clientWidth))
         .toBeGreaterThan(beforeWidth);
-      await expect
-        .poll(() =>
-          pane
-            .locator(`[data-todo-id="${probe.id}"]`)
-            .evaluate((row) => row.getBoundingClientRect().height),
-        )
-        .not.toBe(probe.height);
+      await expect.poll(height).toBeLessThan(expandedHeight);
       await expect
         .poll(async () => Math.abs((await anchorOffset()) - anchor.offset))
         .toBeLessThan(3);
@@ -206,7 +201,7 @@ for (const theme of ["light", "dark"] as const) {
       );
       const first = pane.locator(`[data-todo-id="${firstId}"]`);
       const position = Number(await first.getAttribute("aria-posinset"));
-      const firstAction = first.locator("button[aria-pressed]");
+      const firstAction = first.locator('[data-slot="todo-disclosure"]');
       await firstAction.focus();
       await expect(firstAction).toBeFocused();
       await firstAction.press("Shift+Tab");
@@ -225,21 +220,25 @@ for (const theme of ["light", "dark"] as const) {
         () => document.activeElement!.closest<HTMLElement>("[data-todo-id]")!.dataset.todoId!,
       );
       const selectedRow = pane.locator(`[data-todo-id="${selectedId}"]`);
-      const title = selectedRow.locator("button[aria-pressed]");
+      const title = selectedRow.locator('[data-slot="todo-disclosure"]');
+      const focus = selectedRow.getByRole("button", { name: /^Focus to-do:/ });
       await page.keyboard.press("Tab");
       await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeFocused();
-      await title.press("Space");
-      await expect(title).toHaveAttribute("aria-pressed", "true");
-      await expect(title).toBeFocused();
+      await focus.press("Space");
+      await expect(focus).toHaveAttribute("aria-pressed", "true");
+      await expect(focus).toBeFocused();
+      await expect(title).toHaveAttribute("aria-expanded", "false");
       await expect.poll(async () => (await metrics()).scrollTop).toBe(0);
       await selectedRow.getByRole("button", { name: /^Unfocus to-do:/ }).click();
-      await expect(title).toHaveAttribute("aria-pressed", "false");
+      await expect(focus).toHaveAttribute("aria-pressed", "false");
       await expect(title).toBeFocused();
       await expect(selectedRow).toHaveAttribute("data-todo-section", "Done");
-      await title.hover();
-      await expect(
-        page.getByRole("tooltip").filter({ hasText: "Detailed findings for task" }),
-      ).toBeVisible();
+      if ((await title.getAttribute("aria-expanded")) !== "true") await title.press("Enter");
+      await expect(title).toHaveAttribute("aria-expanded", "true");
+      await expect(selectedRow.getByText(/Detailed findings for task/)).toHaveCSS(
+        "-webkit-line-clamp",
+        "none",
+      );
       expect(errors).toEqual([]);
       await writeFile(
         info.outputPath("virtualization-metrics.json"),

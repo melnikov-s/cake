@@ -8,7 +8,7 @@ import { emptyProjectTodos, type ProjectTodo } from "../../src/contracts/project
 
 const repository = resolve(import.meta.dirname, "../..");
 
-test("to-do descriptions float left or vertically inside available Cake space without moving rows", async () => {
+test("to-do details expand inline; the existing dot and independent row actions stay in place", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cake-todo-description-"));
   const paths = {
     cakeHome: join(directory, "cake"),
@@ -31,12 +31,16 @@ test("to-do descriptions float left or vertically inside available Cake space wi
         revision: 0,
         associations: [],
       });
+    const description =
+      "Find the startup bottleneck and recommend a focused fix.\n\nCompare cold and warm launches to identify repeated configuration reads.";
+    const label = { id: "10000000-0000-4000-8000-000000000001", name: "Research", color: "violet" };
     items.push({
       id: "00000000-0000-4000-8000-000000000011",
       title: "Startup investigation",
-      description: "Find the startup bottleneck and recommend a focused fix.",
+      description,
+      labelId: label.id,
       state: "open",
-      status: "",
+      status: "Report ready for review.",
       revision: 0,
       associations: [
         { kind: "source", ref: "https://example.com/report", title: "Exact investigation report" },
@@ -49,6 +53,7 @@ test("to-do descriptions float left or vertically inside available Cake space wi
         version: 9,
         data: {
           ...defaultApplicationState(),
+          globalSessionLabels: [...defaultApplicationState().globalSessionLabels, label],
           projects: [
             {
               path: paths.project,
@@ -81,7 +86,7 @@ test("to-do descriptions float left or vertically inside available Cake space wi
     await page
       .getByRole("button", { name: /^Open Project Chat for / })
       .first()
-      .click();
+      .press("Enter");
     await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
     const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
     if (!(await panel.isVisible()))
@@ -89,69 +94,104 @@ test("to-do descriptions float left or vertically inside available Cake space wi
     await panel.getByRole("button", { name: /^To-dos / }).click();
     const title = panel.getByRole("button", { name: "Startup investigation", exact: true });
     const row = panel.locator('[data-todo-id="00000000-0000-4000-8000-000000000011"]');
-    const attach = row.getByRole("button", {
-      name: "Attach to-do as context: Startup investigation",
+    const marker = row.locator('[data-slot="nav-trailing"]').getByRole("img", { name: "Open" });
+    const dot = marker.locator("span");
+    const preview = row.getByText(description, { exact: true });
+    const report = row.getByRole("link", { name: "Exact investigation report", exact: true });
+    const actions = row.locator('[data-slot="todo-actions"]');
+    const focus = actions.getByRole("button", {
+      name: "Focus to-do: Startup investigation",
       exact: true,
     });
+    const done = actions.getByRole("button", { name: "Mark done: Startup investigation" });
+    const attach = actions.getByRole("button", {
+      name: "Attach to-do as context: Startup investigation",
+    });
+    const labelPicker = row.getByRole("button", { name: /Current label: Research/ });
+    const dotMarkup = await marker.evaluate((element) => element.outerHTML);
+    const dotPosition = async () => {
+      const [bounds, origin] = await Promise.all([dot.boundingBox(), row.boundingBox()]);
+      return [bounds!.x - origin!.x, bounds!.y - origin!.y, bounds!.width, bounds!.height];
+    };
+    const initialDot = await dotPosition();
+    expect(initialDot[0]).toBeLessThan(
+      (await title.boundingBox())!.x - (await row.boundingBox())!.x,
+    );
+    await expect(marker.locator("[data-session-label-color]")).toHaveCount(0);
+    await expect(labelPicker.getByText("Research", { exact: true })).toBeVisible();
+    await expect(labelPicker.locator("[data-session-label-color]")).toHaveCount(1);
+    await expect(title).toHaveAttribute("aria-expanded", "false");
+    await expect(preview).toHaveCSS("-webkit-line-clamp", "2");
+    await expect(report).toHaveCount(0);
+
     await page.getByRole("combobox", { name: "Message Project Chat" }).focus();
     await page.mouse.move(1, 1);
-    await expect(
-      row.getByText("Find the startup bottleneck and recommend a focused fix."),
-    ).toBeVisible();
-    await expect(page.getByRole("tooltip")).toHaveCount(0);
-    await expect(attach).toHaveCSS("opacity", "0");
-    await expect(panel.getByText("Auto-merge", { exact: true })).toHaveCount(0);
-    await expect(panel.getByRole("button", { name: /auto.merge/i })).toHaveCount(0);
-    // Links stay collapsed until explicitly disclosed.
-    await expect(
-      row.getByRole("link", { name: "Exact investigation report", exact: true }),
-    ).toHaveCount(0);
+    await expect(focus).toHaveCSS("opacity", "0");
     const before = await row.boundingBox();
     await title.hover();
+    await expect(done).toHaveCSS("opacity", "1");
     await expect(attach).toHaveCSS("opacity", "1");
-    const attachBox = (await attach.boundingBox())!;
-    expect(attachBox.x + attachBox.width).toBeLessThanOrEqual(before!.x + before!.width);
-    const otherAttach = panel.getByRole("button", {
-      name: "Attach to-do as context: Additional task 0",
-      exact: true,
-    });
-    expect((await otherAttach.boundingBox())!.x).toBe(attachBox.x);
+    await expect(focus).toHaveCSS("opacity", "1");
+    // Wait past the removed description hover delay, then check the portaled tooltip.
+    await page.waitForTimeout(250);
+    await expect(
+      page.getByRole("tooltip").filter({ hasText: "Find the startup bottleneck" }),
+    ).toHaveCount(0);
+    await expect(title).not.toHaveAttribute("title");
     expect(await row.boundingBox()).toEqual(before);
-    // Expanding links reveals the destination without toggling row focus.
+    await focus.hover();
+    await expect(
+      page.getByRole("tooltip", { name: "Focus to-do: Startup investigation" }),
+    ).toBeVisible();
+
+    await preview.click();
+    await expect(title).toHaveAttribute("aria-expanded", "true");
+    await expect(title).toBeFocused();
+    await expect(focus).toHaveAttribute("aria-pressed", "false");
+    await expect(preview).toHaveCSS("-webkit-line-clamp", "none");
+    await expect(preview).toHaveCSS("white-space", "pre-wrap");
+    await expect(row.getByText("Status: Report ready for review.")).toBeVisible();
+    await expect(report).toBeVisible();
+    expect(await marker.evaluate((element) => element.outerHTML)).toBe(dotMarkup);
+    expect(await dotPosition()).toEqual(initialDot);
+
+    await labelPicker.click();
+    const menu = page.getByRole("menu", { name: "Choose label" });
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(title).toHaveAttribute("aria-expanded", "true");
+    await expect(focus).toHaveAttribute("aria-pressed", "false");
+    await title.press("Shift+F10");
+    await expect(
+      page.getByRole("menu", { name: "Actions for Startup investigation" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(title).toHaveAttribute("aria-expanded", "true");
+
+    await title.press("Space");
+    await expect(title).toHaveAttribute("aria-expanded", "false");
+    await expect(report).toHaveCount(0);
     await row
       .getByRole("button", { name: "Show 1 link for Startup investigation", exact: true })
       .click();
-    await expect(
-      row.getByRole("link", { name: "Exact investigation report", exact: true }),
-    ).toBeVisible();
-    await expect(title).toHaveAttribute("aria-pressed", "false");
+    await expect(report).toBeVisible();
+    await expect(title).toHaveAttribute("aria-expanded", "false");
+    await expect(preview).toHaveCSS("-webkit-line-clamp", "2");
+    await row
+      .getByRole("button", { name: "Hide 1 link for Startup investigation", exact: true })
+      .click();
+    await expect(report).toHaveCount(0);
 
-    // Long clamped descriptions still open a scrollable overflow card within available Cake space.
-    await panel.evaluate((element) => element.setAttribute("data-popover-boundary", ""));
-    const scrollPane = panel.locator('[data-slot="todo-scroll-pane"]');
-    await scrollPane.evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
-    const last = panel.getByRole("button", { name: "Additional task 15", exact: true });
-    await expect(last).toBeVisible();
-    await last.hover();
-    const longBubble = page
-      .getByRole("tooltip")
-      .filter({ hasText: "Long description for review." });
-    await expect(longBubble).toBeVisible();
-    const target = (await last.locator("..").boundingBox())!;
-    const box = (await longBubble.boundingBox())!;
-    expect(box.y + box.height).toBeLessThanOrEqual(target.y);
-    expect(box.y).toBeGreaterThanOrEqual((await panel.boundingBox())!.y);
-    expect(
-      await longBubble.evaluate((element) => element.scrollHeight > element.clientHeight),
-    ).toBe(true);
-    await longBubble.focus();
-    await longBubble.press("End");
-    await expect.poll(() => longBubble.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-    await longBubble.press("Escape");
-    await expect(longBubble).toHaveCount(0);
-    await expect(last).toBeFocused();
+    await focus.press("Enter");
+    await expect(focus).toHaveAttribute("aria-pressed", "true");
+    await expect(focus).toBeFocused();
+    await expect(title).toHaveAttribute("aria-expanded", "false");
+    await title.press("Enter");
+    await expect(title).toHaveAttribute("aria-expanded", "true");
+    await expect(focus).toHaveAttribute("aria-pressed", "true");
+    await focus.press("Space");
+    await expect(focus).toHaveAttribute("aria-pressed", "false");
+    await expect(title).toHaveAttribute("aria-expanded", "true");
     expect(errors).toEqual([]);
   } finally {
     await app?.close();

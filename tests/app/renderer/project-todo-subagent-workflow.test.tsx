@@ -112,7 +112,7 @@ it("matches a subagent by public handle AND parent, changes/clears the shared cu
   const row = () => fixture.container.querySelector(`[data-subagent-handle="${handleId}"]`)!;
   const title = () =>
     within(screen.getByRole("complementary", { name: "Workspace" })).getByRole("button", {
-      name: "Review worker",
+      name: "Focus to-do: Review worker",
     });
   expect(row().hasAttribute("data-associated")).toBe(false);
   await fixture.user.click(title());
@@ -125,11 +125,11 @@ it("matches a subagent by public handle AND parent, changes/clears the shared cu
   await fixture.user.click(screen.getByRole("button", { name: "Unfocus to-do: Review worker" }));
   expect(row().hasAttribute("data-associated")).toBe(false);
   // Same handle, different parent: focusing it never cues this chat's worker.
-  await fixture.user.click(screen.getByRole("button", { name: "Other parent" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Focus to-do: Other parent" }));
   expect(row().hasAttribute("data-associated")).toBe(false);
   await fixture.user.click(title());
   expect(row().getAttribute("data-associated")).toBe("true");
-  // Repeated row activation toggles focus, matching the explicit Unfocus action.
+  // Repeated Focus activation toggles focus, matching the explicit Unfocus action.
   await fixture.user.click(title());
   expect(row().hasAttribute("data-associated")).toBe(false);
   await fixture.user.click(title());
@@ -155,10 +155,10 @@ it("shows no cue in another chat while the Project Chat's to-do panel holds focu
   });
   act(() => fixture.root.cakeChatCollectionStore.registry.find(projectChat)!.todos.open());
   await fixture.user.click((await screen.findByText("Work log")).closest("summary")!);
-  await fixture.user.click(screen.getByRole("button", { name: "Review worker" }));
-  expect(screen.getByRole("button", { name: "Review worker" }).getAttribute("aria-pressed")).toBe(
-    "true",
-  );
+  await fixture.user.click(screen.getByRole("button", { name: "Focus to-do: Review worker" }));
+  expect(
+    screen.getByRole("button", { name: "Focus to-do: Review worker" }).getAttribute("aria-pressed"),
+  ).toBe("true");
   expect(
     fixture.container
       .querySelector(`[data-subagent-handle="${handleId}"]`)!

@@ -123,8 +123,10 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await row.hover();
     await expect(attach).toHaveCSS("opacity", "1");
     await expect(dismiss).toHaveCSS("opacity", "1");
-    await action.click();
-    await expect(action).toHaveAttribute("aria-pressed", "true");
+    await row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }).click();
+    await expect(
+      row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
       row.getByRole("button", { name: /^(Unfocus to-do|Dismiss attention):/ }),
     ).toHaveCount(1);
@@ -137,7 +139,9 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await unfocus.click();
     await expect(category("Needs attention").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(reason);
-    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
     await expect(
       row.getByRole("button", { name: /^(Unfocus to-do|Dismiss attention):/ }),
     ).toHaveCount(1);
@@ -145,7 +149,9 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await dismiss.click();
     await expect(category("Active").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(title);
-    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
     await expect(panel.getByRole("region", { name: "Needs attention", exact: true })).toHaveCount(
       0,
     );
@@ -170,11 +176,15 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await attach.press("Enter");
     const removeAttachment = page.getByRole("button", { name: `Remove To-do · ${title}` });
     await expect(removeAttachment).toBeVisible();
-    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
     await removeAttachment.click();
     await dismiss.focus();
     await dismiss.press("Enter");
-    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
     await expect(action).toHaveText(title);
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Restore needs attention", exact: true }).click();
@@ -202,7 +212,7 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await action.press("Shift+F10");
     await page.getByRole("menuitem", { name: "Restore needs attention", exact: true }).click();
     await expect(action).toHaveText("Review the change before merging");
-    await action.click();
+    await row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }).click();
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
     await page.getByRole("menuitem", { name: "1 day", exact: true }).click();

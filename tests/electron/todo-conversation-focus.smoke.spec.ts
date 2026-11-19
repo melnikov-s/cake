@@ -107,8 +107,8 @@ for (const global of [false, true])
       await chevron.click();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       await expect(chevron).not.toHaveClass(/-rotate-90/);
-      const selectA = panel.getByRole("button", { name: titleA, exact: true });
-      const selectB = panel.getByRole("button", { name: titleB, exact: true });
+      const selectA = panel.getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true });
+      const selectB = panel.getByRole("button", { name: `Focus to-do: ${titleB}`, exact: true });
       const headingsA = transcript.getByRole("button", { name: titleA, exact: true });
       const headingB = transcript.getByRole("button", { name: titleB, exact: true });
       const bar = pane.locator('[data-slot="selection-bar"]');

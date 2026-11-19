@@ -68,8 +68,10 @@ export class ProjectTodosStore extends Store<{
   activeExpanded = true;
   doneExpanded = false;
   snoozedExpanded = true;
-  /** Window-local per-row link disclosure; links stay collapsed until inspected. */
-  expandedLinkIds: Record<string, boolean> = {};
+  /** Window-local disclosure by ID so virtualized rows can unmount without losing it. */
+  private readonly itemDisclosures = observable(
+    new Map<string, { readonly details: boolean; readonly links: boolean }>(),
+  );
   @snapshot private readonly collapsedProjects: Record<string, boolean> = observable({});
   private readonly searchCollapsedProjects: Record<string, boolean> = observable({});
   inspectedItemId: string | undefined;
@@ -102,6 +104,9 @@ export class ProjectTodosStore extends Store<{
       () => {
         const ids = new Set(this.paneItems.map((item) => item.id));
         this.focusedItemIds = this.focusedItemIds.filter((id) => ids.has(id));
+        for (const id of this.itemDisclosures.keys()) {
+          if (!ids.has(id)) this.itemDisclosures.delete(id);
+        }
       },
     );
   }
@@ -273,14 +278,18 @@ export class ProjectTodosStore extends Store<{
   setFilter(filter: ProjectTodoFilter) {
     this.filter = filter;
   }
-  areLinksExpanded(id: string) {
-    return Boolean(this.expandedLinkIds[id]);
+  itemDisclosure(id: string) {
+    return this.itemDisclosures.get(id);
+  }
+  toggleItemExpanded(id: string) {
+    if (this.itemDisclosures.get(id)?.details) this.itemDisclosures.delete(id);
+    else this.itemDisclosures.set(id, { details: true, links: true });
   }
   toggleLinksExpanded(id: string) {
-    this.expandedLinkIds = {
-      ...this.expandedLinkIds,
-      [id]: !this.expandedLinkIds[id],
-    };
+    const current = this.itemDisclosures.get(id);
+    if (current?.details || !current?.links)
+      this.itemDisclosures.set(id, { details: current?.details ?? false, links: !current?.links });
+    else this.itemDisclosures.delete(id);
   }
   get openItems() {
     return this.value?.items.filter((item) => item.state === "open" && !item.snoozedUntil) ?? [];

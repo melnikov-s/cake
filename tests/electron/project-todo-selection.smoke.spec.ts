@@ -96,8 +96,8 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await openTodos();
     const row = panel.locator("[data-todo-id]");
     const action = row.getByRole("button", { name: title, exact: true });
-    const prose = page.getByRole("tooltip").getByText(description, { exact: true });
-    await expect(row.getByText(description, { exact: true })).toHaveCount(0);
+    const focus = row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true });
+    const prose = row.getByText(description, { exact: true });
     const done = row.getByRole("button", { name: `Mark done: ${title}` });
     const link = row.getByRole("link", { name: "Release details" });
     const selectedText = () => page.evaluate(() => window.getSelection()?.toString());
@@ -121,21 +121,20 @@ test("to-do text selection and copying do not activate rows or their controls", 
         };
       }, endOffset);
     const unchanged = async () => {
-      await expect(action).toHaveAttribute("aria-pressed", "false");
+      await expect(action).toHaveAttribute("aria-expanded", "true");
+      await expect(focus).toHaveAttribute("aria-pressed", "false");
       await expect(done).toBeVisible();
-      await expect(panel).toBeVisible();
       await expect(toggle).toHaveText("To-dos 1");
     };
-    // Observe the native copy event without modifying the user's system clipboard.
+    // Observe native copy without modifying the user's system clipboard.
     await page.evaluate(() => {
       document.addEventListener("copy", (event) => {
         document.body.dataset.copiedTodo = window.getSelection()?.toString();
         event.preventDefault();
       });
     });
+    await action.press("Enter");
     for (const target of [action, prose]) {
-      await action.hover();
-      await expect(prose).toBeVisible();
       const points = await textPoints(target);
       await page.mouse.move(points.start.x, points.start.y);
       await page.mouse.down();
@@ -152,9 +151,7 @@ test("to-do text selection and copying do not activate rows or their controls", 
       await unchanged();
       await clearSelection();
     }
-    // The full multiline description remains independently selectable in the bubble.
-    await action.hover();
-    await expect(prose).toBeVisible();
+    // The expanded multiline description stays selectable.
     const descriptionPoints = await textPoints(prose, description.length);
     await page.mouse.move(descriptionPoints.start.x, descriptionPoints.start.y);
     await page.mouse.down();
@@ -163,12 +160,8 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await expect.poll(selectedText).toContain(description);
     await unchanged();
     await clearSelection();
-    await action.hover();
-    await expect(prose).toBeVisible();
-    // A selection drag ending over another control must not activate it.
-    for (const target of [done, link]) {
-      await action.hover();
-      await expect(prose).toBeVisible();
+
+    for (const target of [done, focus, link]) {
       const points = await textPoints(prose);
       const box = await target.boundingBox();
       if (!box) throw new Error("Missing control bounds");
@@ -181,60 +174,35 @@ test("to-do text selection and copying do not activate rows or their controls", 
       await unchanged();
       await clearSelection();
     }
-    // Repeated activation clears view focus without changing persisted selection.
+
     const savedSelection = async () =>
       JSON.parse(await readFile(join(cakeHome, "state", "application.json"), "utf8")).data
         .projects[0].todos.selectedId;
-    await action.click();
-    await expect(action).toHaveAttribute("aria-pressed", "true");
-    await action.click();
-    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await focus.press("Space");
+    await expect(focus).toHaveAttribute("aria-pressed", "true");
+    await focus.press("Enter");
+    await unchanged();
     await expect.poll(savedSelection).toBeNull();
-    await page.setViewportSize({ width: 1400, height: 900 });
-    await expect(action).toHaveAttribute("aria-pressed", "false");
-    await page.reload();
-    await openTodos();
-    await expect(action).toHaveAttribute("aria-pressed", "false");
-    await expect.poll(savedSelection).toBeNull();
-    // Intentional clicks and native keyboard activation retain their semantics.
-    await action.hover();
-    await expect(prose).toBeVisible();
-    await prose.click();
-    await expect(action).toHaveAttribute("aria-pressed", "false");
-    await action.click();
-    await expect(action).toBeFocused();
-    await expect(action).toHaveAttribute("aria-pressed", "true");
-    await action.press("Space");
-    await expect(action).toHaveAttribute("aria-pressed", "false");
-    await row.click({ position: { x: 8, y: 8 } });
-    await expect(action).toHaveAttribute("aria-pressed", "true");
-    await action.press("Enter");
-    await expect(action).toHaveAttribute("aria-pressed", "false");
-    await expect(done).toBeEnabled();
+
     const reply = row.getByRole("button", { name: `Attach to-do as context: ${title}` });
-    // Plain Tab intentionally returns to writing; Shift+Tab retains control traversal.
-    await link.focus();
-    await link.press("Shift+Tab");
-    await expect(reply).toBeFocused();
-    await reply.press("Shift+Tab");
-    await expect(done).toBeFocused();
-    await done.press("Shift+Tab");
     const label = row.getByRole("button", {
       name: `Change label for ${title}. Current label: Unlabelled`,
     });
-    await expect(label).toBeFocused();
-    await label.press("Shift+Tab");
-    await expect(action).toBeFocused();
-    await action.click();
-    await expect(action).toHaveAttribute("aria-pressed", "true");
+    const links = row.getByRole("button", { name: `Hide 1 link for ${title}` });
+    // Plain Tab returns to writing; Shift+Tab retains navigation between row controls.
+    await link.focus();
+    for (const control of [links, label, reply, done, focus, action]) {
+      await page.keyboard.press("Shift+Tab");
+      await expect(control).toBeFocused();
+    }
+
+    await focus.click();
     await done.click();
     await expect.poll(savedSelection).toBeNull();
     await expect(toggle).toHaveText("To-dos 0");
-    await expect(action).toHaveAttribute("aria-pressed", "true");
-    await row.getByRole("button", { name: `Unfocus to-do: ${title}` }).click();
-    await expect(action).toHaveAttribute("aria-disabled", "false");
-    await action.hover();
-    await expect(prose).toBeVisible();
+    await expect(focus).toHaveAttribute("aria-pressed", "true");
+    await row.getByRole("button", { name: `Unfocus to-do: ${title}`, exact: true }).click();
+    await expect(action).toHaveAttribute("aria-expanded", "true");
     const completedPoints = await textPoints(prose);
     await page.mouse.move(completedPoints.start.x, completedPoints.start.y);
     await page.mouse.down();
@@ -243,6 +211,11 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await expect.poll(selectedText).toBe(completedPoints.text);
     await row.getByRole("button", { name: `Reopen: ${title}` }).click();
     await expect(toggle).toHaveText("To-dos 1");
+    await page.reload();
+    await openTodos();
+    await expect(action).toHaveAttribute("aria-expanded", "false");
+    await expect(focus).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(savedSelection).toBeNull();
   } finally {
     await app?.close();
     await rm(directory, { recursive: true, force: true });

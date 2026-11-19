@@ -43,12 +43,14 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
     | "role"
     | "aria-selected"
     | "aria-pressed"
+    | "aria-expanded"
+    | "aria-controls"
     | "aria-label"
     | "aria-describedby"
     | "aria-disabled"
     | "tabIndex"
     | "onMouseDown"
-  >;
+  > & { "data-slot"?: string };
   onClick?: MouseEventHandler<HTMLButtonElement>;
 }
 
@@ -178,7 +180,8 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
                 disabled ||
                 actionProps?.["aria-disabled"] === true ||
                 event.defaultPrevented ||
-                !(event.target instanceof Element)
+                !(event.target instanceof Element) ||
+                !event.currentTarget.contains(event.target)
               )
                 return;
               if (

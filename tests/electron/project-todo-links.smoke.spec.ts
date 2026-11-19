@@ -40,6 +40,14 @@ for (const theme of ["light", "dark"] as const) {
         exact: true,
       });
       const startupCue = startup.locator("..");
+      const focusStartup = startupCue.getByRole("button", {
+        name: "Focus to-do: Startup investigation",
+        exact: true,
+      });
+      const focusNavigation = navigation.locator("..").getByRole("button", {
+        name: "Focus to-do: Improve project navigation",
+        exact: true,
+      });
       const startupSession = page.locator(
         '.session-item[data-session-id="visual-assistant-markdown-code"]',
       );
@@ -58,19 +66,19 @@ for (const theme of ["light", "dark"] as const) {
         )
         .toBe(true);
       await expect(startup).not.toHaveAttribute("aria-current");
-      await startup.click();
-      await expect(startup).toHaveAttribute("aria-pressed", "true");
+      await focusStartup.click();
+      await expect(focusStartup).toHaveAttribute("aria-pressed", "true");
       await panel
         .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
         .click();
-      await expect(startup).toHaveAttribute("aria-pressed", "false");
+      await expect(focusStartup).toHaveAttribute("aria-pressed", "false");
       await expect(startupSession).not.toHaveAttribute("data-associated");
-      await navigation.click();
+      await focusNavigation.click();
       await expect(startupSession).not.toHaveAttribute("data-associated");
       await expect(navigationSession).toHaveAttribute("data-associated", "true");
-      await startup.click();
+      await focusStartup.click();
       await expect(startupSession).toHaveAttribute("data-associated", "true");
-      await expect(navigationSession).toHaveAttribute("data-associated", "true");
+      await expect(navigationSession).not.toHaveAttribute("data-associated", "true");
       await startupSession.locator(".session-row").hover();
       await expect(startupSession).toHaveCSS("outline-style", "dashed");
       const hover = page.locator('[data-slot="navigation-hover"]');
@@ -153,6 +161,8 @@ for (const theme of ["light", "dark"] as const) {
       await expect(
         panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
       ).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(focusStartup).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(startup).toBeFocused();
       await page.setViewportSize({ width: 780, height: 800 });

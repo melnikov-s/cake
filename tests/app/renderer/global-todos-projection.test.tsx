@@ -247,7 +247,7 @@ it("routes projected actions to the same original item and scope, including glob
   const alpha = f.models.projects.find("/alpha")!.todos.items[0]!;
   const beta = f.models.projects.find("/beta")!.todos.items[0]!;
   const global = f.models.cakeChatTodos.todos.items[0]!;
-  await f.user.click(screen.getByRole("button", { name: "Investigate startup" }));
+  await f.user.click(screen.getByRole("button", { name: "Focus to-do: Investigate startup" }));
   expect(f.store.focusedItems[0]).toBe(alpha);
   expect(document.querySelectorAll(`[data-todo-id="${alpha.id}"]`)).toHaveLength(1);
   await f.user.click(screen.getByRole("button", { name: "Mark done: Improve navigation" }));

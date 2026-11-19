@@ -73,7 +73,9 @@ for (const theme of ["light", "dark"] as const) {
       await scenario.prepare(page, "done", app);
       const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
       const associated = panel.getByRole("button", { name: "Startup investigation", exact: true });
-      await expect(associated).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        panel.getByRole("button", { name: "Focus to-do: Startup investigation", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
       await expect(associated.locator("..")).toHaveAttribute("data-associated", "true");
       // To-do focus is persistent view focus, not actual navigation selection.
       await expect(associated).not.toHaveAttribute("aria-current");
@@ -132,7 +134,9 @@ for (const theme of ["light", "dark"] as const) {
       await panel
         .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
         .click();
-      await expect(associated).toHaveAttribute("aria-pressed", "false");
+      await expect(
+        panel.getByRole("button", { name: "Focus to-do: Startup investigation", exact: true }),
+      ).toHaveAttribute("aria-pressed", "false");
       await expect(associated.locator("..")).not.toHaveAttribute("data-associated");
       await page.mouse.move(1, 1);
       // Unfocus returns the row from the Focus overlay to its underlying section.

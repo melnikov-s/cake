@@ -79,7 +79,7 @@ for (const mode of ["Browser Mode", "VS Code"] as const) {
       ).toBeVisible();
       await page.getByRole("button", { name: "To-do", exact: true }).click();
       const panel = page.getByRole("complementary", { name: "To-do", exact: true });
-      const selected = panel.getByRole("button", { name: title, exact: true });
+      const selected = panel.getByRole("button", { name: `Focus to-do: ${title}`, exact: true });
       await selected.click();
       await expect(selected).toHaveAttribute("aria-pressed", "true");
       const readTodos = async () =>

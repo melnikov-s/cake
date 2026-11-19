@@ -117,7 +117,7 @@ test("label picker never completes or selects the row, and right actions remain 
     await page.getByRole("menuitemradio", { name: customLabel, exact: true }).click();
     await expect(label(customLabel)).toBeFocused();
     await expect(row.getByRole("button", { name: title, exact: true })).toHaveAttribute(
-      "aria-pressed",
+      "aria-expanded",
       "false",
     );
     await expect(done).toHaveCount(1);

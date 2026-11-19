@@ -24,7 +24,7 @@ export function createTodoResponseFocusScenario(
       await todos.getByRole("button", { name: /^To-dos / }).click();
       await todos
         .getByRole("button", {
-          name: "Investigate slow project startup and repeated configuration reads",
+          name: "Focus to-do: Investigate slow project startup and repeated configuration reads",
           exact: true,
         })
         .click();

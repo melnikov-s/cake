@@ -129,14 +129,14 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
     try {
       const user = userEvent.setup();
       const panel = within(screen.getByRole("complementary", { name: "To-do" }));
-      const focusA = () => panel.getByRole("button", { name: "Task A" });
+      const focusA = () => panel.getByRole("button", { name: "Focus to-do: Task A" });
       await user.click(focusA());
       expect(focusA().getAttribute("aria-pressed")).toBe("true");
       await user.click(panel.getByRole("button", { name: "Attach to-do as context: Task B" }));
       expect(focusA().getAttribute("aria-pressed")).toBe("true");
-      expect(panel.getByRole("button", { name: "Task B" }).getAttribute("aria-pressed")).toBe(
-        "false",
-      );
+      expect(
+        panel.getByRole("button", { name: "Focus to-do: Task B" }).getAttribute("aria-pressed"),
+      ).toBe("false");
       expect(panel.getByRole("button", { name: "Mark done: Task B" })).toBeDefined();
       expect(screen.getByRole("button", { name: "Remove To-do · Task B" })).toBeDefined();
       await user.click(screen.getByRole("button", { name: "Clear to-do focus" }));
@@ -169,7 +169,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
 
       // A different next-message attachment and later live edits cannot rewrite the queued snapshot.
       await user.click(panel.getByRole("button", { name: "Attach to-do as context: Task A" }));
-      await user.click(panel.getByRole("button", { name: "Task B" }));
+      await user.click(panel.getByRole("button", { name: "Focus to-do: Task B" }));
       act(() => {
         todos = { ...todos, items: [a, { ...b, description: "Changed after send", revision: 1 }] };
         publishTodos();
@@ -193,9 +193,9 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       expect(prompt).toHaveBeenCalledTimes(2);
       expect((screen.getByRole("combobox") as HTMLTextAreaElement).value).toBe("Retry this");
       expect(screen.getByRole("button", { name: "Remove To-do · Task A" })).toBeDefined();
-      expect(panel.getByRole("button", { name: "Task B" }).getAttribute("aria-pressed")).toBe(
-        "true",
-      );
+      expect(
+        panel.getByRole("button", { name: "Focus to-do: Task B" }).getAttribute("aria-pressed"),
+      ).toBe("true");
       expect(prompt.mock.calls[1]![0].attachments).toEqual([
         {
           kind: "text",

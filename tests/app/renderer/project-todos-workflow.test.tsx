@@ -911,7 +911,7 @@ it("preserves flags, snooze and focus without duplicate rows and shows every rea
   );
   const ready = () => todoSection("Ready to Merge to-dos");
   expect(ready().getByRole("button", { name: attention.title })).toBeDefined();
-  await fixture.user.click(screen.getByRole("button", { name: attention.title }));
+  await fixture.user.click(screen.getByRole("button", { name: `Focus to-do: ${attention.title}` }));
   expect(
     todoSection("Focus to-dos").getByRole("button", {
       name: attention.title,
@@ -1066,7 +1066,7 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
     "Snoozed",
     "Done",
   ]);
-  await fixture.user.click(screen.getByRole("button", { name: item.title }));
+  await fixture.user.click(screen.getByRole("button", { name: `Focus to-do: ${item.title}` }));
   const selection = fixture.todos().selectedId;
   expect(
     screen.getAllByRole("button", { name: /^(Unfocus to-do|Dismiss attention):/ }),
@@ -1086,9 +1086,9 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
   await fixture.user.click(
     screen.getByRole("button", { name: `Dismiss attention: ${item.title}` }),
   );
-  expect(screen.getByRole("button", { name: item.title }).getAttribute("aria-pressed")).toBe(
-    "false",
-  );
+  expect(
+    screen.getByRole("button", { name: `Focus to-do: ${item.title}` }).getAttribute("aria-pressed"),
+  ).toBe("false");
   expect(fixture.todos().selectedId).toBe(selection);
   expect(fixture.todos().items[0]).toMatchObject({
     state: "open",
@@ -1097,7 +1097,7 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
   });
   expect(fixture.mutations.map((mutation) => mutation._tag)).toEqual(["SetAttention"]);
   expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
-  await fixture.user.click(screen.getByRole("button", { name: item.title }));
+  await fixture.user.click(screen.getByRole("button", { name: `Focus to-do: ${item.title}` }));
   const row = todoSection("Focus to-dos").getByRole("button", {
     name: item.title,
   });
@@ -1160,7 +1160,7 @@ it("places Focus above the other four sections without duplicating focused rows"
     },
     sessions: [],
   });
-  await fixture.user.click(screen.getByRole("button", { name: "Task 101" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Focus to-do: Task 101" }));
   await waitFor(() =>
     expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
       "Focus",
@@ -1178,7 +1178,7 @@ it("places Focus above the other four sections without duplicating focused rows"
   ).toBeDefined();
 });
 
-it("restores underlying sections on row toggle or explicit unfocus and preserves attachments and item state", async () => {
+it("restores underlying sections on Focus toggle or explicit unfocus and preserves attachments and item state", async () => {
   const items: ProjectTodo[] = [
     { ...todo(100), needsAttention: true, attentionReason: "Review this" },
     todo(101),
@@ -1188,7 +1188,7 @@ it("restores underlying sections on row toggle or explicit unfocus and preserves
   using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions: [] });
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
   const focus = () => todoSection("Focus to-dos");
-  await fixture.user.click(screen.getByRole("button", { name: items[0]!.title }));
+  await fixture.user.click(screen.getByRole("button", { name: `Focus to-do: ${items[0]!.title}` }));
   expect(focus().getAllByRole("button", { name: /^Unfocus to-do:/ })).toHaveLength(1);
   expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
     "Focus",
@@ -1217,7 +1217,7 @@ it("restores underlying sections on row toggle or explicit unfocus and preserves
     );
     expect(
       todoSection(`${section} to-dos`)
-        .getByRole("button", { name: item.title })
+        .getByRole("button", { name: `Focus to-do: ${item.title}` })
         .getAttribute("aria-pressed"),
     ).toBe("false");
     expect(draft.attachments).toHaveLength(1);
@@ -1460,7 +1460,7 @@ it("keeps creation order and selection through description/status edits and link
   );
   using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions });
   expect(openOrder()).toEqual([items[1]!.id, items[0]!.id]);
-  await fixture.user.click(screen.getByRole("button", { name: "Task 1" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Focus to-do: Task 1" }));
   const expected = [items[1]!.id];
   for (const changes of [
     { unread: false },
@@ -1494,13 +1494,15 @@ it("keeps creation order and selection through description/status edits and link
   });
   expect(openOrder()).toEqual(expected);
   expect(screen.getByText("New finding.")).toBeDefined();
-  expect(screen.getByRole("button", { name: "Task 1" }).getAttribute("aria-pressed")).toBe("true");
+  expect(
+    screen.getByRole("button", { name: "Focus to-do: Task 1" }).getAttribute("aria-pressed"),
+  ).toBe("true");
 });
 
 it("filters titles and descriptions without changing selection or the authoritative list", async () => {
   using fixture = renderTodos();
   const search = screen.getByRole("searchbox", { name: "Search to-dos" });
-  const title = () => screen.getByRole("button", { name: "Investigate startup" });
+  const title = () => screen.getByRole("button", { name: "Focus to-do: Investigate startup" });
   await fixture.user.click(title());
   await fixture.user.type(search, "FOLLOW");
   expect(document.activeElement).toBe(search);
@@ -1561,10 +1563,10 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   expect(todoSection("Active to-dos")).toBeDefined();
 });
 
-it("switches and toggles title focus, with independent done/reopen and explicit unfocus", async () => {
+it("switches and toggles to-do focus, with independent done/reopen and explicit unfocus", async () => {
   using fixture = renderTodos();
-  const title = () => screen.getByRole("button", { name: "Investigate startup" });
-  const followUp = () => screen.getByRole("button", { name: "Follow up" });
+  const title = () => screen.getByRole("button", { name: "Focus to-do: Investigate startup" });
+  const followUp = () => screen.getByRole("button", { name: "Focus to-do: Follow up" });
   expect(screen.getByText("Find the startup bottleneck.")).toBeDefined();
   await fixture.user.click(title());
   expect(title().getAttribute("aria-pressed")).toBe("true");
@@ -1588,7 +1590,7 @@ it("switches and toggles title focus, with independent done/reopen and explicit 
   );
   expect(
     todoSection("Active to-dos")
-      .getByRole("button", { name: "Investigate startup" })
+      .getByRole("button", { name: "Focus to-do: Investigate startup" })
       .getAttribute("aria-pressed"),
   ).toBe("false");
 });
@@ -1640,7 +1642,9 @@ it("keeps each associated session link and projects readiness across read, new w
 
 it("highlights every linked session, including sessions in a managed worktree", async () => {
   using fixture = renderTodos(true);
-  await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
+  await fixture.user.click(
+    screen.getByRole("button", { name: "Focus to-do: Investigate startup" }),
+  );
   expect(await fixture.associated()).toEqual(["first", "second"]);
   expect(
     fixture.container.querySelectorAll("[data-session-id][data-navigation-active=true]"),
@@ -1649,16 +1653,22 @@ it("highlights every linked session, including sessions in a managed worktree", 
 
 it("preserves focused to-dos while switching the exclusive accessory to linked sessions", async () => {
   using fixture = renderTodos(true);
-  await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
+  await fixture.user.click(
+    screen.getByRole("button", { name: "Focus to-do: Investigate startup" }),
+  );
   expect(await fixture.associated()).toEqual(["first", "second"]);
   expect(
-    screen.getByRole("button", { name: "Investigate startup" }).getAttribute("aria-pressed"),
+    screen
+      .getByRole("button", { name: "Focus to-do: Investigate startup" })
+      .getAttribute("aria-pressed"),
   ).toBe("true");
-  await fixture.user.click(screen.getByRole("button", { name: "Follow up" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Focus to-do: Follow up" }));
   expect(await fixture.associated()).toEqual(["third"]);
   await fixture.user.click(screen.getByRole("button", { name: "Unfocus to-do: Follow up" }));
   expect(await fixture.associated()).toEqual([]);
-  await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
+  await fixture.user.click(
+    screen.getByRole("button", { name: "Focus to-do: Investigate startup" }),
+  );
   expect(await fixture.associated()).toEqual(["first", "second"]);
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Investigate startup" }));
   expect(await fixture.associated()).toEqual(["first", "second"]);
@@ -1674,7 +1684,9 @@ it("preserves focused to-dos while switching the exclusive accessory to linked s
 
 it("closing the to-do panel preserves view focus without attaching composer context", async () => {
   using fixture = renderTodos(true);
-  await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
+  await fixture.user.click(
+    screen.getByRole("button", { name: "Focus to-do: Investigate startup" }),
+  );
   expect(await fixture.associated()).toEqual(["first", "second"]);
   expect(fixture.store.focusedItemIds).toEqual(["00000000-0000-4000-8000-000000000011"]);
   await act(async () => fixture.store.toggle());
@@ -1685,13 +1697,17 @@ it("closing the to-do panel preserves view focus without attaching composer cont
   expect(baseline).toContain('"activeCount":2');
   await act(async () => fixture.store.open());
   expect(
-    screen.getByRole("button", { name: "Investigate startup" }).getAttribute("aria-pressed"),
+    screen
+      .getByRole("button", { name: "Focus to-do: Investigate startup" })
+      .getAttribute("aria-pressed"),
   ).toBe("true");
 });
 
 it("keeps project to-do cues available in worker conversations and restores them after global navigation", async () => {
   using fixture = renderTodos(true);
-  await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
+  await fixture.user.click(
+    screen.getByRole("button", { name: "Focus to-do: Investigate startup" }),
+  );
   expect(await fixture.associated()).toEqual(["first", "second"]);
   act(() => fixture.root.navigationStore.selectProjectSession("third"));
   expect(await fixture.associated()).toEqual(["first", "second"]);
@@ -1708,7 +1724,7 @@ it("snoozes focused work independently, restores its section on unfocus and unsn
   using fixture = renderTodos();
   const title = "Investigate startup";
   const row = () => screen.getByRole("button", { name: title });
-  await fixture.user.click(row());
+  await fixture.user.click(screen.getByRole("button", { name: `Focus to-do: ${title}` }));
   const before = Date.now();
   await fixture.user.pointer({ target: row(), keys: "[MouseRight]" });
   await fixture.user.click(screen.getByRole("menuitem", { name: "Snooze" }));
@@ -1724,7 +1740,9 @@ it("snoozes focused work independently, restores its section on unfocus and unsn
   expect(mutation.until).toBe(new Date(mutation.until).toISOString());
   expect(fixture.todos().selectedId).toBeNull();
   expect(
-    todoSection("Focus to-dos").getByRole("button", { name: title }).getAttribute("aria-pressed"),
+    todoSection("Focus to-dos")
+      .getByRole("button", { name: `Focus to-do: ${title}` })
+      .getAttribute("aria-pressed"),
   ).toBe("true");
   await fixture.user.click(screen.getByRole("button", { name: `Unfocus to-do: ${title}` }));
   const snoozed = todoSection("Snoozed to-dos");
@@ -1737,9 +1755,11 @@ it("snoozes focused work independently, restores its section on unfocus and unsn
     }),
   ).toBeNull();
   const count = fixture.mutations.length;
-  await fixture.user.click(row());
+  await fixture.user.click(screen.getByRole("button", { name: `Focus to-do: ${title}` }));
   expect(fixture.mutations).toHaveLength(count);
-  expect(row().getAttribute("aria-pressed")).toBe("true");
+  expect(
+    screen.getByRole("button", { name: `Focus to-do: ${title}` }).getAttribute("aria-pressed"),
+  ).toBe("true");
   await fixture.user.click(screen.getByRole("button", { name: `Unfocus to-do: ${title}` }));
   await fixture.user.pointer({ target: row(), keys: "[MouseRight]" });
   await fixture.user.click(screen.getByRole("menuitem", { name: "Unsnooze" }));

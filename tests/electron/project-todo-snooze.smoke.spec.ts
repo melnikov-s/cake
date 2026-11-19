@@ -103,8 +103,10 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await action.press("Shift+F10");
     await expect(page.getByRole("menuitem", { name: "Snooze", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
-    await action.click();
-    await expect(action).toHaveAttribute("aria-pressed", "true");
+    await row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }).click();
+    await expect(
+      row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     const dismissed = await openCustom();
     await dismissed.getByRole("button", { name: "Back to menu", exact: true }).click();
     await expect(
@@ -145,7 +147,9 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await expect(
       panel.locator('[data-todo-id][data-todo-section="Active"]').locator(".."),
     ).toHaveCount(0);
-    await expect(action).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
     await expect(action).toHaveAttribute("aria-disabled", "true");
     await expect(row.locator("time")).toHaveAttribute("datetime", new Date(future).toISOString());
     await expect(row.getByRole("link", { name: "Release details" })).toBeVisible();

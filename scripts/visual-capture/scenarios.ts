@@ -3159,8 +3159,7 @@ const projectChatTodos: VisualCaptureScenario = {
     "snooze-menu",
     "snooze-custom",
     "snoozed",
-    "description-bubble",
-    "description-narrow",
+    "description-expanded",
   ],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
@@ -3311,8 +3310,11 @@ const projectChatTodos: VisualCaptureScenario = {
     await workspace.getByRole("button", { name: /^To-dos / }).click();
     await expect(workspace).toBeVisible();
     // Focus is a window-local overlay. Establish it through the user action.
-    const selected = workspace.getByRole("button", { name: "Startup investigation", exact: true });
-    if ((await selected.getAttribute("aria-pressed")) !== "true") await selected.click();
+    const selected = workspace.getByRole("button", {
+      name: "Focus to-do: Startup investigation",
+      exact: true,
+    });
+    await selected.click();
     await expect(selected).toHaveAttribute("aria-pressed", "true");
     if (state === "reply-context") {
       await page
@@ -3330,8 +3332,10 @@ const projectChatTodos: VisualCaptureScenario = {
       await expect(selected).toHaveAttribute("aria-pressed", "true");
     }
     if (state === "multi-focus") {
-      await page.getByRole("button", { name: "Improve project navigation", exact: true }).click();
-      await expect(page.locator('[data-todo-id][data-todo-section="Focus"]')).toHaveCount(2);
+      await workspace
+        .getByRole("button", { name: "Focus to-do: Improve project navigation", exact: true })
+        .click();
+      await expect(page.locator('[data-todo-id][data-todo-section="Focus"]')).toHaveCount(1);
     }
     if (state === "unselected" || state === "empty")
       await page
@@ -3352,10 +3356,9 @@ const projectChatTodos: VisualCaptureScenario = {
       await page.getByRole("menuitemradio", { name: "Feature", exact: true }).click();
       const label = row.getByRole("button", { name: /Current label: Feature/ });
       await expect(label).toHaveAttribute("aria-expanded", "false");
-      await expect(row.getByRole("button", { name: title, exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
+      await expect(
+        row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+      ).toHaveAttribute("aria-pressed", "false");
       await page.waitForFunction(() => document.fonts.status === "loaded");
       if (state === "label-hover") {
         await label.hover();
@@ -3382,6 +3385,10 @@ const projectChatTodos: VisualCaptureScenario = {
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
     const report = page.getByRole("link", { name: "Exact investigation report", exact: true });
+    if (state === "links-hover" || state === "links-focus")
+      await workspace
+        .getByRole("button", { name: "Show 6 links for Startup investigation" })
+        .click();
     if (state === "links-hover") await report.hover();
     if (state === "links-focus") {
       await page
@@ -3417,19 +3424,14 @@ const projectChatTodos: VisualCaptureScenario = {
         );
       });
     }
-    if (state === "description-bubble" || state === "description-narrow") {
-      if (state === "description-narrow") {
-        // The same boundary used by the native VS Code companion: no editor overlap.
-        await page
-          .getByRole("complementary", { name: "Workspace", exact: true })
-          .evaluate((element) => {
-            element.setAttribute("data-popover-boundary", "");
-          });
-      }
-      await selected.hover();
-      await expect(
-        page.getByRole("tooltip").filter({ hasText: "Find the startup bottleneck" }),
-      ).toBeVisible();
+    if (state === "description-expanded") {
+      const disclosure = workspace.getByRole("button", {
+        name: "Startup investigation",
+        exact: true,
+      });
+      await disclosure.press("Enter");
+      await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+      await expect(report).toBeVisible();
     }
     if (state === "hover") {
       const row = page.locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]');
@@ -3890,6 +3892,7 @@ const compactTodoResponses: VisualCaptureScenario = {
     await workspace.getByRole("button", { name: /^To-dos / }).click();
     const row = workspace.getByRole("button", { name: "Improve project navigation", exact: true });
     await expect(row).toBeVisible();
+    await row.press("Enter");
     await expect(
       workspace.getByRole("link", { name: "Agent response", exact: true }),
     ).toBeVisible();
@@ -3903,11 +3906,10 @@ const compactTodoResponses: VisualCaptureScenario = {
           exact: true,
         }),
       ).toBeVisible();
-      await expect(row).toHaveAttribute("aria-pressed", "false");
-      await row.hover();
+      await expect(row).toHaveAttribute("aria-expanded", "true");
       await expect(
-        page.getByRole("tooltip").filter({ hasText: "Make it easier to move" }),
-      ).toBeVisible();
+        workspace.getByRole("button", { name: "Focus to-do: Improve project navigation" }),
+      ).toHaveAttribute("aria-pressed", "false");
     } else {
       const disclosure = page.locator('[data-slot="task-section-disclosure"]').last();
       await expect(disclosure).toBeVisible();

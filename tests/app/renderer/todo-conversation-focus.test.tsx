@@ -136,13 +136,13 @@ for (const global of [false, true]) {
       expect(store.focusedItems).toEqual([]);
       await u.click(headingA()[0]!);
       expect(expanded()).toEqual(["false", "true", "true"]);
-      await u.click(panel.getByRole("button", { name: "Task B" }));
+      await u.click(panel.getByRole("button", { name: "Focus to-do: Task B" }));
       expect(transcript.getByText("b1")).toBeDefined();
       expect(transcript.queryByText("a1")).toBeNull();
       expect(transcript.queryByText("casual-answer")).toBeNull();
       expect(transcript.queryByText("b1-answer")).toBeNull();
       expect(transcript.queryByRole("img", { name: "b1-shot.png" })).toBeNull();
-      await u.click(panel.getByRole("button", { name: "Task A" }));
+      await u.click(panel.getByRole("button", { name: "Focus to-do: Task A" }));
       // The selection bar alone titles focus: no duplicate heading or status row.
       expect(transcript.queryByRole("button", { name: "Show in To-do: Task A" })).toBeNull();
       expect(transcript.queryByText("Task A")).toBeNull();
@@ -203,7 +203,7 @@ for (const global of [false, true]) {
       expect(transcript.getByRole("img", { name: "a1-shot.png" })).toBeDefined();
 
       // Focus survives lifecycle/attention changes; only removal invalidates it.
-      await u.click(panel.getByRole("button", { name: "Task A" }));
+      await u.click(panel.getByRole("button", { name: "Focus to-do: Task A" }));
       for (const changes of [
         { state: "done" as const },
         { state: "open" as const, snoozedUntil: "2099-01-01T00:00:00Z", needsAttention: true },
@@ -244,7 +244,7 @@ for (const global of [false, true]) {
   });
 }
 
-it("renders descriptions inline and keeps overflow hover cards closed until a real pointer hover", async () => {
+it("keeps descriptions collapsed and suppresses description popups when entering Focus", async () => {
   const description =
     "Find the startup bottleneck across project hydration and renderer snapshot initialization, then validate the fix with an isolated regression test and latency trace.";
   using fixture = createRendererStoreFixture();
@@ -285,37 +285,25 @@ it("renders descriptions inline and keeps overflow hover cards closed until a re
     const transcript = within(screen.getByRole("region", { name: "Transcript" }));
     const panel = within(screen.getByRole("complementary", { name: "To-do" }));
     const row = () => panel.getByRole("button", { name: "Task A" });
+    const focus = () => panel.getByRole("button", { name: "Focus to-do: Task A" });
     const header = () => view.container.querySelector('[data-slot="selection-bar"]');
     await settleListLayout();
     expect(panel.getByText(description)).toBeDefined();
-    for (const enter of [
-      () => u.click(row()),
-      () => u.click(transcript.getByRole("button", { name: "Focus to-do: Task A" })),
-    ]) {
-      await enter();
-      // Clicking moves the row into Focus and programmatically focuses it.
-      expect(row().getAttribute("aria-pressed")).toBe("true");
-      expect(document.activeElement).toBe(row());
-      await wait();
+    for (const entry of ["pane", "transcript"]) {
+      await u.click(
+        entry === "pane"
+          ? focus()
+          : transcript.getByRole("button", { name: "Focus to-do: Task A" }),
+      );
+      expect(focus().getAttribute("aria-pressed")).toBe("true");
+      expect(document.activeElement).toBe(entry === "pane" ? focus() : row());
       expect(header()?.textContent).toBe("Focused to-do:Task A");
-      expect(screen.getAllByText("Task A")).toHaveLength(2); // Bar and pane row only.
-      expect(screen.queryByRole("tooltip")).toBeNull();
-      // Layout moving the row under the resting pointer resends events in place.
-      pointAt(row(), 0);
-      await wait();
-      expect(screen.queryByRole("tooltip")).toBeNull();
-      // Real travel over the row opens the full overflow card; leaving closes it even with focus kept.
+      expect(screen.getAllByText("Task A")).toHaveLength(2);
+      expect(row().getAttribute("aria-expanded")).toBe("false");
+      await u.hover(row());
       pointAt(row(), 24);
       await wait();
-      expect(screen.getByRole("tooltip").textContent).toBe(description);
-      act(() =>
-        row().dispatchEvent(
-          new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body }),
-        ),
-      );
-      await wait();
-      expect(document.activeElement).toBe(row());
-      expect(screen.queryByRole("tooltip")).toBeNull();
+      expect(screen.queryByRole("tooltip", { name: description })).toBeNull();
       await u.click(screen.getByRole("button", { name: "Clear to-do focus" }));
       expect(header()).toBeNull();
     }
@@ -361,25 +349,25 @@ for (const entry of ["pane", "message"] as const) {
       await settleListLayout();
       await u.click(
         entry === "pane"
-          ? panel.getByRole("button", { name: "Task A" })
+          ? panel.getByRole("button", { name: "Focus to-do: Task A" })
           : transcript.getByRole("button", { name: "Focus to-do: Task A" }),
       );
       expect(selected()).toBe("a-last");
-      expect(panel.getByRole("button", { name: "Task A" }).getAttribute("aria-pressed")).toBe(
-        "true",
-      );
-      await u.click(panel.getByRole("button", { name: "Task A" }));
+      expect(
+        panel.getByRole("button", { name: "Focus to-do: Task A" }).getAttribute("aria-pressed"),
+      ).toBe("true");
+      await u.click(panel.getByRole("button", { name: "Focus to-do: Task A" }));
       expect(session.todos.focusedItems).toEqual([]);
       expect(session.todos.transcriptFocusRequest).toBeUndefined();
-      expect(panel.getByRole("button", { name: "Task A" }).getAttribute("aria-pressed")).toBe(
-        "false",
-      );
+      expect(
+        panel.getByRole("button", { name: "Focus to-do: Task A" }).getAttribute("aria-pressed"),
+      ).toBe("false");
       expect(transcript.getByText("casual-tail")).toBeDefined();
       // A click in the other surface uses the same toggle, not a separate focus state.
       await u.click(
         entry === "pane"
           ? transcript.getByRole("button", { name: "Focus to-do: Task A" })
-          : panel.getByRole("button", { name: "Task A" }),
+          : panel.getByRole("button", { name: "Focus to-do: Task A" }),
       );
       expect(session.todos.focusedItemIds).toEqual([a]);
       // Attribution/streaming updates must not turn view focus into a live follower.
@@ -388,13 +376,13 @@ for (const entry of ["pane", "message"] as const) {
         applyPartUpdate(session.model.parts, answer("a-new-answer"), session.sessionId);
       });
       expect(selected()).toBe("a-last");
-      await u.click(panel.getByRole("button", { name: "Task B" }));
+      await u.click(panel.getByRole("button", { name: "Focus to-do: Task B" }));
       expect(selected()).toBeUndefined();
       expect(transcript.getByRole("status").textContent).toBe("No messages tagged to this to-do.");
       expect(transcript.queryByText("casual-tail")).toBeNull();
-      expect(panel.getByRole("button", { name: "Task B" }).getAttribute("aria-pressed")).toBe(
-        "true",
-      );
+      expect(
+        panel.getByRole("button", { name: "Focus to-do: Task B" }).getAttribute("aria-pressed"),
+      ).toBe("true");
       // A no-match request is consumed, not replayed when a matching message arrives.
       act(() => applyPartUpdate(session.model.parts, user("b-later", b), session.sessionId));
       expect(selected()).toBeUndefined();

@@ -106,10 +106,9 @@ for (const entry of ["pane", "message"] as const) {
       await expect(
         target.locator('xpath=ancestor::*[@data-slot="transcript-item"]'),
       ).toHaveAttribute("aria-current", "true");
-      await expect(panel.getByRole("button", { name: titleA, exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
+      await expect(
+        panel.getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
       const toolbar = pane.getByRole("button", { name: "To-do", exact: true });
       const focusedRow = panel.locator(`[data-todo-id="${todoA}"] [data-view-focused="true"]`);
       await expect(focusedRow).toHaveCount(1);
@@ -131,6 +130,7 @@ for (const entry of ["pane", "message"] as const) {
       const nestedActions = [
         `Attach to-do as context: ${titleA}`,
         `Mark done: ${titleA}`,
+        `Focus to-do: ${titleA}`,
         `Unfocus to-do: ${titleA}`,
       ];
       for (const name of nestedActions) {

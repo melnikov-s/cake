@@ -77,7 +77,7 @@ for (const reducedMotion of [false, true]) {
       const panel = page.getByRole("complementary", { name: "To-do", exact: true });
       const pane = panel.locator('[data-slot="todo-scroll-pane"]');
       const action = (index: number) =>
-        panel.getByRole("button", { name: `Task ${index}`, exact: true });
+        panel.getByRole("button", { name: `Focus to-do: Task ${index}`, exact: true });
       const category = (name: string) =>
         panel.locator(`[data-todo-id][data-todo-section="${name}"]`).locator("..");
       // Observe real native animation and scroll requests without replacing their implementations.
@@ -122,7 +122,7 @@ for (const reducedMotion of [false, true]) {
       expect(await pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(200);
       await action(0).click();
       await expect(
-        category("Focus").getByRole("button", { name: "Task 0", exact: true }),
+        category("Focus").getByRole("button", { name: "Focus to-do: Task 0", exact: true }),
       ).toBeFocused();
       await expect.poll(() => pane.evaluate((element) => element.scrollTop)).toBe(0);
       const scrolls = () =>
@@ -158,7 +158,7 @@ for (const reducedMotion of [false, true]) {
       await expect(
         category("Needs attention").getByRole("button", { name: "Task 31", exact: true }),
       ).toBeFocused();
-      await expect(action(31)).toHaveText("Review these findings");
+      await expect(category("Needs attention").getByText("Review these findings")).toBeVisible();
       // Keep a different row focused while updating attention and filtering.
       await action(0).click();
       // Unrelated attention updates preserve scroll and the active composer, not the last focused row.
@@ -190,9 +190,11 @@ for (const reducedMotion of [false, true]) {
       await search.clear();
       await expect(search).toBeFocused();
       await panel.getByRole("button", { name: "Unfocus to-do: Task 0" }).click();
-      await expect(action(0)).toBeFocused();
       await expect(
         category("Active").getByRole("button", { name: "Task 0", exact: true }),
+      ).toBeFocused();
+      await expect(
+        category("Active").getByRole("button", { name: "Focus to-do: Task 0", exact: true }),
       ).toHaveAttribute("aria-pressed", "false");
       expect(
         await app.evaluate(({ BrowserWindow }) =>

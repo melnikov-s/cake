@@ -282,7 +282,7 @@ test("Project Chat Focus restores commentary and final across engine resets and 
         await expect(transcript.getByText(final, { exact: true })).toBeVisible();
         const task = page
           .getByRole("complementary", { name: "Workspace" })
-          .getByRole("button", { name: title, exact: true });
+          .getByRole("button", { name: `Focus to-do: ${title}`, exact: true });
         if ((await task.getAttribute("aria-pressed")) !== "true") await task.click();
         await expect(task).toHaveAttribute("aria-pressed", "true");
         await expect(transcript.getByText(final, { exact: true })).toBeVisible();
