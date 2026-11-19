@@ -1,6 +1,7 @@
+/** @vitest-environment jsdom */
 import { expect, it } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
-import { queuedPrompts } from "../../../src/renderer/lib/queued-prompts";
+import { queuedPromptText, queuedPrompts } from "../../../src/renderer/lib/queued-prompts";
 import { researchOrigin } from "../../fixtures/subagent-report";
 import { queuePart } from "./prompt-queue-workflow-fixture";
 
@@ -127,4 +128,24 @@ it("shares queue identity, payload and editability rules across conversation own
   expect(rows[2]!.source).toEqual(agent.crossSession);
   expect(rows[3]!.command).toBe("compact");
   expect(rows[5]!.scheduled).toEqual(scheduled.scheduled);
+});
+
+it("labels a queued worker result by its title and outcome, not its session UUID", () => {
+  const sessionId = "5c8a1e3b-7f2d-4b6e-9c0a-3d1f5e7b9a21";
+  const routed = queuePart(1, `Session ${sessionId} — result\n\nAll checks   passed.`, {
+    agent: true,
+  });
+  const sender = { ...routed.crossSession!.sender, sessionId };
+  const titled = { ...routed.crossSession!, sender: { ...sender, title: "Get main fully green" } };
+  const [entry] = queuedPrompts([{ ...routed, crossSession: titled }]);
+  expect(queuedPromptText(entry!)).toBe("Get main fully green — result: All checks passed.");
+  const untitled = {
+    ...routed.crossSession!,
+    sender: { ...sender, title: `Session ${sessionId}` },
+  };
+  const [fallback] = queuedPrompts([{ ...routed, crossSession: untitled }]);
+  expect(queuedPromptText(fallback!)).toBe("Session 5c8a1e3b — result: All checks passed.");
+  // Anything that is not Cake's own report line stays exactly as sent.
+  const [plain] = queuedPrompts([queuePart(2, `Session ${sessionId} — result\n\nMine`)]);
+  expect(queuedPromptText(plain!)).toBe(`Session ${sessionId} — result\n\nMine`);
 });

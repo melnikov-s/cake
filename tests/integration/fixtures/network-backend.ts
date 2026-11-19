@@ -360,6 +360,9 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       withMemberLock: (_sessionId, effect) => effect,
       withNoticeDelivery: (_recipientSessionId, _operation, effect) => effect,
       withNoticeDeliveryDeadline: (_recipientSessionId, _operation, effect) => effect,
+      withNoticeDeliveryIfAvailable: (_recipientSessionId, _operation, effect) =>
+        Effect.map(effect, Option.some),
+      withUserDelivery: (_recipientSessionId, effect) => effect,
       setBoardDeliveryPaused: () => Effect.void,
     }),
     Layer.mock(SessionArchiveStorage, {

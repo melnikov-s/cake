@@ -406,6 +406,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           attachments: input.attachments,
           renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
           responseMode: input.responseMode ?? "text",
+          ...(input.clientId === undefined ? null : { clientId: input.clientId }),
           ...(input.artifactPresentation === undefined
             ? null
             : { artifactPresentation: input.artifactPresentation }),

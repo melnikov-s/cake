@@ -86,6 +86,32 @@ describe.each(["project", "cake-chat", "project-chat"] as const)(
       expect(steerQueuedMessage).not.toHaveBeenCalled();
     });
 
+    // Recurrence: a stored row whose text differed from the typed text (Cake context had been
+    // folded in) never matched its optimistic card, which then stayed "Queueing…" forever.
+    it("matches the stored queue row by client id, not text, and leaves Queueing…", async () => {
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async (input) =>
+        TurnId.make(input.clientId ?? turnId),
+      );
+      using fixture = renderConversationSession(profile, { sessionChats: { prompt } }, []);
+      await fixture.user.type(screen.getByRole("combobox"), "Pause, lay of the land?");
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      const queue = within(screen.getByRole("list", { name: "Queued prompts" }));
+      expect(queue.getByRole("status").textContent).toBe("Queueing…");
+      const clientId = prompt.mock.calls[0]?.[0].clientId;
+      expect(clientId).toMatch(/^[0-9a-f-]{36}$/);
+
+      fixture.publish({
+        parts: [queuePart(1, "Different stored text", { turnId: clientId })],
+      });
+      expect(queue.getAllByRole("listitem")).toHaveLength(1);
+      expect(labels()).toEqual(["Different stored text"]);
+      expect(queue.queryByRole("status")).toBeNull();
+      expect(queue.getByRole("button", { name: /^Cancel queued message:/ })).toHaveProperty(
+        "disabled",
+        false,
+      );
+    });
+
     it("does not steer B or submit C while a pasted image is still being read", async () => {
       const reads: Array<() => void> = [];
       const read = FileReader.prototype.readAsDataURL;

@@ -8,7 +8,9 @@ import type {
 import type { TranscriptAttachmentImagesStore } from "./TranscriptAttachmentImagesStore";
 
 interface PendingUserMessage {
+  /** Also the sender's client id, which admission adopts as the stored input's turn id. */
   id: string;
+  turnId?: string;
   canonicalPartCount: number;
   expectedOccurrence: number;
   replacingEntryId?: string;
@@ -298,8 +300,26 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     return { start, end };
   }
 
+  /** Records the turn id admission returned; the sender's id is normally that same id. */
+  confirm(id: string, turnId: string) {
+    const index = this.pending.findIndex((candidate) => candidate.id === id);
+    const message = this.pending[index];
+    if (message && message.turnId !== turnId) this.pending.splice(index, 1, { ...message, turnId });
+  }
+
   private isReconciled(message: PendingUserMessage) {
     const canonical = this.props.canonicalParts();
+    // A queue row carries its stored input's turn id: the sender's id, or the id admission
+    // returned. Text matching only remains for consumed transcript messages.
+    if (
+      canonical.some(
+        (part) =>
+          part.kind === "text" &&
+          part.queuedInput?.turnId !== undefined &&
+          (part.queuedInput.turnId === message.id || part.queuedInput.turnId === message.turnId),
+      )
+    )
+      return true;
     if (
       message.replacingEntryId &&
       canonical.some(

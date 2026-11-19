@@ -25,7 +25,17 @@ import { createPrompted } from "../../../src/domain/project-sessions/projectSess
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { CAKE_CHAT_TODO_SCOPE } from "../../../src/contracts/projects/project-todos";
-import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream, SubscriptionRef } from "effect";
+import {
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Schema,
+  Stream,
+  SubscriptionRef,
+} from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, vi } from "vitest";
 import { observeSignals } from "../../../src/domain/project-sessions/projectSessionSignals";
@@ -561,6 +571,9 @@ const makeLayer = (
       acknowledgeReports: () => Effect.void,
       withNoticeDelivery: (_recipientSessionId, _operation, effect) => effect,
       withNoticeDeliveryDeadline: (_recipientSessionId, _operation, effect) => effect,
+      withNoticeDeliveryIfAvailable: (_recipientSessionId, _operation, effect) =>
+        Effect.map(effect, Option.some),
+      withUserDelivery: (_recipientSessionId, effect) => effect,
       withdrawNotices: () => Effect.void,
       removeUnmaterializedChild: () => Effect.void,
       removeProject: (projectPath) =>

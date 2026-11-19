@@ -286,6 +286,18 @@ export class SessionFamilyStorage extends Context.Service<
       operation: string,
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | SessionFamilyStorageError, R>;
+    /** Keeps one recipient's person-sent messages in order, independently of notice delivery. */
+    readonly withUserDelivery: <A, E, R>(
+      recipientSessionId: string,
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E, R>;
+    /** The same lock only when it is free right now; `None` means another delivery holds it.
+     * A person's message uses this so it never waits behind another delivery. */
+    readonly withNoticeDeliveryIfAvailable: <A, E, R>(
+      recipientSessionId: string,
+      operation: string,
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<Option.Option<A>, E, R>;
     readonly withdrawNotices: (
       recipientSessionId: string,
       messageIds: ReadonlyArray<string>,
@@ -424,6 +436,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       const path = yield* Path.Path;
       const lock = yield* Semaphore.make(1);
       const noticeDeliveryLocks = yield* RcMap.make({
+        lookup: (_recipientSessionId: string) => Semaphore.make(1),
+      });
+      const userDeliveryLocks = yield* RcMap.make({
         lookup: (_recipientSessionId: string) => Semaphore.make(1),
       });
       const revision = yield* SubscriptionRef.make(0);
@@ -1874,6 +1889,35 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                     ),
                 }),
               ),
+          ),
+        withUserDelivery: (recipientSessionId, effect) =>
+          Effect.scoped(
+            RcMap.get(userDeliveryLocks, recipientSessionId).pipe(
+              Effect.flatMap((order) => order.withPermits(1)(effect)),
+            ),
+          ),
+        withNoticeDeliveryIfAvailable: (recipientSessionId, operation, effect) =>
+          Effect.scoped(
+            Effect.gen(function* () {
+              const lock = yield* RcMap.get(noticeDeliveryLocks, recipientSessionId);
+              return yield* lock.withPermitsIfAvailable(1)(
+                effect.pipe(
+                  Effect.timed,
+                  Effect.tap(([held]) =>
+                    Duration.isLessThan(held, NOTICE_DELIVERY_SLOW)
+                      ? Effect.void
+                      : Effect.logWarning("Slow notice delivery", {
+                          operation,
+                          phase: "hold",
+                          waitMs: 0,
+                          holdMs: Duration.toMillis(held),
+                          completed: true,
+                        }),
+                  ),
+                  Effect.map(([, result]) => result),
+                ),
+              );
+            }),
           ),
         withdrawNotices,
         removeUnmaterializedChild,

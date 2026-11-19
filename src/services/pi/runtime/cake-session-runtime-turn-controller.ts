@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { parseScheduledMessage } from "../../../contracts/conversations/scheduled-message-envelope";
 import type { InternalInput } from "../../../contracts/conversations/internal-input";
+import { splitContextReminders } from "./session-context-reminders";
 import { isAutomaticInput } from "./internal-input-projection";
 import type { ConversationResponseMode } from "../../../contracts/conversations/response-mode-reminders";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -607,6 +608,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           stripPresentationModeReminder(item.content),
         );
         const parsed = parseCrossSessionMessage(visibleContent);
+        const internal = item.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
         return {
           itemId: item.itemId,
           ...(parseScheduledMessage(visibleContent) && item.turnId
@@ -616,7 +618,11 @@ export function createCakeSessionRuntimeTurnController(input: {
           state: item.state,
           lane,
           position: index + 1,
-          text: parsed?.text ?? visibleContent,
+          // A person's queued words, never the Cake context carried with them.
+          text:
+            internal?._tag === "UserWithReminders"
+              ? (internal.userText ?? internal.text)
+              : (parsed?.text ?? visibleContent),
           ...(parsed ? { crossSession: parsed.metadata } : null),
         };
       });
@@ -942,19 +948,35 @@ export function createCakeSessionRuntimeTurnController(input: {
         throw new Error("Enter a message or keep an attachment");
       const oldText =
         internal?._tag === "UserWithReminders" ? (internal.userText ?? internal.text) : item.text;
+      // Cake's own context blocks (session updates, reports, to-dos) precede the person's words
+      // in the model input; an edit replaces only those words and keeps the hidden context.
+      const userBody =
+        internal?._tag === "UserWithReminders" ? splitContextReminders(internal.text).text : "";
+      const context =
+        internal?._tag === "UserWithReminders" && userBody.startsWith(oldText)
+          ? internal.text.slice(0, internal.text.length - userBody.length)
+          : "";
       const body = stripPresentationModeReminder(item.content);
       const offset = item.content.length - body.length;
-      const start = item.content.indexOf(oldText, offset);
-      if (start < 0) throw new Error("That queued message cannot be edited");
-      const updatedText = text + item.text.slice(oldText.length);
+      const found = item.content.indexOf(context + oldText, offset);
+      if (found < 0 || !item.text.startsWith(context))
+        throw new Error("That queued message cannot be edited");
+      const start = found + context.length;
+      // Words added to an attachment-only message stay separate from that context.
+      const words = context && !oldText && text && !context.endsWith("\n") ? `\n\n${text}` : text;
+      const updatedText = context + words + item.text.slice(context.length + oldText.length);
       const updatedContent =
         item.content.slice(0, start) +
-        text +
+        words +
         (!oldText && !item.text && body && text ? "\n\n" : "") +
         item.content.slice(start + oldText.length);
       const updatedInternal =
         internal?._tag === "UserWithReminders"
-          ? { ...internal, text: text + internal.text.slice(oldText.length), userText: text }
+          ? {
+              ...internal,
+              text: context + words + internal.text.slice(context.length + oldText.length),
+              userText: text,
+            }
           : internal;
       queues[lane][location.index] = { ...item, text: updatedText, content: updatedContent };
       if (item.turnId) turnCompletions.updateQueued(item.turnId, updatedContent, updatedInternal);

@@ -24,6 +24,8 @@ export interface ConversationDeliveryInput {
   responseMode?: ConversationResponseMode;
   /** Aborted when the person cancels a send that is taking too long. */
   signal?: AbortSignal;
+  /** The optimistic row's id; the stored queue item carries it as its turn id. */
+  clientId?: string;
 }
 
 /** After this long without an answer, the composer offers to cancel the send. */
@@ -115,6 +117,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
           responseMode,
           artifactPresentation: ArtifactPresentationContext.consume(this)?.capture(sessionId),
           signal: controller.signal,
+          clientId: operationId,
           ...(presentationMode === undefined ? null : { presentationMode }),
         }),
         controller.signal,
@@ -125,6 +128,9 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
         if (restoreOnError) this.props.restoreDraft(text, attachments);
         return false;
       }
+      // Admission names the stored input; its queue row reconciles by that id, not text.
+      if (delivered && delivered !== true)
+        this.optimisticUserMessages.confirm(operationId, delivered.turnId);
       this.finish(operationId);
       return !this.signal.aborted && (delivered ?? true);
     } catch (error) {

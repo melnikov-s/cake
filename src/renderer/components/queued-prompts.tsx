@@ -25,6 +25,7 @@ import { ScheduledGroup } from "@/components/scheduled-prompts";
 import { cn } from "@/lib/utils";
 import type { ChatStore, QueuedPrompt } from "../stores/ChatStore";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
+import { queuedPromptText } from "../lib/queued-prompts";
 
 const provenanceLabel = {
   agent: "Agent-generated message",
@@ -84,7 +85,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
               {laneEntries.map((entry, index) => {
                 const promptKey = entry.itemId ?? entry.id;
                 const label =
-                  splitModelReferences(entry.text)
+                  splitModelReferences(queuedPromptText(entry))
                     .map((part) => (part.model ? modelReferenceLabel(part.model) : part.text))
                     .join("") ||
                   `${entry.attachments.length} attachment${entry.attachments.length === 1 ? "" : "s"}`;

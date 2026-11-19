@@ -47,6 +47,9 @@ export const SessionChatPromptInput = Schema.Struct({
   responseMode: Schema.optionalKey(ConversationResponseMode),
   artifactPresentation: Schema.optionalKey(Schema.NullOr(ArtifactPresentationContext)),
   crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
+  /** Sender-chosen identity for a person's message: it becomes the Pi turn id, so the
+   * composer's optimistic queue row matches its stored item by id, never by text. */
+  clientId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
 });
 export interface SessionChatPromptInput extends Schema.Schema.Type<typeof SessionChatPromptInput> {}
 

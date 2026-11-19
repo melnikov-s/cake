@@ -14,7 +14,7 @@ import { toJsonValue } from "../../utils/to-json-value";
 import type { AttachmentReadInput } from "../../contracts/conversations/attachment-reference-control";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import * as cakeChatDigest from "../cake-chats/cakeChatDigest";
 import {
   inheritTaskInputProtection,
@@ -119,182 +119,226 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
   const handle = yield* acquire(input.sessionId);
   const primary = handle.profile === "CakeChatSession" || handle.profile === "ProjectSession";
   const storage = handle.profile !== "SubagentSession" ? yield* SessionFamilyStorage : undefined;
-  const admission = Effect.gen(function* () {
-    if (handle.profile !== "CakeChatSession" && input.crossSession)
-      yield* inheritTaskInputProtection(input.crossSession.sender.sessionId, input.sessionId).pipe(
-        asError("deliver"),
-      );
-    const message =
-      handle.profile === "CakeChatSession"
-        ? yield* prepareCoordinatorMessage(input).pipe(asError("deliver"))
-        : input;
-    if (delivery === "fyi") {
-      if (!storage || !message.crossSession || message.attachments.length)
-        return yield* new SessionChatError({
-          operation: "deliver",
-          message:
-            "FYIs require cross-session provenance and no attachments; forward message references in text instead",
-        });
-      yield* storage
-        .deferPassiveNotice({
-          id: message.crossSession.messageId,
-          recipientSessionId: input.sessionId,
-          text: message.text,
-          crossSession: message.crossSession,
-        })
-        .pipe(asError("deliver"));
-      return TurnId.make(message.crossSession.messageId);
-    }
-    // Only passive source notifications wait; explicit questions and deliberate steering still run.
-    if (
-      storage &&
-      input.crossSession &&
-      !input.attachments.length &&
-      delivery !== "steer" &&
-      isReferenceNotification(
-        encodeCrossSessionMessage(message.text, message.crossSession ?? input.crossSession),
-      )
-    ) {
-      const crossSession = message.crossSession ?? input.crossSession;
-      // The entire admission already owns withNoticeDelivery below.
-      const requests = (yield* storage.state()).turns.filter((turn) =>
-        turn.replyMessageIds?.includes(crossSession.messageId),
-      );
-      const report = {
-        id: crossSession.messageId,
-        recipientSessionId: input.sessionId,
-        text: encodeCrossSessionMessage(message.text, crossSession),
-        ...(crossSession.sourceMessageRef
-          ? { resultMessageRef: crossSession.sourceMessageRef }
-          : null),
-        ...(requests[0] ? { responseKey: requests[0].turnId } : null),
-      };
-      const turnIds = requests.map((turn) => turn.turnId);
+  // `shared`: this send holds the recipient's delivery lock, so it may carry and consume the
+  // shared quiet inbox (reports, session updates, FYIs, the update batch). Without the lock a
+  // person's message is admitted alone and those stay pending for the next message or batch.
+  const admission = (shared: boolean) =>
+    Effect.gen(function* () {
+      if (handle.profile !== "CakeChatSession" && input.crossSession)
+        yield* inheritTaskInputProtection(
+          input.crossSession.sender.sessionId,
+          input.sessionId,
+        ).pipe(asError("deliver"));
+      const message =
+        handle.profile === "CakeChatSession"
+          ? yield* prepareCoordinatorMessage(input).pipe(asError("deliver"))
+          : input;
+      if (delivery === "fyi") {
+        if (!storage || !message.crossSession || message.attachments.length)
+          return yield* new SessionChatError({
+            operation: "deliver",
+            message:
+              "FYIs require cross-session provenance and no attachments; forward message references in text instead",
+          });
+        yield* storage
+          .deferPassiveNotice({
+            id: message.crossSession.messageId,
+            recipientSessionId: input.sessionId,
+            text: message.text,
+            crossSession: message.crossSession,
+          })
+          .pipe(asError("deliver"));
+        return TurnId.make(message.crossSession.messageId);
+      }
+      // Only passive source notifications wait; explicit questions and deliberate steering still run.
       if (
-        !(yield* projectTodoAttention.hold(
-          report,
-          {
-            sessionId: crossSession.sender.sessionId,
-          },
-          turnIds,
-        ))
-      )
-        yield* storage.deferReferenceNotice(report, turnIds);
-      return TurnId.make(input.crossSession.messageId);
-    }
-    const references =
-      storage &&
-      !message.crossSession &&
-      !(handle.profile === "ProjectSession" && /^[!/]/.test(message.text))
-        ? ((yield* storage.state().pipe(asError("deliver"))).deferredReferences?.filter(
-            (item) => item.recipientSessionId === input.sessionId && !item.attentionTodoId,
-          ) ?? [])
-        : [];
-    // A user message carries the quiet inbox without changing its requested delivery.
-    const userMessage =
-      primary &&
-      !message.crossSession &&
-      !(handle.profile === "ProjectSession" && /^[!/]/.test(message.text))
-        ? yield* cakeChatDigest.prepareUserMessage(handle, message.text).pipe(asError("deliver"))
-        : undefined;
-    const reportPage = pendingReportPage(references);
-    const prepared = message.crossSession
-      ? { text: message.text }
-      : yield* prepareForChat(input.sessionId, userMessage?.text ?? message.text).pipe(
-          asError("deliver"),
+        storage &&
+        input.crossSession &&
+        !input.attachments.length &&
+        delivery !== "steer" &&
+        isReferenceNotification(
+          encodeCrossSessionMessage(message.text, message.crossSession ?? input.crossSession),
+        )
+      ) {
+        const crossSession = message.crossSession ?? input.crossSession;
+        // The entire admission already owns withNoticeDelivery below.
+        const requests = (yield* storage.state()).turns.filter((turn) =>
+          turn.replyMessageIds?.includes(crossSession.messageId),
         );
-    const text = yield* artifactPresentationContext
-      .prepareInput(
-        input,
-        message.crossSession
-          ? encodeCrossSessionMessage(message.text, message.crossSession)
-          : addReferenceNotifications(prepared.text, reportPage, references.length),
-      )
-      .pipe(asError("deliver"));
-    if (storage && !message.crossSession)
-      yield* resumeAfterUserInput(input.sessionId).pipe(asError("deliver"));
-    const carriesUpdates = Boolean(storage && !message.crossSession && !/^[!/]/.test(message.text));
-    const passive: readonly StoredPassiveNotice[] = carriesUpdates
-      ? yield* takePassiveNotices(handle, input.sessionId).pipe(asError("deliver"))
-      : [];
-    const attachments = projectAttachments(
-      yield* prepareTaskInputs(
-        input.sessionId,
-        handle.profile === "CakeChatSession",
-        message.attachments,
-      ).pipe(asError("deliver")),
-    );
-    const reportPresentation = pendingReportPresentation(reportPage);
-    // Artifact context must not change human prose or optimistic reconciliation.
-    // Reuse the existing input provenance rather than another transcript authority.
-    const contextualUser =
-      !message.crossSession && input.artifactPresentation !== undefined && text !== message.text;
-    const passiveTurnId =
-      passive.length || reportPage.length || contextualUser ? crypto.randomUUID() : undefined;
-    if (storage && passiveTurnId && passive.length)
-      yield* storage.markPassiveNoticeAdmission(
-        passive.map((notice) => notice.id),
-        passiveTurnId,
+        const report = {
+          id: crossSession.messageId,
+          recipientSessionId: input.sessionId,
+          text: encodeCrossSessionMessage(message.text, crossSession),
+          ...(crossSession.sourceMessageRef
+            ? { resultMessageRef: crossSession.sourceMessageRef }
+            : null),
+          ...(requests[0] ? { responseKey: requests[0].turnId } : null),
+        };
+        const turnIds = requests.map((turn) => turn.turnId);
+        if (
+          !(yield* projectTodoAttention.hold(
+            report,
+            {
+              sessionId: crossSession.sender.sessionId,
+            },
+            turnIds,
+          ))
+        )
+          yield* storage.deferReferenceNotice(report, turnIds);
+        return TurnId.make(input.crossSession.messageId);
+      }
+      const references =
+        shared &&
+        storage &&
+        !message.crossSession &&
+        !(handle.profile === "ProjectSession" && /^[!/]/.test(message.text))
+          ? ((yield* storage.state().pipe(asError("deliver"))).deferredReferences?.filter(
+              (item) => item.recipientSessionId === input.sessionId && !item.attentionTodoId,
+            ) ?? [])
+          : [];
+      // A user message carries the quiet inbox without changing its requested delivery.
+      const userMessage =
+        shared &&
+        primary &&
+        !message.crossSession &&
+        !(handle.profile === "ProjectSession" && /^[!/]/.test(message.text))
+          ? yield* cakeChatDigest.prepareUserMessage(handle, message.text).pipe(asError("deliver"))
+          : undefined;
+      const reportPage = pendingReportPage(references);
+      const prepared = message.crossSession
+        ? { text: message.text }
+        : yield* prepareForChat(input.sessionId, userMessage?.text ?? message.text).pipe(
+            asError("deliver"),
+          );
+      const text = yield* artifactPresentationContext
+        .prepareInput(
+          input,
+          message.crossSession
+            ? encodeCrossSessionMessage(message.text, message.crossSession)
+            : addReferenceNotifications(prepared.text, reportPage, references.length),
+        )
+        .pipe(asError("deliver"));
+      if (shared && storage && !message.crossSession)
+        yield* resumeAfterUserInput(input.sessionId).pipe(asError("deliver"));
+      const carriesUpdates = Boolean(
+        shared && storage && !message.crossSession && !/^[!/]/.test(message.text),
       );
-    const turnId = TurnId.make(
-      yield* (
-        passiveTurnId
-          ? handle.submit({
-              turnId: passiveTurnId,
-              delivery,
-              text: passive.length ? `${text}\n\n${passiveNoticeContext(passive)}` : text,
-              attachments,
-              markdown: input.renderUserMessageAsMarkdown,
-              internal: {
-                _tag: "UserWithReminders",
+      const passive: readonly StoredPassiveNotice[] = carriesUpdates
+        ? yield* takePassiveNotices(handle, input.sessionId).pipe(asError("deliver"))
+        : [];
+      const attachments = projectAttachments(
+        yield* prepareTaskInputs(
+          input.sessionId,
+          handle.profile === "CakeChatSession",
+          message.attachments,
+        ).pipe(asError("deliver")),
+      );
+      const reportPresentation = pendingReportPresentation(reportPage);
+      // A person's message keeps its identity and exact text. Cake context (session updates,
+      // reports, to-dos, artifact view) travels as hidden model context of the same input,
+      // never as part of the visible, editable queue row. The sender's id becomes the turn id.
+      const human = !message.crossSession && !/^[!/]/.test(message.text);
+      const admissionId =
+        passive.length ||
+        reportPage.length ||
+        (human && (text !== message.text || input.clientId !== undefined))
+          ? (input.clientId ?? crypto.randomUUID())
+          : undefined;
+      if (storage && admissionId && passive.length)
+        yield* storage.markPassiveNoticeAdmission(
+          passive.map((notice) => notice.id),
+          admissionId,
+        );
+      const turnId = TurnId.make(
+        yield* (
+          admissionId
+            ? handle.submit({
+                turnId: admissionId,
+                delivery,
+                text: passive.length ? `${text}\n\n${passiveNoticeContext(passive)}` : text,
+                attachments,
+                markdown: input.renderUserMessageAsMarkdown,
+                internal: {
+                  _tag: "UserWithReminders",
+                  text,
+                  notices: passive,
+                  reportNotices: reportPresentation.notices,
+                  updates: reportPresentation.updates,
+                  userText: message.text,
+                },
+                ...(input.presentationMode ? { presentationMode: input.presentationMode } : null),
+                ...(input.responseMode ? { responseMode: input.responseMode } : null),
+              })
+            : deliverConversation(
+                Effect.succeed(handle),
+                delivery,
                 text,
-                notices: passive,
-                reportNotices: reportPresentation.notices,
-                updates: reportPresentation.updates,
-                userText: message.text,
-              },
-              ...(input.presentationMode ? { presentationMode: input.presentationMode } : null),
-              ...(input.responseMode ? { responseMode: input.responseMode } : null),
-            })
-          : deliverConversation(
-              Effect.succeed(handle),
-              delivery,
-              text,
-              attachments,
-              input.renderUserMessageAsMarkdown,
-              input.presentationMode,
-              input.responseMode,
-            )
-      ).pipe(deliveryDeadline, asError("deliver")),
-    );
-    if (storage && passiveTurnId && passive.length)
-      yield* storage.markPassiveNoticeAdmission(
-        passive.map((notice) => notice.id),
-        passiveTurnId,
-        true,
+                attachments,
+                input.renderUserMessageAsMarkdown,
+                input.presentationMode,
+                input.responseMode,
+              )
+        ).pipe(deliveryDeadline, asError("deliver")),
       );
-    if (userMessage?.digestIds.length)
-      yield* (yield* SessionFamilyStorage)
-        .removeDigest(userMessage.digestIds)
-        .pipe(asError("deliver"));
-    // Admission is not user-facing handling. Keep the obligation across omission/abort/restart.
-    if (storage && reportPage.length)
-      yield* storage
-        .markReferenceAdmissions(reportPage.map((item) => item.id))
-        .pipe(asError("deliver"));
-    // The user's message carried the pending batch, so its timer is cancelled.
-    if (storage && carriesUpdates)
-      yield* storage.closeUpdateBatch(input.sessionId).pipe(asError("deliver"));
-    yield* handle.publishSessionChanged().pipe(deliveryDeadline, asError("deliver"));
-    return turnId;
-  });
+      if (storage && admissionId && passive.length)
+        yield* storage.markPassiveNoticeAdmission(
+          passive.map((notice) => notice.id),
+          admissionId,
+          true,
+        );
+      if (userMessage?.digestIds.length)
+        yield* (yield* SessionFamilyStorage)
+          .removeDigest(userMessage.digestIds)
+          .pipe(asError("deliver"));
+      // Admission is not user-facing handling. Keep the obligation across omission/abort/restart.
+      if (storage && reportPage.length)
+        yield* storage
+          .markReferenceAdmissions(reportPage.map((item) => item.id))
+          .pipe(asError("deliver"));
+      // The user's message carried the pending batch, so its timer is cancelled.
+      if (storage && carriesUpdates)
+        yield* storage.closeUpdateBatch(input.sessionId).pipe(asError("deliver"));
+      yield* handle.publishSessionChanged().pipe(deliveryDeadline, asError("deliver"));
+      return turnId;
+    });
+  if (!storage) return yield* admission(true).pipe(asError("deliver"));
   // Serialize preparation through durable admission, never a model answer. The lock is
-  // per recipient, and a person or agent waits on this send, so a busy lock fails clearly.
-  return yield* (
-    storage
-      ? storage.withNoticeDeliveryDeadline(input.sessionId, "chat.deliver", admission)
-      : admission
-  ).pipe(asError("deliver"));
+  // per recipient, and an agent waits on this send, so a busy lock fails clearly.
+  if (input.crossSession)
+    return yield* storage
+      .withNoticeDeliveryDeadline(input.sessionId, "chat.deliver", admission(true))
+      .pipe(asError("deliver"));
+  // A person's messages keep their order among themselves but never wait behind another
+  // delivery (worker results, batches, attention) to this chat.
+  return yield* storage
+    .withUserDelivery(
+      input.sessionId,
+      Effect.gen(function* () {
+        const locked = yield* storage.withNoticeDeliveryIfAvailable(
+          input.sessionId,
+          "chat.deliver",
+          admission(true),
+        );
+        if (Option.isSome(locked)) return locked.value;
+        const turnId = yield* admission(false);
+        // Resuming paused board delivery is lock-held bookkeeping; it follows the busy holder.
+        if ((yield* storage.state()).boardDeliveryPaused?.includes(input.sessionId))
+          yield* storage
+            .withNoticeDeliveryDeadline(
+              input.sessionId,
+              "chat.resume-after-input",
+              resumeAfterUserInput(input.sessionId),
+            )
+            .pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Could not resume delivery after user input", cause),
+              ),
+              Effect.forkDetach,
+            );
+        return turnId;
+      }),
+    )
+    .pipe(asError("deliver"));
 });
 
 /** Artifact input uses the existing application-input provenance, not the human-input path.
