@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Effect, Layer } from "effect";
 import { afterEach, describe, it } from "vitest";
-import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import {
+  DEFAULT_DICTATION_CLEANUP_MINIMUM_CHARACTERS,
+  defaultApplicationState,
+} from "../../src/contracts/application/application-data";
 import {
   APPLICATION_DOCUMENT_NAME,
   ApplicationStorage,
@@ -127,6 +130,9 @@ describe("ApplicationStorage filesystem integration", () => {
       fastModeSessionIds: [],
       modelPresets: [],
       cakePrompts: {},
+      // Required fields with decoding defaults are materialized like the instructions below.
+      dictationCleanupMinimumCharacters: DEFAULT_DICTATION_CLEANUP_MINIMUM_CHARACTERS,
+      widgetAttachments: [],
       globalCustomInstructions: "",
       userSessionInstructions: "",
       delegatedSessionInstructions: "",

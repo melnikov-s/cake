@@ -603,6 +603,7 @@ const makeLayer = (
             return { answer: true };
           }),
         presentAgentAction: () => Effect.void,
+        releaseSession: () => Effect.void,
         requestProjectControl: (sessionId, invocation) =>
           Effect.sync(() => {
             controlInvocations.push({ sessionId, invocation });

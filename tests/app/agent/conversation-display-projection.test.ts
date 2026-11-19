@@ -178,6 +178,12 @@ function sessionWithWork() {
   return { session, leafId };
 }
 
+type DisplayPart = ReturnType<typeof projectConversationDisplay>[number];
+const entryIdOf = (part: DisplayPart) => ("entryId" in part ? part.entryId : undefined);
+/** Live input precedes Pi persistence, so only replay can anchor parts to an entry id. */
+const withoutEntryIds = (parts: ReadonlyArray<DisplayPart>) =>
+  parts.map((part) => ({ ...part, entryId: undefined }));
+
 function summarized(parts: ReturnType<typeof projectConversationDisplay>) {
   return parts.map((part) => ({
     id: part.id,
@@ -207,15 +213,18 @@ describe("Conversation display projection after tool pruning", () => {
     });
     const session = SessionManager.inMemory("/project");
     session.appendCustomEntry(internalInputEntryType, { timestamp: 1, origin });
-    session.appendMessage(message);
+    const originalId = session.appendMessage(message);
     const replay = projectConversationDisplay(session);
-    expect(live).toEqual(replay);
+    expect(withoutEntryIds(live)).toEqual(withoutEntryIds(replay));
+    expect(live.map(entryIdOf)).toEqual([undefined]);
     expect(replay).toEqual([
       expect.objectContaining({
         id: "agent-update-progress-1",
         agentSource: update.source,
         renderAs: "markdown",
         text: update.text,
+        // The consumed automatic transport stays anchored to its Pi original.
+        entryId: originalId,
       }),
     ]);
     // Identical words entered by the user are a separate human-authored message.
@@ -267,11 +276,16 @@ describe("Conversation display projection after tool pruning", () => {
       });
       const session = SessionManager.inMemory("/project");
       session.appendCustomEntry(internalInputEntryType, { timestamp: 1, origin });
-      session.appendMessage(message);
+      const originalId = session.appendMessage(message);
       const replay = projectConversationDisplay(session);
       const authored = (parts: typeof live) =>
         parts.filter((part) => part.kind === "text" && part.crossSession);
-      expect(authored(live)).toEqual(authored(replay));
+      expect(withoutEntryIds(authored(live))).toEqual(withoutEntryIds(authored(replay)));
+      // A batch has no human row, so its consumed FYIs anchor the Pi original; FYIs
+      // beside actual user input leave that anchor to the user's own row.
+      expect(authored(replay).map(entryIdOf)).toEqual(
+        notices.map(() => (kind === "UpdateBatch" ? originalId : undefined)),
+      );
       expect(authored(replay)).toEqual(
         notices.map((notice) =>
           expect.objectContaining({

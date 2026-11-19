@@ -5,8 +5,17 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { expect, it } from "vitest";
 import { unexpectedNodeStderr } from "./fixtures/node-stderr";
+import {
+  projectInvestigationSystemPrompt,
+  subagentSystemPrompt,
+} from "../../src/services/pi/subagent-system-prompt";
 
 const exec = promisify(execFile);
+// Identify worker turns by their shipped system prompts, not a copied sentence.
+const workerPromptMarkers = [
+  subagentSystemPrompt(),
+  projectInvestigationSystemPrompt({ allowMutations: false }),
+].map((prompt) => prompt.split("\n")[0] ?? prompt);
 const chunk = (text: string, stop = false) =>
   `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 1, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: stop ? "stop" : null }] })}\n\n`;
 
@@ -38,9 +47,7 @@ it.each([
         response.writeHead(200, { "content-type": "text/event-stream" });
         // Utility-model title/summarization requests can interleave with work.
         // Identify the worker, never assume the second HTTP request is its turn.
-        const workerRequest =
-          body.includes("You are a lightweight agent handling one delegated task.") ||
-          body.includes("You are a hidden, temporary project investigator reporting to Cake Chat.");
+        const workerRequest = workerPromptMarkers.some((marker) => body.includes(marker));
         const busyParent = body.includes("Keep the parent busy while the worker completes");
         if (workerRequest && ++workerRequests === 1) {
           if (shutdown === "uncertain tool") {

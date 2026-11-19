@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { MemorySummaryError } from "../../../src/services/opt-memory/memory-work";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
 import { makeArtifactProjectionLive } from "../../../src/services/artifacts/ArtifactProjectionLive";
@@ -661,10 +662,11 @@ describe("permanent Cake Chat", () => {
         expect((yield* invoke({ command: "vscode.enter" })).details).toMatchObject({
           result: { entered: true },
         });
+        // The operation deadline wraps the caller's signal; the renderer gets the bounded one.
         expect(request).toHaveBeenCalledWith(
           SESSION_ASSISTANT_ID,
           { name: "vscode.enter", arguments: {} },
-          context.signal,
+          expect.any(AbortSignal),
         );
         expect((yield* invoke(script)).details).toMatchObject({
           result: { ok: true, result: { size: 16 } },
@@ -1145,7 +1147,8 @@ describe("permanent Cake Chat", () => {
               parentConversation: undefined,
               language: "html",
               model: { provider: "p", id: "vision" },
-              signal: context.signal,
+              // Bounded by the operation deadline, derived from the caller's signal.
+              signal: expect.any(AbortSignal),
               initialState: { count: 1 },
             }),
           );
@@ -1378,7 +1381,8 @@ describe("permanent Cake Chat", () => {
             caller: { provider: "p", modelId: "chat", thinkingLevel: "high", fastMode: false },
           }),
         );
-        // A missing utility model fails clearly instead of substituting another model.
+        // A missing utility model fails as a configuration error instead of substituting
+        // another model; the memory boundary deliberately carries only the failure reason.
         f.setState({ ...defaultApplicationState(), cakeChatPreferences: preferences });
         yield* Effect.promise(() =>
           summarize({
@@ -1387,7 +1391,10 @@ describe("permanent Cake Chat", () => {
             signal: new AbortController().signal,
           }).then(
             () => expect.fail("Expected summarization to require a utility model"),
-            (error: unknown) => expect(String(error)).toMatch(/no utility model is configured/),
+            (error: unknown) => {
+              expect(error).toBeInstanceOf(MemorySummaryError);
+              expect(error).toMatchObject({ reason: "configuration" });
+            },
           ),
         );
         expect(f.completions).toEqual(["cheap", "chosen", "chat"]);

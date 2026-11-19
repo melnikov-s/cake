@@ -109,10 +109,19 @@ try {
         sessionDirectory: paths.piSessions,
         resolvedSessionDirectory: paths.piResolvedSessions,
       };
+      // With no default preset, new sessions name a registered model at creation.
+      // A built-in catalog entry needs no provider extension; no turn is submitted.
+      const initialConfiguration = {
+        provider: "openai",
+        modelId: "gpt-4o",
+        thinkingLevel: "off" as const,
+        fastMode: false,
+      };
       const options = yield* acquireOptions({
         location,
         sessionId: inputSessionId,
         newSession: true,
+        initialConfiguration,
       });
       yield* Effect.promise(async () => {
         const signal = new AbortController().signal;
@@ -174,6 +183,7 @@ try {
         location,
         sessionId: "00000000-0000-4000-8000-000000000002",
         newSession: true,
+        initialConfiguration,
       });
       yield* sessions
         .acquire({

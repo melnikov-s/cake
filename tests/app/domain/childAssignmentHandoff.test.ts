@@ -267,9 +267,8 @@ describe("assignment-first child handoff", () => {
       assert.equal(result.launch.status, "accepted", JSON.stringify(result.launch));
       yield* Deferred.await(f.firstPrompt);
       assert.equal(result.assignment?.sequence, 1);
-      const items = (yield* f.provide(todos.list("/project"))).items;
-      assert.equal(items.length, 1);
-      assert.equal(items[0]?.description, input.assignment.description);
+      // Family children support their parent's outcome; they never create automatic to-dos.
+      assert.deepEqual((yield* f.provide(todos.list("/project"))).items, []);
       assert.equal(f.starts(), 1);
       const message = parseCrossSessionMessage(f.bootstrap());
       assert.equal(message?.metadata.expectsResponse, true);
@@ -315,7 +314,7 @@ describe("assignment-first child handoff", () => {
   );
 
   for (const failure of ["full list", "storage failure"] as const) {
-    it.effect(`keeps child admission and retries truthful despite to-do ${failure}`, () =>
+    it.effect(`keeps child admission and retries independent of to-do ${failure}`, () =>
       Effect.gen(function* () {
         const promptGate = yield* Deferred.make<void>();
         const f = yield* fixture({
@@ -348,14 +347,12 @@ describe("assignment-first child handoff", () => {
         assert.equal(retry.launch.state, "active");
         assert.equal(f.starts(), 1);
         assert.equal(f.acquisitions(), 1);
-        assert.equal(logs.length, 2);
-        for (const log of logs) {
-          assert.match(String(log), /Accepted session could not be recorded/);
-          assert.match(
-            String(log),
-            failure === "full list" ? /To-do list is full/ : /To-do disk unavailable/,
-          );
-        }
+        // Child admission never writes to-do bookkeeping, so a broken list cannot warn or fail.
+        assert.deepEqual(logs, []);
+        assert.equal(
+          (yield* f.provide(todos.list("/project"))).items.length,
+          failure === "full list" ? fullProjectTodos().items.length : 0,
+        );
         yield* Deferred.succeed(promptGate, undefined);
       }),
     );
@@ -421,7 +418,7 @@ describe("assignment-first child handoff", () => {
         const again = yield* f.launch();
         assert.equal(again.launch.status, "already-admitted");
         assert.equal(f.starts(), 1);
-        assert.equal((yield* f.provide(todos.list("/project"))).items.length, 1);
+        assert.deepEqual((yield* f.provide(todos.list("/project"))).items, []);
         assert.deepEqual(a.assignment, b.assignment);
         assert.equal((yield* f.provide(boards.current(a.childSessionId))).entries.length, 1);
       }),

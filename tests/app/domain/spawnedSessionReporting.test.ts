@@ -2507,7 +2507,8 @@ describe("automatic spawned-session reporting", () => {
             const todos = (yield* projectTodos.list("/project")).items;
             assert.equal(todos.length, 1);
             assert.equal(todos[0]?.title, createArgs.name);
-            assert.equal(todos[0]?.description, createArgs.initialPrompt);
+            // Launch prompts stay out of visible to-dos; a summary may replace this later.
+            assert.equal(todos[0]?.description, `Continue work on ${createArgs.name}.`);
             assert.equal(todos[0]?.associations[0]?.kind, "session");
             // Only global Cake Chat's own launches enter its separate list.
             assert.equal((yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items.length, 0);

@@ -70,6 +70,8 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
       state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
       settleTurn: () => Effect.void,
       recordTurn: () => Effect.void,
+      registerParent: () => Effect.void,
+      registerPurpose: () => Effect.void,
     }),
     Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
     Layer.mock(ManagedWorktrees, {
@@ -110,9 +112,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
     );
     const items = (yield* projectTodos.list("/project")).items;
     assert.equal(items.length, 1);
-    assert.equal(
-      items[0]?.description,
-      "Start exactly one real turn. Keep the original prompt intact.",
-    );
+    // Launch prompts stay out of visible to-dos; a summary may replace this later.
+    assert.equal(items[0]?.description, "Continue work on Headless.");
   }).pipe(Effect.provide(dependencies));
 });

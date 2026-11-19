@@ -61,7 +61,10 @@ const environment = (disposed: Deferred.Deferred<void>) =>
     ApplicationState.layer.pipe(
       Layer.provide(Layer.mock(ApplicationStorage, { save: () => Effect.void })),
     ),
-    Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+    Layer.mock(SessionArchiveStorage, {
+      locate: () => Effect.succeed("active" as const),
+      locateMany: (sessionIds) => Effect.succeed(new Set(sessionIds)),
+    }),
     Layer.mock(ManagedWorktrees, {
       records: () => Effect.succeed([]),
       proposeSquashMessage: () => Effect.void,

@@ -32,6 +32,7 @@ import { RuntimeRecoveryStorage } from "../../../src/services/storage/RuntimeRec
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { BootstrapLive } from "../../../src/main/BootstrapLive";
+import { BackendRecovery } from "../../../src/services/startup/BackendRecovery";
 
 const home = process.env.CAKE_HOME;
 assert.ok(home);
@@ -88,6 +89,12 @@ if (mode?.startsWith("start"))
 const runtime = ManagedRuntime.make(
   makeBackendLive({ paths, homeDirectory: home }, () => Layer.empty),
 );
+const configuration = {
+  provider: "restart-fixture",
+  modelId: "fixture",
+  thinkingLevel: "off" as const,
+  fastMode: false,
+};
 const location = {
   projectPath: project,
   projectName: "Restart fixture",
@@ -113,17 +120,17 @@ try {
             );
           return;
         }
+        // Production RPC admission waits for restart recovery; direct domain calls must too,
+        // or a resuming prompt can race recovery restoring the held queue.
+        yield* (yield* BackendRecovery).awaitReady();
+        const start = mode?.startsWith("start") ?? false;
+        // With no default preset, a new Project Session needs its model at creation.
         const handle =
           globalChat || surface === "project-chat"
             ? yield* cakeChatTargets.acquireAvailable(sessionId)
-            : yield* acquireTarget(location, sessionId, mode?.startsWith("start") ?? false);
+            : yield* acquireTarget(location, sessionId, start, start ? configuration : undefined);
         if (mode?.startsWith("start")) {
-          yield* handle.applyConfiguration({
-            provider: "restart-fixture",
-            modelId: "fixture",
-            thinkingLevel: "off",
-            fastMode: false,
-          });
+          yield* handle.applyConfiguration(configuration);
           if (worker) {
             yield* handle.prompt("Seed parent once");
             yield* handle.snapshot().pipe(

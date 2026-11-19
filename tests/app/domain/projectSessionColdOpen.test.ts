@@ -207,6 +207,7 @@ it.effect.each([0, 1000, 5000])(
           list: () => Effect.succeed([f.family]),
           state: () => Effect.succeed({ families: [f.family], turns: [], spawnedSessions: [] }),
           settleTurn: () => Effect.void,
+          changes: () => Stream.empty,
         }),
         Layer.mock(ManagedWorktrees, {
           records: () => Effect.succeed(f.records),
