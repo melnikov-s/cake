@@ -157,5 +157,13 @@ export function heldAttentionHarness(
     Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
     sessions,
   );
-  return { runtime: ManagedRuntime.make(layer), storage, state, submissions, receipts, acquired };
+  return {
+    runtime: ManagedRuntime.make(layer),
+    layer,
+    storage,
+    state,
+    submissions,
+    receipts,
+    acquired,
+  };
 }

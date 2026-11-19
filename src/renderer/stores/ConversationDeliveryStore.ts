@@ -22,7 +22,12 @@ export interface ConversationDeliveryInput {
   artifactPresentation?: ViewContext | null;
   /** Captured once per input; implementation carries it through existing delivery, not a new queue. */
   responseMode?: ConversationResponseMode;
+  /** Aborted when the person cancels a send that is taking too long. */
+  signal?: AbortSignal;
 }
+
+/** After this long without an answer, the composer offers to cancel the send. */
+export const DELIVERY_STALL_MS = 10_000;
 
 export interface ConversationDeliveryStoreProps {
   sessionId(): string | undefined;
@@ -48,6 +53,9 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
   editingEntryId: string | undefined;
   error: string | undefined;
   errorDetails: string | undefined;
+  /** The send that has waited past DELIVERY_STALL_MS; the composer offers Cancel for it. */
+  stalledOperationId: string | undefined;
+  private stalledController: AbortController | undefined;
 
   @child
   get optimisticUserMessages(): OptimisticUserMessagesStore {
@@ -85,6 +93,11 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
       return this.compact(sessionId, builtin.args || undefined, text, attachments, restoreOnError);
 
     const operationId = this.props.operations.start(this.props.operationOwner);
+    const controller = new AbortController();
+    const stallTimer = setTimeout(() => {
+      this.stalledOperationId = operationId;
+      this.stalledController = controller;
+    }, DELIVERY_STALL_MS);
     // Slash input can complete without creating any Pi transcript message.
     // Let Pi project a user entry only if the command actually produces one.
     if (!text.startsWith("/"))
@@ -92,16 +105,20 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     try {
       const presentationMode = this.props.presentationMode?.();
       const responseMode = this.props.responseMode?.() ?? "text";
-      const delivered = await this.props.deliver({
-        sessionId,
-        text,
-        attachments,
-        delivery,
-        renderUserMessageAsMarkdown,
-        responseMode,
-        artifactPresentation: ArtifactPresentationContext.consume(this)?.capture(sessionId),
-        ...(presentationMode === undefined ? null : { presentationMode }),
-      });
+      const delivered = await untilAborted(
+        this.props.deliver({
+          sessionId,
+          text,
+          attachments,
+          delivery,
+          renderUserMessageAsMarkdown,
+          responseMode,
+          artifactPresentation: ArtifactPresentationContext.consume(this)?.capture(sessionId),
+          signal: controller.signal,
+          ...(presentationMode === undefined ? null : { presentationMode }),
+        }),
+        controller.signal,
+      );
       if (delivered === false) {
         this.optimisticUserMessages.remove(operationId);
         this.finish(operationId);
@@ -116,11 +133,23 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
         return false;
       }
       this.optimisticUserMessages.remove(operationId);
-      this.reportError(error);
+      // A send the person canceled is not a failure; its text simply returns to the composer.
+      if (!controller.signal.aborted) this.reportError(error);
       this.finish(operationId);
       if (restoreOnError) this.props.restoreDraft(text, attachments);
       return false;
+    } finally {
+      clearTimeout(stallTimer);
+      if (this.stalledOperationId === operationId) {
+        this.stalledOperationId = undefined;
+        this.stalledController = undefined;
+      }
     }
+  }
+
+  /** Stops waiting for the stalled send and returns its text to the composer. */
+  cancelStalledSend() {
+    this.stalledController?.abort();
   }
 
   async sendEdit(
@@ -273,6 +302,14 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     this.props.operations.finish(operationId);
   }
 }
+
+/** Settles with the delivery, or rejects as soon as the person cancels it. */
+const untilAborted = <A>(promise: Promise<A>, signal: AbortSignal) =>
+  new Promise<A>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 
 const attachmentsFromParts = (parts: readonly UiPart[]): Attachment[] =>
   parts.flatMap((part): Attachment[] => {

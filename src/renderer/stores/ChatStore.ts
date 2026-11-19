@@ -86,6 +86,9 @@ export interface ChatStoreProps {
   attachmentImages?(): TranscriptAttachmentImagesStore;
   streaming(): boolean;
   submitting(): boolean;
+  /** A send has waited long enough that the person may want to cancel it. */
+  sendStalled?(): boolean;
+  cancelStalledSend?(): void;
   stoppable?(): boolean;
   configuration(): ChatConfigurationStore | undefined;
   commands(): ConversationSnapshot["commands"];
@@ -385,6 +388,12 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   get submitting() {
     return this.submittingLocally || this.props.submitting();
+  }
+  get sendStalled() {
+    return this.props.sendStalled?.() ?? false;
+  }
+  cancelStalledSend() {
+    this.props.cancelStalledSend?.();
   }
   get loading() {
     return this.streaming || this.submitting;

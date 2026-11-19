@@ -194,6 +194,8 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       isReferenceNotification(input.text)
     ) {
       yield* storage.withNoticeDelivery(
+        targetId,
+        "coordinator.defer-reference",
         Effect.gen(function* () {
           const requests = pending
             ? (yield* storage.state()).turns.filter((turn) =>

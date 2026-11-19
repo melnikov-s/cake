@@ -93,6 +93,8 @@ const processRecipient = Effect.fn("WorkboardDeliveries.processRecipient")(funct
 ) {
   const storage = yield* SessionFamilyStorage;
   return yield* storage.withNoticeDelivery(
+    recipient,
+    "workboard.recipient",
     Effect.gen(function* () {
       const id = boardIdFor(family.familyId);
       const state = yield* storage.state();

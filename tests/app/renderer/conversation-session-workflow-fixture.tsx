@@ -120,6 +120,7 @@ export function renderConversationSession(
   );
   return {
     sessionId,
+    composer: session.conversationSessionStore.composerStore,
     inputLabel:
       profile === "project"
         ? "Message"

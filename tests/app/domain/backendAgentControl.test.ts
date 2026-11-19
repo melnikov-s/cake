@@ -3175,6 +3175,8 @@ it.effect(
       yield* Context.get(f.context, SessionCoordination)
         .withAdmission(
           storage.withNoticeDelivery(
+            CAKE_CHAT_SESSION_ID,
+            "test.hold",
             Deferred.succeed(locked, undefined).pipe(Effect.andThen(Deferred.await(release))),
           ),
         )

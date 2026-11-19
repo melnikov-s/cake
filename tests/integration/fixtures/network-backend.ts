@@ -358,7 +358,8 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       closeUpdateBatch: () => Effect.void,
       discardUpdates: () => Effect.void,
       withMemberLock: (_sessionId, effect) => effect,
-      withNoticeDelivery: (effect) => effect,
+      withNoticeDelivery: (_recipientSessionId, _operation, effect) => effect,
+      withNoticeDeliveryDeadline: (_recipientSessionId, _operation, effect) => effect,
       setBoardDeliveryPaused: () => Effect.void,
     }),
     Layer.mock(SessionArchiveStorage, {

@@ -255,6 +255,8 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       submitting: () =>
         this.composerStore.deliveryStore.activeOperations.length > 0 ||
         this.model.activeTurnIds.length > 0,
+      sendStalled: () => this.composerStore.deliveryStore.stalledOperationId !== undefined,
+      cancelStalledSend: () => this.composerStore.deliveryStore.cancelStalledSend(),
       configuration: () => this.configurationStore,
       commands: capabilities.commands,
       placeholder: capabilities.placeholder,
@@ -411,7 +413,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
             ? null
             : { presentationMode: input.presentationMode }),
         },
-        { signal: this.signal },
+        { signal: input.signal ? AbortSignal.any([this.signal, input.signal]) : this.signal },
       );
       return { turnId };
     });

@@ -163,6 +163,8 @@ export const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(functi
     const storage = yield* SessionFamilyStorage;
     yield* storage
       .withNoticeDelivery(
+        handle.parentSessionId,
+        "subagent.completion",
         Effect.gen(function* () {
           const report = {
             id: handle.recovery.completionId,

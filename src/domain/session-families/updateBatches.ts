@@ -136,6 +136,8 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
 ) {
   const storage = yield* SessionFamilyStorage;
   return yield* storage.withNoticeDelivery(
+    recipientSessionId,
+    "update-batch",
     Effect.gen(function* () {
       const batch = (yield* storage.state()).updateBatches?.find(
         (item) => item.recipientSessionId === recipientSessionId,

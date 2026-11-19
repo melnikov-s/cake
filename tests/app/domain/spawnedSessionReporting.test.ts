@@ -1674,9 +1674,9 @@ describe("automatic spawned-session reporting", () => {
               sessionId: CAKE_CHAT_SESSION_ID,
               stop: { by: "user", reason: "user-stop" },
             });
-            const reloaded = yield* Effect.gen(function* () {
-              return yield* SessionFamilyStorage;
-            }).pipe(Effect.provide(familyStorageHarness(f.harness.files).layer));
+            // The reopened storage stays open for this test, like the app-lifetime layer.
+            const reopened = yield* Layer.build(familyStorageHarness(f.harness.files).layer);
+            const reloaded = yield* SessionFamilyStorage.pipe(Effect.provide(reopened));
             assert.equal((yield* reloaded.state()).deferredReferences?.[0]?.admissions, 1);
             yield* send("Continue with my next question").pipe(
               Effect.provideService(SessionFamilyStorage, reloaded),

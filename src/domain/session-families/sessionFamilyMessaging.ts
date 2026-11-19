@@ -322,6 +322,8 @@ export const route: (
       (input.outcome !== "failed" && !preparedRequests.length && isReferenceNotification(encoded)))
   ) {
     yield* families.withNoticeDelivery(
+      targetSessionId,
+      "family.defer-reference",
       families.deferReferenceNotice(
         {
           id: messageId,

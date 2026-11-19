@@ -48,6 +48,8 @@ export const retry = Effect.fn("NoticeDeliveryRecovery.retry")(function* (
   const { id } = yield* Schema.decodeUnknownEffect(NoticeDeliveryRetry)(input);
   const storage = yield* SessionFamilyStorage;
   return yield* storage.withNoticeDelivery(
+    recipientSessionId,
+    "notice.retry",
     Effect.gen(function* () {
       const turn = (yield* storage.state()).turns.find(
         (turn) =>

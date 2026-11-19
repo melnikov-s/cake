@@ -21,8 +21,10 @@ import type {
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import {
+  Clock,
   Context,
   DateTime,
+  Duration,
   Effect,
   FileSystem,
   Layer,
@@ -39,7 +41,7 @@ import {
 } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 import { timedStorageRead } from "./internal/timedStorageRead";
-import type { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
+import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 
 import type {
   CakeChatLaunchReport,
@@ -268,10 +270,22 @@ export class SessionFamilyStorage extends Context.Service<
       recipientSessionId: string,
       turnId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
-    /** Serializes retry admission with explicit queue withdrawal, not model execution. */
+    /**
+     * Serializes one recipient's notice admission with explicit queue withdrawal, not model
+     * execution. Each recipient has its own lock, so a stalled delivery to one chat cannot
+     * block another. `operation` is a fixed label for slow-lock warnings, never an ID.
+     */
     readonly withNoticeDelivery: <A, E, R>(
+      recipientSessionId: string,
+      operation: string,
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E, R>;
+    /** The same lock for work a person waits on: a lock that stays busy fails clearly. */
+    readonly withNoticeDeliveryDeadline: <A, E, R>(
+      recipientSessionId: string,
+      operation: string,
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | SessionFamilyStorageError, R>;
     readonly withdrawNotices: (
       recipientSessionId: string,
       messageIds: ReadonlyArray<string>,
@@ -342,6 +356,66 @@ const settleHandoffs = (
       : spawn;
   });
 
+/** A delivery lock held or awaited this long is logged, including while it is still stuck. */
+const NOTICE_DELIVERY_SLOW = Duration.seconds(5);
+/** How long work a person is waiting on may queue behind another delivery to the same chat. */
+const NOTICE_DELIVERY_WAIT_TIMEOUT = Duration.seconds(30);
+
+const withNoticeDeliveryLock = <A, E, R, E2>(
+  locks: RcMap.RcMap<string, Semaphore.Semaphore>,
+  recipientSessionId: string,
+  operation: string,
+  effect: Effect.Effect<A, E, R>,
+  waitFor: (take: Effect.Effect<void, never, Scope.Scope>) => Effect.Effect<void, E2, Scope.Scope>,
+): Effect.Effect<A, E | E2, R> =>
+  Effect.acquireUseRelease(
+    Scope.make(),
+    (leaseScope) =>
+      Effect.gen(function* () {
+        const clock = yield* Clock.Clock;
+        const startedAt = clock.currentTimeMillisUnsafe();
+        let acquiredAt: number | undefined;
+        let completed = false;
+        // Fixed labels and durations only: never record IDs or content.
+        const timing = () => {
+          const now = clock.currentTimeMillisUnsafe();
+          return {
+            operation,
+            phase: acquiredAt === undefined ? ("wait" as const) : ("hold" as const),
+            waitMs: (acquiredAt ?? now) - startedAt,
+            holdMs: acquiredAt === undefined ? 0 : now - acquiredAt,
+          };
+        };
+        // A delivery that never finishes must still leave evidence while it is stuck.
+        yield* Effect.sleep(NOTICE_DELIVERY_SLOW).pipe(
+          Effect.andThen(
+            Effect.suspend(() => Effect.logWarning("Notice delivery still pending", timing())),
+          ),
+          Effect.forkIn(leaseScope),
+        );
+        return yield* Effect.gen(function* () {
+          const lock = yield* RcMap.get(locks, recipientSessionId).pipe(
+            Effect.provideService(Scope.Scope, leaseScope),
+          );
+          yield* waitFor(lock.takeScoped(1)).pipe(Effect.provideService(Scope.Scope, leaseScope));
+          acquiredAt = clock.currentTimeMillisUnsafe();
+          const result = yield* effect;
+          completed = true;
+          return result;
+        }).pipe(
+          Effect.ensuring(
+            Effect.suspend(() => {
+              const measured = timing();
+              return measured.waitMs + measured.holdMs < Duration.toMillis(NOTICE_DELIVERY_SLOW)
+                ? Effect.void
+                : Effect.logWarning("Slow notice delivery", { ...measured, completed });
+            }),
+          ),
+        );
+      }),
+    (leaseScope) => Scope.close(leaseScope, Exit.void),
+  );
+
 export const makeSessionFamilyStorageLive = (documentPath: string) =>
   Layer.effect(
     SessionFamilyStorage,
@@ -349,7 +423,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const lock = yield* Semaphore.make(1);
-      const noticeDeliveryLock = yield* Semaphore.make(1);
+      const noticeDeliveryLocks = yield* RcMap.make({
+        lookup: (_recipientSessionId: string) => Semaphore.make(1),
+      });
       const revision = yield* SubscriptionRef.make(0);
 
       // Pending delivery and other workflows share this document. Decode it again
@@ -1770,7 +1846,35 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         discardUpdates,
         markNoticeFailure,
         retryNoticeDelivery,
-        withNoticeDelivery: (effect) => noticeDeliveryLock.withPermit(effect),
+        withNoticeDelivery: (recipientSessionId, operation, effect) =>
+          withNoticeDeliveryLock(
+            noticeDeliveryLocks,
+            recipientSessionId,
+            operation,
+            effect,
+            (take) => take,
+          ),
+        withNoticeDeliveryDeadline: (recipientSessionId, operation, effect) =>
+          withNoticeDeliveryLock(
+            noticeDeliveryLocks,
+            recipientSessionId,
+            operation,
+            effect,
+            (take) =>
+              take.pipe(
+                Effect.timeoutOrElse({
+                  duration: NOTICE_DELIVERY_WAIT_TIMEOUT,
+                  orElse: () =>
+                    Effect.fail(
+                      new SessionFamilyStorageError({
+                        operation,
+                        message:
+                          "Another delivery to this conversation is still running. Try again shortly.",
+                      }),
+                    ),
+                }),
+              ),
+          ),
         withdrawNotices,
         removeUnmaterializedChild,
         removeProject,

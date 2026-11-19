@@ -239,6 +239,8 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
 ) {
   const storage = yield* SessionFamilyStorage;
   return yield* storage.withNoticeDelivery(
+    turn.senderSessionId,
+    "family.outcome",
     Effect.gen(function* () {
       // Re-read the journal: a correlated explicit reply or queue withdrawal can have satisfied it since this pass began.
       const current = (yield* storage.state()).turns.find(
@@ -487,6 +489,8 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
   const held =
     turn.resultDelivery === "notification" && isCakeChatSessionId(turn.senderSessionId)
       ? yield* storage.withNoticeDelivery(
+          turn.senderSessionId,
+          "family.attention-hold",
           projectTodoAttention.hold(
             {
               id: reportMessageId(turn.turnId),

@@ -131,6 +131,8 @@ export const acknowledge = Effect.fn("PendingReports.acknowledge")(function* (
 ) {
   const storage = yield* SessionFamilyStorage;
   return yield* storage.withNoticeDelivery(
+    sessionId,
+    "reports.acknowledge",
     Effect.gen(function* () {
       const state = yield* storage.state();
       const pending = (state.deferredReferences ?? []).filter(

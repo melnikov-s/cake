@@ -18,6 +18,7 @@ import {
   type ChatTranscriptBehavior,
   type TranscriptBottomNavigation,
 } from "@/components/chat-transcript";
+import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { ArrowDownIcon } from "@/components/ui/icons";
 import { ChatConversationControls } from "./chat-conversation-controls";
@@ -412,6 +413,23 @@ export const Chat = observer(function Chat({
           {!activatingDraft && store.rewording && (
             <div className="px-2 pb-2 text-xs text-muted-foreground" role="status">
               Rewording selection…
+            </div>
+          )}
+          {!activatingDraft && store.sendStalled && (
+            <div
+              className="flex items-center gap-2 px-2 pb-2 text-xs text-muted-foreground"
+              role="status"
+            >
+              Still sending…
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 font-normal"
+                onClick={() => store.cancelStalledSend()}
+              >
+                Cancel
+              </Button>
             </div>
           )}
           {!activatingDraft && composerContent}

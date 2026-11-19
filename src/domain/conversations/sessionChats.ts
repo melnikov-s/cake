@@ -8,6 +8,7 @@ import { resumeAfterUserInput } from "../session-families/workboardDeliveries";
 import { takePassiveNotices } from "../session-families/updateBatches";
 import * as messageReferences from "./messageReferences";
 import * as projectTodoAttention from "../projects/projectTodoAttention";
+import { withDeliveryDeadline } from "./deliveryDeadlines";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { toJsonValue } from "../../utils/to-json-value";
 import type { AttachmentReadInput } from "../../contracts/conversations/attachment-reference-control";
@@ -60,6 +61,15 @@ import {
   setThinkingLevel as setConversationThinkingLevel,
   use as useConversation,
 } from "./conversations";
+
+/** A stuck Pi admission fails this one send visibly instead of holding the chat's delivery lock. */
+const deliveryDeadline = withDeliveryDeadline(
+  () =>
+    new SessionChatError({
+      operation: "deliver",
+      message: "Cake could not hand this message to the agent. Try sending it again.",
+    }),
+);
 
 const asError =
   (operation: string) =>
@@ -255,7 +265,7 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
               input.presentationMode,
               input.responseMode,
             )
-      ).pipe(asError("deliver")),
+      ).pipe(deliveryDeadline, asError("deliver")),
     );
     if (storage && passiveTurnId && passive.length)
       yield* storage.markPassiveNoticeAdmission(
@@ -275,13 +285,16 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
     // The user's message carried the pending batch, so its timer is cancelled.
     if (storage && carriesUpdates)
       yield* storage.closeUpdateBatch(input.sessionId).pipe(asError("deliver"));
-    yield* handle.publishSessionChanged().pipe(asError("deliver"));
+    yield* handle.publishSessionChanged().pipe(deliveryDeadline, asError("deliver"));
     return turnId;
   });
-  // Serialize preparation through durable admission, never a model answer.
-  return yield* (storage ? storage.withNoticeDelivery(admission) : admission).pipe(
-    asError("deliver"),
-  );
+  // Serialize preparation through durable admission, never a model answer. The lock is
+  // per recipient, and a person or agent waits on this send, so a busy lock fails clearly.
+  return yield* (
+    storage
+      ? storage.withNoticeDeliveryDeadline(input.sessionId, "chat.deliver", admission)
+      : admission
+  ).pipe(asError("deliver"));
 });
 
 /** Artifact input uses the existing application-input provenance, not the human-input path.
@@ -332,6 +345,8 @@ export const abort = Effect.fn("SessionChats.abort")(function* (
   const storage = yield* SessionFamilyStorage;
   yield* storage
     .withNoticeDelivery(
+      target.sessionId,
+      "chat.abort",
       Effect.gen(function* () {
         yield* storage.setBoardDeliveryPaused(target.sessionId, true);
       }),
@@ -381,6 +396,8 @@ const withdrawQueuedMessages = Effect.fn("SessionChats.withdrawQueuedMessages")(
   // The outbox must not re-admit a report between Pi removing it and recording
   // the user's withdrawal. This gate never waits for a model response.
   return yield* storage.withNoticeDelivery(
+    sessionId,
+    "chat.withdraw-queued",
     Effect.gen(function* () {
       const pending = (yield* handle.pendingMessages()).items.filter(
         (item) =>
