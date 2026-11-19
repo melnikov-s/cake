@@ -376,6 +376,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       locate: () => Effect.succeed("active" as const),
       resolvedProjectEntry: () => Effect.succeed(undefined),
       resolutionSnapshot: () => Effect.succeed({ version: 1 as const, directories: {} }),
+      projectTitles: () => Effect.succeed(new Map<string, string>()),
     }),
     Layer.mock(Terminal, {
       closeWorkingDirectory: () => Effect.void,
@@ -419,7 +420,9 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     Layer.mock(McpSettings, {}),
     Layer.mock(LocalMcpServer, {}),
     Layer.mock(LocalMcpSettings, {}),
-    Layer.mock(PiAgentResources, {}),
+    Layer.mock(PiAgentResources, {
+      loadPromptResources: () => Effect.succeed({ skills: [], promptTemplates: [] }),
+    }),
     Layer.mock(ScheduledMessages, {
       snapshot: () => ({ revision: 0, messages: [] }),
       changes: () => Stream.concat(Stream.succeed({ revision: 0, messages: [] }), Stream.never),
