@@ -617,7 +617,7 @@ const sessionKindLabels = {
   delegated: "Delegated",
 } satisfies Record<SessionKind, string>;
 
-export type ConversationRow = { node: ConversationNavigationNode; depth: number };
+type ConversationRow = { node: ConversationNavigationNode; depth: number };
 
 export interface ConversationRowGroup {
   /** Stable across header appearance, so rows keep their React identity and focus. */

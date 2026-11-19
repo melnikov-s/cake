@@ -287,7 +287,7 @@ interface FilesystemCommands {
 
 /** Who referenced an image. Relative paths try a Cake Chat's scratch directory, the
  * author's working directory, then the project root; home only when none is known. */
-export interface ImageSource {
+interface ImageSource {
   readonly sessionId?: string;
   readonly workspacePath?: string;
   readonly projectPath?: string;

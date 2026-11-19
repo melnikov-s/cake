@@ -29,7 +29,11 @@ export default {
   // these plugins discover browser HTML, test includes, setup and global setup.
   vite: { config: ["vite.config.ts", "vite.browser.config.ts"] },
   vitest: { config: ["vitest.config.ts", "vitest.integration.config.ts"] },
-  ignore: [".agents/skills/**/assets/**"],
+  ignore: [
+    ".agents/skills/**/assets/**",
+    // Widget runtime source read as text and evaluated as an AsyncFunction body, not a module.
+    "tests/fixtures/widgets/*.runtime.js",
+  ],
   // The native Effect compiler loads this plugin name from tsconfig; its package is @effect/tsgo.
   ignoreDependencies: ["vscode", "@effect/language-service"],
   ignoreBinaries: ["swift"],

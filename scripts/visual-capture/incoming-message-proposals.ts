@@ -130,7 +130,7 @@ function screen(id: string, name: string, note: string, open = false) {
   </section>`;
 }
 
-export function incomingMessageProposalsHtml() {
+function incomingMessageProposalsHtml() {
   return `<style>
 *{box-sizing:border-box}body{margin:0;padding:0}.gallery{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;font-size:14px;line-height:1.45;background:#e8ebef;color:#25282c;padding:24px}
 .proposal{--background:oklch(0.98 0.003 250);--foreground:oklch(0.205 0.012 252);--card:oklch(0.998 0.001 250);--muted:oklch(0.948 0.006 250);--muted-foreground:oklch(0.48 0.015 250);--border:oklch(0.885 0.008 250);--accent:oklch(0.58 0.18 252);--destructive:oklch(0.58 0.18 28);--success:oklch(0.58 0.14 150);--user-message:oklch(0.915 0.014 245);color-scheme:light;color:var(--foreground);width:min(100%,960px);margin:0 auto 36px;background:var(--background);border-radius:8px}
