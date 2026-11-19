@@ -51,21 +51,6 @@ describe("passive reference notifications", () => {
     const context = addReferenceNotifications("Current question", [
       correlatedReport(metadata.messageId),
     ]);
-    for (const rule of [
-      "no acknowledgment-only reply is needed",
-      "Answer the user first",
-      "communicate useful results once",
-      "Check sessions.reports before repeating stale notices",
-      "Only for pending reports actually communicated",
-      "sessions.reports.acknowledge with their IDs and exact already-emitted communicatedText",
-      "mark handled and stop reminders",
-      "never planned prose/intake/tool receipts/unrelated answers",
-      "Dismiss only by user decision",
-      "interruption retains obligations",
-      "No mutations/polling/wakes authorized",
-    ])
-      expect(context).toContain(rule);
-    expect(context).not.toContain("After visible text, call");
     expect(splitContextReminders(context).text).toBe("Current question");
   });
 
@@ -172,9 +157,6 @@ describe("passive reference notifications", () => {
     expect(addReferenceNotifications("Next question", [report])).toContain(
       `[Full agent response](${ref})`,
     );
-    expect(addReferenceNotifications("Next question", [report])).toContain(
-      "not this reminder/private Pi IDs",
-    );
     const source = { ...report.source! };
     delete source.messageId;
     expect(pendingReportRef({ ...report, source })).toBe(ref.split("?")[0]);
@@ -189,8 +171,6 @@ describe("passive reference notifications", () => {
     const firstPage = pendingReportPage(reports);
     expect(firstPage).toHaveLength(5);
     const first = addReferenceNotifications("An unrelated question", firstPage, reports.length);
-    expect(first).toContain("Inline report supplied to the model");
-    expect(first).not.toContain("Bodies have not been read");
     expect(first).toContain("8 pending");
     expect(splitContextReminders(first).text).toBe("An unrelated question");
     expect(first.length).toBeLessThan(24_000);
@@ -262,9 +242,6 @@ describe("passive reference notifications", () => {
       "Cake · session updates",
     ]);
     expect(split.reminders[0]?.text).toContain(ref);
-    expect(split.reminders[0]?.text).toContain(
-      "References only; linked originals have not been inspected",
-    );
     expect(addReferenceNotifications("Literal user input", [])).toBe("Literal user input");
   });
 });

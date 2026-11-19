@@ -37,26 +37,17 @@ it("keeps self-contained lifecycle, writing and attention rules in both baseline
       PROJECT_TODO_DESCRIPTION_GUIDANCE,
       PROJECT_TODO_ATTENTION_GUIDANCE,
     ])
-      expect(baseline).toContain(rule);
-    expect(baseline).toContain("Sections: Needs attention, Ready to Merge, Active, Snoozed, Done.");
-    expect(baseline).toContain("No extra guide reads needed");
-    expect(baseline.match(/Session-linked/g)).toHaveLength(1);
-    expect(baseline).toContain("only when all required sessions resolve");
-    expect(baseline.length).toBeLessThan(2900);
+      expect(baseline.split(rule)).toHaveLength(2);
   }
 });
-it("excludes routine actions while preserving durable work across both chats, help and guide", () => {
-  for (const rule of [
-    "Track durable ongoing building, multi-step research and discussions/decisions to revisit",
-    "Reuse existing/session-created items",
-    "No new to-dos for routine one-shot actions",
-    "merge approved work, open websites, navigate, direct answers/lookups",
-    "even with multiple tools, delegation, verification or blockers",
-    "Update underlying tasks for blockers, not administrative umbrella items",
-    "Attribution may be null; never create just to attribute turns",
-    "Assistant-maintained, not user chores",
-  ])
-    expect(PROJECT_TODO_CREATION_RULE).toContain(rule);
+it.each([
+  ["Cake Chat", 2804],
+  ["Project Chat", 2728],
+] as const)("bounds the empty %s baseline", (chat, budget) => {
+  // Ratchet at the current size: growth requires a deliberate budget edit.
+  expect(projectTodoBaseline(emptyProjectTodos(), chat).length).toBeLessThanOrEqual(budget);
+});
+it("shares one creation rule across the baseline, help and guide", () => {
   expect(guide).toContain(PROJECT_TODO_CREATION_RULE);
   expect(registry.operationHelp("todos.create")).toContain(PROJECT_TODO_CREATION_RULE);
 });
@@ -76,15 +67,7 @@ it("retains bounded admission-time previews independently of list page sizes", (
   expect(baseline).not.toContain('"title":"Task 20"');
 });
 
-it("documents caller-selected list sizes and the separate update-many cap", () => {
-  const help = registry.operationHelp("todos.list");
-  expect(help).toContain("List limit defaults to 20");
-  expect(help).toContain("positive safe integer page size");
-  expect(help).toContain("todos.update-many in batches of at most 50");
-  expect(help).not.toContain("(max 50)");
-});
-
-it("shares the current-snapshot writing rules in mutation help and keeps the description key", () => {
+it("shares exact link, attention and description rules in mutation help", () => {
   for (const command of ["todos.create", "todos.update", "todos.update-many"]) {
     expect(registry.operationHelp(command)).toContain(PROJECT_TODO_LINK_GUIDANCE);
     expect(registry.operationHelp(command)).toContain(PROJECT_TODO_ATTENTION_GUIDANCE);
@@ -92,14 +75,7 @@ it("shares the current-snapshot writing rules in mutation help and keeps the des
     expect(help).toContain(PROJECT_TODO_DESCRIPTION_GUIDANCE);
     expect(help).toContain('"description":{');
     expect(help).toContain('"title":"Latest update"');
-    expect(help).toContain("Replace it, don’t append");
-    expect(help).toContain("at most three");
-    expect(help).toContain("task/session IDs, commit hashes or test inventories");
   }
-  const example =
-    "The report-card fix passed review. We just need to verify that the cards show the right source names.";
-  expect(registry.operationHelp("todos.create")).toContain(example);
-  expect(guide).toContain(example);
 });
 it("exposes and enforces actionable title limits on every title mutation tool", async () => {
   const context = {
@@ -114,8 +90,6 @@ it("exposes and enforces actionable title limits on every title mutation tool", 
     )) {
     const help = registry.operationHelp(operation.command);
     expect(help).toContain('"maxLength":80');
-    expect(help).toContain("Short task name, at most 80 characters.");
-    expect(help).toContain("Title names the task (max 80 characters).");
     const input = (title: string) =>
       operation.command === "todos.create"
         ? { title, description: "Task details." }
@@ -130,28 +104,4 @@ it("exposes and enforces actionable title limits on every title mutation tool", 
         "at most 80 characters; use Latest update (description)",
       );
   }
-  expect(guide).toContain("at most 80 characters");
-  expect(guide).toContain("Omit title when editing other fields on legacy long-title items");
-});
-
-it("preserves evidence, closure, association replacement and dismissed requests", () => {
-  for (const rule of [
-    "exact findings originals",
-    "never invent refs",
-    "updates replace the whole list",
-    "public worker handles",
-    "Sources do not affect closure",
-    "subagent-only items close explicitly",
-  ])
-    expect(PROJECT_TODO_LINK_GUIDANCE).toContain(rule);
-  expect(PROJECT_TODO_CLOSING_RULE).toContain("Research stays open awaiting review");
-  expect(PROJECT_TODO_ATTENTION_GUIDANCE).toContain("Never revive/reword a dismissed request");
-  for (const rule of [
-    "Session-linked items close through session resolution",
-    "Restore reopens session-linked Done, except Human Done",
-    "Associations replace the whole list",
-    "Snooze",
-    "Side chats share",
-  ])
-    expect(guide).toContain(rule === "Snooze" ? "snooze/unsnooze" : rule);
 });

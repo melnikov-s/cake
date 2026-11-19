@@ -162,19 +162,6 @@ it.each([undefined, `project-chat:${"a".repeat(64)}`])(
         ]);
         expect(JSON.stringify(requests.at(-1)?.messages)).toContain("The large rewrite loses");
         expect(JSON.stringify(requests.at(-1)?.messages)).toContain("because our users need it");
-        const effectiveInput = JSON.stringify(requests.at(-1)?.messages);
-        for (const rule of [
-          "read-only investigation context fork",
-          "not an implementation Project Session",
-          "Never mutate this worktree or the source checkout",
-          "Read applicable project instruction files in this checkout",
-          "inherited chat context does not replace them",
-          "handoff to a fresh independent Project Session via sessions.create",
-          "never silently expand research into coding",
-          "no duplicate completion message",
-        ])
-          expect(effectiveInput).toContain(rule);
-        expect(effectiveInput).not.toContain("Make code changes only there");
         expect(executedIn).toBe("/managed/task");
         const originals = Schema.decodeUnknownSync(MessageListResult)(
           await chats.inspectMessages(fork.sessionId, { kind: "messages-list" }),

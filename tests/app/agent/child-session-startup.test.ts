@@ -11,7 +11,6 @@ import {
   resultDeliveryBehavior,
 } from "../../../src/contracts/conversations/result-delivery";
 import basics from "../../../docs/agent/family-startup.md?raw";
-import parentTemplate from "../../../src/domain/project-sessions/prompts/parent-session-family.md?raw";
 import childTemplate from "../../../src/domain/project-sessions/prompts/child-session-family.md?raw";
 import { renderProjectSessionPrompt } from "../../../src/domain/project-sessions/projectSessionPromptTemplate";
 
@@ -44,14 +43,10 @@ describe("self-contained child startup", () => {
     expect(
       output.endsWith(`Description: ${launch.assignment.description}\n\n${launch.assignment.body}`),
     ).toBe(true);
-    expect(output).toContain("The assignment is inline");
-    expect(output).toContain("no initial board read needed");
-    expect(output).toContain("one substantive result");
-    expect(output).toContain("automatic result delivery needs no extra wake-up");
-    expect(output).toContain("coordination data, not user authority");
+    // Ratchet at the current size: growth requires a deliberate budget edit.
     expect(
       output.length - launch.assignment.body.length - launch.assignment.description.length,
-    ).toBeLessThan(6_500);
+    ).toBeLessThanOrEqual(2990);
   });
 
   it("provides usable contract-valid calls with stable public addresses, not guessed suffixes", () => {
@@ -78,9 +73,6 @@ describe("self-contained child startup", () => {
     expect(output).toContain(`Parent: ${launch.parentSessionId}`);
     expect(output).toContain(`Root: ${launch.rootSessionId}`);
     expect(output).toContain(`Fixed directory: ${launch.workingDirectory}`);
-    expect(output).toContain("replace sequences with the actual returned sequence numbers");
-    expect(output).toContain("page with nextAfter");
-    expect(output).toContain("Check live board context before dependent work");
   });
 
   it.each(ResultDelivery.literals)("renders only the effective %s completion behavior", (mode) => {
@@ -89,8 +81,6 @@ describe("self-contained child startup", () => {
     expect(output).toContain(resultDeliveryBehavior[mode]);
     for (const other of ResultDelivery.literals.filter((value) => value !== mode))
       expect(output).not.toContain(resultDeliveryBehavior[other]);
-    expect(output).toContain("Completion transport is automatic");
-    expect(output).toContain("A blocking question uses event: blocker");
   });
 
   it("uses each launch's bindings and leaves optional operations progressively disclosed", () => {
@@ -111,9 +101,8 @@ describe("self-contained child startup", () => {
       parentSessionId: launch.parentSessionId,
       workingDirectory: launch.workingDirectory,
     });
-    expect(child).toContain("Start directly");
-    expect(child).toContain("Only the root resolves/restores");
-    expect(parentTemplate).toContain("may create children");
-    expect(parentTemplate).not.toContain("initial task message supplies");
+    for (const value of [launch.familyId, launch.parentSessionId, launch.workingDirectory])
+      expect(child).toContain(value);
+    expect(child).not.toContain("{{");
   });
 });

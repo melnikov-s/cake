@@ -6,7 +6,24 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createCakeSessionRuntimeCapabilities } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import type * as WorktreePrompt from "../../../src/services/pi/runtime/worktree-system-prompt";
 import { detectGitWorktree } from "../../../src/services/pi/runtime/worktree-system-prompt";
-import { researchSystemPrompt } from "../../../src/services/pi/subagent-system-prompt";
+import {
+  projectInvestigationSystemPrompt,
+  researchSystemPrompt,
+} from "../../../src/services/pi/subagent-system-prompt";
+import common from "../../../src/services/pi/runtime/prompts/common.md?raw";
+import mergeLanding from "../../../src/services/pi/runtime/prompts/worktree-landing-merge.md?raw";
+import mutationPolicy from "../../../src/services/pi/runtime/prompts/worker-mutations.md?raw";
+import investigationOnlyPolicy from "../../../src/services/pi/runtime/prompts/worker-investigation-only.md?raw";
+
+/** The selected worker policy template is included; the other mode's is not. */
+const expectWorkerPolicy = (prompt: string, allowMutations: boolean) => {
+  const [selected, other] = allowMutations
+    ? [mutationPolicy, investigationOnlyPolicy]
+    : [investigationOnlyPolicy, mutationPolicy];
+  expect(prompt).toContain(selected.trim());
+  expect(prompt).not.toContain(other.trim());
+};
+const commonFirstLine = common.split("\n")[0]!;
 
 vi.mock("../../../src/services/pi/runtime/worktree-system-prompt", async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreePrompt>()),
@@ -58,37 +75,11 @@ describe("role-specific prompt assembly", () => {
     const append = capabilities.resourceLoader.getAppendSystemPrompt().join("\n");
     expect(append).toContain(sessionInstructions);
     expect(append).toContain(`Checkout: ${directory}`);
-    expect(append).toContain("When authorized to land:");
-    expect(append).toContain("worktrees.merge without sessionId");
-    expect(append).toContain("no fallback");
-    expect(append).toContain("Reports/completion grant no merge/resolve approval");
-    expect(append).toContain("No acknowledgment-only replies or duplicate reports");
-    expect(append).toContain("Private pending reports: reports.md");
-    expect(append).toContain("task done + scoped checks passed = ready, not repo-wide green");
-    for (const rule of [
-      "## Deliver and revise",
-      "UI screenshots or a working preview when feasible",
-      "nonvisual behavior with relevant tests/results",
-      "Disclose unavailable runtime evidence; never fabricate it or present a mockup as working behavior",
-      "Offer alternatives for genuine design decisions, not every task",
-      "Revision reports explain what changed against feedback and what remains open",
-      "Reassess failed attempts; continue owned in-scope work",
-      "Escalate real blockers or decisions needing human input",
-      "verify relevant scoped checks against final committed changes",
-      "report exact checks/limitations and unrelated baseline debt separately",
-      "not a repo-wide-green gate",
-      "Get explicit approval for risky actions unless specifically authorized",
-      "routine authorized work needs no new approval",
-    ])
-      expect(append).toContain(rule);
-    expect(append).not.toContain("Seek independent review");
+    expect(append).toContain(mergeLanding.trim());
+    expect(append).toContain("## Deliver and revise");
     expect(append).not.toContain("## Execution stewardship");
-    expect(append).not.toContain("own outcomes, not just delegation");
-    expect(append).not.toContain("Cake development");
-    expect(append).not.toContain("pnpm typecheck");
     expect(append).not.toContain("plugins.present");
-    expect(append).not.toContain("hello-sample");
-    expect(append.match(/Pi owns execution\/history/g)).toHaveLength(1);
+    expect(append.split(commonFirstLine)).toHaveLength(2);
     expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual(
       expect.arrayContaining([expect.objectContaining({ content: instructions })]),
     );
@@ -120,10 +111,11 @@ describe("role-specific prompt assembly", () => {
       expect(capabilities.resourceLoader.getSystemPrompt()).toBe(systemPrompt);
       expect(capabilities.resourceLoader.getAppendSystemPrompt()).toEqual([]);
       expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual([]);
-      expect(systemPrompt).toContain(allowMutations ? "Mutation mode:" : "Investigations only:");
+      expectWorkerPolicy(systemPrompt, allowMutations);
       expect(systemPrompt).not.toContain("## Deliver and revise");
-      expect(systemPrompt).not.toMatch(/Workboard|worktrees\.merge|sessions\.create-child/);
-      expect(Buffer.byteLength(systemPrompt)).toBeLessThan(1000);
+      expect(systemPrompt).not.toMatch(/worktrees\.merge|sessions\.create-child/);
+      // Ratchet at the current size: growth requires a deliberate budget edit.
+      expect(Buffer.byteLength(systemPrompt)).toBeLessThanOrEqual(allowMutations ? 991 : 789);
     },
   );
 
@@ -152,13 +144,10 @@ describe("role-specific prompt assembly", () => {
         requestExtensions: [],
       });
       const prompt = capabilities.resourceLoader.getAppendSystemPrompt().join("\n");
-      expect(prompt).toContain("hidden, temporary project investigator reporting to Cake Chat");
-      expect(prompt).toContain(allowMutations ? "Mutation mode:" : "Investigations only:");
-      expect(prompt).toContain("Do not create Project Sessions or delegate recursively");
-      expect(prompt).toContain("Cake delivers the final report automatically");
+      expect(prompt).toContain(projectInvestigationSystemPrompt({ allowMutations }));
+      expectWorkerPolicy(prompt, allowMutations);
       expect(prompt).not.toContain("## Deliver and revise");
       expect(prompt).not.toContain("<cake_system_prompt>");
-      expect(prompt).not.toContain("Workboard");
       expect(capabilities.resourceLoader.getAgentsFiles().agentsFiles).toEqual(
         expect.arrayContaining([expect.objectContaining({ content: instructions })]),
       );

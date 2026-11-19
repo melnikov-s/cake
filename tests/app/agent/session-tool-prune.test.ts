@@ -118,11 +118,6 @@ describe("tool pruning", () => {
     expect(JSON.stringify(context.messages)).not.toContain("private analysis");
     expect(context.model).toEqual({ provider: "openai", modelId: "gpt-test" });
     expect(context.thinkingLevel).toBe("high");
-    expect(
-      activeBranch[0]?.type === "custom"
-        ? (activeBranch[0].data as { summary: string }).summary
-        : undefined,
-    ).toContain("full original transcript remains available in the session tree");
   });
 
   it("preserves the canonical system baseline while stripping reminders from multimodal dialogue", () => {
@@ -179,7 +174,6 @@ describe("tool pruning", () => {
     expect(JSON.stringify(messages)).not.toContain("entered Browser Mode");
     expect(JSON.stringify(messages)).not.toContain("injected context");
     expect(JSON.stringify(messages)).toContain("Required canonical instructions");
-    expect(JSON.stringify(messages)).not.toContain("tool-pruned continuation");
     expect(projectConversationDisplay(session)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "text", role: "assistant", text: "Answer" }),

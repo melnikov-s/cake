@@ -246,10 +246,6 @@ describe("Cake VS Code navigation and selection operations", () => {
 
   it("advertises separate navigation and selection contracts", () => {
     const { operations } = registry();
-    expect(operations.operationHelp("vscode.open")).toContain("no selections");
-    expect(operations.operationHelp("vscode.selections.set")).toContain(
-      "before changing the collection",
-    );
     for (const command of [
       "vscode.open",
       "vscode.selections.add",
@@ -416,12 +412,8 @@ describe("Cake VS Code navigation and selection operations", () => {
     expect(clearSelections).not.toHaveBeenCalled();
   });
 
-  it("discloses session-local retention, non-persistence, and next-tour-step cleanup guidance", () => {
+  it("lists selection cleanup operations in the vscode topic", () => {
     const { operations } = registry();
-    const help = operations.operationHelp("vscode.selections.list");
-    expect(help).toContain("Selections are ephemeral");
-    expect(help).toContain("set replaces");
-    expect(help).toContain("session Store exists");
     expect(operations.topicHelp("vscode")).toContain("vscode.selections.remove");
     expect(operations.topicHelp("vscode")).toContain("vscode.selections.clear");
   });

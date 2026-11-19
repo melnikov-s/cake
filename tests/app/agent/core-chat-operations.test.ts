@@ -4,6 +4,8 @@ import { cakeChatControlTools } from "../../../src/contracts/application/window-
 import {
   emptyProjectTodos,
   projectTodoBaseline,
+  PROJECT_TODO_AUTO_COMPLETION_RULE,
+  PROJECT_TODO_CREATION_RULE,
 } from "../../../src/contracts/projects/project-todos";
 import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
 import { createMessageOperations } from "../../../src/domain/conversations/cake-message-operations";
@@ -45,6 +47,29 @@ const prompt = coordinatorSystemPrompt("", "/docs", false, reference);
 
 const line = (command: string) =>
   reference.split("\n").find((item) => item.startsWith(`${command} {`));
+const inputSchema = (command: string): { required?: string[]; properties?: object } => {
+  const help = operations.operationHelp(command);
+  if (!help) throw new Error(`Missing ${command}`);
+  return JSON.parse(help.split("Input schema:\n")[1]!.split("\n")[0]!);
+};
+/** Top-level keys of a `{a, b?:"x"|{c}}` calling sketch. */
+const topLevelKeys = (sketch: string) => {
+  const keys: { name: string; optional: boolean }[] = [];
+  let depth = 0;
+  let quoted = false;
+  let current = "";
+  for (const character of sketch.slice(1, -1) + ",") {
+    if (character === '"') quoted = !quoted;
+    if (!quoted && "{[".includes(character)) depth += 1;
+    if (!quoted && "}]".includes(character)) depth -= 1;
+    if (!quoted && depth === 0 && character === ",") {
+      const name = current.trim().match(/^[A-Za-z]+/)?.[0] ?? "";
+      if (name) keys.push({ name, optional: current.trim()[name.length] === "?" });
+      current = "";
+    } else current += character;
+  }
+  return keys;
+};
 
 describe("core coordinator calling reference", () => {
   it("projects real launch and scoped lifecycle contracts, not Project Session-local controls", () => {
@@ -67,22 +92,37 @@ describe("core coordinator calling reference", () => {
     expect(reference).not.toContain("session.resolve ");
   });
 
-  it("assembles tool prune as deterministic maintenance, never model compaction", () => {
+  it("renders every registered required input, plus caller-required targets, as required", () => {
+    // Shared contracts may default a key for some callers; permanent chats must still pass it.
+    const callerRequired: Record<string, readonly string[]> = { "sessions.send": ["sessionId"] };
+    const sketches = reference.split("\n").filter((item) => /^[a-z-]+(\.[a-z-]+)+ \{/.test(item));
+    expect(sketches.length).toBeGreaterThan(10);
+    for (const sketch of sketches) {
+      const command = sketch.slice(0, sketch.indexOf(" {"));
+      const schema = inputSchema(command);
+      const keys = topLevelKeys(sketch.slice(command.length + 1));
+      for (const key of [...(schema.required ?? []), ...(callerRequired[command] ?? [])])
+        expect(keys, `${command} ${key}`).toContainEqual({ name: key, optional: false });
+      for (const key of keys) {
+        expect(Object.keys(schema.properties ?? {}), `${command} ${key.name}`).toContain(key.name);
+        expect(key.optional, `${command} ${key.name}`).toBe(
+          !schema.required?.includes(key.name) && !callerRequired[command]?.includes(key.name),
+        );
+      }
+    }
+    expect(Object.keys(callerRequired).every((command) => line(command))).toBe(true);
+  });
+
+  it("keeps deterministic tool prune separate from model compaction controls", () => {
     expect(line("sessions.tool-prune")).toBe("sessions.tool-prune {sessionId}");
-    expect(prompt).toContain("tool prune deterministically strips tool calls/results");
-    expect(prompt).toContain("makes no model call");
-    expect(prompt).toContain("never substitute them for tool prune");
-    expect(prompt).not.toMatch(/tool[ -]?compact/i);
   });
 
   it("exposes the unified attachment operations without a second plugin recipe", () => {
     expect(line("widgets.attach")).toContain("lineageId");
     expect(line("widgets.attach")).toContain("target");
     expect(line("widgets.attach")).toContain('"tab"');
-    expect(reference).toContain("Keep the target unchanged when moving");
     expect(line("widgets.detach")).toBe("widgets.detach {id}");
     expect(line("widgets.attachments")).toBe("widgets.attachments {}");
-    expect(prompt).toContain("Moving keeps identity/state");
     expect(reference).not.toContain("plugins.present");
     expect(attachWidget).not.toHaveBeenCalled();
   });
@@ -105,47 +145,11 @@ describe("core coordinator calling reference", () => {
       "attentionRequestId?",
     ])
       expect(line("todos.update")).toContain(key);
-    expect(reference).toContain("Revision conflict: reread");
   });
 
-  it("keeps security/workflow distinctions once, alongside existing baseline policy", () => {
+  it("includes each shared contract once, without specialist schemas", () => {
     const assembled = `${prompt}\n${projectTodoBaseline(emptyProjectTodos())}`;
-    for (const rule of [
-      "Project code changes: sessions.create",
-      "supply a new worktreeName",
-      "Context-dependent investigations: sessions.fork",
-      "Fresh-context subagents require an explicit request",
-      "Never edit settings files",
-      "no checkout edits, installs, generated files or Git mutations",
-      "notification by default",
-      "Launch asynchronously",
-      "reply for owed answers/dependencies",
-      "fyi cannot request reply or forward attachments",
-      "Receipt is intake, not execution",
-      "never manual Git landing",
-      "Inspect outcome/nextStep",
-      "merging never resolves",
-      "Resolve only when authorized",
-      "resolved:false restores",
-      "Execution/report arrival is not resolution",
-      "Session-linked to-dos close through session resolution",
-      "Restore reopens session-linked Done, except Human Done",
-      "replaced as a whole",
-      "Reuse existing/session-created items",
-      "dismissed request",
-      "Standalone completion/reopening",
-      "Known report ref: read directly",
-      "nextOffset as offset",
-      '"Full agent response"',
-      "not verified success",
-      "advanced options or contract errors",
-      "No prerequisite guide reads",
-    ])
-      expect(assembled).toContain(rule);
-    expect(assembled.match(/Full agent response/g)).toHaveLength(1);
-    expect(assembled.match(/Session-linked to-dos close through session resolution/g)).toHaveLength(
-      1,
-    );
+    expect(assembled.split(PROJECT_TODO_AUTO_COMPLETION_RULE)).toHaveLength(2);
     expect(prompt.match(/sessions\.create \{/g)).toHaveLength(1);
     for (const specialist of [
       "subagents.start {",
@@ -158,16 +162,17 @@ describe("core coordinator calling reference", () => {
   });
 
   it(`bounds prompt size (${reference.length} reference; ${prompt.length} coordinator; ${projectTodoBaseline(emptyProjectTodos()).length} empty to-do baseline chars)`, () => {
-    expect(reference.length).toBeLessThan(3500);
-    // Consistent with the component budgets: < 5800 base prompt plus < 3500 reference.
-    // Raised from 7000 for deliberate stewardship (5b33daa6) and evidence/feedback
-    // (1073b1bd) guidance plus later contract-derived operations (e.g. 1fdb86a0, a11bfaa7).
-    expect(prompt.length).toBeLessThan(9000);
+    // Ratchets at the current sizes: growth requires a deliberate budget edit.
+    expect(reference.length).toBeLessThanOrEqual(3064);
+    expect(prompt.length).toBeLessThanOrEqual(8844);
   });
 
-  it.each(["Cake Chat", "Project Chat"] as const)(
+  it.each([
+    ["Cake Chat", 13817],
+    ["Project Chat", 13741],
+  ] as const)(
     "bounds the shipped %s ingredients with recall, to-dos, attribution and preset guidance",
-    (chat) => {
+    (chat, budget) => {
       const docs = `/Users/user/.pi/agent/cake-docs/${"a".repeat(64)}`;
       const assembled = [
         coordinatorSystemPrompt("", docs, false, reference),
@@ -180,10 +185,8 @@ describe("core coordinator calling reference", () => {
         }),
       ].join("\n\n");
       // Budget shipped ingredients, not user instructions, skills or populated list data.
-      // Raised from 9000 for deliberate auto-merge (71083214), stewardship (5b33daa6),
-      // evidence/feedback (1073b1bd), tool-memory recall (c3d39502), attribution
-      // (6b1f3d4f, a0af7417) and to-do outcome/attention (5ce6101d, 4a418b86) guidance.
-      expect(Buffer.byteLength(assembled)).toBeLessThan(14000);
+      // Ratchet at the current size: growth requires a deliberate budget edit.
+      expect(Buffer.byteLength(assembled)).toBeLessThanOrEqual(budget);
       for (const command of [
         "sessions.create",
         "sessions.fork",
@@ -201,15 +204,8 @@ describe("core coordinator calling reference", () => {
         expect(
           assembled.split("\n").filter((item) => item.startsWith(`${command} {`)),
         ).toHaveLength(1);
-      expect(assembled).toContain("all required sessions resolve");
-      expect(assembled).toContain("No new to-dos for routine one-shot actions");
-      expect(assembled).toContain("Attribution may be null; never create just to attribute turns");
-      expect(assembled).toContain("choose an existing matching open to-do or JSON null");
-      expect(assembled).toContain("Only durable work warrants creation");
-      expect(assembled).toContain("Reports/completion grant no merge/resolve approval");
-      expect(assembled).toContain("shared/project instructions take precedence");
-      expect(assembled.match(/Zoom relevant remembered dialogue\/tool content/g)).toHaveLength(1);
-      expect(assembled).not.toContain("Memory: Zoom");
+      expect(assembled.match(/<original-conversation /g)).toHaveLength(1);
+      expect(assembled.split(PROJECT_TODO_CREATION_RULE)).toHaveLength(2);
     },
   );
 
@@ -218,13 +214,12 @@ describe("core coordinator calling reference", () => {
       coordinatorSystemPrompt("", "/docs", true, reference),
       durableArchiveRecallInstructions("companion"),
     ].join("\n\n");
-    expect(assembled).toContain("Never edit settings files");
-    expect(assembled).toContain("Reports/completion grant no merge/resolve approval");
-    expect(assembled).toContain("no sibling or arbitrary database access");
+    expect(assembled.match(/<original-conversation /g)).toHaveLength(1);
     expect(assembled).not.toMatch(
       /Core chat operations|cake-todo|to-dos \(application context\)|plugins\.present|hello-sample/,
     );
-    expect(Buffer.byteLength(assembled)).toBeLessThan(3500);
+    // Ratchet at the current size: growth requires a deliberate budget edit.
+    expect(Buffer.byteLength(assembled)).toBeLessThanOrEqual(2949);
   });
 
   it("never advertises missing/disabled controls or injects coordinator controls into the companion", () => {

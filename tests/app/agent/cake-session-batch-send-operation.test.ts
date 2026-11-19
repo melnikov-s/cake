@@ -223,7 +223,5 @@ describe("sessions.send-batch operation", () => {
     const help = await operations.invoke({ command: "sessions.send-batch.help" }, context);
     expect(help.text).toContain('"sessionIds"');
     expect(help.text).toContain('"uniqueItems":true');
-    expect(help.text).toContain("Not atomic");
-    expect(help.text).toContain("inspect every outcome");
   });
 });

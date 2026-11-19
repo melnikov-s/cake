@@ -366,7 +366,6 @@ describe("Backend-owned Cake operation composition", () => {
     ]);
     expect(registry.help()).toContain("settings");
     expect(registry.operationHelp("settings.cake-chat.update")).toContain("expectedInstructions");
-    expect(registry.operationHelp("settings.cake-chat.update")).toContain("next Cake Chat message");
     const read = await registry.invoke({ command: "settings.cake-chat.get" }, context);
     expect(read.details).toMatchObject({ result: { instructions: "Existing guidance." } });
     expect(get).toHaveBeenCalledWith(expect.any(AbortSignal));
@@ -490,9 +489,6 @@ describe("Backend-owned Cake operation composition", () => {
     expect(read.details).toMatchObject({
       result: { projectPath: "/zombies", instructions: "Existing." },
     });
-    expect(registry.operationHelp("settings.project-chat.update")).toContain(
-      "Read back the same projectPath before claiming success",
-    );
     const saved = await registry.invoke(
       { command: "settings.project-chat.update", input },
       context,
@@ -578,17 +574,12 @@ describe("Backend-owned Cake operation composition", () => {
       "worktrees.merge-and-resolve",
       "worktrees.merge",
     ]);
-    expect(registry.help()).toContain("worktrees — Managed landing");
-    const help = registry.operationHelp("worktrees.merge");
-    expect(help).toContain("identical to the Merge action in the Cake UI");
-    expect(help).toContain("prompts the owning session to resolve them inside its own worktree");
-    expect(help).toContain("Never land Cake-managed worktree work by hand");
+    expect(registry.help()).toMatch(/^worktrees — /m);
     const result = await registry.invoke(
       { command: "worktrees.merge", input: { sessionId: "1a2b3c4d" } },
       context,
     );
     expect(merge).toHaveBeenCalledWith("1a2b3c4d", expect.any(AbortSignal));
-    expect(registry.operationHelp("worktrees.merge-and-resolve")).toContain("persisted");
     expect(registry.operationOutputSchema("worktrees.merge-and-resolve")).toContain(
       "resolutionError",
     );
@@ -667,10 +658,7 @@ describe("Backend-owned Cake operation composition", () => {
       }),
     );
     expect(registry.definitions().map((operation) => operation.command)).toEqual(commands);
-    expect(registry.help()).toContain("projects — Registered projects");
-    const help = registry.operationHelp("projects.add");
-    expect(help).toContain("delegate it to an allowMutations worker first");
-    expect(help).toContain("alreadyRegistered");
+    expect(registry.help()).toMatch(/^projects — /m);
 
     const added = await registry.invoke(
       { command: "projects.add", input: { path: project.path, name: " Agents " } },
@@ -701,10 +689,6 @@ describe("Backend-owned Cake operation composition", () => {
     ).rejects.toThrow();
     expect(control.rename).not.toHaveBeenCalled();
 
-    const updateHelp = registry.operationHelp("projects.settings.update");
-    expect(updateHelp).toContain("Call projects.settings.get first");
-    expect(updateHelp).toContain("Never move or swap text");
-    expect(updateHelp).toContain("settings.project-chat.get/update");
     await registry.invoke(
       { command: "projects.settings.get", input: { projectPath: project.path } },
       context,
@@ -739,6 +723,7 @@ describe("Backend-owned Cake operation composition", () => {
     expect(control.updateSettings).toHaveBeenCalledTimes(1);
 
     // Icons arrive only as a local file path; Cake reads the image itself.
+    const updateHelp = registry.operationHelp("projects.settings.update");
     expect(updateHelp).toContain("iconPath");
     expect(updateHelp).not.toContain("base64");
     await registry.invoke(

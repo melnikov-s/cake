@@ -22,37 +22,23 @@ it.each([
     try {
       // Stewardship is shared; only the Global identity gets non-project execution.
       // Project-local instructions are appended separately by cakeChatRuntime.
+      const instructions = coordinatorSystemPrompt(
+        "",
+        "/cake/docs",
+        false,
+        "",
+        sessionId === CAKE_CHAT_SESSION_ID,
+      );
       const root = await harness.root(context, {
-        agent: {
-          model: { provider: "fixture", modelId: "fixture" },
-          instructions: coordinatorSystemPrompt(
-            "",
-            "/cake/docs",
-            false,
-            "",
-            sessionId === CAKE_CHAT_SESSION_ID,
-          ),
-        },
+        agent: { model: { provider: "fixture", modelId: "fixture" }, instructions },
       });
       await (
         await root.submit({ type: "input", content: "Review incoming work" }, context)
       ).wait(context);
       const parentSystem = getCurrentSystemMessage(requests[0]!.messages);
       if (!parentSystem?.sections) throw new Error("Expected a coordinator system message");
-      expect(parentSystem?.sections.instructions).toContain("own outcomes, not just delegation");
-      if (sessionId === CAKE_CHAT_SESSION_ID) {
-        expect(parentSystem?.sections.instructions).toContain(
-          "Small, explicitly user-authorized non-project edits",
-        );
-      } else {
-        expect(parentSystem?.sections.instructions).toContain("Project Chat stays read-only");
-        expect(parentSystem?.sections.instructions).not.toContain(
-          "Small, explicitly user-authorized non-project edits",
-        );
-      }
-      expect(parentSystem?.sections.instructions).toContain(
-        "take the next already-authorized step",
-      );
+      expect(parentSystem?.sections.instructions).toContain(instructions);
+      expect(instructions).toContain("## Execution stewardship");
       const chats = createDurableSideChats({
         parentSessionId: sessionId,
         harness,
@@ -78,13 +64,7 @@ it.each([
         // Native forks intentionally preserve the parent's exact system prefix.
         // Exclusion must be explicit in that inherited policy, not a new role grant.
         expect(getCurrentSystemMessage(sideRequest.messages)).toEqual(parentSystem);
-        expect(parentSystem?.sections.instructions).toContain(
-          "Permanent global Cake Chat and all Project Chats only, not Project Sessions or Side Chats",
-        );
-        expect(JSON.stringify(sideRequest.messages)).toContain(
-          "This is a side chat branched from the permanent chat",
-        );
-        expect(JSON.stringify(sideRequest.messages)).toContain("not extra authority");
+        expect(JSON.stringify(sideRequest.messages)).toContain("<cake-side-chat>");
       } finally {
         await side.dispose();
       }

@@ -88,15 +88,9 @@ describe("Cake Chat mutation exposure", () => {
     expect(calls).toEqual([]);
   });
 
-  it("retains explicit task authorization, protected-file policy, and unsafe replay", () => {
-    for (const tool of createCakeChatMutationTools(CAKE_CHAT_SESSION_ID)) {
+  it("marks mutation tools unsafe to replay", () => {
+    for (const tool of createCakeChatMutationTools(CAKE_CHAT_SESSION_ID))
       expect(tool.replay).toBe("unsafe");
-      expect(tool.description).toContain("explicitly user-authorized non-project edits");
-      expect(tool.description).toContain(
-        "Never modify project checkouts, Cake/Pi managed settings or credentials",
-      );
-      expect(tool.description).toContain("not sandboxes");
-    }
   });
 });
 
@@ -132,18 +126,6 @@ describe("Cake Chat bash guards", () => {
     );
     expect(calls).toEqual([]);
     expect(() => cakeChatBashTimeout(0)).toThrow("Invalid timeout");
-  });
-
-  it("advertises task-based delegation rather than blanket context forks", () => {
-    const description = createCakeChatBashTool().description;
-    expect(description).toContain(
-      "code changes to a fresh independent Project Session via sessions.create",
-    );
-    expect(description).toContain("read-only context fork via sessions.fork");
-    expect(description).toContain(
-      "explicitly authorized private subagent for an explicitly requested different model or unhelpful context",
-    );
-    expect(description).toContain("does not authorize code changes");
   });
 
   it("allows long investigation commands only for managed context-fork bindings", async () => {

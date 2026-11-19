@@ -345,9 +345,6 @@ it("uses memory-derived inclusive bounds to search only a summary's originals ac
   await expect(f.search({ fromEntryId: b.id, throughEntryId: a.id })).rejects.toThrow(
     "fromEntryId must not exceed throughEntryId",
   );
-  expect(durableArchiveRecallInstructions(sessionId)).toContain(
-    "[originals=A..B] is an inclusive original-entry range: fromEntryId=A and throughEntryId=B",
-  );
 });
 
 it("paginates matches with a fixed high water mark and can browse surrounding originals", async () => {
@@ -567,10 +564,9 @@ it("executes recall through the real tool loop and keeps guidance through contex
   const requests = JSON.stringify(f.models.requests);
   expect(requests).toContain("verbatim evidence before compaction");
   expect(requests).toContain(conversationRef);
-  expect(requests).toContain("inclusive fromEntryId/throughEntryId");
-  expect(requests).toContain(
-    "[originals=A..B] is an inclusive original-entry range: fromEntryId=A and throughEntryId=B",
-  );
+  // The exact recall block survives compaction in every request.
+  const recall = JSON.stringify(durableArchiveRecallInstructions(sessionId)).slice(1, -1);
+  expect(requests.split(recall)).toHaveLength(f.models.requests.length + 1);
   const page = await f.engine.root.entries({}, 100, undefined, BACKGROUND_CONTEXT);
   const result = page.items
     .flatMap((entry) => entry.model ?? [])

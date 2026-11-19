@@ -469,8 +469,9 @@ it("independently attributes repeated topic changes after omitted prefixes", asy
     ),
   ).toEqual(expected);
   expect(f.requests).toHaveLength(choices.length);
-  expect(JSON.stringify(f.requests[0])).toContain("For EVERY current human");
-  expect(JSON.stringify(f.requests[0])).toContain("Updating a to-do or launching a session");
+  expect(JSON.stringify(f.requests[0])).toContain(
+    JSON.stringify(TASK_ATTRIBUTION_INSTRUCTIONS).slice(1, -1),
+  );
 });
 
 it("does not let cross-session reports decide for themselves or revise the preceding human turn", async () => {

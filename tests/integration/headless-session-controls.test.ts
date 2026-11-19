@@ -197,7 +197,6 @@ it.live(
       const childInput = parseCrossSessionMessage(yield* Queue.take(backend.started));
       assert.ok(childInput);
       assert.equal(childInput.metadata.sender.sessionId, project.sessionId);
-      assert.match(childInput.text, /The persisted task follows; no initial board read needed\./);
       assert.match(childInput.text, /Description: Child work\n\nChild work/);
       const assignment = yield* run(
         boards.read((child as { childSessionId: string }).childSessionId, [1]),

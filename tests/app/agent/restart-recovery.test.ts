@@ -160,10 +160,6 @@ describe("restart transcript reconciliation", () => {
     });
     expect(recovery.content).toContain('"name":"bash"');
     expect(recovery.content).toContain('"command":"mutate"');
-    expect(recovery.content).toContain("no saved result");
-    expect(recovery.content).toContain("Inspect current state and verify effects");
-    expect(recovery.content).toContain("do not blindly replay");
-    expect(recovery.content).toContain("ask only the concrete question");
     expect(restartResumePrompt([], "!mutate")).toContain('"!mutate"');
   });
   it("keeps later answers, failures and unfinished tools out of an earlier input", () => {

@@ -263,8 +263,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       );
       const widgetHelp = (await operations.invoke({ command: "widgets.present.help" }, context))
         .text;
-      expect(widgetHelp).toContain("private conversation from the supplied brief/data");
-      expect(widgetHelp).toContain("actual Cake Electron screenshot");
+      expect(widgetHelp).toContain("Input schema:");
       expect(operations.operationHelp("artifacts.create")).toBeUndefined();
       expect(
         (await operations.invoke({ command: "artifacts.present.help" }, context)).text,

@@ -153,9 +153,6 @@ describe("relocated fork context", () => {
         ),
       ),
     );
-    expect(run.systemPromptOptions.sections.fork_worktree).toContain(
-      "replaces all inherited worktree instructions",
-    );
     expect(run.systemPromptOptions.sections.fork_worktree).toContain(worktree);
     expect(run.systemPromptOptions.sections.fork_worktree).not.toContain("Shared Cake guidance");
   });

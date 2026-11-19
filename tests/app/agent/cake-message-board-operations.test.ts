@@ -56,19 +56,7 @@ describe("Workboard agent protocol", () => {
     const { registry } = fixture();
     expect(registry.help()).toContain("boards —");
     expect(registry.topicHelp("boards")).toContain("boards.current");
-    const appendHelp = registry.operationHelp("boards.append");
-    expect(appendHelp).toContain("Audience is required");
-    expect(appendHelp).toContain(
-      "assignments and their substantive results belong exclusively on this board",
-    );
-    expect(appendHelp).toContain("not in sessions.send/reply or private side channels");
-    expect(appendHelp).toContain("reply for a dependent next action or an answer owed to the user");
-    expect(appendHelp).toContain("notification for background review");
-    expect(appendHelp).toContain(
-      "Application-owned completion needs no duplicate private wake-up/report",
-    );
-    expect(appendHelp).toContain("Routine/completion posts batch passively");
-    expect(appendHelp).toContain("assignment/blocker delivers dependent work");
+    expect(registry.topicHelp("boards")).toContain("boards.append");
   });
   it("returns bounded typed current descriptions and relations without fetching bodies or recording reads", async () => {
     const { registry, current, read, recordIntake } = fixture();

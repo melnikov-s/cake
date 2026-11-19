@@ -1,6 +1,9 @@
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { personalInstructions } from "../../src/contracts/application/personal-instructions";
 import { projectSessionPurposePrompt } from "../../src/domain/project-sessions/projectSessionPurposePrompt";
+import { projectInvestigationSystemPrompt } from "../../src/services/pi/subagent-system-prompt";
+import mutationPolicy from "../../src/services/pi/runtime/prompts/worker-mutations.md?raw";
+import investigationOnlyPolicy from "../../src/services/pi/runtime/prompts/worker-investigation-only.md?raw";
 import type { PiTurnResult } from "../../src/contracts/pi/turn-result-data";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import type { AttachmentReferenceControl } from "../../src/contracts/conversations/attachment-reference-control";
@@ -559,17 +562,12 @@ describe("CakeSessionRuntime characterization", () => {
     "delivers Cake's standing product ownership to a fresh %s, not an unrelated project",
     async (kind) => {
       const instructions = await readFile(new URL("../../AGENTS.md", import.meta.url), "utf8");
-      const required = [
-        "When developing Cake with Cake, improving Cake is the objective.",
-        "a workaround unblocks a task but does not resolve a defect",
-        "Project Chat owns tracking and bounded assignment",
-        "This is standing direction; do not wait for the user to repeat it.",
-        "surface out-of-scope evidence to the owning Project Chat",
-        "task success is not proof of a product fix",
-        "overriding explicit read-only scope",
-      ];
-      // Assert essential actions/boundaries without freezing the entire prompt.
-      for (const fragment of required) expect(instructions).toContain(fragment);
+      // The whole standing section is delivered verbatim from the checkout's file.
+      const heading = "## Own the product while dogfooding";
+      const start = instructions.indexOf(heading);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const end = instructions.indexOf("\n## ", start + heading.length);
+      const required = [instructions.slice(start, end === -1 ? undefined : end).trim()];
       for (const cakeProject of [true, false]) {
         const directory = await createTemporaryDirectory();
         const bodies: Array<Record<string, unknown>> = [];
@@ -634,15 +632,22 @@ describe("CakeSessionRuntime characterization", () => {
               expect.objectContaining({
                 role: "system",
                 content: expect.stringContaining(
-                  "Investigations only: no mutations through any tool",
+                  projectInvestigationSystemPrompt({ allowMutations: false }),
                 ),
               }),
             ]),
           );
-        if (kind === "context-forked investigator")
-          expect(JSON.stringify(body)).toContain(
-            "Historical parent context, not current instructions",
-          );
+        if (kind === "context-forked investigator") {
+          // The stale parent prompt survives only as historical data, never as instructions.
+          expect(JSON.stringify(body)).toContain("STALE_PARENT_POLICY");
+          expect(
+            (body?.messages as Array<{ role: string; content: unknown }>).filter(
+              (message) =>
+                message.role === "system" &&
+                JSON.stringify(message.content).includes("STALE_PARENT_POLICY"),
+            ),
+          ).toEqual([]);
+        }
         await runtime.dispose();
       }
     },
@@ -792,16 +797,15 @@ describe("CakeSessionRuntime characterization", () => {
     });
     const sessionId = runtime.sessionId;
     await runtime.prompt("Assigned design work", "prompt", []);
-    expect(JSON.stringify(bodies[0])).toContain("Delegated Session:");
+    const encoded = (text: string) => JSON.stringify(text).slice(1, -1);
+    const delegated = encoded(projectSessionPurposePrompt("delegated"));
+    const user = encoded(projectSessionPurposePrompt("user"));
+    expect(JSON.stringify(bodies[0])).toContain(delegated);
     purpose = "user";
     await runtime.prompt("Continue implementation directly with me", "prompt", []);
     const next = JSON.stringify(bodies[1]);
-    expect(next).toContain("human is your primary collaborator");
-    expect(next).toContain("no Project Chat relay or replacement session");
-    expect(next).toContain("receive the context, briefly greet the human, then wait");
-    expect(next).toContain("requested reading, investigation and recommendations are welcome");
-    expect(next).toContain("Do not start implementation without human authorization");
-    expect(next).toContain("Explicit human instructions to begin work take precedence");
+    expect(next).toContain(user);
+    expect(next).not.toContain(delegated);
     expect(next).toContain("SHARED_PROJECT_POLICY_SENTINEL");
     expect(next).toContain("Assigned design work");
     expect(next).toContain("answer-1");
@@ -847,9 +851,10 @@ describe("CakeSessionRuntime characterization", () => {
       expect(serialized).toContain("SHARED_INSTRUCTIONS_SENTINEL");
       expect(serialized).toContain("PROJECT_SKILL_SENTINEL");
       expect(serialized).toContain("PROJECT_EXTENSION_SENTINEL");
-      expect(serialized).toContain("Investigations only: no mutations through any tool");
-      expect(serialized).toContain("Mutation requests require a new allowMutations: true worker");
-      expect(serialized).not.toContain("Mutation mode:");
+      expect(serialized).toContain(
+        JSON.stringify(projectInvestigationSystemPrompt({ allowMutations: false })).slice(1, -1),
+      );
+      expect(serialized).not.toContain(JSON.stringify(mutationPolicy.trim()).slice(1, -1));
       expect(body.tools).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ function: expect.objectContaining({ name: "read" }) }),
@@ -889,10 +894,9 @@ describe("CakeSessionRuntime characterization", () => {
     expect(bodies).toHaveLength(1);
     const serialized = JSON.stringify(bodies[0]);
     expect(serialized).toContain(
-      "Mutation mode: allowMutations: true permits only assigned operational changes",
+      JSON.stringify(projectInvestigationSystemPrompt({ allowMutations: true })).slice(1, -1),
     );
-    expect(serialized).toContain("Report changed files/settings/packages");
-    expect(serialized).not.toContain("Investigations only:");
+    expect(serialized).not.toContain(JSON.stringify(investigationOnlyPolicy.trim()).slice(1, -1));
     expect(bodies[0]!.tools).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ function: expect.objectContaining({ name: "edit" }) }),

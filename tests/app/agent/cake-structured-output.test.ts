@@ -310,7 +310,7 @@ describe("Cake structured output", () => {
       expect(result.structuredContent).toMatchObject({ command: "app.fixture", result: metadata });
       if (typeof value === "object" && "_tag" in value)
         expect(result.structuredContent).toMatchObject({
-          warning: expect.stringContaining("Native image pixels were NOT forwarded"),
+          warning: expect.any(String),
         });
       expect(result.content).toEqual([
         { type: "text", text },

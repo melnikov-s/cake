@@ -65,7 +65,6 @@ describe("preset context", () => {
     expect(await prompt()).toContain("Be concise.");
     expect(await prompt()).toContain("Shared instructions.");
     expect(await prompt()).toContain("Project instructions.");
-    expect(await prompt()).toContain("shared/project instructions take precedence");
     state.setPreset(second);
     expect(await prompt()).toContain("Explain deeply.");
     expect(await prompt()).not.toContain("Be concise.");

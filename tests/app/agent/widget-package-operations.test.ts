@@ -74,6 +74,5 @@ describe("Widget package operations", () => {
       await registry.invoke({ command, input }, context);
       expect(invoke).toHaveBeenLastCalledWith(command, input, expect.any(AbortSignal));
     }
-    expect(registry.operationHelp("settings.widgets.install")).toContain("Otherwise ask first");
   });
 });

@@ -1,4 +1,5 @@
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
+import { linkedArtifactSystemGuidance } from "../../../src/domain/artifacts/cake-artifact-operations";
 import { createProjectSessionRuntime } from "../../../src/layers/CakeOperations";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { snapshotPromptFiles } from "../../../src/services/filesystem/prompt-files";
@@ -129,40 +130,18 @@ describe("Pi 1.0.0 foundation contract", () => {
     if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
     const { activeTools, systemPrompt } = runtime.getReviewParentContext();
     expect(activeTools).toContain("cake");
-    expect(systemPrompt).toContain("You are an expert coding assistant operating inside pi");
     expect(systemPrompt).toContain("<rules>");
-    expect(systemPrompt).toContain("Use read to examine files instead of cat or sed");
     expect(systemPrompt).toContain("<cake_system_prompt>");
-    expect(systemPrompt).toContain("Family coordination defaults to Workboard");
-    expect(systemPrompt).toContain("including descendants");
-    expect(systemPrompt).toContain("Create children with assignment: { description, body }");
-    expect(systemPrompt).toContain("resultDelivery: reply");
-    expect(systemPrompt).toContain("No prerequisite guide reads");
-    const docsDirectory = systemPrompt?.match(/Task guide: `([^`]+)\/index\.md`/)?.[1];
+    const docsDirectory = systemPrompt?.match(/`([^`]+)\/index\.md`/)?.[1];
     if (!docsDirectory) throw new Error("Expected readable Cake documentation references");
-    const modelDocs = await readFile(join(docsDirectory, "models.md"), "utf8");
-    expect(modelDocs).toContain("generation API");
-    expect(modelDocs).toContain("never silently regenerate billed images");
-    expect(systemPrompt).not.toContain("never silently regenerate billed images");
-    const sessionDocs = await readFile(join(docsDirectory, "sessions.md"), "utf8");
-    expect(sessionDocs).toContain("sessions.create-child");
-    expect(sessionDocs).toContain("Complete once");
-    expect(sessionDocs).toContain("Family child: sessions.create-child");
-    expect(await readFile(join(docsDirectory, "family-startup.md"), "utf8")).toContain(
-      "The assignment is inline",
+    // Guides are published for progressive disclosure, not inlined into the prompt.
+    for (const name of ["models.md", "sessions.md", "family-startup.md", "communication.md"]) {
+      const guide = await readFile(join(docsDirectory, name), "utf8");
+      expect(systemPrompt).not.toContain(guide.trim());
+    }
+    expect(await readFile(join(docsDirectory, "workgroups.md"), "utf8")).toContain(
+      "(family-delegation.md)",
     );
-    const deliveryDocs = await readFile(join(docsDirectory, "communication.md"), "utf8");
-    expect(deliveryDocs).toContain("Incoming session messages need no acknowledgment-only reply");
-    expect(deliveryDocs).toContain("Private pending-report bookkeeping is separate");
-    const workgroupDocs = await readFile(join(docsDirectory, "workgroups.md"), "utf8");
-    expect(workgroupDocs).toContain("Family coordination defaults to Workboard");
-    expect(workgroupDocs).toContain("family-delegation.md");
-    const familyDelegationDocs = await readFile(
-      join(docsDirectory, "family-delegation.md"),
-      "utf8",
-    );
-    expect(familyDelegationDocs).toContain("Cake creates the board");
-    expect(deliveryDocs).toContain("Completion transport is automatic");
   });
 
   it("returns current family information from session.info without recreating the runtime", async () => {
@@ -421,30 +400,21 @@ describe("Pi 1.0.0 foundation contract", () => {
       expect(requestBodies).toHaveLength(4);
       const requestText = requestBodies.map((body) => JSON.stringify(body));
       for (const text of requestText) {
-        expect(text).toContain("You are an expert coding assistant operating inside pi");
-        expect(text).toContain("Use read to examine files instead of cat or sed");
-        expect(text).toContain("Task guide:");
         expect(text).toContain("docs/extensions.md");
         expect(text).toContain("docs/codemode.md");
         expect(text).not.toContain("docs/tui.md");
         expect(text).not.toContain("docs/themes.md");
         expect(text).not.toContain("docs/keybindings.md");
-        expect(text).not.toContain("never silently regenerate billed images");
       }
-      const linkedGuidance =
-        "This session has linked artifacts. Use artifacts.list to inspect them when relevant.";
+      const linkedGuidance = JSON.stringify(linkedArtifactSystemGuidance).slice(1, -1);
       expect(requestText[0]).not.toContain(linkedGuidance);
       expect(requestText[1]).toContain(linkedGuidance);
       expect(requestText[2]).toContain(linkedGuidance);
       expect(requestText[3]).not.toContain(linkedGuidance);
-      expect(requestText[0]).not.toContain("Inline code reviews and assistant-message discussions");
-      expect(requestText[1]).toContain(
-        `Inline code reviews and assistant-message discussions for this session are indexed at ${reviewContextPath}`,
-      );
-      expect(requestText[2]).toContain(
-        `Inline code reviews and assistant-message discussions for this session are indexed at ${reviewContextPath}`,
-      );
-      expect(requestText[3]).not.toContain("Inline code reviews and assistant-message discussions");
+      expect(requestText[0]).not.toContain(reviewContextPath);
+      expect(requestText[1]).toContain(reviewContextPath);
+      expect(requestText[2]).toContain(reviewContextPath);
+      expect(requestText[3]).not.toContain(reviewContextPath);
       expect(listArtifactMetadata).not.toHaveBeenCalled();
 
       const persisted = SessionManager.open(runtime.sessionFile).getBranch();
@@ -2696,7 +2666,7 @@ describe("S1 Pi runtime", () => {
     const context = runtime.getReviewParentContext?.();
     expect(context?.systemPrompt).toContain("You are a focused subagent.");
     expect(context?.systemPrompt).not.toContain("PROJECT INSTRUCTIONS MUST NOT LOAD");
-    expect(context?.systemPrompt).not.toContain("Cake’s agent");
+    expect(context?.systemPrompt).not.toContain("<cake_system_prompt>");
     expect(context?.activeTools).toEqual(["read", "bash", "edit", "write"]);
   });
 

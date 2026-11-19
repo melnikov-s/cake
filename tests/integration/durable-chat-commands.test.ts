@@ -96,17 +96,14 @@ it("discovers Pi project and global skills without loading project executable ex
 
 it("does not deliver repo AGENTS.md through permanent-chat resources (requires project chat guidance)", async () => {
   const f = await fixture();
-  await f.file(
-    join(f.project, "AGENTS.md"),
-    await readFile(new URL("../../AGENTS.md", import.meta.url), "utf8"),
-  );
+  const agents = await readFile(new URL("../../AGENTS.md", import.meta.url), "utf8");
+  await f.file(join(f.project, "AGENTS.md"), agents);
+  const firstSection = agents.slice(0, agents.indexOf("\n## ")).trim();
   const commands = await f.open();
-  expect(commands.instructions()).not.toContain("Own the product while dogfooding");
-  expect(commands.instructions()).not.toContain(
-    "Project Chat owns tracking and bounded assignment",
-  );
+  expect(commands.instructions()).not.toContain("## Own the product while dogfooding");
+  expect(commands.instructions()).not.toContain(firstSection);
   await commands.reload();
-  expect(commands.instructions()).not.toContain("When developing Cake with Cake");
+  expect(commands.instructions()).not.toContain("## Own the product while dogfooding");
 });
 
 it("expands built-in namespaced skills with the same Pi envelope and arguments", async () => {
@@ -114,9 +111,6 @@ it("expands built-in namespaced skills with the same Pi envelope and arguments",
   const commands = await f.open();
   const expanded = await commands.expand("/skill:cake:prototype-ui prototype the settings screen");
   expect(expanded).toContain('<skill name="cake:prototype-ui"');
-  expect(expanded).toContain(
-    "Honor explicit HTML requests. Prefer `html.present` for static HTML/CSS mockups",
-  );
   expect(expanded).toContain("### Present five alternatives in one widget");
   expect(expanded).toContain("</skill>\n\nprototype the settings screen");
   expect(commands.instructions()).toContain("cake:prototype-ui");

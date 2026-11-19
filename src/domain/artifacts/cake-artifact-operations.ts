@@ -229,7 +229,7 @@ function runtimeContext(context: CakeOperationExecutionContext) {
 const stableReference = (value: string) =>
   value.startsWith("cake://artifact/") ? value : `cake://artifact/${value}`;
 
-const linkedArtifactSystemGuidance =
+export const linkedArtifactSystemGuidance =
   "This session has linked artifacts. Use artifacts.list to inspect them when relevant.";
 
 export function createCakeArtifactOperations(

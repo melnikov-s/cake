@@ -89,7 +89,7 @@ it("runs native read/edit/write on explicitly requested non-project files withou
       "write",
     ]);
     expect(getCurrentSystemMessage(requests[0]!.messages)?.sections?.instructions).toContain(
-      "No project registration required",
+      coordinatorSystemPrompt("", "/docs", false, "", true),
     );
     const history = await readDurableOriginalPage(root);
     const tools = history.parts.filter((part) => part.kind === "tool");

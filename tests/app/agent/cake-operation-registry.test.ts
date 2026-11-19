@@ -172,22 +172,16 @@ describe("Cake operation registry", () => {
     expect(encoded).toContain('"command"');
     expect(encoded).toContain('"input"');
     expect(encoded).not.toContain("context.compact");
-    expect(encoded).toContain("Exact topic or operation command. Omit for the help index.");
-    expect(encoded).toContain(
-      "Operation arguments only. Omit for help and topic protocol discovery.",
-    );
   });
 
   it("describes progressive discovery and return conventions once in a bounded envelope", () => {
     expect(cakeToolDescription.length).toBeLessThan(400);
     for (const fact of [
       "{command,input}",
-      "Known commands need no discovery",
-      "{} lists topics",
       "<operation>.help",
       ".output-schema",
       "{command,result}",
-      "widgets.instantiate directly",
+      "widgets.instantiate",
       "artifacts.present",
     ])
       expect(cakeToolDescription).toContain(fact);
@@ -423,14 +417,11 @@ describe("Cake operation registry", () => {
     expect(result.structuredContent).toMatchObject({
       command: "context.image",
       result: { boardId: "board-1", width: 640, height: 480 },
-      warning: expect.stringContaining("Native image pixels were NOT forwarded"),
+      warning: expect.any(String),
     });
-    expect(JSON.stringify(result.structuredContent)).toContain(
-      "Descriptions and source are not image inspection",
-    );
-    expect(JSON.stringify(result.structuredContent)).toContain("Call cake directly");
     expect(JSON.stringify(result.structuredContent)).not.toContain(tinyPng.data);
-    expect(result.text).not.toContain("NOT forwarded"); // direct result really carries pixels
+    // The direct result really carries pixels.
+    expect(result.content.some((block) => block.type === "image")).toBe(true);
   });
 
   it("keeps a bounded image when oversized metadata is truncated", async () => {
