@@ -20,6 +20,7 @@ import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocation
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 import { processGroupFinalizer } from "./fixtures/process-group";
+import { openBrowserSession } from "./fixtures/browser-navigation";
 
 async function freeLocalPort() {
   const probe = createHttpServer();
@@ -266,10 +267,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
                 deniedRpc.once("open", () => fail(new Error("Editor origin acquired Cake RPC")));
               }),
             ).toBe(403);
-            await page
-              .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-              .last()
-              .click();
+            await openBrowserSession(page, controlled.existingId);
             await page.getByRole("button", { name: "VS Code", exact: true }).click();
             const frame = page.locator('iframe[title="VS Code workspace"]');
             await browserExpect(frame).toHaveAttribute(
@@ -341,10 +339,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
                     { timeout: 20_000 },
                   )
                   .toBe(true);
-                await page
-                  .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-                  .last()
-                  .click();
+                await openBrowserSession(page, controlled.existingId);
                 await page.getByRole("button", { name: "VS Code", exact: true }).click();
                 const realFrame = page.locator('iframe[title="VS Code workspace"]');
                 await browserExpect(realFrame).toHaveAttribute(

@@ -8,6 +8,7 @@ import { openNetworkListener } from "../../src/server/NetworkListener";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 import { connectClient } from "./fixtures/network-client";
+import { showBrowserSessions } from "./fixtures/browser-navigation";
 
 /** Real shared browser shell; only the external Pi/provider boundary is controlled. */
 it("two real browser tabs see shared saved edits and one activation reaches the backend", async () => {
@@ -57,8 +58,8 @@ it("two real browser tabs see shared saved edits and one activation reaches the 
           second.setDefaultTimeout(10_000);
           for (const page of [first, second]) {
             await page.goto(endpoint);
-            const row = page
-              .locator(`[data-slot="sidebar"] [data-session-id="${record.sessionId}"]`)
+            const row = (await showBrowserSessions(page))
+              .locator(`[data-session-id="${record.sessionId}"]`)
               .first();
             await browserExpect(row).toBeVisible();
             await row.click();

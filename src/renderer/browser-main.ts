@@ -134,6 +134,8 @@ const rootStore = mountRootStore(
   () => connection.connected && !connection.uncertainOperation,
   true,
 );
+// Phone page entry starts at Cake Chat with the overlaying Workspace accessory collapsed.
+if (isPhoneLayout()) rootStore.workspaceNavigatorStore.close();
 if (import.meta.hot && !import.meta.env.SSR && import.meta.env.MODE !== "test")
   void import("./dev/inspector").then(({ registerRoot }) => {
     registerRoot("BrowserConnection", connection, connection.signal);

@@ -11,6 +11,7 @@ import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocation
 import { loadExtensionCompanions } from "../../src/services/pi/runtime/extension-companions";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
+import { openBrowserSession } from "./fixtures/browser-navigation";
 
 it("Chromium imports a published companion in the shared shell and dispatches its declared action through backend projection", async () => {
   await Effect.runPromise(
@@ -136,10 +137,7 @@ it("Chromium imports a published companion in the shared shell and dispatches it
             if (request.url().includes("/widget-assets/module/")) imported.push(request.url());
           });
           await page.goto(`http://127.0.0.1:${port}`);
-          await page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first()
-            .click();
+          await openBrowserSession(page, controlled.existingId);
           const button = page.getByRole("button", { name: "Companion count: 0" });
           await browserExpect(button).toBeVisible();
           expect(imported).toEqual([`http://127.0.0.1:${port}/widget-assets/module/${token}`]);
@@ -163,13 +161,12 @@ it("Chromium imports a published companion in the shared shell and dispatches it
             }
           });
           await retryPage.goto(`http://127.0.0.1:${port}`);
-          await retryPage
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first()
-            .click();
+          await openBrowserSession(retryPage, controlled.existingId);
           const reload = retryPage.getByRole("button", { name: "Reload to retry" });
           await browserExpect(reload).toBeVisible();
           await reload.click();
+          // The fresh document starts in global Cake Chat like every page entry.
+          await openBrowserSession(retryPage, controlled.existingId);
           await browserExpect(
             retryPage.getByRole("button", { name: "Companion count: 1" }),
           ).toBeVisible();

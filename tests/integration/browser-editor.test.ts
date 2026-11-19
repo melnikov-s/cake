@@ -16,6 +16,7 @@ import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocation
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 import { processGroupFinalizer } from "./fixtures/process-group";
+import { openBrowserSession } from "./fixtures/browser-navigation";
 
 it("embeds only an isolated editor origin, supports editor resources and revokes the lease", async () => {
   await Effect.runPromise(
@@ -143,10 +144,7 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
           `frame-src 'self' blob: ${editor}`,
         );
         await page.evaluate(() => sessionStorage.setItem("app-only", "secret"));
-        await page
-          .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-          .last()
-          .click();
+        await openBrowserSession(page, controlled.existingId);
         await page.getByRole("button", { name: "VS Code", exact: true }).click();
         const frame = page.locator('iframe[title="VS Code workspace"]');
         try {
@@ -239,10 +237,7 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
               },
               { timeout: 15_000, interval: 250 },
             );
-            await page
-              .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-              .last()
-              .click();
+            await openBrowserSession(page, controlled.existingId);
             await page.getByRole("button", { name: "VS Code", exact: true }).click();
             const realFrame = page.locator('iframe[title="VS Code workspace"]');
             await browserExpect(realFrame).toHaveAttribute("src", new RegExp(`^${editor}/editor/`));

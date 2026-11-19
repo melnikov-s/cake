@@ -10,6 +10,7 @@ import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocation
 import type { TerminalEvent } from "../../src/services/terminal/Terminal";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
+import { openBrowserSession } from "./fixtures/browser-navigation";
 
 it("opens a socket-owned browser terminal, accepts input/output and never replays it after reconnect", async () => {
   await Effect.runPromise(
@@ -111,10 +112,7 @@ it("opens a socket-owned browser terminal, accepts input/output and never replay
       page.setDefaultTimeout(5_000);
       yield* Effect.promise(async () => {
         await page.goto(`http://127.0.0.1:${port}`);
-        await page
-          .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-          .last()
-          .click();
+        await openBrowserSession(page, controlled.existingId);
         const toggle = page.getByRole("button", { name: "Terminal", exact: true }).first();
         await browserExpect(toggle).toBeDisabled();
         expect(opens).toBe(0);
@@ -130,10 +128,7 @@ it("opens a socket-owned browser terminal, accepts input/output and never replay
         expect(opens).toBe(1);
         await page.reload();
         await browserExpect.poll(() => closedOwners).toBeGreaterThan(0);
-        await page
-          .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-          .last()
-          .click();
+        await openBrowserSession(page, controlled.existingId);
         expect(opens).toBe(1);
         expect(writes.join("")).toBe("echo browser");
         await page.getByRole("button", { name: "Terminal", exact: true }).first().click();

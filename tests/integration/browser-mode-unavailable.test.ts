@@ -8,6 +8,7 @@ import { it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
+import { openBrowserSession } from "./fixtures/browser-navigation";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 
 it("keeps desktop-only Browser Mode out of browser chat", async () => {
@@ -47,10 +48,7 @@ it("keeps desktop-only Browser Mode out of browser chat", async () => {
           const page = await browser.newPage();
           page.setDefaultTimeout(15_000);
           await page.goto(`http://127.0.0.1:${address.port}`);
-          await page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .last()
-            .click();
+          await openBrowserSession(page, controlled.existingId);
           await browserExpect(page.getByRole("button", { name: /Browser Mode/ })).toHaveCount(0);
           await browserExpect(
             page.locator('[data-slot="workspace"] textarea').first(),

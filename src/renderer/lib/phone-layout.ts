@@ -19,3 +19,11 @@ function subscribe(listener: () => void) {
 export function usePhoneLayout() {
   return useSyncExternalStore(subscribe, isPhoneLayout, () => false);
 }
+
+// Keep in sync with the app shell's `max-[700px]` Workspace accessory overlay.
+const workspaceOverlayQuery = "(max-width: 700px)";
+
+/** Whether the Workspace accessory currently covers the conversation instead of sitting beside it. */
+export function workspaceAccessoryOverlays() {
+  return typeof window !== "undefined" && window.matchMedia(workspaceOverlayQuery).matches;
+}

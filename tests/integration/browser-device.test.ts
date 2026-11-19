@@ -8,6 +8,7 @@ import { expect, it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
+import { showBrowserSessions } from "./fixtures/browser-navigation";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 
 it("browser menu actions and pasted image bytes reach backend staging without a browser path", async () => {
@@ -65,9 +66,9 @@ it("browser menu actions and pasted image bytes reach backend staging without a 
             };
           });
           await page.goto(url);
-          const row = page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .last();
+          const row = (await showBrowserSessions(page))
+            .locator(`.session-item[data-session-id="${controlled.existingId}"]`)
+            .first();
           await browserExpect(row).toBeVisible();
           await row.click({ button: "right" });
           await browserExpect(page.getByRole("dialog", { name: "Session actions" })).toBeVisible();
@@ -81,6 +82,10 @@ it("browser menu actions and pasted image bytes reach backend staging without a 
           await browserExpect(page.getByRole("textbox", { name: "Session name" })).toBeVisible();
           await page.getByRole("textbox", { name: "Session name" }).press("Escape");
           await row.click();
+          await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+            "data-session-id",
+            controlled.existingId,
+          );
           const input = page.locator('[data-slot="workspace"] textarea').first();
           const imageData =
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+XlXcAAAAASUVORK5CYII=";

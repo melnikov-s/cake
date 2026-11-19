@@ -3,9 +3,11 @@ import { resolve } from "node:path";
 import { chromium, devices, expect as browserExpect } from "@playwright/test";
 import { Effect } from "effect";
 import { expect, it } from "vitest";
+import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
+import { openBrowserSession } from "./fixtures/browser-navigation";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 
 it.each([320, 360, 384, 390, 412])(
@@ -65,6 +67,8 @@ it.each([320, 360, 384, 390, 412])(
             let unavailable = false;
             let probeReplies = 0;
             const probeIds = new Set<string>();
+            const promptIds = new Set<string>();
+            let promptReceipts = 0;
             await page.routeWebSocket("**/rpc", (socket) => {
               connections++;
               if (unavailable) {
@@ -82,21 +86,28 @@ it.each([320, 360, 384, 390, 412])(
                   if (ignoreProbes) return; // Half-open transport: the read never responds.
                   probeIds.add(String(request.id));
                 }
+                if (request.tag === "sessionChats.prompt") promptIds.add(String(request.id));
                 server.send(message);
               });
               server.onMessage((message) => {
                 const response = JSON.parse(String(message));
                 if (response._tag === "Exit" && probeIds.delete(String(response.requestId)))
                   probeReplies++;
+                if (response._tag === "Exit" && promptIds.delete(String(response.requestId)))
+                  promptReceipts++;
                 if (String(message).includes('"streaming"')) snapshots++;
                 socket.send(message);
               });
             });
             await page.goto(url);
-            await page.locator('[data-slot="header-sidebar-toggle"]').first().tap();
-            const sidebar = page.locator('[data-slot="sidebar"]');
-            await sidebar.locator(`[data-session-id="${controlled.existingId}"]`).first().tap();
-            await browserExpect(sidebar).toHaveCount(0);
+            // Page entry is global Cake Chat with the overlaying Workspace accessory collapsed.
+            const toggle = page.locator('[data-slot="shell-workspace-toggle"]');
+            await browserExpect(toggle).toHaveAttribute("aria-expanded", "false");
+            const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+            await browserExpect(workspace).toHaveCount(0);
+            // Choosing a session from the overlay reveals that conversation.
+            await openBrowserSession(page, controlled.existingId, { tap: true });
+            await browserExpect(workspace).toHaveCount(0);
             await browserExpect(
               page.locator('[data-slot="workspace"] textarea').first(),
             ).toBeVisible();
@@ -109,7 +120,6 @@ it.each([320, 360, 384, 390, 412])(
             await browserExpect(
               page.getByRole("button", { name: "Terminal", exact: true }),
             ).toBeHidden();
-            const toggle = page.locator('[data-slot="header-sidebar-toggle"]').first();
             await browserExpect
               .poll(async () => (await toggle.boundingBox())?.width ?? 0)
               .toBeGreaterThanOrEqual(44);
@@ -117,14 +127,12 @@ it.each([320, 360, 384, 390, 412])(
               .poll(async () => (await toggle.boundingBox())?.height ?? 0)
               .toBeGreaterThanOrEqual(44);
             await toggle.tap();
-            await browserExpect(sidebar).toBeVisible();
+            await browserExpect(workspace).toBeVisible();
             await browserExpect(
-              sidebar.getByRole("button", { name: "Open settings", exact: true }),
+              workspace.getByRole("region", { name: "Sessions", exact: true }),
             ).toBeVisible();
-            await page
-              .getByRole("button", { name: "Close navigation", exact: true })
-              .tap({ position: { x: width - 10, y: 200 } });
-            await browserExpect(sidebar).toHaveCount(0);
+            await toggle.tap();
+            await browserExpect(workspace).toHaveCount(0);
             const input = page.locator('[data-slot="workspace"] textarea').first();
             const send = page.getByRole("button", { name: "Send", exact: true });
             await input.tap();
@@ -178,7 +186,8 @@ it.each([320, 360, 384, 390, 412])(
             ).toBeVisible();
             await browserExpect(page.locator('[data-slot="workspace-header"]')).toHaveCSS(
               "height",
-              "44px",
+              // One 34px title bar in every mode (06eaa5e4).
+              "34px",
             );
             await page.setViewportSize({ width, height: 844 });
             // Tree navigation is a composer command, not a dedicated toolbar action.
@@ -317,22 +326,30 @@ it.each([320, 360, 384, 390, 412])(
             await send.tap();
             await browserExpect(input).toHaveValue("");
             await browserExpect.poll(() => controlled.stats.turns).toBe(1);
+            // The composer clears on acceptance, before delivery is acknowledged (44102987).
+            // Drop the connection only after the receipt, so this models a post-send drop
+            // rather than a lost receipt (covered by browser-chat's uncertain-delivery test).
+            await browserExpect.poll(() => promptReceipts).toBe(1);
             const before = connections;
             sever?.();
             await browserExpect
               .poll(() => connections, { timeout: 15_000 })
               .toBeGreaterThan(before);
             controlled.finish(controlled.existingId);
+            // A button send preserves the paused reader (transcript-follow rule 1); the
+            // reader returns to the end to read the answer.
+            await page.getByRole("button", { name: "Scroll to bottom", exact: true }).tap();
             await browserExpect(
               page.getByText("Completed answer 1", { exact: true }),
             ).toBeVisible();
             expect(controlled.stats.turns).toBe(1);
-            await toggle.tap();
-            await sidebar.getByRole("button", { name: "Cake Chat", exact: true }).first().tap();
-            await browserExpect(sidebar).toHaveCount(0);
-            await browserExpect(
-              page.getByRole("heading", { name: "What can I help you find or do?" }),
-            ).toBeVisible();
+            const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
+            await rail.getByRole("button", { name: "Open Cake Chat", exact: true }).tap();
+            await browserExpect(workspace).toHaveCount(0);
+            await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+              "data-session-id",
+              CAKE_CHAT_SESSION_ID,
+            );
             await page.getByRole("button", { name: "Browse context", exact: true }).tap();
             await page.setViewportSize({ width, height: 360 });
             const inspector = page.getByRole("dialog");
@@ -345,16 +362,21 @@ it.each([320, 360, 384, 390, 412])(
             );
             await inspector.getByRole("button", { name: "Close context", exact: true }).tap();
             await page.setViewportSize({ width, height: 844 });
-            await page.locator('[data-slot="header-sidebar-toggle"]').first().tap();
-            await sidebar.getByRole("button", { name: /^Project actions for / }).tap();
-            await page.getByRole("menuitem", { name: /^Open settings for / }).tap();
+            // A touch long-press delivers contextmenu, which opens the browser project actions.
+            await rail
+              .getByRole("button", { name: /^Open Project Chat for / })
+              .click({ button: "right" });
+            await page
+              .getByRole("dialog", { name: "Project actions" })
+              .getByRole("button", { name: "Project Settings…", exact: true })
+              .tap();
             const projectDialog = page.getByRole("dialog");
             const cancel = projectDialog.getByRole("button", { name: "Cancel", exact: true });
             await cancel.scrollIntoViewIfNeeded();
             const cancelBounds = await cancel.boundingBox();
             expect((cancelBounds?.y ?? 0) + (cancelBounds?.height ?? 0)).toBeLessThanOrEqual(844);
             await cancel.tap();
-            await sidebar.getByRole("button", { name: "Open settings", exact: true }).tap();
+            await rail.getByRole("button", { name: "Settings", exact: true }).tap();
             await page.getByRole("combobox", { name: "Settings section" }).selectOption("network");
             await browserExpect(
               page.getByRole("heading", { name: "Network & privacy" }),

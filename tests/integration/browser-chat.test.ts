@@ -10,6 +10,7 @@ import { openNetworkListener } from "../../src/server/NetworkListener";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
+import { openBrowserSession } from "./fixtures/browser-navigation";
 
 it("compiled standalone host serves the shared browser shell independently of cwd", async () => {
   const home = await mkdtemp(join(tmpdir(), "cake-browser-node-"));
@@ -51,9 +52,11 @@ it("compiled standalone host serves the shared browser shell independently of cw
       const page = await browser.newPage();
       page.setDefaultTimeout(10_000);
       await page.goto(url);
-      await browserExpect(page.locator('[data-slot="sidebar"]')).toBeVisible();
       await browserExpect(
-        page.getByRole("heading", { name: "What should we build?" }),
+        page.getByRole("navigation", { name: "Projects and global utilities" }),
+      ).toBeVisible();
+      await browserExpect(
+        page.getByRole("heading", { name: "What can I help you find or do?" }),
       ).toBeVisible();
       expect(await page.locator("script[type=module]").getAttribute("src")).toMatch(/^\/assets\//);
     } finally {
@@ -137,11 +140,7 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
             });
           });
           await page.goto(url);
-          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
-          await page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first()
-            .click();
+          await openBrowserSession(page, controlled.existingId);
           await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
             "data-session-id",
             controlled.existingId,
@@ -158,11 +157,11 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
           await page.reload();
           await browserExpect(page.getByText("Delivery uncertain", { exact: false })).toBeVisible();
           // Phone page entry starts at Cake Chat with navigation collapsed.
-          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
-          await page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first()
-            .click();
+          await browserExpect(page.locator('[data-slot="shell-workspace-toggle"]')).toHaveAttribute(
+            "aria-expanded",
+            "false",
+          );
+          await openBrowserSession(page, controlled.existingId);
           const restoredInput = page.locator('[data-slot="workspace"] textarea').first();
           await browserExpect(restoredInput).toHaveValue("Lose this receipt");
           controlled.finish(controlled.existingId);
@@ -265,11 +264,7 @@ it("mobile draft checkpoints cannot restore accepted prompts while persistence t
             });
           });
           await page.goto(url);
-          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
-          await page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first()
-            .click();
+          await openBrowserSession(page, controlled.existingId);
           await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
             "data-session-id",
             controlled.existingId,
@@ -347,11 +342,7 @@ it("mobile draft checkpoints cannot restore accepted prompts while persistence t
           );
           await browserExpect(input).toHaveValue("Genuinely unsent next draft");
           await page.reload();
-          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
-          await page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first()
-            .click();
+          await openBrowserSession(page, controlled.existingId);
           await browserExpect(input).toHaveValue("Genuinely unsent next draft");
           await browserExpect(
             page.getByRole("button", { name: /^Remove Pasted text/ }),
@@ -377,11 +368,7 @@ it("mobile draft checkpoints cannot restore accepted prompts while persistence t
           expect(controlled.stats.turns).toBe(3);
           await page.reload();
           await browserExpect(page.getByText("Delivery uncertain", { exact: false })).toBeVisible();
-          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
-          await page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first()
-            .click();
+          await openBrowserSession(page, controlled.existingId);
           await browserExpect(input).toHaveValue("Genuinely unsent next draft");
           await browserExpect(
             page.getByRole("button", { name: "Send", exact: true }),
@@ -397,7 +384,7 @@ it("mobile draft checkpoints cannot restore accepted prompts while persistence t
   );
 }, 60_000);
 
-it("real Chromium uses the shared sidebar, project chat and Cake Chat without replay on refresh or reconnect", async () => {
+it("real Chromium uses the shared navigation, project chat and Cake Chat without replay on refresh or reconnect", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {
       const controlled = browserBackendAdapter("/project", true);
@@ -441,18 +428,15 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
             server.onMessage((message) => socket.send(message));
           });
           await page.goto(url);
-          const row = page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first();
-          await browserExpect(row).toBeVisible();
-          await row.click();
+          await openBrowserSession(page, controlled.existingId);
           // Fine-pointer desktop retains its header and editor/console controls,
           // including at phone and intermediate breakpoint boundaries.
           for (const width of [619, 620, 621, 820, 821, 1000, 1001, 1280, 1440]) {
             await page.setViewportSize({ width, height: 900 });
             await browserExpect(page.locator('[data-slot="workspace-header"]')).toHaveCSS(
               "height",
-              "44px",
+              // One 34px title bar in every mode (06eaa5e4).
+              "34px",
             );
             await browserExpect(
               page.getByRole("button", { name: "VS Code", exact: true }),
@@ -483,11 +467,10 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
             "data-session-id",
             controlled.existingId,
           );
+          // Every page entry starts in global Cake Chat (40566199); reopening reads the
+          // authoritative transcript rather than replaying the turn.
           await page.reload();
-          await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
-            "data-session-id",
-            controlled.existingId,
-          );
+          await openBrowserSession(page, controlled.existingId);
           await browserExpect(page.getByText("Completed answer 1", { exact: true })).toBeVisible();
           expect(controlled.stats.turns).toBe(1);
 
@@ -495,14 +478,14 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
           second.setDefaultTimeout(15_000);
           second.on("pageerror", (error) => errors.push(error.message));
           await second.goto(url);
-          await second
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first()
-            .click();
+          await openBrowserSession(second, controlled.existingId);
           await browserExpect(
             second.getByText("Completed answer 1", { exact: true }),
           ).toBeVisible();
-          await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
+          await page
+            .getByRole("navigation", { name: "Projects and global utilities" })
+            .getByRole("button", { name: "Open Cake Chat", exact: true })
+            .click();
           await browserExpect(
             page.getByRole("heading", { name: "What can I help you find or do?" }),
           ).toBeVisible();
@@ -511,7 +494,9 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
             controlled.existingId,
           );
           await page.reload();
-          await browserExpect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+          await browserExpect(
+            page.getByRole("navigation", { name: "Projects and global utilities" }),
+          ).toBeVisible();
           await browserExpect(
             page.getByRole("heading", { name: "What can I help you find or do?" }),
           ).toBeVisible();

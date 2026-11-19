@@ -46,6 +46,7 @@ import type {
   AutomationRun,
 } from "../../contracts/automations/automation-data";
 import type { SessionChatConfiguration } from "../../contracts/conversations/conversation-data";
+import { workspaceAccessoryOverlays } from "../lib/phone-layout";
 
 /** Window-local navigation policy. Selection, history and layout stay with their existing owners.
  * Async session opening retains the workbench's concurrency policy; this Store adds no persisted state.
@@ -178,6 +179,8 @@ export class NavigationStore extends Store<{
   async openSessionFromNavigator(target: ConversationNavigationTarget) {
     const navigator = WorkspaceNavigatorContext.consume(this)!;
     navigator.showChat();
+    // A narrow window's accessory covers the conversation; reveal the chosen one.
+    if (workspaceAccessoryOverlays()) navigator.close();
     await this.openConversationTarget(target);
     // Row activation can run on mousedown. Let its native focus and the revealed
     // Chat mount settle before requesting the destination input, not the source's.

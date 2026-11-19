@@ -8,6 +8,7 @@ import type { UiPart } from "../../src/contracts/conversations/session-contract"
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
+import { openBrowserSession } from "./fixtures/browser-navigation";
 
 it("projects review-run status, saves a label, and gates browser-only native settings", async () => {
   await Effect.runPromise(
@@ -48,26 +49,28 @@ it("projects review-run status, saves a label, and gates browser-only native set
           const page = await browser.newPage();
           page.setDefaultTimeout(15_000);
           await page.goto(url);
-          await page
-            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
-            .first()
-            .click();
+          await openBrowserSession(page, controlled.existingId);
           await browserExpect(page.getByText("1 comment replied")).toBeVisible();
           await page.reload();
           await browserExpect(page.getByText("1 comment replied")).toBeVisible();
-          await page.getByRole("button", { name: "Open settings", exact: true }).click();
-          await browserExpect(
-            page.getByRole("heading", { name: "Settings", exact: true }),
-          ).toBeVisible();
+          const openSettings = async () => {
+            await page
+              .getByRole("navigation", { name: "Projects and global utilities" })
+              .getByRole("button", { name: "Settings", exact: true })
+              .click();
+            await browserExpect(
+              page.getByRole("heading", { name: "Settings", exact: true }),
+            ).toBeVisible();
+          };
+          await openSettings();
           await page.getByRole("button", { name: "Session labels" }).click();
           await page.getByRole("button", { name: "Add label" }).click();
           await page.getByRole("textbox", { name: "New label name" }).fill("Browser qualification");
           await page.getByRole("button", { name: "Create", exact: true }).click();
           await browserExpect(page.getByText("Browser qualification")).toBeVisible();
+          // Every page entry starts in global Cake Chat (40566199), so reopen Settings.
           await page.reload();
-          await browserExpect(
-            page.getByRole("heading", { name: "Settings", exact: true }),
-          ).toBeVisible();
+          await openSettings();
           await page.getByRole("button", { name: "Session labels" }).click();
           await browserExpect(page.getByText("Browser qualification")).toBeVisible();
           await page.getByRole("button", { name: "Network & privacy" }).click();

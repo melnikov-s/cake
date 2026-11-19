@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { it } from "vitest";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { openBrowserSession } from "./fixtures/browser-navigation";
 
 // Homebrew's installed code-server is a host qualification, not a CI dependency.
 // Linux/other hosts skip rather than substituting a fake upstream as parity proof.
@@ -152,7 +153,7 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
             diagnostics.push(`HTTP ${response.status()} ${response.url()}`);
         });
         await page.goto(origin);
-        await page.locator(`[data-slot="sidebar"] [data-session-id="${sessionId}"]`).last().click();
+        await openBrowserSession(page, sessionId);
         await expect(
           page.getByRole("link", { name: "qualification.ts", exact: true }),
         ).toBeVisible();
