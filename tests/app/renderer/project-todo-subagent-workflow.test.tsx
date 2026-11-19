@@ -119,6 +119,7 @@ it("matches a subagent by public handle AND parent, changes/clears the shared cu
   expect(title().getAttribute("aria-pressed")).toBe("true");
   expect(row().getAttribute("data-associated")).toBe("true");
   expect(row().className).toContain("outline-dashed");
+  await fixture.user.click(screen.getByRole("button", { name: "Show 1 link for Review worker" }));
   const link = screen.getByRole("link", { name: "Investigation worker" });
   expect(link.getAttribute("href")).toBe(subagentLink(projectChat, handleId));
   await fixture.user.click(screen.getByRole("button", { name: "Unfocus to-do: Review worker" }));

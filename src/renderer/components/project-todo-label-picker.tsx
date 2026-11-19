@@ -10,12 +10,16 @@ export const ProjectTodoLabelPicker = observer(function ProjectTodoLabelPicker({
   className,
   disabled,
   notifyOnError,
+  showName,
+  unlabelledClassName,
 }: {
   item: ProjectTodo;
   store: ProjectTodosStore;
   className?: string;
   disabled?: boolean;
   notifyOnError?: boolean;
+  showName?: boolean;
+  unlabelledClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const { labelId, labels, inheritedLabels } = store.labelPickerState(item, open);
@@ -29,6 +33,8 @@ export const ProjectTodoLabelPicker = observer(function ProjectTodoLabelPicker({
       ariaLabel={`Change label for ${item.title}`}
       disabled={disabled || store.busy}
       className={className}
+      showName={showName}
+      unlabelledClassName={unlabelledClassName}
       onChange={(labelId) => store.setLabel(item, labelId, { notifyOnError })}
     />
   );

@@ -83,6 +83,9 @@ for (const theme of ["light", "dark"] as const) {
         )
         .toBe(true);
       await page.mouse.move(1, 1);
+      await panel
+        .getByRole("button", { name: "Show 6 links for Startup investigation", exact: true })
+        .click();
       const destinations = [
         ["Startup investigation session", "cake://session/visual-assistant-markdown-code"],
         [
@@ -129,11 +132,15 @@ for (const theme of ["light", "dark"] as const) {
       }
       await page.keyboard.press("Shift+Tab");
       await expect(
-        panel.getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true }),
+        panel.getByRole("button", { name: "Hide 6 links for Startup investigation", exact: true }),
       ).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(
-        panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
+        panel.getByRole("button", { name: /^Change label for Startup investigation\./ }),
+      ).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(
+        panel.getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true }),
       ).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(
@@ -141,6 +148,10 @@ for (const theme of ["light", "dark"] as const) {
           name: "Attach to-do as context: Startup investigation",
           exact: true,
         }),
+      ).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(
+        panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
       ).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(startup).toBeFocused();

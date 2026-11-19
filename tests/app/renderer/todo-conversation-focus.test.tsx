@@ -244,8 +244,9 @@ for (const global of [false, true]) {
   });
 }
 
-it("enters focus with the description closed until a real pointer hover", async () => {
-  const description = "Find the startup bottleneck.";
+it("renders descriptions inline and keeps overflow hover cards closed until a real pointer hover", async () => {
+  const description =
+    "Find the startup bottleneck across project hydration and renderer snapshot initialization, then validate the fix with an isolated regression test and latency trace.";
   using fixture = createRendererStoreFixture();
   applySnapshot(fixture.models.cakeChatTodos, {
     todos: {
@@ -286,6 +287,7 @@ it("enters focus with the description closed until a real pointer hover", async 
     const row = () => panel.getByRole("button", { name: "Task A" });
     const header = () => view.container.querySelector('[data-slot="selection-bar"]');
     await settleListLayout();
+    expect(panel.getByText(description)).toBeDefined();
     for (const enter of [
       () => u.click(row()),
       () => u.click(transcript.getByRole("button", { name: "Focus to-do: Task A" })),
@@ -297,12 +299,12 @@ it("enters focus with the description closed until a real pointer hover", async 
       await wait();
       expect(header()?.textContent).toBe("Focused to-do:Task A");
       expect(screen.getAllByText("Task A")).toHaveLength(2); // Bar and pane row only.
-      expect(screen.queryByText(description)).toBeNull();
+      expect(screen.queryByRole("tooltip")).toBeNull();
       // Layout moving the row under the resting pointer resends events in place.
       pointAt(row(), 0);
       await wait();
-      expect(screen.queryByText(description)).toBeNull();
-      // Real travel over the row opens it; leaving closes it even with focus kept.
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      // Real travel over the row opens the full overflow card; leaving closes it even with focus kept.
       pointAt(row(), 24);
       await wait();
       expect(screen.getByRole("tooltip").textContent).toBe(description);
@@ -313,7 +315,7 @@ it("enters focus with the description closed until a real pointer hover", async 
       );
       await wait();
       expect(document.activeElement).toBe(row());
-      expect(screen.queryByText(description)).toBeNull();
+      expect(screen.queryByRole("tooltip")).toBeNull();
       await u.click(screen.getByRole("button", { name: "Clear to-do focus" }));
       expect(header()).toBeNull();
     }

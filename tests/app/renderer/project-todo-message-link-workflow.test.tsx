@@ -122,6 +122,9 @@ it("jumps to the original findings in the conversation from a to-do after anothe
     );
     expect(root.appShellStore.activeConversation?.sessionId).toBe("other-topic");
     expect(inspect).not.toHaveBeenCalled();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Show 2 links for Investigate startup" }));
     const link = screen.getByRole("link", { name: "Investigation findings" });
     expect(link.getAttribute("href")).toBe(ref);
     await userEvent.setup().click(link);

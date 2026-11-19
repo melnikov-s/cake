@@ -37,7 +37,7 @@ See `AGENTS.md` for renderer implementation rules.
 
 [FilePicker](../../src/renderer/components/ui/file-picker.tsx) opens a native file or folder chooser and supplies only user-selected `File` data. It supports JSON/JSONC source sets for theme imports.
 
-[`LabelPicker`](../../src/renderer/components/ui/label-picker.tsx) selects or clears one label from the caller's session label catalog. Its compact swatch shows the current catalog name on hover and keyboard focus.
+[`LabelPicker`](../../src/renderer/components/ui/label-picker.tsx) selects or clears one label from the caller's session label catalog. Its compact swatch shows the current catalog name on hover and keyboard focus, and `showName` renders the swatch alongside the label name for metadata footers.
 
 [`AnnotationColorPicker`](../../src/renderer/components/ui/annotation-color-picker.tsx) is a compact dot trigger and preset-dot popover for image annotations. Its explicit image colors are independent of Cake's theme; screenshot preferences own the selected value.
 

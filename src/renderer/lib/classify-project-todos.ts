@@ -13,12 +13,15 @@ const newestFirst = (a: OrderedTodo, b: OrderedTodo) => {
   return a.item.id.localeCompare(b.item.id);
 };
 
+export type ProjectTodoCategory = ReturnType<typeof projectTodoCategory>;
+
 /** One storage-order pass; lookups live only for this calculation. */
 export function classifyProjectTodos(
   items: readonly ProjectTodo[],
   focusedItemIds: readonly string[],
   query: string,
   isReadyToMerge: (item: ProjectTodo) => boolean,
+  matchesFilter?: (item: ProjectTodo, category: ProjectTodoCategory, ready: boolean) => boolean,
 ) {
   const focusedIds = new Set(focusedItemIds);
   const focused = new Map<string, ProjectTodo>();
@@ -38,6 +41,9 @@ export function classifyProjectTodos(
       !(category === "attention" && item.attentionReason?.toLowerCase().includes(search))
     )
       continue;
+    let readyFlag: boolean | undefined;
+    const isReady = () => (readyFlag ??= category === "active" && isReadyToMerge(item));
+    if (matchesFilter && !matchesFilter(item, category, isReady())) continue;
     if (focusedIds.has(item.id)) {
       focused.set(item.id, item);
       continue;
@@ -45,7 +51,7 @@ export function classifyProjectTodos(
     if (category === "attention") attention.push(item);
     else if (category === "done") done.push({ item, index });
     else if (category === "snoozed") snoozed.push({ item, index });
-    else (isReadyToMerge(item) ? ready : active).push({ item, index });
+    else (isReady() ? ready : active).push({ item, index });
   }
   return {
     focused: focusedItemIds.flatMap((id) => focused.get(id) ?? []),

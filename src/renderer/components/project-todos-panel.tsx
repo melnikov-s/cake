@@ -27,7 +27,7 @@ type Row =
       project?: { scope: string; icon?: ProjectIcon; expanded: boolean };
     }
   | { key: string; kind: "header"; section: Section; first: boolean }
-  | { key: string; kind: "todo"; section: Section; item: ProjectTodo };
+  | { key: string; kind: "todo"; section: Section; item: ProjectTodo; allowsCakeMerge: boolean };
 
 export const ProjectTodosPanel = observer(function ProjectTodosPanel({
   store,
@@ -121,6 +121,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
               kind: "todo",
               section,
               item,
+              allowsCakeMerge,
             }))
           : []),
       ]),
@@ -276,7 +277,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
       }
       ListEmptyComponent={
         <p role="status" className="px-2 py-3 text-xs text-muted-foreground">
-          {store.query.trim() ? "No matching to-dos." : "No to-dos."}
+          {store.query.trim() || store.filter !== "all" ? "No matching to-dos." : "No to-dos."}
         </p>
       }
       renderItem={({ item: row, index }) =>
@@ -356,6 +357,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
               item={row.item}
               store={store}
               section={row.section.title}
+              allowsCakeMerge={row.allowsCakeMerge}
               position={index + 1}
               count={rows.length}
             />

@@ -1,6 +1,6 @@
 import { computed, observable, snapshot, Store } from "r-state-tree";
 import type { AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
-import { classifyProjectTodos } from "../lib/classify-project-todos";
+import { classifyProjectTodos, type ProjectTodoCategory } from "../lib/classify-project-todos";
 import {
   isCakeChatTodoScope,
   projectTodoCategory,
@@ -16,6 +16,19 @@ import { ClientContext } from "./context/ClientContext";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 import { ToastContext } from "./context/ToastContext";
 import { describeError } from "../lib/error-details";
+
+export type ProjectTodoFilter = "all" | "needs_me" | "running" | "idle";
+
+export interface ProjectTodoActivitySummary {
+  readonly totalSessions: number;
+  readonly running: number;
+  readonly waiting: number;
+  readonly blocked: number;
+  readonly error: number;
+  readonly resolved: number;
+  readonly readyToMerge: boolean;
+  readonly mergeFailed: boolean;
+}
 
 /** A main-owned to-do list projection: a Project's list or global Cake Chat's own list. */
 interface TodoListOwner {
@@ -50,10 +63,13 @@ export class ProjectTodosStore extends Store<{
   replyContext(name: string, text: string): void;
 }> {
   query = "";
+  filter: ProjectTodoFilter = "all";
   readyExpanded = true;
   activeExpanded = true;
   doneExpanded = false;
   snoozedExpanded = true;
+  /** Window-local per-row link disclosure; links stay collapsed until inspected. */
+  expandedLinkIds: Record<string, boolean> = {};
   @snapshot private readonly collapsedProjects: Record<string, boolean> = observable({});
   private readonly searchCollapsedProjects: Record<string, boolean> = observable({});
   inspectedItemId: string | undefined;
@@ -139,19 +155,132 @@ export class ProjectTodosStore extends Store<{
   get classifiedItems() {
     return this.classifyItems(this.value?.items ?? []);
   }
+  itemActivitySummary(
+    item: ProjectTodo,
+    readinessLookup?: (sessionId: string) => AutoMergeRequest | undefined,
+  ): ProjectTodoActivitySummary {
+    const metadata = SessionMetadataContext.consume(this);
+    const seen = new Set<string>();
+    let running = 0;
+    let waiting = 0;
+    let blocked = 0;
+    let error = 0;
+    let resolved = 0;
+    let readyToMerge = false;
+    let mergeFailed = false;
+    for (const link of item.associations) {
+      if (link.kind !== "session" || seen.has(link.sessionId)) continue;
+      seen.add(link.sessionId);
+      if (!metadata) continue;
+      if (metadata.isResolved(link.sessionId)) {
+        resolved += 1;
+        continue;
+      }
+      const activity = metadata.sessionWorkActivity(link.sessionId);
+      if (activity === "running") running += 1;
+      else if (activity === "waiting") waiting += 1;
+      else if (activity === "blocked") blocked += 1;
+      else if (activity === "error") error += 1;
+      const readiness = readinessLookup
+        ? readinessLookup(link.sessionId)
+        : metadata.sessionMergeReadiness(link.sessionId);
+      if (readiness?.readyToMerge === true) readyToMerge = true;
+      if (readiness?.state === "failed") mergeFailed = true;
+    }
+    return {
+      totalSessions: seen.size,
+      running,
+      waiting,
+      blocked,
+      error,
+      resolved,
+      readyToMerge,
+      mergeFailed,
+    };
+  }
+  private matchesSignalFilter(
+    filter: ProjectTodoFilter,
+    item: ProjectTodo,
+    category: ProjectTodoCategory,
+    readinessLookup: () => (sessionId: string) => AutoMergeRequest | undefined,
+  ) {
+    if (filter === "all") return true;
+    if (category === "done" || category === "snoozed") return false;
+    const summary = this.itemActivitySummary(item, readinessLookup());
+    const needsMe =
+      Boolean(item.needsAttention) ||
+      summary.readyToMerge ||
+      summary.waiting > 0 ||
+      summary.blocked > 0 ||
+      summary.error > 0 ||
+      summary.mergeFailed;
+    const isRunning = summary.running > 0;
+    if (filter === "needs_me") return needsMe;
+    if (filter === "running") return isRunning;
+    return !needsMe && !isRunning;
+  }
+  @computed
+  get filterCounts() {
+    let readiness: ((sessionId: string) => AutoMergeRequest | undefined) | undefined;
+    const getReadiness = () =>
+      (readiness ??= SessionMetadataContext.consume(this)!.createMergeReadinessLookup());
+    let all = 0;
+    let needsMe = 0;
+    let running = 0;
+    let idle = 0;
+    for (const item of this.paneItems) {
+      if (item.state !== "open" || item.snoozedUntil) continue;
+      all += 1;
+      const summary = this.itemActivitySummary(item, getReadiness());
+      const itemNeedsMe =
+        Boolean(item.needsAttention) ||
+        summary.readyToMerge ||
+        summary.waiting > 0 ||
+        summary.blocked > 0 ||
+        summary.error > 0 ||
+        summary.mergeFailed;
+      const itemRunning = summary.running > 0;
+      if (itemNeedsMe) needsMe += 1;
+      if (itemRunning) running += 1;
+      if (!itemNeedsMe && !itemRunning) idle += 1;
+    }
+    return { all, needsMe, running, idle };
+  }
   classifyItems(items: readonly ProjectTodo[]) {
     // Construct the readiness join only if a matching unfocused active item needs it.
     let readiness: ((sessionId: string) => AutoMergeRequest | undefined) | undefined;
-    return classifyProjectTodos(items, this.focusedItemIds, this.query, (item) => {
-      const lookup = (readiness ??=
-        SessionMetadataContext.consume(this)!.createMergeReadinessLookup());
-      return item.associations.some(
-        (link) =>
-          link.kind === "session" &&
-          !SessionMetadataContext.consume(this)!.isResolved(link.sessionId) &&
-          lookup(link.sessionId)?.readyToMerge === true,
-      );
-    });
+    const getReadiness = () =>
+      (readiness ??= SessionMetadataContext.consume(this)!.createMergeReadinessLookup());
+    const filter = this.filter;
+    return classifyProjectTodos(
+      items,
+      this.focusedItemIds,
+      this.query,
+      (item) => {
+        const lookup = getReadiness();
+        return item.associations.some(
+          (link) =>
+            link.kind === "session" &&
+            !SessionMetadataContext.consume(this)!.isResolved(link.sessionId) &&
+            lookup(link.sessionId)?.readyToMerge === true,
+        );
+      },
+      filter === "all"
+        ? undefined
+        : (item, category) => this.matchesSignalFilter(filter, item, category, getReadiness),
+    );
+  }
+  setFilter(filter: ProjectTodoFilter) {
+    this.filter = filter;
+  }
+  areLinksExpanded(id: string) {
+    return Boolean(this.expandedLinkIds[id]);
+  }
+  toggleLinksExpanded(id: string) {
+    this.expandedLinkIds = {
+      ...this.expandedLinkIds,
+      [id]: !this.expandedLinkIds[id],
+    };
   }
   get openItems() {
     return this.value?.items.filter((item) => item.state === "open" && !item.snoozedUntil) ?? [];
@@ -265,6 +394,7 @@ export class ProjectTodosStore extends Store<{
   /** Inspect a transcript task without changing view focus or the next message. */
   reveal(item: ProjectTodo) {
     this.query = "";
+    this.filter = "all";
     this.inspectedItemId = item.id;
     this.requestPane(item, "nearest", false);
     if (item.state === "done") this.doneExpanded = true;

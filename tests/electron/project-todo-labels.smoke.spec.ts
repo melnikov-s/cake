@@ -102,12 +102,16 @@ test("label picker never completes or selects the row, and right actions remain 
     const done = row.getByRole("button", { name: `Mark done: ${title}`, exact: true });
     await expect(done).toHaveCSS("opacity", "0");
     // Shift+Tab reaches row controls without invoking Cake's plain-Tab composer shortcut.
-    await row.getByRole("button", { name: `Attach to-do as context: ${title}` }).focus();
+    await label("Unlabelled").focus();
+    await expect(label("Unlabelled")).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(
+      row.getByRole("button", { name: `Attach to-do as context: ${title}` }),
+    ).toBeFocused();
     await page.keyboard.press("Shift+Tab");
     await expect(done).toBeFocused();
     await expect(done).toHaveCSS("opacity", "1");
-    await page.keyboard.press("Shift+Tab");
-    await expect(label("Unlabelled")).toBeFocused();
+    await label("Unlabelled").focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("menu", { name: "Choose label" })).toBeVisible();
     await page.getByRole("menuitemradio", { name: customLabel, exact: true }).click();

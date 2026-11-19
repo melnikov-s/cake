@@ -367,6 +367,7 @@ it("external projects do not present retained readiness as merge-ready, but keep
     autoMergeRequests: [mergeRequest("ready")],
   });
   expect(todoSection("Ready to Merge to-dos")).toBeDefined();
+  await fixture.user.click(screen.getByRole("button", { name: `Show 1 link for ${ready.title}` }));
   await fixture.updateLanding("pull-request");
   expect(screen.queryByRole("list", { name: "Ready to Merge to-dos" })).toBeNull();
   expect(screen.queryByLabelText("Merge status for ready")).toBeNull();
@@ -519,6 +520,7 @@ it("groups accepted structured declarations and retains them while auto-merge is
   await fixture.updateSessions(sessions);
   await fixture.updateMergeRequests(requests);
   expect(readyList().getByRole("button", { name: ready.title })).toBeDefined();
+  await fixture.user.click(screen.getByRole("button", { name: `Show 1 link for ${ready.title}` }));
   expect(screen.getByLabelText("Merge status for ready").textContent).toContain(
     "Auto-merge is off",
   );
@@ -637,6 +639,7 @@ it("keeps blocked and failed landings visible and reports partial resolution wit
     autoMergeRequests: [mergeRequest("ready")],
     autoMergeEnabled: true,
   });
+  await fixture.user.click(screen.getByRole("button", { name: `Show 2 links for ${item.title}` }));
   for (const [request, text] of [
     [
       mergeRequest("ready", { state: "canceled", message: "Blocked by active family member" }),
@@ -700,6 +703,7 @@ it.each([
       autoMergeRequests: [mergeRequest("ready", request)],
     });
     await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+    await fixture.user.click(screen.getByRole("button", { name: `Show 1 link for ${item.title}` }));
     expect(screen.getByRole("status", { name: "Session status for ready" }).textContent).toBe(
       "Resolved",
     );
@@ -724,6 +728,7 @@ it("shows resolved cold links without loading archived session details, and foll
   });
   await fixture.updateSignals({ _tag: "Snapshot", sessions: [], resolvedSessionIds: ["cold"] });
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+  await fixture.user.click(screen.getByRole("button", { name: `Show 1 link for ${item.title}` }));
   expect(screen.getByRole("status", { name: "Session status for cold" }).textContent).toBe(
     "Resolved",
   );
@@ -779,6 +784,7 @@ it.each(["unique", "resolved collision", "active collision"] as const)(
       resolvedSessionIds: variant === "resolved collision" ? [canonical, collision] : [canonical],
     });
     await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Show 1 link for Task 228" }));
     expect(screen.getByRole("link", { name: suffix }).getAttribute("href")).toBe(
       `cake://session/${suffix}`,
     );
@@ -886,6 +892,12 @@ it("preserves flags, snooze and focus without duplicate rows and shows every rea
     "Needs attention",
     "Snoozed",
   ]);
+  await fixture.user.click(
+    screen.getByRole("button", { name: `Show 2 links for ${attention.title}` }),
+  );
+  await fixture.user.click(
+    screen.getByRole("button", { name: `Show 1 link for ${snoozed.title}` }),
+  );
   for (const sessionId of ["first", "second", "third"])
     expect(screen.getByLabelText(`Merge status for ${sessionId}`).textContent).toBe(
       "Ready to Merge",
@@ -931,6 +943,8 @@ it("counts accepted declarations while completion/handoff is pending, independen
     ],
   });
   expect(screen.getByRole("button", { name: "Ready to Merge (2)" })).toBeDefined();
+  await fixture.user.click(screen.getByRole("button", { name: "Show 1 link for Task 249" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Show 1 link for Task 250" }));
   expect(screen.getByLabelText("Merge status for second").textContent).toContain(
     "Waiting for result handoff",
   );
@@ -1044,6 +1058,7 @@ it("shows action-first requests, dismisses without selection/lifecycle effects, 
   expect(attention().querySelector(`[data-todo-id="${item.id}"]`)?.textContent).toContain(
     item.attentionReason,
   );
+  await fixture.user.click(screen.getByRole("button", { name: `Show 1 link for ${item.title}` }));
   expect(attention().getByRole("link", { name: "Findings" })).toBeDefined();
   expect(todoRegions().map((region) => region.getAttribute("aria-label"))).toEqual([
     "Needs attention",
@@ -1478,13 +1493,7 @@ it("keeps creation order and selection through description/status edits and link
     ),
   });
   expect(openOrder()).toEqual(expected);
-  expect(screen.queryByText("New finding.")).toBeNull();
-  // Descriptions follow real pointer travel; user-event otherwise rests at (0, 0).
-  await fixture.user.pointer({
-    target: screen.getByRole("button", { name: "Task 1" }),
-    coords: { clientX: 24, clientY: 8 },
-  });
-  expect(await screen.findByText("New finding.")).toBeDefined();
+  expect(screen.getByText("New finding.")).toBeDefined();
   expect(screen.getByRole("button", { name: "Task 1" }).getAttribute("aria-pressed")).toBe("true");
 });
 
@@ -1556,7 +1565,7 @@ it("switches and toggles title focus, with independent done/reopen and explicit 
   using fixture = renderTodos();
   const title = () => screen.getByRole("button", { name: "Investigate startup" });
   const followUp = () => screen.getByRole("button", { name: "Follow up" });
-  expect(screen.queryByText("Find the startup bottleneck.")).toBeNull();
+  expect(screen.getByText("Find the startup bottleneck.")).toBeDefined();
   await fixture.user.click(title());
   expect(title().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(followUp());
@@ -1569,6 +1578,9 @@ it("switches and toggles title focus, with independent done/reopen and explicit 
   expect(title().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Investigate startup" }));
   expect(title().getAttribute("aria-pressed")).toBe("true");
+  await fixture.user.click(
+    screen.getByRole("button", { name: "Show 4 links for Investigate startup" }),
+  );
   expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(2);
   await fixture.user.click(screen.getByRole("button", { name: "Reopen: Investigate startup" }));
   await fixture.user.click(
@@ -1583,6 +1595,9 @@ it("switches and toggles title focus, with independent done/reopen and explicit 
 
 it("keeps each associated session link and projects readiness across read, new work, waiting and settlement", async () => {
   using fixture = renderTodos();
+  await fixture.user.click(
+    screen.getByRole("button", { name: "Show 4 links for Investigate startup" }),
+  );
   expect(screen.getByRole("link", { name: "First investigation" }).getAttribute("href")).toBe(
     "cake://session/first",
   );
@@ -1593,10 +1608,18 @@ it("keeps each associated session link and projects readiness across read, new w
   await fixture.read();
   expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(2);
   await fixture.status({ running: true, unread: false });
-  expect(screen.getByRole("img", { name: "Running" }).className).toContain("bg-accent");
+  expect(
+    within(screen.getByRole("list", { name: "Work for Investigate startup" })).getByRole("img", {
+      name: "Running",
+    }).className,
+  ).toContain("bg-accent");
   expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(1);
   await fixture.status({ running: false, recoveryIssue: "Needs a decision", unread: false });
-  expect(screen.getByRole("img", { name: "Needs your input" }).className).toContain("bg-attention");
+  expect(
+    within(screen.getByRole("list", { name: "Work for Investigate startup" })).getByRole("img", {
+      name: "Needs your input",
+    }).className,
+  ).toContain("bg-attention");
   await fixture.status({ running: false, unread: false, resolved: true });
   expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(1);
   expect(
@@ -1604,7 +1627,11 @@ it("keeps each associated session link and projects readiness across read, new w
   ).toBe("Resolved");
   expect(screen.getByRole("button", { name: "Mark done: Investigate startup" })).toBeDefined();
   await fixture.status({ resolved: false, latestTurnOutcome: "failed" });
-  expect(screen.getByRole("img", { name: "Error" }).className).toContain("bg-destructive");
+  expect(
+    within(screen.getByRole("list", { name: "Work for Investigate startup" })).getByRole("img", {
+      name: "Error",
+    }).className,
+  ).toContain("bg-destructive");
   await fixture.status({ latestTurnOutcome: "aborted" });
   expect(screen.getAllByRole("img", { name: "Ready for review" })).toHaveLength(1);
   await fixture.status({ latestTurnOutcome: undefined, unread: true });
@@ -1702,6 +1729,7 @@ it("snoozes focused work independently, restores its section on unfocus and unsn
   await fixture.user.click(screen.getByRole("button", { name: `Unfocus to-do: ${title}` }));
   const snoozed = todoSection("Snoozed to-dos");
   expect(snoozed.getByRole("button", { name: title }).getAttribute("aria-disabled")).toBe("false");
+  await fixture.user.click(screen.getByRole("button", { name: `Show 4 links for ${title}` }));
   expect(snoozed.getByRole("link", { name: "Report" })).toBeDefined();
   expect(
     todoSection("Active to-dos").queryByRole("button", {
@@ -1804,4 +1832,53 @@ it("validates custom local time, changes an existing deadline, searches snoozed 
     }),
   ).toBeDefined();
   expect(fixture.todos().items[0]!.snoozedUntil).toBeUndefined();
+});
+
+it("filters open to-dos by signal (All, Needs me, Running, Research / Idle) with accurate counts and resets on reveal", async () => {
+  const attention = {
+    ...todo(301, undefined, ["run"]),
+    title: "Fix review defects",
+    needsAttention: true,
+    attentionReason: "Review findings",
+  };
+  const ready = { ...todo(302, undefined, ["ready"]), title: "Fix Enter scroll" };
+  const runningOnly = { ...todo(303, undefined, ["run-2"]), title: "Profile hydration" };
+  const idle = { ...todo(304), title: "Explore webhook automations" };
+  const snoozed = {
+    ...todo(305),
+    title: "Later terminology",
+    snoozedUntil: "2099-01-01T00:00:00.000Z",
+  };
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [attention, ready, runningOnly, idle, snoozed] },
+    sessions: [
+      sessionSummary({ sessionId: "run", projectPath: "/cake", running: true }),
+      sessionSummary({ sessionId: "run-2", projectPath: "/cake", running: true }),
+      sessionSummary({ sessionId: "ready", projectPath: "/cake", latestTurnOutcome: "complete" }),
+    ],
+    autoMergeRequests: [mergeRequest("ready")],
+  });
+  const filterGroup = within(screen.getByRole("group", { name: "Filter to-dos" }));
+  expect(filterGroup.getByRole("button", { name: "All 4" }).getAttribute("aria-pressed")).toBe(
+    "true",
+  );
+  await fixture.user.click(filterGroup.getByRole("button", { name: "Needs me 2" }));
+  expect(screen.getByRole("button", { name: attention.title })).toBeDefined();
+  expect(screen.getByRole("button", { name: ready.title })).toBeDefined();
+  expect(screen.queryByRole("button", { name: runningOnly.title })).toBeNull();
+  expect(screen.queryByRole("button", { name: idle.title })).toBeNull();
+
+  await fixture.user.click(filterGroup.getByRole("button", { name: "Running 2" }));
+  expect(screen.getByRole("button", { name: attention.title })).toBeDefined();
+  expect(screen.getByRole("button", { name: runningOnly.title })).toBeDefined();
+  expect(screen.queryByRole("button", { name: ready.title })).toBeNull();
+
+  await fixture.user.click(filterGroup.getByRole("button", { name: "Idle 1" }));
+  expect(screen.getByRole("button", { name: idle.title })).toBeDefined();
+  expect(screen.queryByRole("button", { name: attention.title })).toBeNull();
+
+  // Revealing a hidden to-do from the transcript resets the active signal filter.
+  await act(async () => fixture.store.reveal(ready));
+  expect(fixture.store.filter).toBe("all");
+  expect(screen.getByRole("button", { name: ready.title })).toBeDefined();
 });

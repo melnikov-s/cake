@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { StrictMode } from "react";
 import { act, cleanup, render, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it } from "vitest";
 import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
@@ -74,6 +75,9 @@ it("shares live stats across session lists and distinct to-do session links, hid
   );
   const row = view.container.querySelector<HTMLElement>('[data-session-id="committed"]')!;
   const todo = view.container.querySelector<HTMLElement>('[data-todo-id="todo"]')!;
+  await userEvent
+    .setup()
+    .click(within(todo).getByRole("button", { name: "Show 5 links for Review" }));
   expect(within(row).getByRole("img", { name: "Contribution: +120 −35" })).toBeDefined();
   expect(within(todo).getAllByRole("img", { name: "Contribution: +120 −35" })).toHaveLength(1);
   expect(within(todo).getByRole("img", { name: "Contribution: +4 −2" })).toBeDefined();

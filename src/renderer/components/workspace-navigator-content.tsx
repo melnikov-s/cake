@@ -2,6 +2,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { WidgetTabViewport } from "./widget-tab-viewport";
 import { RootStore } from "../stores/RootStore";
 import { ConversationNavigator } from "./conversation-navigator";
+import { ProjectTodoFilterBar } from "./project-todo-filter-bar";
 import { ProjectTodosPanel } from "./project-todos-panel";
 import { SearchInput } from "./ui/search-input";
 
@@ -17,10 +18,12 @@ export const WorkspaceNavigatorContent = observer(function WorkspaceNavigatorCon
       <div className="px-3 py-2 [&_svg]:size-3">
         <SearchInput
           label="Search to-dos"
+          placeholder="Search titles, updates, or reasons…"
           value={todos.query}
           onValueChange={(query) => todos.setQuery(query)}
         />
       </div>
+      <ProjectTodoFilterBar store={todos} />
       <div className="min-h-0 flex-1">
         <ProjectTodosPanel store={todos} />
       </div>

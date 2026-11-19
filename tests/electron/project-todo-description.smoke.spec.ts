@@ -89,23 +89,25 @@ test("to-do descriptions float left or vertically inside available Cake space wi
     await panel.getByRole("button", { name: /^To-dos / }).click();
     const title = panel.getByRole("button", { name: "Startup investigation", exact: true });
     const row = panel.locator('[data-todo-id="00000000-0000-4000-8000-000000000011"]');
-    const bubble = page.getByRole("tooltip").filter({ hasText: "Find the startup bottleneck" });
     const attach = row.getByRole("button", {
       name: "Attach to-do as context: Startup investigation",
       exact: true,
     });
     await page.getByRole("combobox", { name: "Message Project Chat" }).focus();
     await page.mouse.move(1, 1);
-    await expect(bubble).toHaveCount(0);
+    await expect(
+      row.getByText("Find the startup bottleneck and recommend a focused fix."),
+    ).toBeVisible();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     await expect(attach).toHaveCSS("opacity", "0");
     await expect(panel.getByText("Auto-merge", { exact: true })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: /auto.merge/i })).toHaveCount(0);
+    // Links stay collapsed until explicitly disclosed.
     await expect(
       row.getByRole("link", { name: "Exact investigation report", exact: true }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     const before = await row.boundingBox();
     await title.hover();
-    await expect(bubble).toBeVisible();
     await expect(attach).toHaveCSS("opacity", "1");
     const attachBox = (await attach.boundingBox())!;
     expect(Math.abs(before!.x + before!.width - attachBox.x - attachBox.width - 32)).toBeLessThan(
@@ -117,37 +119,23 @@ test("to-do descriptions float left or vertically inside available Cake space wi
     });
     expect((await otherAttach.boundingBox())!.x).toBe(attachBox.x);
     expect(await row.boundingBox()).toEqual(before);
-    expect((await bubble.boundingBox())!.x + (await bubble.boundingBox())!.width).toBeLessThan(
-      before!.x,
-    );
-    await expect(bubble.getByRole("link")).toHaveCount(0);
-    await bubble.hover();
-    await expect(bubble).toBeVisible();
-    await title.focus();
-    await expect(title).toBeFocused();
-    await title.press("Escape");
-    await expect(bubble).toHaveCount(0);
-    await expect(title).toBeFocused();
+    // Expanding links reveals the destination without toggling row focus.
+    await row
+      .getByRole("button", { name: "Show 1 link for Startup investigation", exact: true })
+      .click();
+    await expect(
+      row.getByRole("link", { name: "Exact investigation report", exact: true }),
+    ).toBeVisible();
+    await expect(title).toHaveAttribute("aria-pressed", "false");
 
-    // Native editor/browser surfaces cannot be overlaid. Their companion marks this boundary.
+    // Long clamped descriptions still open a scrollable overflow card within available Cake space.
     await panel.evaluate((element) => element.setAttribute("data-popover-boundary", ""));
-    for (const width of [1500, 900]) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.mouse.move(1, 1);
-      await title.hover();
-      await expect(bubble).toBeVisible();
-      await expect(async () => {
-        const pane = (await panel.boundingBox())!;
-        const target = (await row.boundingBox())!;
-        const box = (await bubble.boundingBox())!;
-        expect(box.x).toBeGreaterThanOrEqual(pane.x);
-        expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width);
-        expect(box.y).toBeGreaterThanOrEqual(target.y + target.height);
-        expect(box.y + box.height).toBeLessThanOrEqual(pane.y + pane.height);
-      }).toPass();
-      await title.press("Escape");
-    }
+    const scrollPane = panel.locator('[data-slot="todo-scroll-pane"]');
+    await scrollPane.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
     const last = panel.getByRole("button", { name: "Additional task 15", exact: true });
+    await expect(last).toBeVisible();
     await last.hover();
     const longBubble = page
       .getByRole("tooltip")

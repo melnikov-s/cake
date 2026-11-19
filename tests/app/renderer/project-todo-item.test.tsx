@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ProjectTodoItem } from "../../../src/renderer/components/project-todo-item";
@@ -21,7 +22,7 @@ import type {
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
 
-it("keeps mixed session purposes on their individual to-do links without reordering associations or to-dos", () => {
+it("keeps mixed session purposes on their individual to-do links without reordering associations or to-dos", async () => {
   using fixture = createRendererStoreFixture({
     sessions: [
       sessionSummary({ sessionId: "mine", projectPath: "/project", purpose: "user" }),
@@ -52,6 +53,12 @@ it("keeps mixed session purposes on their individual to-do links without reorder
       ))}
     </StoreProvider>,
   );
+  // Links start collapsed behind compact per-row disclosures without toggling focus.
+  expect(screen.queryAllByRole("link")).toEqual([]);
+  const user = userEvent.setup();
+  for (const item of items) {
+    await user.click(screen.getByRole("button", { name: `Show 2 links for ${item.title}` }));
+  }
   const links = screen.getAllByRole("link");
   expect(links.map((link) => link.textContent)).toEqual([
     "Assigned work",
@@ -126,7 +133,7 @@ it("classifies explicit subagent associations by public handle and parent with a
   });
 });
 
-it("renders authored titles and decorative destination icons through the existing navigation components", () => {
+it("renders authored titles and decorative destination icons through the existing navigation components", async () => {
   using fixture = createRendererStoreFixture();
   const store = fixture.root.cakeChatCollectionStore.registry.load("project-chat:test").todos;
   const associations: ProjectTodoAssociation[] = cases.map(({ title, ref }) => ({
@@ -164,15 +171,71 @@ it("renders authored titles and decorative destination icons through the existin
       </MarkdownLinkProvider>
     </StoreProvider>,
   );
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { name: `Show ${cases.length} links for Review work` }));
   for (const { title, ref, Icon } of cases) {
     const link = screen.getByRole("link", { name: title });
     expect(link.getAttribute("href")).toBe(ref);
-    expect(link.getAttribute("aria-description")).toBe(ref);
+    expect(link.getAttribute("aria-description")).toBe(
+      ref.startsWith("cake://session/") ? `${title}\n${ref}` : ref,
+    );
     const icon = link.closest("li")!.querySelector("svg")!;
     expect(icon.getAttribute("aria-hidden")).toBe("true");
     const expected = render(<Icon />);
     expect(icon.innerHTML).toBe(expected.container.querySelector("svg")!.innerHTML);
     expected.unmount();
   }
+  view.unmount();
+});
+
+it("shows descriptions and rolled-up session status inline while toggling links without focusing", async () => {
+  using fixture = createRendererStoreFixture({
+    sessions: [
+      sessionSummary({ sessionId: "run", projectPath: "/project", running: true }),
+      sessionSummary({ sessionId: "done-1", projectPath: "/project", resolved: true }),
+      sessionSummary({ sessionId: "done-2", projectPath: "/project", resolved: true }),
+    ],
+  });
+  const store = fixture.root.cakeChatCollectionStore.registry.load("project-chat:test").todos;
+  const item: ProjectTodo = {
+    id: "00000000-0000-4000-8000-000000000099",
+    title: "Fix concrete architecture review defects",
+    description: "Rebased HEAD passes scoped checks; 4 baseline Knip findings remain.",
+    status: "",
+    state: "open",
+    needsAttention: true,
+    attentionReason: "Review 4 baseline Knip findings before merging",
+    revision: 0,
+    associations: [
+      { kind: "session", sessionId: "run", title: "Deep consultant review" },
+      { kind: "session", sessionId: "done-1", title: "Protect unsent input" },
+      { kind: "session", sessionId: "done-2", title: "Bound workspace file reads" },
+      { kind: "source", ref: "https://example.com/findings", title: "Prioritized findings" },
+    ],
+  };
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <ProjectTodoItem item={item} store={store} />
+    </StoreProvider>,
+  );
+  const user = userEvent.setup();
+  expect(screen.getByText(item.description)).toBeDefined();
+  expect(screen.getByText(item.attentionReason!)).toBeDefined();
+  expect(screen.getByRole("img", { name: "Needs attention" })).toBeDefined();
+  expect(screen.getByText("1 running")).toBeDefined();
+  expect(screen.getByText("2/3 resolved")).toBeDefined();
+  expect(screen.queryByRole("link", { name: "Deep consultant review" })).toBeNull();
+  const toggle = () =>
+    screen.getByRole("button", { name: /^(Show|Hide) 4 links for Fix concrete/ });
+  expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  await user.click(toggle());
+  expect(toggle().getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByRole("link", { name: "Deep consultant review" })).toBeDefined();
+  expect(screen.getByRole("link", { name: "Prioritized findings" })).toBeDefined();
+  expect(store.isFocused(item.id)).toBe(false);
+  await user.click(toggle());
+  expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("link", { name: "Deep consultant review" })).toBeNull();
   view.unmount();
 });
