@@ -11,6 +11,14 @@ import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 import { workerActivity } from "./subagent-activity-workflow-fixture";
 
 beforeEach(() => {
+  const measure = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      const rect = measure.call(this);
+      // A wide conversation area keeps the origin and side chat paired (b39d2426).
+      return this.getAttribute("data-slot") === "side-chat-layout" ? { ...rect, width: 900 } : rect;
+    },
+  );
   vi.stubGlobal("PointerEvent", MouseEvent);
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
@@ -25,6 +33,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 

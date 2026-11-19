@@ -56,6 +56,10 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
     const session = this.props.catalog.find(sessionId);
     const wasSelected = this.props.shell.activeConversation?.sessionId === sessionId;
     const draft = this.props.registry.pendingSessions.isDraft(sessionId);
+    // Deleting a Draft disposes its Stores: leave a viewed Draft for its Project Chat first, so
+    // its mounted pane and observers stop reading them before deletion.
+    if (draft && wasSelected && session?.projectPath)
+      await this.props.openProjectChat(session.projectPath);
     if (!(await this.management.deleteSession(sessionId))) return;
     if (draft) {
       await this.forgetProjectSessions(

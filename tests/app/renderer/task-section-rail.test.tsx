@@ -33,7 +33,14 @@ it("updates a section's title and completion live and inspects it without select
   const view = render(
     <StoreProvider store={fixture.root}>
       <section aria-label="Conversation section">
-        <TaskSectionRail todoId={item.id} start todos={store} expanded onToggle={() => {}} />
+        <TaskSectionRail
+          todoId={item.id}
+          start
+          todos={store}
+          expanded
+          editable
+          onToggle={() => {}}
+        />
         <p>Relevant conversation</p>
         <TaskSectionRail
           todoId={item.id}
@@ -49,7 +56,8 @@ it("updates a section's title and completion live and inspects it without select
   );
   try {
     const section = screen.getByRole("region", { name: "Conversation section" });
-    expect(within(section).getAllByRole("button")).toHaveLength(3);
+    // Label picker, title, focus, disclosure and the owning chat's completion action (81947630).
+    expect(within(section).getAllByRole("button")).toHaveLength(5);
     const rails = section.querySelectorAll('[data-slot="margin-rail"]');
     expect(rails).toHaveLength(2);
     for (const rail of rails) {
@@ -62,7 +70,12 @@ it("updates a section's title and completion live and inspects it without select
         .getByRole("button", { name: `Focus to-do: ${item.title}` })
         .getAttribute("aria-pressed"),
     ).toBe("false");
-    expect(within(section).getByRole("img", { name: "Open" })).toBeDefined();
+    expect(
+      within(section).getByRole("button", {
+        name: `Change label for ${item.title}. Current label: Unlabelled`,
+      }),
+    ).toBeDefined();
+    expect(within(section).getByRole("button", { name: `Mark done: ${item.title}` })).toBeDefined();
     act(() =>
       applySnapshot(fixture.models.projects, {
         projects: [
@@ -81,8 +94,8 @@ it("updates a section's title and completion live and inspects it without select
         projects: [project({ ...item, state: "done", status: "Verified", revision: 2 })],
       }),
     );
-    expect(within(section).getByRole("img", { name: "Done" })).toBeDefined();
-    expect(within(section).getAllByRole("button")).toHaveLength(3);
+    expect(within(section).getByRole("button", { name: `Reopen: ${item.title}` })).toBeDefined();
+    expect(within(section).getAllByRole("button")).toHaveLength(5);
     await userEvent
       .setup()
       .click(within(section).getByRole("button", { name: `Show in To-do: ${item.title}` }));

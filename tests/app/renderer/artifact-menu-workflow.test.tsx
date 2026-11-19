@@ -173,7 +173,8 @@ const openMenu = async (fixture: ReturnType<typeof renderArtifacts>, ownerLabel?
   const trigger = await screen.findByRole("button", {
     name: `2 artifacts${ownerLabel ? ` for ${ownerLabel}` : ""}`,
   });
-  expect(within(trigger).getByText("2").classList.contains("bg-card")).toBe(true);
+  // The shared count bubble's styling is owned by NumberedIconButton (49244c03).
+  expect(within(trigger).getByText("2").closest('[data-slot="count-badge"]')).not.toBeNull();
   await fixture.user.click(trigger);
   expect(trigger.getAttribute("aria-expanded")).toBe("true");
   return screen.getByRole("dialog", {

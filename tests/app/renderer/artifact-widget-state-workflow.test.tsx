@@ -9,6 +9,8 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { Client } from "../../../src/renderer/client/Client";
 import { artifactObserverWorkflowEvents } from "./artifact-observer-workflow-events";
 import type { ReactElement } from "react";
+import { StoreProvider } from "r-state-tree/react";
+import type { RootStore } from "../../../src/renderer/stores/RootStore";
 
 const token = "00000000-0000-4000-8000-000000000010";
 const lineageId = decodeArtifactLineageId("editable");
@@ -54,8 +56,9 @@ const request = (
       data: { source: "cake-inline-widget", token: overrides.token ?? token, type, value },
     }),
   );
-function renderArtifactStateView(element: ReactElement) {
-  const view = render(element);
+/** Artifact viewer headers read app actions (for example widget attachment) from the root store. */
+function renderArtifactStateView(root: RootStore, element: ReactElement) {
+  const view = render(<StoreProvider store={root}>{element}</StoreProvider>);
   return { ...view, [Symbol.dispose]: () => view.unmount() };
 }
 afterEach(cleanup);
@@ -90,6 +93,7 @@ describe("artifact widget state renderer workflow", () => {
       });
       await using events = artifactObserverWorkflowEvents(fixture.root);
       using view = renderArtifactStateView(
+        fixture.root,
         <ArtifactHost
           record={record}
           presentation={presentation}
@@ -172,6 +176,7 @@ describe("artifact widget state renderer workflow", () => {
       },
     });
     using view = renderArtifactStateView(
+      fixture.root,
       <ArtifactHost
         record={record}
         inlineWidgets={fixture.root.inlineWidgetStore}
@@ -242,6 +247,7 @@ describe("artifact widget state renderer workflow", () => {
       },
     });
     using view = renderArtifactStateView(
+      fixture.root,
       <ArtifactHost record={record} inlineWidgets={fixture.root.inlineWidgetStore} />,
     );
     await waitFor(() => expect(view.container.querySelector("iframe")).not.toBeNull());
@@ -280,6 +286,7 @@ describe("artifact widget state renderer workflow", () => {
       },
     });
     using view = renderArtifactStateView(
+      fixture.root,
       <ArtifactHost record={record} inlineWidgets={fixture.root.inlineWidgetStore} />,
     );
     await waitFor(() => expect(view.container.querySelector("iframe")).not.toBeNull());

@@ -6,7 +6,10 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
 import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import {
+  applyConversationSnapshot,
+  applyConversationUpdate,
+} from "../../../src/renderer/reducers/ConversationReducer";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 
 beforeEach(() => {
@@ -117,9 +120,14 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
         createdAt: timestamp,
         updatedAt: timestamp,
       });
-      applyConversationSnapshot(
+      // A Project Session shows a side chat only after its live sidecar snapshot (ff3925f4).
+      applyConversationUpdate(
         fixture.models.discussionConversation("selected-sidecar", "/alpha", parentSessionId),
-        snapshot("selected-sidecar", "Separate side conversation body"),
+        {
+          _tag: "Snapshot",
+          revision: 1,
+          snapshot: snapshot("selected-sidecar", "Separate side conversation body"),
+        },
       );
       await fixture.root.navigationStore.openConversationTarget({
         kind: parentSessionId === "alpha" ? "project-session" : "cake-chat",

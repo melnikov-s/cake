@@ -382,33 +382,41 @@ describe("Workspace Sessions navigation workflow", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
-  it("archives and restores a saved Draft through the same Sessions rows without opening its runtime", async () => {
+  // 0aa20cf5 replaced Draft resolve/restore with deletion: Drafts are never archived as sessions.
+  it("deletes saved Drafts through the same Sessions rows without opening their runtime", async () => {
     const drafts = fakeSavedDrafts();
-    await drafts.client.create({
-      sessionId: "draft",
-      projectPath: "/cake",
-      title: "Saved plan",
-      modifiedAt: "2026-01-31T00:00:00.000Z",
-      text: "Later",
-      attachments: [],
-    });
+    for (const [sessionId, title] of [
+      ["draft", "Saved plan"],
+      ["current", "Current plan"],
+    ] as const)
+      await drafts.client.create({
+        sessionId,
+        projectPath: "/cake",
+        title,
+        modifiedAt: "2026-01-31T00:00:00.000Z",
+        text: "Later",
+        attachments: [],
+      });
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = renderSidebarNavigation({
       projects: [project],
       sessions: [sidebarSummary("root")],
       loadedIds: ["root"],
-      client: { savedDrafts: drafts.client, projectSessions: { open } },
+      client: {
+        savedDrafts: drafts.client,
+        projectSessions: { open },
+        workspaces: { loadStagedSlashCommands: async () => [] },
+      },
     });
     await fixture.selectSession("root");
     await fixture.showSessions();
     open.mockClear();
     expect(await screen.findByRole("button", { name: /^Saved plan / })).toBeTruthy();
-    await fixture.user.click(screen.getByRole("button", { name: "Resolve Saved plan" }));
-    await waitFor(() => expect(drafts.records.get("draft")?.resolved).toBe(true));
-    expect(open).not.toHaveBeenCalled();
-    await fixture.showSessions(true);
-    await fixture.user.click(await screen.findByRole("button", { name: "Restore Saved plan" }));
-    await waitFor(() => expect(drafts.records.get("draft")?.resolved).toBe(false));
+    expect(screen.queryByRole("button", { name: "Resolve Saved plan" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Delete Saved plan" }));
+    await waitFor(() => expect(drafts.records.has("draft")).toBe(false));
+    expect(screen.queryByRole("button", { name: /^Saved plan / })).toBeNull();
+    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe("root");
     expect(open).not.toHaveBeenCalled();
 
     await act(async () =>
@@ -423,21 +431,18 @@ describe("Workspace Sessions navigation workflow", () => {
         ],
       }),
     );
-    await fixture.selectSession("draft");
+    await fixture.selectSession("current");
     expect(await screen.findByRole("button", { name: "Activate draft" })).toBeDefined();
-    expect(fixture.root.sessionRegistry.pendingSessions.savedRecord("draft")?.text).toBe("Later");
+    expect(fixture.root.sessionRegistry.pendingSessions.savedRecord("current")?.text).toBe("Later");
     await fixture.showSessions();
-    await fixture.user.click(screen.getByRole("button", { name: "Resolve Saved plan" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Delete Current plan" }));
     await waitFor(() =>
       expect(fixture.root.appShellStore.activeConversation).toEqual({
         kind: "cake-chat",
         sessionId: `project-chat:${"c".repeat(64)}`,
       }),
     );
-    expect(drafts.records.get("draft")).toMatchObject({ resolved: true, text: "Later" });
-    await fixture.selectSession("draft");
-    expect(await screen.findByRole("button", { name: "Activate draft" })).toBeDefined();
-    expect(fixture.root.sessionRegistry.pendingSessions.savedRecord("draft")?.text).toBe("Later");
+    expect(drafts.records.has("current")).toBe(false);
     expect(open).not.toHaveBeenCalled();
   });
   it("renders live waiting/running/failure facts and worktree lifecycle metadata without truncating titles", async () => {

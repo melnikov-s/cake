@@ -829,11 +829,8 @@ describe("App shell navigation workflow", () => {
     await expectProjectChat("alpha");
     await fixture.user.click(settings());
     expect(screen.getByRole("heading", { name: "Settings" })).toBeDefined();
-    expect(
-      screen.getByText(
-        "Open a project or start a one-off chat to choose a model and reasoning level.",
-      ),
-    ).toBeDefined();
+    // Without a configured session model, Settings omits the Current chat section (81eb383b).
+    expect(screen.queryByRole("heading", { name: "Current chat" })).toBeNull();
     expect(screen.queryByText("Model configuration")).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     await expectProjectChat("alpha");
@@ -851,11 +848,8 @@ describe("App shell navigation workflow", () => {
     await openLibrary(fixture.user);
     await fixture.user.click(settings());
     expect(screen.getByRole("heading", { name: "Settings" })).toBeDefined();
-    expect(
-      screen.getByText(
-        "Open a project or start a one-off chat to choose a model and reasoning level.",
-      ),
-    ).toBeDefined();
+    // Without a configured session model, Settings omits the Current chat section (81eb383b).
+    expect(screen.queryByRole("heading", { name: "Current chat" })).toBeNull();
     expect(screen.queryByText("Model configuration")).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     await expectProjectChat("alpha");
@@ -863,11 +857,8 @@ describe("App shell navigation workflow", () => {
     await fixture.user.click(cakeChatButton());
     await fixture.user.click(settings());
     expect(screen.getByRole("heading", { name: "Settings" })).toBeDefined();
-    expect(
-      screen.getByText(
-        "Open a project or start a one-off chat to choose a model and reasoning level.",
-      ),
-    ).toBeDefined();
+    // Without a configured session model, Settings omits the Current chat section (81eb383b).
+    expect(screen.queryByRole("heading", { name: "Current chat" })).toBeNull();
     expect(screen.queryByText("Model configuration")).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
     await expectCakeChat();

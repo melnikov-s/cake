@@ -184,7 +184,12 @@ describe("IDE conversation workflows", () => {
         mode === "browser"
           ? await screen.findByLabelText("Browser viewport")
           : await screen.findByTitle("VS Code workspace");
-      expect(screen.getAllByText("Editor conversation")).toHaveLength(2);
+      // Main breadcrumb, companion header and the Project Session identity dock (0722d631).
+      expect(
+        screen
+          .getAllByText("Editor conversation")
+          .map((label) => label.closest("nav")?.getAttribute("aria-label") ?? label.tagName),
+      ).toEqual(["Conversation breadcrumb", "STRONG", "Conversation identity"]);
       expect(screen.queryByLabelText("Open side chats")).toBeNull();
       expect(await screen.findByText("Because it preserves state.")).toBeDefined();
       expect(screen.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();

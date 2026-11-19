@@ -110,7 +110,11 @@ it.each(["browser", "vscode"] as const)(
     expect(surface.classList.contains("bg-sidebar")).toBe(false);
     expect(tabs.getByRole("button", { name: "Chat" }).getAttribute("aria-pressed")).toBe("true");
     await fixture.user.click(tabs.getByRole("button", { name: "Todos" }));
-    await fixture.user.hover(companion.getByRole("button", { name: "Project-owned task" }));
+    // Descriptions follow real pointer travel (ad5be46f); user-event otherwise rests at (0, 0).
+    await fixture.user.pointer({
+      target: companion.getByRole("button", { name: "Project-owned task" }),
+      coords: { clientX: 24, clientY: 8 },
+    });
     expect(await screen.findByText("Shared with Project Chat")).toBeDefined();
     expect(surface.classList.contains("bg-sidebar")).toBe(true);
     await fixture.user.click(

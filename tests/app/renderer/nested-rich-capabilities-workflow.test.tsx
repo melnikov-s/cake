@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArtifactRevision } from "../../../src/contracts/artifacts/artifact-lineage";
 import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
@@ -176,6 +176,13 @@ describe("nested rich capabilities across production hosts", () => {
         },
       },
       { threads: [thread] },
+    );
+    // jsdom cannot settle the transcript list's bottom placement, which keeps its rows hidden and
+    // non-interactive. Set the reader preference before the side chat mounts.
+    act(() =>
+      fixture.root.reviewsStore
+        .chatStore(thread.id)!
+        .transcriptInteraction.setTranscriptScrollPosition({ kind: "top" }),
     );
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(

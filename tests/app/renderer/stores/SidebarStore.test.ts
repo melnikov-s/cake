@@ -8,6 +8,8 @@ describe("Sidebar catalog demand", () => {
     using fixture = createRendererStoreFixture({
       projects: [projectRecord({ path: "/cake" }), projectRecord({ path: "/pi" })],
     });
+    // Catalog demand follows the visible Sessions list; To-dos is the default navigator view.
+    fixture.root.workspaceNavigatorStore.show("sessions");
     const list = fixture.root.sidebarStore.sessionListStore;
     const active = [
       { projectPath: "/cake", resolved: false },

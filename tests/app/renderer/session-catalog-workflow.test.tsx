@@ -102,6 +102,12 @@ async function renderCatalog(
     },
   };
 }
+/** Every row also shows its session-purpose glyph (b6cd0f2d); only activity glyphs vary here. */
+function activityIndicators(row: HTMLElement) {
+  return within(row)
+    .queryAllByRole("img")
+    .filter((image) => image.getAttribute("data-slot") !== "session-purpose");
+}
 function sidebar() {
   return within(screen.getByRole("complementary", { name: "Project sessions" }));
 }
@@ -151,7 +157,7 @@ describe("Session catalog lifecycle workflows", () => {
         const row = sidebar()
           .getByRole("button", { name: /^Finished task(?: |$)/ })
           .closest<HTMLElement>(".session-item")!;
-        if (label === null) expect(within(row).queryByRole("img")).toBeNull();
+        if (label === null) expect(activityIndicators(row)).toEqual([]);
         else expect(within(row).getByRole("img", { name: label })).toBeTruthy();
         expect(within(row).queryByRole("img", { name: "Running" })).toBeNull();
         await fixture.publishUpdate({
@@ -170,7 +176,7 @@ describe("Session catalog lifecycle workflows", () => {
           revision: 3,
           event: { _tag: "ActivityChanged", sessionId: "finished", running: false, unread: false },
         });
-        expect(within(row).queryByRole("img")).toBeNull();
+        expect(activityIndicators(row)).toEqual([]);
       }
     },
   );

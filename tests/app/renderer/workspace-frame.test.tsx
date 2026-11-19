@@ -422,31 +422,26 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
     },
   );
 
-  it("places one VS Code work-log trigger immediately before the shell pane toggle and preserves its behavior", async () => {
+  // 3d30e85c grouped header session tools: the work-log trigger stays after Terminal in every mode,
+  // including VS Code, instead of moving beside the shell pane toggle.
+  it("keeps one work-log trigger after Terminal in the session tools in every mode and preserves its behavior", async () => {
     using f = renderWorkspace(kind, "vscode", false, true);
     const shellControls = document.querySelector('[data-slot="shell-workspace-controls"]')!;
     const trigger = () => screen.getByRole("button", { name: "Work log display options" });
     const expectToolbarPlacement = () => {
+      expect(screen.getAllByRole("button", { name: "Work log display options" })).toHaveLength(1);
       const buttons = screen.getAllByRole("button");
       expect(buttons[buttons.indexOf(trigger()) - 1]).toBe(
         screen.getByRole("button", { name: "Terminal" }),
       );
+      expect(trigger().closest('[data-slot="session-tools"]')).not.toBeNull();
       expect(shellControls.contains(trigger())).toBe(false);
+      expect(trigger().querySelectorAll("svg")).toHaveLength(1);
     };
     // A saved VS Code preference is not enough: the editor must actually be shown.
     expectToolbarPlacement();
     await f.user.click(screen.getByRole("button", { name: "VS Code" }));
-    const expectShellPlacement = () => {
-      expect(screen.getAllByRole("button", { name: "Work log display options" })).toHaveLength(1);
-      expect(shellControls.contains(trigger())).toBe(true);
-      const buttons = within(shellControls as HTMLElement).getAllByRole("button");
-      expect(buttons).toEqual([
-        trigger(),
-        document.querySelector('[data-slot="shell-workspace-toggle"]'),
-      ]);
-      expect(trigger().querySelectorAll("svg")).toHaveLength(1);
-    };
-    expectShellPlacement();
+    expectToolbarPlacement();
     const presentation = f.session.conversationSessionStore.chatStore.workLogPresentation;
     const setViewMode = vi.spyOn(presentation, "setViewMode");
     const setExpansion = vi.spyOn(presentation, "setExpansion");
@@ -471,15 +466,15 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
     }
     await f.user.click(trigger());
     await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));
-    expectShellPlacement();
+    expectToolbarPlacement();
     await f.user.click(screen.getByRole("button", { name: "Open Workspace" }));
-    expectShellPlacement();
+    expectToolbarPlacement();
     await f.user.click(screen.getByRole("button", { name: "Main" }));
     expectToolbarPlacement();
     await f.user.click(screen.getByRole("button", { name: /^Browser$/ }));
     expectToolbarPlacement();
     await f.user.click(screen.getByRole("button", { name: "VS Code" }));
-    expectShellPlacement();
+    expectToolbarPlacement();
     await f.user.click(trigger());
     for (const name of ["Log view mode", "Full work logs"]) {
       expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
@@ -913,13 +908,19 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
       ).toBeDefined();
       expect(await screen.findByText("Workspace answer")).toBeDefined();
       expect(screen.getByRole("button", { name: "Ask session assistant" })).toBeDefined();
-      expect(
-        screen.queryByRole("button", { name: "Fork response with full context into new chat" }) !==
-          null,
-      ).toBe(kind === "project");
-      expect(
-        screen.queryByRole("button", { name: "Continue from response in session tree" }) !== null,
-      ).toBe(kind === "project");
+      // Uniform jsdom geometry places the message behind the composer, so its action toolbar is
+      // hidden and inert; assert which actions the transcript wires, not geometry-driven placement.
+      const messageActions = within(
+        screen
+          .getByText("Workspace answer")
+          .closest("article")!
+          .querySelector<HTMLElement>('[data-slot="message-action-toolbar"]')!,
+      );
+      for (const label of [
+        "Fork response with full context into new chat",
+        "Continue from response in session tree",
+      ])
+        expect(messageActions.queryByLabelText(label) !== null).toBe(kind === "project");
 
       fireEvent.keyDown(screen.getByRole("separator", { name: "Resize current session sidebar" }), {
         key: "ArrowLeft",

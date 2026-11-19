@@ -102,7 +102,8 @@ it.each([
       else expect(row.queryByText(base, { exact: true })).toBeNull();
       expect(root.sessionCatalogStore.managedWorktree(record.worktreePath)?.baseBranch).toBe(base);
       expect(record).not.toHaveProperty("defaultBranch");
-      expect(calls).toEqual([
+      // Default-branch detection runs once per Project; contribution stats do their own Git reads.
+      expect(calls.filter(({ args }) => args[0] === "symbolic-ref")).toEqual([
         {
           cwd: record.projectPath,
           args: ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"],

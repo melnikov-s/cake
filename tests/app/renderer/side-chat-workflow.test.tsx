@@ -803,7 +803,8 @@ describe("Secondary conversation workflows", () => {
     };
     using fixture = renderSideChats(start, { threads: [first, second] });
     const trigger = screen.getByRole("button", { name: "Side chats, 2 open" });
-    expect(within(trigger).getByText("2").classList.contains("bg-card")).toBe(true);
+    // The shared count bubble's styling is owned by NumberedIconButton (49244c03).
+    expect(within(trigger).getByText("2").closest('[data-slot="count-badge"]')).not.toBeNull();
     await fixture.user.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     await fixture.user.click(screen.getByRole("button", { name: /First discussion/ }));
