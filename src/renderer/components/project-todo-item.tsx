@@ -14,7 +14,8 @@ import { ProjectTodoSnoozePicker } from "./project-todo-snooze-picker";
 import { ProjectTodoAttentionEditor } from "./project-todo-attention-editor";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
-import { ChevronIcon, PaperclipIcon, CloseIcon } from "@/components/ui/icons";
+import { ChatIcon, PaperclipIcon, CloseIcon } from "@/components/ui/icons";
+import { projectTodoAssociationDestination } from "../lib/project-todo-association";
 import { ProjectTodoStateAction } from "./project-todo-state-action";
 import { ProjectTodoLabelPicker } from "./project-todo-label-picker";
 import { ProjectTodoStatusIndicator } from "./project-todo-status-indicator";
@@ -78,6 +79,14 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
       ]
     : associations;
   const totalLinks = workLinks.length + otherResponses.length;
+  const linkKindIcons: Array<ReturnType<typeof projectTodoAssociationDestination>["Icon"]> = [];
+  for (const association of workLinks) {
+    const { Icon } = projectTodoAssociationDestination(association);
+    if (!linkKindIcons.includes(Icon)) linkKindIcons.push(Icon);
+  }
+  if (otherResponses.length > 0 && !linkKindIcons.includes(ChatIcon)) linkKindIcons.push(ChatIcon);
+  const shownLinkIcons = linkKindIcons.slice(0, 4);
+  const extraLinkCount = totalLinks - shownLinkIcons.length;
   const statusParts: ReactNode[] = [];
   if (item.state === "open" && !item.snoozedUntil) {
     if (summary.mergeFailed) {
@@ -310,28 +319,43 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         </div>
         {totalLinks > 0 && (
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             aria-expanded={linksExpanded}
             aria-label={`${linksExpanded ? "Hide" : "Show"} ${totalLinks} ${totalLinks === 1 ? "link" : "links"} for ${item.title}`}
+            title={`${totalLinks} linked ${totalLinks === 1 ? "item" : "items"}`}
             className={cn(
-              "h-6 shrink-0 gap-1 rounded-full px-2 text-xs font-normal tabular-nums",
-              linksExpanded && "border-accent/50 bg-accent/10 text-foreground",
+              "h-6 shrink-0 gap-1.5 rounded-full px-1 text-xs font-normal tabular-nums",
+              linksExpanded && "bg-accent/15 text-accent hover:bg-accent/20 hover:text-accent",
             )}
             onClick={(event) => {
               event.stopPropagation();
               store.toggleLinksExpanded(item.id);
             }}
           >
-            <span>
-              {totalLinks} {totalLinks === 1 ? "link" : "links"}
+            <span className="flex items-center -space-x-1.5" data-slot="todo-link-tokens">
+              {shownLinkIcons.map((Icon, index) => (
+                <span
+                  key={index}
+                  className={cn(
+                    "inline-flex size-5 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-2xs [&>svg]:size-2.5",
+                    linksExpanded && "border-accent/40 text-accent",
+                  )}
+                >
+                  <Icon />
+                </span>
+              ))}
             </span>
-            <ChevronIcon
-              className={cn(
-                "size-3 text-muted-foreground transition-transform duration-150",
-                linksExpanded && "rotate-180 text-foreground",
-              )}
-            />
+            {extraLinkCount > 0 && (
+              <span
+                className={cn(
+                  "pr-1 text-xs tabular-nums text-muted-foreground",
+                  linksExpanded && "text-accent",
+                )}
+              >
+                +{extraLinkCount}
+              </span>
+            )}
           </Button>
         )}
       </div>

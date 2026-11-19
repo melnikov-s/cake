@@ -229,6 +229,9 @@ it("shows descriptions and rolled-up session status inline while toggling links 
   const toggle = () =>
     screen.getByRole("button", { name: /^(Show|Hide) 4 links for Fix concrete/ });
   expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  // 3 sessions + 1 web source deduplicate to 2 distinct kind tokens with +2 overflow.
+  expect(toggle().querySelectorAll('[data-slot="todo-link-tokens"] > span')).toHaveLength(2);
+  expect(toggle().textContent).toBe("+2");
   await user.click(toggle());
   expect(toggle().getAttribute("aria-expanded")).toBe("true");
   expect(screen.getByRole("link", { name: "Deep consultant review" })).toBeDefined();
