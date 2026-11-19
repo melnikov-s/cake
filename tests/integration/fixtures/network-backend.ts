@@ -246,6 +246,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
   const worktrees = Layer.mock(ManagedWorktrees, {
     records: () => Effect.succeed([]),
     observe: () => Stream.never,
+    observeLandingQueue: () => Stream.never,
     awaitSetup: () => Effect.void,
   });
   const access = Layer.effect(
@@ -364,6 +365,9 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
         Effect.map(effect, Option.some),
       withUserDelivery: (_recipientSessionId, effect) => effect,
       setBoardDeliveryPaused: () => Effect.void,
+      changes: () => Stream.never,
+      registerPurpose: () => Effect.void,
+      invalidateAutoMerge: () => Effect.void,
     }),
     Layer.mock(SessionArchiveStorage, {
       resolvedIds: () => Effect.succeed(new Set<string>()),
@@ -371,6 +375,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       resolvedProjects: () => Stream.empty,
       locate: () => Effect.succeed("active" as const),
       resolvedProjectEntry: () => Effect.succeed(undefined),
+      resolutionSnapshot: () => Effect.succeed({ version: 1 as const, directories: {} }),
     }),
     Layer.mock(Terminal, {
       closeWorkingDirectory: () => Effect.void,

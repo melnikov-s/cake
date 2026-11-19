@@ -239,7 +239,7 @@ it("keeps an IPv6 editor Host and CSP origin bracketed exactly once", async () =
           },
         },
       ).pipe(Effect.provide(backend));
-      if (listener.address._tag !== "InetAddressV4" || listener.editorPort === undefined)
+      if (listener.address._tag !== "InetAddressV6" || listener.editorPort === undefined)
         throw new Error("No IPv6 listeners");
       const app = `http://[::1]:${listener.address.port}`;
       const editor = `http://[::1]:${listener.editorPort}`;
