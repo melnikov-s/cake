@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
-import { standardDecorators } from "./scripts/vite-standard-decorators";
-import QuietReporter from "./scripts/vitest-quiet-reporter";
+import { standardDecorators } from "./scripts/vite-standard-decorators.ts";
+import QuietReporter from "./scripts/vitest-quiet-reporter.ts";
 
 export default defineConfig({
   plugins: [standardDecorators()],
