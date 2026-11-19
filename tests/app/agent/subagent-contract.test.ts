@@ -79,7 +79,7 @@ describe("subagent contract", () => {
         for (const rule of [
           "Investigation with an explicitly requested different model uses a private subagent directly with that model",
           "not sessions.fork or sessions.create as a research workaround",
-          "Private subagents require an explicit request",
+          "Fresh-context subagents require an explicit request",
           "only when explicitly authorized",
           "otherwise use sessions.fork for useful-context investigation",
           "Project implementation/code changes default to sessions.create",

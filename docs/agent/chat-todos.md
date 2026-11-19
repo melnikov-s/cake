@@ -28,4 +28,4 @@ Side chats share the parent's list. messages.set-todo corrects requested histori
 
 Existing `todos.update-many` supports an explicit, revision-checked transfer of required session associations between tasks **in the same list**, atomically validating the final ownership. Preserve every findings/report/source link and choose the outcome owner explicitly; do not silently consolidate history. Supporting subagent/source links may be retained on both items. After transfer, the old item may be annotated with the outcome link and completed when legitimately satisfied; no findings need deletion. There is no dedicated consolidation command or atomic cross-list transfer. This feature does not migrate historical duplicates automatically.
 
-[To-do details](todo-details.md): list ownership, attention/dismissal, snooze expiry, exact source links, atomic revisions, grouping corrections and pane/reply behavior.
+[To-do details](todo-details.md): list ownership, attention/dismissal, snooze expiry, exact source links and atomic revisions. [Grouping and pane behavior](todo-pane.md): attribution corrections and pane/reply behavior.

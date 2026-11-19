@@ -237,11 +237,14 @@ describe("selected prototype handoff through real artifact permissions/state/rev
         "artifacts.link",
         "artifacts.list",
         "artifacts.present",
+        "artifacts.replace",
         "artifacts.resolve-reference",
         "artifacts.search",
         "artifacts.selection.capture",
         "artifacts.source",
         "artifacts.state.read",
+        "artifacts.state.replace",
+        "artifacts.state.update",
       ].sort(),
     );
     await chat.invoke({ command: "artifacts.link", input: { reference: exactRef } }, context);

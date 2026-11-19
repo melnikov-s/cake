@@ -114,7 +114,7 @@ describe("core coordinator calling reference", () => {
       "Project code changes: sessions.create",
       "supply a new worktreeName",
       "Context-dependent investigations: sessions.fork",
-      "Private subagents require an explicit request",
+      "Fresh-context subagents require an explicit request",
       "Never edit settings files",
       "no checkout edits, installs, generated files or Git mutations",
       "notification by default",
@@ -159,7 +159,10 @@ describe("core coordinator calling reference", () => {
 
   it(`bounds prompt size (${reference.length} reference; ${prompt.length} coordinator; ${projectTodoBaseline(emptyProjectTodos()).length} empty to-do baseline chars)`, () => {
     expect(reference.length).toBeLessThan(3500);
-    expect(prompt.length).toBeLessThan(7000);
+    // Consistent with the component budgets: < 5800 base prompt plus < 3500 reference.
+    // Raised from 7000 for deliberate stewardship (5b33daa6) and evidence/feedback
+    // (1073b1bd) guidance plus later contract-derived operations (e.g. 1fdb86a0, a11bfaa7).
+    expect(prompt.length).toBeLessThan(9000);
   });
 
   it.each(["Cake Chat", "Project Chat"] as const)(
@@ -177,7 +180,10 @@ describe("core coordinator calling reference", () => {
         }),
       ].join("\n\n");
       // Budget shipped ingredients, not user instructions, skills or populated list data.
-      expect(Buffer.byteLength(assembled)).toBeLessThan(9000);
+      // Raised from 9000 for deliberate auto-merge (71083214), stewardship (5b33daa6),
+      // evidence/feedback (1073b1bd), tool-memory recall (c3d39502), attribution
+      // (6b1f3d4f, a0af7417) and to-do outcome/attention (5ce6101d, 4a418b86) guidance.
+      expect(Buffer.byteLength(assembled)).toBeLessThan(14000);
       for (const command of [
         "sessions.create",
         "sessions.fork",
@@ -198,7 +204,7 @@ describe("core coordinator calling reference", () => {
       expect(assembled).toContain("all required sessions resolve");
       expect(assembled).toContain("No new to-dos for routine one-shot actions");
       expect(assembled).toContain("Attribution may be null; never create just to attribute turns");
-      expect(assembled).toContain("Use JSON null if unmatched");
+      expect(assembled).toContain("choose an existing matching open to-do or JSON null");
       expect(assembled).toContain("Only durable work warrants creation");
       expect(assembled).toContain("Reports/completion grant no merge/resolve approval");
       expect(assembled).toContain("shared/project instructions take precedence");

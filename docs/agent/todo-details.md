@@ -1,6 +1,6 @@
 # To-do lifecycle and editing details
 
-[To-dos](chat-todos.md) covers common rules. Read only the section relevant to the edit.
+[To-dos](chat-todos.md) covers common rules. Read only the section relevant to the edit. [Grouping and pane behavior](todo-pane.md) covers attribution corrections, focus and reply snapshots.
 
 ## Ownership and lifecycle
 
@@ -45,10 +45,3 @@ Subagent associations use parentSessionId and public UUID handleId/title, valida
 Source links may target exact messages/reports, subagent chats/reports, attachments, artifacts, web or workspace files. Omit optional links when none are useful.
 
 Cake automatically links substantive, persisted responses that the owning chat attributed to one to-do. The longest is shown first; other automatic responses remain available. These links are separate from editable associations, so keep adding explicit sources such as findings from other sessions. Cake does not guess links for older turns.
-
-## Historical grouping and pane behavior
-
-For an explicit attribution correction, use owning chat's messages.set-todo with exact original entryId and existing todoId/null. Only settled human-turn attribution in that chat changes; originals, task content and associations do not. Never rename/delete unrelated tasks or rewrite user text to fix a heading.
-Pane/result-message Done controls mirror the same live item. Clicking a row expands its details. The separate Focus action focuses transcript sections, independently of outgoing context; header/close/completion/snooze clears view focus. Focus never enters baseline/reminders and sending does not consume it.
-Reply attaches an immutable to-do snapshot through normal attachment preview/removal/send/queue/failure recovery; later focus/edits cannot rewrite it.
-User attention/done changes and confirmed resolve/restore reminders persist until a user message consumes them. Global chat hears session changes only for linked sessions. Historical reminders may be stale: list/read is current authority; fresh/reset context gets a bounded baseline.

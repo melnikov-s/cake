@@ -11,7 +11,7 @@ From permanent chats, select by task; never use family children. Fresh-context s
 - Investigation where existing context is not helpful -> private subagent only when explicitly authorized. Otherwise use the contextual fork for investigation.
 
 For sessions.create/fork pass the authorized registered root as workspacePath, worktreeName, name and focused initialPrompt. Project Chat targets only its own project; global Cake Chat can target authorized registered projects.
-[Context fork details](sessions.md#permanent-chat-context-forks) explains settled context, source lifetime and continuation.
+[Context fork details](context-forks.md) explains settled context, source lifetime and continuation.
 
 Default to a fresh scoped session for each distinct implementation task. Fresh independent Project Sessions need meaningful task context, not whole transcripts. Never revive sessions merely to conserve their count. Sharing a broad feature label such as navigation is not enough reason: panel placement, tree aggregation and a separate Back to project chat control can be distinct tasks.
 Reuse only for genuine continuation of the same task when its accumulated context is materially useful; do not fragment a single task gratuitously. Creating a fresh session for already-authorized work needs no extra user permission.

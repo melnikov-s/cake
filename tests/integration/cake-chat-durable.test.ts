@@ -721,7 +721,13 @@ it("isolates global and project originals, OptMem, requests and side-chat Harnes
       f.service.inspectSideChat(forks[index]!.sessionId),
     );
     expect(preview?.sessionId).toBe(forks[index]!.sessionId);
-    expect(preview?.parts).toEqual([]);
+    expect(sideTextParts(preview?.parts ?? [])).toEqual({
+      inherited: [
+        { role: "user", text: originals[index] },
+        { role: "assistant", text: "Done" },
+      ],
+      own: [],
+    });
     const history = await f.serviceRuntime.runPromise(f.service.requestHistory(scope.sessionId));
     expect(history.entries).toHaveLength(1);
     await chat.close();
@@ -1666,6 +1672,9 @@ it("uses production SQLite, existing credentials and exact originals across reop
     "archive_read",
     "read",
     "bash",
+    // Global Cake Chat offers guarded non-project edit/write; Project Chat does not.
+    "edit",
+    "write",
     "mcp",
   ]);
   expect(
@@ -2170,10 +2179,14 @@ it("does not replay a session-creation mutation interrupted after its external s
   ).toHaveLength(1);
 });
 
-const textParts = (snapshot: ConversationSnapshot) =>
-  snapshot.parts.flatMap((part) =>
-    part.kind === "text" ? [{ role: part.role, text: part.text }] : [],
-  );
+const partTexts = (parts: ConversationSnapshot["parts"]) =>
+  parts.flatMap((part) => (part.kind === "text" ? [{ role: part.role, text: part.text }] : []));
+const textParts = (snapshot: ConversationSnapshot) => partTexts(snapshot.parts);
+/** Side chats display the parent's inherited originals (originalHistory) above their own dialogue. */
+const sideTextParts = (parts: ConversationSnapshot["parts"]) => ({
+  inherited: partTexts(parts.filter((part) => part.originalHistory)),
+  own: partTexts(parts.filter((part) => !part.originalHistory)),
+});
 const entryOf = (snapshot: ConversationSnapshot, text: string) => {
   const part = snapshot.parts.find(
     (candidate) => candidate.kind === "text" && candidate.text === text,
@@ -2208,7 +2221,11 @@ it("forks a side chat from Cake Chat's exact provider context and leaves Cake Ch
   const fork = await runtime.fork(entryOf(before, "First question"), "Side chat");
   expect(fork.sessionId).toMatch(/:side-chat:\d+$/);
   const side = await f.openSideChat(fork.sessionId);
-  expect(textParts(await side.runtime.snapshot())).toEqual([]);
+  const inherited = [
+    { role: "user", text: "First question" },
+    { role: "assistant", text: "First answer" },
+  ];
+  expect(sideTextParts((await side.runtime.snapshot()).parts)).toEqual({ inherited, own: [] });
   await side.runtime.prompt("Side question", "prompt", [], false, ids.first);
 
   // The fork's first request extends Cake Chat's last request for that exchange
@@ -2229,16 +2246,21 @@ it("forks a side chat from Cake Chat's exact provider context and leaves Cake Ch
   expect(JSON.stringify(forked)).not.toContain("Second question");
   expect(JSON.stringify(forked)).not.toContain("cake-input-presentation");
 
-  // The side chat shows only its own exchange, without the model-only note.
-  expect(textParts(await side.runtime.snapshot())).toEqual([
-    { role: "user", text: "Side question" },
-    { role: "assistant", text: "Side answer" },
-  ]);
+  // The side chat shows inherited originals up to the fork point, then its own exchange
+  // without the model-only note.
+  expect(sideTextParts((await side.runtime.snapshot()).parts)).toEqual({
+    inherited,
+    own: [
+      { role: "user", text: "Side question" },
+      { role: "assistant", text: "Side answer" },
+    ],
+  });
   const preview = await f.serviceRuntime.runPromise(f.service.inspectSideChat(fork.sessionId));
-  expect(preview?.parts.map((part) => part.kind === "text" && part.text)).toEqual([
-    "Side question",
-    "Side answer",
-  ]);
+  expect(
+    preview?.parts
+      .filter((part) => !part.originalHistory)
+      .map((part) => part.kind === "text" && part.text),
+  ).toEqual(["Side question", "Side answer"]);
 
   // Cake Chat's transcript, queue, usage and memory never see the side chat.
   const after = await runtime.snapshot();
@@ -2253,7 +2275,7 @@ it("forks a side chat from Cake Chat's exact provider context and leaves Cake Ch
   expect(next).not.toContain("Side answer");
   expect(next).not.toContain("<cake-side-chat>");
   expect(JSON.stringify(f.summarize.mock.calls)).not.toContain("Side answer");
-  expect(textParts(await side.runtime.snapshot())).toHaveLength(2);
+  expect(sideTextParts((await side.runtime.snapshot()).parts).own).toHaveLength(2);
 });
 
 it("keeps side-chat forks across restart and inherits declared Cake controls", async () => {
@@ -2326,7 +2348,12 @@ it("keeps side-chat forks across restart and inherits declared Cake controls", a
   const second = await f.open(controls);
   expect((await second.runtime.snapshot()).parts).toEqual(parentParts);
   const reopened = await f.openSideChat(fork.sessionId, undefined, controls);
-  expect(textParts(await reopened.runtime.snapshot()).filter((part) => part.text !== "")).toEqual([
+  const reopenedText = sideTextParts((await reopened.runtime.snapshot()).parts);
+  expect(reopenedText.inherited).toEqual([
+    { role: "user", text: "Parent question" },
+    { role: "assistant", text: "Parent answer" },
+  ]);
+  expect(reopenedText.own.filter((part) => part.text !== "")).toEqual([
     { role: "user", text: "Message parent" },
     { role: "assistant", text: "Side answer" },
   ]);

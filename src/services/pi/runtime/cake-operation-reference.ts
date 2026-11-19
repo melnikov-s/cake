@@ -5,11 +5,14 @@ import {
   type JsonValue,
 } from "../../../contracts/serialization/json-contract";
 
-/** A calling sketch, not another schema: required keys plus selected common options. */
+/** A calling sketch, not another schema: required keys plus selected common options.
+ * `callerRequired` marks top-level keys this caller must pass although the shared contract
+ * makes them optional for other callers (for example, an omitted target defaulting to a parent). */
 export function compactOperationInput(
   root: JsonObject,
   commonFields: readonly string[],
   expand: readonly string[] = [],
+  callerRequired: readonly string[] = [],
 ): string {
   const object = (value: JsonValue | undefined): JsonObject | undefined =>
     Schema.is(jsonObjectSchema)(value) ? value : undefined;
@@ -53,9 +56,13 @@ export function compactOperationInput(
     common: readonly string[],
     expanded: readonly string[],
     depth: number,
+    callerRequiredFields: readonly string[] = [],
   ): string => {
     const properties = object(schema.properties) ?? {};
-    const required = Array.isArray(schema.required) ? schema.required : [];
+    const required = [
+      ...(Array.isArray(schema.required) ? schema.required : []),
+      ...callerRequiredFields,
+    ];
     const names = [...new Set([...required, ...common])].filter(
       (key): key is string => typeof key === "string" && key in properties,
     );
@@ -72,5 +79,5 @@ export function compactOperationInput(
       })
       .join(", ")}}`;
   };
-  return fields(resolve(root), commonFields, expand, 0);
+  return fields(resolve(root), commonFields, expand, 0, callerRequired);
 }

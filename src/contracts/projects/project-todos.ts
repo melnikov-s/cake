@@ -100,7 +100,7 @@ export const PROJECT_TODO_LINK_GUIDANCE =
 
 /** Only explicit human requests own actionable attention; routine reports use the inbox. */
 export const PROJECT_TODO_ATTENTION_GUIDANCE =
-  "Set needsAttention with an action-oriented attentionReason for a human request. Supply a stable attentionRequestId (for example its exact result reference), reuse it for retries/rewording, and change it only for a genuinely new human request, never routine report arrival. Distinct requests may share a reason. Never revive/reword a dismissed request; only a new request reflags. Report arrival never flags attention. Results wait behind existing attention; others stay in the quiet inbox. X clears attention without delivering held reports. Attention never approves merging or changes lifecycle. Completion clears it; reopening starts Active.";
+  "Explicit human requests only: set needsAttention with an action-oriented attentionReason and a stable attentionRequestId (e.g. its exact result ref). Reuse the ID for retries/rewording; use a new ID only for a genuinely new request (reasons may repeat). Never revive/reword a dismissed request. Report arrival never flags attention: results wait behind existing attention, others stay in the quiet inbox. X clears attention without delivering held reports. Attention never approves merging or changes lifecycle. Completion clears it; reopening starts Active.";
 
 const ProjectTodoAttentionReason = Schema.String.check(
   Schema.isTrimmed(),

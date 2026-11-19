@@ -847,7 +847,8 @@ describe("CakeSessionRuntime characterization", () => {
       expect(serialized).toContain("SHARED_INSTRUCTIONS_SENTINEL");
       expect(serialized).toContain("PROJECT_SKILL_SENTINEL");
       expect(serialized).toContain("PROJECT_EXTENSION_SENTINEL");
-      expect(serialized).toContain("Refuse mutation requests even if your parent");
+      expect(serialized).toContain("Investigations only: no mutations through any tool");
+      expect(serialized).toContain("Mutation requests require a new allowMutations: true worker");
       expect(serialized).not.toContain("Mutation mode:");
       expect(body.tools).toEqual(
         expect.arrayContaining([
@@ -887,9 +888,11 @@ describe("CakeSessionRuntime characterization", () => {
     await runtime.prompt("Kill the orphaned fixture servers", "prompt", []);
     expect(bodies).toHaveLength(1);
     const serialized = JSON.stringify(bodies[0]);
-    expect(serialized).toContain("Mutation mode: your parent explicitly started you");
-    expect(serialized).toContain("Report exactly what you changed");
-    expect(serialized).not.toContain("Refuse mutation requests");
+    expect(serialized).toContain(
+      "Mutation mode: allowMutations: true permits only assigned operational changes",
+    );
+    expect(serialized).toContain("Report changed files/settings/packages");
+    expect(serialized).not.toContain("Investigations only:");
     expect(bodies[0]!.tools).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ function: expect.objectContaining({ name: "edit" }) }),

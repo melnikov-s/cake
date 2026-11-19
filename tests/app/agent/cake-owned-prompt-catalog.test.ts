@@ -8,7 +8,9 @@ const promptDirectory = new URL("../../../src/services/pi/runtime/prompts/", imp
 const budgets = {
   // Evidence/feedback stewardship belongs to lead and task roles, not common/utility prompts.
   "cake-chat.md": 4000,
-  "common.md": 850,
+  // Raised from 850 for deliberate report bookkeeping (637aae7e) and absolute local
+  // image paths (52b993f7).
+  "common.md": 940,
   "general-research.md": 650,
   "interview.md": 150,
   "project-interaction.md": 300,

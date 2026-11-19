@@ -296,6 +296,10 @@ it("captures every real Durable tool-loop call after bounded-head reset and rema
     expect(history.get(requests[1]!.id)!.raw).toBe(sent[1]);
     expect(sent[1]).toContain("EXACT_TOOL_RESULT");
     expect(requests[0]!.callId).not.toBe(requests[1]!.callId);
+    // Idle maintenance indexes the finished turn (including its tool round) in the background;
+    // compaction's model call preempts it. Finish indexing first so the next turn's bounded
+    // reset can use ready memory instead of racing that background work.
+    expect((await engine.index(new AbortController().signal)).complete).toBe(true);
     const compact = await engine.root.compact(undefined, BACKGROUND_CONTEXT);
     await engine.harness.waitForTask(compact, BACKGROUND_CONTEXT);
     const next = await engine.root.submit(

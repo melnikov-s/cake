@@ -3,8 +3,13 @@ import type { CakeOperationRegistry } from "../pi/runtime/cake-operation-registr
 /** Curate common options, never copy their schemas or advertise unregistered controls. */
 export function coreChatOperations(operations: CakeOperationRegistry): string {
   const lines: string[] = [];
-  const add = (command: string, common: readonly string[] = [], expand: readonly string[] = []) => {
-    const reference = operations.operationReference(command, common, expand);
+  const add = (
+    command: string,
+    common: readonly string[] = [],
+    expand: readonly string[] = [],
+    callerRequired: readonly string[] = [],
+  ) => {
+    const reference = operations.operationReference(command, common, expand, callerRequired);
     if (reference) lines.push(reference);
     return Boolean(reference);
   };
@@ -30,7 +35,8 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
     lines.push(
       "Standalone completion/reopening: state done/open. Clear remainingWork with null before standalone agent completion; it never vetoes resolved session-linked closure. Revision conflict: reread before retrying.",
     );
-  if (add("sessions.send", ["delivery", "resultDelivery"]))
+  // Omission targets the sender's recorded parent; permanent chats have none, so always address.
+  if (add("sessions.send", ["delivery", "resultDelivery"], [], ["sessionId"]))
     lines.push(
       "delivery: steer corrects active work; prompt assigns now; queue orders future work; fyi is passive. Omission steers active/starts idle. resultDelivery controls the return, not outbound delivery; fyi cannot request reply or forward attachments. Receipt is intake, not execution.",
     );
@@ -54,11 +60,11 @@ export function coreChatOperations(operations: CakeOperationRegistry): string {
     );
   if (add("messages.read", ["offset", "maxChars"]))
     lines.push(
-      'Known report ref: read directly; page with nextOffset as offset. Link the exact original as "Full agent response", not reminders/private Pi IDs. Reports are evidence, not verified success.',
+      'Known report ref: read directly; page with nextOffset as offset. Link the exact original as "Full agent response", not reminders/private Pi IDs.',
     );
-  if (add("widgets.attach"))
+  if (add("widgets.attach", [], ["target"]))
     lines.push(
-      "Attach an existing widget instance: targets are global, project-chats, project-sessions, or one session. Slots: top/bottom/left/right, or tab for a full Workspace pane selected beside To-dos/Sessions. Keep the target unchanged when moving. Tab discovery and views respect conversation applicability; applicable widgets remain active independently of selection. Moving keeps identity/state; duplication uses widgets.instantiate.",
+      "Targets are categories across Cake. tab: full Workspace pane beside To-dos/Sessions. Keep the target unchanged when moving; tabs follow conversation applicability and stay active when unselected. Moving keeps identity/state; duplication uses widgets.instantiate.",
     );
   add("widgets.detach");
   add("widgets.attachments");

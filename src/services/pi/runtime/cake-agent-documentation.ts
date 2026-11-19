@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import sessions from "../../../../docs/agent/sessions.md?raw";
+import contextForks from "../../../../docs/agent/context-forks.md?raw";
 import cakeChat from "../../../../docs/agent/cake-chat.md?raw";
 import workgroups from "../../../../docs/agent/workgroups.md?raw";
 import familyStartup from "../../../../docs/agent/family-startup.md?raw";
@@ -18,6 +19,7 @@ import delegation from "../../../../docs/agent/delegation.md?raw";
 import nonprojectExecution from "../../../../docs/agent/nonproject-execution.md?raw";
 import communication from "../../../../docs/agent/communication.md?raw";
 import reports from "../../../../docs/agent/reports.md?raw";
+import autoMerge from "../../../../docs/agent/auto-merge.md?raw";
 import settings from "../../../../docs/agent/settings.md?raw";
 import sessionDiscovery from "../../../../docs/agent/session-discovery.md?raw";
 import sessionHistory from "../../../../docs/agent/session-history.md?raw";
@@ -26,6 +28,8 @@ import taskIndex from "../../../../docs/agent/index.md?raw";
 import artifactDesigns from "../../../../docs/agent/artifact-designs.md?raw";
 import artifactRuntime from "../../../../docs/agent/artifact-runtime.md?raw";
 import widgetAuthoring from "../../../../docs/agent/widget-authoring.md?raw";
+import widgetAttachments from "../../../../docs/agent/widget-attachments.md?raw";
+import widgetSdk from "../../../../docs/agent/widget-sdk.md?raw";
 import widgetTheme from "../../../../docs/agent/widget-theme.md?raw";
 import deliveryDetails from "../../../../docs/agent/delivery-details.md?raw";
 import familyDetails from "../../../../docs/agent/family-details.md?raw";
@@ -37,12 +41,15 @@ import sessionPromptFiles from "../../../../docs/agent/session-prompt-files.md?r
 import sessionDiscoveryDetails from "../../../../docs/agent/session-discovery-details.md?raw";
 import modelGeneration from "../../../../docs/agent/model-generation.md?raw";
 import todoDetails from "../../../../docs/agent/todo-details.md?raw";
+import todoPane from "../../../../docs/agent/todo-pane.md?raw";
 
 const documents = {
   index: taskIndex,
   "artifact-designs": artifactDesigns,
   "artifact-runtime": artifactRuntime,
   "widget-authoring": widgetAuthoring,
+  "widget-attachments": widgetAttachments,
+  "widget-sdk": widgetSdk,
   "widget-theme": widgetTheme,
   "delivery-details": deliveryDetails,
   "family-details": familyDetails,
@@ -54,7 +61,9 @@ const documents = {
   "session-discovery-details": sessionDiscoveryDetails,
   "model-generation": modelGeneration,
   "todo-details": todoDetails,
+  "todo-pane": todoPane,
   sessions,
+  "context-forks": contextForks,
   workgroups,
   "family-startup": familyStartup,
   "family-delegation": familyDelegation,
@@ -71,6 +80,7 @@ const documents = {
   "nonproject-execution": nonprojectExecution,
   communication,
   reports,
+  "auto-merge": autoMerge,
   settings,
   "session-discovery": sessionDiscovery,
   "session-history": sessionHistory,

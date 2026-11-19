@@ -198,7 +198,7 @@ describe("Cake structured output through real Pi codemode", () => {
     expect(textOf(schema)).toContain('"required"');
   });
 
-  it("keeps help, unknown commands, and nonselected operations as the original strings", async () => {
+  it("keeps help and unknown commands as strings while every data operation returns JSON", async () => {
     const h = await harness();
     const result = await h.script(`
       const values = await Promise.all([
@@ -209,7 +209,9 @@ describe("Cake structured output through real Pi codemode", () => {
       return values.map(value => typeof value);
     `);
     expect(result.isError).toBe(false);
-    expect(textOf(result)).toContain('["string","string","string","string","string"]');
+    // Programmatic calls return {command,result} JSON for every data operation (dfb48756),
+    // not only operations declaring an exact output schema; discovery stays text.
+    expect(textOf(result)).toContain('["string","string","string","string","object"]');
     expect(h.list).not.toHaveBeenCalled();
     const history = await h.script(
       `return await tools.cake({command: "artifacts.history", input: {lineageId: "design-plan"}});`,

@@ -267,10 +267,11 @@ export class CakeOperationRegistry {
     command: string,
     commonFields: readonly string[] = [],
     expand: readonly string[] = [],
+    callerRequired: readonly string[] = [],
   ) {
     const operation = this.operations.get(command);
     if (!operation || operation.available?.() === false) return undefined;
-    return `${command} ${compactOperationInput(inputJson(operation), commonFields, expand)}`;
+    return `${command} ${compactOperationInput(inputJson(operation), commonFields, expand, callerRequired)}`;
   }
 
   topicHelp(topic: string) {

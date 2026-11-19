@@ -346,7 +346,7 @@ it("uses memory-derived inclusive bounds to search only a summary's originals ac
     "fromEntryId must not exceed throughEntryId",
   );
   expect(durableArchiveRecallInstructions(sessionId)).toContain(
-    "[originals=A..B] gives inclusive fromEntryId/throughEntryId",
+    "[originals=A..B] is an inclusive original-entry range: fromEntryId=A and throughEntryId=B",
   );
 });
 
@@ -568,7 +568,9 @@ it("executes recall through the real tool loop and keeps guidance through contex
   expect(requests).toContain("verbatim evidence before compaction");
   expect(requests).toContain(conversationRef);
   expect(requests).toContain("inclusive fromEntryId/throughEntryId");
-  expect(requests).toContain("[originals=A..B] gives inclusive fromEntryId/throughEntryId");
+  expect(requests).toContain(
+    "[originals=A..B] is an inclusive original-entry range: fromEntryId=A and throughEntryId=B",
+  );
   const page = await f.engine.root.entries({}, 100, undefined, BACKGROUND_CONTEXT);
   const result = page.items
     .flatMap((entry) => entry.model ?? [])
