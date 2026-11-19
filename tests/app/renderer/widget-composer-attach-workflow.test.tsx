@@ -153,6 +153,8 @@ describe("cake.composer.attach", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: `Remove ${pr.label}` }));
     expect(widgetItems(draft(currentId).attachments)).toEqual([]);
     expect(prompt).not.toHaveBeenCalled();
+    // Unmount before disposing the Root Store, as renderer teardown does.
+    cleanup();
     fixture[Symbol.dispose]();
   });
 
@@ -345,6 +347,8 @@ describe("cake.composer.attach", () => {
       expect(document.querySelector('[data-slot="widget-item"]')?.textContent).toContain(pr.label),
     );
     expect(session.conversationSessionStore.composerStore.draftStore.attachments).toEqual([]);
+    // Unmount before disposing the Root Store, as renderer teardown does.
+    cleanup();
     fixture[Symbol.dispose]();
   });
 

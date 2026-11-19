@@ -22,7 +22,8 @@ function fixture(supported = true) {
   const cancelled = vi.fn();
   const publish = (next: SpeechOutputSettings) => {
     authority = next;
-    root.speechSettingsStore.applySettings(next);
+    // Like the real settings event stream, a disposed window no longer receives updates.
+    if (!root.signal.aborted) root.speechSettingsStore.applySettings(next);
   };
   const installLocal = vi.fn(async (options?: { signal?: AbortSignal }) => {
     if (!options?.signal) throw new Error("Missing cancellation signal");

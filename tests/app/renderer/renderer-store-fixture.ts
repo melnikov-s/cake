@@ -92,3 +92,12 @@ export function createRendererStoreFixture(options: RendererStoreFixtureOptions 
     },
   };
 }
+
+/**
+ * The renderer unmounts React before disposing its Root Store (`main.ts` pagehide), so mounted
+ * observers never read a disposed tree. Declare `using view = unmountOnDispose(render(...))`
+ * after the store fixture to keep that order: `using` disposes in reverse declaration order.
+ */
+export function unmountOnDispose<View extends { unmount(): void }>(view: View): View & Disposable {
+  return Object.assign(view, { [Symbol.dispose]: () => view.unmount() });
+}

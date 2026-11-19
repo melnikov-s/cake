@@ -10,7 +10,7 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
 import { applyScheduledMessageUpdate } from "../../../src/renderer/reducers/ScheduledMessageReducer";
-import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { createRendererStoreFixture, unmountOnDispose } from "./renderer-store-fixture";
 
 const now = "2026-10-21T22:00:00.000Z";
 const checkIn: ScheduledMessage = {
@@ -74,12 +74,14 @@ it("shows a Cake Chat's own recurring check-in in its pending list and cancels i
     });
     applyScheduledMessageUpdate(catalog, { _tag: "Snapshot", revision: 1, messages: [checkIn] });
   });
-  render(
-    <StoreProvider store={fixture.root}>
-      <>
-        <CakeChatSurface />
-      </>
-    </StoreProvider>,
+  using _view = unmountOnDispose(
+    render(
+      <StoreProvider store={fixture.root}>
+        <>
+          <CakeChatSurface />
+        </>
+      </StoreProvider>,
+    ),
   );
 
   // Nothing is steering or queued, so the scheduled group is expanded.

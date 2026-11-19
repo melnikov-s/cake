@@ -27,7 +27,7 @@ import {
 } from "../helpers/heldAttentionHarness";
 import { snapshot } from "../helpers/piRuntimeFixture";
 import { projectRecord } from "./fixtures/catalog-fixtures";
-import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { createRendererStoreFixture, unmountOnDispose } from "./renderer-store-fixture";
 
 afterEach(cleanup);
 const scope = "/project";
@@ -121,10 +121,12 @@ it.each([
         sessions: [{ sessionId: chat, title: "Project Chat", projectPath: scope }],
       });
       const session = fixture.root.cakeChatCollectionStore.registry.load(chat);
-      const view = render(
-        <StoreProvider store={fixture.root}>
-          <CakeChatComposerHeader session={session} />
-        </StoreProvider>,
+      using view = unmountOnDispose(
+        render(
+          <StoreProvider store={fixture.root}>
+            <CakeChatComposerHeader session={session} />
+          </StoreProvider>,
+        ),
       );
       fireEvent.click(screen.getByRole("button", { name: /^Needs attention ·/ }));
       const open = () => screen.getByRole("button", { name: "Open attention: Investigate merge" });
@@ -188,12 +190,14 @@ it.each([
         session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition(
           { kind: "top" },
         );
-        renderTranscriptContent(
-          <Chat
-            store={session.conversationSessionStore.chatStore}
-            compact
-            composerFocusEnabled={false}
-          />,
+        using _transcript = unmountOnDispose(
+          renderTranscriptContent(
+            <Chat
+              store={session.conversationSessionStore.chatStore}
+              compact
+              composerFocusEnabled={false}
+            />,
+          ),
         );
         backend.state.sourceAvailable = false;
         await act(async () =>
@@ -319,12 +323,14 @@ it("the actual contextual worker card reads its exact public ref, not its parent
   session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
     kind: "top",
   });
-  renderTranscriptContent(
-    <Chat
-      store={session.conversationSessionStore.chatStore}
-      compact
-      composerFocusEnabled={false}
-    />,
+  using _transcript = unmountOnDispose(
+    renderTranscriptContent(
+      <Chat
+        store={session.conversationSessionStore.chatStore}
+        compact
+        composerFocusEnabled={false}
+      />,
+    ),
   );
   expect(reads).toEqual([]);
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Research merge" })));

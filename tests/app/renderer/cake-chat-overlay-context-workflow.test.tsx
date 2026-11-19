@@ -56,7 +56,15 @@ function overlayFixture(startScreenCapture?: Client["electron"]["startScreenCapt
   const draft = () =>
     fixture.root.cakeChatCollectionStore.registry.find(CAKE_CHAT_SESSION_ID)!
       .conversationSessionStore.composerStore.draftStore;
-  return { fixture, draft, [Symbol.dispose]: () => fixture[Symbol.dispose]() };
+  return {
+    fixture,
+    draft,
+    // Unmount the rendered Surface before disposing the Root Store, as renderer teardown does.
+    [Symbol.dispose]: () => {
+      cleanup();
+      fixture[Symbol.dispose]();
+    },
+  };
 }
 
 it("keeps context browsing in the main chat but omits it from the drop-down composer", () => {

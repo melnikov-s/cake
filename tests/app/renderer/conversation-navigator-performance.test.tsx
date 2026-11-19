@@ -11,7 +11,7 @@ import { conversationNavigationKey } from "../../../src/renderer/lib/conversatio
 import { ConversationBreadcrumb } from "../../../src/renderer/components/conversation-breadcrumb";
 import { conversationNavigationLineage } from "../../../src/renderer/lib/conversation-navigation-tree";
 import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
-import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { createRendererStoreFixture, unmountOnDispose } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import {
   navigatorProjectPath,
@@ -35,12 +35,14 @@ it("echoes Sessions search input before recursive filtering and only publishes t
   const store = fixture.root.conversationNavigatorStore;
   const rows = vi.spyOn(store, "rows");
   const publish = vi.spyOn(store, "setQuery");
-  render(
-    <StrictMode>
-      <StoreProvider store={fixture.root}>
-        <ConversationNavigator projectPath="/project" />
-      </StoreProvider>
-    </StrictMode>,
+  using _view = unmountOnDispose(
+    render(
+      <StrictMode>
+        <StoreProvider store={fixture.root}>
+          <ConversationNavigator projectPath="/project" />
+        </StoreProvider>
+      </StrictMode>,
+    ),
   );
   const input = screen.getByRole<HTMLInputElement>("searchbox", { name: "Search sessions" });
   const initialRows = store.rows("/project").map(({ node }) => node.key);
@@ -87,7 +89,8 @@ it("cancels an uncommitted search draft on scope change and restores each scope'
       <ConversationNavigator projectPath={projectPath} />
     </StoreProvider>
   );
-  const { rerender } = render(view("/project"));
+  using rendered = unmountOnDispose(render(view("/project")));
+  const { rerender } = rendered;
   const input = () => screen.getByRole<HTMLInputElement>("searchbox", { name: "Search sessions" });
   expect(input().value).toBe("remembered");
   act(() => {

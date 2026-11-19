@@ -10,7 +10,7 @@ import type { UiPart } from "../../../src/contracts/conversations/session-contra
 import type { Client } from "../../../src/renderer/client/Client";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
-import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { createRendererStoreFixture, unmountOnDispose } from "./renderer-store-fixture";
 
 const assistantText = "Ship the release after the database migration finishes.";
 const parts: UiPart[] = [
@@ -99,12 +99,14 @@ it("adds a selected Cake Chat passage as a composer annotation sent with the nex
       kind: "top",
     });
   });
-  const view = render(
-    <StoreProvider store={fixture.root}>
-      <>
-        <CakeChatSurface />
-      </>
-    </StoreProvider>,
+  using view = unmountOnDispose(
+    render(
+      <StoreProvider store={fixture.root}>
+        <>
+          <CakeChatSurface />
+        </>
+      </StoreProvider>,
+    ),
   );
 
   const content = await waitFor(() => {
