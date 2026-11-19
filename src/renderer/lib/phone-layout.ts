@@ -25,5 +25,5 @@ const workspaceOverlayQuery = "(max-width: 700px)";
 
 /** Whether the Workspace accessory currently covers the conversation instead of sitting beside it. */
 export function workspaceAccessoryOverlays() {
-  return typeof window !== "undefined" && window.matchMedia(workspaceOverlayQuery).matches;
+  return window.matchMedia(workspaceOverlayQuery).matches;
 }
