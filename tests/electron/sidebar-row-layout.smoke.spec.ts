@@ -79,7 +79,9 @@ for (const theme of ["light", "dark"] as const) {
           const initial = await bounds(title);
           const rowBox = await bounds(row);
           expect(rowBox.height).toBeGreaterThanOrEqual(44);
-          expect(rowBox.height).toBeLessThanOrEqual(52);
+          // Two 20px lines (title; 14px description at its 1.43 line height, 044b644b1) plus
+          // 6px padding and a 2px gap. Rows already measured 54px when this bound was added.
+          expect(rowBox.height).toBeLessThanOrEqual(54);
           expect(initial.width).toBeGreaterThan(60);
           expect(initial.x + initial.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
           await title.hover();
