@@ -6,6 +6,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -153,6 +154,8 @@ test("canceling child reports retires their outbox entries and Stop stays stoppe
   });
   try {
     const page = await app.firstWindow();
+    // Launch starts in global Cake Chat; open the parent Session explicitly.
+    await openSession(page, "Parent");
     await expect.poll(() => responses.length).toBe(1);
     const queue = page.getByRole("list", { name: "Queued prompts" });
     await expect(queue.getByRole("listitem")).toHaveCount(20);
@@ -174,13 +177,13 @@ test("canceling child reports retires their outbox entries and Stop stays stoppe
     await page.mouse.wheel(0, 2000);
     await expect.poll(() => queue.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     await expect(queue.getByRole("listitem").last()).toBeInViewport();
-    for (let report = 21; report >= 2; report--) {
-      await page
-        .getByRole("button", {
-          name: new RegExp(`Cancel queued message:.*Child report ${report}\\b`, "s"),
-        })
+    // Concurrent children may deliver any report first; cancel whichever reports remain queued.
+    for (let remaining = 20; remaining >= 1; remaining--) {
+      await queue
+        .getByRole("button", { name: /^Cancel queued message:.*Child report \d+/s })
+        .last()
         .click();
-      await expect(queue.getByRole("listitem")).toHaveCount(report - 2);
+      await expect(queue.getByRole("listitem")).toHaveCount(remaining - 1);
     }
     await page.getByRole("button", { name: "Stop", exact: true }).click();
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);

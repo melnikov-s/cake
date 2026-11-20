@@ -7,6 +7,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 import { verifyInlineActivity } from "./fixtures/activity-disclosure";
+import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -174,6 +175,8 @@ test("background family children show running activity and only offer Mark as Un
   });
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat; stage a new Session in the Project explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
     await page.getByRole("button", { name: "Model configuration" }).click({ timeout: 20_000 });
     await page.getByLabel("Search presets and models").fill("Activity fixture");
     await page
@@ -192,6 +195,7 @@ test("background family children show running activity and only offer Mark as Un
       .getAttribute("data-session-id");
     await page.keyboard.press("Enter");
     await expect.poll(() => Boolean(childResponse)).toBe(true);
+    await showSessions(page);
     const childRow = page
       .locator(`.session-item:not([data-session-id="${parentId}"])`)
       .filter({ hasText: "Background worker" });
@@ -261,7 +265,8 @@ test("background family children show running activity and only offer Mark as Un
     await activityMenu
       .getByRole("button", { name: "Inspect subagent: Subagent activity fixture" })
       .click();
-    const subagentPanel = page.getByRole("complementary", { name: "Subagent" });
+    // Subagents open as the focused secondary conversation, not a side panel.
+    const subagentPanel = page.getByRole("region", { name: "Subagent", exact: true });
     await expect(subagentPanel).toContainText("Inspecting shared UI components.");
     await expect.poll(() => Boolean(subagentResponse)).toBe(true);
     const workerComposer = subagentPanel.getByRole("combobox", { name: "Message subagent" });
@@ -287,24 +292,29 @@ test("background family children show running activity and only offer Mark as Un
     await expect(workerQueue).toHaveCount(0);
     expect(workerRequests).toBe(2);
     // A narrow pane shows the inspected chat in place of the parent conversation.
-    await subagentPanel.getByRole("button", { name: "Close Subagent" }).click();
+    await page.getByRole("button", { name: "Back to source conversation", exact: true }).click();
     await expect(page.getByRole("button", { name: "Activity · 1 running" })).toBeVisible();
 
-    const parentRow = page.locator(`.session-item[data-session-id="${parentId}"]`);
+    // Family disclosure lives on the Sessions navigator row around the session item.
+    const parentRow = page.locator(
+      `[data-slot="conversation-navigator-row"][data-session-id="${parentId}"]`,
+    );
     await expect(parentRow.locator("time")).toHaveText("Children are working");
     await expect(childRow.locator("time")).toHaveText(/^Working/);
-    await parentRow.getByRole("button", { name: /^Collapse children of/ }).click();
+    await parentRow.getByRole("button", { name: /^Collapse / }).click();
     await expect(parentRow.locator("time")).toHaveText("Children are working");
     await expect(parentRow.locator('[aria-label="Running"]')).toBeVisible();
-    await parentRow.getByRole("button", { name: /^Expand children of/ }).click();
+    await parentRow.getByRole("button", { name: /^Expand / }).click();
     await expect(parentRow.locator("time")).toHaveText("Children are working");
     await expect(childRow.locator("time")).toHaveText(/^Working/);
 
     // A collapsed Project uses the same hidden-child activity as a collapsed parent.
     // Measure the existing status column in both themes and sidebar viewport sizes.
-    const projectHeader = page.locator('[data-slot="project-header"]').first();
-    const projectStatus = projectHeader.locator('[data-slot="project-chat-status"]');
-    const projectActions = projectHeader.locator('[data-slot="project-actions"]');
+    // The Project is the Sessions navigator's home row since 582d0fc7.
+    const projectHeader = page.locator(
+      '[data-slot="conversation-navigator-row"][data-relationship="home"]',
+    );
+    const projectStatus = projectHeader.locator('[data-slot="own-activity"]');
     const parentPane = page.locator('[data-slot="session-pane"]');
     for (const width of [1280, 900]) {
       await application.evaluate(({ BrowserWindow }, width) => {
@@ -312,10 +322,10 @@ test("background family children show running activity and only offer Mark as Un
       }, width);
       for (const theme of ["light", "dark"] as const) {
         await page.emulateMedia({ colorScheme: theme });
-        const childBounds = await childRow.getByRole("img", { name: "Running" }).boundingBox();
-        const childRowBounds = await childRow.boundingBox();
-        expect(childBounds).not.toBeNull();
-        await expect(projectStatus.getByRole("img")).toHaveCount(0);
+        await expect(childRow.getByRole("img", { name: "Running" })).toBeVisible();
+        const childStatusBox = (await childRow.locator('[data-slot="own-activity"]').boundingBox())!;
+        // Navigator rows show inherited descendant work whether expanded or collapsed.
+        await expect(projectStatus.getByRole("img", { name: "Running", exact: true })).toBeVisible();
         await projectHeader.getByRole("button", { name: "Collapse project", exact: true }).click();
         await composer.click();
         const dot = projectStatus.getByRole("img", { name: "Running", exact: true });
@@ -323,20 +333,17 @@ test("background family children show running activity and only offer Mark as Un
         await expect(projectStatus).toHaveCSS("opacity", "1");
         const bounds = await dot.boundingBox();
         expect(bounds).not.toBeNull();
-        const headerBounds = await projectHeader.boundingBox();
-        // Focus can scroll the sidebar horizontally; compare row-relative status insets.
-        const childInset =
-          childRowBounds!.x + childRowBounds!.width - childBounds!.x - childBounds!.width / 2;
-        const projectInset = headerBounds!.x + headerBounds!.width - bounds!.x - bounds!.width / 2;
-        expect(Math.abs(projectInset - childInset)).toBeLessThan(1);
+        // The home row's status leads its Auto-merge switch (752e8b85); the status column itself
+        // shares the session rows' fixed width.
+        const autoMerge = (await projectHeader.getByRole("switch", { name: /^Auto-merge:/ }).boundingBox())!;
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(autoMerge.x);
+        const statusBox = (await projectStatus.boundingBox())!;
+        expect(statusBox.width).toBe(childStatusBox.width);
         await expect(childRow).toHaveCount(0);
         await expect(parentPane).toHaveAttribute("data-session-id", parentId!);
-        await projectHeader.hover();
-        await expect(projectStatus).toHaveCSS("opacity", "0");
-        await expect(projectActions).toHaveCSS("opacity", "1");
         await projectHeader.getByRole("button", { name: "Expand project", exact: true }).click();
         await composer.click();
-        await expect(projectStatus.getByRole("img")).toHaveCount(0);
+        await expect(projectStatus.getByRole("img", { name: "Running", exact: true })).toBeVisible();
         await expect(childRow.getByRole("img", { name: "Running" })).toBeVisible();
       }
     }
