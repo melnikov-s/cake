@@ -253,17 +253,21 @@ test("global history and shared memory open real originals; restore is visibilit
     await expect(composer).toHaveValue("Follow-up without rerunning the automation");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await openHistoryRun(page, "Morning brief");
-    // Automation run views have no history buttons since 582d0fc7; window navigation remains
-    // available through its keyboard commands.
-    const back = process.platform === "darwin" ? "Meta+BracketLeft" : "Alt+ArrowLeft";
-    const forward = process.platform === "darwin" ? "Meta+BracketRight" : "Alt+ArrowRight";
-    await page.keyboard.press(back);
-    await page.keyboard.press(back);
+    const history = page.getByRole("group", { name: "Conversation history", exact: true });
+    const back = history.getByRole("button", { name: "Go back in session history", exact: true });
+    const forward = history.getByRole("button", {
+      name: "Go forward in session history",
+      exact: true,
+    });
+    // Visit history holds conversations, not the Automations page, so one step returns
+    // to the previous run.
+    await back.click();
     await expect(page.locator('[data-slot="workspace-header"]')).toContainText(
       "Review child replies",
     );
-    await page.keyboard.press(forward);
-    await page.keyboard.press(forward);
+    await expect(forward).toBeEnabled();
+    await forward.click();
+    await expect(forward).toBeDisabled();
     await expect(page.locator('[data-slot="workspace-header"]')).toContainText("Morning brief");
     await page.getByRole("button", { name: "Automation", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Morning brief", exact: true })).toBeVisible();

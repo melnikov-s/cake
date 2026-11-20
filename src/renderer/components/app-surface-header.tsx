@@ -4,6 +4,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { BackIcon, CloseIcon, TerminalIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
+import { ConversationHistoryControls } from "./conversation-history-controls";
 
 export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
   const root = useStore(RootStore);
@@ -34,6 +35,10 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
           >
             <BackIcon size={18} />
           </IconButton>
+        )}
+        {/* Automation views share the conversation headers' visit history. */}
+        {(surface === "automations" || surface === "automation-session") && (
+          <ConversationHistoryControls />
         )}
         {surface === "workbench" && session && (
           <Avatar
