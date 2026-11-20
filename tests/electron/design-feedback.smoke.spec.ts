@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -86,6 +86,49 @@ for (const theme of ["light", "dark"] as const) {
     };
     const scenario = findVisualCaptureScenario("assistant-markdown-code")!;
     await scenario.seed(paths, theme);
+    // The context gauge needs a running runtime, which needs a registered model (81eb383b).
+    // The loopback provider is never prompted: the draft below is not sent.
+    await writeFile(
+      join(paths.cakeHome, "pi", "models.json"),
+      JSON.stringify({
+        providers: {
+          "feedback-provider": {
+            baseUrl: "http://127.0.0.1:9/v1",
+            apiKey: "fixture",
+            api: "openai-completions",
+            models: [
+              {
+                id: "fixture-model",
+                name: "Feedback fixture",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 128000,
+                maxTokens: 1024,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    // Select that model as the seeded Session's latest model change.
+    const sessionRoot = join(paths.cakeHome, "pi", "sessions");
+    const sessionFile = (await readdir(sessionRoot, { recursive: true }))
+      .map((file) => join(sessionRoot, file))
+      .find((file) => file.endsWith("_visual-assistant-markdown-code.jsonl"))!;
+    const lines = (await readFile(sessionFile, "utf8")).trim().split("\n");
+    const parentId = (JSON.parse(lines.at(-1)!) as { id: string }).id;
+    lines.push(
+      JSON.stringify({
+        type: "model_change",
+        id: "feedback-model",
+        parentId,
+        timestamp: new Date(0).toISOString(),
+        provider: "feedback-provider",
+        modelId: "fixture-model",
+      }),
+    );
+    await writeFile(sessionFile, `${lines.join("\n")}\n`);
     const application = await electron.launch({
       args: [repositoryRoot],
       cwd: repositoryRoot,
@@ -133,8 +176,13 @@ for (const theme of ["light", "dark"] as const) {
       ).not.toBe(warningColor);
 
       // The actual shared Chat gauge must retain readable text on rest and hover.
-      const gauge = page.locator('[data-slot="chat"] [data-context-state]').first();
-      const count = gauge.locator(":scope > span").last();
+      // Sessions with a context estimate use the shared context-usage control (001e44fe), whose
+      // responsive labels include hidden spans.
+      const gauge = page
+        .locator('[data-slot="chat"]')
+        .locator('[data-context-state], [data-slot="context-usage"]')
+        .first();
+      const count = gauge.locator(":scope > span:visible").last();
       await expect(count).toBeVisible();
       expect(await contrast(count)).toBeGreaterThanOrEqual(4.5);
       await gauge.hover();
