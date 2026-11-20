@@ -163,7 +163,10 @@ for (const theme of ["dark", "light"] as const)
       const rail = page
         .getByRole("button", { name: "Show in To-do: Fix the flaky build", exact: true })
         .last();
-      const doneStatus = rail.locator("..").getByRole("img", { name: "Done", exact: true });
+      // A done to-do's heading offers its trailing Reopen action (81947630).
+      const doneStatus = rail
+        .locator("..")
+        .getByRole("button", { name: "Reopen: Fix the flaky build", exact: true });
       await rail.click();
       // To-dos live in the shared Workspace accessory since chat-first navigation (582d0fc7).
       const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
