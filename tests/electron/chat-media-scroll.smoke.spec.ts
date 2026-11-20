@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type Page } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { recordedRendererErrors, recordRendererErrors } from "../fixtures/renderer-errors";
+import { writeFixtureModels } from "./fixtures/fixture-model";
 import { windowState } from "../fixtures/window-state";
 import { openSession } from "./fixtures/workspace-navigation";
 
@@ -192,6 +193,13 @@ for (const media of ["diagram", "image", "combined"] as const) {
               },
       });
     }
+    // The saved session's model must resolve: an unavailable-model error docked under the
+    // transcript would otherwise change its height while the reader scrolls.
+    await writeFixtureModels(cakeHome, {
+      baseUrl: "http://127.0.0.1:9/v1",
+      provider: "anthropic",
+      modelId: "fixture",
+    });
     await writeFile(
       join(sessions, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
       entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
@@ -309,10 +317,14 @@ for (const media of ["diagram", "image", "combined"] as const) {
         await startProbe(page);
         await painted();
         await transcript.evaluate((element) => {
-          const top = element.getBoundingClientRect().top;
-          const row = [
-            ...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]"),
-          ].find((item) => item.getBoundingClientRect().bottom > top + 1)!;
+          // Move the probe's own reference row: the first visible row starting inside the
+          // viewport (a3f3918c), not merely the first row in DOM order.
+          const { top, bottom } = element.getBoundingClientRect();
+          const visible = [...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")]
+            .map((item) => ({ item, rect: item.getBoundingClientRect() }))
+            .filter(({ rect }) => rect.bottom > top + 1 && rect.top < bottom)
+            .sort((a, b) => a.rect.top - b.rect.top);
+          const row = (visible.find(({ rect }) => rect.top >= top) ?? visible[0])!.item;
           row.dataset.probeTarget = "true";
           row.style.transform = "translateY(400px)";
         });
