@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { dictationFixture } from "./fixtures/dictation";
 
-import { createSessionInProject, openSettings } from "./fixtures/workspace-navigation";
+import { createSessionInProject, openSession, openSettings, showSessions } from "./fixtures/workspace-navigation";
 
 test("discard filters restore typed selection and preserve lowercase speech in the real composer", async () => {
   test.setTimeout(90_000);
@@ -14,6 +14,8 @@ test("discard filters restore typed selection and preserve lowercase speech in t
   const application = await launch();
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat; open the seeded Session explicitly.
+    await openSession(page, "Explain this");
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -85,6 +87,8 @@ for (const draft of ["typed", "dictated"] as const) {
     const application = await launch();
     try {
       const page = await application.firstWindow();
+      // Launch starts in global Cake Chat; open the seeded Session explicitly.
+      await openSession(page, "Explain this");
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
       await expect(composer).toBeVisible({ timeout: 20_000 });
       await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -140,6 +144,8 @@ for (const referenceKind of ["Model", "Session"] as const) {
         process.platform !== "darwin" || process.arch !== "arm64",
         "Parakeet installation targets Apple Silicon",
       );
+      // Opening the seeded Session through the UI adds to the default budget.
+      test.setTimeout(60_000);
       const active = mode.startsWith("active");
       const { root, configure, launch } = await dictationFixture({
         dictationEnabled: mode !== "disabled",
@@ -150,6 +156,7 @@ for (const referenceKind of ["Model", "Session"] as const) {
       const application = await launch();
       try {
         const page = await application.firstWindow();
+        await openSession(page, "Explain this");
         await expect(
           page.getByText("Inspect this implementation before changing it."),
         ).toBeVisible();
@@ -228,7 +235,10 @@ for (const referenceKind of ["Model", "Session"] as const) {
           );
         } else {
           await reference.locator('[data-slot="destination-cake-chat"]').first().click();
-          await expect(composer).toHaveValue(/cake:\/\/session\//);
+          // Session references are editable named chips since 75ba810d.
+          await expect(
+            composer.getByRole("button", { name: /^Edit session reference:/ }),
+          ).toHaveCount(1);
           await expect(
             page.getByText("Inspect this implementation before changing it."),
           ).toBeVisible();
@@ -238,8 +248,7 @@ for (const referenceKind of ["Model", "Session"] as const) {
           await expect(composer).toBeFocused();
           await expect(indicator).toHaveText("Listening");
           await composer.pressSequentially(" retained");
-          if (referenceKind === "Model") await expect(composer).toContainText(" retained");
-          else await expect(composer).toHaveValue(/ retained/);
+          await expect(composer).toContainText(" retained");
         } else if (mode === "muted") {
           await expect(composer).toBeFocused();
           await expect(indicator).toHaveText("Dictation muted");
@@ -271,14 +280,14 @@ for (const referenceKind of ["Model", "Session"] as const) {
         await expect(composer).toBeFocused();
         await expect(indicator).toHaveText("Listening");
 
-        // Outside dismissal must not resume in a different control.
+        // Outside dismissal must not resume in a different control. The open picker covers the
+        // toolbar, so dismiss it by clicking the transcript.
         await openMenu();
         await finishMenu(true);
         await expect(reference).toBeVisible();
-        await configuration.click();
+        await page.getByText("Inspect this implementation before changing it.").click();
         await expect(reference).toBeHidden();
         await expect(indicator).toHaveCount(0);
-        await page.keyboard.press("Escape");
         await composer.focus();
         await expect(indicator).toHaveText("Listening");
 
@@ -301,14 +310,15 @@ for (const referenceKind of ["Model", "Session"] as const) {
 test("Dictation refocus preference applies live and survives restart", async () => {
   test.skip(process.platform !== "darwin" || process.arch !== "arm64");
   test.setTimeout(90_000);
-  const { root, userData, sessionId, configure, launch } = await dictationFixture({
+  const { root, userData, configure, launch } = await dictationFixture({
     dictationEnabled: true,
   });
   await configure({ ready: true, speech: false, text: "" });
   let application = await launch();
   try {
     let page = await application.firstWindow();
-    const composer = () => page.getByRole("combobox", { name: "Message", exact: true });
+    // Launch starts in global Cake Chat (40566199); match whichever composer is shown.
+    const composer = () => page.getByRole("combobox", { name: /^Message(?: Cake Chat)?$/ });
     const anchor = () => page.getByRole("group", { name: "Press Tab to write", exact: true });
     const preference = () =>
       page.getByRole("switch", {
@@ -335,7 +345,7 @@ test("Dictation refocus preference applies live and survives restart", async () 
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await createSessionInProject(page, /^project(?: |$)/i);
     await expect(composer()).toBeFocused();
-    await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await expect(composer()).toBeFocused();
     await expect(composer()).toHaveValue("Normal automatic focus");
     await expect.poll(savedPreference).toBe(false);
@@ -378,6 +388,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
   };
   try {
     const page = await application.firstWindow();
+    await openSession(page, "Explain this");
     await expect(
       page.getByText("Inspect this implementation before changing it.", { exact: true }),
     ).toBeVisible({ timeout: 20_000 });
@@ -628,6 +639,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await page.getByRole("button", { name: "Mute dictation", exact: true }).click();
     await createSessionInProject(page, /^project(?: |$)/i);
     await expect(composer).toBeFocused();
+    await showSessions(page);
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await expect(composer).toBeFocused();
     await page.getByRole("button", { name: "Unmute dictation", exact: true }).click();
@@ -637,6 +649,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await createSessionInProject(page, /^project(?: |$)/i);
     await expect(focusAnchor).toBeFocused();
     await expect(composer).not.toBeFocused();
+    await showSessions(page);
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await expect(focusAnchor).toBeFocused();
     await page.keyboard.press("Tab");
@@ -675,6 +688,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await sample.focus();
     await expect(indicator).toHaveText("Listening");
     await page.getByRole("button", { name: "Back to chat" }).click();
+    await showSessions(page);
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await composer.click();
     await expect(indicator).toHaveText("Listening");
@@ -802,6 +816,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
       .poll(async () => JSON.parse(await readFile(join(model, "response.json"), "utf8")).count)
       .toBeGreaterThanOrEqual(heldRequest);
     await page.getByRole("button", { name: "Back to chat" }).click();
+    await showSessions(page);
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await expect(composer).toHaveValue("Typed first. Spoken next.");
     // Kill only this fixture's external recognizer: capture recovers without refocus,
@@ -1067,7 +1082,8 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     application = await launch();
     const restarted = await application.firstWindow();
     await expect.poll(engineStarts, { timeout: 15_000 }).toBe(startsBeforeRelaunch + 1);
-    // Settings and enablement are restored; temporary mute is not.
+    // Enablement is restored; temporary mute is not. Launch opens Cake Chat (40566199).
+    await openSettings(restarted);
     await restarted.getByRole("button", { name: /Voice & Dictation/ }).click();
     const restartedMode = restarted.getByRole("switch", { name: "Dictation mode" });
     await expect(restartedMode).toBeChecked();
@@ -1123,6 +1139,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await application.close();
     application = await launch();
     const disabled = await application.firstWindow();
+    await openSettings(disabled);
     await disabled.getByRole("button", { name: /Voice & Dictation/ }).click();
     await expect(disabled.getByRole("switch", { name: "Dictation mode" })).not.toBeChecked();
     await disabled.getByLabel("Try dictation").focus();
@@ -1145,7 +1162,9 @@ test("Cake composer dictation keeps capturing while Cake's page lacks OS focus",
   const application = await launch();
   try {
     const page = await application.firstWindow();
-    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    // Use the startup Cake Chat composer: navigating with clicks would grant this hidden
+    // window real page focus, which the test must be able to lose.
+    const composer = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
     const indicator = page.locator('[data-slot="dictation-indicator"]');
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await page.evaluate(() => {
