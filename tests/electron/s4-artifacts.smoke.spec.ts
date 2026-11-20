@@ -7,6 +7,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 import { fixtureDefaultPreset, writeFixtureModels } from "./fixtures/fixture-model";
+import { chooseNextNativeMenuItem } from "./fixtures/native-menu";
 import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -105,40 +106,18 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
       table.locator('[data-slot="artifact-table"] tbody td').allTextContents(),
     ).resolves.toEqual(["", "Beta", "1", "", "Alpha", "2"]);
 
-    await application.evaluate(({ Menu }) => {
-      const build = Menu.buildFromTemplate.bind(Menu);
-      let nextAction = "Add annotation";
-      Menu.buildFromTemplate = (template) => {
-        const menu = build(template);
-        menu.popup = (options) => {
-          const item = menu.items.find((candidate) => candidate.label === nextAction);
-          if (!item?.click) throw new Error(`Missing ${nextAction}`);
-          nextAction = "Chat about this";
-          item.click(item, options.window!, { triggeredByAccelerator: false });
-          options.callback?.();
-        };
-        return menu;
-      };
-    });
-    const rightClickSelection = async () => {
-      await table.getByText("Alpha").evaluate((element) => {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-        const rect = element.getBoundingClientRect();
-        element.dispatchEvent(
-          new MouseEvent("contextmenu", {
-            bubbles: true,
-            cancelable: true,
-            clientX: rect.left + rect.width / 2,
-            clientY: rect.top + rect.height / 2,
-          }),
-        );
-      });
+    // Select the value with a real double-click and open the real context menu; only the
+    // hidden window's OS popup is replaced, by the shared native-menu chooser.
+    const rightClickSelection = async (action: string) => {
+      await chooseNextNativeMenuItem(application!, action);
+      const alpha = table.getByText("Alpha", { exact: true });
+      await alpha.dblclick();
+      await expect
+        .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+        .toBe("Alpha");
+      await alpha.click({ button: "right" });
     };
-    await rightClickSelection();
+    await rightClickSelection("Add annotation");
     const annotation = page.getByRole("dialog", { name: "Add annotation" });
     await expect(annotation).toBeVisible();
     await page.getByLabel("Annotation comment").fill("Review this artifact value");
@@ -147,7 +126,7 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     await artifactControl.click();
     await popup.getByRole("button", { name: /S4 table/ }).click();
     await expect(table).toBeVisible();
-    await rightClickSelection();
+    await rightClickSelection("Chat about this");
     const sideChat = page.getByRole("complementary", { name: "Side chat" });
     await expect(sideChat).toBeVisible();
     await expect(sideChat.getByText("Alpha")).toBeVisible();
