@@ -807,9 +807,10 @@ export function createChatFirstNavigationScenario(
             .getByRole("button", { name: /^Icon Placement Exploration(?: |$)/ })
             .click({ button: "right" });
           await expect(workspace.getByRole("img", { name: "1 unread", exact: true })).toBeVisible();
+          // Running work takes priority over the project's unread dot (ca1542b6).
           await expect(
             rail.getByRole("img", { name: "Unread sessions in cake", exact: true }),
-          ).toBeVisible();
+          ).toHaveCount(0);
           await expect(
             rail.getByRole("img", { name: "Work running in cake", exact: true }),
           ).toBeVisible();

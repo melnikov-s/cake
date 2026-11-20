@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
-import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import {
+  findVisualCaptureScenario,
+  inlineArtifactEmbed,
+} from "../../scripts/visual-capture/scenarios";
 import { emitRendererEvent } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -40,7 +43,7 @@ for (const language of ["react", "html"] as const) {
       });
       await page.emulateMedia({ colorScheme: "light" });
       await scenario.prepare(page, "expanded");
-      const host = page.locator('[data-slot="artifact-disclosure"]').first();
+      const host = page.locator(inlineArtifactEmbed);
       const iframe = host.locator("iframe");
       const frame = iframe.contentFrame();
       const reference = await host.getAttribute("data-artifact-reference");

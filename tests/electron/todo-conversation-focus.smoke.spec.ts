@@ -5,6 +5,9 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { openCakeChat } from "./fixtures/workspace-navigation";
+import { inDisplayOrder } from "./fixtures/transcript-order";
+import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 
 const repository = resolve(import.meta.dirname, "../..");
 const titleA = "Investigate slow project startup and repeated configuration reads";
@@ -24,6 +27,9 @@ for (const global of [false, true])
       const file = join(paths.cakeHome, "state", "application.json");
       const application = JSON.parse(await readFile(file, "utf8"));
       application.data.cakeChatTodos = application.data.projects[0].todos;
+      // Global Cake Chat also lists every Project's to-dos (06885c1c); move them rather than
+      // copy, so each title names one global to-do.
+      application.data.projects[0].todos = emptyProjectTodos();
       await writeFile(file, JSON.stringify(application));
       const hash = createHash("sha256").update(paths.project).digest("hex");
       await cp(
@@ -47,14 +53,20 @@ for (const global of [false, true])
     try {
       const page = await app.firstWindow();
       if (global) {
-        await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+        await openCakeChat(page);
         await expect(page.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible();
       } else await scenario.prepare(page, "wide");
       await page.setViewportSize({ width: 1800, height: 3000 });
       const pane = page.locator('[data-slot="session-pane"]');
-      const transcript = pane.locator(".transcript").last();
-      const panel = page.getByRole("complementary", { name: "To-do" });
-      const firstLabel = transcript.locator('[data-slot="task-section-label"]').first();
+      // Global Cake Chat stays mounted beside Project Chat; use the visible conversation.
+      const transcript = pane.locator(".transcript:visible");
+      // To-dos live in the Workspace accessory since chat-first navigation (582d0fc7).
+      const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
+      // Virtualized rows are not in DOM order (fc455223); take the first displayed heading.
+      const firstLabel = await inDisplayOrder(
+        transcript.locator('[data-slot="task-section-label"]'),
+        "first",
+      );
       const title = firstLabel.getByText(titleA, { exact: true });
       const toggle = firstLabel.getByRole("button", { name: titleA, exact: true });
       // The actual title, not a trailing icon, reveals the existing pane without folding.
@@ -73,7 +85,8 @@ for (const global of [false, true])
       expect(await firstLabel.locator("button button, button a, a button").count()).toBe(0);
       const chevron = toggle.locator("svg");
       await expect(chevron).not.toHaveClass(/-rotate-90/);
-      // Blank space belongs to the sibling disclosure, not the title's hit area.
+      // Compact heading controls (87d148a9, 81947630): the title keeps its own hit area, focus
+      // follows it, and the compact disclosure sits at the trailing edge just before completion.
       const labelBounds = (await firstLabel.boundingBox())!;
       const titleBounds = (await navigation.boundingBox())!;
       const toggleBounds = (await toggle.boundingBox())!;
@@ -81,21 +94,28 @@ for (const global of [false, true])
       const focusBounds = (await firstLabel
         .getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true })
         .boundingBox())!;
+      const completionBounds = (await firstLabel
+        .getByRole("button", { name: `Mark done: ${titleA}`, exact: true })
+        .boundingBox())!;
       expect(focusBounds.x).toBeGreaterThanOrEqual(titleBounds.x + titleBounds.width);
-      expect(toggleBounds.x - focusBounds.x - focusBounds.width).toBeLessThanOrEqual(8);
-      expect(toggleBounds.x + toggleBounds.width).toBeCloseTo(labelBounds.x + labelBounds.width, 0);
-      expect(iconBounds.x + iconBounds.width).toBeGreaterThan(
-        labelBounds.x + labelBounds.width - 12,
+      expect(toggleBounds.x).toBeGreaterThanOrEqual(focusBounds.x + focusBounds.width);
+      expect(toggleBounds.x + toggleBounds.width).toBeLessThanOrEqual(completionBounds.x);
+      expect(completionBounds.x + completionBounds.width).toBeCloseTo(
+        labelBounds.x + labelBounds.width,
+        0,
       );
-      expect(toggleBounds.width).toBeGreaterThan(40);
+      expect(iconBounds.x).toBeGreaterThanOrEqual(toggleBounds.x);
+      expect(iconBounds.x + iconBounds.width).toBeLessThanOrEqual(
+        toggleBounds.x + toggleBounds.width,
+      );
       await toggle.click({ position: { x: 8, y: toggleBounds.height / 2 } });
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await expect(chevron).toHaveClass(/-rotate-90/);
       await expect(
         transcript.getByText("Investigate slow project startup.", { exact: true }),
       ).toHaveCount(0);
-      // Navigation is independent even while folded and with the pane closed.
-      await pane.getByRole("button", { name: "To-do", exact: true }).click();
+      // Navigation is independent even while folded and with the Workspace closed.
+      await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
       await expect(panel).toHaveCount(0);
       await navigation.press("Enter");
       await expect(panel).toBeVisible();

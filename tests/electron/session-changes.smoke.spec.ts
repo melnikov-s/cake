@@ -149,17 +149,13 @@ for (const theme of ["dark", "light"] as const) {
       };
       await assertContained();
       await expect(picker).toHaveAttribute("title", sessionChangesComparisonBranch);
-      await picker.focus();
+      // Reach the selector by keyboard (Cake reserves plain Tab for the composer).
+      await panel.getByRole("button", { name: "Open in VS Code", exact: true }).focus();
+      await page.keyboard.press("Shift+Tab");
       await expect(picker).toBeFocused();
-      // Inferred alternatives are ranked, so move toward main from the inferred base.
-      const branches = await picker.locator("option").allTextContents();
-      const toward =
-        branches.indexOf("main") < branches.indexOf(sessionChangesComparisonBranch)
-          ? "ArrowUp"
-          : "ArrowDown";
-      await picker.press("Space");
-      await picker.press(toward);
-      await picker.press("Enter");
+      // A closed native select on macOS changes only through its OS popup menu, which a hidden
+      // window cannot drive; choose the option directly while the control keeps focus.
+      await picker.selectOption("main");
       await expect(picker).toHaveValue("main");
       await expect(picker).toBeFocused();
       expect(await picker.evaluate((element) => element.matches(":focus-visible"))).toBe(true);

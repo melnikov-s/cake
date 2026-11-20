@@ -74,7 +74,8 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
               href={sessionHref}
               presentation="text"
               title={title}
-              className="min-w-0 flex-1 truncate text-xs font-medium [&>span]:line-clamp-none [&>span]:block [&>span]:truncate"
+              // One row: the session-kind glyph (1d32332f) stays inline beside the truncated title.
+              className="flex min-w-0 flex-1 items-center gap-1 text-xs font-medium [&>span:not([data-slot=session-purpose])]:block [&>span:not([data-slot=session-purpose])]:min-w-0 [&>span:not([data-slot=session-purpose])]:line-clamp-none [&>span:not([data-slot=session-purpose])]:truncate [&>[data-slot=session-purpose]]:shrink-0"
             >
               {title}
             </MarkdownLink>

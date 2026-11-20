@@ -7,6 +7,7 @@ import { subagentLink } from "../../src/contracts/subagents/subagent-reference";
 import { SubagentHandleId } from "../../src/contracts/subagents/subagent-data";
 import type { SubagentHistory } from "../../src/services/storage/SubagentStorage";
 import { investigatorOrigin } from "../../tests/fixtures/subagent-report";
+import { textPreview } from "../../src/renderer/lib/text-preview";
 
 const longTitle =
   "Deep consultant review of Cake architecture and APIs, including navigation, workspace controls and session ownership";
@@ -108,7 +109,8 @@ export function createSessionHeaderTitleScenario(
       const projectChat = state === "project-chat";
       const sessionTitle = state === "short-title" || subagent ? shortTitle : longTitle;
       const title = subagent
-        ? subagentTitle
+        ? // Subagent names are capped to a one-glance preview (777558c2).
+          textPreview(subagentTitle)
         : projectChat
           ? "visual-capture-project"
           : sessionTitle;

@@ -131,13 +131,22 @@ export function MessageActions({
     window.addEventListener("scroll", schedule, { capture: true, passive: true });
     window.addEventListener("resize", schedule);
     const observer = "ResizeObserver" in globalThis ? new ResizeObserver(schedule) : undefined;
-    for (const element of [message, scroller, scroller.firstElementChild, toolbar, dock]) {
+    for (const element of [message, scroller, toolbar, dock]) {
       if (element) observer?.observe(element);
     }
+    // The list resizes its content and moves rows from inside its own ResizeObserver delivery
+    // (fc455223). Resize-observing that content here would add a shallower notification during
+    // that delivery ("ResizeObserver loop completed with undelivered notifications"), so watch
+    // the list's own size and position writes instead.
+    const content = scroller.firstElementChild;
+    const layout = "MutationObserver" in globalThis ? new MutationObserver(schedule) : undefined;
+    if (content)
+      layout?.observe(content, { attributes: true, attributeFilter: ["style"], subtree: true });
     return () => {
       window.removeEventListener("scroll", schedule, true);
       window.removeEventListener("resize", schedule);
       observer?.disconnect();
+      layout?.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
   }, [align, children, inline]);

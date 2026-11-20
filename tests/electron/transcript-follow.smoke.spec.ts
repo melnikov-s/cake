@@ -9,6 +9,15 @@ import type { TranscriptOwnershipFixture } from "./transcript-ownership-fixture"
 import type { UiPart } from "../../src/contracts/conversations/session-contract";
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 import type { CompiledInlineWidget } from "../../src/contracts/widgets/inline-widget-contract";
+import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { recordedRendererErrors, recordRendererErrors } from "../fixtures/renderer-errors";
+import { windowState } from "../fixtures/window-state";
+import {
+  fixtureModelChange,
+  startFixtureModelServer,
+  writeFixtureModels,
+} from "./fixtures/fixture-model";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const capture = process.env.CAKE_TRANSCRIPT_CAPTURE === "1";
@@ -565,6 +574,27 @@ test.describe("transcript follow rules", () => {
   });
 });
 
+test.describe("expanding while following", () => {
+  test("rule 5: opening a streaming Work log keeps following, with its summary in view", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    await fixtureCall(page, "startLive", 40, "tool");
+    const log = transcript.locator('[data-slot="activity-group"]');
+    const summary = log.locator(":scope > summary");
+    await expect(summary).toBeVisible();
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    // A bounded Work log scrolls inside itself, so following never hides what was opened.
+    await summary.click();
+    await expect(log).toHaveAttribute("open", "");
+    await page.waitForTimeout(800);
+    await settle(page);
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    await expect(summary).toBeInViewport();
+    await fixtureCall(page, "stopLive");
+  });
+});
+
 test.describe("more reader input", () => {
   test("rule 2: PageUp and touch scrolling end following too", async ({ fixturePage: page }) => {
     const transcript = page.locator(".transcript");
@@ -1105,4 +1135,238 @@ test("evidence: accepted Enter returns to bottom; explicit navigation also follo
   await shot("6-following-again");
   expect(await gap(transcript)).toBeLessThan(1);
   await fixtureCall(page, "stopLive");
+});
+
+// Real-application follow checks ported from the retired react-virtuoso suite
+// (session-scroll-position.smoke, superseded by fc455223): behaviors the renderer
+// fixture above cannot reach, exercised against seeded Sessions through the real UI.
+function seededTranscript(sessionId: string, project: string, title: string, count: number) {
+  const timestamp = new Date(0).toISOString();
+  const entries: Array<Record<string, unknown>> = [
+    { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+    fixtureModelChange(timestamp),
+  ];
+  let parentId = "model";
+  for (let index = 0; index < count; index += 1) {
+    const role = index % 2 === 0 ? "user" : "assistant";
+    const id = `${sessionId}-${index}`;
+    const body = `${title} transcript item ${index}. ${"This line gives the message a distinct height. ".repeat((index % 6) + 1)}`;
+    const text =
+      index === 0
+        ? title
+        : index % 5 === 1
+          ? `${body}\n\n\`\`\`ts\n${Array.from({ length: (index % 4) + 2 }, (_, line) => `const marker${index}_${line} = ${line};`).join("\n")}\n\`\`\``
+          : body;
+    entries.push({
+      type: "message",
+      id,
+      parentId,
+      timestamp,
+      message:
+        role === "user"
+          ? { role, content: [{ type: "text", text }], timestamp: index }
+          : {
+              role,
+              content: [{ type: "text", text }],
+              api: "openai-completions",
+              provider: "fixture",
+              model: "fixture-model",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+              stopReason: "stop",
+              timestamp: index,
+            },
+    });
+    parentId = id;
+  }
+  return entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+}
+
+async function launchSeededSessions(
+  sessions: ReadonlyArray<{ id: string; title: string; count: number }>,
+) {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-transcript-follow-app-"));
+  const userData = join(temporaryRoot, "user-data");
+  const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
+  const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
+  const timestamp = new Date(0).toISOString();
+  await Promise.all(
+    [userData, project, sessionDirectory, join(cakeHome, "state")].map((path) =>
+      mkdir(path, { recursive: true }),
+    ),
+  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "dark" }));
+  await writeFile(
+    join(cakeHome, "state", "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
+    }),
+  );
+  const models = await startFixtureModelServer();
+  await writeFixtureModels(cakeHome, { baseUrl: models.baseUrl });
+  for (const [index, session] of sessions.entries())
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-0${index}-000Z_${session.id}.jsonl`),
+      seededTranscript(session.id, project, session.title, session.count),
+    );
+  const application = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: cakeHome,
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
+    },
+  });
+  const page = await application.firstWindow();
+  await recordRendererErrors(page);
+  return {
+    application,
+    page,
+    models,
+    async close() {
+      await application.close();
+      await models.close();
+      await rm(temporaryRoot, { recursive: true, force: true });
+    },
+  };
+}
+
+/** The newest rendered row, by display index. */
+function lastRowText(transcript: Locator) {
+  return transcript.evaluate((element) => {
+    const rows = [...element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]')];
+    return rows.sort(
+      (left, right) =>
+        Number(right.dataset.transcriptItemIndex) - Number(left.dataset.transcriptItemIndex),
+    )[0]?.textContent;
+  });
+}
+
+async function openAtEnd(page: Page, title: string, lastIndex: number) {
+  await openSession(page, title);
+  // The outgoing transition snapshot is inert DOM, not a second live transcript.
+  const transcript = page.locator(
+    '.transcript:visible:not([data-slot="content-transition-outgoing"] *)',
+  );
+  await expect
+    .poll(() => lastRowText(transcript))
+    .toContain(`${title} transcript item ${lastIndex}`);
+  await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+  return transcript;
+}
+
+async function openRow(page: Page, sessionId: string) {
+  const workspace = await showSessions(page);
+  await workspace.locator(`.session-item[data-session-id="${sessionId}"] .session-row`).click();
+}
+
+test.describe("real application", () => {
+  test("a reader's position holds while another session streams and completes", async () => {
+    test.setTimeout(90_000);
+    const app = await launchSeededSessions([
+      { id: "follow-first", title: "First follow fixture", count: 48 },
+      { id: "follow-second", title: "Second follow fixture", count: 48 },
+    ]);
+    try {
+      const { page, models } = app;
+      const transcript = await openAtEnd(page, "First follow fixture", 47);
+      await wheel(page, transcript, -2000);
+      await page.waitForTimeout(300);
+      const reading = await anchor(transcript);
+      expect(reading).toBeDefined();
+      await openRow(page, "follow-second");
+      await expect
+        .poll(() => lastRowText(transcript))
+        .toContain("Second follow fixture transcript item 47");
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await composer.click();
+      await page.keyboard.type("Stream in the other session");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await page.keyboard.press("Enter");
+      await expect.poll(() => models.assistantRequests.length).toBe(1);
+      models.write("Background response started.\n\n");
+      await expect(transcript).toContainText("Background response started.");
+      await openRow(page, "follow-first");
+      await expect.poll(() => anchor(transcript)).toEqual(reading);
+      models.write("Background content keeps growing.\n\n".repeat(100));
+      models.release();
+      await page.waitForTimeout(500);
+      expect(await anchor(transcript)).toEqual(reading);
+      expect(await recordedRendererErrors(page)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("a large loaded session reopens at its end and scrolls to its start without errors", async () => {
+    test.setTimeout(120_000);
+    const app = await launchSeededSessions([
+      { id: "follow-large", title: "Large follow fixture", count: 480 },
+      { id: "follow-small", title: "Small follow fixture", count: 8 },
+    ]);
+    try {
+      const { page } = app;
+      const transcript = await openAtEnd(page, "Large follow fixture", 479);
+      await openRow(page, "follow-small");
+      await expect
+        .poll(() => lastRowText(transcript))
+        .toContain("Small follow fixture transcript item 7");
+      await openRow(page, "follow-large");
+      await expect
+        .poll(() => lastRowText(transcript))
+        .toContain("Large follow fixture transcript item 479");
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      // Scrolling upward mounts ever earlier rows; none of those commits may error.
+      await transcript.hover({ position: { x: 20, y: 200 } });
+      for (let step = 0; step < 400; step++) {
+        if ((await transcript.evaluate((element) => element.scrollTop)) < 1) break;
+        await page.mouse.wheel(0, -3000);
+        await page.waitForTimeout(16);
+      }
+      await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBeLessThan(1);
+      await expect(transcript.getByText("Large follow fixture", { exact: true })).toBeVisible();
+      expect(await recordedRendererErrors(page)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("rows that shrink while following keep the end and mount earlier rows without errors", async () => {
+    test.setTimeout(90_000);
+    const app = await launchSeededSessions([
+      { id: "follow-reflow", title: "Reflow follow fixture", count: 48 },
+    ]);
+    try {
+      const { application, page } = app;
+      await application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]!.setContentSize(820, 800),
+      );
+      const transcript = await openAtEnd(page, "Reflow follow fixture", 47);
+      // Widening the real window reflows every row shorter, so the list mounts rows above.
+      for (const width of [1100, 1500, 1800]) {
+        await application.evaluate(
+          ({ BrowserWindow }, width) =>
+            BrowserWindow.getAllWindows()[0]!.setContentSize(width, 800),
+          width,
+        );
+        await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+        await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      }
+      expect(await recordedRendererErrors(page)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
 });

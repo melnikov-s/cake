@@ -84,7 +84,8 @@ for (const mode of ["Browser Mode", "VS Code"] as const) {
       await expect(selected).toHaveAttribute("aria-pressed", "true");
       const readTodos = async () =>
         JSON.parse(await readFile(statePath, "utf8")).data.projects[0].todos;
-      await expect.poll(async () => (await readTodos()).selectedId).toBe(id);
+      // Focus is the conversation's local view state (e52180ef), shown by the chat's focus bar.
+      await expect(page.getByRole("button", { name: "Clear to-do focus" })).toBeVisible();
       const modeButton = page
         .getByRole("group", { name: "Conversation workspace", exact: true })
         .getByRole("button", { name: mode === "VS Code" ? "VS Code" : "Browser", exact: true });
@@ -112,10 +113,9 @@ for (const mode of ["Browser Mode", "VS Code"] as const) {
       await page.getByRole("button", { name: "Main", exact: true }).click();
       await expect(todoList).toBeVisible();
       await expect(selected).toHaveAttribute("aria-pressed", "true");
-      expect(await readTodos()).toMatchObject({
-        selectedId: id,
-        items: [{ id, state: "open", revision: 0 }],
-      });
+      await expect(page.getByRole("button", { name: "Clear to-do focus" })).toBeVisible();
+      // Viewing tool modes never mutates the persisted to-do.
+      expect(await readTodos()).toMatchObject({ items: [{ id, state: "open", revision: 0 }] });
       // Opening a workspace without an accessory still shows the normal chat.
       await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
       await modeButton.click();

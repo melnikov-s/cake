@@ -11,6 +11,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 import { TaskAttributionDoc } from "../../src/services/pi-durable/durable-task-attribution";
 import { inDisplayOrder } from "./fixtures/transcript-order";
+import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 
 const repository = resolve(import.meta.dirname, "../..");
 const titleA = "Investigate slow project startup and repeated configuration reads";
@@ -75,6 +76,9 @@ for (const global of [false, true]) {
       const file = join(paths.cakeHome, "state", "application.json");
       const application = JSON.parse(await readFile(file, "utf8"));
       application.data.cakeChatTodos = application.data.projects[0].todos;
+      // Global Cake Chat also lists every Project's to-dos (06885c1c); move them rather than
+      // copy, so each title names one global to-do.
+      application.data.projects[0].todos = emptyProjectTodos();
       await writeFile(file, JSON.stringify(application));
       await cp(directory, join(paths.cakeHome, "pi", "global-chat"), { recursive: true });
     }
@@ -121,9 +125,12 @@ for (const global of [false, true]) {
       await expect(shot.getByRole("img")).toBeVisible();
       await collapse.press("Enter");
 
-      await transcript
-        .getByRole("button", { name: `Show in To-do: ${titleB}`, exact: true })
-        .click();
+      const showB = transcript.getByRole("button", {
+        name: `Show in To-do: ${titleB}`,
+        exact: true,
+      });
+      await expect(showB).toBeVisible();
+      await showB.click({ timeout: 5_000 });
       // To-dos live in the Workspace accessory (582d0fc7); choosing one focuses it.
       const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
       const selectB = panel.getByRole("button", { name: titleB, exact: true });

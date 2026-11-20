@@ -184,7 +184,10 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     expect(firstSessionId).toBeTruthy();
     const stop = page.getByRole("button", { name: "Stop" });
     await expect(stop).toBeVisible();
+    console.log("PROBE before-stop", JSON.stringify(models.events));
     await stop.click();
+    await page.waitForTimeout(1000);
+    console.log("PROBE after-stop", JSON.stringify(models.events), await stop.count());
     await createSessionInProject(page, /^project(?: |$)/i);
     await expect(page.locator(".session-item.active")).toHaveCount(0);
     await expect(page.locator('[data-slot="workspace-title"] [aria-current="page"]')).toHaveText(

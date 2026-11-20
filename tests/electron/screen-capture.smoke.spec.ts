@@ -58,6 +58,9 @@ test("captures and annotates through the hidden native overlay into the existing
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: cakeHome,
       CAKE_SMOKE_DICTATION_HELPER: join(userData, "capture-dictation"),
+      // Isolate Pi too, so the user's ~/.pi settings and models never leak into the fixture.
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
   let clipboardSaved = false;

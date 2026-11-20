@@ -6,6 +6,8 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { fixtureTextReply, isUtilityRequest } from "./fixtures/fixture-model";
+import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -21,7 +23,15 @@ async function verifyStreamingWorkLog(theme: "dark" | "light") {
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   let response: ServerResponse | undefined;
-  const server = createServer((_request, nextResponse) => {
+  const server = createServer(async (request, nextResponse) => {
+    let body = "";
+    for await (const data of request) body += data;
+    // Utility work (to-do description, title) is not the streamed turn under test.
+    if (isUtilityRequest(body)) {
+      nextResponse.writeHead(200, { "content-type": "text/event-stream" });
+      nextResponse.end(fixtureTextReply("Stream a work log"));
+      return;
+    }
     if (response) {
       nextResponse.writeHead(200, { "content-type": "text/event-stream" });
       nextResponse.end(
@@ -109,7 +119,9 @@ async function verifyStreamingWorkLog(theme: "dark" | "light") {
   try {
     const page = await application.firstWindow();
     if (theme === "light") await page.setViewportSize({ width: 900, height: 800 });
-    await page.getByRole("button", { name: "Model configuration" }).click({ timeout: 20_000 });
+    // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
+    await page.getByRole("button", { name: "Model configuration" }).click();
     await page.getByLabel("Search presets and models").fill("Stream fixture");
     await page
       .getByRole("button", { name: /Stream fixture/ })
@@ -162,10 +174,8 @@ async function verifyStreamingWorkLog(theme: "dark" | "light") {
     // Retain a handle across real Pi streaming deltas: replacement of the
     // scrolling surface resets virtualization and is visible as a flash.
     const originalContent = await content.elementHandle();
-    const footer = page
-      .locator(".transcript [data-viewport-type] > div")
-      .last()
-      .locator(":scope > div");
+    // The list footer is its own slot since the Legend List transcript (fc455223).
+    const footer = page.locator('.transcript:visible [data-slot="transcript-footer"]');
     const originalFooter = await footer.elementHandle();
     if (!originalContent || !originalFooter) throw new Error("Missing work log content or footer");
 
@@ -282,7 +292,7 @@ async function verifyStreamingWorkLog(theme: "dark" | "light") {
         ),
       )
       .toBeGreaterThan(100);
-    const transcript = page.locator(".transcript");
+    const transcript = page.locator(".transcript:visible");
     await expect
       .poll(() =>
         transcript.evaluate(

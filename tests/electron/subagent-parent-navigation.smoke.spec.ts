@@ -45,7 +45,9 @@ test("global activity and tool inspection can return home through Back, breadcru
     for await (const chunk of request) body += chunk;
     // Utility work (titles, to-do descriptions) is not a chat turn; leave it pending.
     if (isUtilityRequest(body)) return;
-    if (body.includes("You are a hidden general researcher for Cake Chat.")) {
+    // The worker's own conversation is the only one that never saw the parent's request
+    // (prompt wording is not a stable identifier, 3eebcea3).
+    if (!body.includes("Delegate navigation inspection")) {
       await gate.promise;
       reply(response, "Worker finished.");
     } else if (++requests === 1) {

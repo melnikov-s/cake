@@ -119,11 +119,12 @@ export interface FixtureModelServerOptions {
 /**
  * Local model server for Sessions that really start. New Sessions also send utility requests
  * that a catch-all handler would mistake for the assistant turn, so those are answered
- * separately: descriptions and labels get neutral replies, titles echo the first request, and
- * other names stay pending.
+ * separately: descriptions, labels and worktree names get neutral replies, titles echo the
+ * first request, and rewording stays pending.
  */
 export async function startFixtureModelServer(options: FixtureModelServerOptions = {}) {
   const held = new Set<ServerResponse>();
+  const heldAssistant: ServerResponse[] = [];
   const assistantRequests: string[] = [];
   /** Observable request lifecycle, for assertions about what the backend actually did. */
   const events: string[] = [];
@@ -154,8 +155,12 @@ export async function startFixtureModelServer(options: FixtureModelServerOptions
       response.end(fixtureTextReply(firstMessage));
       return;
     }
+    if (body.includes("Name a Git worktree")) {
+      response.end(fixtureTextReply("fixture-isolated-work"));
+      return;
+    }
     if (isUtilityRequest(body)) {
-      // Other names (worktrees, rewording) stay pending.
+      // Rewording stays pending.
       held.add(response);
       response.on("close", () => held.delete(response));
       return;
@@ -168,6 +173,7 @@ export async function startFixtureModelServer(options: FixtureModelServerOptions
       return;
     }
     held.add(response);
+    heldAssistant.push(response);
     response.on("close", () => {
       if (held.delete(response)) events.push(`aborted assistant ${assistantRequests.length}`);
     });
@@ -181,6 +187,12 @@ export async function startFixtureModelServer(options: FixtureModelServerOptions
     origin: `http://127.0.0.1:${address.port}`,
     assistantRequests,
     events,
+    /** Streams more assistant text into the latest held assistant turn. */
+    write(text: string) {
+      const response = heldAssistant.findLast((candidate) => held.has(candidate));
+      if (!response) throw new Error("No held assistant turn");
+      response.write(fixtureChunk({ content: text }));
+    },
     /** Ends every held streaming response. */
     release() {
       for (const response of held) response.end(fixtureChunk({}, "stop") + "data: [DONE]\n\n");

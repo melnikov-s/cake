@@ -179,7 +179,11 @@ for (const surface of ["project", "global", "session"] as const) {
       if (surface === "project") {
         const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
         await workspace.getByRole("button", { name: /^To-dos / }).click();
-        await workspace.getByRole("button", { name: "Current task", exact: true }).click();
+        // Next-message to-do selection became local view focus in e52180ef, which would hide
+        // the reply under test. Choosing a task for the message now means attaching it.
+        await workspace
+          .getByRole("button", { name: "Attach to-do as context: Current task", exact: true })
+          .click();
       }
       const reader = page.getByRole("dialog", { name: "Cake", exact: true });
       const modifier = process.platform === "darwin" ? "Meta" : "Alt";

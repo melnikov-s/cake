@@ -1852,6 +1852,13 @@ async function retainArtifactBrowser(
   );
 }
 
+/**
+ * The Markdown embed in an inline seedArtifactScenario reply. Its publishing tool row renders a
+ * disclosure too, and virtualized DOM order is not display order (fc455223).
+ */
+export const inlineArtifactEmbed =
+  '[data-part-id="entry-assistant-architecture-text-1"] [data-slot="artifact-disclosure"]';
+
 /** The seeded artifact Session's first request, which is also its searchable title. */
 const artifactScenarioSessionTitle = "Explain how Cake's desktop architecture works.";
 
@@ -2180,22 +2187,8 @@ const inlineArtifactRevisionsScenario: VisualCaptureScenario = {
   states: ["default", "reopened"],
   async seed(paths, theme) {
     await inlineArtifactScenario.seed(paths, theme);
-    const artifactRoot = join(paths.cakeHome, "state", "artifacts");
-    const record = JSON.parse(
-      await readFile(
-        join(
-          artifactRoot,
-          "sessions",
-          sha256(paths.project),
-          sha256("visual-inline-artifact"),
-          `${sha256("inline-visual")}.json`,
-        ),
-        "utf8",
-      ),
-    );
-    const original: CakeArtifactV1 = JSON.parse(
-      await readFile(join(artifactRoot, "blobs", `${record.digest}.json`), "utf8"),
-    );
+    // Read the seeded revision through artifact storage; its on-disk layout is a catalog now.
+    const original = await readSeededArtifact(paths, "inline-visual");
     await seedArtifact(paths, { ...original, revision: 2 }, new Date(0).toISOString());
     const transcript = join(
       workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
@@ -2216,6 +2209,7 @@ const inlineArtifactRevisionsScenario: VisualCaptureScenario = {
     await writeFile(transcript, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   },
   async prepare(page, state) {
+    await openSeededSession(page, "Cake architecture", artifactScenarioSessionTitle);
     const disclosures = page.locator('[data-slot="artifact-disclosure"]');
     const old = disclosures.filter({ hasText: "Old version" });
     const current = disclosures.filter({ has: page.locator('[data-artifact-id="inline-visual"]') });
@@ -2618,12 +2612,12 @@ document.querySelector("button").onclick = (event) => {
     },
     async prepare(page, state) {
       await openArtifactScenarioSession(page);
-      const host = page.locator('[data-slot="artifact-disclosure"]').first();
+      const host = page.locator(inlineArtifactEmbed);
       const frame = host.locator("iframe").contentFrame();
       await expect(frame.getByRole("heading", { name: /Live Cake theme/ })).toBeVisible();
       if (state === "expanded") await frame.getByRole("button", { name: "Report details" }).click();
     },
-    region: (page) => page.locator('[data-slot="artifact-disclosure"]').first(),
+    region: (page) => page.locator(inlineArtifactEmbed),
   };
 }
 
@@ -7131,7 +7125,8 @@ const sessionUpdateSpacingScenario: VisualCaptureScenario = {
           elements.map((element) => {
             const titleElement = element.firstElementChild!.firstElementChild!;
             const title = titleElement.getBoundingClientRect();
-            const titleText = titleElement.firstElementChild!;
+            // A session link leads with its session-kind glyph (1d32332f); measure the text.
+            const titleText = titleElement.lastElementChild!;
             const titleStyle = getComputedStyle(titleText);
             const outcomeElement = element.querySelector('[data-slot="session-update-outcome"]')!;
             const outcome = outcomeElement.getBoundingClientRect();
@@ -7200,11 +7195,13 @@ const sessionUpdateSpacingScenario: VisualCaptureScenario = {
       await expect(link).toHaveText("");
       await expect(link).toHaveAttribute("href", `cake://session/${sessionId}`);
       if (index >= 2)
-        await expect(batch.getByRole("link", { name: title, exact: true })).toHaveAttribute(
+        // Session links lead with their session-kind glyph, part of the name (1d32332f).
+        await expect(batch.getByRole("link", { name: `User Session ${title}`, exact: true })).toHaveAttribute(
           "href",
           `cake://session/${sessionId}`,
         );
-      if (index === 2) await batch.getByRole("link", { name: title, exact: true }).click();
+      if (index === 2)
+        await batch.getByRole("link", { name: `User Session ${title}`, exact: true }).click();
       else await link.click();
       await expect(
         page.locator(".transcript").getByText(`Result for ${title}`, { exact: true }),
@@ -7291,6 +7288,8 @@ const compactSessionReportsScenario: VisualCaptureScenario = {
       const disclosure = card.getByRole("button", { name: title, exact: true });
       await disclosure.click();
       await expect(card.getByText(`Result for ${title}`, { exact: true })).toBeVisible();
+      // An expanded card moves its actions to the shared hover action bar (1a4dacc9).
+      await card.hover();
       const link = card.getByRole("link", { name: "Open source", exact: true });
       await expect(link).toHaveText("");
       await expect(link.locator("svg")).toHaveCount(1);
@@ -7301,6 +7300,10 @@ const compactSessionReportsScenario: VisualCaptureScenario = {
       ).toContainText(`Result for ${title}`);
       await openChat();
     }
+    // Compact rows are the collapsed cards: title, the inline source action, then badges at the
+    // trailing edge (1a4dacc9).
+    for (const disclosure of await cards.locator('[data-slot="response-disclosure"]').all())
+      if ((await disclosure.getAttribute("aria-expanded")) === "true") await disclosure.click();
     if (state === "narrow") await page.setViewportSize({ width: 480, height: 700 });
     const geometry = await cards.evaluateAll((elements) =>
       elements.map((element) => {
@@ -7316,15 +7319,15 @@ const compactSessionReportsScenario: VisualCaptureScenario = {
           badgeLeft: badge.left,
           badgeRight: badge.right,
           linkLeft: link.left,
+          linkRight: link.right,
           overflow: element.scrollWidth > element.clientWidth,
         };
       }),
     );
     for (const row of geometry) {
       expect(row.overflow).toBe(false);
-      expect(row.titleRight).toBeLessThanOrEqual(row.badgeLeft);
-      expect(row.linkLeft - row.badgeRight).toBeGreaterThanOrEqual(0);
-      expect(row.linkLeft - row.badgeRight).toBeLessThanOrEqual(5);
+      expect(row.titleRight).toBeLessThanOrEqual(row.linkLeft);
+      expect(row.linkRight).toBeLessThanOrEqual(row.badgeLeft);
       expect(Math.abs(row.badgeRight - geometry[0]!.badgeRight)).toBeLessThanOrEqual(1);
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
@@ -10642,6 +10645,29 @@ export async function seedArtifact(
         yield* storage.publish(input);
         yield* storage.putLink(link);
       }
+    }).pipe(
+      Effect.provide(
+        makeArtifactStorageLive(join(paths.cakeHome, "state", "artifacts")).pipe(
+          Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+        ),
+      ),
+    ),
+  );
+}
+
+/** The latest stored snapshot of one seeded artifact lineage. */
+async function readSeededArtifact(
+  paths: Pick<ScenarioFixturePaths, "cakeHome">,
+  id: string,
+): Promise<CakeArtifactV1> {
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const storage = yield* ArtifactStorage;
+      const record = yield* storage.read(
+        yield* Schema.decodeUnknownEffect(ArtifactLineageId)(id),
+      );
+      if (!record) return yield* Effect.die(new Error(`Missing seeded artifact ${id}`));
+      return record.snapshot as CakeArtifactV1;
     }).pipe(
       Effect.provide(
         makeArtifactStorageLive(join(paths.cakeHome, "state", "artifacts")).pipe(

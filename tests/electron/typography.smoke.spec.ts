@@ -76,9 +76,18 @@ for (const theme of ["light", "dark"] as const) {
                     )
                       continue;
                     count++;
-                    if (Number.parseFloat(style.fontSize) < floor - 0.1) {
+                    // The only sanctioned sub-floor size, as in tests/app/renderer/typography.test.ts:
+                    // a numbered icon button's aria-hidden corner count bubble (49244c03), whose
+                    // exact count is in the button's accessible name.
+                    const countBubble =
+                      parent.matches('[data-slot="count-badge"]') &&
+                      parent.closest('[aria-hidden="true"]') !== null &&
+                      parent.closest('[data-slot="count-badge-anchor"]')?.classList.contains(
+                        "absolute",
+                      ) === true;
+                    if (!countBubble && Number.parseFloat(style.fontSize) < floor - 0.1) {
                       undersized.push(
-                        `${parent.tagName}: ${text.textContent.trim().slice(0, 60)} (${style.fontSize}) PROBE ${parent.outerHTML.slice(0, 300)} IN ${parent.parentElement?.parentElement?.outerHTML.slice(0, 600)}`,
+                        `${parent.tagName}: ${text.textContent.trim().slice(0, 60)} (${style.fontSize})`,
                       );
                     }
                     const before = getComputedStyle(parent, "::before");

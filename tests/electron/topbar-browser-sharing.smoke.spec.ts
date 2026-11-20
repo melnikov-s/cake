@@ -133,9 +133,10 @@ test("topbar sharing supports keyboard access, real listener actions and Setting
     await expect(toggle).toBeChecked();
     await expect(page.getByLabel("Browser sharing port", { exact: true })).toHaveValue("0");
     await toggle.click();
-    await expect(offline).toBeVisible();
     await expect(toggle).not.toBeChecked();
+    // Settings is a full-window view without the rail; the rail shows the synchronized state.
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await expect(offline).toBeVisible();
     await offline.click();
     await start.click();
     await expect(online).toBeVisible();
@@ -153,7 +154,9 @@ test("topbar sharing supports keyboard access, real listener actions and Setting
       expect(panelBounds!.x).toBeGreaterThanOrEqual(0);
       expect(panelBounds!.x + panelBounds!.width).toBeLessThanOrEqual(width);
     }
-    await page.mouse.click(10, 650);
+    // Dismiss by clicking the conversation, outside the panel. The left edge is now the rail
+    // (582d0fc7), whose own controls sit where this click used to land.
+    await page.mouse.click(410, 120);
     await expect(panel).not.toBeVisible();
     await expect(offline).toHaveAttribute("aria-expanded", "false");
     await page.setViewportSize({ width: 1280, height: 900 });

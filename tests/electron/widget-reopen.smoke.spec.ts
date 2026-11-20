@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
-import { emitRendererEvent } from "./main-harness";
+import { openSession } from "./fixtures/workspace-navigation";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -31,14 +31,8 @@ test("a failed reopened widget document is reported and retry loads the same sav
   });
   try {
     const page = await app.firstWindow();
-    await page
-      .getByRole("combobox", { name: /^Message/ })
-      .first()
-      .waitFor();
-    await emitRendererEvent(app, {
-      type: "session-open-requested",
-      sessionId: "visual-inline-artifact",
-    });
+    // Launch starts in global Cake Chat (40566199); open the seeded Session through the UI.
+    await openSession(page, "Explain how Cake's desktop architecture works.");
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1000),
     );
@@ -61,7 +55,11 @@ test("a failed reopened widget document is reported and retry loads the same sav
       );
       await writeFile(join(repositoryRoot, ".visual-captures", name), Buffer.from(png, "base64"));
     };
-    const inline = page.locator('[data-slot="artifact-disclosure"]').first();
+    // The publishing tool row also renders a disclosure and virtualized DOM order is not
+    // display order (fc455223): select the Markdown embed by its part identity.
+    const inline = page.locator(
+      '[data-part-id="entry-assistant-architecture-text-1"] [data-slot="artifact-disclosure"]',
+    );
     const iframe = inline.locator("iframe");
     const heading = iframe.contentFrame().getByRole("heading", { name: "One artifact, two views" });
     await expect(heading).toBeVisible({ timeout: 20_000 });
@@ -70,7 +68,7 @@ test("a failed reopened widget document is reported and retry loads the same sav
     const collapse = inline.getByRole("button", { name: "Inline visualization Collapse" });
     // Read the older view using a real gesture, not scrollIntoView (which is
     // not permission to leave the transcript's bottom-following mode).
-    await page.locator(".transcript").hover({ position: { x: 20, y: 200 } });
+    await page.locator(".transcript:visible").hover({ position: { x: 20, y: 200 } });
     await page.mouse.wheel(0, -1000);
     await expect(collapse).toBeInViewport();
     await collapse.focus();

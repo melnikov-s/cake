@@ -10,7 +10,12 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { windowState } from "../fixtures/window-state";
 
 const execFileAsync = promisify(execFile);
-import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
+import { createSessionInProject, openSession, showSessions } from "./fixtures/workspace-navigation";
+import {
+  fixtureDefaultPreset,
+  startFixtureModelServer,
+  writeFixtureModels,
+} from "./fixtures/fixture-model";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -54,8 +59,12 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
+      // New Sessions start only with a model (81eb383b); the fixture keeps the turn streaming.
+      ...fixtureDefaultPreset(),
     }),
   );
+  const models = await startFixtureModelServer();
+  await writeFixtureModels(cakeHome, { baseUrl: models.baseUrl });
 
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -188,6 +197,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
       .toBeLessThanOrEqual(32);
   } finally {
     await application.close();
+    await models.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });
@@ -414,11 +424,16 @@ test("keeps target-warning tooltips and merges directly while preserving dirty t
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: cakeHome,
+      // Isolate Pi too: the seeded Session lives under this Cake home, not the user's ~/.pi.
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
 
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Finished work");
     const branch = page.getByTestId("worktree-branch");
     const branchLabel = branch.getByText(branchName, { exact: true });
     const warning = page.getByTestId("worktree-target-warning");
@@ -472,6 +487,8 @@ test("keeps target-warning tooltips and merges directly while preserving dirty t
       "export const change = true;\n",
     );
     await expect(warning).toBeVisible();
+    // Travel from outside the pill so the tooltip sees a fresh pointer entry.
+    await page.mouse.move(1, 1);
     await warning.hover();
     await expect(tooltips).toHaveText(warningText);
     expect((await git(["status", "--porcelain"])).stdout).toBe(initialTargetStatus);
@@ -585,23 +602,24 @@ test("lands new commits from an already-landed worktree before resolving it", as
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("button", { name: "Resolve", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Finished work");
+    await expect(page.getByRole("button", { name: "Resolve", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Land new commit/ })).toHaveCount(0);
     await expect(page.getByText(/new commits? since landing/)).toHaveCount(0);
 
     await writeFile(join(worktreePath, "scratch.txt"), "uncommitted later work\n");
+    // Reload starts in global Cake Chat too; reopen the Session to observe fresh Git state.
     await page.reload();
-    await expect(page.getByRole("button", { name: "Commit & land", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    await openSession(page, "Finished work");
+    await expect(page.getByRole("button", { name: "Commit & land", exact: true })).toBeVisible();
     await expect(page.getByText(/new commits? since landing/)).toHaveCount(0);
     await rm(join(worktreePath, "scratch.txt"));
     await writeFile(join(worktreePath, "follow-up.ts"), "export const followUp = true;\n");
     await execFileAsync("git", ["add", "-A"], { cwd: worktreePath });
     await execFileAsync("git", ["commit", "-m", "follow-up after landing"], { cwd: worktreePath });
     await page.reload();
+    await openSession(page, "Finished work");
     const landNewCommit = page.getByRole("button", { name: "Land new commit", exact: true });
     await expect(landNewCommit).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("1 new commit since landing", { exact: true })).toBeVisible();
@@ -629,13 +647,17 @@ test("lands new commits from an already-landed worktree before resolving it", as
     await expect(page.getByRole("button", { name: "Commit & merge", exact: true })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Resolve", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Current checkout", exact: true })).toBeVisible();
+    // Resolving the viewed Session returns to its owning Project Chat (558a1c58).
+    await expect(
+      page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+    ).toBeVisible();
     await expect.poll(() => existsSync(worktreePath)).toBe(false);
-    await page.getByRole("button", { name: "Expand Resolved" }).click();
-    await page.getByRole("button", { name: "Expand project resolved" }).last().click();
-    const resolvedSession = page.locator(
-      `[data-slot="resolved-lane"] .session-item[data-session-id="${sessionId}"]`,
-    );
+    // Resolved history lives in the Workspace Sessions list (582d0fc7).
+    const workspace = await showSessions(page);
+    await workspace.getByRole("button", { name: "Resolved sessions", exact: true }).click();
+    const resolvedSession = workspace
+      .getByRole("region", { name: "Resolved sessions", exact: true })
+      .locator(`.session-item[data-session-id="${sessionId}"]`);
     const restore = resolvedSession.getByRole("button", { name: /^Restore / });
     await expect(restore).toBeVisible();
     await resolvedSession.locator(".session-row").click();

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { expect, test, type Locator } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { windowState } from "../fixtures/window-state";
+import { CAKE_TITLE_BAR_HEIGHT } from "../../src/services/electron/Electron";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -103,8 +104,8 @@ for (const theme of ["dark", "light"] as const) {
       const workspaceTabs = workspace.getByRole("group", { name: "Workspace content" });
       const expectTopBarGeometry = async () => {
         const header = (await windowHeader.boundingBox())!;
-        // 52px content height + its bottom rule is now 44px + the same rule.
-        expect(header.height).toBe(45);
+        // The title bar is 34px in every mode (06eaa5e4), plus its 1px bottom rule.
+        expect(header.height).toBe(CAKE_TITLE_BAR_HEIGHT + 1);
         for (const control of [
           ...(await modeSelector.getByRole("button").all()),
           ...(await page.locator('[data-slot="workspace-actions"] button').all()),
@@ -127,12 +128,16 @@ for (const theme of ["dark", "light"] as const) {
         expect(accessoryHeader.y).toBe(header.y + header.height);
         expect(accessoryHeader.height).toBe(header.height);
         const modes = (await modeSelector.boundingBox())!;
-        expect(modes.x + modes.width / 2).toBeCloseTo(header.x + header.width / 2 + 1, 0);
+        // Title-bar modes are centered on the window, not the workspace header (3d1fb588).
+        const windowWidth = await page.evaluate(() => innerWidth);
+        expect(Math.abs(modes.x + modes.width / 2 - windowWidth / 2)).toBeLessThanOrEqual(1);
         const actions = (await page.locator('[data-slot="workspace-actions"]').boundingBox())!;
         const toggle = (await page.locator('[data-slot="shell-workspace-toggle"]').boundingBox())!;
         expect(actions.x).toBeGreaterThan(modes.x + modes.width);
         expect(actions.x + actions.width).toBeLessThanOrEqual(toggle.x);
-        expect(toggle.x - (actions.x + actions.width)).toBeLessThanOrEqual(10);
+        // A divider separates the global Workspace toggle from session tools (3d30e85c).
+        expect(toggle.x - (actions.x + actions.width)).toBeGreaterThan(4);
+        expect(toggle.x - (actions.x + actions.width)).toBeLessThanOrEqual(24);
       };
       await expectTopBarGeometry();
       await workspaceTabs.getByRole("button", { name: /^To-dos/ }).click();

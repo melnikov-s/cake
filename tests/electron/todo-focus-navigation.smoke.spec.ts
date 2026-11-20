@@ -10,6 +10,8 @@ import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 import { TaskAttributionDoc } from "../../src/services/pi-durable/durable-task-attribution";
+import { showTodos } from "./fixtures/workspace-navigation";
+import { inDisplayOrder } from "./fixtures/transcript-order";
 
 const repository = resolve(import.meta.dirname, "../..");
 const titleA = "Investigate slow project startup and repeated configuration reads";
@@ -80,52 +82,51 @@ for (const entry of ["pane", "message"] as const) {
       await scenario.prepare(page, "wide");
       await page.setViewportSize({ width: 1400, height: 700 });
       const pane = page.locator('[data-slot="session-pane"]');
-      const transcript = pane.locator(".transcript").last();
+      const transcript = pane.locator(".transcript:visible");
       const target = transcript.getByText(latest, { exact: true });
-      const panel = page.getByRole("complementary", { name: "To-do" });
-      if (entry === "pane") {
-        await pane.getByRole("button", { name: "To-do", exact: true }).click();
-        await expect(panel).toBeVisible();
-      } else {
+      // To-dos live in the Workspace accessory since chat-first navigation (582d0fc7).
+      const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
+      if (entry === "pane") await showTodos(page);
+      else {
         await transcript.evaluate((element) => {
           element.scrollTop = 0;
         });
         await expect(
-          transcript.getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true }).first(),
+          await inDisplayOrder(
+            transcript.getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true }),
+            "first",
+          ),
         ).toBeVisible();
       }
       // This is a genuine virtualized reveal, not scrollIntoView on a mounted node.
       await expect(target).toHaveCount(0);
       if (entry === "pane") await panel.getByRole("button", { name: titleA, exact: true }).click();
       else
-        await transcript
-          .getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true })
-          .first()
-          .click();
+        await (
+          await inDisplayOrder(
+            transcript.getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true }),
+            "first",
+          )
+        ).click();
       await expect(target).toBeVisible();
       await expect(
         target.locator('xpath=ancestor::*[@data-slot="transcript-item"]'),
       ).toHaveAttribute("aria-current", "true");
+      await showTodos(page);
       await expect(
         panel.getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true }),
       ).toHaveAttribute("aria-pressed", "true");
-      const toolbar = pane.getByRole("button", { name: "To-do", exact: true });
       const focusedRow = panel.locator(`[data-todo-id="${todoA}"] [data-view-focused="true"]`);
       await expect(focusedRow).toHaveCount(1);
-      await expect(toolbar).toHaveAttribute("data-view-focused", "true");
       const ring = await focusedRow.evaluate((element) => getComputedStyle(element).boxShadow);
       expect(ring).toContain("2px");
-      const badge = toolbar.locator("span.font-mono");
-      await expect(badge).toHaveText(/\d+/);
-      // Closing the accessory keeps filtering active and moves the same recognizable
-      // cue to the complete toolbar button, not just its icon or number.
-      await toolbar.click();
+      // Closing the accessory keeps filtering active; the chat's focus bar remains the cue
+      // (the former toolbar To-do button was removed in 582d0fc7).
+      const toggle = page.getByRole("button", { name: "Close Workspace", exact: true });
+      await toggle.click();
       await expect(panel).toHaveCount(0);
-      await expect(toolbar).toHaveAttribute("aria-pressed", "false");
-      await expect(toolbar).toHaveAttribute("data-view-focused", "true");
-      await expect(toolbar).toHaveCSS("box-shadow", ring);
       await expect(pane.getByRole("button", { name: "Clear to-do focus" })).toBeVisible();
-      await toolbar.click();
+      await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
       await expect(focusedRow).toHaveCount(1);
       const nestedActions = [
         `Attach to-do as context: ${titleA}`,
@@ -151,7 +152,6 @@ for (const entry of ["pane", "message"] as const) {
         await expect(page.getByRole("tooltip", { name, exact: true })).toBeVisible();
       }
       await pane.getByRole("button", { name: "Clear to-do focus" }).click();
-      await expect(toolbar).not.toHaveAttribute("data-view-focused");
       await expect(focusedRow).toHaveCount(0);
       // Focusing and typing in the composer is not task navigation or a send.
       const composer = page.getByRole("combobox", { name: "Message Project Chat" });
