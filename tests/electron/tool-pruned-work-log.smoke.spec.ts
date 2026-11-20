@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pointAt, wheelIntoView } from "./fixtures/pointer";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -303,7 +304,10 @@ test("shows compacted historical work in place, muted and expandable", async () 
     const incoming = page.getByRole("region", { name: "Message from another session" });
     await expect(incoming.getByRole("button", { name: "Cake Chat", exact: true })).toBeVisible();
     // The sender link is the shared message action bar's icon link (c4afb09e), revealed on hover.
-    await incoming.hover();
+    // Reach and point at the message as a reader does; a programmatic scroll-into-view is not
+    // reader input, so the following transcript can move the message from under the pointer.
+    await wheelIntoView(page, page.locator(".transcript"), incoming);
+    await pointAt(page, incoming);
     await expect(incoming.getByRole("link", { name: "Open session", exact: true })).toHaveAttribute(
       "href",
       "cake://session/coordinator",
