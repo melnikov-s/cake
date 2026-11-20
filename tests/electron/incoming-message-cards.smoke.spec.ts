@@ -167,8 +167,9 @@ for (const theme of ["dark", "light"] as const)
       await rail.click();
       // To-dos live in the shared Workspace accessory since chat-first navigation (582d0fc7).
       const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
+      // Showing a to-do reveals it without focusing it; Focus is a row action (3977f22d).
       await expect(
-        panel.getByRole("button", { name: "Fix the flaky build", exact: true }),
+        panel.getByRole("button", { name: "Focus to-do: Fix the flaky build", exact: true }),
       ).toHaveAttribute("aria-pressed", "false");
       await panel.getByRole("button", { name: "Mark done: Fix the flaky build" }).click();
       await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
