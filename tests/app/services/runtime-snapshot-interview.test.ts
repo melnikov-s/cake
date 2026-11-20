@@ -1,4 +1,8 @@
-import { SessionManager, SettingsManager, type AgentSession } from "@earendil-works/pi-coding-agent";
+import {
+  SessionManager,
+  SettingsManager,
+  type AgentSession,
+} from "@earendil-works/pi-coding-agent";
 import { expect, it } from "vitest";
 import { projectCakeSessionRuntimeSnapshot } from "../../../src/services/pi/runtime/cake-session-runtime-snapshot";
 import { boundedProjectionKey } from "../../../src/services/pi/runtime/tool-projection";

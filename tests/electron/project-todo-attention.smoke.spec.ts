@@ -194,7 +194,9 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     const done = row.getByRole("button", { name: `Mark done: ${title}` });
     await expect(done).toBeFocused();
     await page.keyboard.press("Shift+Tab");
-    await expect(row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true })).toBeFocused();
+    await expect(
+      row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+    ).toBeFocused();
     await row.hover();
     await attach.click();
     const removeAttachment = page.getByRole("button", { name: `Remove To-do · ${title}` });

@@ -59,8 +59,12 @@ for (const theme of ["light", "dark"] as const) {
           .locator("..")
           .locator(":scope > li")
           .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-todo-id")));
-      await expect.poll(() => sectionIds("Focus")).toEqual(["00000000-0000-4000-8000-000000000011"]);
-      await expect.poll(() => sectionIds("Active")).toEqual(["00000000-0000-4000-8000-000000000012"]);
+      await expect
+        .poll(() => sectionIds("Focus"))
+        .toEqual(["00000000-0000-4000-8000-000000000011"]);
+      await expect
+        .poll(() => sectionIds("Active"))
+        .toEqual(["00000000-0000-4000-8000-000000000012"]);
 
       for (const width of [1500, 780]) {
         await page.setViewportSize({ width, height: 900 });

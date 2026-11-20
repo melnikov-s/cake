@@ -31,6 +31,11 @@ type Row =
   | { key: string; kind: "header"; section: Section; first: boolean }
   | { key: string; kind: "todo"; section: Section; item: ProjectTodo; allowsCakeMerge: boolean };
 
+/** The row a pointer press focused, retained once the press completes. */
+interface PointerPress {
+  key?: string;
+}
+
 export const ProjectTodosPanel = observer(function ProjectTodosPanel({
   store,
 }: {
@@ -41,7 +46,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
   const list = useRef<LegendListRef>(null);
   const [focusedKey, setFocusedKey] = useState<string>();
   // Pointer focus is retained only after its press completes (see onFocusCapture).
-  const pointerPress = useRef<{ key?: string } | undefined>(undefined);
+  const pointerPress = useRef<PointerPress | undefined>(undefined);
   // Scroll promises can settle before React commits the destination. The row ref
   // completes navigation on its actual mount instead of racing the virtualizer.
   const pending = useRef<{ key: string; apply(element: HTMLElement): void } | undefined>(undefined);
@@ -210,7 +215,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
           : undefined
       }
       onPointerDownCapture={() => {
-        const press: { key?: string } = {};
+        const press: PointerPress = {};
         pointerPress.current = press;
         const release = () => {
           window.removeEventListener("pointerup", release, true);

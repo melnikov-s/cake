@@ -124,7 +124,9 @@ for (const theme of ["light", "dark"] as const) {
         await expect(link).toHaveCSS("line-height", "16px");
         await expect(link).toHaveCSS("text-decoration-line", "none");
         // The kind glyph sits in its own wrapper beside the activity dot (06aa318f).
-        const icon = link.locator("xpath=../..").locator(":scope > span:first-child > span:last-child svg");
+        const icon = link
+          .locator("xpath=../..")
+          .locator(":scope > span:first-child > span:last-child svg");
         await expect(icon).toHaveAttribute("aria-hidden", "true");
         await expect(icon).toBeVisible();
         await expect(icon).toHaveCSS("width", "12px");
