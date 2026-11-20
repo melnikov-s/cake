@@ -118,6 +118,7 @@ export async function openCakeChat(page: Page) {
     .getByRole("button", { name: "Open Cake Chat", exact: true });
   await expect(button).toBeVisible({ timeout: 20_000 });
   await button.click();
+  await leaveRail(page);
 }
 
 /** Opens application Settings from the global rail. */

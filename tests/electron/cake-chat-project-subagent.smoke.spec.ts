@@ -240,8 +240,9 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
             return (
               Math.abs(strip.bottom - input.top) < 5 &&
               Math.abs(strip.top - element.closest("section")!.getBoundingClientRect().top) < 2 &&
-              Math.abs(strip.left - input.left - 5) < 2 &&
-              Math.abs(input.right - strip.right - 5) < 2 &&
+              // The cap insets the strip by its 1px border plus 6px padding (c7c99e7f).
+              Math.abs(strip.left - input.left - 7) < 2 &&
+              Math.abs(input.right - strip.right - 7) < 2 &&
               parseFloat((chat as HTMLElement).style.getPropertyValue("--composer-dock-height")) >=
                 chat.getBoundingClientRect().bottom - strip.top - 2
             );

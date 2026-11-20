@@ -75,19 +75,25 @@ for (const theme of ["dark", "light"] as const)
           ).toBe(true);
         }).toPass();
       }
-      // Keyboard expansion still reveals the conversation and restores its rule.
+      // Expansion reveals the conversation and restores its rule; the clicked disclosure keeps
+      // focus, so Enter collapses it again from the keyboard.
       const firstDisclosure = disclosures.first();
-      await firstDisclosure.focus();
-      await page.keyboard.press("Enter");
-      await expect(firstDisclosure).toHaveAttribute("aria-expanded", "true");
       const message = transcript.getByText("Normalize the default-branch worktree labels.", {
         exact: true,
       });
+      await firstDisclosure.click();
+      await expect(firstDisclosure).toHaveAttribute("aria-expanded", "true");
       await expect(message).toBeVisible();
       await expect(transcript.locator('[data-slot="margin-rail"]').first()).toBeVisible();
+      await expect(firstDisclosure).toBeFocused();
       await page.keyboard.press("Enter");
       await expect(firstDisclosure).toHaveAttribute("aria-expanded", "false");
       await expect(firstDisclosure).toBeFocused();
+      await expect(message).toBeHidden();
+      await page.keyboard.press("Enter");
+      await expect(firstDisclosure).toHaveAttribute("aria-expanded", "true");
+      await expect(message).toBeVisible();
+      await firstDisclosure.click();
       await expect(message).toBeHidden();
       await transcript
         .getByRole("button", {
@@ -97,8 +103,18 @@ for (const theme of ["dark", "light"] as const)
         .click();
       const pane = page.getByRole("complementary", { name: "Workspace" });
       await expect(pane).toBeVisible();
+      // Show in To-do reveals the collapsed to-do row without focusing it (to-do redesign).
+      const row = pane.getByRole("button", {
+        name: "Normalize default-branch worktree labels",
+        exact: true,
+      });
+      await expect(row).toBeInViewport();
+      await expect(row).toHaveAttribute("aria-expanded", "false");
       await expect(
-        pane.getByRole("button", { name: "Normalize default-branch worktree labels", exact: true }),
+        pane.getByRole("button", {
+          name: "Focus to-do: Normalize default-branch worktree labels",
+          exact: true,
+        }),
       ).toHaveAttribute("aria-pressed", "false");
       expect(
         await app.evaluate(({ BrowserWindow }) =>

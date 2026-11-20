@@ -282,9 +282,31 @@ for (const { theme, standalone, godot } of scenarios) {
       const transcript = page
         .locator('.transcript:not([data-slot="content-transition-outgoing"] *)')
         .first();
-      await transcript.evaluate((element) => element.scrollTo(0, 0));
-      await expect(diagram).toHaveCount(0);
-      await transcript.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+      // Scroll as a reader does, with the wheel over the transcript.
+      const wheelTo = async (end: "top" | "bottom") => {
+        const box = (await transcript.boundingBox())!;
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await expect(async () => {
+          await page.mouse.wheel(0, end === "top" ? -4_000 : 4_000);
+          expect(
+            await transcript.evaluate(
+              (element, end) =>
+                end === "top"
+                  ? element.scrollTop <= 1
+                  : element.scrollHeight - element.clientHeight - element.scrollTop <= 1,
+              end,
+            ),
+          ).toBe(true);
+        }).toPass();
+      };
+      await wheelTo("top");
+      // At the top the reader no longer sees the diagram, and the list stays virtualized: it
+      // mounts a bounded window of the 62 rows. Which offscreen rows keep a mounted container
+      // is the list's own recycling choice, so the diagram's DOM node is not asserted.
+      await expect(diagram).not.toBeInViewport();
+      await expect(transcript.getByText(/^Earlier discussion 0\./).first()).toBeInViewport();
+      expect(await transcript.locator("[data-transcript-anchor-id]").count()).toBeLessThan(31);
+      await wheelTo("bottom");
       await expect(diagram).toBeVisible();
       await expect(diagram).toHaveAttribute("tabindex", "0");
 

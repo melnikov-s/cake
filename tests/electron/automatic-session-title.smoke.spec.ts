@@ -59,6 +59,13 @@ for (const draft of [false, true]) {
               chunk({}, "stop") +
               "data: [DONE]\n\n",
           );
+        } else if (body.includes("Return only the update")) {
+          // The new to-do also asks the utility model for a short progress update.
+          response.end(
+            chunk({ role: "assistant", content: "Naming sessions automatically." }) +
+              chunk({}, "stop") +
+              "data: [DONE]\n\n",
+          );
         } else {
           assistantResponse = response;
           response.write(chunk({ role: "assistant", content: "Work is running." }));

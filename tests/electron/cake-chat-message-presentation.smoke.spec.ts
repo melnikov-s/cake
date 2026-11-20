@@ -26,7 +26,7 @@ import { projectSessionEntries } from "../../src/services/pi/runtime/session-pro
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { appendMessageReferences } from "../../src/contracts/conversations/message-reference-forwarding";
 import { protectedResponseNotice } from "../../src/contracts/conversations/reference-notification";
-import { openProjectChat, openSession } from "./fixtures/workspace-navigation";
+import { openCakeChat, openProjectChat, openSession } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 const usage = {
@@ -335,7 +335,7 @@ for (const [delivery, theme] of [
       await expect(page.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible({
         timeout: 20_000,
       });
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await openCakeChat(page);
       const verify = async (inputName: string, sessionId: string) => {
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
         await stubClipboard();
@@ -359,16 +359,17 @@ for (const [delivery, theme] of [
           `[data-part-id="${partIds.get(sessionId)!.get("receipt")}"] [data-slot="session-message"]`,
         );
         const first = linkedIsIncoming ? linked : notification;
-        // An incoming worker report names the worker once and keeps its findings open; the
-        // exact original sits behind a nested disclosure instead of a second titled header.
+        // An incoming worker report names the worker once and starts collapsed (80b5ff44);
+        // the exact original sits behind a nested disclosure instead of a second titled header.
         const firstToggle = linkedIsIncoming
           ? first.getByRole("button", { name: "Original response", exact: true })
           : first.getByRole("button", { name: "Detailed delegated review", exact: true });
         if (linkedIsIncoming) {
-          await expect(first.locator('[data-slot="response-disclosure"]').first()).toHaveAttribute(
-            "aria-label",
-            researchOrigin.task,
-          );
+          const card = first.locator('[data-slot="response-disclosure"]').first();
+          await expect(card).toHaveAttribute("aria-label", researchOrigin.task);
+          await expect(card).toHaveAttribute("aria-expanded", "false");
+          await card.click();
+          await expect(card).toHaveAttribute("aria-expanded", "true");
           await expect(firstToggle).toHaveAttribute("aria-expanded", "false");
         }
         for (const source of linkedIsIncoming
@@ -458,7 +459,8 @@ for (const [delivery, theme] of [
         await expect(
           first.getByRole("button", { name: "Copy message", exact: true }),
         ).toBeVisible();
-        await expect(first.locator('[data-slot="response-header"] a')).toHaveAttribute(
+        // The source link lives in the shared message action bar beside Copy (c4afb09e).
+        await expect(first.getByRole("link", { name: "Open source", exact: true })).toHaveAttribute(
           "href",
           metadata.ref,
         );
@@ -484,22 +486,27 @@ for (const [delivery, theme] of [
               range.setStart(node, start);
               range.setEnd(node, start + word.length);
               const rect = range.getBoundingClientRect();
-              return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+              const box = element.getBoundingClientRect();
+              return { x: rect.x - box.x + rect.width / 2, y: rect.y - box.y + rect.height / 2 };
             }
             throw new Error("Selection word missing");
           }, word);
-          await page.mouse.dblclick(point.x, point.y);
+          // Element-relative, so the word is scrolled into view before the double-click.
+          await target.dblclick({ position: point });
           await expect
             .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
             .toBe(word);
         }
         // Collapse unmounts image reads; reopening must resolve in the same source context.
         await firstToggle.click();
-        await expect(first.getByRole("img")).toHaveCount(0);
+        // Session-purpose glyphs in the report body are role="img" too; check image elements.
+        await expect(first.locator("img")).toHaveCount(0);
         await firstToggle.click();
         await verifyImages();
         await first.getByRole("button", { name: "Next", exact: true }).click();
         await expect(first.getByText(/Last original finding/)).toBeVisible();
+        // Message actions belong to the hovered message, as a reader reaches them.
+        await first.getByText(/Last original finding/).hover();
         await first.getByRole("button", { name: "Copy message", exact: true }).click();
         await expect(
           first.getByRole("button", { name: "Copied message", exact: true }),
@@ -507,6 +514,7 @@ for (const [delivery, theme] of [
         expect(await page.evaluate(() => Reflect.get(window, "copiedMessage"))).toBe(originalText);
         await expect(first.getByText(/Last original finding/)).toBeVisible();
         const fullscreenButton = first.getByRole("button", { name: /^View message fullscreen:/ });
+        await first.getByText(/Last original finding/).hover();
         await fullscreenButton.click();
         const fullscreen = page.getByRole("dialog", {
           name: linkedIsIncoming ? researchOrigin.task : "Detailed delegated review",
@@ -528,7 +536,8 @@ for (const [delivery, theme] of [
         await expect(
           fullscreen.getByRole("img", { name: "Relative screenshot", exact: true }),
         ).toHaveAttribute("src", `data:image/png;base64,${pixels}`);
-        await expect(first.locator('[data-slot="response-header"] a')).toHaveAttribute(
+        // The source link lives in the shared message action bar beside Copy (c4afb09e).
+        await expect(first.getByRole("link", { name: "Open source", exact: true })).toHaveAttribute(
           "href",
           metadata.ref,
         );
@@ -572,7 +581,7 @@ for (const [delivery, theme] of [
           receipt.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeInViewport();
         await expect(
-          receipt.getByRole("link", { name: "Detailed delegated review", exact: true }),
+          receipt.getByRole("link", { name: "Open source", exact: true }),
         ).toHaveAttribute("href", metadata.ref);
         await expect(receipt.getByText("Substance stays in Pi.")).toHaveCount(1);
         await receiptHeader.click();
@@ -600,10 +609,10 @@ for (const [delivery, theme] of [
       await page.reload();
       await openSession(page, "Shared response viewer");
       await verify("Message", viewer.getSessionId());
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
+      await openCakeChat(page);
       await verify("Message Cake Chat", CAKE_CHAT_SESSION_ID);
       await page.reload();
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
+      await openCakeChat(page);
       await verify("Message Cake Chat", CAKE_CHAT_SESSION_ID);
       await openProjectChat(page, "visual-capture-project");
       await verify("Message Project Chat", projectId);
@@ -629,9 +638,8 @@ for (const [delivery, theme] of [
         exact: true,
       });
       await sourceFullscreen.getByRole("button", { name: /^Exit fullscreen/ }).click();
-      await notification
-        .getByRole("link", { name: "Detailed delegated review", exact: true })
-        .click();
+      // Titles are disclosures; the source opens from the action bar link (c4afb09e).
+      await notification.getByRole("link", { name: "Open source", exact: true }).click();
       await expect(sourceFullscreen).toHaveCount(0);
       await expect(page.locator('[data-slot="workspace-title"] [aria-current="page"]')).toHaveText(
         "Detailed delegated review",

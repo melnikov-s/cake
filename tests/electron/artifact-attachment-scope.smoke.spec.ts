@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { widgetAttachmentsScenario } from "../../scripts/visual-capture/scenarios";
-import { emitRendererEvent } from "./main-harness";
+import { openSessionById } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 for (const scenario of ["session", "project-chats", "mixed"] as const) {
@@ -63,10 +63,7 @@ for (const scenario of ["session", "project-chats", "mixed"] as const) {
         .getByRole("combobox", { name: /^Message/ })
         .first()
         .waitFor();
-      await emitRendererEvent(app, {
-        type: "session-open-requested",
-        sessionId: "visual-widget-attachments",
-      });
+      await openSessionById(page, "visual-widget-attachments");
       await page.getByRole("button", { name: "1 artifacts", exact: true }).click();
       await page
         .getByRole("navigation", { name: "Artifact list" })
