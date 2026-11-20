@@ -253,7 +253,11 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     };
     expect(await fitsCentered()).toEqual(fittedAndCentered);
     const longRow = page.locator(".session-item").filter({ hasText: "Investigate-very-long" });
-    await expect(longRow.locator(".session-title")).toHaveAttribute("title", longTitle);
+    // Cake caps stored titles; the row still carries a long single-line title.
+    await expect(longRow.locator(".session-title")).toHaveAttribute(
+      "title",
+      /^Investigate-(very-long-session-name-){5}/,
+    );
     await longRow.click();
     await expect(
       page

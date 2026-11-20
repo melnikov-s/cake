@@ -6,6 +6,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import type { Annotation } from "../../src/contracts/conversations/session-contract";
+import { chooseNextNativeMenuItem, chosenNativeMenuLabels } from "./fixtures/native-menu";
 
 const repository = resolve(import.meta.dirname, "../..");
 const parentReply = "Inspect the original migration plan.";
@@ -123,28 +124,10 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
       const parentProse = page.getByText(parentReply, { exact: true });
       await expect(parentProse).toBeVisible();
 
-      // Keep the real native menu construction, replacing only its OS popup.
-      await app.evaluate(({ Menu }) => {
-        const build = Menu.buildFromTemplate.bind(Menu);
-        let calls = 0;
-        Menu.buildFromTemplate = (template) => {
-          const menu = build(template);
-          menu.popup = (options) => {
-            const selectionActions = menu.items
-              .map((item) => item.label)
-              .filter((label) => label === "Add annotation" || label === "Chat about this");
-            const expected =
-              calls === 0 ? ["Add annotation", "Chat about this"] : ["Add annotation"];
-            if (JSON.stringify(selectionActions) !== JSON.stringify(expected))
-              throw new Error(`Wrong selection actions: ${JSON.stringify(selectionActions)}`);
-            const label = calls++ === 0 ? "Chat about this" : "Add annotation";
-            const item = menu.items.find((item) => item.label === label)!;
-            item.click(item, options.window!, { triggeredByAccelerator: false });
-            options.callback?.();
-          };
-          return menu;
-        };
-      });
+      const selectionActions = async () =>
+        (await chosenNativeMenuLabels(app!)).filter(
+          (label) => label === "Add annotation" || label === "Chat about this",
+        );
       const selectWord = async (content: ReturnType<typeof page.locator>, word: string) => {
         await content.scrollIntoViewIfNeeded();
         const target = await content.evaluate((element, word) => {
@@ -166,6 +149,7 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
           .toBe(word);
         await page.mouse.click(target.x, target.y, { button: "right" });
       };
+      await chooseNextNativeMenuItem(app, "Chat about this");
       await selectWord(parentProse, "migration");
       let side = page.getByRole("complementary", { name: "Side chat" });
       const input = side.getByRole("combobox");
@@ -177,6 +161,9 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
       await expect(
         side.getByText("Wait until the migration finishes.", { exact: true }),
       ).toBeVisible();
+      expect(await selectionActions()).toEqual(["Add annotation", "Chat about this"]);
+      // Select only in the settled reply: completion re-renders the streamed message.
+      await expect(side.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
       const code = side.locator('[data-streamdown="code-block-body"] code');
       await expect(code).toContainText("SideChatPreferences");
       await expect.poll(() => code.locator("span span").count()).toBeGreaterThan(0);
@@ -194,7 +181,10 @@ for (const parent of ["Cake Chat", "Project Chat"] as const) {
         ],
         [code, "SideChatPreferences", "Check the interface"],
       ] as const) {
+        await chooseNextNativeMenuItem(app, "Add annotation");
         await selectWord(content, word);
+        // Inside a Side Chat, selection offers no nested "Chat about this".
+        expect(await selectionActions()).toEqual(["Add annotation"]);
         const annotationInput = page.getByRole("textbox", { name: "Annotation comment" });
         await expect(annotationInput).toBeFocused();
         await annotationInput.pressSequentially(comment);

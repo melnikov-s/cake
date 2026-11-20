@@ -13,6 +13,11 @@ export async function chooseNextNativeMenuItem(application: ElectronApplication,
       const item = menu.items.find((entry) => entry.label === label);
       if (item) {
         Menu.buildFromTemplate = build;
+        Reflect.set(
+          globalThis,
+          "cakeChosenNativeMenuLabels",
+          menu.items.map((entry) => entry.label),
+        );
         menu.popup = (options) => {
           // Never throw in the main process: a disabled item is simply not chosen.
           if (item.enabled) item.click(item, options?.window, { triggeredByAccelerator: false });
@@ -23,4 +28,11 @@ export async function chooseNextNativeMenuItem(application: ElectronApplication,
       return menu;
     };
   }, label);
+}
+
+/** Labels of the menu most recently handled by `chooseNextNativeMenuItem`. */
+export function chosenNativeMenuLabels(application: ElectronApplication) {
+  return application.evaluate(
+    () => (Reflect.get(globalThis, "cakeChosenNativeMenuLabels") ?? []) as string[],
+  );
 }
