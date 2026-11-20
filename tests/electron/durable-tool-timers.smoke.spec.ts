@@ -9,6 +9,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { openProjectChat } from "./fixtures/workspace-navigation";
 
 test("Project and global Cake Chat restore Pi-recorded ordinary tool timers after reload", async () => {
   test.setTimeout(90_000);
@@ -124,11 +125,7 @@ test("Project and global Cake Chat restore Pi-recorded ordinary tool timers afte
     await verify();
     await page.reload();
     await verify();
-    await page
-      .locator(
-        `[data-slot="project-header"][data-session-id="project-chat:${hash}"] [data-slot="project-label"]`,
-      )
-      .click();
+    await openProjectChat(page, "visual-capture-project");
     await verify();
     await page.reload();
     await verify();

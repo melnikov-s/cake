@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -6,6 +5,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { openProjectChat } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 for (const scope of ["global", "project"] as const) {
@@ -98,14 +98,7 @@ for (const scope of ["global", "project"] as const) {
       await page.setViewportSize({ width: 1280, height: 900 });
       if (scope === "global")
         await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-      else {
-        const id = `project-chat:${createHash("sha256").update(project).digest("hex")}`;
-        await page
-          .locator(
-            `[data-slot="project-header"][data-session-id="${id}"] [data-slot="project-label"]`,
-          )
-          .click();
-      }
+      else await openProjectChat(page, "Project");
       const input = page.getByRole("combobox", {
         name: scope === "global" ? "Message Cake Chat" : "Message Project Chat",
       });

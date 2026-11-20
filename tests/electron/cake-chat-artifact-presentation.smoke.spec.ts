@@ -34,6 +34,8 @@ import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOu
 import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive";
 import { compileFixtureInlineWidget } from "./fixtures/inline-widget";
 import { CakeOperationRegistry } from "../../src/services/pi/runtime/cake-operation-registry";
+import { openProjectChat } from "./fixtures/workspace-navigation";
+import { fakeClientEvents } from "../helpers/fakes/clientEvents";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -64,7 +66,6 @@ test("non-owner Project Chat and global Cake Chat hydrate persisted inline proto
     for (const revision of [2, 3]) {
       const source = `import React from "react";
 import { useArtifactState } from "@cake/artifact-sdk";
-import { fakeClientEvents } from "../helpers/fakes/clientEvents";
 export default function Prototype() {
   const { value, hydrated, save } = useArtifactState({ selected: "stale seed" });
   return <main><h2>Prototype source ${revision}</h2><p>{hydrated ? value.selected : "Hydrating"}</p><button disabled={!hydrated} onClick={() => save({ selected: "Selected option C" })}>Choose C</button></main>;
@@ -291,11 +292,7 @@ export default function Prototype() {
     await expect(choose).toBeFocused();
     await choose.press("Enter");
     await verify("Selected option C");
-    await page
-      .locator(
-        `[data-slot="project-header"][data-session-id="${projectId}"] [data-slot="project-label"]`,
-      )
-      .click();
+    await openProjectChat(page, "Cake architecture");
     await verify("Selected option C", true);
     await page.reload();
     await verify("Selected option C", true);

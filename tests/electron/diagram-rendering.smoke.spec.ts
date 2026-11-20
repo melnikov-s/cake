@@ -6,6 +6,7 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
 import { godotDiagram } from "../fixtures/godot-diagram";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -139,6 +140,8 @@ for (const { theme, standalone, godot } of scenarios) {
 
     try {
       const page = await application.firstWindow();
+      // Launch starts in global Cake Chat; open the seeded Session explicitly.
+      await openSession(page, "Earlier discussion 0.");
       const diagram = page.locator("svg.pele").first();
       await expect(diagram).toBeVisible({ timeout: 20_000 });
       await expect(diagram).toHaveAttribute("tabindex", "0");

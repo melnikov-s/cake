@@ -7,7 +7,7 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("renders newly opened Project Chats immediately in an existing split", async () => {
+test("renders newly opened Project Chats immediately and keeps each chat's draft", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-cross-project-split-"));
   const userData = join(temporaryRoot, "user-data");
@@ -45,58 +45,49 @@ test("renders newly opened Project Chats immediately in an existing split", asyn
   });
   try {
     const page = await application.firstWindow();
-    const panes = page.locator('[data-slot="session-pane"]');
-    await expect(panes).toHaveCount(1, { timeout: 20_000 });
+    // Arbitrary multi-conversation splits were removed with chat-first navigation (582d0fc7);
+    // the one focused pane must still render each newly opened Project Chat immediately.
+    const pane = page.locator('[data-slot="workspace"]');
+    await expect(pane).toHaveCount(1, { timeout: 20_000 });
+    const input = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
+    const transcript = page
+      .locator(
+        '[data-slot="chat"] > [data-slot="content-transition"] > [data-slot="content-transition-live"]',
+      )
+      .first();
+    const expectRendered = async (timeout = 5_000) => {
+      await expect(input).toBeVisible({ timeout });
+      await expect(transcript).not.toHaveClass(/opacity-0/);
+      await expect(transcript).not.toHaveAttribute("aria-hidden", "true");
+    };
     await page.getByRole("button", { name: "Open Project Chat for alpha", exact: true }).click();
-    const left = panes.nth(0);
-    const leftInput = left.getByLabel("Message Project Chat");
-    await expect(leftInput).toBeVisible();
-    await leftInput.fill("alpha draft");
-    const leftPaneId = await left.getAttribute("data-pane-id");
-    const leftSessionId = await left.getAttribute("data-session-id");
-    await left.getByRole("button", { name: "Split right" }).click();
-    await expect(panes).toHaveCount(2);
-    const right = panes.nth(1);
-    const rightPaneId = await right.getAttribute("data-pane-id");
-    const rightInput = right.getByLabel("Message Project Chat");
+    // The first Project Chat waits for the permanent chat catalog after launch.
+    await expectRendered(20_000);
+    await input.fill("alpha draft");
+    const alphaSessionId = await pane.getAttribute("data-session-id");
     await page.getByRole("button", { name: "Open Project Chat for beta", exact: true }).click();
     // No click, focus change, or navigation after opening: loading must update the pane itself.
-    await expect(rightInput).toBeVisible();
-    await expect(rightInput).toBeFocused();
-    const transcript = right.locator(
-      '[data-slot="chat"] > [data-slot="content-transition"] > [data-slot="content-transition-live"]',
-    );
-    await expect(transcript).not.toHaveClass(/opacity-0/);
-    await expect(transcript).not.toHaveAttribute("aria-hidden", "true");
+    await expectRendered();
+    await expect(input).toBeFocused();
     await expect(transcript.getByText("Let’s talk about this project")).toBeVisible();
-    const betaSessionId = await right.getAttribute("data-session-id");
-    expect(betaSessionId).not.toBe(leftSessionId);
-    await rightInput.pressSequentially("beta draft");
-    await expect(rightInput).toHaveValue("beta draft");
-    await expect(right.getByRole("button", { name: "Send" })).toBeEnabled();
+    const betaSessionId = await pane.getAttribute("data-session-id");
+    expect(betaSessionId).not.toBe(alphaSessionId);
+    await input.pressSequentially("beta draft");
+    await expect(input).toHaveValue("beta draft");
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
     await page.getByRole("button", { name: "Open Project Chat for gamma", exact: true }).click();
-    await expect(rightInput).toBeVisible();
-    await expect(rightInput).toBeFocused();
-    await expect(rightInput).toHaveValue("");
-    await expect(transcript).not.toHaveClass(/opacity-0/);
-    await expect(transcript).not.toHaveAttribute("aria-hidden", "true");
+    await expectRendered();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("");
     await page.getByRole("button", { name: "Open Project Chat for beta", exact: true }).click();
-    await expect(rightInput).toBeVisible();
-    await expect(rightInput).toHaveValue("beta draft");
-    await expect(transcript).not.toHaveClass(/opacity-0/);
-    await expect(transcript).not.toHaveAttribute("aria-hidden", "true");
-    await expect(right).toHaveAttribute("data-pane-id", rightPaneId!);
-    await expect(right).toHaveAttribute("data-session-id", betaSessionId!);
-    await expect(left).toHaveAttribute("data-pane-id", leftPaneId!);
-    await expect(left).toHaveAttribute("data-session-id", leftSessionId!);
-    await expect(leftInput).toHaveValue("alpha draft");
-    const leftTranscript = left.locator(
-      '[data-slot="chat"] > [data-slot="content-transition"] > [data-slot="content-transition-live"]',
-    );
-    await expect(leftTranscript).not.toHaveClass(/opacity-0/);
-    await expect(leftTranscript).not.toHaveAttribute("aria-hidden", "true");
-    await expect(leftTranscript.getByText("Let’s talk about this project")).toBeVisible();
-    await expect(panes).toHaveCount(2);
+    await expectRendered();
+    await expect(input).toHaveValue("beta draft");
+    await expect(pane).toHaveAttribute("data-session-id", betaSessionId!);
+    await page.getByRole("button", { name: "Open Project Chat for alpha", exact: true }).click();
+    await expectRendered();
+    await expect(input).toHaveValue("alpha draft");
+    await expect(pane).toHaveAttribute("data-session-id", alphaSessionId!);
+    await expect(transcript.getByText("Let’s talk about this project")).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
