@@ -195,7 +195,8 @@ it.each([320, 360, 384, 390, 412])(
             await send.tap();
             const tree = page.getByRole("complementary", { name: "Session tree", exact: true });
             await browserExpect(tree).toBeVisible();
-            await browserExpect(tree).toHaveCSS(
+            // The phone tree fills the screen with its inset pane, painted as an opaque card (c7c99e7f).
+            await browserExpect(tree.locator(":scope > div").first()).toHaveCSS(
               "background-color",
               await page.locator("body").evaluate(() => {
                 const probe = document.createElement("div");

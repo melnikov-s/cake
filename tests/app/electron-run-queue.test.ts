@@ -496,12 +496,10 @@ it("routes maintained Playwright imports and package launch commands through the
   expect(readFileSync("scripts/start-snapshot.mjs", "utf8")).toContain(
     "await queueElectronEntrypoint({ timeoutMs: Infinity })",
   );
-  for (const path of [
-    "scripts/visual-capture/run.mjs",
-    "playwright.config.ts",
-    "playwright.performance.config.ts",
-  ])
+  for (const path of ["scripts/visual-capture/run.mjs", "playwright.performance.config.ts"])
     expect(readFileSync(path, "utf8")).toContain("await queueElectronEntrypoint()");
+  // The main suite may pass a whole-suite deadline but must still enter the gate.
+  expect(readFileSync("playwright.config.ts", "utf8")).toMatch(/await queueElectronEntrypoint\(/);
 });
 
 it("rejects Playwright worker fan-out before tests start", () => {

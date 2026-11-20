@@ -474,7 +474,11 @@ describe("Subagent activity workflow", () => {
         ],
       },
     });
-    await fixture.user.click(await screen.findByRole("link", { name: "Saved worker deep link" }));
+    // To-do links sit behind the row's link disclosure.
+    await fixture.user.click(
+      await screen.findByRole("button", { name: "Show 1 link for Inspect saved worker" }),
+    );
+    await fixture.user.click(screen.getByRole("link", { name: "Saved worker deep link" }));
     expect(screen.queryByRole("complementary", { name: "Inspect the boundary" })).toBeNull();
     fixture.publish({
       _tag: "Snapshot",

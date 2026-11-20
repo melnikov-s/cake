@@ -168,8 +168,8 @@ describe("core coordinator calling reference", () => {
   });
 
   it.each([
-    ["Cake Chat", 13817],
-    ["Project Chat", 13741],
+    ["Cake Chat", 14195],
+    ["Project Chat", 14119],
   ] as const)(
     "bounds the shipped %s ingredients with recall, to-dos, attribution and preset guidance",
     (chat, budget) => {

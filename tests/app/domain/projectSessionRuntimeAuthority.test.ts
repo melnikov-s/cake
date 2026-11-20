@@ -112,7 +112,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
     );
     const items = (yield* projectTodos.list("/project")).items;
     assert.equal(items.length, 1);
-    // Launch prompts stay out of visible to-dos; a summary may replace this later.
-    assert.equal(items[0]?.description, "Continue work on Headless.");
+    // Launch prompts stay out of visible to-dos; a summary may fill the Latest update later.
+    assert.equal(items[0]?.description, "");
   }).pipe(Effect.provide(dependencies));
 });

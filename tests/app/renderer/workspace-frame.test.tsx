@@ -282,13 +282,21 @@ it.each<Mode>(["browser", "vscode"])(
         name: "Current conversation companion",
       }),
     );
+    // The transcript heading's Focus action; the to-do pane row has its own (data-slot todo-focus).
     const focus = (title: string) =>
-      companion.getByRole("button", { name: `Focus to-do: ${title}` });
+      companion
+        .getAllByRole("button", { name: `Focus to-do: ${title}` })
+        .find((button) => button.getAttribute("data-slot") !== "todo-focus")!;
+    // Transcript section headings only; to-do pane rows have their own details disclosure.
     const expanded = () =>
       ["Task A", "Task B"].map((title) =>
         companion
           .queryAllByRole("button", { name: title })
-          .find((button) => button.hasAttribute("aria-expanded"))
+          .find(
+            (button) =>
+              button.hasAttribute("aria-expanded") &&
+              button.getAttribute("data-slot") !== "todo-disclosure",
+          )
           ?.getAttribute("aria-expanded"),
       );
     await settleListLayout();

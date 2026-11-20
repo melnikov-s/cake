@@ -107,16 +107,12 @@ it.each(["browser", "vscode"] as const)(
     );
     const tabs = within(companion.getByRole("group", { name: "Companion content" }));
     const surface = document.querySelector('[data-slot="workspace-companion-content"]')!;
-    expect(surface.classList.contains("bg-sidebar")).toBe(false);
+    expect(surface.classList.contains("bg-inspector")).toBe(false);
     expect(tabs.getByRole("button", { name: "Chat" }).getAttribute("aria-pressed")).toBe("true");
     await fixture.user.click(tabs.getByRole("button", { name: "Todos" }));
-    // Descriptions follow real pointer travel (ad5be46f); user-event otherwise rests at (0, 0).
-    await fixture.user.pointer({
-      target: companion.getByRole("button", { name: "Project-owned task" }),
-      coords: { clientX: 24, clientY: 8 },
-    });
-    expect(await screen.findByText("Shared with Project Chat")).toBeDefined();
-    expect(surface.classList.contains("bg-sidebar")).toBe(true);
+    // The Latest update shows inline on the shared Project Chat row.
+    expect(await companion.findByText("Shared with Project Chat")).toBeDefined();
+    expect(surface.classList.contains("bg-inspector")).toBe(true);
     await fixture.user.click(
       companion.getByRole("button", { name: "Mark done: Project-owned task" }),
     );
@@ -130,12 +126,12 @@ it.each(["browser", "vscode"] as const)(
       ),
     );
     await fixture.user.click(tabs.getByRole("button", { name: "Sessions" }));
-    expect(surface.classList.contains("bg-sidebar")).toBe(true);
+    expect(surface.classList.contains("bg-inspector")).toBe(true);
     expect(
       within(companion.getByRole("region", { name: "Sessions" })).getByText("Editor conversation"),
     ).toBeDefined();
     await fixture.user.click(tabs.getByRole("button", { name: "Chat" }));
-    expect(surface.classList.contains("bg-sidebar")).toBe(false);
+    expect(surface.classList.contains("bg-inspector")).toBe(false);
     expect(tabs.getByRole("button", { name: "Chat" }).getAttribute("aria-pressed")).toBe("true");
     await act(async () => {
       expect(

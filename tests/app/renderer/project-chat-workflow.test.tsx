@@ -591,35 +591,38 @@ it("toggles Project Chat to-dos in the existing side pane, focuses/unfocuses, co
     expect(toggle.textContent).toBe("To-dos 1");
     const panel = screen.getByRole("complementary", { name: "Workspace" });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(within(panel).queryByText(item.description)).toBeNull();
+    // The Latest update shows inline; the transcript-only question stays out of the pane.
+    expect(within(panel).getByText(item.description)).toBeTruthy();
     expect(within(panel).queryByText("Earlier question")).toBeNull();
     const row = () => within(panel).getByRole("button", { name: item.title });
-    // Descriptions follow real pointer travel; user-event otherwise rests at (0, 0).
-    await f.user.pointer({ target: row(), coords: { clientX: 24, clientY: 8 } });
-    expect(await screen.findByText(item.description)).toBeTruthy();
+    const focus = () => within(panel).getByRole("button", { name: `Focus to-do: ${item.title}` });
+    // Clicking the row only expands its details; Focus is a separate row action.
+    await f.user.click(row());
+    expect(row().getAttribute("aria-expanded")).toBe("true");
+    expect(focus().getAttribute("aria-pressed")).toBe("false");
     const focusList = () =>
       panel.querySelector<HTMLElement>('[data-todo-id][data-todo-section="Focus"]')!;
-    await f.user.click(row());
+    await f.user.click(focus());
     expect(within(focusList()).getByRole("button", { name: item.title })).toBeTruthy();
-    expect(row().getAttribute("aria-pressed")).toBe("true");
+    expect(focus().getAttribute("aria-pressed")).toBe("true");
     expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
-    // Clicking the focused row again returns to the unfiltered transcript.
-    await f.user.click(row());
-    expect(row().getAttribute("aria-pressed")).toBe("false");
+    // Toggling Focus again returns to the unfiltered transcript.
+    await f.user.click(focus());
+    expect(focus().getAttribute("aria-pressed")).toBe("false");
     expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
-    await f.user.click(row());
-    expect(row().getAttribute("aria-pressed")).toBe("true");
+    await f.user.click(focus());
+    expect(focus().getAttribute("aria-pressed")).toBe("true");
     await f.user.click(within(panel).getByRole("button", { name: `Mark done: ${item.title}` }));
     await waitFor(() => expect(toggle.textContent).toBe("To-dos 0"));
     expect(panel.querySelector('[data-todo-id][data-todo-section="Active"]')).toBeNull();
     // Completion keeps window-local focus; the row stays in Focus with its Reopen action.
-    expect(row().getAttribute("aria-pressed")).toBe("true");
+    expect(focus().getAttribute("aria-pressed")).toBe("true");
     await f.user.click(within(panel).getByRole("button", { name: `Reopen: ${item.title}` }));
     await waitFor(() => expect(toggle.textContent).toBe("To-dos 1"));
     await f.user.click(within(panel).getByRole("button", { name: `Unfocus to-do: ${item.title}` }));
     expect(
       within(panel.querySelector<HTMLElement>('[data-todo-id][data-todo-section="Active"]')!)
-        .getByRole("button", { name: item.title })
+        .getByRole("button", { name: `Focus to-do: ${item.title}` })
         .getAttribute("aria-pressed"),
     ).toBe("false");
     await f.user.click(screen.getByRole("button", { name: "Close Workspace" }));

@@ -113,7 +113,7 @@ it.each([false, true])(
         expect(history).not.toHaveBeenCalled();
         await userEvent.setup().click(
           within(screen.getByRole("complementary", { name: "To-do" })).getByRole("button", {
-            name: task.title,
+            name: `Focus to-do: ${task.title}`,
           }),
         );
         expect(history).not.toHaveBeenCalled();
