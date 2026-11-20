@@ -54,14 +54,12 @@ for (const theme of ["light", "dark"] as const) {
             ["the website", "https://example.com/docs"],
             ["HTTP documentation", "http://example.com/docs"],
           ] as const
-        ).map(
-          ([name, href]): [string, string, string, string] => [
-            name,
-            href,
-            href,
-            'svg[aria-hidden="true"]',
-          ],
-        ),
+        ).map(([name, href]): [string, string, string, string] => [
+          name,
+          href,
+          href,
+          'svg[aria-hidden="true"]',
+        ]),
         [
           "User Session this session",
           sessionLink,

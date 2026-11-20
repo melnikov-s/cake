@@ -188,6 +188,9 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
       .locator(`.session-item[data-session-id="${sessionId}"]`)
       .getByRole("button", { name: /^Show the settings shape/ })
       .click();
+    // Give the conversation its full width, as before chat-first navigation's Workspace
+    // (582d0fc7): a narrow conversation shows Side Chat over it instead (b39d2426).
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     const code = page.locator('[data-streamdown="code-block-body"] code');
     await expect(code).toContainText("UtilityModePreferences", { timeout: 20_000 });
     await page.waitForFunction(() =>

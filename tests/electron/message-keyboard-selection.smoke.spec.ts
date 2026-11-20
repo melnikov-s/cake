@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type Locator } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { fixtureModelChange, writeFixtureModels } from "./fixtures/fixture-model";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { messageReference } from "../../src/contracts/conversations/message-reference";
 import { openSession } from "./fixtures/workspace-navigation";
@@ -45,10 +46,13 @@ test("selects mixed conversational entries once, in display order, only in the f
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
     }),
   );
+  // The side-chat command needs a running runtime, which needs a saved model (81eb383b).
+  await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:9/v1" });
   const entries: object[] = [
     { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+    fixtureModelChange(timestamp),
   ];
-  let parentId: string | null = null;
+  let parentId: string | null = "model";
   for (const turn of [1, 2, 3]) {
     entries.push({
       type: "message",
@@ -244,19 +248,24 @@ test("selects mixed conversational entries once, in display order, only in the f
     await page.keyboard.press("Escape");
     await expect(selected).toHaveCount(0);
 
-    // Only the pane that holds focus responds.
-    await pane.getByRole("button", { name: "Split right" }).click();
-    const panes = page.locator('[data-slot="session-pane"]');
-    await expect(panes).toHaveCount(2);
-    const secondComposer = panes.nth(1).getByRole("combobox", { name: "Message", exact: true });
-    await expect(secondComposer).toBeFocused();
+    // Only the conversation that holds focus responds. Chat-first navigation has one pane
+    // (582d0fc7); a side chat's composer is the other keyboard owner beside it.
+    await composer.click();
+    await composer.pressSequentially("/side");
+    await expect(
+      page.getByRole("option", { name: /sidechat \[prompt\] Start a side chat/ }),
+    ).toBeVisible();
+    await composer.press("Enter");
+    const sideChat = page.getByRole("complementary", { name: "Side chat", exact: true });
+    const sideComposer = sideChat.getByRole("combobox");
+    await expect(sideComposer).toBeFocused();
     await page.keyboard.press("ArrowUp");
     await expect(selected).toHaveCount(0);
     await composer.click();
     await page.keyboard.press("ArrowUp");
     await expect(selected).toContainText("Answer 3.");
     await expect(
-      panes.nth(1).locator('[data-slot="transcript-item"][aria-current="true"]'),
+      sideChat.locator('[data-slot="transcript-item"][aria-current="true"]'),
     ).toHaveCount(0);
   } finally {
     await application.close();

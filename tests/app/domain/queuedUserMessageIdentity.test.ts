@@ -15,6 +15,8 @@ import { durableModel } from "../../fixtures/durable-chat";
 import { queuedPrompts } from "../../../src/renderer/lib/queued-prompts";
 import { heldAttentionHarness } from "../helpers/heldAttentionHarness";
 import { snapshot } from "../helpers/piRuntimeFixture";
+import { addArtifactPresentationReminder } from "../../../src/contracts/artifacts/artifact-presentation-context";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 
 const worker = "5c8a1e3b-7f2d-4b6e-9c0a-3d1f5e7b9a21";
 const clientId = "0f4a7d2e-3b1c-4e5f-8a9b-1c2d3e4f5a6b";
@@ -172,6 +174,36 @@ describe("a person's queued message keeps its identity", () => {
       }).pipe(Effect.provide(f.layer));
     },
   );
+
+  // Recurrence: after 1f83488d every composer send is UserWithReminders, and the application
+  // view reminder follows the person's words. Editing that queued message failed with
+  // "That queued message cannot be edited" because the edit assumed context only precedes them.
+  it("edits a queued message whose application-view context follows the person's words", async () => {
+    const text = addArtifactPresentationReminder(typed, null);
+    const queue = streamingQueue();
+    await enqueue(queue, {
+      turnId: TurnId.make(clientId),
+      delivery: "follow-up",
+      text,
+      attachments: [],
+      markdown: false,
+      internal: {
+        _tag: "UserWithReminders",
+        text,
+        notices: [],
+        reportNotices: [],
+        updates: [],
+        userText: typed,
+      },
+    });
+    const rows = queue.controller.queuedParts().filter((part) => part.kind === "text");
+    await queue.controller.updateQueuedMessage(rows[0]!.id, "actually, status first");
+    expect(queuedPrompts(queue.controller.queuedParts())).toEqual([
+      expect.objectContaining({ text: "actually, status first", turnId: clientId }),
+    ]);
+    // Pi's queue holds the person's words; the application view stays hidden model context.
+    expect(queue.followUp).toEqual(["actually, status first"]);
+  });
 
   it.effect("enqueue completes while another delivery holds this chat's delivery lock", () => {
     const f = heldAttentionHarness();

@@ -148,6 +148,16 @@ const assistantMarkdown = [
   "> Named scenarios keep setup and interaction deterministic.",
 ].join("\n");
 
+/** A rail click leaves the pointer over the Dynamic rail, which then overlays the conversation;
+ * move to the content as a reader would. */
+async function leaveRail(page: Page) {
+  const { width, height } = await page.evaluate(() => ({
+    width: innerWidth,
+    height: innerHeight,
+  }));
+  await page.mouse.move(width / 2, height / 2);
+}
+
 /** Launch always starts in global Cake Chat; open the seeded Project Session explicitly. */
 async function openSeededSession(page: Page, project: string, title: string) {
   await page.getByRole("button", { name: `Open Project Chat for ${project}`, exact: true }).click();
@@ -1612,10 +1622,7 @@ const inlineLinks: VisualCaptureScenario = {
     // Session links are named by their relationship glyph and label (b6cd0f2d).
     await expect(
       page.getByRole("link", { name: "User Session this request", exact: true }),
-    ).toHaveAttribute(
-      "href",
-      "cake://session/visual-assistant-markdown-code?message=user-1",
-    );
+    ).toHaveAttribute("href", "cake://session/visual-assistant-markdown-code?message=user-1");
     await page.waitForFunction(() => document.fonts.status === "loaded");
     if (state === "message") {
       await page.getByRole("link", { name: "User Session this request", exact: true }).click();
@@ -4268,6 +4275,7 @@ const cakeChatScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await leaveRail(page);
     await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
       "Cake Chat",
     );
@@ -4884,6 +4892,7 @@ const subagentReportsScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await leaveRail(page);
     await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
       "Cake Chat",
     );
@@ -5276,6 +5285,7 @@ const reportHeadersScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await leaveRail(page);
     const [, , , task, badge] =
       reportHeaderCases.find(([name]) => name === state) ?? reportHeaderCases[0];
     // Worker display titles are intentionally capped independently of CSS truncation.
@@ -5320,11 +5330,15 @@ const reportHeadersScenario: VisualCaptureScenario = {
       )
       .toBe(true);
     await expect(disclosure).toHaveAttribute("title", title);
-    if (state === "collapsed") await disclosure.click();
+    // Incoming subagent reports start collapsed (80b5ff44); the reader opens the others.
+    if (state !== "collapsed") await disclosure.click();
     await expect(disclosure).toHaveAttribute(
       "aria-expanded",
       state === "collapsed" ? "false" : "true",
     );
+    // Card actions share one action bar (c4afb09e): inline in a collapsed card's row, below an
+    // open card, revealed on hover or focus.
+    await card.hover();
     const link = card.getByRole("link", { name: "Open source", exact: true });
     await expect(link).toHaveAttribute("href", /cake:\/\/subagent\//);
     await expect(card.locator('[data-slot="response-header"] a')).toHaveCount(0);
@@ -5333,22 +5347,23 @@ const reportHeadersScenario: VisualCaptureScenario = {
     const geometry = await card
       .locator('[data-slot="response-header"] span.block')
       .evaluate((element) => {
-        const header = element.closest('[data-slot="response-header"]')!;
-        const status = element.parentElement!.nextElementSibling!;
+        const row = element.closest('[data-slot="response-header"]')!.parentElement!;
+        const status = row.querySelector('[data-slot="session-message-badges"]')!;
         const bounds = element.getBoundingClientRect();
-        const row = header.getBoundingClientRect();
+        const rowBounds = row.getBoundingClientRect();
         const badge = status.getBoundingClientRect();
         const style = getComputedStyle(element);
         return {
           top: bounds.top,
           bottom: bounds.bottom,
           right: bounds.right,
-          rowTop: row.top,
-          rowBottom: row.bottom,
+          rowTop: rowBounds.top,
+          rowBottom: rowBounds.bottom,
           badgeLeft: badge.left,
           badgeTop: badge.top,
           badgeBottom: badge.bottom,
-          badgeRight: badge.right,
+          cardBottom: element.closest('[data-slot="session-message-card"]')!.getBoundingClientRect()
+            .bottom,
           height: bounds.height,
           lineHeight: parseFloat(style.lineHeight),
           textOverflow: style.textOverflow,
@@ -5366,11 +5381,15 @@ const reportHeadersScenario: VisualCaptureScenario = {
     const fullscreen = card.getByRole("button", { name: `View message fullscreen: ${title}` });
     await expect(fullscreen).toBeVisible();
     const fullscreenBounds = (await fullscreen.boundingBox())!;
-    expect(fullscreenBounds.x).toBeGreaterThanOrEqual(geometry.badgeRight);
-    expect(fullscreenBounds.y).toBeGreaterThanOrEqual(geometry.rowTop - 1);
-    expect(fullscreenBounds.y + fullscreenBounds.height).toBeLessThanOrEqual(
-      geometry.rowBottom + 1,
-    );
+    if (state === "collapsed") {
+      // Inline between the title and the status badge, within the header row.
+      expect(fullscreenBounds.x).toBeGreaterThanOrEqual(geometry.right);
+      expect(fullscreenBounds.x + fullscreenBounds.width).toBeLessThanOrEqual(geometry.badgeLeft);
+      expect(fullscreenBounds.y).toBeGreaterThanOrEqual(geometry.rowTop - 1);
+      expect(fullscreenBounds.y + fullscreenBounds.height).toBeLessThanOrEqual(
+        geometry.rowBottom + 1,
+      );
+    } else expect(fullscreenBounds.y).toBeGreaterThanOrEqual(geometry.cardBottom);
     await fullscreen.click();
     const reader = page.getByRole("dialog", { name: title, exact: true });
     await expect(reader).toContainText("The report remains readable.");
@@ -5771,6 +5790,7 @@ const incomingTaskSectionsScenario: VisualCaptureScenario = {
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    await leaveRail(page);
     await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
       "Cake Chat",
     );
@@ -8383,8 +8403,9 @@ const newSessionScenario: VisualCaptureScenario = {
     );
   },
   async prepare(page, state) {
+    // Launch always opens global Cake Chat (40566199).
     await page
-      .getByRole("combobox", { name: "Message", exact: true })
+      .getByRole("combobox", { name: "Message Cake Chat", exact: true })
       .waitFor({ state: "visible", timeout: 20_000 });
     await page.keyboard.press(process.platform === "darwin" ? "Meta+N" : "Control+N");
     const filter = page.getByRole("combobox", { name: "Filter projects" });

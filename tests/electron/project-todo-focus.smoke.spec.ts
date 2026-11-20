@@ -69,9 +69,9 @@ for (const reducedMotion of [false, true]) {
       });
       await page.setViewportSize({ width: 1500, height: 900 });
       await page
-      .getByRole("navigation", { name: "Projects and global utilities" })
-      .getByRole("button", { name: "Open Cake Chat", exact: true })
-      .click();
+        .getByRole("navigation", { name: "Projects and global utilities" })
+        .getByRole("button", { name: "Open Cake Chat", exact: true })
+        .click();
       await openProjectChat(page, "Project");
       const composer = page.getByRole("combobox", { name: "Message Project Chat" });
       await expect(composer).toBeVisible();

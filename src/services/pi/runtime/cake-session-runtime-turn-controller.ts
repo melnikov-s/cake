@@ -948,20 +948,25 @@ export function createCakeSessionRuntimeTurnController(input: {
         throw new Error("Enter a message or keep an attachment");
       const oldText =
         internal?._tag === "UserWithReminders" ? (internal.userText ?? internal.text) : item.text;
-      // Cake's own context blocks (session updates, reports, to-dos) precede the person's words
-      // in the model input; an edit replaces only those words and keeps the hidden context.
+      // Cake's own context blocks ride along in the model input: session updates, reports and
+      // to-dos precede the person's words, the application view follows them. An edit replaces
+      // only those words and keeps the hidden context on both sides.
       const userBody =
         internal?._tag === "UserWithReminders" ? splitContextReminders(internal.text).text : "";
       const context =
-        internal?._tag === "UserWithReminders" && userBody.startsWith(oldText)
-          ? internal.text.slice(0, internal.text.length - userBody.length)
-          : "";
+        internal?._tag !== "UserWithReminders" || !userBody.startsWith(oldText)
+          ? ""
+          : internal.text.endsWith(userBody)
+            ? internal.text.slice(0, internal.text.length - userBody.length)
+            : internal.text.slice(0, Math.max(0, internal.text.indexOf(userBody)));
       const body = stripPresentationModeReminder(item.content);
       const offset = item.content.length - body.length;
-      const found = item.content.indexOf(context + oldText, offset);
+      let found = item.content.indexOf(context + oldText, offset);
+      let start = found + context.length;
+      // Pi's visible queue content can carry only the person's words.
+      if (found < 0 && context) start = found = item.content.indexOf(oldText, offset);
       if (found < 0 || !item.text.startsWith(context))
         throw new Error("That queued message cannot be edited");
-      const start = found + context.length;
       // Words added to an attachment-only message stay separate from that context.
       const words = context && !oldText && text && !context.endsWith("\n") ? `\n\n${text}` : text;
       const updatedText = context + words + item.text.slice(context.length + oldText.length);

@@ -36,7 +36,8 @@ for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width: 1500, height: 900 });
       await page.emulateMedia({ colorScheme: theme });
       await scenario.prepare(page, "open", app);
-      const panel = page.getByRole("complementary", { name: "To-do", exact: true });
+      // To-dos live in the shared Workspace accessory since chat-first navigation (582d0fc7).
+      const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
       const search = panel.getByRole("searchbox", { name: "Search to-dos" });
       const selected = panel.getByRole("button", {
         name: "Focus to-do: Startup investigation",
@@ -64,17 +65,16 @@ for (const theme of ["light", "dark"] as const) {
       for (const width of [1500, 780]) {
         await page.setViewportSize({ width, height: 900 });
         await expect(search).toBeVisible();
-        const header = panel.locator("header");
+        // The search sits below the Workspace tabs, inside the accessory, without overflow.
         const searchBox = await search.boundingBox();
-        const headerBox = await header.boundingBox();
-        const closeBox = await panel.getByRole("button", { name: "Close To-do" }).boundingBox();
-        expect(searchBox!.x).toBeGreaterThanOrEqual(headerBox!.x);
-        expect(searchBox!.y).toBeGreaterThanOrEqual(headerBox!.y);
-        expect(searchBox!.y + searchBox!.height).toBeLessThanOrEqual(
-          headerBox!.y + headerBox!.height,
-        );
-        expect(searchBox!.x + searchBox!.width).toBeLessThanOrEqual(closeBox!.x);
-        expect(await header.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        const panelBox = await panel.boundingBox();
+        const tabsBox = await panel
+          .getByRole("group", { name: "Workspace content", exact: true })
+          .boundingBox();
+        expect(searchBox!.x).toBeGreaterThanOrEqual(panelBox!.x);
+        expect(searchBox!.x + searchBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width);
+        expect(searchBox!.y).toBeGreaterThanOrEqual(tabsBox!.y + tabsBox!.height);
+        expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
           true,
         );
 
@@ -93,8 +93,9 @@ for (const theme of ["light", "dark"] as const) {
 
         await search.pressSequentially("STARTUP");
         await expect(selected).toBeVisible();
-        await panel.getByRole("button", { name: "Close To-do" }).focus();
-        await page.keyboard.press("Shift+Tab");
+        // The clear control follows the search box in keyboard order.
+        await search.focus();
+        await page.keyboard.press("Tab");
         await expect(clear).toBeFocused();
         await clear.press("Enter");
         await expect(search).toBeFocused();

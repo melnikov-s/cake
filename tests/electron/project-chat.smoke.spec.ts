@@ -158,6 +158,8 @@ test("Project Chat isolates history and restores its root workspace, while globa
       );
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
+    // Move on from the Dynamic rail, which overlays the composer while hovered.
+    await page.mouse.move(700, 450);
     let input = page.getByRole("combobox", { name: "Message Cake Chat" });
     await expect(input).toBeVisible();
     await input.click();
@@ -431,6 +433,8 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await app.close();
     app = await launch();
     page = await app.firstWindow();
+    // Launch always opens global Cake Chat (40566199); the Project Chat keeps its draft.
+    await openProject();
     await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toHaveValue(
       "Keep this project draft",
       { timeout: 20_000 },
@@ -474,7 +478,18 @@ test("Project Chat isolates history and restores its root workspace, while globa
     const skillRequest = JSON.parse(requests[2]);
     expect(
       skillRequest.tools.map((tool: { function: { name: string } }) => tool.function.name).sort(),
-    ).toEqual(["archive_read", "archive_search", "bash", "cake", "date", "mcp", "read", "zoom"]);
+      // memory_repair rebuilds failed memory summaries from originals (b04cd230).
+    ).toEqual([
+      "archive_read",
+      "archive_search",
+      "bash",
+      "cake",
+      "date",
+      "mcp",
+      "memory_repair",
+      "read",
+      "zoom",
+    ]);
 
     // Mouse selection completes without sending; Enter on a filtered option executes.
     await input.fill("/skill:global");

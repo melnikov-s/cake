@@ -431,9 +431,7 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
                   target.sessionId,
                   allowCreate && !persisted,
                   allowCreate && !persisted ? configuration : undefined,
-                ).pipe(
-                  Effect.map(observeConversationUpdates),
-                ),
+                ).pipe(Effect.map(observeConversationUpdates)),
               );
               const sessions = yield* CakeSessionRuntimes;
               // New identities have no history. Already-live sessions must retain

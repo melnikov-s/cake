@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 import { startMcpServer } from "../fixtures/mcp-server";
 import { windowState } from "../fixtures/window-state";
 
-import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
+import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -175,11 +175,11 @@ export default (pi) => {
         (await readdir(cakeHome, { recursive: true })).filter((path) => path.endsWith(".jsonl")),
       ).toEqual([]);
 
-      // The Workspace can switch to To-dos after a first message; read the Sessions list.
-      await showSessions(page);
-      const commandSession = page.locator(".session-item.active");
-      await expect(commandSession).toHaveCount(1);
-      const commandSessionId = await commandSession.getAttribute("data-session-id");
+      // A command-only Session has no transcript, so the Sessions list does not show it; the
+      // focused pane names it and conversation history returns to it.
+      const pane = page.locator('[data-slot="session-pane"]');
+      const commandSessionId = await pane.getAttribute("data-session-id");
+      expect(commandSessionId).toBeTruthy();
       await createSessionInProject(page, /^project(?: |$)/i);
       await expect(composer).toHaveValue("");
       await expect(composer).toBeFocused();
@@ -203,14 +203,14 @@ export default (pi) => {
           (path) => path.endsWith(".jsonl") && path.includes(commandSessionId!),
         ),
       ).toBe(false);
-      await showSessions(page);
-      await page
-        .locator(`.session-item[data-session-id='${commandSessionId}'] .session-row`)
-        .click();
-      await expect(page.locator(".session-item.active")).toHaveAttribute(
-        "data-session-id",
-        commandSessionId!,
-      );
+      const back = page.getByRole("button", { name: "Go back in session history", exact: true });
+      for (
+        let step = 0;
+        step < 12 && (await pane.getAttribute("data-session-id")) !== commandSessionId;
+        step += 1
+      )
+        await back.click();
+      await expect(pane).toHaveAttribute("data-session-id", commandSessionId!);
       await composer.click();
       await expect(composer).toBeFocused();
       await composer.pressSequentially("/mcp login oauth");

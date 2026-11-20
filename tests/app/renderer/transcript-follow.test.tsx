@@ -8,6 +8,7 @@ import { useTranscriptFollow } from "../../../src/renderer/lib/transcript-follow
 afterEach(cleanup);
 
 function fakeList() {
+  // SAFETY: the follow hook only calls cancelScroll, scrollToEnd and getState().listen.
   return {
     cancelScroll: vi.fn(),
     scrollToEnd: vi.fn(async () => undefined),

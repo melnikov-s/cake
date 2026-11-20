@@ -81,7 +81,9 @@ test("image/classifier preferences and native execution controls persist and rea
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     // Launch always opens global Cake Chat (40566199).
-    await expect(page.getByRole("combobox", { name: "Message Cake Chat", exact: true })).toBeVisible({
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({
       timeout: 20_000,
     });
     await openSettings(page);

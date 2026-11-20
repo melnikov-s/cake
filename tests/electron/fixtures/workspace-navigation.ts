@@ -147,9 +147,9 @@ export async function showSessions(page: Page) {
 export async function showTodos(page: Page) {
   const back = page.getByRole("button", { name: "Back to chat", exact: true });
   if (await back.isVisible()) await back.click();
-  await expect(
-    page.getByRole("navigation", { name: "Projects and global utilities" }),
-  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("navigation", { name: "Projects and global utilities" })).toBeVisible(
+    { timeout: 20_000 },
+  );
   const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
   if (!(await workspace.isVisible())) {
     await page.getByRole("button", { name: "Open Workspace", exact: true }).click();

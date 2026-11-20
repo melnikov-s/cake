@@ -677,9 +677,7 @@ export const applyConfiguration = Effect.fn("SessionChats.applyConfiguration")(f
   yield* applyConversationConfiguration(
     acquireConfigured(target.sessionId, configuration),
     configuration,
-  ).pipe(
-    asError("applyConfiguration"),
-  );
+  ).pipe(asError("applyConfiguration"));
 });
 
 export const setModel = Effect.fn("SessionChats.setModel")(function* (
@@ -688,12 +686,15 @@ export const setModel = Effect.fn("SessionChats.setModel")(function* (
   modelId: string,
 ) {
   yield* setConversationModel(
-    acquireConfigured(target.sessionId, { provider, modelId, thinkingLevel: "off", fastMode: false }),
+    acquireConfigured(target.sessionId, {
+      provider,
+      modelId,
+      thinkingLevel: "off",
+      fastMode: false,
+    }),
     provider,
     modelId,
-  ).pipe(
-    asError("setModel"),
-  );
+  ).pipe(asError("setModel"));
 });
 
 export const setThinkingLevel = Effect.fn("SessionChats.setThinkingLevel")(function* (

@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 import { nestedUsage } from "../fixtures/nested-tool-activity";
 import { windowState } from "../fixtures/window-state";
 
-import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const script =
@@ -112,8 +112,17 @@ export default (pi) => {
     const page = await application.firstWindow();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly and
+    // choose the fixture model, since Pi defaults no longer start a runtime (81eb383b).
+    await createSessionInProject(page, /^project(?: |$)/i);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
+    const configuration = page.getByRole("button", { name: "Model configuration", exact: true });
+    await configuration.click();
+    await page.getByLabel("Search presets and models").fill("Fixture");
+    await page.getByRole("button", { name: "Fixture fixture", exact: true }).click();
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(configuration).toContainText("Fixture");
     await composer.click();
     await expect(composer).toBeFocused();
     await composer.pressSequentially("Run parallel script children");
@@ -155,6 +164,7 @@ export default (pi) => {
 
     // Reopen through the real session workflow. No ephemeral child output is
     // persisted; error summaries and the bounded record remain available.
+    await showSessions(page);
     const sessionId = await page.locator(".session-item.active").getAttribute("data-session-id");
     await createSessionInProject(page, /^project(?: |$)/i);
     await page.locator(`.session-item[data-session-id='${sessionId}'] .session-row`).click();

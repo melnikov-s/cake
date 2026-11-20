@@ -166,14 +166,16 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
     const dialog = page.getByRole("dialog", { name: "New session", exact: true });
     const filter = dialog.getByRole("combobox", { name: "Filter projects" });
     const selected = dialog.getByRole("option", { selected: true });
-    await expect(message).toBeVisible({ timeout: 20_000 });
-    await expect(message).toBeFocused();
+    // Launch always opens global Cake Chat (40566199), whose composer starts focused.
+    const startComposer = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+    await expect(startComposer).toBeVisible({ timeout: 20_000 });
+    await expect(startComposer).toBeFocused();
     await page.keyboard.press(`${modifier}+N`);
     await expect(dialog).toBeVisible();
     await expect(filter).toBeFocused();
     await expect(dialog.getByRole("option")).toHaveCount(3);
     // Async work behind the modal must not move keyboard input back to the composer.
-    await message.evaluate((element: HTMLElement) => element.focus());
+    await startComposer.evaluate((element: HTMLElement) => element.focus());
     await expect(filter).toBeFocused();
     await expect(selected).toContainText("Cake Chat");
     await page.keyboard.press("ArrowUp");
@@ -196,7 +198,7 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
     await expect(selected).toContainText("Beta");
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
-    await expect(message).toBeFocused();
+    await expect(startComposer).toBeFocused();
 
     // The global shortcut works with Workspace hidden, too.
     await page.keyboard.press(`${modifier}+B`);
@@ -266,8 +268,9 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
       });
     }).toPass({ timeout: 10_000 });
     await page.reload();
-    await expect(message).toBeVisible();
-    await expect(message).toBeFocused();
+    // Reload opens global Cake Chat again; the remembered destination still applies.
+    await expect(startComposer).toBeVisible();
+    await expect(startComposer).toBeFocused();
     await page.keyboard.press(`${modifier}+N`);
     await expect(filter).toBeFocused();
     await expect(selected).toContainText("Alpha");
