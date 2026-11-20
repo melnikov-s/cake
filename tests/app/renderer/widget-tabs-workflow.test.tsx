@@ -13,6 +13,7 @@ import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-n
 import { WorkspaceCompanion } from "../../../src/renderer/components/workspace-companion";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { widgetInstance } from "../helpers/widget-instance";
+import { stubWorkspaceTabGeometry } from "../helpers/workspace-tab-geometry";
 import type { Client } from "../../../src/renderer/client/Client";
 
 const token = "00000000-0000-4000-8000-000000000010";
@@ -421,4 +422,67 @@ it("restores the picked widget after reload and falls back when it no longer exi
     expect(pressed(/To-dos/)).toBe("true");
     view.unmount();
   }
+});
+
+it("collapses widget tabs to icons before To-dos/Sessions, then folds them into the menu, keeping labels and selection", async () => {
+  const f = setup();
+  using fixture = f.fixture;
+  using geometry = stubWorkspaceTabGeometry({ full: 420, "widget-icons": 320, icons: 220 });
+  const user = userEvent.setup();
+  const view = renderNavigator(fixture);
+  await waitFor(() => expect(fixture.root.widgetAttachmentStore.artifacts.size).toBe(2));
+  act(() => fixture.root.workspaceNavigatorStore.showWidget("first"));
+  const strip = () => view.container.querySelector('[data-slot="workspace-tab-strip"]')!;
+  const widgetTab = () => screen.getByRole("button", { name: "Widget tab: Activity monitor" });
+  const todos = () => screen.getByRole("button", { name: /^To-dos/ });
+  const sessions = () => screen.getByRole("button", { name: /^Sessions ·/ });
+
+  geometry.resize(500);
+  expect(strip().getAttribute("data-stage")).toBe("full");
+  expect(widgetTab().textContent).toBe("Activity monitor");
+  expect(todos().textContent).toMatch(/^To-dos/);
+
+  // Widgets go first: the title moves to the tooltip/accessible name and a widget icon shows.
+  geometry.resize(400);
+  expect(strip().getAttribute("data-stage")).toBe("widget-icons");
+  expect(widgetTab().textContent).toBe("");
+  expect(widgetTab().title).toBe("Activity monitor");
+  expect(widgetTab().querySelector("svg")).not.toBeNull();
+  expect(widgetTab().getAttribute("aria-pressed")).toBe("true");
+  expect(todos().textContent).toMatch(/^To-dos/);
+  expect(sessions().textContent).toMatch(/^Sessions/);
+
+  // Then To-dos and Sessions collapse to their icons, with labels kept in tooltip/aria.
+  geometry.resize(300);
+  expect(strip().getAttribute("data-stage")).toBe("icons");
+  for (const tab of [todos(), sessions()]) {
+    expect(tab.textContent).not.toMatch(/To-dos|Sessions/);
+    expect(tab.querySelector("svg")).not.toBeNull();
+    expect(tab.title).toMatch(/To-dos|running/);
+  }
+  expect(widgetTab().getAttribute("aria-pressed")).toBe("true");
+  await user.click(todos());
+  expect(todos().getAttribute("aria-pressed")).toBe("true");
+  await user.click(widgetTab());
+  expect(fixture.root.workspaceNavigatorStore.showingWidget).toBe(true);
+
+  // Only when icons do not fit does the widget tab fold into its chevron menu, still marked selected.
+  geometry.resize(200);
+  expect(strip().getAttribute("data-stage")).toBe("overflow");
+  expect(screen.queryByRole("button", { name: /^Widget tab:/ })).toBeNull();
+  const menu = screen.getByRole("button", { name: "Widget tabs" });
+  expect(menu.getAttribute("data-active")).toBe("true");
+  expect(menu.title).toContain("Activity monitor");
+  await user.click(menu);
+  expect(
+    screen.getByRole("menuitemradio", { name: "Activity monitor" }).getAttribute("aria-checked"),
+  ).toBe("true");
+  await user.keyboard("{Escape}");
+
+  // Widening needs the hysteresis margin before titles return.
+  geometry.resize(420);
+  expect(strip().getAttribute("data-stage")).toBe("widget-icons");
+  geometry.resize(440);
+  expect(strip().getAttribute("data-stage")).toBe("full");
+  view.unmount();
 });

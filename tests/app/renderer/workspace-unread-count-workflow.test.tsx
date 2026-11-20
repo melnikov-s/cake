@@ -11,6 +11,7 @@ import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-n
 import { ActivityCount } from "../../../src/renderer/components/ui/activity-count";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { stubWorkspaceTabGeometry } from "../helpers/workspace-tab-geometry";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import {
   navigatorHomeId,
@@ -304,5 +305,29 @@ describe("Workspace Sessions unread count", () => {
     expect(renderToStaticMarkup(<ActivityCount kind="unread" count={1234} />)).toContain(
       'aria-label="1234 unread"',
     );
+  });
+});
+
+describe("Workspace tabs collapsed to icons", () => {
+  it("keeps running, unread and to-do counts visible as compact badges", () => {
+    using geometry = stubWorkspaceTabGeometry({ full: 400, "widget-icons": 400, icons: 200 });
+    using fixture = renderWorkspace();
+    act(() => {
+      const layout = fixture.models.sessionCatalog.find("layout")!;
+      layout.running = true;
+      layout.unread = true;
+      fixture.models.sessionCatalog.find("keyboard")!.running = true;
+    });
+    geometry.resize(300);
+    expect(tab().textContent).not.toContain("Sessions");
+    expect(tab().querySelector("svg")).not.toBeNull();
+    expectCounts(2, 1);
+    expect(within(tab()).getByRole("img", { name: "2 running" }).textContent).toBe("2");
+    const todos = screen.getByRole("button", { name: /^To-dos/ });
+    const open = String(fixture.root.workspaceNavigatorStore.todos?.paneOpenCount ?? 0);
+    expect(todos.getAttribute("aria-label")).toBe(`To-dos ${open}`);
+    expect(todos.title).toBe(`To-dos · ${open} open`);
+    expect(todos.textContent).toBe(open);
+    expect(todos.getAttribute("aria-pressed")).toBe("true");
   });
 });

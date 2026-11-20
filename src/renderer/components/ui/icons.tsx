@@ -253,6 +253,28 @@ export const ChatIcon = ({ size = 16 }: { size?: number }) => (
     <path d="M20 15a3 3 0 0 1-3 3H8l-5 3 1.7-5.1A7 7 0 0 1 4 13V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" />
   </Icon>
 );
+/** Checked list: the To-dos tab. */
+export const TodoIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
+    <path d="m3.5 6.5 1.75 1.75L8.5 5M3.5 16.5l1.75 1.75L8.5 15M12 7h8.5M12 12h8.5M12 17h8.5" />
+  </Icon>
+);
+/** Overlapping conversations: the Sessions tab. */
+export const SessionsIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
+    <path d="M14 10a2 2 0 0 1-2 2H7l-4 3V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2z" />
+    <path d="M17.5 8H19a2 2 0 0 1 2 2v11l-4-3h-5a2 2 0 0 1-2-2v-1" />
+  </Icon>
+);
+/** Generic widget, for widget tabs without an icon of their own. */
+export const WidgetIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+  </Icon>
+);
 export const AnnotationIcon = ({ size = 16 }: { size?: number }) => (
   <Icon size={size}>
     <path d="M19 15a3 3 0 0 1-3 3H8l-4 2 1.2-4A5 5 0 0 1 5 14V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3z" />

@@ -1,17 +1,31 @@
 import { cn } from "@/lib/utils";
 import { ActivityIcon } from "./icons";
 import { StatusDot } from "./status-dot";
+import { CountBadge } from "./count-badge";
 
 /** Compact own-status count; exact values remain accessible beyond the visual cap. */
 export function ActivityCount({
   count,
   kind = "running",
+  compact = false,
 }: {
   count: number;
   kind?: "running" | "unread";
+  /** A colored badge beside an icon-only tab; zero counts are left to the tab's label. */
+  compact?: boolean;
 }) {
-  if (kind === "unread" && count === 0) return null;
+  if ((kind === "unread" || compact) && count === 0) return null;
   const label = `${count} ${kind}`;
+  if (compact)
+    return (
+      <CountBadge
+        count={count}
+        tone={kind === "unread" ? "success" : "accent"}
+        role="img"
+        aria-label={label}
+        title={label}
+      />
+    );
   return (
     <span
       role="img"

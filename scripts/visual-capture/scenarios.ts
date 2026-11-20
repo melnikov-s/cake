@@ -18,6 +18,7 @@ import { sidebarSessionGroupsScenarios } from "./sidebar-session-groups.ts";
 import { createInterfaceIconsScenario, createProjectThumbnailsScenario } from "./interface-icons";
 import { projectSetupScenario } from "./project-setup.ts";
 import { serializeModelReference } from "../../src/contracts/model-presets/model-reference.ts";
+import { emptyProjectTodos } from "../../src/contracts/projects/project-todos.ts";
 import { toolCallRowsScenario } from "./tool-call-rows";
 import {
   createDeltaPrsGroupsScenario,
@@ -8965,10 +8966,14 @@ export default function Dashboard() {
   region: (page) => page.locator('[data-slot="chat"]').first().locator("..").locator(".."),
 };
 
+/** Workspace pane widths for the tab strip's collapse stages. */
+const widgetTabStripWidths = { wide: 512, medium: 368, narrow: 288, "very-narrow": 240 };
+
 export const widgetTabsScenario: VisualCaptureScenario = {
   name: "widget-tabs",
-  description: "Global widget panes with persistent view state and background polling",
-  states: ["default", "menu", "switched"],
+  description:
+    "Global widget panes with persistent view state and background polling; width states collapse the tab strip",
+  states: ["default", "menu", "switched", ...Object.keys(widgetTabStripWidths)],
   async seed(paths, theme) {
     const source = `import { useState } from "react";
 import { useArtifactState, useCurrentSession, usePolling } from "@cake/artifact-sdk";
@@ -9038,6 +9043,20 @@ export default function Monitor() {
               name: "Widget workspace",
               addedAt: timestamp,
               lastOpenedAt: timestamp,
+              // Two-digit counts, as in a busy project, for the collapsed tab badges.
+              todos: {
+                ...emptyProjectTodos(),
+                items: Array.from({ length: 21 }, (_, index) => ({
+                  id: `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+                  title: `Widget workspace follow-up ${index + 1}`,
+                  description: "",
+                  status: "",
+                  state: "open",
+                  revision: 0,
+                  createdAt: timestamp,
+                  associations: [],
+                })),
+              },
             },
             {
               path: otherProject,
@@ -9101,8 +9120,46 @@ export default function Monitor() {
         .getByRole("complementary", { name: "Workspace", exact: true })
         .getByRole("button", { name: /To-dos/ })
         .click();
+    const width = widgetTabStripWidths[state as keyof typeof widgetTabStripWidths];
+    if (width === undefined) return;
+    // Resize through the real handle (16px keyboard steps from its 240px minimum).
+    const handle = page.getByRole("separator", { name: "Resize Workspace", exact: true });
+    await handle.focus();
+    await page.keyboard.press("Home");
+    for (let current = 240; current < width; current += 16) await page.keyboard.press("ArrowLeft");
+    await handle.blur();
+    await expect(handle).toHaveAttribute("aria-valuenow", String(width));
+    await page.mouse.move(1, 1);
+    const strip = page.locator('[data-slot="workspace-tab-strip"]');
+    const geometry = await strip.evaluate((node) => {
+      const bounds = node.getBoundingClientRect();
+      const boxes = Array.from(
+        node.querySelectorAll<HTMLElement>(
+          ':scope > [role="group"] > button, :scope > button, :scope > div:not([aria-hidden]) > button',
+        ),
+        (button) => {
+          const box = button.getBoundingClientRect();
+          return { name: button.getAttribute("aria-label") ?? button.textContent, box };
+        },
+      );
+      return {
+        stage: node.dataset.stage,
+        strip: { left: bounds.left, right: bounds.right },
+        tabs: boxes.map(({ name, box }) => ({ name, left: box.left, right: box.right })),
+      };
+    });
+    console.log("WORKSPACE_TAB_STRIP", JSON.stringify({ width, ...geometry }));
+    const tabs = [...geometry.tabs].sort((left, right) => left.left - right.left);
+    for (const [index, tab] of tabs.entries()) {
+      expect(tab.left).toBeGreaterThanOrEqual(geometry.strip.left - 0.5);
+      expect(tab.right).toBeLessThanOrEqual(geometry.strip.right + 0.5);
+      if (index) expect(tab.left).toBeGreaterThanOrEqual(tabs[index - 1]!.right - 0.5);
+    }
   },
-  region: (page) => page.locator('[data-slot="workspace-navigator"]'),
+  region: (page, state) =>
+    state in widgetTabStripWidths
+      ? page.locator('[data-slot="workspace-navigator-surface"] header')
+      : page.locator('[data-slot="workspace-navigator"]'),
 };
 
 const widgetSpeechArticle =

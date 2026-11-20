@@ -79,7 +79,11 @@ or one selected applicable tab widget, never alongside one another. When applica
 widgets exist, a widget tab at the right of the To-dos/Sessions strip shows one
 full-pane widget. Its chevron picks which widget the tab holds, or Clear; the pick
 survives tab switches and relaunch, and falls back to Widgets if that widget is
-detached. Unselected applicable tab widgets remain active; scoped tabs are undiscoverable and their views release when leaving scope. The accessory
+detached. Unselected applicable tab widgets remain active; scoped tabs are undiscoverable and their views release when leaving scope. As the pane
+narrows the strip collapses by measured fit, never overlapping: the widget tab shows
+its icon first, then To-dos/Sessions show icons with compact count badges, and only
+then does the widget tab fold into its chevron menu. Labels stay in tooltips and
+accessible names. The accessory
 can close without hiding global actions. Persistent clickable
 breadcrumbs show the conversation's full ownership path and a direct route home.
 

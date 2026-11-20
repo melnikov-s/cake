@@ -3,11 +3,22 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Button } from "./ui/button";
-import { CheckIcon, ChevronIcon } from "./ui/icons";
+import { CheckIcon, ChevronIcon, WidgetIcon } from "./ui/icons";
 import { cn } from "../lib/utils";
+import type { WorkspaceTabPresentation } from "../lib/workspace-tab-stage";
 
-/** The widget tab: once bound to a widget it shows that widget; the chevron rebinds/clears it. */
-export const WidgetTabPicker = observer(function WidgetTabPicker() {
+/**
+ * The widget tab: once bound to a widget it shows that widget; the chevron rebinds/clears it.
+ * Narrow strips show the widget icon (title in tooltip/aria), then only the chevron menu.
+ * `measure` renders the same geometry inertly, for the strip's hidden width rows.
+ */
+export const WidgetTabPicker = observer(function WidgetTabPicker({
+  display = "full",
+  measure = false,
+}: {
+  display?: WorkspaceTabPresentation["widget"];
+  measure?: boolean;
+}) {
   const root = useStore(RootStore);
   const store = root.widgetAttachmentStore;
   const widgets = store.availableTabWidgets;
@@ -17,58 +28,78 @@ export const WidgetTabPicker = observer(function WidgetTabPicker() {
   const [open, setOpen] = useState(false);
   if (!widgets.length) return null;
   const title = selected ? store.title(selected) : undefined;
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      {selected ? (
-        <div
-          className={cn(
-            "flex h-7 min-w-0 max-w-[40%] shrink items-center rounded-lg border transition-colors",
-            active
-              ? "border-accent/35 bg-accent/15 text-accent"
-              : "border-transparent text-muted-foreground hover:bg-foreground/[0.055]",
-          )}
-        >
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-pressed={active}
-            aria-label={`Widget tab: ${title}`}
-            title={title}
-            className={cn(
-              "h-full min-w-0 shrink rounded-l-lg rounded-r-none pl-2 pr-0.5 text-xs hover:bg-transparent",
-              active && "font-semibold text-accent hover:text-accent",
-            )}
-            onClick={() => navigator.showWidget()}
-          >
-            <span className="min-w-0 truncate">{title}</span>
-          </Button>
-          <PopoverTrigger
-            size="sm"
-            variant="ghost"
-            className={cn(
-              "h-full shrink-0 rounded-l-none rounded-r-lg px-1 hover:bg-transparent",
-              active && "text-accent hover:text-accent",
-            )}
-            aria-label="Widget tabs"
-            aria-haspopup="menu"
-            title="Choose widget"
-          >
-            <ChevronIcon />
-          </PopoverTrigger>
-        </div>
-      ) : (
-        <PopoverTrigger
+  const Trigger = measure ? Button : PopoverTrigger;
+  const trigger =
+    selected && display !== "menu" ? (
+      <div
+        className={cn(
+          "flex h-7 min-w-0 shrink-0 items-center rounded-lg border transition-colors",
+          active
+            ? "border-accent/35 bg-accent/15 text-accent"
+            : "border-transparent text-muted-foreground hover:bg-foreground/[0.055]",
+        )}
+      >
+        <Button
           size="sm"
           variant="ghost"
-          className="h-7 min-w-0 max-w-[40%] shrink gap-1 rounded-lg px-2 text-xs hover:bg-foreground/[0.055]"
+          aria-pressed={active}
+          aria-label={`Widget tab: ${title}`}
+          title={title}
+          className={cn(
+            "h-full min-w-0 shrink-0 rounded-l-lg rounded-r-none pr-0.5 text-xs hover:bg-transparent",
+            display === "full" ? "pl-2" : "pl-1.5",
+            active && "font-semibold text-accent hover:text-accent",
+          )}
+          onClick={measure ? undefined : () => navigator.showWidget()}
+        >
+          {display === "full" ? (
+            <span className="max-w-40 min-w-0 truncate">{title}</span>
+          ) : (
+            <WidgetIcon />
+          )}
+        </Button>
+        <Trigger
+          size="sm"
+          variant="ghost"
+          className={cn(
+            "h-full shrink-0 rounded-l-none rounded-r-lg px-1 hover:bg-transparent",
+            active && "text-accent hover:text-accent",
+          )}
           aria-label="Widget tabs"
           aria-haspopup="menu"
-          title="Widgets"
+          title="Choose widget"
         >
+          <ChevronIcon />
+        </Trigger>
+      </div>
+    ) : (
+      <Trigger
+        size="sm"
+        variant="ghost"
+        data-active={selected && active ? true : undefined}
+        className={cn(
+          "h-7 min-w-0 shrink-0 gap-1 rounded-lg border text-xs",
+          display === "full" ? "px-2" : "px-1",
+          selected && active
+            ? "border-accent/35 bg-accent/15 font-semibold text-accent hover:bg-accent/15 hover:text-accent"
+            : "border-transparent hover:bg-foreground/[0.055]",
+        )}
+        aria-label="Widget tabs"
+        aria-haspopup="menu"
+        title={title ? `Widgets · ${title}` : "Widgets"}
+      >
+        {display === "full" ? (
           <span className="min-w-0 truncate">Widgets</span>
-          <ChevronIcon className="shrink-0" />
-        </PopoverTrigger>
-      )}
+        ) : (
+          display === "icon" && <WidgetIcon />
+        )}
+        <ChevronIcon className="shrink-0" />
+      </Trigger>
+    );
+  if (measure) return trigger;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      {trigger}
       <PopoverContent
         role="menu"
         aria-label="Widget tabs"
