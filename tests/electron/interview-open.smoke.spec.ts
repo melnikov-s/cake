@@ -302,17 +302,17 @@ reply({ ready: true });
         const transcript = page.locator(
           '.transcript:not([data-slot="content-transition-outgoing"] *)',
         );
+        // Scroll with the reader's wheel, not scripted scroll offsets.
         await transcript.hover();
-        await page.mouse.wheel(0, -10_000);
-        await transcript.evaluate((element) => {
-          element.scrollTop = 0;
-        });
         // Prove virtualization actually unmounted the interview, not merely hid it.
-        await expect(form).toHaveCount(0);
-        await transcript.evaluate((element) => {
-          element.scrollTop = element.scrollHeight;
-        });
-        await expect(form).toBeVisible();
+        await expect(async () => {
+          await page.mouse.wheel(0, -5_000);
+          await expect(form).toHaveCount(0, { timeout: 250 });
+        }).toPass({ timeout: 15_000 });
+        await expect(async () => {
+          await page.mouse.wheel(0, 5_000);
+          await expect(form).toBeVisible({ timeout: 250 });
+        }).toPass({ timeout: 15_000 });
       };
       await expect(form).toBeVisible({ timeout: 30_000 });
       await expect(page.locator('.transcript [data-interview-id="call_interview"]')).toBeVisible();

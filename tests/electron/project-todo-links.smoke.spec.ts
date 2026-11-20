@@ -109,29 +109,37 @@ for (const theme of ["light", "dark"] as const) {
         ["Investigation notes", "README.md"],
         ["Startup implementation", "startup.ts#L1"],
       ];
+      // Session links name their label, the session title and the reference; every link's
+      // description and tooltip end with its destination (5c284c46).
+      const endsWith = (href: string) =>
+        new RegExp(`${href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
       const icons: string[] = [];
       for (const [title, href] of destinations) {
         const link = panel.getByRole("link", { name: title, exact: true });
         await expect(link).toHaveAttribute("href", href);
         await expect(link.locator(":scope > svg")).toBeHidden();
-        await expect(link).toHaveAccessibleDescription(href!);
+        await expect(link).toHaveAccessibleDescription(endsWith(href!));
         await expect(link).toHaveCSS("font-size", "14px");
         await expect(link).toHaveCSS("font-weight", "400");
         await expect(link).toHaveCSS("line-height", "16px");
         await expect(link).toHaveCSS("text-decoration-line", "none");
-        const icon = link.locator("..").locator(":scope > span > svg");
+        // The kind glyph sits in its own wrapper beside the activity dot (06aa318f).
+        const icon = link.locator("xpath=../..").locator(":scope > span:first-child > span:last-child svg");
         await expect(icon).toHaveAttribute("aria-hidden", "true");
         await expect(icon).toBeVisible();
         await expect(icon).toHaveCSS("width", "12px");
         await expect(icon).toHaveCSS("height", "12px");
         icons.push(await icon.innerHTML());
         await link.hover();
-        await expect(page.getByRole("tooltip")).toHaveText(href!);
+        await expect(page.getByRole("tooltip")).toHaveText(endsWith(href!));
         await expect(link).toHaveCSS("text-decoration-line", "underline");
         await page.mouse.move(1, 1);
         await expect(page.getByRole("tooltip")).not.toBeAttached();
       }
-      expect(new Set(icons.slice(0, 5)).size).toBe(5);
+      // The session and its message link share the session's purpose glyph (b6cd0f2d); the
+      // website, artifact and file kinds each keep a distinct glyph.
+      expect(icons[1]).toBe(icons[0]);
+      expect(new Set(icons.slice(1, 5)).size).toBe(4);
       // Modified Tab retains native sequential navigation; plain Tab returns to writing.
       // Start from the next row's disclosure and walk back across the Active header with Shift+Tab.
       const hideLinks = panel.getByRole("button", {
@@ -148,7 +156,7 @@ for (const theme of ["light", "dark"] as const) {
         if (index > 0) await page.keyboard.press("Shift+Tab");
         const link = panel.getByRole("link", { name: title, exact: true });
         await expect(link).toBeFocused();
-        await expect(page.getByRole("tooltip")).toHaveText(href!);
+        await expect(page.getByRole("tooltip")).toHaveText(endsWith(href!));
         await expect(link).toHaveCSS("outline-style", "solid");
       }
       await page.keyboard.press("Shift+Tab");

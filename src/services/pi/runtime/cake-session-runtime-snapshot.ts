@@ -76,7 +76,7 @@ export function projectCakeSessionRuntimeSnapshot(
     sessionFile: session.sessionFile ?? "",
     sessionListed: input.sessionListed,
     // Live tool progress replaces the branch's unfinished tool placeholder.
-    parts: [...new Map(parts.map((part) => [part.id, part])).values()],
+    parts: withoutReplacedParts(parts),
     model: session.model
       ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
       : undefined,
@@ -116,4 +116,23 @@ export function projectCakeSessionRuntimeSnapshot(
     },
     tree: input.auxiliary ? [] : projectTree(session.sessionManager),
   };
+}
+
+/** Later parts replace earlier ones by ID; live tool rows keep the branch's interview link. */
+function withoutReplacedParts(parts: readonly UiPart[]): UiPart[] {
+  const byId = new Map<string, UiPart>();
+  for (const part of parts) {
+    const previous = byId.get(part.id);
+    byId.set(
+      part.id,
+      previous?.kind === "tool" && part.kind === "tool" && previous.interview && !part.interview
+        ? {
+            ...part,
+            interview: previous.interview,
+            interviewResult: part.interviewResult ?? previous.interviewResult,
+          }
+        : part,
+    );
+  }
+  return [...byId.values()];
 }
