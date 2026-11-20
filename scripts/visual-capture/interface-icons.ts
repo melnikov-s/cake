@@ -119,10 +119,12 @@ export function createInterfaceIconsScenario(
         await expectGlyph(control, 18);
         expect((await control.boundingBox())!.height).toBe(height);
       }
+      // Borderless pill-tray mode switcher with 18px icons (84ece906).
       for (const name of ["Main", "VS Code", "Browser"]) {
         const control = page.getByRole("button", { name, exact: true });
-        await expectGlyph(control, 24);
-        expect((await control.boundingBox())!.height).toBe(28);
+        await expectGlyph(control, 18);
+        // 24px buttons inside the slimmer tray (915f0e09).
+        expect((await control.boundingBox())!.height).toBe(24);
       }
       for (const name of ["Terminal", "Close Workspace"]) {
         await expectGlyph(page.getByRole("button", { name, exact: true }), 18);
@@ -212,7 +214,11 @@ export function createInterfaceIconsScenario(
           expect(target!.width).toBeGreaterThanOrEqual(20);
           expect(target!.height).toBeGreaterThanOrEqual(20);
         }
-        // Work-link glyphs sit in their own icon wrapper beside the activity dot (06aa318f).
+        // Links sit behind the row's link disclosure (50e4459e); their glyphs keep their own
+        // icon wrapper beside the activity dot (06aa318f).
+        await row
+          .getByRole("button", { name: /^Show \d+ links? for Startup investigation$/ })
+          .click();
         const glyphs = row.locator("ul li > span > span > span > svg");
         expect(await glyphs.count()).toBeGreaterThan(0);
         for (const glyph of await glyphs.all()) {
@@ -222,13 +228,22 @@ export function createInterfaceIconsScenario(
         }
         await expectGlyph(workspace.getByRole("button", { name: "Active (1)", exact: true }), 12);
         await expectGlyph(page.getByRole("button", { name: "Clear to-do focus", exact: true }), 12);
-        const dot = page.getByRole("img", { name: "Ready for review", exact: true });
-        const dotBox = await dot.boundingBox();
-        expect(dotBox!.width).toBe(8);
-        expect(dotBox!.height).toBe(8);
+        // The leading status indicator replaced the separate status-text dot (fd47599d).
+        const indicator = page
+          .locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]')
+          .getByRole("img", { name: "Needs your input", exact: true });
+        const indicatorBox = await indicator.boundingBox();
+        expect(indicatorBox!.width).toBe(16);
+        expect(indicatorBox!.height).toBe(16);
         for (const item of await workspace.locator("[data-todo-id]").all()) {
           const geometry = await item.evaluate((element) => {
-            const title = element.querySelector("button[aria-pressed]")!.getBoundingClientRect();
+            const disclosure = element.querySelector('[data-slot="todo-disclosure"]')!;
+            const title = disclosure.getBoundingClientRect();
+            // Rows bleed 8px past their list item for the hover fill (c7c99e7f); the row's own
+            // content must still fit, and the bleed must stay inside the scrolling list.
+            const row = disclosure.parentElement!;
+            const list = element.closest('[role="list"], ul')!.getBoundingClientRect();
+            const rowBox = row.getBoundingClientRect();
             const actions = element
               .querySelector('[data-slot="todo-actions"]')!
               .getBoundingClientRect();
@@ -237,7 +252,10 @@ export function createInterfaceIconsScenario(
               .getBoundingClientRect();
             return {
               separated: done.right <= title.left && title.right <= actions.left,
-              fits: element.scrollWidth <= element.clientWidth,
+              fits:
+                row.scrollWidth <= row.clientWidth &&
+                rowBox.left >= list.left - 8 &&
+                rowBox.right <= list.right + 8,
             };
           });
           expect(geometry).toEqual({ separated: true, fits: true });

@@ -3547,8 +3547,8 @@ const projectChatTodos: VisualCaptureScenario = {
     if (state === "hover") {
       const row = page.locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]');
       await row.hover();
+      // Rows show one leading status indicator; free-form status text is no longer drawn (fd47599d).
       await expect(row.getByRole("img", { name: "Needs your input" })).toBeVisible();
-      await expect(page.getByRole("img", { name: "Ready for review", exact: true })).toBeVisible();
     }
   },
   region: (page, state) =>
