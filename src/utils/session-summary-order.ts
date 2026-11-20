@@ -7,16 +7,23 @@ export function compareSessionPurposes(
   return Number(left.purpose === "delegated") - Number(right.purpose === "delegated");
 }
 
+interface SessionCreationOrder {
+  createdAt: string;
+  sessionId: string;
+}
+
+function compareCreationOrder(left: SessionCreationOrder, right: SessionCreationOrder): number {
+  return (
+    right.createdAt.localeCompare(left.createdAt) || left.sessionId.localeCompare(right.sessionId)
+  );
+}
+
 /** User Sessions first, then stable newest-created-first order; activity and catalog arrival order never move rows. */
 export function compareSessionSummariesByCreation(
-  left: { createdAt: string; sessionId: string; purpose?: SessionPurpose },
-  right: { createdAt: string; sessionId: string; purpose?: SessionPurpose },
+  left: SessionCreationOrder & { purpose?: SessionPurpose },
+  right: SessionCreationOrder & { purpose?: SessionPurpose },
 ): number {
-  return (
-    compareSessionPurposes(left, right) ||
-    right.createdAt.localeCompare(left.createdAt) ||
-    left.sessionId.localeCompare(right.sessionId)
-  );
+  return compareSessionPurposes(left, right) || compareCreationOrder(left, right);
 }
 
 /** Minimal shape of a session summary needed to determine sidebar list order. */
@@ -37,6 +44,15 @@ export function compareSessionSummariesForSidebar(
   if (Boolean(left.working) !== Boolean(right.working)) return left.working ? -1 : 1;
   if (Boolean(left.draft) !== Boolean(right.draft)) return left.draft ? -1 : 1;
   return compareSessionSummariesByActivity(left, right);
+}
+
+/** Archive paging and display share the same purpose-independent date order. */
+export function compareResolvedSessionSummaries(
+  left: SessionCreationOrder & Pick<OrderableSessionSummary, "draft" | "modifiedAt">,
+  right: SessionCreationOrder & Pick<OrderableSessionSummary, "draft" | "modifiedAt">,
+): number {
+  if (Boolean(left.draft) !== Boolean(right.draft)) return left.draft ? -1 : 1;
+  return compareSessionSummariesByActivity(left, right) || compareCreationOrder(left, right);
 }
 
 /** Latest-activity order (newest first) for recency-based catalogs and resolved history. */

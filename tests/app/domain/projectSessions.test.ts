@@ -3463,13 +3463,23 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("pages resolved roots before title loading and reports hasMore", () => {
+  it.effect("pages resolved roots by date across purposes before loading titles", () => {
     const entries = Array.from({ length: 12 }, (_, index) => ({
       sessionId: `session-${index}`,
       modifiedAt: `2026-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
     }));
     return Effect.gen(function* () {
       const archive = yield* SessionArchiveStorage;
+      const families = yield* SessionFamilyStorage;
+      for (const [index, entry] of entries.entries()) {
+        const purpose = index % 2 === 0 ? "user" : "delegated";
+        yield* families.registerPurpose({
+          sessionId: entry.sessionId,
+          projectPath: "/project",
+          purpose,
+          createdPurpose: purpose,
+        });
+      }
       const titlePages: string[][] = [];
       const page = (limit: number) =>
         projectSessionMetadata
@@ -3490,15 +3500,23 @@ describe("Project Sessions domain", () => {
           );
       const [first] = yield* page(10);
       assert.ok(first?._tag === "Snapshot");
-      assert.equal(first.sessions.length, 10);
-      assert.equal(first.sessions[0]?.sessionId, "session-11");
-      assert.equal(first.sessions[9]?.sessionId, "session-2");
+      const expectedOrder = entries.map((entry) => entry.sessionId).reverse();
+      assert.deepEqual(
+        first.sessions.map((row) => row.sessionId),
+        expectedOrder.slice(0, 10),
+      );
+      assert.deepEqual(
+        first.sessions.slice(0, 2).map((row) => row.purpose),
+        ["delegated", "user"],
+      );
       assert.equal(first.hasMore, true);
       assert.equal(first.total, 12);
       const [second] = yield* page(20);
       assert.ok(second?._tag === "Snapshot");
-      assert.equal(second.sessions.length, 12);
-      assert.equal(second.sessions[11]?.sessionId, "session-0");
+      assert.deepEqual(
+        second.sessions.map((row) => row.sessionId),
+        expectedOrder,
+      );
       assert.equal(second.hasMore, false);
       assert.deepEqual(
         titlePages.map((page) => page.length),

@@ -9,6 +9,7 @@ import {
 import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
 import {
+  compareResolvedSessionSummaries,
   compareSessionPurposes,
   compareSessionSummariesByCreation,
   compareSessionSummariesForSidebar,
@@ -539,19 +540,23 @@ export class SidebarSessionListStore extends Store<{
     // Running rows keep creation order; other groups use each root's own update,
     // never a descendant's completion or unread message.
     const compareByDate = (left: (typeof roots)[number], right: (typeof roots)[number]) =>
-      activityPriorities.get(left.sessionId) === 1
-        ? compareSessionSummariesByCreation(left, right)
-        : compareSessionSummariesForSidebar(
-            { modifiedAt: latestActivity(left), draft: left.draft },
-            { modifiedAt: latestActivity(right), draft: right.draft },
-          ) || compareSessionSummariesByCreation(left, right);
+      resolved
+        ? compareResolvedSessionSummaries(left, right)
+        : activityPriorities.get(left.sessionId) === 1
+          ? compareSessionSummariesByCreation(left, right)
+          : compareSessionSummariesForSidebar(
+              { modifiedAt: latestActivity(left), draft: left.draft },
+              { modifiedAt: latestActivity(right), draft: right.draft },
+            ) || compareSessionSummariesByCreation(left, right);
     const labelOrder =
       this.projectSessionSort(projectPath) === "label"
         ? new Map(this.metadata.projectLabels(projectPath).map((label, index) => [label.id, index]))
         : undefined;
     roots.sort((left, right) => {
-      const purposeOrder = compareSessionPurposes(left, right);
-      if (purposeOrder) return purposeOrder;
+      if (!resolved) {
+        const purposeOrder = compareSessionPurposes(left, right);
+        if (purposeOrder) return purposeOrder;
+      }
       const activityOrder =
         activityPriorities.get(left.sessionId)! - activityPriorities.get(right.sessionId)!;
       if (activityOrder) return activityOrder;

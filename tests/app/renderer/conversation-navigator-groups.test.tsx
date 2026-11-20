@@ -341,14 +341,50 @@ describe("Conversation navigator session groups", () => {
     expect(document.querySelector('[data-session-id="work-b"]')).toBe(row);
   });
 
-  it("leaves the Resolved sessions disclosure collapsed by default and toggles it", async () => {
-    using view = renderGroups([mine("mine-a"), delegated("work-a")], 4);
-    const resolved = view.header("Resolved sessions");
-    expect(resolved.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("region", { name: "Resolved sessions" })).toBeNull();
-    await view.user.click(resolved);
-    expect(view.header("Resolved sessions").getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("region", { name: "Resolved sessions" })).toBeDefined();
-    expect(view.count("Resolved sessions")).toBe("4");
-  });
+  it.each([false, true])(
+    "lists resolved sessions together in date order without touching active groups (global=%s)",
+    async (global) => {
+      using view = renderGroups(
+        [
+          mine("mine-active"),
+          delegated("work-active"),
+          mine("archive-z", { resolved: true }),
+          delegated("archive-a", { resolved: true }),
+          delegated("archive-middle", {
+            resolved: true,
+            modifiedAt: "2026-02-01T00:00:00.000Z",
+          }),
+          mine("archive-newest", {
+            resolved: true,
+            modifiedAt: "2026-03-01T00:00:00.000Z",
+          }),
+        ],
+        undefined,
+        global,
+      );
+
+      const toggle = view.header("Resolved sessions");
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(screen.queryByRole("region", { name: "Resolved sessions" })).toBeNull();
+      await view.user.click(view.header("Delegated"));
+      await view.user.click(toggle);
+
+      expect(view.header("Resolved sessions").getAttribute("aria-expanded")).toBe("true");
+      const resolved = screen.getByRole("region", { name: "Resolved sessions" });
+      const archivedIds = () =>
+        Array.from(resolved.querySelectorAll('[data-slot="conversation-navigator-row"]'), (row) =>
+          row.getAttribute("data-session-id"),
+        );
+      expect(archivedIds()).toEqual(["archive-newest", "archive-middle", "archive-a", "archive-z"]);
+      expect(within(resolved).queryAllByRole("heading")).toEqual([]);
+      expect(within(resolved).queryAllByRole("region")).toEqual([]);
+      expect(view.active().getByRole("heading", { name: "My sessions" })).toBeDefined();
+      expect(view.active().getByRole("heading", { name: "Delegated" })).toBeDefined();
+      expect(view.header("Delegated").getAttribute("aria-expanded")).toBe("false");
+      expect(view.sessionIds()).not.toContain("work-active");
+
+      await view.user.type(screen.getByRole("searchbox", { name: "Search sessions" }), "archive-a");
+      expect(archivedIds()).toEqual(["archive-a"]);
+    },
+  );
 });

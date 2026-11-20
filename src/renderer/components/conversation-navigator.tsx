@@ -116,22 +116,13 @@ export const ConversationNavigator = observer(function ConversationNavigator({
         )}
         {resolvedExpanded && resolvedCount !== 0 && (
           <section aria-label="Resolved sessions">
-            {store.rowGroups(projectPath, true).map((group) => (
-              <section key={group.key} aria-label={group.label}>
-                {group.label && (
-                  <h3 className="px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
-                    {group.label}
-                  </h3>
-                )}
-                {group.rows.map(({ node, depth }) => (
-                  <ConversationNavigatorRow
-                    key={node.key}
-                    node={node}
-                    depth={depth}
-                    projectPath={projectPath}
-                  />
-                ))}
-              </section>
+            {store.rows(projectPath, true).map(({ node, depth }) => (
+              <ConversationNavigatorRow
+                key={node.key}
+                node={node}
+                depth={depth}
+                projectPath={projectPath}
+              />
             ))}
             {resolvedHasMore && (
               <Button

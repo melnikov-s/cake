@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { expect } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
@@ -20,7 +20,7 @@ const resolvedSessions: FixtureSession[] = [
   {
     id: id(90),
     title: "Tidy release notes",
-    kind: "delegated",
+    kind: "user",
     date: "2026-01-02",
     resolved: true,
   },
@@ -131,7 +131,7 @@ function createScenario(
             },
           }),
         ),
-        ...all.map((session) => {
+        ...all.map(async (session) => {
           const timestamp = `${session.date}T00:00:00.000Z`;
           const entries = [
             { type: "session", version: 3, id: session.id, timestamp, cwd: paths.project },
@@ -144,13 +144,15 @@ function createScenario(
               message: { role: "user", content: "What changed?", timestamp: 0 },
             },
           ];
-          return writeFile(
-            join(
-              session.resolved ? resolvedDirectory : activeDirectory,
-              `${session.date}T00-00-00-000Z_${session.id}.jsonl`,
-            ),
-            entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+          const file = join(
+            session.resolved ? resolvedDirectory : activeDirectory,
+            `${session.date}T00-00-00-000Z_${session.id}.jsonl`,
           );
+          await writeFile(file, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+          if (session.resolved) {
+            const date = new Date(timestamp);
+            await utimes(file, date, date);
+          }
         }),
       ]);
     },
@@ -187,9 +189,14 @@ function createScenario(
       }
       if (state === "resolved-expanded") {
         await resolved.click();
-        await expect(
-          page.getByRole("region", { name: "Resolved sessions" }).getByText("Sketch onboarding"),
-        ).toBeVisible();
+        const history = page.getByRole("region", { name: "Resolved sessions" });
+        const rows = history.locator('[data-slot="conversation-navigator-row"]');
+        await expect(rows).toHaveCount(3);
+        await expect(rows.nth(0)).toContainText("Sketch onboarding");
+        await expect(rows.nth(1)).toContainText("Audit icon sizes");
+        await expect(rows.nth(2)).toContainText("Tidy release notes");
+        await expect(history.getByRole("heading")).toHaveCount(0);
+        await expect(history.getByRole("region")).toHaveCount(0);
       }
       await page.mouse.move(1, 1);
     },

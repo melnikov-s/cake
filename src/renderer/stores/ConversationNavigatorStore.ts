@@ -529,9 +529,9 @@ export class ConversationNavigatorStore extends Store<{
    * Presentation groups only; ownership, family edges and to-do order are unchanged.
    * Active kind groups get a collapsible header only when both kinds are active in the Project.
    */
-  rowGroups(projectPath: string | undefined, resolved = false): readonly ConversationRowGroup[] {
-    const rows = this.rows(projectPath, resolved);
-    const tree = this.tree(projectPath, resolved);
+  rowGroups(projectPath: string | undefined): readonly ConversationRowGroup[] {
+    const rows = this.rows(projectPath);
+    const tree = this.tree(projectPath);
     const groups: ConversationRowGroup[] = [];
     // Paging may leave an expanded kind with no rows yet; only search hides its header.
     const searching = Boolean(this.query(projectPath).trim());
@@ -554,17 +554,13 @@ export class ConversationNavigatorStore extends Store<{
         segmentProject ??
         (first && this.props.catalog.find(first.node.target.sessionId)?.projectPath);
       const list = this.props.sessionList;
-      const headed =
-        !resolved && path !== undefined && list.showsSessionKindGroups(path) ? path : undefined;
+      const headed = path !== undefined && list.showsSessionKindGroups(path) ? path : undefined;
       const counts = headed !== undefined ? list.activeSessionKindCounts(headed) : undefined;
       for (const kind of sessionKinds) {
         const expanded = headed === undefined || list.isSessionKindGroupExpanded(headed, kind);
         const kindRows = expanded ? segment.filter(({ node }) => kindOf(node) === kind) : [];
-        const key = `${resolved ? "resolved" : "active"}:${path ?? ""}:${kind}`;
-        // Resolved history keeps its plain labels inside the Resolved sessions disclosure.
-        if (resolved) {
-          if (kindRows.length) groups.push({ key, label: sessionKindLabels[kind], rows: kindRows });
-        } else if (headed !== undefined && (kindRows.length || !expanded || !searching)) {
+        const key = `active:${path ?? ""}:${kind}`;
+        if (headed !== undefined && (kindRows.length || !expanded || !searching)) {
           groups.push({
             key,
             label: sessionKindLabels[kind],

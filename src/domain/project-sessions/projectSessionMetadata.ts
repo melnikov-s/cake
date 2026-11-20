@@ -9,7 +9,7 @@ import { getState } from "../application/application";
 import type { ApplicationState } from "../../contracts/application/application-data";
 import type { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
 import { toJsonValue } from "../../utils/to-json-value";
-import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
+import { compareResolvedSessionSummaries } from "../../utils/session-summary-order";
 import { PiSessionError, CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
@@ -350,9 +350,12 @@ const resolvedCatalogPage = Effect.fn("ProjectSessions.resolvedCatalogPage")(fun
   const familyByMember = new Map(
     families.flatMap((family) => familyMemberIds(family).map((id) => [id, family] as const)),
   );
-  const roots: Array<{ sessionId: string; modifiedAt: string; family?: SessionFamily }> = entries
-    .filter((entry) => !familyByMember.has(entry.sessionId))
-    .map((entry) => entry);
+  const roots: Array<{
+    sessionId: string;
+    createdAt: string;
+    modifiedAt: string;
+    family?: SessionFamily;
+  }> = entries.filter((entry) => !familyByMember.has(entry.sessionId));
   // Old families may predate project archive metadata. Check resolution once per
   // location, without opening every family's transcripts just to choose a page.
   const missingByLocation = new Map<string, SessionFamily[]>();
@@ -378,16 +381,15 @@ const resolvedCatalogPage = Effect.fn("ProjectSessions.resolvedCatalogPage")(fun
         .pipe(asError("list"));
       for (const family of group)
         if (ids.has(family.parentSessionId))
-          roots.push({ sessionId: family.parentSessionId, modifiedAt: family.createdAt, family });
+          roots.push({
+            sessionId: family.parentSessionId,
+            createdAt: family.createdAt,
+            modifiedAt: family.createdAt,
+            family,
+          });
     }
   }
-  roots.sort(
-    (left, right) =>
-      compareSessionSummariesForSidebar(
-        { ...left, purpose: sessionPurpose(metadata, left.sessionId) },
-        { ...right, purpose: sessionPurpose(metadata, right.sessionId) },
-      ) || left.sessionId.localeCompare(right.sessionId),
-  );
+  roots.sort(compareResolvedSessionSummaries);
   const selected = roots.slice(0, query.limit ?? 10);
   const selectedEntries = selected.flatMap((root) =>
     (root.family ? familyMemberIds(root.family) : [root.sessionId]).flatMap((id) =>
