@@ -188,8 +188,13 @@ for (const reducedMotion of [false, true]) {
         category("Active").getByRole("button", { name: "Task 31", exact: true }),
       ).toBeAttached();
       await expect(composer).toHaveValue("Keep this draft");
-      expect(await pane.evaluate((element) => element.scrollTop)).toBe(top);
+      // The pane issues no scroll request and stays scrolled. Removing the emptied Needs
+      // attention header lets the list keep either the rows above or below it in place, so the
+      // exact offset may move by that header's height.
       expect(await scrolls()).toHaveLength(beforeDismiss);
+      const after = await pane.evaluate((element) => element.scrollTop);
+      expect(after).toBeGreaterThan(0);
+      expect(Math.abs(after - top)).toBeLessThanOrEqual(64);
       // Filtering preserves typing focus and, like focus moves, does not animate rows (73be2e7c).
       const search = panel.getByRole("searchbox", { name: "Search to-dos" });
       await search.fill("Task 0");
