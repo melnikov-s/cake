@@ -47,7 +47,7 @@ describe("Sidebar catalog demand", () => {
     expect(list.cakeChatCatalogQueries).toContainEqual({ resolved: true, limit: 20 });
   });
 
-  it("keeps the shown Project's resolved page observed while Search sessions is open", () => {
+  it("keeps the shown Project's resolved page observed while Search sessions opens over it", () => {
     using fixture = createRendererStoreFixture({
       projects: [projectRecord({ path: "/cake" }), projectRecord({ path: "/pi" })],
     });
@@ -60,11 +60,17 @@ describe("Sidebar catalog demand", () => {
       { projectPath: "/cake", resolved: false },
       shownArchive,
     ]);
-    // Search covers every Project; the resolved rows already shown must stay searchable.
+    // Search covers every Project; the resolved rows the open pane shows stay searchable.
     fixture.root.sidebarStore.sessionSearchStore.show();
     expect(list.projectSessionCatalogQueries).toEqual([
       { projectPath: "/cake", resolved: false },
       shownArchive,
+      { projectPath: "/pi", resolved: false },
+    ]);
+    // With the pane closed, search observes active lanes only.
+    navigator.close();
+    expect(list.projectSessionCatalogQueries).toEqual([
+      { projectPath: "/cake", resolved: false },
       { projectPath: "/pi", resolved: false },
     ]);
   });
