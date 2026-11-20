@@ -31,6 +31,7 @@ async function startProbe(page: Page) {
     const result: MediaProbe = { loadingFrames: 0, diagramFrames: 0, imageFrames: 0, jumps: [] };
     type Geometry = {
       viewportTop: number;
+      viewportBottom: number;
       rows: Array<{ id: string; top: number; bottom: number }>;
       loading: boolean;
       diagram: boolean;
@@ -62,7 +63,13 @@ async function startProbe(page: Page) {
           result.jumps.push({ id: previous.id, delta: "unmounted" });
         }
       }
-      previous = painted.rows.find((row) => row.bottom > painted.viewportTop + 1);
+      // The list's DOM order is its container order, not reading order. Track the first row
+      // that starts inside the viewport: the reader's reference line. A row cut off above it
+      // may grow upward offscreen (loading media) without moving what the reader sees.
+      const visible = painted.rows
+        .filter((row) => row.bottom > painted.viewportTop + 1 && row.top < painted.viewportBottom)
+        .sort((left, right) => left.top - right.top);
+      previous = visible.find((row) => row.top >= painted.viewportTop) ?? visible[0];
       if (painted.diagram) result.diagramFrames++;
       if (painted.loading) {
         result.loadingFrames++;
@@ -74,6 +81,7 @@ async function startProbe(page: Page) {
       const block = scroller.querySelector('[data-diagram="pele"]');
       pending = {
         viewportTop: scroller.getBoundingClientRect().top,
+        viewportBottom: scroller.getBoundingClientRect().bottom,
         rows: [...scroller.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")].map(
           (row) => {
             const rect = row.getBoundingClientRect();
