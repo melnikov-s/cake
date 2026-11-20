@@ -72,6 +72,30 @@ describe("inline model reference workflow", () => {
     expect(setConfiguration).not.toHaveBeenCalled();
   });
 
+  it("keeps the composer blurred while its context menu is open, even after Chromium refocuses it", async () => {
+    let close: (action: undefined) => void = () => undefined;
+    const showComposerContextMenu = vi.fn(
+      () => new Promise<undefined>((resolve) => (close = resolve)),
+    );
+    using fixture = renderChatConfiguration({
+      models: [configurationModel({ fastMode: true })],
+      presets: [preset],
+      client: { electron: { showComposerContextMenu } },
+    });
+    await fixture.user.type(input(), "Review this");
+    fireEvent.contextMenu(input(), { clientX: 10, clientY: 20 });
+    expect(document.activeElement).not.toBe(input());
+    // Chromium's right-click word selection focuses the editable after the event handler.
+    input().focus();
+    await act(() => new Promise((resolve) => setTimeout(resolve)));
+    expect(document.activeElement).not.toBe(input());
+    await act(async () => close(undefined));
+    // Once the menu settles the composer is the user's again.
+    input().focus();
+    await act(() => new Promise((resolve) => setTimeout(resolve)));
+    expect(document.activeElement).toBe(input());
+  });
+
   it("inserts an explicit model with effort and Fast, then edits just its Fast setting", async () => {
     using fixture = renderChatConfiguration({
       models: [configurationModel({ fastMode: true })],

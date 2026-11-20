@@ -259,8 +259,17 @@ export const ChatComposerInput = observer(function ChatComposerInput({
             text: input.value.slice(start, end),
           };
           suspendReferenceDictation();
+          let menuOpen = true;
+          // Chromium's right-click handling refocuses the editable after this handler (for
+          // example to select the word under the pointer). Keep it blurred while the menu is open.
+          setTimeout(() => {
+            if (menuOpen) inputRef.current?.blur();
+          });
           void store
             .showComposerContextMenu(selection.text, event.clientX, event.clientY)
+            .finally(() => {
+              menuOpen = false;
+            })
             .then((action) => {
               if (action === "insert-model") openReference(selection, input);
               else if (action === "insert-session" || action === "move-draft") {

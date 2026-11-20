@@ -207,7 +207,12 @@ for (const referenceKind of ["Model", "Session"] as const) {
           };
         });
         const openMenu = async () => {
-          await composer.click({ button: "right" });
+          // Right-click the composer's writing area beside the text, not an inserted chip.
+          const box = (await composer.boundingBox())!;
+          await composer.click({
+            button: "right",
+            position: { x: box.width - 16, y: box.height / 2 },
+          });
           await expect
             .poll(() =>
               application.evaluate(({ Menu }) => Boolean(Reflect.get(Menu, "referenceMenu"))),
