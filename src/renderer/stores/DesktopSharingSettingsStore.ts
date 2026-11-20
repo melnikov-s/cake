@@ -87,16 +87,21 @@ export class DesktopSharingSettingsStore extends Store {
   setGoogleEnabled(value: boolean) {
     if (this.enabled || this.pending) return;
     this.googleEnabled = value;
-    this.dirty = true;
+    this.markLocalEdit();
   }
   setGoogleClientId(value: string) {
     if (this.enabled || this.pending) return;
     this.googleClientId = value;
+    this.markLocalEdit();
+  }
+  /** A save already in flight must not rehydrate over a newer unsaved local edit. */
+  private markLocalEdit() {
+    ++this.editRevision;
     this.dirty = true;
   }
   setAllowedEmails(value: string) {
     this.allowedEmails = value;
-    this.dirty = true;
+    this.markLocalEdit();
   }
   async saveGooglePreferences() {
     const draft = this.draft();

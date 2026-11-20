@@ -6,10 +6,11 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { chromium, expect, test, type Page } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession, openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const openSharing = async (page: Page) => {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("button", { name: "Network & privacy", exact: true }).click();
   await expect(page.getByRole("switch", { name: "Enable browser sharing" })).toBeEnabled();
 };
@@ -75,9 +76,9 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
   try {
     const local = await application.firstWindow();
     local.setDefaultTimeout(15_000);
-    await expect(local.locator(".transcript").getByText(title, { exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // Launch starts in global Cake Chat; open the seeded Session explicitly.
+    await openSession(local, title);
+    await expect(local.locator(".transcript").getByText(title, { exact: true })).toBeVisible();
     await openSharing(local);
     const toggle = local.getByRole("switch", { name: "Enable browser sharing" });
     await expect(toggle).not.toBeChecked();
@@ -145,10 +146,12 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
     await expect.poll(() => application.windows().length).toBe(2);
     const second = application.windows().find((window) => window !== local);
     if (!second) throw new Error("Second desktop window missing");
+    // New windows start in global Cake Chat (40566199).
+    await openSettings(second);
     await second.getByRole("button", { name: "Network & privacy", exact: true }).click();
     await expect(second.getByRole("switch", { name: "Enable browser sharing" })).toBeChecked();
     await second.getByRole("button", { name: "Back to chat", exact: true }).click();
-    await second.locator(`.session-item[data-session-id="${id}"] .session-row`).click();
+    await openSession(second, title);
     await expect(second.locator(".transcript").getByText(title, { exact: true })).toBeVisible();
     await application.evaluate(({ Menu }) => {
       const item = Menu.getApplicationMenu()
@@ -198,7 +201,8 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
     const reopened = application.windows()[0];
     if (!reopened) throw new Error("Window did not reopen");
     reopened.setDefaultTimeout(15_000);
-    // Window snapshot restores the Settings surface; only the active settings page resets.
+    // A reopened window starts in global Cake Chat (40566199).
+    await openSettings(reopened);
     await reopened.getByRole("button", { name: "Network & privacy", exact: true }).click();
     const reopenedToggle = reopened.getByRole("switch", { name: "Enable browser sharing" });
     await expect(reopenedToggle).toBeChecked();
@@ -282,8 +286,13 @@ test("Google remote access saves approved accounts and renders a URL-only QR cod
     await expect(qr).toBeVisible();
     await expect(qr).toHaveJSProperty("naturalWidth", 224);
     await expect(clientId).toBeDisabled();
-    // The Wi-Fi-style toolbar control must expose the same URL-only QR, not just Settings.
-    await page.getByRole("button", { name: "Browser sharing: Online" }).first().click();
+    // The Wi-Fi-style rail control must expose the same URL-only QR, not just Settings. Settings
+    // is a full-window view without the rail, so return to chat first.
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: /^Browser sharing: Online/ })
+      .click();
     const panel = page.getByRole("dialog", { name: "Browser sharing" });
     const toolbarQr = panel.getByRole("img", { name: "Scan to open Cake and sign in with Google" });
     await expect(toolbarQr).toBeVisible();
@@ -293,6 +302,7 @@ test("Google remote access saves approved accounts and renders a URL-only QR cod
     await expect(panel).toContainText("Google sign-in required");
     await expect(panel).toContainText("reachability not verified");
     await page.keyboard.press("Escape");
+    await openSharing(page);
     await accounts.fill("owner@gmail.com");
     await page.getByRole("button", { name: "Save allowed accounts" }).click();
     await expect(accounts).toHaveValue("owner@gmail.com");
