@@ -7,7 +7,7 @@ import { defaultApplicationState } from "../../src/contracts/application/applica
 import { nativeNonChatScript, nonChatProviderSource } from "../fixtures/non-chat-provider";
 import { nonChatModelChoiceValue } from "../../src/renderer/lib/non-chat-model-choice";
 import { windowState } from "../fixtures/window-state";
-import { openSettings } from "./fixtures/workspace-navigation";
+import { createSessionInProject, openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 test("image/classifier preferences and native execution controls persist and reach native codemode", async () => {
@@ -80,7 +80,8 @@ test("image/classifier preferences and native execution controls persist and rea
     let page = await app.firstWindow();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+    // Launch always opens global Cake Chat (40566199).
+    await expect(page.getByRole("combobox", { name: "Message Cake Chat", exact: true })).toBeVisible({
       timeout: 20_000,
     });
     await openSettings(page);
@@ -133,12 +134,15 @@ test("image/classifier preferences and native execution controls persist and rea
     await app.close();
     app = await launch();
     page = await app.firstWindow();
+    // Startup never restores Settings (40566199); reopen them from the rail.
+    await openSettings(page);
     await page.getByRole("button", { name: /^Images\b/ }).click();
     await expect(page.getByRole("combobox", { name: "Preferred image model" })).toHaveValue(
       imageValue,
     );
     // Opening a project chat after changing startup tools must preserve native execution.
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await createSessionInProject(page, /^project(?: |$)/i);
     // Explicit fixture selection prevents any native fallback from using ambient credentials.
     const configuration = page.getByRole("button", { name: "Model configuration", exact: true });
     await configuration.click();

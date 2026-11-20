@@ -10,6 +10,7 @@ import { Effect, Exit, Scope } from "effect";
 import { connectClient } from "../integration/fixtures/network-client";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -258,6 +259,8 @@ export default function RemoteWidget() {
       await expect(page.getByText(`Remote: ${url}`, { exact: true })).toBeVisible({
         timeout: 20_000,
       });
+      // Launch starts in global Cake Chat (40566199); open the seeded remote Session.
+      await openSession(page, "Remote fixture existing session");
       await expect(
         page.locator(".transcript").getByText("Remote fixture existing session"),
       ).toBeVisible({ timeout: 20_000 });

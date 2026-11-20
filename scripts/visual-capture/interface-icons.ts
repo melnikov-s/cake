@@ -212,7 +212,8 @@ export function createInterfaceIconsScenario(
           expect(target!.width).toBeGreaterThanOrEqual(20);
           expect(target!.height).toBeGreaterThanOrEqual(20);
         }
-        const glyphs = row.locator("ul li > span > span > svg");
+        // Work-link glyphs sit in their own icon wrapper beside the activity dot (06aa318f).
+        const glyphs = row.locator("ul li > span > span > span > svg");
         expect(await glyphs.count()).toBeGreaterThan(0);
         for (const glyph of await glyphs.all()) {
           const box = await glyph.boundingBox();

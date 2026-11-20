@@ -11,6 +11,7 @@ import {
   originalImageBytes,
 } from "../fixtures/native-images";
 import { windowState } from "../fixtures/window-state";
+import { createSessionInProject, openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -141,6 +142,8 @@ test("native images appear in Chat and only explicitly requested originals are s
   });
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: "Model configuration" }).click();
@@ -192,6 +195,8 @@ test("native images appear in Chat and only explicitly requested originals are s
 
     // Saved Pi results replay inline too, without another generation request.
     await page.reload();
+    // Reload starts in global Cake Chat; reopen the Session, titled by its first request.
+    await openSession(page, "Generate native preview");
     await expect(page.getByText("Preview ready; no file saved.", { exact: true })).toBeVisible();
     await expect(preview).toBeVisible();
     await expect(workLog).not.toHaveAttribute("open");

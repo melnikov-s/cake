@@ -245,6 +245,8 @@ const harness = {
     run(withClient((client) => client.application.detachWidget({ id }))),
   listModels: () => run(withClient((client) => client.models.list())),
   listModelPresets: () => run(withClient((client) => client.modelPresets.list())),
+  readModelPresetPrompt: (id: string) =>
+    run(withClient((client) => client.modelPresets.readPrompt({ id }))),
   invokeElectronProbe: () =>
     run(
       withClient((client) =>
@@ -274,6 +276,7 @@ const harness = {
     name: string;
     provider: string;
     modelId: string;
+    prompt?: string;
     thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
     fastMode: boolean;
   }) => run(withClient((client) => client.modelPresets.create(input))),

@@ -3,6 +3,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { createPerformanceFixture, fixture, marker, sessionId } from "./fixtures/performance";
 import { installLocalModelHttpGuard } from "./main-harness";
+import { showSessions } from "./fixtures/workspace-navigation";
 
 const root = resolve(import.meta.dirname, "../..");
 
@@ -46,18 +47,20 @@ for (const visible of [false, true]) {
       const composer = page.locator('textarea[aria-label="Message"]');
       const row = (i: number) =>
         page.locator(`.session-item[data-session-id="${sessionId(i)}"] .session-row`);
-      await expect(transcript.getByText(marker(0), { exact: true })).toBeVisible({
-        timeout: 60_000,
-      });
+      // Launch starts in global Cake Chat (40566199); navigate from the Workspace Sessions list.
+      await showSessions(page);
       // Equal timestamps sort by title, so destination 2 need not be on the first page.
       const rows = page.locator(".session-item[data-session-id]");
-      // The selected transcript can hydrate before the first catalog page arrives.
-      await expect(rows).toHaveCount(Math.min(10, fixture.sessionCount));
+      await expect(rows).toHaveCount(Math.min(10, fixture.sessionCount), { timeout: 60_000 });
       while ((await rows.count()) < fixture.sessionCount) {
         const nextCount = Math.min(fixture.sessionCount, (await rows.count()) + 10);
         await page.getByRole("button", { name: "Show more", exact: true }).click();
         await expect(rows).toHaveCount(nextCount);
       }
+      await row(0).click();
+      await expect(transcript.getByText(marker(0), { exact: true })).toBeVisible({
+        timeout: 60_000,
+      });
       await composer.focus();
       await composer.pressSequentially("Retained draft zero");
       await expect(composer).toHaveValue("Retained draft zero");

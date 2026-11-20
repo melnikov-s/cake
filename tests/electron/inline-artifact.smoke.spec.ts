@@ -9,6 +9,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
 import { addHistoricalWidgetToCatalog } from "../fixtures/historical-widget-catalog";
+import { openSession } from "./fixtures/workspace-navigation";
 import { expectPresentationFitsRail } from "./artifact-layout-assertions";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -51,6 +52,8 @@ for (const theme of ["light", "dark"] as const) {
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1000),
       );
+      // Launch starts in global Cake Chat (40566199); open the seeded artifact Session.
+      await openSession(page, "Explain how Cake");
       const disclosures = page.locator('[data-slot="artifact-disclosure"]');
       await expect(page.getByRole("button", { name: "1 artifacts" })).toBeVisible({
         timeout: 20000,
@@ -193,14 +196,15 @@ for (const theme of ["light", "dark"] as const) {
           parentAccessible,
           networkAccessible,
           node: "process" in globalThis,
-          cake: "cake" in globalThis,
+          // The sandbox exposes only the widget SDK (dfb48756), never the desktop RPC bridge.
+          cake: Object.keys(Reflect.get(globalThis, "cake") ?? {}).sort(),
         };
       });
       expect(isolation).toEqual({
         parentAccessible: false,
         networkAccessible: false,
         node: false,
-        cake: false,
+        cake: ["call", "composer", "events", "poll", "session", "state", "tools"],
       });
       // Rendering and interacting with a publication do not open its accessory panel.
       await expect(page.getByRole("complementary", { name: "Inline visualization" })).toHaveCount(

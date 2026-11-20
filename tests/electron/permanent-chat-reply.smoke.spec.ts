@@ -10,6 +10,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { openProjectChat, openSession } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -173,6 +174,8 @@ for (const theme of ["dark", "light"] as const)
       });
       const page = await app.firstWindow();
       await page.emulateMedia({ reducedMotion: "reduce" });
+      // Launch starts in global Cake Chat (40566199); open the seeded Project Session first.
+      await openSession(page, "How should agents capture Cake UI changes?");
       await expect(
         page.getByRole("heading", { name: "Repository-owned visual checks" }),
       ).toBeVisible();
@@ -186,11 +189,11 @@ for (const theme of ["dark", "light"] as const)
 
       for (const surface of ["Cake Chat", "Project Chat"]) {
         if (surface === "Cake Chat")
-          await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-        else
           await page
-            .getByRole("button", { name: "Open Project Chat for project", exact: true })
+            .getByRole("navigation", { name: "Projects and global utilities" })
+            .getByRole("button", { name: "Open Cake Chat", exact: true })
             .click();
+        else await openProjectChat(page, "visual-capture-project");
         const input = page.getByRole("combobox", { name: `Message ${surface}`, exact: true });
         await expect(input).toBeVisible();
         // Initial positioning is at the newest answer, where the ordinary
@@ -208,11 +211,9 @@ for (const theme of ["dark", "light"] as const)
         // Scroll to an old message using the transcript, not the composer.
         const scroller = page.locator(".transcript");
         await expect(async () => {
-          await scroller.evaluate((element) => {
-            element.scrollTop = 0;
-            element.dispatchEvent(new Event("scroll"));
-          });
-          await expect(reply).toBeAttached();
+          await scroller.hover();
+          await page.mouse.wheel(0, -10_000);
+          await expect(reply).toBeAttached({ timeout: 1_000 });
         }).toPass();
         const question = page.locator("[data-part-id]").filter({
           has: page.getByText("Original question", { exact: true }),
@@ -231,7 +232,7 @@ for (const theme of ["dark", "light"] as const)
         const reference = `> replying to message: ${id}`;
         for (const draft of ["", "Keep my draft", "Keep my draft\n", "Keep my draft\n\n"]) {
           await input.fill(draft);
-          await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(0, 0));
+          await input.press(process.platform === "darwin" ? "Meta+ArrowUp" : "Control+Home");
           await original.hover();
           await reply.click();
           await expect(input).toHaveValue(draft);

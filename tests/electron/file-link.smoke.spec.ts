@@ -7,6 +7,7 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
+import { openSessionById } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -167,8 +168,24 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
 
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded image-led Session.
+    await openSessionById(page, sessionId);
     const link = page.locator('a[href="src/modelMeta.ts#L1"]');
     await expect(link).toHaveText("src/modelMeta.ts#L1");
+    // The freshly opened transcript settles (image decode, row measurement) before hovering;
+    // a link that moves out from under the pointer never shows its tooltip.
+    let previousBounds = "";
+    await expect
+      .poll(
+        async () => {
+          const bounds = JSON.stringify(await link.boundingBox());
+          const settled = bounds === previousBounds;
+          previousBounds = bounds;
+          return settled;
+        },
+        { intervals: [250] },
+      )
+      .toBe(true);
     await link.hover();
     await expect(link).toHaveAccessibleDescription("src/modelMeta.ts#L1");
     await expect(page.getByRole("tooltip")).toHaveText("src/modelMeta.ts#L1");
@@ -178,8 +195,10 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.getByRole("tooltip")).toHaveText("https://example.com/docs");
     const sessionLink = page.getByRole("link", { name: "this session" });
     await sessionLink.hover();
-    await expect(sessionLink).toHaveAccessibleDescription(`cake://session/${sessionId}`);
-    await expect(page.getByRole("tooltip")).toHaveText(`cake://session/${sessionId}`);
+    // Session links describe their label, the Session's title and then the reference (5c284c46).
+    const sessionDescription = new RegExp(`^this session.+cake://session/${sessionId}$`, "s");
+    await expect(sessionLink).toHaveAccessibleDescription(sessionDescription);
+    await expect(page.getByRole("tooltip")).toHaveText(sessionDescription);
     const presentation = (element: HTMLElement) => {
       const style = getComputedStyle(element);
       return { color: style.color, decoration: style.textDecorationLine };

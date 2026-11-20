@@ -19,7 +19,8 @@ test("Pi Durable's Node SQLite adapter persists and reopens inside hidden Electr
   });
   try {
     const page = await app.firstWindow();
-    await expect(page.getByRole("heading", { name: "What should we build?" })).toBeVisible({
+    // Launch always opens global Cake Chat (40566199), whose empty state marks a ready renderer.
+    await expect(page.getByRole("heading", { name: "What can I help you find or do?" })).toBeVisible({
       timeout: 20_000,
     });
     const result = await app.evaluate(

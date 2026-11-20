@@ -10,7 +10,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
-import { openSettings } from "./fixtures/workspace-navigation";
+import { openSession, openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -216,6 +216,8 @@ test("remote Electron uses the full shell and only the server owns agent state",
       // Reloading during the initial file navigation aborts one of the two loads.
       await page.waitForLoadState("load");
       await page.reload();
+      // Launch starts in global Cake Chat (40566199); open the seeded remote Session.
+      await openSession(page, "Existing remote transcript");
       await expect(
         page.locator(".transcript").getByText("Existing remote transcript", { exact: true }),
       ).toBeVisible({ timeout: 25_000 });

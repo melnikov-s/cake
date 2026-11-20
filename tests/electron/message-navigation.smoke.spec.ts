@@ -11,6 +11,7 @@ import { createModels } from "@earendil-works/pi-durable-ai";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openProjectChat, openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const usage = {
@@ -145,22 +146,13 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
     });
     try {
       const page = await application.firstWindow();
-      // Wait for the initial display, then explicitly select the surface under test.
-      await expect(page.getByText("Answer 12.", { exact: true })).toBeVisible({ timeout: 20_000 });
-      if (surface === "Cake Chat")
-        await page
-          .getByRole("complementary")
-          .getByRole("button", { name: "Cake Chat", exact: true })
-          .click();
-      if (surface === "Project Chat")
-        await page
-          .getByRole("button", { name: "Open Project Chat for project", exact: true })
-          .click();
-      if (surface === "Project Session")
-        await page
-          .locator(`.session-item[data-session-id="${projectId}"]`)
-          .getByRole("button", { name: /^Question 1(?:\s|$)/ })
-          .click();
+      // Launch always opens global Cake Chat (40566199); then explicitly select the
+      // surface under test through its real navigation.
+      await expect(
+        page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+      ).toBeVisible({ timeout: 20_000 });
+      if (surface === "Project Chat") await openProjectChat(page, "project");
+      if (surface === "Project Session") await openSession(page, "Question 1");
       const composer = page.getByRole("combobox", {
         name: coordinator ? `Message ${surface}` : "Message",
         exact: true,

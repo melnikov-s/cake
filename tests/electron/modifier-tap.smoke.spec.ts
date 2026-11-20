@@ -46,7 +46,8 @@ test("records and dispatches standalone Right Option once, without intercepting 
   });
   try {
     const page = await application.firstWindow();
-    const message = page.getByRole("combobox", { name: "Message", exact: true });
+    // Launch always opens global Cake Chat (40566199), whose composer and Workspace serve here.
+    const message = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
     await expect(message).toBeVisible({ timeout: 20_000 });
     const mod = process.platform === "darwin" ? "Meta" : "Control";
     const rightLabel = process.platform === "darwin" ? "Right Option" : "Right Alt";

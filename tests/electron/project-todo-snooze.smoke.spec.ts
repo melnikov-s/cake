@@ -6,6 +6,7 @@ import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 import { localSnoozeDateTime } from "../../src/renderer/lib/project-todo-snooze";
+import { showTodos } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -73,17 +74,22 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     });
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1500, height: 900 });
-    const toggle = page.getByRole("button", { name: "To-do", exact: true });
+    // To-dos live in the shared Workspace accessory since chat-first navigation (582d0fc7);
+    // its To-dos toggle counts the open to-dos.
+    const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
+    const toggle = panel.getByRole("button", { name: /^To-dos\b/ });
     const openProjectTodos = async () => {
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await page
+        .getByRole("navigation", { name: "Projects and global utilities" })
+        .getByRole("button", { name: "Open Cake Chat", exact: true })
+        .click();
       await page
         .getByRole("button", { name: "Open Project Chat for project", exact: true })
         .click();
       await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
-      if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+      await showTodos(page);
     };
     await openProjectTodos();
-    const panel = page.getByRole("complementary", { name: "To-do", exact: true });
     const row = panel.locator(`[data-todo-id="${id}"]`);
     const action = row.getByRole("button", { name: title, exact: true });
     const openCustom = async (change = false) => {
@@ -153,13 +159,13 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await expect(action).toHaveAttribute("aria-disabled", "true");
     await expect(row.locator("time")).toHaveAttribute("datetime", new Date(future).toISOString());
     await expect(row.getByRole("link", { name: "Release details" })).toBeVisible();
-    await expect(toggle).toHaveText("0");
+    await expect(toggle).toHaveAccessibleName("To-dos 0");
     // Deadlines belong to the backend, not the pane or renderer's lifetime.
     await page.reload();
     await openProjectTodos();
     await expect(row.locator("time")).toHaveAttribute("datetime", new Date(future).toISOString());
     await expect(panel.locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
-    await expect(toggle).toHaveText("0");
+    await expect(toggle).toHaveAccessibleName("To-dos 0");
     const changing = await openCustom(true);
     await expect(changing.getByLabel("Date", { exact: true })).toHaveValue(future.split("T")[0]!);
     await expect(changing.getByLabel("Time", { exact: true })).toHaveValue(future.split("T")[1]!);
@@ -184,7 +190,7 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
         .locator("..")
         .locator(`[data-todo-id="${id}"]`),
     ).toHaveCount(1);
-    await expect(toggle).toHaveText("1");
+    await expect(toggle).toHaveAccessibleName("To-dos 1");
     await expect(action).toHaveAttribute("aria-disabled", "false");
     // Keyboard context actions and submenu navigation use the same preset mutation.
     await action.focus();

@@ -547,7 +547,14 @@ export class NavigationStore extends Store<{
         : this.openImmediateOwner(CAKE_CHAT_SESSION_ID);
     }
     const session = this.props.catalog.find(active.sessionId);
-    if (!session) return false;
+    if (!session) {
+      // An unsent new Session is not cataloged yet; its owner is its Project Chat.
+      const staged = this.props.registry.pendingSessions.isTemporary(active.sessionId)
+        ? this.props.registry.findSession(active.sessionId)
+        : undefined;
+      const projectPath = staged && this.props.catalog.projectPathFor(staged.workspacePath);
+      return projectPath ? this.openProjectChat(projectPath) : false;
+    }
     const parentId = session.familyParentSessionId;
     // Family roots explicitly name themselves as parent in the catalog.
     if (parentId && parentId !== active.sessionId) return this.openImmediateOwner(parentId);

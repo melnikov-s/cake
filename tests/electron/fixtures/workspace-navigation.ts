@@ -59,7 +59,11 @@ async function leaveRail(page: Page) {
  * global Cake Chat (startup never restores a saved destination), so seeded Sessions are opened
  * explicitly.
  */
-export async function openSession(page: Page, title: string) {
+export async function openSession(
+  page: Page,
+  title: string,
+  options: { includeResolved?: boolean } = {},
+) {
   const trigger = page
     .getByRole("navigation", { name: "Projects and global utilities" })
     .getByRole("button", { name: "Search sessions", exact: true });
@@ -67,12 +71,27 @@ export async function openSession(page: Page, title: string) {
   await trigger.click();
   await leaveRail(page);
   const dialog = page.getByRole("dialog", { name: "Search sessions", exact: true });
+  if (options.includeResolved)
+    await dialog.getByRole("switch", { name: "Include resolved", exact: true }).click();
   await dialog.getByRole("combobox", { name: "Search session titles" }).fill(title);
   await dialog
     .getByRole("option", { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
     .first()
     .click();
   await expect(dialog).toHaveCount(0);
+}
+
+/**
+ * Opens an existing Session by id from the real Workspace Sessions list. Use for seeded
+ * Sessions whose title is not searchable (for example image-only or untitled histories).
+ */
+export async function openSessionById(page: Page, sessionId: string) {
+  const workspace = await showSessions(page);
+  await workspace.locator(`.session-item[data-session-id="${sessionId}"] .session-row`).click();
+  await expect(
+    page.locator(`[data-slot="session-pane"][data-session-id="${sessionId}"]`),
+  ).toBeVisible();
+  return workspace;
 }
 
 /** Opens a registered Project's permanent Project Chat from the global rail. */
@@ -83,6 +102,15 @@ export async function openProjectChat(page: Page, project: string) {
   await expect(button).toBeVisible({ timeout: 20_000 });
   await button.click();
   await leaveRail(page);
+}
+
+/** Opens global Cake Chat from the global rail. */
+export async function openCakeChat(page: Page) {
+  const button = page
+    .getByRole("navigation", { name: "Projects and global utilities" })
+    .getByRole("button", { name: "Open Cake Chat", exact: true });
+  await expect(button).toBeVisible({ timeout: 20_000 });
+  await button.click();
 }
 
 /** Opens application Settings from the global rail. */
@@ -105,6 +133,23 @@ export async function showSessions(page: Page) {
     await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
   }
   await workspace.getByRole("button", { name: /^Sessions / }).click();
+  return workspace;
+}
+
+/** Opens the real exclusive To-dos accessory (chat-first navigation, 582d0fc7) and returns it. */
+export async function showTodos(page: Page) {
+  const back = page.getByRole("button", { name: "Back to chat", exact: true });
+  if (await back.isVisible()) await back.click();
+  await expect(
+    page.getByRole("navigation", { name: "Projects and global utilities" }),
+  ).toBeVisible({ timeout: 20_000 });
+  const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+  if (!(await workspace.isVisible())) {
+    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
+  }
+  const todos = workspace.getByRole("button", { name: /^To-dos\b/ });
+  if ((await todos.getAttribute("aria-pressed")) !== "true") await todos.click();
+  await expect(todos).toHaveAttribute("aria-pressed", "true");
   return workspace;
 }
 

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -48,6 +49,9 @@ test("remaps application hotkeys from Settings", async () => {
 
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); the Terminal and Project navigation
+    // shortcuts below need a Project Session.
+    await createSessionInProject(page, /^project(?: |$)/i);
     const messageInput = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(messageInput).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(1_000);
@@ -176,6 +180,7 @@ test("remaps application hotkeys from Settings", async () => {
       });
     }).toPass({ timeout: 10_000 });
     await page.reload();
+    await createSessionInProject(page, /^project(?: |$)/i);
     await expect(messageInput).toBeVisible();
     await page.getByLabel("Settings", { exact: true }).click();
     await page.getByRole("button", { name: /^Hotkeys\b/ }).click();

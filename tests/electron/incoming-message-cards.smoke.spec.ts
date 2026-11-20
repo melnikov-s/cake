@@ -157,12 +157,13 @@ for (const theme of ["dark", "light"] as const)
         .last();
       const doneStatus = rail.locator("..").getByRole("img", { name: "Done", exact: true });
       await rail.click();
-      const panel = page.getByRole("complementary", { name: "To-do" });
+      // To-dos live in the shared Workspace accessory since chat-first navigation (582d0fc7).
+      const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
       await expect(
         panel.getByRole("button", { name: "Fix the flaky build", exact: true }),
       ).toHaveAttribute("aria-pressed", "false");
       await panel.getByRole("button", { name: "Mark done: Fix the flaky build" }).click();
-      await page.getByRole("button", { name: "Close To-do" }).click();
+      await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
       await expect(doneStatus).toBeVisible();
       await toggle(batch).click();
       await expect(batch.getByText(/Draft ready for review/).last()).toBeVisible();

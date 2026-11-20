@@ -6,6 +6,7 @@ import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -101,11 +102,15 @@ for (const state of ["active", "resolved"] as const) {
         },
       });
     try {
-      // Exercise persisted-window restoration twice, not just warm sidebar navigation.
+      // Exercise a cold launch twice, not just warm sidebar navigation. Launch starts in
+      // global Cake Chat (40566199), so reopen the retained history through Search sessions.
       for (let attempt = 0; attempt < 2; attempt++) {
         const application = await launch();
         try {
           const page = await application.firstWindow();
+          await openSession(page, "Retained conversation content", {
+            includeResolved: state === "resolved",
+          });
           await expect(
             page
               .locator('[data-slot="session-pane"]')

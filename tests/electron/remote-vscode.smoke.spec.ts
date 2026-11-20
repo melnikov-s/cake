@@ -7,7 +7,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
-import { openSettings } from "./fixtures/workspace-navigation";
+import { openSession, openSettings } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 const sessionId = "00000000-0000-4000-8000-000000000001";
@@ -173,6 +173,8 @@ test("separate Node backend serves a real leased code-server workbench to remote
         (details) => requests.push({ url: details.url, status: details.statusCode }),
       );
     });
+    // Launch starts in global Cake Chat (40566199); open the seeded remote Session.
+    await openSession(page, "Remote editor fixture");
     await expect(page.getByLabel("Message", { exact: true })).toBeVisible({ timeout: 25_000 });
     await app.evaluate(() => {
       const fs = process.getBuiltinModule("node:fs/promises");

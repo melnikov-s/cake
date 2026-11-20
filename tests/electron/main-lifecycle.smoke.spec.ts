@@ -25,8 +25,9 @@ test("main Effect runtime starts with bounded memory and finalizes before Electr
   try {
     const page = await application.firstWindow();
     // The document body precedes renderer bootstrap and its save/close observer.
-    // This test measures normal initialized startup and orderly shutdown.
-    await expect(page.getByRole("heading", { name: "What should we build?" })).toBeVisible({
+    // This test measures normal initialized startup and orderly shutdown. Launch always
+    // opens global Cake Chat (40566199), whose empty state is the initialized landing.
+    await expect(page.getByRole("heading", { name: "What can I help you find or do?" })).toBeVisible({
       timeout: 20_000,
     });
     const memory = await application.evaluate(() => process.memoryUsage());

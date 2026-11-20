@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
-import { openSettings } from "./fixtures/workspace-navigation";
+import { createSessionInProject, openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -243,6 +243,8 @@ reply({ ready: true });
 
     try {
       const page = await application.firstWindow();
+      // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+      await createSessionInProject(page, /^project(?: |$)/i);
       await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
         timeout: 20_000,
       });

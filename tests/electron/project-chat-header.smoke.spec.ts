@@ -6,6 +6,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -79,6 +80,8 @@ for (const { mode, chatSidebarVisible, width } of [
       });
       const page = await app.firstWindow();
       await page.setViewportSize({ width, height: 900 });
+      // Launch starts in global Cake Chat (40566199); open the seeded task explicitly.
+      await openSession(page, "Header task");
       await expect(
         page.locator(`[data-slot="session-pane"][data-session-id="${sessionId}"]`),
       ).toBeVisible();
@@ -102,9 +105,14 @@ for (const { mode, chatSidebarVisible, width } of [
           await expect(address).toHaveValue("about:blank");
         }
       }
-      await expect(
-        page.getByRole("button", { name: "Go to Project Chat for Alpha", exact: true }),
-      ).toBeEnabled();
+      // Chat-first navigation (582d0fc7) replaced the header's project icon link with the
+      // breadcrumb's Project root, which opens the owning Project Chat.
+      const breadcrumb = page.getByRole("navigation", {
+        name: "Conversation breadcrumb",
+        exact: true,
+      });
+      const projectLink = () => breadcrumb.getByRole("button", { name: "Alpha", exact: true });
+      await expect(projectLink()).toBeEnabled();
       const summonQuickChat = () =>
         app!.evaluate(({ Menu }) => {
           const item = Menu.getApplicationMenu()?.getMenuItemById("cake-chat-overlay");
@@ -203,24 +211,17 @@ for (const { mode, chatSidebarVisible, width } of [
             exact: true,
           }),
         ).toBeVisible();
-      const headers = page.locator('[data-slot="workspace-header"]');
-      const projectLink = () =>
-        page.getByRole("button", { name: "Go to Project Chat for Alpha", exact: true });
       await expect(projectLink()).toBeVisible();
       const artwork = await projectLink().locator('[data-slot="avatar"] img').getAttribute("src");
-      await projectLink().hover();
-      await expect(
-        page.getByRole("tooltip", { name: "Go to Project Chat for Alpha", exact: true }),
-      ).toBeVisible();
+      // The root names its Project's location on hover.
+      await expect(projectLink()).toHaveAttribute("title", project);
       const bounds = await projectLink().boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
       if (mode === "normal") {
         // Shift+Tab retains native navigation; Enter activates the actual button.
-        await projectLink().focus();
-        await page.keyboard.press("Tab");
-        await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeFocused();
-        await headers.locator('[data-slot="workspace-actions"] button:visible').first().focus();
+        const task = breadcrumb.getByRole("button", { name: "Header task", exact: true });
+        await task.focus();
         await page.keyboard.press("Shift+Tab");
         await expect(projectLink()).toBeFocused();
         await page.keyboard.press("Enter");

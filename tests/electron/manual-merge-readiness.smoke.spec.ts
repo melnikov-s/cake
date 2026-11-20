@@ -8,7 +8,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
-import { showSessions } from "./fixtures/workspace-navigation";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -183,6 +183,12 @@ for (const retainedAutomaticIntent of [false, true]) {
       const toasts = page.locator('[aria-live="polite"] > [role="status"]');
       await expect(toasts).toHaveCount(0);
       expect((await git(["log", "-1", "--format=%s"])).stdout.trim()).toBe("family work");
+      // A resolved Session returns to its owning Project Chat (bba9166d, 558a1c58); reopening
+      // its retained history shows the resolved notice.
+      await expect(
+        page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+      ).toBeVisible();
+      await openSession(page, parent, { includeResolved: true });
       await expect(parentPane.getByText("Resolved session", { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("manual-merge-after.png") });
     } finally {

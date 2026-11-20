@@ -9,6 +9,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -274,6 +275,8 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
       await expect(page.getByText(`Remote: ${url}`, { exact: true })).toBeVisible({
         timeout: 20_000,
       });
+      // Launch starts in global Cake Chat (40566199); open the seeded remote Session.
+      await openSession(page, "Browser fixture existing session");
       await expect(
         page.locator(".transcript").getByText("Browser fixture existing session"),
       ).toBeVisible({ timeout: 20_000 });
@@ -363,6 +366,7 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
         .windows()
         .find((window) => window !== page && window.url().includes("index.html"));
       if (!second) throw new Error("Second remote window missing");
+      await openSession(second, "Browser fixture existing session");
       await expect(
         second.locator(".transcript").getByText("Browser fixture existing session"),
       ).toBeVisible();

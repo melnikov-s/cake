@@ -1599,18 +1599,26 @@ const inlineLinks: VisualCaptureScenario = {
     );
   },
   async prepare(page, state) {
+    await openSeededSession(
+      page,
+      "visual-capture-project",
+      "How should agents capture Cake UI changes?",
+    );
     const artifact = page.getByRole("link", { name: "Collaboration requirements", exact: true });
     await expect(artifact).toBeVisible();
     await expect(page.getByRole("link", { name: "the implementation" })).toBeVisible();
     await expect(page.getByRole("link", { name: "the website" })).toBeVisible();
     await expect(page.getByRole("link", { name: "this session" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "this request", exact: true })).toHaveAttribute(
+    // Session links are named by their relationship glyph and label (b6cd0f2d).
+    await expect(
+      page.getByRole("link", { name: "User Session this request", exact: true }),
+    ).toHaveAttribute(
       "href",
       "cake://session/visual-assistant-markdown-code?message=user-1",
     );
     await page.waitForFunction(() => document.fonts.status === "loaded");
     if (state === "message") {
-      await page.getByRole("link", { name: "this request", exact: true }).click();
+      await page.getByRole("link", { name: "User Session this request", exact: true }).click();
       const selected = page.locator('[data-slot="transcript-item"][aria-current="true"]');
       await expect(selected).toContainText("How should agents capture Cake UI changes?");
       return;
@@ -1626,7 +1634,9 @@ const inlineLinks: VisualCaptureScenario = {
       return;
     }
     if (state === "original") {
-      await page.getByRole("link", { name: "an original request", exact: true }).click();
+      await page
+        .getByRole("link", { name: "User Session an original request", exact: true })
+        .click();
       await expect(page.getByRole("dialog", { name: "user · original-source" })).toContainText(
         "Original message evidence from a previous branch.",
       );
@@ -1834,9 +1844,12 @@ async function retainArtifactBrowser(
   );
 }
 
+/** The seeded artifact Session's first request, which is also its searchable title. */
+const artifactScenarioSessionTitle = "Explain how Cake's desktop architecture works.";
+
 /** seedArtifactScenario's Session, opened explicitly because launch starts in Cake Chat. */
 async function openArtifactScenarioSession(page: Page) {
-  await openSeededSession(page, "Cake architecture", "Explain how Cake");
+  await openSeededSession(page, "Cake architecture", artifactScenarioSessionTitle);
 }
 
 async function seedArtifactScenario(
@@ -1886,7 +1899,7 @@ async function seedArtifactScenario(
         timestamp,
         message: {
           role: "user",
-          content: [{ type: "text", text: "Explain how Cake's desktop architecture works." }],
+          content: [{ type: "text", text: artifactScenarioSessionTitle }],
           timestamp: 0,
         },
       },
@@ -2613,6 +2626,7 @@ const messageBoardScenario: VisualCaptureScenario = {
   states: ["default", "expanded", "receipts"],
   seed: (paths, theme) => seedMessageBoardFixture(paths, theme),
   async prepare(page, state) {
+    await openSeededSession(page, "Workboard", "Editor isolation");
     await page.getByRole("button", { name: "1 artifacts" }).click();
     await page
       .getByRole("dialog", { name: "Artifacts", exact: true })
@@ -5775,18 +5789,17 @@ const incomingTaskSectionsScenario: VisualCaptureScenario = {
         );
       }
     }
+    // The Workspace To-dos list also names "Draft the release notes"; scope to the card.
+    const releaseNotesCard = page
+      .locator('[data-slot="session-message"]')
+      .getByRole("button", { name: "Draft the release notes", exact: true });
     if (state === "dropdowns") {
       for (const body of await page
         .locator('[data-slot="session-message"] [data-slot="response-disclosure"]')
         .all())
         if ((await body.getAttribute("aria-expanded")) === "true") await body.click();
-      await page
-        .getByRole("button", { name: "Draft the release notes", exact: true })
-        .scrollIntoViewIfNeeded();
-    } else if (state === "session")
-      await page
-        .getByRole("button", { name: "Draft the release notes", exact: true })
-        .scrollIntoViewIfNeeded();
+      await releaseNotesCard.scrollIntoViewIfNeeded();
+    } else if (state === "session") await releaseNotesCard.scrollIntoViewIfNeeded();
     else if (state === "report") await report.scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     if (state !== "done-tooltip") await page.mouse.move(1, 1);
@@ -6252,6 +6265,11 @@ const incomingReportRecapScenario: VisualCaptureScenario = {
     );
   },
   async prepare(page, state) {
+    await openSeededSession(
+      page,
+      "visual-capture-project",
+      "Check this report without approving or merging anything.",
+    );
     await expect(page.locator('[data-slot="session-message"]')).toHaveCount(1);
     const disclosure = page.locator('[data-slot="response-disclosure"]');
     await expect(disclosure).toHaveCount(1);
@@ -9961,6 +9979,11 @@ const assistantMarkdownTable: VisualCaptureScenario = {
     );
   },
   async prepare(page) {
+    await openSeededSession(
+      page,
+      "visual-capture-project",
+      "How should agents capture Cake UI changes?",
+    );
     const wrapper = page.locator('[data-streamdown="table-wrapper"]');
     const actions = wrapper.locator(":scope > div").first();
     const scroller = page.locator(".transcript");

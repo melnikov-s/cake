@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { openSession } from "./fixtures/workspace-navigation";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import {
   seedMessageBoardFixture,
@@ -67,6 +68,8 @@ test("Workboards update live, preserve reading state, and reconcile after board 
     });
     const page = await application.firstWindow();
     await page.setViewportSize({ width: 1500, height: 1000 });
+    // Launch starts in global Cake Chat (40566199); open the seeded board owner Session.
+    await openSession(page, "Editor isolation");
     await expect(page.getByRole("button", { name: "1 artifacts" })).toBeVisible({ timeout: 20000 });
     await page.getByRole("button", { name: "1 artifacts" }).click();
     await page
@@ -187,6 +190,11 @@ test("Workboards update live, preserve reading state, and reconcile after board 
     await expect(page.getByRole("region", { name: "Workboard", exact: true })).toHaveCount(0);
     await appendLiveEntries(application, 31, 1);
     await page.goto(rendererUrl);
+    // A fresh renderer starts in global Cake Chat (40566199); reopen the library from the rail.
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Artifacts", exact: true })
+      .click();
     await expect(page.getByLabel("Filter artifacts by kind")).toBeVisible();
     await page
       .getByRole("navigation", { name: "Artifact lineages" })

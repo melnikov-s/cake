@@ -147,6 +147,8 @@ export default (pi) => {
       const page = await application.firstWindow();
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
+      // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+      await createSessionInProject(page, /^project(?: |$)/i);
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
       await expect(composer).toBeVisible({ timeout: 20_000 });
       // Verify/select the unbilled fake provider before any prompt; never rely on ambient auth fallback.

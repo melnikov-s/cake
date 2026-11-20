@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
-import { findVisualCaptureScenario, seedArtifact } from "../../scripts/visual-capture/scenarios";
+import {
+  findVisualCaptureScenario,
+  seedArtifactScenario,
+} from "../../scripts/visual-capture/scenarios";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -17,10 +21,13 @@ for (const kind of ["widget", "html"] as const) {
         userData: join(root, "user-data"),
       };
       const theme = entry === "inline" ? "light" : "dark";
-      await findVisualCaptureScenario("inline-artifact")!.seed(paths, theme);
-      if (kind === "html")
-        await seedArtifact(
+      // Artifact storage keeps revision lineage (dfb48756), so the HTML variant seeds the
+      // same inline-artifact Session with its own first revision instead of overwriting one.
+      if (kind === "widget") await findVisualCaptureScenario("inline-artifact")!.seed(paths, theme);
+      else
+        await seedArtifactScenario(
           paths,
+          theme,
           {
             protocol: "cake.artifact/v1",
             id: "inline-visual",
@@ -35,7 +42,7 @@ for (const kind of ["widget", "html"] as const) {
             fallback: { markdown: "Tall HTML" },
             interaction: { mode: "present" },
           },
-          new Date(0).toISOString(),
+          true,
         );
       const app = await electron.launch({
         args: [repositoryRoot],
@@ -51,6 +58,8 @@ for (const kind of ["widget", "html"] as const) {
       });
       try {
         const page = await app.firstWindow();
+        // Launch starts in global Cake Chat (40566199); open the seeded artifact Session.
+        await openSession(page, "Explain how Cake");
         await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
         await expect(page.getByText("Opening session", { exact: true })).not.toBeVisible();
         const transcript = page

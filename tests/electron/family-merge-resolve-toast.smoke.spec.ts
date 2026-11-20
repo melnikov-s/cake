@@ -7,8 +7,8 @@ import { promisify } from "node:util";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import { emitRendererEvent } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -148,46 +148,26 @@ test("clicking Merge & resolve on a family root does not show a success toast", 
   });
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199). Visit two descendants through ordinary
+    // Search sessions navigation, then return to the root before landing the shared worktree.
     const panes = page.locator('[data-slot="session-pane"]');
-    await expect(panes).toHaveCount(1, { timeout: 20_000 });
-    // Visit two descendants through ordinary focused-conversation navigation, then return
-    // to the root before landing the family's shared worktree.
-    for (const [index, child] of children.slice(0, 2).entries())
-      await emitRendererEvent(application, {
-        type: "project-session-control-requested",
-        sessionId: parent,
-        controlRequestId: `00000000-0000-4000-8000-00000000000${index}`,
-        invocation: {
-          _tag: "ProjectChildSession",
-          childSessionId: child.sessionId,
-          title: child.sessionId,
-          familyId: "family-1",
-          familyChildOrder: index,
-          familyDepth: 1,
-          workingDirectory: worktreePath,
-          open: true,
-        },
-      });
-    await expect(panes).toHaveAttribute("data-session-id", children[1]!.sessionId);
-    await emitRendererEvent(application, {
-      type: "project-session-control-requested",
-      sessionId: children[1]!.sessionId,
-      controlRequestId: "return-to-family-root",
-      invocation: {
-        _tag: "InvokeAppControl",
-        command: "sessions.open",
-        input: { sessionId: parent },
-      },
-    });
+    for (const child of children.slice(0, 2)) {
+      await openSession(page, child.sessionId);
+      await expect(panes).toHaveAttribute("data-session-id", child.sessionId);
+    }
+    await openSession(page, parent);
     const parentPane = page.locator(`[data-slot="session-pane"][data-session-id="${parent}"]`);
-    await parentPane.getByRole("combobox", { name: "Message", exact: true }).click();
+    const parentComposer = parentPane.getByRole("combobox", { name: "Message", exact: true });
+    await expect(parentComposer).toBeVisible({ timeout: 20_000 });
+    await parentComposer.click();
     const mergeAndResolve = parentPane.getByRole("button", { name: "Merge & resolve" });
     await expect(mergeAndResolve).toBeVisible({ timeout: 20_000 });
     await mergeAndResolve.click();
 
-    await expect(page.getByRole("button", { name: "Current checkout", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // A resolved Session returns to its owning Project Chat (bba9166d, 558a1c58).
+    await expect(
+      page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => existsSync(worktreePath)).toBe(false);
     const toasts = page.locator('[aria-live="polite"] > [role="status"]');
     await expect(toasts).toHaveCount(0);

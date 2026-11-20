@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { createSessionInProject, openCakeChat } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -100,6 +101,8 @@ test("preserves paste focus and caret through attachments and opens the sent tex
   });
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
     await page.getByRole("button", { name: "Model configuration" }).click({ timeout: 20_000 });
     await page.getByLabel("Search presets and models").fill("Paste fixture");
     await page
@@ -222,7 +225,7 @@ test("preserves paste focus and caret through attachments and opens the sent tex
     await page.keyboard.press("Escape");
 
     // The permanent chat consumes the same draft/composer implementation.
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await openCakeChat(page);
     const cakeInput = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
     await cakeInput.click();
     await cakeInput.evaluate((element, text) => {

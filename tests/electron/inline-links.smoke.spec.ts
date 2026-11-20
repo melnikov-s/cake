@@ -43,23 +43,42 @@ for (const theme of ["light", "dark"] as const) {
         });
       });
       await scenario.prepare(page, "default");
-      const destinations = [
-        ["Collaboration requirements", "cake://artifact/visual-link-report"],
-        ["the implementation", "src/main.ts#L12-L24"],
-        ["the website", "https://example.com/docs"],
-        ["HTTP documentation", "http://example.com/docs"],
-        ["this session", "cake://session/visual-assistant-markdown-code"],
+      const sessionLink = "cake://session/visual-assistant-markdown-code";
+      // Session links lead with their relationship glyph, which names the link (b6cd0f2d), and
+      // describe the label, the Session's title and the reference (5c284c46).
+      const destinations: [name: string, href: string, description: string, glyph: string][] = [
+        ...(
+          [
+            ["Collaboration requirements", "cake://artifact/visual-link-report"],
+            ["the implementation", "src/main.ts#L12-L24"],
+            ["the website", "https://example.com/docs"],
+            ["HTTP documentation", "http://example.com/docs"],
+          ] as const
+        ).map(
+          ([name, href]): [string, string, string, string] => [
+            name,
+            href,
+            href,
+            'svg[aria-hidden="true"]',
+          ],
+        ),
+        [
+          "User Session this session",
+          sessionLink,
+          `this session How should agents capture Cake UI changes? ${sessionLink}`,
+          '[data-slot="session-purpose"][data-purpose="user"] svg',
+        ],
       ];
       let linkColor: string | undefined;
-      for (const [label, destination] of destinations) {
+      for (const [label, destination, description, glyph] of destinations) {
         const link = page.getByRole("link", { name: label, exact: true });
         await link.hover();
         await expect(link).toHaveAttribute("href", destination);
-        await expect(link.locator('svg[aria-hidden="true"]')).toHaveCount(1);
-        await expect(link.locator('svg[aria-hidden="true"]')).toBeVisible();
-        await expect(link).toHaveAccessibleDescription(destination);
+        await expect(link.locator(glyph)).toHaveCount(1);
+        await expect(link.locator(glyph)).toBeVisible();
+        await expect(link).toHaveAccessibleDescription(description);
         await expect(page.getByRole("tooltip")).toBeVisible();
-        await expect(page.getByRole("tooltip")).toHaveText(destination);
+        await expect(page.getByRole("tooltip")).toHaveText(description);
         const presentation = await link.evaluate((element) => {
           const style = getComputedStyle(element);
           return {
@@ -77,7 +96,7 @@ for (const theme of ["light", "dark"] as const) {
         expect(presentation.weight).toBe("600");
         expect(presentation.decoration).toBe("underline");
         expect(presentation.thickness).toBe("2px");
-        if (label !== "this session") expect(presentation.display).toBe("inline");
+        if (destination !== sessionLink) expect(presentation.display).toBe("inline");
       }
       await page.mouse.move(1, 1);
       await expect(page.getByRole("tooltip")).not.toBeAttached();
@@ -113,7 +132,9 @@ for (const theme of ["light", "dark"] as const) {
           ),
         )
         .toEqual(["https://example.com/docs", "http://example.com/docs"]);
-      await expect(page.getByRole("link", { name: "this session", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "User Session this session", exact: true }),
+      ).toBeVisible();
       await artifact.press("Enter");
       await expect(page.getByRole("tooltip")).not.toBeAttached();
       await expect(

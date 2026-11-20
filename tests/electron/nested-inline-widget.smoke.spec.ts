@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -104,6 +105,8 @@ test("codemode widget publications stay interactive inline after creation and tr
   try {
     app = await launch();
     let page = await app.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded artifact Session.
+    await openSession(page, "Explain how Cake");
     await expect(
       page
         .locator('[data-artifact-id="inline-visual"] iframe')
@@ -155,6 +158,7 @@ test("codemode widget publications stay interactive inline after creation and tr
     await app.close();
     app = await launch();
     page = await app.firstWindow();
+    await openSession(page, "Explain how Cake");
     await expect(
       inline().locator("iframe").contentFrame().getByRole("button", { name: "Explore detail" }),
     ).toBeVisible({ timeout: 20_000 });

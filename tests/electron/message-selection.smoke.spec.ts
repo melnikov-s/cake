@@ -7,6 +7,7 @@ import { expect, test } from "@playwright/test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { fixtureModelChange, writeFixtureModels } from "./fixtures/fixture-model";
 import { showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -55,6 +56,7 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     windowState({ project, sessionId, theme: "dark" }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });
+  await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:9/v1" });
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({
@@ -125,10 +127,12 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      // The runtime, and with it the side-chat slash command, starts only with a model.
+      fixtureModelChange(timestamp),
       {
         type: "message",
         id: "user-1",
-        parentId: null,
+        parentId: "model",
         timestamp,
         message: {
           role: "user",

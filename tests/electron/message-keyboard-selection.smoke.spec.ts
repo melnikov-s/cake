@@ -7,6 +7,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { windowState } from "../fixtures/window-state";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { messageReference } from "../../src/contracts/conversations/message-reference";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const usage = {
@@ -135,6 +136,8 @@ test("selects mixed conversational entries once, in display order, only in the f
 
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Question 1");
     const pane = page.locator('[data-slot="session-pane"]').first();
     const composer = pane.getByRole("combobox", { name: "Message", exact: true });
     const transcript = pane.locator(".transcript");

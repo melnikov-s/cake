@@ -205,15 +205,19 @@ test("Project Chat isolates history and restores its root workspace, while globa
       await sideChatInput.pressSequentially("Draft a follow-up");
       await expect(sideChatInput).toHaveValue("Draft a follow-up");
       await expect(sideChat.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      // The breadcrumb's root replaced the separate Return to … Chat button (7be418ba).
       await page
-        .getByRole("button", { name: /^Return to (?:Project|Cake) Chat$/, exact: true })
+        .getByRole("navigation", { name: "Conversation breadcrumb" })
+        .getByRole("button")
+        .first()
         .click();
       await expect(input).toBeFocused();
       expect(requests).toHaveLength(requestCount);
       await input.click();
       await expect(input).toBeFocused();
       await input.fill("/");
-      await expect(page.getByRole("option", { name: /compact Manually/ })).toBeVisible();
+      // Pi owns its command descriptions; assert the command and its source, not the wording.
+      await expect(page.getByRole("option", { name: /^\/compact .*Pi CLI$/ })).toBeVisible();
       await expect(page.getByRole("option", { name: /model .*Switch model Pi CLI/ })).toBeVisible();
       await expect(
         page.getByRole("option", {

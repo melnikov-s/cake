@@ -13,6 +13,7 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -111,12 +112,12 @@ test("Project Chat response cards route conversation links, report missing files
   });
   try {
     const page = await app.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded Sessions explicitly.
+    await openSession(page, "How should agents capture Cake UI changes?");
     await expect(
       page.getByRole("heading", { name: "Repository-owned visual checks" }),
     ).toBeVisible();
-    await page
-      .locator(`.session-item[data-session-id="${child.getSessionId()}"] .session-row > button`)
-      .click();
+    await openSession(page, "Fresh drawing trial");
     // Startup instructions are application context, not a response from the parent.
     const bootstrap = page.getByRole("button", { name: "Family bootstrap", exact: true });
     await expect(bootstrap).toBeVisible();

@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
+import { showTodos } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -85,17 +86,20 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1500, height: 900 });
     const open = async () => {
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await page
+        .getByRole("navigation", { name: "Projects and global utilities" })
+        .getByRole("button", { name: "Open Cake Chat", exact: true })
+        .click();
       await page
         .getByRole("button", { name: "Open Project Chat for project", exact: true })
         .click();
       const input = page.getByRole("combobox", { name: "Message Project Chat" });
       await expect(input).toBeVisible();
-      const toggle = page.getByRole("button", { name: "To-do", exact: true });
-      if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+      // To-dos live in the shared Workspace accessory since chat-first navigation (582d0fc7).
+      await showTodos(page);
     };
     await open();
-    const panel = page.getByRole("complementary", { name: "To-do", exact: true });
+    const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
     const row = panel.locator(`[data-todo-id="${id}"]`);
     const action = row.getByRole("button", { name: title, exact: true });
     const category = (name: string) =>

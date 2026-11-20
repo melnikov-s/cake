@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { openProjectChat } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -48,12 +49,12 @@ test("opens a restored Project without an approval prompt", async () => {
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // Launch always opens global Cake Chat (40566199); the restored Project opens from the rail.
+    await openProjectChat(page, "project");
     await expect(
-      page.getByRole("button", { name: "Open Project Chat for project", exact: true }),
-    ).toBeVisible();
+      page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

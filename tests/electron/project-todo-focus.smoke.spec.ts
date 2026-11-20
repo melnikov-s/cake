@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
+import { showTodos } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -67,14 +68,17 @@ for (const reducedMotion of [false, true]) {
         colorScheme: reducedMotion ? "dark" : "light",
       });
       await page.setViewportSize({ width: 1500, height: 900 });
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Open Cake Chat", exact: true })
+      .click();
       await page
         .getByRole("button", { name: "Open Project Chat for project", exact: true })
         .click();
       const composer = page.getByRole("combobox", { name: "Message Project Chat" });
       await expect(composer).toBeVisible();
-      await page.getByRole("button", { name: "To-do", exact: true }).click();
-      const panel = page.getByRole("complementary", { name: "To-do", exact: true });
+      // To-dos live in the shared Workspace accessory since chat-first navigation (582d0fc7).
+      const panel = await showTodos(page);
       const pane = panel.locator('[data-slot="todo-scroll-pane"]');
       const action = (index: number) =>
         panel.getByRole("button", { name: `Focus to-do: Task ${index}`, exact: true });

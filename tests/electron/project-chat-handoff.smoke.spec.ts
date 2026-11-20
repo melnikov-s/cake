@@ -8,6 +8,7 @@ import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import { installLocalModelHttpGuard } from "./main-harness";
+import { openCakeChat } from "./fixtures/workspace-navigation";
 
 type ModelRequest = { messages: Array<{ role: string; content: unknown }> };
 const chunk = (delta: object, finish_reason: string | null = null) =>
@@ -192,7 +193,7 @@ for (const timing of ["next-user", "timer"] as const)
         await input.press("Enter");
       };
       const selected = () => page.locator('[data-slot="session-pane"]');
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
+      await openCakeChat(page);
       await submit("Message Cake Chat", "Run passive fixture");
       if (timing === "next-user")
         await expect
@@ -248,6 +249,10 @@ for (const timing of ["next-user", "timer"] as const)
       await installLocalModelHttpGuard(app, origin);
       page = await app.firstWindow();
       if (timing === "next-user") {
+        // Launch always opens global Cake Chat (40566199); return to the recipient from the rail.
+        await page
+          .getByRole("button", { name: "Open Project Chat for passive-project", exact: true })
+          .click({ timeout: 20_000 });
         await expect(selected()).toHaveAttribute("data-session-id", passiveId, { timeout: 20_000 });
         await expect(page.locator('[data-slot="session-message"]')).toHaveCount(0);
         await submit("Message Project Chat", "Read retained handoff");
@@ -276,7 +281,10 @@ for (const timing of ["next-user", "timer"] as const)
         await expect(
           handoff().getByRole("button", { name: "Cake Chat", exact: true }),
         ).toHaveAttribute("aria-expanded", "true");
-        await expect(handoff().getByRole("link", { name: "Cake Chat", exact: true })).toBeVisible();
+        // The sender's exact response is linked by the shared Open source action (dc869d46).
+        await expect(
+          handoff().getByRole("link", { name: "Open source", exact: true }),
+        ).toHaveAttribute("href", new RegExp(`^cake://session/${CAKE_CHAT_SESSION_ID}\\?message=`));
         await expect(handoff().locator('[data-streamdown="strong"]')).toHaveText("PASSIVE_HANDOFF");
         await expect(handoff().getByRole("listitem")).toHaveText("Discuss before building.");
         await expect(handoff()).not.toContainText("You");
@@ -300,12 +308,12 @@ for (const timing of ["next-user", "timer"] as const)
       expect(JSON.stringify(deliveredRequest)).toContain("PASSIVE_HANDOFF");
       await submit("Message Project Chat", "Another user message");
       await verifyHandoff();
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
+      await openCakeChat(page);
       await expect(page.getByRole("link", { name: "Passive project", exact: true })).toBeVisible();
       // Exercise the actual encoded canonical deep link, independently of sessions.open.
       await page.getByRole("link", { name: "Passive project", exact: true }).click();
       await expect(selected()).toHaveAttribute("data-session-id", passiveId);
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
+      await openCakeChat(page);
       await submit("Message Cake Chat", "Run prompt fixture");
       await expect
         .poll(() => receipts.filter((receipt) => receipt.command === "sessions.open").length)
@@ -328,7 +336,7 @@ for (const timing of ["next-user", "timer"] as const)
       await expect(page.locator(".transcript")).toContainText("IMMEDIATE_HANDOFF");
       await expect(page.getByText("Immediate handoff processed.", { exact: true })).toBeVisible();
       await expect(page.locator(".transcript")).not.toContainText("PASSIVE_HANDOFF");
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
+      await openCakeChat(page);
       await submit("Message Cake Chat", "Reopen passive fixture");
       await expect(selected()).toHaveAttribute("data-session-id", passiveId);
       await verifyHandoff();

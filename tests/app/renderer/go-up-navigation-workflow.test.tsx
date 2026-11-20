@@ -254,6 +254,21 @@ it.each(["Project", "Global"] as const)(
   },
 );
 
+it("climbs from an unsent new Session to its Project Chat", async () => {
+  using fixture = renderAppShellNavigation();
+  addProjectChat(fixture);
+  await fixture.publishCakeChatProjection(projectChatId);
+  await act(() => fixture.root.navigationStore.createSession("/alpha"));
+  const staged = fixture.root.appShellStore.activeConversation?.sessionId;
+  expect(staged).toBeDefined();
+  expect(fixture.root.sessionRegistry.pendingSessions.isTemporary(staged!)).toBe(true);
+  expect(fixture.models.sessionCatalog.find(staged!)).toBeUndefined();
+  await pressUp();
+  await waitFor(() =>
+    expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(projectChatId),
+  );
+});
+
 it("does not invent a parent for the app-wide companion", async () => {
   using fixture = renderAppShellNavigation();
   act(() => {

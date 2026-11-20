@@ -5,12 +5,13 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 
-import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { createSessionInProject, openCakeChat } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 interface Preset {
-  prompt?: string;
+  /** Preset prompts are Markdown files read separately (d1974176). */
+  promptFile?: string;
   id: string;
   name: string;
   provider: string;
@@ -103,8 +104,11 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
   try {
     const firstMain = await application.firstWindow();
     // The auxiliary RPC page does not mount the main window's persistence/close
-    // observer. Finish main startup before the first transactional restart.
-    await expect(firstMain.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+    // observer. Finish main startup before the first transactional restart. Launch always
+    // opens global Cake Chat (40566199).
+    await expect(
+      firstMain.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({
       timeout: 20_000,
     });
     const harness = await openHarness(application);
@@ -126,7 +130,10 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
       name: "Unavailable but editable",
     });
     expect(updated.presets[0]!.name).toBe("Unavailable but editable");
-    expect(updated.presets[0]!.prompt).toBe("Keep answers concise.");
+    expect(updated.presets[0]!.promptFile).toBeTruthy();
+    expect(
+      await call<{ prompt: string }>(harness, "readModelPresetPrompt", unavailable.id),
+    ).toMatchObject({ prompt: "Keep answers concise." });
     expect(await call<string>(harness, "resolveModelPresetFailureTag", unavailable.id)).toBe(
       "UnknownPiModelError",
     );
@@ -181,14 +188,16 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
       defaultPresetId: unavailable.id,
     });
 
-    await expect(mainPage.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+    await expect(
+      mainPage.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({
       timeout: 20_000,
     });
     await createSessionInProject(mainPage, /^project(?: |$)/i);
     await expect(mainPage.getByRole("button", { name: "Model configuration" })).toContainText(
       "Unavailable but editable",
     );
-    await mainPage.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await openCakeChat(mainPage);
     await expect(mainPage.getByLabel("Message Cake Chat")).toBeVisible();
     await expect(mainPage.getByRole("button", { name: "Model configuration" })).toContainText(
       "Unavailable but editable",
