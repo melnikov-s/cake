@@ -124,9 +124,8 @@ for (const reducedMotion of [false, true]) {
       await pane.hover();
       await expect(async () => {
         await page.mouse.wheel(0, 800);
-        await expect(action(0)).toBeAttached({ timeout: 250 });
+        await expect(action(0)).toBeInViewport({ timeout: 250 });
       }).toPass({ timeout: 10_000 });
-      await action(0).scrollIntoViewIfNeeded();
       expect(await pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(200);
       await action(0).click();
       await expect(
