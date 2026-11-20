@@ -10,7 +10,13 @@ export function createSidebarSurfacesScenario(
     const evidence = await page.evaluate(() => {
       const rail = document.querySelector<HTMLElement>('[data-slot="project-rail"]')!;
       const panel = document.querySelector<HTMLElement>('[data-slot="workspace-navigator"]')!;
+      const panelSurface = document.querySelector<HTMLElement>(
+        '[data-slot="workspace-navigator-surface"]',
+      )!;
       const workspace = document.querySelector<HTMLElement>('[data-slot="workspace"]')!;
+      const workspaceSurface = document.querySelector<HTMLElement>(
+        '[data-slot="workspace-surface"]',
+      )!;
       const canvas = document.createElement("canvas");
       canvas.width = canvas.height = 1;
       const context = canvas.getContext("2d")!;
@@ -42,22 +48,22 @@ export function createSidebarSurfacesScenario(
         theme: document.documentElement.dataset.theme,
         rail: sample(rail),
         panel: sample(panel),
-        chat: sample(workspace.parentElement!),
+        panelSurface: sample(panelSurface),
+        chat: sample(workspaceSurface),
         workspaceTop: workspace.getBoundingClientRect().top,
         height: innerHeight,
       };
     });
     for (const surface of [evidence.rail, evidence.panel]) {
-      expect(surface.color).toBe(evidence.rail.color);
       expect(surface.fullHeight).toBe(true);
       expect(surface.bottom).toBe(evidence.height);
       // The rail begins at the titlebar; Workspace includes its one-pixel bottom rule.
       expect(Math.abs(surface.top - evidence.workspaceTop)).toBeLessThanOrEqual(1);
       expect(surface.rgba[3]).toBe(255);
-      if (evidence.theme === "light")
-        expect(surface.luminance).toBeLessThan(evidence.chat.luminance);
-      else expect(surface.luminance).toBeGreaterThan(evidence.chat.luminance);
+      expect(surface.luminance).toBeLessThan(evidence.chat.luminance);
     }
+    expect(evidence.panelSurface.rgba[3]).toBe(255);
+    expect(evidence.panelSurface.luminance).toBeLessThan(evidence.chat.luminance);
     expect(evidence.rail.width).toBe(expanded ? 240 : 54);
     console.log("SIDEBAR_SURFACE_EVIDENCE", JSON.stringify(evidence));
   };

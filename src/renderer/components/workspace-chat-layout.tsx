@@ -95,7 +95,7 @@ export function WorkspaceChatLayout({
                 ref={companionRef}
                 data-popover-boundary
                 aria-label="Current conversation companion"
-                className="@container/session-pane flex w-[var(--workspace-chat-sidebar-width)] min-w-0 shrink-0 flex-col border-l border-border/65 bg-background"
+                className="@container/session-pane flex w-[var(--workspace-chat-sidebar-width)] min-w-0 shrink-0 flex-col border-l border-hairline bg-background"
               >
                 {chatSidebarReplacement ?? <WorkspaceCompanion>{chatSidebar}</WorkspaceCompanion>}
               </aside>

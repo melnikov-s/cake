@@ -11,7 +11,7 @@ export function ComposerSubmitButton(
       {...props}
       type="submit"
       className={cn(
-        "size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-45",
+        "size-8 rounded-full bg-accent text-accent-foreground shadow-xs hover:bg-accent/90 disabled:opacity-40",
         props.className,
       )}
     >

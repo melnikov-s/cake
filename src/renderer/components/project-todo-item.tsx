@@ -212,7 +212,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
       }}
       onClick={() => store.toggleItemExpanded(item.id)}
       className={cn(
-        "grid items-start gap-x-2.5 gap-y-0 px-3 py-2 text-sm leading-5 [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [@media(pointer:coarse)]:[&>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
+        "-mx-2 grid w-[calc(100%+1rem)] items-start gap-x-2.5 gap-y-0 rounded-lg px-2 py-2 text-sm leading-5 [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [@media(pointer:coarse)]:[&>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
         "grid-cols-[auto_minmax(0,1fr)_auto]",
       )}
       label={
@@ -237,7 +237,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
       <div
         data-slot="todo-actions"
         className={cn(
-          "col-start-3 row-start-1 -mt-0.5 flex items-center gap-0.5 rounded-md border border-border/75 bg-card/95 p-0.5 shadow-xs backdrop-blur-sm transition-opacity",
+          "col-start-3 row-start-1 -mt-0.5 flex items-center gap-0.5 rounded-md border border-hairline bg-card/95 p-0.5 shadow-xs backdrop-blur-sm transition-opacity",
           hoverActionClassName,
         )}
       >
@@ -350,7 +350,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
                   <span
                     key={index}
                     className={cn(
-                      "inline-flex size-5 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-2xs [&>svg]:size-2.5",
+                      "inline-flex size-5 items-center justify-center rounded-full border border-hairline bg-card text-muted-foreground shadow-2xs [&>svg]:size-2.5",
                       linksExpanded && "border-accent/40 text-accent",
                     )}
                   >
@@ -372,7 +372,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           )}
         </div>
         {linksExpanded && totalLinks > 0 && (
-          <div className="mt-2 border-t border-border/65 pt-2">
+          <div className="mt-2 border-t border-hairline-subtle pt-2">
             {workLinks.length > 0 && (
               <ul aria-label={`Work for ${item.title}`} className="flex w-full flex-col gap-0.5">
                 {workLinks.map((association) => (

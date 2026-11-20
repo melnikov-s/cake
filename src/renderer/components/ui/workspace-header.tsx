@@ -36,10 +36,10 @@ export function WorkspaceHeader({
       <header
         data-slot="workspace-header"
         className={cn(
-          "relative box-content h-title-bar min-w-0 shrink-0 items-center border-b border-border/65 [app-region:drag]",
+          "relative box-content h-title-bar min-w-0 shrink-0 items-center border-b [app-region:drag]",
           compact
-            ? "flex gap-3 overflow-hidden px-5"
-            : "grid pr-14 pl-(--workspace-header-start) [--workspace-header-start:max(46px,calc(var(--window-controls-width,0px)-var(--project-rail-width,0px)))] [--workspace-mode-clearance:3.75rem]",
+            ? "flex gap-3 overflow-hidden border-hairline-subtle px-5"
+            : "grid border-transparent pr-14 pl-(--workspace-header-start) [--workspace-header-start:max(46px,calc(var(--window-controls-width,0px)-var(--project-rail-width,0px)))] [--workspace-mode-clearance:3.75rem]",
           !compact &&
             (windowCentered
               ? "grid-cols-[minmax(0,calc(50vw-var(--project-rail-width,0px)-var(--workspace-header-start)))_0px_minmax(0,1fr)]"

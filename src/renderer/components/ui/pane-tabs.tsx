@@ -39,7 +39,7 @@ export function PaneTabs({
       role="tablist"
       aria-label={label}
       aria-orientation="horizontal"
-      className="flex w-full min-w-0 max-w-full shrink-0 gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border/65 bg-sidebar/30 px-2 py-1.5"
+      className="flex w-full min-w-0 max-w-full shrink-0 gap-1.5 overflow-x-auto overflow-y-hidden border-b border-hairline-subtle bg-inspector px-3.5 py-2"
       onKeyDown={(event) => {
         const tabs = Array.from(
           event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'),

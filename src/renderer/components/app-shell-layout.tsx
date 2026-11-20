@@ -82,7 +82,8 @@ export const AppShellLayout = observer(function AppShellLayout({
       <main
         ref={shellRef}
         className={cn(
-          "relative grid h-full w-full max-w-[100vw] grid-rows-[auto_minmax(0,1fr)] grid-cols-[var(--project-rail-width)_minmax(0,1fr)_var(--navigator-width)_var(--command-width)] overflow-hidden bg-background text-foreground [--project-rail-width:54px] max-[700px]:grid-cols-[var(--project-rail-width)_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:44px]",
+          "relative grid h-full w-full max-w-[100vw] grid-rows-[auto_minmax(0,1fr)] grid-cols-[var(--project-rail-width)_minmax(0,1fr)_var(--navigator-width)_var(--command-width)] overflow-hidden text-foreground [--project-rail-width:54px] max-[700px]:grid-cols-[var(--project-rail-width)_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:44px]",
+          applicationView ? "bg-background" : "bg-chassis",
           applicationView &&
             "grid-cols-[0px_minmax(0,1fr)_0px_var(--command-width)] [--project-rail-width:0px] max-[700px]:grid-cols-[0px_minmax(0,1fr)_0px_0px] max-[700px]:[--project-rail-width:0px]",
           !applicationView &&
@@ -118,6 +119,12 @@ export const AppShellLayout = observer(function AppShellLayout({
             conversationPaneVisible
               ? "grid-rows-[minmax(0,1fr)_auto]"
               : "grid-rows-[auto_minmax(0,1fr)_auto]",
+            !applicationView &&
+              cn(
+                "bg-chassis pb-2 max-[700px]:p-0",
+                autoHideRail ? "pl-2" : "pl-0.5",
+                navigatorVisible || commandVisible ? "pr-1" : "pr-2",
+              ),
           )}
           data-session-id={shell.activeConversation?.sessionId}
           style={workspaceStyle}
@@ -125,7 +132,14 @@ export const AppShellLayout = observer(function AppShellLayout({
           {!conversationPaneVisible && <AppSurfaceHeader />}
           <FullscreenViewportContext value={fullscreenViewport}>
             <ConversationFocusContext.Provider value={true}>
-              <div className="flex h-full min-h-0 min-w-0 flex-col">
+              <div
+                data-slot="workspace-surface"
+                className={cn(
+                  "flex h-full min-h-0 min-w-0 flex-col",
+                  !applicationView &&
+                    "overflow-hidden rounded-[10px] border border-hairline bg-background shadow-[inset_0_1px_0_var(--surface-rim),var(--pane-shadow)] max-[700px]:rounded-none max-[700px]:border-0 max-[700px]:shadow-none",
+                )}
+              >
                 <div className="min-h-0 min-w-0 flex-1">{children}</div>
                 {!workspaceMode && <SessionChatHomeButton />}
               </div>
@@ -188,7 +202,7 @@ export const AppShellLayout = observer(function AppShellLayout({
             <span
               aria-hidden="true"
               data-slot="workspace-tools-divider"
-              className="mx-1 h-4 w-px shrink-0 bg-border/60"
+              className="mx-1 h-4 w-px shrink-0 bg-hairline"
             />
             <SidebarNavigationControls />
           </div>

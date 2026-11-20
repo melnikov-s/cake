@@ -125,7 +125,7 @@ export const SessionMessage = observer(function SessionMessage({
   );
   const renderTodos = () =>
     linkedTodos.length > 0 && (
-      <footer className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-5 py-2 text-xs text-muted-foreground">
+      <footer className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-hairline-subtle px-5 py-2 text-xs text-muted-foreground">
         {/* Reports are evidence, not a task-completion authority. Explicit human completion
             remains available in the To-do pane, using its existing lifecycle checks. */}
         <ResultTodoDone {...todo} readOnly />
@@ -144,7 +144,7 @@ export const SessionMessage = observer(function SessionMessage({
     >
       <div
         data-slot="session-message-card"
-        className="min-w-0 rounded-lg border border-border bg-card text-card-foreground"
+        className="min-w-0 rounded-[10px] border border-hairline bg-card text-card-foreground"
       >
         <div className="flex min-h-10 min-w-0 items-center gap-1 p-1">
           <div
@@ -205,7 +205,7 @@ export const SessionMessage = observer(function SessionMessage({
           <>
             <div
               id={contentId}
-              className="flex min-w-0 flex-col gap-3 border-t border-border/60 px-5 pt-3.5 pb-4"
+              className="flex min-w-0 flex-col gap-3 border-t border-hairline-subtle px-5 pt-3.5 pb-4"
             >
               {children}
               {sources.map((store) => (

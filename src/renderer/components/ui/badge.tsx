@@ -7,14 +7,14 @@ export const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "border border-border/80 bg-muted text-muted-foreground",
-        accent: "border border-accent/30 bg-accent/15 text-foreground font-semibold",
+        default: "border border-hairline-subtle bg-foreground/[0.05] text-muted-foreground",
+        accent: "border border-accent/35 bg-accent/15 text-accent font-semibold",
         secondary: "bg-muted text-foreground",
-        outline: "border border-border/85 text-foreground",
+        outline: "border border-hairline text-foreground",
         destructive: "border border-destructive/30 bg-destructive/15 text-foreground font-semibold",
         success: "border border-success/30 bg-success/15 text-foreground font-semibold",
         warning: "border border-warning/30 bg-warning/15 text-foreground font-semibold",
-        mono: "font-mono border border-border/70 text-muted-foreground",
+        mono: "font-mono border border-hairline-subtle text-muted-foreground",
       },
       size: {
         default: "px-2 py-0.5 text-xs",

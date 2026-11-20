@@ -1112,17 +1112,22 @@ export function createChatFirstNavigationScenario(
           const panel = document.querySelector(
             companion
               ? '[data-slot="workspace-companion-content"]'
-              : '[data-slot="workspace-navigator"]',
+              : '[data-slot="workspace-navigator-surface"]',
           )!;
           const rail = document.querySelector('[data-slot="project-rail"]')!;
-          const shell = document.querySelector('[data-slot="workspace"]')!.parentElement!;
-          const probe = document.createElement("div");
-          probe.style.backgroundColor = "var(--sidebar)";
-          panel.append(probe);
-          const sidebar = getComputedStyle(probe).backgroundColor;
-          probe.remove();
+          const chatSurface = document.querySelector('[data-slot="workspace-surface"]')!;
+          const probe = (token: string) => {
+            const node = document.createElement("div");
+            node.style.backgroundColor = `var(${token})`;
+            panel.append(node);
+            const resolved = getComputedStyle(node).backgroundColor;
+            node.remove();
+            return resolved;
+          };
+          const inspector = probe("--inspector");
+          const chassis = probe("--chassis");
           const panelColor = getComputedStyle(panel).backgroundColor;
-          const chatColor = getComputedStyle(shell).backgroundColor;
+          const chatColor = getComputedStyle(chatSurface).backgroundColor;
           const canvas = document.createElement("canvas");
           canvas.width = canvas.height = 1;
           const context = canvas.getContext("2d")!;
@@ -1136,20 +1141,21 @@ export function createChatFirstNavigationScenario(
             return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
           };
           return {
-            sidebar,
+            inspector,
+            chassis,
             panel: panelColor,
             rail: getComputedStyle(rail).backgroundColor,
             chat: chatColor,
             panelLuminance: luminance(panelColor),
             chatLuminance: luminance(chatColor),
+            railLuminance: luminance(getComputedStyle(rail).backgroundColor),
           };
         }, state.startsWith("browser-"));
-        expect(colors.panel).toBe(colors.sidebar);
-        expect(colors.rail).toBe(colors.sidebar);
+        expect(colors.panel).toBe(colors.inspector);
+        expect(colors.rail).toBe(colors.chassis);
         expect(colors.panel).not.toBe(colors.chat);
-        const dark = (await page.locator("html").getAttribute("data-theme")) === "dark";
-        if (dark) expect(colors.panelLuminance).toBeGreaterThan(colors.chatLuminance);
-        else expect(colors.panelLuminance).toBeLessThan(colors.chatLuminance);
+        expect(colors.railLuminance).toBeLessThan(colors.chatLuminance);
+        expect(colors.panelLuminance).toBeLessThan(colors.chatLuminance);
         console.log("PANEL_BACKGROUND_EVIDENCE", JSON.stringify({ state, ...colors }));
       }
     },

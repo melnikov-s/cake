@@ -21,7 +21,8 @@ export const ConversationNavigatorSearch = observer(function ConversationNavigat
 
   return (
     <SearchInput
-      className="min-w-0 flex-1"
+      className="min-w-0 flex-1 [&_svg]:size-3"
+      inputClassName="h-[31px] rounded-[9px] border-hairline-subtle bg-recessed shadow-none focus-visible:border-accent/35 focus-visible:ring-accent/15"
       label="Search sessions"
       placeholder="Search sessions…"
       value={query}

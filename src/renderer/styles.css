@@ -120,6 +120,14 @@
   --traffic-light-glyph: rgb(0 0 0 / 0.55);
   --shadow: 220 28% 20%;
   --radius: 0.5rem;
+  --chassis: color-mix(in oklab, var(--sidebar) 92%, var(--foreground) 8%);
+  --inspector: color-mix(in oklab, var(--background) 62%, var(--sidebar) 38%);
+  --recessed: color-mix(in oklab, var(--sidebar) 78%, var(--background) 22%);
+  --hairline: color-mix(in oklab, var(--foreground) 10%, transparent);
+  --hairline-subtle: color-mix(in oklab, var(--foreground) 7%, transparent);
+  --surface-rim: rgb(255 255 255 / 0.85);
+  --pane-shadow: 0 1px 3px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.04);
+  --card-shadow: 0 1px 3px rgb(15 23 42 / 0.07), 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
 :root[data-theme="dark"],
@@ -159,6 +167,14 @@
   --traffic-light-maximize: #28c840;
   --traffic-light-glyph: rgb(0 0 0 / 0.55);
   --shadow: 220 50% 3%;
+  --chassis: color-mix(in oklab, var(--background) 70%, black 30%);
+  --inspector: color-mix(in oklab, var(--background) 62%, var(--chassis) 38%);
+  --recessed: color-mix(in oklab, var(--chassis) 84%, var(--background) 16%);
+  --hairline: color-mix(in oklab, var(--foreground) 10%, transparent);
+  --hairline-subtle: color-mix(in oklab, var(--foreground) 7%, transparent);
+  --surface-rim: color-mix(in oklab, var(--foreground) 8%, transparent);
+  --pane-shadow: 0 2px 10px -2px rgb(0 0 0 / 0.32);
+  --card-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -199,6 +215,14 @@
     --traffic-light-maximize: #28c840;
     --traffic-light-glyph: rgb(0 0 0 / 0.55);
     --shadow: 220 50% 3%;
+    --chassis: color-mix(in oklab, var(--background) 70%, black 30%);
+    --inspector: color-mix(in oklab, var(--background) 62%, var(--chassis) 38%);
+    --recessed: color-mix(in oklab, var(--chassis) 84%, var(--background) 16%);
+    --hairline: color-mix(in oklab, var(--foreground) 10%, transparent);
+    --hairline-subtle: color-mix(in oklab, var(--foreground) 7%, transparent);
+    --surface-rim: color-mix(in oklab, var(--foreground) 8%, transparent);
+    --pane-shadow: 0 2px 10px -2px rgb(0 0 0 / 0.32);
+    --card-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.35);
   }
 }
 
@@ -238,6 +262,11 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-chassis: var(--chassis);
+  --color-inspector: var(--inspector);
+  --color-recessed: var(--recessed);
+  --color-hairline: var(--hairline);
+  --color-hairline-subtle: var(--hairline-subtle);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-selection-foreground: var(--sidebar-selection-foreground);

@@ -67,7 +67,7 @@ export const ChatComposer = observer(function ChatComposer({
   return (
     <div
       className={cn(
-        "workbench-composer @container/context-composer pointer-events-auto mx-auto w-full min-w-0 has-[[data-slot=inset-disclosures]]:[&_form]:rounded-t-none has-[[data-slot=inset-disclosures]]:[&_form]:rounded-b-md",
+        "workbench-composer @container/context-composer pointer-events-auto mx-auto w-full min-w-0 has-[[data-slot=inset-disclosures]]:[&_form]:rounded-t-none has-[[data-slot=inset-disclosures]]:[&_form]:rounded-b-[14px]",
         leadingAccessory
           ? "max-w-[51.25rem] @4xl/composer-dock:max-w-[55.25rem] @4xl/composer-dock:pl-16"
           : "max-w-[51.25rem]",
@@ -80,11 +80,11 @@ export const ChatComposer = observer(function ChatComposer({
         <DictationIndicatorContext.Provider value={dictationSlot}>
           <Composer
             className={cn(
-              "relative z-10 border-border/90 bg-composer text-composer-foreground shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]",
+              "relative z-10 border-hairline bg-composer text-composer-foreground shadow-[inset_0_1px_0_var(--surface-rim),0_20px_60px_-28px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.1)]",
               leadingAccessory &&
                 "[&_textarea]:pl-12 [&_[contenteditable=true]]:pl-12 @4xl/composer-dock:[&_textarea]:pl-2 @4xl/composer-dock:[&_[contenteditable=true]]:pl-2",
               inline &&
-                "flex items-center gap-1.5 border-0 bg-transparent p-1.5 shadow-none [&_textarea]:min-h-8 [&_textarea]:max-h-40 [&_textarea]:px-2.5 [&_textarea]:py-1 [&_textarea]:text-xs [&_textarea]:shadow-none [&_[contenteditable=true]]:min-h-8 [&_[contenteditable=true]]:max-h-40 [&_[contenteditable=true]]:px-2.5 [&_[contenteditable=true]]:py-1 [&_[contenteditable=true]]:text-xs [&_[contenteditable=true]]:shadow-none",
+                "flex items-center gap-1.5 border-0 bg-transparent p-1.5 shadow-none focus-within:ring-0 [&_textarea]:min-h-8 [&_textarea]:max-h-40 [&_textarea]:px-2.5 [&_textarea]:py-1 [&_textarea]:text-xs [&_textarea]:shadow-none [&_[contenteditable=true]]:min-h-8 [&_[contenteditable=true]]:max-h-40 [&_[contenteditable=true]]:px-2.5 [&_[contenteditable=true]]:py-1 [&_[contenteditable=true]]:text-xs [&_[contenteditable=true]]:shadow-none",
             )}
             onSubmit={onSubmit}
           >

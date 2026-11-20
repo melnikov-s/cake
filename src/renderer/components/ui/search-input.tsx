@@ -10,6 +10,7 @@ export function SearchInput({
   value,
   onValueChange,
   className,
+  inputClassName,
   onKeyDown,
   placeholder = "Search…",
   ...inputProps
@@ -18,6 +19,7 @@ export function SearchInput({
   value: string;
   onValueChange(value: string): void;
   className?: string;
+  inputClassName?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const clear = () => {
@@ -47,7 +49,10 @@ export function SearchInput({
           }
           onKeyDown?.(event);
         }}
-        className="h-7 rounded-md pl-7 pr-7 text-xs [&::-webkit-search-cancel-button]:appearance-none"
+        className={cn(
+          "h-7 rounded-md pl-7 pr-7 text-xs [&::-webkit-search-cancel-button]:appearance-none",
+          inputClassName,
+        )}
       />
       {value && (
         <IconButton

@@ -182,8 +182,8 @@ export const ChatTextMessage = forwardRef<
         report || part.crossSession || agentSource
           ? "rounded-none border-0 bg-transparent p-0 shadow-none"
           : assistant
-            ? "bg-card text-foreground"
-            : "border-user-message-foreground/20 bg-user-message text-user-message-foreground dark:border-border",
+            ? "rounded-none border-0 bg-transparent px-0.5 py-1 text-foreground shadow-none"
+            : "border-hairline bg-user-message text-user-message-foreground shadow-[inset_0_1px_0_var(--surface-rim),var(--card-shadow)]",
         !assistant &&
           !report &&
           !part.crossSession &&

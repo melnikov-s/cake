@@ -15,12 +15,13 @@ export const WorkspaceNavigatorContent = observer(function WorkspaceNavigatorCon
     <ConversationNavigator projectPath={navigator.projectPath} />
   ) : todos ? (
     <>
-      <div className="px-3 py-2 [&_svg]:size-3">
+      <div className="px-3.5 pt-3 pb-2 [&_svg]:size-3">
         <SearchInput
           label="Search to-dos"
           placeholder="Search titles, updates, or reasons…"
           value={todos.query}
           onValueChange={(query) => todos.setQuery(query)}
+          inputClassName="h-[31px] rounded-[9px] border-hairline-subtle bg-recessed shadow-none focus-visible:border-accent/35 focus-visible:ring-accent/15"
         />
       </div>
       <ProjectTodoFilterBar store={todos} />

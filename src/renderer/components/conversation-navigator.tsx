@@ -39,7 +39,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
   const resolvedCount = store.resolvedCount(projectPath);
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Sessions">
-      <div className="mx-2 my-2 flex min-w-0 items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1.5 px-3.5 pt-3 pb-2">
         <ConversationNavigatorSearch key={scope} projectPath={projectPath} />
         <IconButton
           tooltip={
@@ -54,7 +54,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
         </IconButton>
       </div>
       <div
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1.5 pb-3"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pb-3"
         aria-label="Session conversations"
       >
         <section aria-label="Active sessions">

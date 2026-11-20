@@ -200,11 +200,14 @@ export function NavigationRail({
             if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
           }}
           className={cn(
-            "absolute bottom-0 left-0 top-title-bar z-50 flex max-w-[calc(100vw-1rem)] flex-col gap-1 overflow-hidden border-r border-border/70 bg-sidebar pt-2 text-sidebar-foreground transition-[width,box-shadow] duration-150 select-none motion-reduce:transition-none",
+            "absolute bottom-0 left-0 top-title-bar z-50 flex max-w-[calc(100vw-1rem)] flex-col gap-1 overflow-hidden border-r border-transparent bg-chassis pt-2 text-sidebar-foreground transition-[width,box-shadow,background-color,border-color] duration-150 select-none motion-reduce:transition-none",
             expanded
               ? "w-60 [&_[data-slot=icon-button-label]]:visible"
               : "w-[54px] max-[700px]:w-11 [&_[data-slot=icon-button-label]]:invisible",
-            visible && expanded && (autoHide || layout === "dynamic") && "shadow-xl",
+            visible &&
+              expanded &&
+              (autoHide || layout === "dynamic") &&
+              "rounded-r-[10px] border-hairline bg-inspector shadow-xl",
             !visible && "w-0 max-[700px]:w-0 border-r-0",
           )}
         >
@@ -230,7 +233,7 @@ export function NavigationRail({
           >
             <div className="flex min-w-0 flex-col gap-1 pr-1">{children}</div>
           </div>
-          <div className="max-h-[45%] shrink-0 overflow-y-auto overflow-x-hidden border-t border-border/50 px-1 pt-1 pb-2">
+          <div className="max-h-[45%] shrink-0 overflow-y-auto overflow-x-hidden border-t border-hairline-subtle px-1 pt-1 pb-2">
             {footer}
           </div>
         </nav>

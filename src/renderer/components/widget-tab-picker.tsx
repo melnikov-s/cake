@@ -22,10 +22,10 @@ export const WidgetTabPicker = observer(function WidgetTabPicker() {
       {selected ? (
         <div
           className={cn(
-            "flex h-7 min-w-0 max-w-[40%] shrink items-center rounded-md border",
+            "flex h-7 min-w-0 max-w-[40%] shrink items-center rounded-lg border transition-colors",
             active
-              ? "border-border bg-card text-foreground shadow-2xs"
-              : "border-transparent text-muted-foreground",
+              ? "border-accent/35 bg-accent/15 text-accent"
+              : "border-transparent text-muted-foreground hover:bg-foreground/[0.055]",
           )}
         >
           <Button
@@ -35,8 +35,8 @@ export const WidgetTabPicker = observer(function WidgetTabPicker() {
             aria-label={`Widget tab: ${title}`}
             title={title}
             className={cn(
-              "h-full min-w-0 shrink rounded-r-none pl-1.5 pr-0.5 text-xs",
-              active && "text-foreground hover:bg-muted/70",
+              "h-full min-w-0 shrink rounded-l-lg rounded-r-none pl-2 pr-0.5 text-xs hover:bg-transparent",
+              active && "font-semibold text-accent hover:text-accent",
             )}
             onClick={() => navigator.showWidget()}
           >
@@ -46,8 +46,8 @@ export const WidgetTabPicker = observer(function WidgetTabPicker() {
             size="sm"
             variant="ghost"
             className={cn(
-              "h-full shrink-0 rounded-l-none px-1",
-              active && "text-foreground hover:bg-muted/70",
+              "h-full shrink-0 rounded-l-none rounded-r-lg px-1 hover:bg-transparent",
+              active && "text-accent hover:text-accent",
             )}
             aria-label="Widget tabs"
             aria-haspopup="menu"
@@ -60,7 +60,7 @@ export const WidgetTabPicker = observer(function WidgetTabPicker() {
         <PopoverTrigger
           size="sm"
           variant="ghost"
-          className="min-w-0 max-w-[40%] shrink gap-1 px-1.5 text-xs"
+          className="h-7 min-w-0 max-w-[40%] shrink gap-1 rounded-lg px-2 text-xs hover:bg-foreground/[0.055]"
           aria-label="Widget tabs"
           aria-haspopup="menu"
           title="Widgets"

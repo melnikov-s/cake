@@ -25,7 +25,7 @@ export const ProjectTodoFilterBar = observer(function ProjectTodoFilterBar({
     <div
       role="group"
       aria-label="Filter to-dos"
-      className="flex flex-wrap items-center gap-1 px-3 pb-2"
+      className="flex flex-wrap items-center gap-1 px-3.5 pb-2.5"
     >
       {FILTERS.map((entry) => {
         const active = store.filter === entry.id;
@@ -33,12 +33,14 @@ export const ProjectTodoFilterBar = observer(function ProjectTodoFilterBar({
         return (
           <Button
             key={entry.id}
-            variant={active ? "outline" : "ghost"}
+            variant="ghost"
             size="sm"
             aria-pressed={active}
             className={cn(
-              "h-6 shrink-0 gap-1 rounded-md px-1.5 text-xs font-normal",
-              active && "font-medium text-foreground",
+              "h-6 shrink-0 gap-1 rounded-md border px-2 text-xs transition-colors",
+              active
+                ? "border-hairline bg-card font-semibold text-foreground shadow-2xs hover:bg-card"
+                : "border-transparent font-normal text-muted-foreground hover:bg-foreground/[0.055] hover:text-foreground",
             )}
             onClick={() => store.setFilter(entry.id)}
           >

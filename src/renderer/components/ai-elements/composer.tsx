@@ -7,7 +7,7 @@ export function Composer({ className, ...props }: ComponentProps<"form">) {
   return (
     <form
       className={cn(
-        "rounded-2xl border border-border bg-card p-3 shadow-[0_18px_70px_-45px_rgba(18,22,27,0.65)]",
+        "rounded-[14px] border border-hairline bg-card p-3 shadow-[inset_0_1px_0_var(--surface-rim),0_18px_50px_-24px_hsl(var(--shadow)/0.5),0_2px_10px_hsl(var(--shadow)/0.1)] transition-[border-color,box-shadow] focus-within:border-accent/35 focus-within:ring-3 focus-within:ring-accent/15",
         className,
       )}
       {...props}
@@ -42,7 +42,7 @@ export function ComposerToolbar({
     <div
       className={cn(
         "flex flex-wrap items-center justify-between gap-2",
-        separated && "border-t border-border/70 pt-3",
+        separated && "border-t border-hairline-subtle pt-2.5",
         className,
       )}
       {...props}

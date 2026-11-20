@@ -190,7 +190,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
       role="list"
       aria-label="To-dos"
       className="h-full overflow-y-auto [overflow-anchor:none]"
-      contentContainerClassName={cn("px-3 pb-4", !store.grouped && "pt-4")}
+      contentContainerClassName={cn("px-3.5 pb-4", !store.grouped && "pt-2")}
       dataKey={projectPath}
       data={rows}
       keyExtractor={(row) => row.key}
@@ -314,7 +314,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
                 />
               </div>
             ) : (
-              <h2 className="border-b border-border px-3 pb-2 pt-3 text-sm font-semibold">
+              <h2 className="border-b border-hairline-subtle pb-2 pt-3 text-sm font-semibold">
                 {row.title}
               </h2>
             )}
@@ -330,11 +330,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             <section
               aria-label={row.section.title}
               data-todo-section-header={row.section.key}
-              className={cn(
-                row.section.toggle && "px-1",
-                !row.first && "mt-4 border-t border-border pt-2",
-                "pb-2",
-              )}
+              className={cn(!row.first && "mt-4 border-t border-hairline-subtle pt-2.5", "pb-2")}
             >
               {row.section.toggle ? (
                 <DisclosureTrigger
@@ -344,7 +340,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
                   onClick={row.section.toggle}
                 />
               ) : (
-                <h2 className="px-3 text-xs font-semibold">
+                <h2 className="text-xs font-semibold">
                   {row.section.title}{" "}
                   <span className="ml-1 font-normal tabular-nums text-muted-foreground">
                     {row.section.items.length}
@@ -358,7 +354,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             ref={(element) => attachRow(row.key, element)}
             role="presentation"
             data-todo-virtual-key={row.key}
-            className={cn("pb-1.5", row.section.toggle && "px-1")}
+            className="pb-1"
           >
             <ProjectTodoItem
               item={row.item}

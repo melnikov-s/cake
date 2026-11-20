@@ -19,8 +19,10 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
     <header
       data-slot="workspace-header"
       className={cn(
-        "relative box-content flex h-title-bar w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[88px] phone:pl-[88px]",
-        applicationView ? "pl-[100px]" : "pl-[46px] pr-12",
+        "relative box-content flex h-title-bar w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b px-5 [app-region:drag] max-[620px]:pl-[88px] phone:pl-[88px]",
+        applicationView
+          ? "border-hairline-subtle pl-[100px]"
+          : "border-transparent pl-[46px] pr-12",
       )}
     >
       <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
