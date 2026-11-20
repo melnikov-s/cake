@@ -89,10 +89,10 @@ export const PROJECT_TODO_CLOSING_RULE =
 
 /** User-facing focus shared by agent guidance and automatic report summaries. */
 export const PROJECT_TODO_SUMMARY_GUIDANCE =
-  "State outcomes, blockers/decisions and readiness gaps. Keep technical bookkeeping in linked reports.";
+  "Use plain language: one or two sentences, at most three. What matters from earlier work? What’s happening or just changed? What remains? Prompts, not headings. Omit what doesn’t orient. No title restatements, closure forecasts, filler, history, raw task/session IDs, commit hashes or test inventories. Link details in sessions or reports with meaningful titles.";
 
 /** Latest-update writing policy, shared by both chat baselines, mutation help and chat-todos.md. */
-export const PROJECT_TODO_DESCRIPTION_GUIDANCE = `Titles: short task names, max 80 characters; details in description. Descriptions give a short latest update. ${PROJECT_TODO_SUMMARY_GUIDANCE} Update on meaningful evidence; no status polling/wakes.`;
+export const PROJECT_TODO_DESCRIPTION_GUIDANCE = `Title names the task (max 80 characters). Latest update (description), not status, is the snapshot. Leave it empty if there’s nothing useful. Replace it, don’t append, when progress/evidence, a blocker/decision or the next step meaningfully changes. ${PROJECT_TODO_SUMMARY_GUIDANCE} No status polling/wakes.`;
 
 /** Canonical detailed link policy, disclosed by to-do mutation help and chat-todos.md. */
 export const PROJECT_TODO_LINK_GUIDANCE =
@@ -158,8 +158,9 @@ const ProjectTodoLabelId = Schema.String.check(Schema.isUUID(4));
 export const ProjectTodo = Schema.Struct({
   id: identity,
   title: text(512).check(Schema.isTrimmed(), Schema.isMinLength(1)),
-  description: text(2048).check(Schema.isTrimmed(), Schema.isMinLength(1)).annotate({
-    description: "The latest update, usually one or two short sentences; not a task restatement.",
+  description: text(2048).check(Schema.isTrimmed()).annotate({
+    title: "Latest update",
+    description: "The current reader-facing snapshot; empty if there is no useful update yet.",
   }),
   status: text(4096),
   /** Explicit reference into the owning list's session label catalog. Missing means unlabelled. */
@@ -264,10 +265,11 @@ const ProjectTodoInputTitle = Schema.String.check(
   Schema.isTrimmed(),
   Schema.isMinLength(1),
   Schema.isMaxLength(PROJECT_TODO_TITLE_LIMIT, {
-    expected: "a short task title of at most 80 characters; move details to description",
+    expected:
+      "a short task title of at most 80 characters; use Latest update (description) for the current snapshot",
   }),
 ).annotate({
-  description: "Short task name, at most 80 characters. Put details in description.",
+  description: "Short task name, at most 80 characters.",
 });
 
 export const ProjectTodoCreate = Schema.Struct({

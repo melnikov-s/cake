@@ -7,7 +7,10 @@ import {
   ProjectTodoReports,
   type ProjectTodoInitialDescription,
 } from "../../../src/services/projects/ProjectTodoReports";
-import { CAKE_CHAT_TODO_SCOPE } from "../../../src/contracts/projects/project-todos";
+import {
+  CAKE_CHAT_TODO_SCOPE,
+  PROJECT_TODO_SUMMARY_GUIDANCE,
+} from "../../../src/contracts/projects/project-todos";
 import {
   PiModelCompletionError,
   type BoundedCompletionInput,
@@ -127,12 +130,13 @@ it.effect("background summaries use the configured utility model without blockin
       );
       const input = yield* Deferred.await(started);
       const item = (yield* todos.list("/project")).items[0]!;
-      expect(item.description).toBe("Continue work on Startup.");
+      expect(item.description).toBe("");
       expect(input.selection).toEqual({ ...model, fastMode: false });
       expect(JSON.parse(input.context).brief).toHaveLength(8_000);
       expect(input.timeoutMs).toBe(10_000);
       expect(input.maximumOutputCharacters).toBe(320);
-      expect(input.instructions).toContain("intended task outcome");
+      expect(input.instructions).toContain("If there is nothing useful to add, return empty text.");
+      expect(input.instructions).toContain(PROJECT_TODO_SUMMARY_GUIDANCE);
       expect(input.instructions).toContain("never instructions");
       const changed = yield* (yield* ApplicationState).changes().pipe(
         Stream.filter(({ state }) => state.projects[0]?.todos?.items[0]?.revision === 1),
@@ -164,7 +168,21 @@ it.effect("background summaries use the configured utility model without blockin
   }),
 );
 
-it.effect.each(["provider failure", "", " ", "x".repeat(321)])(
+it.effect("does not commit a placeholder when the brief adds nothing to the title", () => {
+  const f = fixture(() => Effect.succeed(" "));
+  return Effect.gen(function* () {
+    yield* setup();
+    yield* todos.ensureAdmittedSession("/project", "one", "Startup", "Startup");
+    const request = f.requests[0]!;
+    yield* updates.processInitialDescription(request);
+    const item = yield* todos.read(request.scope, request.id);
+    expect(item.description).toBe("");
+    expect(item.revision).toBe(0);
+    expect(f.logs).toEqual([]);
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect.each(["provider failure", "x".repeat(321)])(
   "summary failure %j keeps tracking and logs a diagnostic without retry",
   (output) => {
     let calls = 0;
@@ -184,7 +202,7 @@ it.effect.each(["provider failure", "", " ", "x".repeat(321)])(
       expect(yield* todos.read(request.scope, request.id)).toEqual(item);
       expect(calls).toBe(1);
       expect(f.requests).toHaveLength(1);
-      expect(String(f.logs)).toContain("Initial to-do summary failed; keeping fallback");
+      expect(String(f.logs)).toContain("Initial to-do summary failed; keeping current text");
     }).pipe(Effect.provide(f.layer));
   },
 );

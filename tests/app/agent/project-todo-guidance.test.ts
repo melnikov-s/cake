@@ -42,7 +42,7 @@ it("keeps self-contained lifecycle, writing and attention rules in both baseline
     expect(baseline).toContain("No extra guide reads needed");
     expect(baseline.match(/Session-linked/g)).toHaveLength(1);
     expect(baseline).toContain("only when all required sessions resolve");
-    expect(baseline.length).toBeLessThan(2300);
+    expect(baseline.length).toBeLessThan(2900);
   }
 });
 it("excludes routine actions while preserving durable work across both chats, help and guide", () => {
@@ -84,12 +84,22 @@ it("documents caller-selected list sizes and the separate update-many cap", () =
   expect(help).not.toContain("(max 50)");
 });
 
-it("shares exact link and attention rules in mutation help", () => {
+it("shares the current-snapshot writing rules in mutation help and keeps the description key", () => {
   for (const command of ["todos.create", "todos.update", "todos.update-many"]) {
     expect(registry.operationHelp(command)).toContain(PROJECT_TODO_LINK_GUIDANCE);
     expect(registry.operationHelp(command)).toContain(PROJECT_TODO_ATTENTION_GUIDANCE);
-    expect(registry.operationHelp(command)).toContain(PROJECT_TODO_DESCRIPTION_GUIDANCE);
+    const help = registry.operationHelp(command);
+    expect(help).toContain(PROJECT_TODO_DESCRIPTION_GUIDANCE);
+    expect(help).toContain('"description":{');
+    expect(help).toContain('"title":"Latest update"');
+    expect(help).toContain("Replace it, don’t append");
+    expect(help).toContain("at most three");
+    expect(help).toContain("task/session IDs, commit hashes or test inventories");
   }
+  const example =
+    "The report-card fix passed review. We just need to verify that the cards show the right source names.";
+  expect(registry.operationHelp("todos.create")).toContain(example);
+  expect(guide).toContain(example);
 });
 it("exposes and enforces actionable title limits on every title mutation tool", async () => {
   const context = {
@@ -104,8 +114,8 @@ it("exposes and enforces actionable title limits on every title mutation tool", 
     )) {
     const help = registry.operationHelp(operation.command);
     expect(help).toContain('"maxLength":80');
-    expect(help).toContain("Short task name, at most 80 characters. Put details in description.");
-    expect(help).toContain("Titles: short task names, max 80 characters; details in description.");
+    expect(help).toContain("Short task name, at most 80 characters.");
+    expect(help).toContain("Title names the task (max 80 characters).");
     const input = (title: string) =>
       operation.command === "todos.create"
         ? { title, description: "Task details." }
@@ -117,7 +127,7 @@ it("exposes and enforces actionable title limits on every title mutation tool", 
     expect(Schema.is(operation.inputSchema)(input("T".repeat(80)))).toBe(true);
     for (const length of [81, 513])
       await expect(operation.execute(input("T".repeat(length)), context)).rejects.toThrow(
-        "at most 80 characters; move details to description",
+        "at most 80 characters; use Latest update (description)",
       );
   }
   expect(guide).toContain("at most 80 characters");

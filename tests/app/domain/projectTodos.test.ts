@@ -363,7 +363,7 @@ describe("to-do title mutation limits", () => {
           ];
           for (const failure of failures) {
             expect(failure.message).toContain("at most 80 characters");
-            expect(failure.message).toContain("move details to description");
+            expect(failure.message).toContain("Latest update (description)");
           }
           expect(yield* todos.list(scope)).toEqual(before);
         }
@@ -408,7 +408,7 @@ describe("to-do title mutation limits", () => {
             title: legacy.title,
           })
           .pipe(Effect.flip);
-        expect(rejected.message).toContain("move details to description");
+        expect(rejected.message).toContain("Latest update (description)");
         const renamed = yield* todos.update(CAKE_CHAT_TODO_SCOPE, {
           id: legacy.id,
           expectedRevision: 2,
@@ -741,12 +741,13 @@ it.effect(
   },
 );
 
-it("requires a short description, defaults optional progress, and accepts only supported useful link targets", () => {
+it("keeps the required description key with a bounded update and accepts supported links", () => {
   const input = { title: "Investigate startup", description: "Find what delays startup." };
   expect(Schema.is(ProjectTodoCreate)(input)).toBe(true);
   expect(Schema.is(ProjectTodoCreate)({ ...input, description: "x".repeat(2048) })).toBe(true);
   expect(Schema.is(ProjectTodoCreate)({ title: input.title })).toBe(false);
-  for (const description of ["", "   ", " Brief ", "x".repeat(2049)])
+  expect(Schema.is(ProjectTodoCreate)({ ...input, description: "" })).toBe(true);
+  for (const description of ["   ", " Brief ", "x".repeat(2049)])
     expect(Schema.is(ProjectTodoCreate)({ ...input, description })).toBe(false);
   expect(Schema.is(ProjectTodoCreate)({ ...input, associations: [] })).toBe(true);
   for (const ref of [
@@ -775,17 +776,23 @@ it.effect(
       yield* upsertProject(project, "Project");
       const item = yield* todos.create(project, {
         title: "Startup",
-        description: "Find the bottleneck.",
+        description: "Compare cold launches to find where startup stalls.\n\n".repeat(20).trim(),
+        status: "Report ready for review.",
+        remainingWork: "Verify the fix on a cold launch.",
       });
-      expect(item.status).toBe("");
+      expect(item.description.length).toBeGreaterThan(320);
       expect(item.associations).toEqual([]);
       const updated = yield* todos.update(project, {
         id: item.id,
         expectedRevision: 0,
-        description: "Find the bottleneck and recommend a fix.",
-        status: "Report delivered; awaiting review",
+        description:
+          "Repeated configuration reads caused the slowdown. Check the fix on a cold launch.",
       });
-      expect(updated.description).toBe("Find the bottleneck and recommend a fix.");
+      expect(updated.description).toBe(
+        "Repeated configuration reads caused the slowdown. Check the fix on a cold launch.",
+      );
+      expect(updated.status).toBe(item.status);
+      expect(updated.remainingWork).toBe(item.remainingWork);
       expect(updated.state).toBe("open");
       expect(projectTodoBaseline(yield* todos.list(project))).toContain('"descriptionPreview"');
     }).pipe(Effect.provide(f.layer));
@@ -813,11 +820,8 @@ it.effect(
       const items = (yield* todos.list(project)).items;
       for (const item of items) expect(Schema.is(ProjectTodoCreate)(item)).toBe(true);
       expect(items[3]?.title).toBe("New Project Session");
-      expect(items[0]?.description).toBe("Continue work on Startup.");
       expect(Array.from(items[1]?.title ?? "")).toHaveLength(80);
-      expect(items[1]?.description.length).toBeLessThanOrEqual(320);
-      expect(items[1]?.description).not.toContain("Detailed instructions");
-      expect(items[2]?.description).toBe("Continue work on Follow up.");
+      expect(items.map((item) => item.description)).toEqual(["", "", "", ""]);
     }).pipe(Effect.provide(f.layer));
   },
 );
@@ -852,7 +856,7 @@ it.effect(
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
         title: "Startup",
-        description: "Continue work on Startup.",
+        description: "",
         state: "done",
         revision: 1,
       });

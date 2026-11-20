@@ -40,14 +40,13 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   position?: number;
   count?: number;
 }) {
-  const descriptionId = useId();
-  const detailsId = `${descriptionId}-details`;
+  const updateId = useId();
+  const detailsId = `${updateId}-details`;
   const selected = store.isFocused(item.id);
   const inspected = store.visible && store.inspectedItemId === item.id;
   const attention = projectTodoCategory(item) === "attention";
   const attentionDetail = attention ? projectTodoAttentionDetail(item) : undefined;
-  const description =
-    item.description.trim() && item.description !== item.title ? item.description : "";
+  const latestUpdate = item.description !== item.title ? item.description.trim() : "";
   const disclosure = store.itemDisclosure(item.id);
   const expanded = disclosure?.details ?? false;
   const linksExpanded = disclosure?.links ?? false;
@@ -208,7 +207,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         "aria-expanded": expanded,
         "aria-controls": detailsId,
         "aria-label": item.title,
-        "aria-describedby": description ? descriptionId : undefined,
+        "aria-describedby": latestUpdate ? updateId : undefined,
         "aria-disabled": false,
       }}
       onClick={() => store.toggleItemExpanded(item.id)}
@@ -287,26 +286,23 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           </IconButton>
         )}
       </div>
-      <div id={detailsId} className="col-start-2 col-span-2 min-w-0">
+      <div id={detailsId} className="@container/todo-update col-start-2 col-span-2 min-w-0">
+        {latestUpdate && (
+          <p
+            id={updateId}
+            className={cn(
+              "mt-1 min-w-0 break-words text-xs leading-4 text-muted-foreground",
+              expanded
+                ? "whitespace-pre-wrap"
+                : "line-clamp-4 @max-[192px]/todo-update:line-clamp-5",
+            )}
+          >
+            {latestUpdate}
+          </p>
+        )}
         {attentionDetail && (
           <p className="mt-1.5 min-w-0 break-words rounded-md bg-attention/15 px-2 py-1 text-xs leading-4 text-foreground">
             {attentionDetail}
-          </p>
-        )}
-        {description && (
-          <p
-            id={descriptionId}
-            className={cn(
-              "mt-1 min-w-0 break-words text-xs leading-4 text-muted-foreground",
-              expanded ? "whitespace-pre-wrap" : "line-clamp-2",
-            )}
-          >
-            {description}
-          </p>
-        )}
-        {expanded && item.status.trim() && (
-          <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-4 text-muted-foreground">
-            <span className="font-medium">Status:</span> {item.status}
           </p>
         )}
         <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">

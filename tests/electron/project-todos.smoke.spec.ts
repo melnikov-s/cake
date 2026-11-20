@@ -32,7 +32,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     const input = JSON.parse(body) as Request;
     const utility =
       body.includes("Order these open to-dos") ||
-      body.includes("Update the current to-do description using the new final report.");
+      body.includes("Latest update from the new report");
     if (!utility) requests.push(input);
     const user = latestUser(input);
     const marker = utility

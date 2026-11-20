@@ -189,7 +189,7 @@ it("renders authored titles and decorative destination icons through the existin
   view.unmount();
 });
 
-it("shows descriptions and rolled-up session status inline while toggling links without focusing", async () => {
+it("shows one latest update and preserves attention, activity and independent links", async () => {
   using fixture = createRendererStoreFixture({
     sessions: [
       sessionSummary({ sessionId: "run", projectPath: "/project", running: true }),
@@ -201,8 +201,10 @@ it("shows descriptions and rolled-up session status inline while toggling links 
   const item: ProjectTodo = {
     id: "00000000-0000-4000-8000-000000000099",
     title: "Fix concrete architecture review defects",
-    description: "Rebased HEAD passes scoped checks; 4 baseline Knip findings remain.",
-    status: "",
+    description:
+      "Review identified gaps in the workspace file limits. Check the fix against a large project.",
+    status: "Legacy status text.",
+    remainingWork: "Stored verification context.",
     state: "open",
     needsAttention: true,
     attentionReason: "Review 4 baseline Knip findings before merging",
@@ -220,11 +222,23 @@ it("shows descriptions and rolled-up session status inline while toggling links 
     </StoreProvider>,
   );
   const user = userEvent.setup();
-  expect(screen.getByText(item.description)).toBeDefined();
+  const title = screen.getByRole("button", { name: item.title });
+  expect(title.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.getAllByText(item.description)).toHaveLength(1);
+  expect(title.getAttribute("aria-describedby")).toBe(screen.getByText(item.description).id);
+  expect(screen.queryByText(item.status)).toBeNull();
   expect(screen.getByText(item.attentionReason!)).toBeDefined();
   expect(screen.getByRole("img", { name: "Needs attention" })).toBeDefined();
   expect(screen.getByText("1 running")).toBeDefined();
   expect(screen.getByText("2/3 resolved")).toBeDefined();
+  await user.click(screen.getByText(item.description));
+  expect(title.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getAllByText(item.description)).toHaveLength(1);
+  expect(screen.queryByText(/Legacy status text/)).toBeNull();
+  expect(screen.queryByText(item.remainingWork!)).toBeNull();
+  expect(store.isFocused(item.id)).toBe(false);
+  await user.click(title);
+  expect(title.getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByRole("link", { name: "Deep consultant review" })).toBeNull();
   const toggle = () =>
     screen.getByRole("button", { name: /^(Show|Hide) 4 links for Fix concrete/ });

@@ -758,8 +758,6 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
     normalized && normalized.length <= PROJECT_TODO_TITLE_LIMIT
       ? normalized
       : "New Project Session";
-  // Never copy launch instructions/bookkeeping into the visible task description.
-  const description = `Continue work on ${name}.`;
   let created = false;
   const next = yield* change(scope, (value, current) => {
     const existing = owners(current, sessionId);
@@ -774,7 +772,7 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
         {
           id,
           title: name,
-          description,
+          description: "",
           status: "",
           needsAttention: false,
           state: "open" as const,

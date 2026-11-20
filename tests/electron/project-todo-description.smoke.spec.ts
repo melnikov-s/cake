@@ -8,7 +8,7 @@ import { emptyProjectTodos, type ProjectTodo } from "../../src/contracts/project
 
 const repository = resolve(import.meta.dirname, "../..");
 
-test("to-do details expand inline; the existing dot and independent row actions stay in place", async () => {
+test("one latest update expands inline; the existing dot and independent row actions stay in place", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cake-todo-description-"));
   const paths = {
     cakeHome: join(directory, "cake"),
@@ -19,24 +19,27 @@ test("to-do details expand inline; the existing dot and independent row actions 
   try {
     await mkdir(paths.project);
     await mkdir(join(paths.cakeHome, "state"), { recursive: true });
+    const legacyUpdate =
+      "Compare cold and warm launches to identify repeated configuration reads.\n\n"
+        .repeat(12)
+        .trim();
     const items: ProjectTodo[] = [];
     for (let index = 15; index >= 0; index--)
       items.push({
         id: `00000000-0000-4000-8000-${String(index + 100).padStart(12, "0")}`,
         title: `Additional task ${index}`,
-        description:
-          index === 15 ? "Long description for review.\n".repeat(60).trim() : "Short update.",
+        description: index === 0 ? legacyUpdate : "",
         state: "open",
         status: "",
         revision: 0,
         associations: [],
       });
     const description =
-      "Find the startup bottleneck and recommend a focused fix.\n\nCompare cold and warm launches to identify repeated configuration reads.";
+      "The report-card fix passed review. We just need to verify that the cards show the right source names.";
     const label = { id: "10000000-0000-4000-8000-000000000001", name: "Research", color: "violet" };
     items.push({
       id: "00000000-0000-4000-8000-000000000011",
-      title: "Startup investigation",
+      title: "Fix report-card source names",
       description,
       labelId: label.id,
       state: "open",
@@ -82,30 +85,33 @@ test("to-do details expand inline; the existing dot and independent row actions 
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.setViewportSize({ width: 1500, height: 900 });
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
     await page
       .getByRole("button", { name: /^Open Project Chat for / })
       .first()
-      .press("Enter");
+      .click();
     await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
     const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
     if (!(await panel.isVisible()))
       await page.locator('[data-slot="shell-workspace-toggle"]').click();
     await panel.getByRole("button", { name: /^To-dos / }).click();
-    const title = panel.getByRole("button", { name: "Startup investigation", exact: true });
+    const title = panel.getByRole("button", { name: "Fix report-card source names", exact: true });
     const row = panel.locator('[data-todo-id="00000000-0000-4000-8000-000000000011"]');
     const marker = row.locator('[data-slot="nav-trailing"]').getByRole("img", { name: "Open" });
     const dot = marker.locator("span");
     const preview = row.getByText(description, { exact: true });
+    const legacyTitle = panel.getByRole("button", { name: "Additional task 0", exact: true });
+    const legacyPreview = legacyTitle.locator("..").getByText(legacyUpdate, { exact: true });
+    const isClipped = (element: Element) => element.scrollHeight > element.clientHeight;
     const report = row.getByRole("link", { name: "Exact investigation report", exact: true });
     const actions = row.locator('[data-slot="todo-actions"]');
     const focus = actions.getByRole("button", {
-      name: "Focus to-do: Startup investigation",
+      name: "Focus to-do: Fix report-card source names",
       exact: true,
     });
-    const done = actions.getByRole("button", { name: "Mark done: Startup investigation" });
+    const done = actions.getByRole("button", { name: "Mark done: Fix report-card source names" });
     const attach = actions.getByRole("button", {
-      name: "Attach to-do as context: Startup investigation",
+      name: "Attach to-do as context: Fix report-card source names",
     });
     const labelPicker = row.getByRole("button", { name: /Current label: Research/ });
     const dotMarkup = await marker.evaluate((element) => element.outerHTML);
@@ -121,7 +127,17 @@ test("to-do details expand inline; the existing dot and independent row actions 
     await expect(labelPicker.getByText("Research", { exact: true })).toBeVisible();
     await expect(labelPicker.locator("[data-session-label-color]")).toHaveCount(1);
     await expect(title).toHaveAttribute("aria-expanded", "false");
-    await expect(preview).toHaveCSS("-webkit-line-clamp", "2");
+    await expect(preview).toHaveCount(1);
+    await expect(preview).toHaveCSS("-webkit-line-clamp", "4");
+    await expect.poll(() => preview.evaluate(isClipped)).toBe(false);
+    await expect.poll(() => legacyPreview.evaluate(isClipped)).toBe(true);
+    await legacyTitle.press("Enter");
+    await expect(legacyTitle).toHaveAttribute("aria-expanded", "true");
+    await expect(legacyPreview).toHaveCount(1);
+    await expect(legacyPreview).toHaveCSS("white-space", "pre-wrap");
+    await expect.poll(() => legacyPreview.evaluate(isClipped)).toBe(false);
+    await legacyTitle.press("Enter");
+    await expect(legacyTitle).toHaveAttribute("aria-expanded", "false");
     await expect(report).toHaveCount(0);
 
     await page.getByRole("combobox", { name: "Message Project Chat" }).focus();
@@ -135,13 +151,13 @@ test("to-do details expand inline; the existing dot and independent row actions 
     // Wait past the removed description hover delay, then check the portaled tooltip.
     await page.waitForTimeout(250);
     await expect(
-      page.getByRole("tooltip").filter({ hasText: "Find the startup bottleneck" }),
+      page.getByRole("tooltip").filter({ hasText: "The report-card fix passed review" }),
     ).toHaveCount(0);
     await expect(title).not.toHaveAttribute("title");
     expect(await row.boundingBox()).toEqual(before);
     await focus.hover();
     await expect(
-      page.getByRole("tooltip", { name: "Focus to-do: Startup investigation" }),
+      page.getByRole("tooltip", { name: "Focus to-do: Fix report-card source names" }),
     ).toBeVisible();
 
     await preview.click();
@@ -150,7 +166,8 @@ test("to-do details expand inline; the existing dot and independent row actions 
     await expect(focus).toHaveAttribute("aria-pressed", "false");
     await expect(preview).toHaveCSS("-webkit-line-clamp", "none");
     await expect(preview).toHaveCSS("white-space", "pre-wrap");
-    await expect(row.getByText("Status: Report ready for review.")).toBeVisible();
+    await expect(preview).toHaveCount(1);
+    await expect(row.getByText(/Report ready for review/)).toHaveCount(0);
     await expect(report).toBeVisible();
     expect(await marker.evaluate((element) => element.outerHTML)).toBe(dotMarkup);
     expect(await dotPosition()).toEqual(initialDot);
@@ -163,7 +180,7 @@ test("to-do details expand inline; the existing dot and independent row actions 
     await expect(focus).toHaveAttribute("aria-pressed", "false");
     await title.press("Shift+F10");
     await expect(
-      page.getByRole("menu", { name: "Actions for Startup investigation" }),
+      page.getByRole("menu", { name: "Actions for Fix report-card source names" }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(title).toHaveAttribute("aria-expanded", "true");
@@ -172,13 +189,13 @@ test("to-do details expand inline; the existing dot and independent row actions 
     await expect(title).toHaveAttribute("aria-expanded", "false");
     await expect(report).toHaveCount(0);
     await row
-      .getByRole("button", { name: "Show 1 link for Startup investigation", exact: true })
+      .getByRole("button", { name: "Show 1 link for Fix report-card source names", exact: true })
       .click();
     await expect(report).toBeVisible();
     await expect(title).toHaveAttribute("aria-expanded", "false");
-    await expect(preview).toHaveCSS("-webkit-line-clamp", "2");
+    await expect(preview).toHaveCSS("-webkit-line-clamp", "4");
     await row
-      .getByRole("button", { name: "Hide 1 link for Startup investigation", exact: true })
+      .getByRole("button", { name: "Hide 1 link for Fix report-card source names", exact: true })
       .click();
     await expect(report).toHaveCount(0);
 

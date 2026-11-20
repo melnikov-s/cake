@@ -73,7 +73,7 @@ export const processReports = Effect.fn("ProjectTodoUpdates.processReports")(fun
           yield* todos.applyReportDescription(scope, item, description);
       }).pipe(
         Effect.catch((error) =>
-          Effect.logWarning("To-do description update failed; keeping current text", error),
+          Effect.logWarning("To-do latest update failed; keeping current text", error),
         ),
       );
     }
@@ -109,7 +109,7 @@ export const processInitialDescription = Effect.fn("ProjectTodoUpdates.processIn
   (effect, request) =>
     effect.pipe(
       Effect.catch((error) =>
-        Effect.logWarning("Initial to-do summary failed; keeping fallback", error).pipe(
+        Effect.logWarning("Initial to-do summary failed; keeping current text", error).pipe(
           Effect.annotateLogs({ scope: request.scope, id: request.id }),
         ),
       ),

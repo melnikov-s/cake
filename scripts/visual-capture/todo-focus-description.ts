@@ -5,23 +5,39 @@ import type { VisualCaptureScenario } from "./scenarios";
 
 const title = "Investigate slow project startup and repeated configuration reads";
 const intro = "Find the startup bottleneck and recommend a focused fix.";
+const shortTitle = "Fix report-card source names";
+const shortUpdate =
+  "The report-card fix passed review. We just need to verify that the cards show the right source names.";
+const legacyUpdate = `${intro}\n\nCompare two cold launches with a warm launch. Record the repeated reads and check whether caching still picks up edits to the project config.\n\nUse the baseline measurements in the investigation report to distinguish a slow launch from a delayed refresh.`;
+const isClipped = (element: Element) => element.scrollHeight > element.clientHeight;
 
 export function createTodoFocusDescriptionScenario(
   seed: VisualCaptureScenario["seed"],
 ): VisualCaptureScenario {
   return {
     name: "todo-focus-description",
-    description: "Labeled to-do with its original status dot, inline details and Focus row action",
-    states: ["collapsed", "expanded", "focus-hover", "global-expanded"],
+    description:
+      "Short and legacy Latest updates with inline expansion, named links and row actions",
+    states: [
+      "collapsed",
+      "expanded",
+      "narrow-collapsed",
+      "narrow-expanded",
+      "focus-hover",
+      "global-expanded",
+    ],
     async seed(paths, theme) {
       const dispose = await seed(paths, theme);
       const file = join(paths.cakeHome, "state", "application.json");
       const application = JSON.parse(await readFile(file, "utf8"));
       const labelId = "10000000-0000-4000-8000-000000000001";
       application.data.globalSessionLabels.push({ id: labelId, name: "Research", color: "violet" });
-      const item = application.data.projects[0].todos.items[0];
-      item.labelId = labelId;
-      item.description = `${intro}\n\nCompare two cold launches with a warm launch. Record the repeated reads and check whether caching still picks up edits to the project config.`;
+      const [legacy, short] = application.data.projects[0].todos.items;
+      legacy.title = title;
+      legacy.labelId = labelId;
+      legacy.description = legacyUpdate;
+      short.title = shortTitle;
+      short.description = shortUpdate;
       await writeFile(file, JSON.stringify(application));
       return dispose;
     },
@@ -39,9 +55,17 @@ export function createTodoFocusDescriptionScenario(
         await page.locator('[data-slot="shell-workspace-toggle"]').click();
       if (!(await workspace.getByRole("searchbox", { name: "Search to-dos" }).isVisible()))
         await workspace.getByRole("button", { name: /^To-dos / }).click();
+      if (state.startsWith("narrow-")) {
+        const resize = page.getByRole("separator", { name: "Resize Workspace", exact: true });
+        await resize.press("Home");
+        await resize.blur();
+        await expect(workspace).toHaveCSS("width", "240px");
+      }
       const disclosure = workspace.getByRole("button", { name: title, exact: true });
       const row = disclosure.locator("..");
-      const preview = row.getByText(intro, { exact: false });
+      const preview = row.getByText(legacyUpdate, { exact: true });
+      const shortDisclosure = workspace.getByRole("button", { name: shortTitle, exact: true });
+      const shortPreview = shortDisclosure.locator("..").getByText(shortUpdate, { exact: true });
       const status = row.locator('[data-slot="nav-trailing"] [role="img"]');
       const marker = await status.getAttribute("aria-label");
       const focus = row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true });
@@ -49,7 +73,14 @@ export function createTodoFocusDescriptionScenario(
       await expect(status).toBeVisible();
       await expect(row.getByText("Research", { exact: true })).toBeVisible();
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-      await expect(preview).toHaveCSS("-webkit-line-clamp", "2");
+      await expect(preview).toHaveCount(1);
+      await expect(preview).toHaveCSS(
+        "-webkit-line-clamp",
+        state.startsWith("narrow-") ? "5" : "4",
+      );
+      await expect.poll(() => preview.evaluate(isClipped)).toBe(true);
+      await expect(shortPreview).toHaveCount(1);
+      await expect.poll(() => shortPreview.evaluate(isClipped)).toBe(false);
       await expect(report).toHaveCount(0);
       await disclosure.hover();
       await expect(focus).toHaveCSS("opacity", "1");
@@ -61,14 +92,25 @@ export function createTodoFocusDescriptionScenario(
         await expect(page.getByRole("tooltip").filter({ hasText: "Focus to-do:" })).toHaveText(
           `Focus to-do: ${title}`,
         );
-      } else if (state === "expanded" || state === "global-expanded") {
-        await preview.click();
-        await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-        await expect(preview).toHaveCSS("-webkit-line-clamp", "none");
-        await expect(report).toBeVisible();
-        await expect(row.getByText(/Report delivered; awaiting your review/)).toBeVisible();
-        await expect(status).toHaveAttribute("aria-label", marker!);
-        await preview.hover();
+      } else {
+        if (state.endsWith("expanded")) {
+          await shortPreview.click();
+          await expect(shortDisclosure).toHaveAttribute("aria-expanded", "true");
+          await preview.click();
+          await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+          await expect(preview).toHaveCount(1);
+          await expect(preview).toHaveCSS("white-space", "pre-wrap");
+          await expect.poll(() => preview.evaluate(isClipped)).toBe(false);
+          await expect(report).toBeVisible();
+          await expect(row.getByText(/Report delivered; awaiting your review/)).toHaveCount(0);
+          await expect(status).toHaveAttribute("aria-label", marker!);
+        }
+        await page
+          .getByRole("combobox", {
+            name: state === "global-expanded" ? "Message Cake Chat" : "Message Project Chat",
+          })
+          .focus();
+        await page.mouse.move(1, 1);
       }
       await expect(focus).toHaveAttribute("aria-pressed", "false");
       await page.waitForFunction(() => document.fonts.status === "loaded");

@@ -74,7 +74,7 @@ it.effect(
     const f = fixture((input) =>
       Effect.sync(() => {
         inputs.push(input);
-        return "Retry fix is ready for review. Awaiting merge.";
+        return "Retries no longer create duplicate writes. Check the fix with production traffic.";
       }),
     );
     return Effect.gen(function* () {
@@ -92,7 +92,9 @@ it.effect(
       const before = yield* todos.list("/project");
       yield* updates.processReports([report]);
       const next = yield* todos.read("/project", item.id);
-      expect(next.description).toBe("Retry fix is ready for review. Awaiting merge.");
+      expect(next.description).toBe(
+        "Retries no longer create duplicate writes. Check the fix with production traffic.",
+      );
       expect(next.revision).toBe(1);
       expect(next.state).toBe("open");
       expect(next.associations).toEqual(work);
@@ -111,6 +113,7 @@ it.effect(
       expect(inputs[0]!.selection).toEqual({ ...model, fastMode: false });
       expect(inputs[0]!.timeoutMs).toBe(10_000);
       expect(inputs[0]!.instructions).toContain(PROJECT_TODO_SUMMARY_GUIDANCE);
+      expect(inputs[0]!.instructions).toContain("Replace the snapshot rather than appending");
       expect(f.persisted().projects[0]?.todos?.items[0]?.description).toBe(next.description);
     }).pipe(Effect.provide(f.layer));
   },

@@ -5083,7 +5083,7 @@ describe("Project Sessions domain", () => {
         });
         const [item] = (yield* projectTodos.list("/project")).items;
         assert.equal(item?.title, "Implement startup fix");
-        assert.equal(item?.description, "Continue work on Implement startup fix.");
+        assert.equal(item?.description, "");
         assert.equal(requests.length, 1);
         assert.equal(
           requests[0]?.brief,
@@ -6896,7 +6896,7 @@ describe("Project Sessions domain", () => {
       );
       assert.equal(project?.todos?.items.length, 1);
       assert.equal(project?.todos?.items[0]?.title, "First message");
-      assert.equal(project?.todos?.items[0]?.description, "Continue work on First message.");
+      assert.equal(project?.todos?.items[0]?.description, "");
       assert.deepEqual(project?.todos?.items[0]?.associations, [
         { kind: "session", sessionId: "session-1", title: "First message" },
       ]);

@@ -26,7 +26,7 @@ export function createProjectTodoOperations(
   control: ProjectTodoControl,
 ): CakeOperationDefinition[] {
   const guidance = [
-    `${PROJECT_TODO_AUTO_COMPLETION_RULE} Run sessions.resolve, then edit only title/description/status if needed.`,
+    `${PROJECT_TODO_AUTO_COMPLETION_RULE} Run sessions.resolve, then edit only title, Latest update (description), or stored status if needed.`,
     `${PROJECT_TODO_CREATION_RULE} No polling/wakes merely for open items.`,
     "Default list is title/id/state/revision, needsAttention and retained attentionReason, plus snoozedUntil when snoozed. Filter category=attention|active|snoozed|done; state=open includes Needs attention, Active and Snoozed. List limit defaults to 20; choose any positive safe integer page size and page with nextOffset. For reconciliation use todos.list with state=open, view=reconciliation, then todos.update-many in batches of at most 50 with expectedRevision per item. No transcript reads or per-session inspection needed.",
     "Reconciliation sessions contain canonical required session IDs and authoritative effective resolved (null means unknown), not execution done/stopped. All actual session associations must resolve before automatic closure, including historical items and late associations. Source/report links are context: they never veto completion and source-only discussion items remain open. Reports/run completion never close items.",
@@ -139,7 +139,7 @@ export function createProjectTodoOperations(
       outputSchema: ProjectTodoDetail,
       examples: [{ input: { id: "00000000-0000-4000-8000-000000000001" } }],
       result:
-        "Exact description/status/attention/links/revision and canonical work session IDs with effective resolution.",
+        "Exact Latest update (description), stored status, attention, links, revision and canonical work session IDs with effective resolution.",
       async execute(input, context) {
         const { id } = await Schema.decodeUnknownPromise(
           Schema.Struct({ id: ProjectTodo.fields.id }),
@@ -163,8 +163,9 @@ export function createProjectTodoOperations(
       examples: [
         {
           input: {
-            title: "Investigate startup",
-            description: "Startup investigation is underway. No findings reported yet.",
+            title: "Fix report-card source names",
+            description:
+              "The report-card fix passed review. We just need to verify that the cards show the right source names.",
             needsAttention: false,
           },
         },
