@@ -4,6 +4,8 @@ import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing
 import { CakeSessionRuntimes, type PiSessionTarget } from "../../services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
+import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
+import { removeProject } from "../application/application";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
@@ -28,17 +30,35 @@ export const initialize = Effect.fn("AutoMerge.initialize")(function* () {
   }));
 });
 
+const projectLock = (projectPath: string) => `auto-merge-toggle:${projectPath}`;
+
+/** Removal retires declarations before the root can acquire another opt-in. */
+export const removeRegistration = Effect.fn("AutoMerge.removeRegistration")(function* (
+  projectPath: string,
+) {
+  const storage = yield* SessionFamilyStorage;
+  const coordinator = yield* WorktreeLandingCoordinator;
+  return yield* storage.withCreationLock(
+    projectLock(projectPath),
+    Effect.gen(function* () {
+      yield* storage.retireProjectAutoMerge(projectPath);
+      const state = yield* removeProject(projectPath);
+      yield* SubscriptionRef.update(coordinator.state, (current) => ({
+        ...current,
+        autoMergeProjects: current.autoMergeProjects?.filter(
+          (item) => item.projectPath !== projectPath,
+        ),
+      }));
+      return state;
+    }).pipe(Effect.uninterruptible),
+  );
+});
+
 export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (
   projectPath: string,
   enabled: boolean,
 ) {
   const application = yield* ApplicationState;
-  if (!application.snapshot().projects.some((project) => project.path === projectPath))
-    return yield* new WorktreeLandingError({
-      operation: "setAutoMerge",
-      message:
-        "Auto-merge requires an exact registered project root; no global authorization exists.",
-    });
   const coordinator = yield* WorktreeLandingCoordinator;
   const storage = yield* SessionFamilyStorage;
   const clock = yield* Clock.Clock;
@@ -56,8 +76,14 @@ export const setEnabled = Effect.fn("AutoMerge.setEnabled")(function* (
   };
   yield* storage
     .withCreationLock(
-      `auto-merge-toggle:${projectPath}`,
+      projectLock(projectPath),
       Effect.gen(function* () {
+        if (!application.snapshot().projects.some((project) => project.path === projectPath))
+          return yield* new WorktreeLandingError({
+            operation: "setAutoMerge",
+            message:
+              "Auto-merge requires an exact registered project root; no global authorization exists.",
+          });
         const current = yield* SubscriptionRef.get(coordinator.state);
         const previous = current.autoMergeProjects?.find(
           (item) => item.projectPath === projectPath,
@@ -225,81 +251,93 @@ export const report = Effect.fn("AutoMerge.reportReadiness")(function* (
       operation: "readiness",
       message: `Readiness requires an executing task run for session ${target.sessionId}; executing input count=${ids.length}, ids=${JSON.stringify(ids)}.`,
     });
-  const state = yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state);
-  if (!state.autoMergeRunId)
-    return {
-      eligible: false as const,
-      reason: "Readiness requires a current app-run identity.",
-    };
-  const document = yield* storage.state();
-  const foreignTurns = document.turns.filter(
-    (turn) => ids.includes(turn.turnId) && turn.sessionId !== target.sessionId,
+  const application = yield* ApplicationState;
+  const coordinator = yield* WorktreeLandingCoordinator;
+  return yield* storage.withCreationLock(
+    projectLock(projectPath),
+    Effect.gen(function* () {
+      if (!application.snapshot().projects.some((item) => item.path === projectPath))
+        return yield* new WorktreeLandingError({
+          operation: "readiness",
+          message: "The owning project is no longer registered.",
+        });
+      const state = yield* SubscriptionRef.get(coordinator.state);
+      if (!state.autoMergeRunId)
+        return {
+          eligible: false as const,
+          reason: "Readiness requires a current app-run identity.",
+        };
+      const document = yield* storage.state();
+      const foreignTurns = document.turns.filter(
+        (turn) => ids.includes(turn.turnId) && turn.sessionId !== target.sessionId,
+      );
+      if (foreignTurns.length)
+        return yield* new WorktreeLandingError({
+          operation: "readiness",
+          message: `Executing inputs do not belong to session ${target.sessionId}; count=${ids.length}, ids=${JSON.stringify(ids)}, foreign ids=${JSON.stringify(foreignTurns.map((turn) => turn.turnId))}.`,
+        });
+      const request: AutoMergeRequest = {
+        id,
+        sessionId: target.sessionId,
+        workspacePath: target.workingDirectory,
+        projectPath,
+        epoch:
+          state.autoMergeProjects?.find((item) => item.projectPath === projectPath)?.epoch ?? "",
+        runId: state.autoMergeRunId,
+        commit: head,
+        state: "pending",
+        message: "Waiting for task completion",
+        readyToMerge: true,
+      };
+      const coordinatorSessionId = projectChatSessionId(projectPath);
+      if (isDirectProjectChatDelegation(document, request, coordinatorSessionId))
+        Object.assign(request, { coordinatorSessionId });
+      const operation = state.operations.get(target.workingDirectory);
+      if (
+        operation?.automatic &&
+        !operation.cancellationRequested &&
+        operation.sessionId === target.sessionId &&
+        (operation.phase === "resolving" ||
+          operation.phase === "validating" ||
+          operation.phase === "stalled")
+      ) {
+        const previous = document.autoMergeRequests?.find(
+          (item) => item.id === operation.autoMergeRequestId,
+        );
+        if (previous)
+          Object.assign(request, {
+            repairAttempt: (previous.repairAttempt ?? 0) + 1,
+            repairOfRequestId: previous.id,
+          });
+      }
+      yield* storage.recordAutoMerge(request);
+      const stored = (yield* storage.state()).autoMergeRequests?.find((item) => item.id === id);
+      if (!stored) return { eligible: false as const, reason: "Readiness was not retained." };
+      if (stored.runId !== state.autoMergeRunId)
+        return { eligible: false as const, reason: "Readiness belongs to a previous app run." };
+      if (
+        stored.sessionId !== target.sessionId ||
+        stored.workspacePath !== target.workingDirectory ||
+        stored.projectPath !== projectPath
+      )
+        return {
+          eligible: false as const,
+          reason: "Stored readiness does not match this session or workspace.",
+        };
+      if (stored.commit !== head)
+        return {
+          eligible: false as const,
+          reason: `This run already declared readiness for ${stored.commit}, but HEAD is now ${head}. A run's declaration is not replaced; landing will reject the earlier commit as stale.`,
+        };
+      if (!stored.readyToMerge || (stored.state !== "pending" && stored.state !== "ready"))
+        return {
+          eligible: false as const,
+          reason:
+            stored.message ??
+            `Readiness is ${stored.state}; it is not awaiting task completion or landing.`,
+        };
+      // The worker separately enforces toggle/epoch authorization, settlement and Git safety.
+      return { eligible: true as const };
+    }),
   );
-  if (foreignTurns.length)
-    return yield* new WorktreeLandingError({
-      operation: "readiness",
-      message: `Executing inputs do not belong to session ${target.sessionId}; count=${ids.length}, ids=${JSON.stringify(ids)}, foreign ids=${JSON.stringify(foreignTurns.map((turn) => turn.turnId))}.`,
-    });
-  const coordinatorSessionId =
-    document.spawnedSessions.find((item) => item.sessionId === target.sessionId)?.requester
-      .sessionId ?? document.turns.find((item) => item.turnId === id)?.senderSessionId;
-  const request: AutoMergeRequest = {
-    id,
-    sessionId: target.sessionId,
-    workspacePath: target.workingDirectory,
-    projectPath,
-    epoch: state.autoMergeProjects?.find((item) => item.projectPath === projectPath)?.epoch ?? "",
-    runId: state.autoMergeRunId,
-    commit: head,
-    state: "pending",
-    message: "Waiting for task completion",
-    readyToMerge: true,
-  };
-  if (coordinatorSessionId) Object.assign(request, { coordinatorSessionId });
-  const operation = state.operations.get(target.workingDirectory);
-  if (
-    operation?.automatic &&
-    !operation.cancellationRequested &&
-    operation.sessionId === target.sessionId &&
-    (operation.phase === "resolving" ||
-      operation.phase === "validating" ||
-      operation.phase === "stalled")
-  ) {
-    const previous = document.autoMergeRequests?.find(
-      (item) => item.id === operation.autoMergeRequestId,
-    );
-    if (previous)
-      Object.assign(request, {
-        repairAttempt: (previous.repairAttempt ?? 0) + 1,
-        repairOfRequestId: previous.id,
-      });
-  }
-  yield* storage.recordAutoMerge(request);
-  const stored = (yield* storage.state()).autoMergeRequests?.find((item) => item.id === id);
-  if (!stored) return { eligible: false as const, reason: "Readiness was not retained." };
-  if (stored.runId !== state.autoMergeRunId)
-    return { eligible: false as const, reason: "Readiness belongs to a previous app run." };
-  if (
-    stored.sessionId !== target.sessionId ||
-    stored.workspacePath !== target.workingDirectory ||
-    stored.projectPath !== projectPath
-  )
-    return {
-      eligible: false as const,
-      reason: "Stored readiness does not match this session or workspace.",
-    };
-  if (stored.commit !== head)
-    return {
-      eligible: false as const,
-      reason: `This run already declared readiness for ${stored.commit}, but HEAD is now ${head}. A run's declaration is not replaced; landing will reject the earlier commit as stale.`,
-    };
-  if (!stored.readyToMerge || (stored.state !== "pending" && stored.state !== "ready"))
-    return {
-      eligible: false as const,
-      reason:
-        stored.message ??
-        `Readiness is ${stored.state}; it is not awaiting task completion or landing.`,
-    };
-  // The worker separately enforces toggle/epoch authorization, settlement and Git safety.
-  return { eligible: true as const };
 });

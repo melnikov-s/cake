@@ -482,10 +482,11 @@ const makeLayer = (
     Layer.succeed(SessionFamilyStorage, {
       changes: () => Stream.empty,
       authorizeAutoMerge: () => Effect.void,
+      retireProjectAutoMerge: () => Effect.void,
       markNoticeFailure: () => Effect.void,
       retryNoticeDelivery: () => Effect.void,
       recordAutoMerge: () => Effect.void,
-      updateAutoMerge: () => Effect.void,
+      updateAutoMerge: () => Effect.succeed(true),
       invalidateAutoMerge: () => Effect.void,
       deferPassiveNotice: () => Effect.void,
       markPassiveNoticeAdmission: () => Effect.void,

@@ -94,6 +94,7 @@ export interface ManagedWorktreesService {
   readonly setResolveAfterLanding: (
     worktreePath: string,
     enabled: boolean,
+    automaticOperationId?: string,
   ) => Effect.Effect<void, ManagedWorktreeError>;
   readonly land: (
     worktreePath: string,

@@ -3,6 +3,7 @@ import { createCheckout } from "../../src/domain/worktrees/worktreeCreation";
 import type { ProjectSettings } from "../../src/contracts/application/application-data";
 import type { WorktreeLandRequest } from "../../src/contracts/worktrees/worktree-contract";
 import { BootstrapLive } from "../../src/main/BootstrapLive";
+import type { GitRunner } from "../../src/services/git/Git";
 import { makeGitLive } from "../../src/services/git/GitLive";
 import { makeWorktreeStorageLive } from "../../src/services/storage/WorktreeStorageLive";
 import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees";
@@ -17,11 +18,12 @@ export const makeTestWorktreeService = (
   storagePath: string,
   /** Lifecycle commands used by removal and restore, as a Project's settings would supply. */
   settings?: ProjectSettings,
+  gitRunner?: GitRunner,
 ) => {
   const lifecycle = settings ? lifecycleFromSettings(settings) : {};
   const dependencies = Layer.mergeAll(
     BootstrapLive,
-    makeGitLive(),
+    makeGitLive(gitRunner),
     makeWorktreeStorageLive(storagePath),
     makeWorktreeCommandsLive(join(dirname(storagePath), "worktree-logs")),
   ).pipe(Layer.provide(BootstrapLive));

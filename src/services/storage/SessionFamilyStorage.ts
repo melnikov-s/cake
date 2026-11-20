@@ -72,6 +72,9 @@ import {
   validateDocument,
 } from "./sessionFamilyDocumentCodec";
 
+type AutoMergeExpectation = Pick<AutoMergeRequest, "state" | "attempt" | "readyToMerge"> &
+  Partial<Pick<AutoMergeRequest, "epoch">>;
+
 export class SessionFamilyStorage extends Context.Service<
   SessionFamilyStorage,
   {
@@ -84,6 +87,9 @@ export class SessionFamilyStorage extends Context.Service<
       projectPath: string,
       projectChatId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly retireProjectAutoMerge: (
+      projectPath: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly recordAutoMerge: (
       request: AutoMergeRequest,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
@@ -92,7 +98,9 @@ export class SessionFamilyStorage extends Context.Service<
       state: AutoMergeRequest["state"],
       message?: string,
       outcome?: AutoMergeOutcome,
-    ) => Effect.Effect<void, SessionFamilyStorageError>;
+      expected?: AutoMergeExpectation,
+      readyToMerge?: boolean,
+    ) => Effect.Effect<boolean, SessionFamilyStorageError>;
     readonly invalidateAutoMerge: (
       workspacePath: string,
       id?: string,
@@ -644,7 +652,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                 !item.readyToMerge ||
                 item.runId !== runId ||
                 item.projectPath !== projectPath ||
-                !isDirectProjectChatDelegation(document.spawnedSessions, item, projectChatId) ||
+                !isDirectProjectChatDelegation(document, item, projectChatId) ||
                 item.state === "landing" ||
                 item.state === "landed"
               )
@@ -654,6 +662,26 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                 Object.assign(next, { state: "ready", attempt: (item.attempt ?? 0) + 1 });
               return next;
             }),
+          })),
+      );
+      const retireProjectAutoMerge = Effect.fn("SessionFamilyStorage.retireProjectAutoMerge")(
+        (projectPath: string) =>
+          update((document) => ({
+            ...document,
+            autoMergeRequests: document.autoMergeRequests?.map((item) =>
+              item.projectPath === projectPath && item.readyToMerge && item.state !== "landed"
+                ? {
+                    ...item,
+                    readyToMerge: false,
+                    ...(item.outcome
+                      ? null
+                      : {
+                          state: "canceled" as const,
+                          message: "Project was removed; fresh readiness required",
+                        }),
+                  }
+                : item,
+            ),
           })),
       );
       const recordAutoMerge = Effect.fn("SessionFamilyStorage.recordAutoMerge")(
@@ -672,18 +700,32 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         state: AutoMergeRequest["state"],
         message?: string,
         outcome?: AutoMergeOutcome,
+        expected?: AutoMergeExpectation,
+        readyToMerge?: boolean,
       ) {
+        let applied = false;
         const reportedAt = DateTime.formatIso(yield* DateTime.now);
         yield* update((document) => {
           const request = document.autoMergeRequests?.find((item) => item.id === id);
           if (
             !request ||
+            (expected &&
+              (request.state !== expected.state ||
+                request.attempt !== expected.attempt ||
+                (expected.epoch !== undefined && request.epoch !== expected.epoch) ||
+                request.readyToMerge !== expected.readyToMerge)) ||
             (request.state === state &&
               request.message === message &&
+              (readyToMerge === undefined || request.readyToMerge === readyToMerge) &&
               (!outcome || request.outcome))
           )
             return document;
-          const changed = { ...Struct.omit(request, ["message"]), state };
+          applied = true;
+          const changed = {
+            ...Struct.omit(request, ["message"]),
+            state,
+            readyToMerge: readyToMerge ?? request.readyToMerge,
+          };
           if (message) Object.assign(changed, { message });
           if (outcome) Object.assign(changed, { outcome });
           const next = {
@@ -717,6 +759,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           }
           return next;
         });
+        return applied;
       });
       const invalidateAutoMerge = Effect.fn("SessionFamilyStorage.invalidateAutoMerge")(
         (workspacePath: string, id?: string, message = "New input invalidated merge readiness") =>
@@ -868,8 +911,16 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           };
           const relationship: SessionRelationship =
             input.purpose === "user"
-              ? { ...base, purpose: "user", movedToUserAt: now }
-              : { ...Struct.omit(base, ["movedToUserAt"]), purpose: "delegated" };
+              ? {
+                  ...Struct.omit(base, ["delegatedBySessionId"]),
+                  purpose: "user",
+                  movedToUserAt: now,
+                }
+              : {
+                  ...Struct.omit(base, ["movedToUserAt"]),
+                  purpose: "delegated",
+                  delegatedBySessionId: input.owner?.requester?.sessionId ?? null,
+                };
           const sessionPurposes = existing
             ? (document.sessionPurposes ?? []).map((item) =>
                 item.sessionId === input.sessionId ? relationship : item,
@@ -879,12 +930,12 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             const retired = document.turns.filter(
               (turn) => turn.sessionId === input.sessionId && !turn.reported,
             );
-            // A landing already underway is refused by its merge-time authorization check.
+            // Retire in-flight permission as well, so transferring back cannot revive it.
             const canceled = (document.autoMergeRequests ?? []).filter(
               (item) =>
                 item.sessionId === input.sessionId &&
-                item.readyToMerge &&
-                (item.state === "pending" || item.state === "ready"),
+                (item.state === "landing" ||
+                  (item.readyToMerge && (item.state === "pending" || item.state === "ready"))),
             );
             result = {
               ...result,
@@ -1675,6 +1726,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         updateBoardDelivery,
         setBoardDeliveryPaused,
         authorizeAutoMerge,
+        retireProjectAutoMerge,
         recordAutoMerge,
         updateAutoMerge,
         invalidateAutoMerge,

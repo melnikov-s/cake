@@ -783,15 +783,15 @@ repository lock. Only ready entries publish `queued` and wait for promotion, wit
 worktree lock. At the front, landing re-reads the persisted checkpoint, validates source
 and target, and replays against the latest target again. Target mutation holds both
 checkout locks and the repository lock; preserve landing retains its fast-forward-only
-retry if the target advances. A manual conflict or stale squash proposal retains the entry's
-position while its owner repairs it; later entries can still prepare, never land ahead.
-Automatic landing instead releases admission before its agent repair turn and invalidates the
-old commit-bound readiness. Even a clean rebase must return for validation if HEAD changed.
+retry if the target advances. When the engine returns a repair or proposal outcome, it releases
+FIFO admission; manual retries reserve again. Automatic landing also invalidates the old
+commit-bound readiness before its agent repair turn. Even a clean rebase must return for validation if HEAD changed.
 The owner repairs, validates the final committed changes and declares new readiness; only
 successful turn settlement plus current project authorization permits the scheduler to retry.
 A follow-up declaration remains tied to its predecessor's stable `autoMergeRequestId`
-(not its retry attempt ID), so cancellation cannot resurrect it through an off/on cycle. Two consecutive repair turns bound recurring conflicts;
-failed/aborted repairs remain unresolved. Persisted automatic pauses are inspection-only after
+(not its retry attempt ID), so cancellation cannot resurrect it through an off/on cycle.
+Automatic repair stops when the same source-tree, target-commit and conflict fingerprint recurs
+without progress; failed or aborted repairs remain unresolved. Persisted automatic pauses are inspection-only after
 restart, never adopted as manual authority or replayed without fresh readiness.
 Renderer status refreshes coalesce without dropping an update received in flight. Persisted pauses can be
 adopted after restart, including squash-message requests; explicit dismissal clears

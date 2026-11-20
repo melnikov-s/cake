@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
+import type { GitRunner } from "../../src/services/git/Git";
 import { defaultProjectSettings } from "../../src/contracts/application/application-data";
 import { makeTestWorktreeService, type TestWorktreeService } from "../helpers/worktree-service";
 
@@ -39,9 +40,10 @@ async function repository() {
 
 function service(
   storage = join(tmpdir(), `cake-worktree-store-${Math.random().toString(16).slice(2)}.json`),
+  runner?: GitRunner,
 ) {
   storages.push(storage);
-  const worktrees = makeTestWorktreeService(storage);
+  const worktrees = makeTestWorktreeService(storage, undefined, runner);
   services.push(worktrees);
   return worktrees;
 }
@@ -61,6 +63,57 @@ async function commitAll(cwd: string, message: string) {
 }
 
 describe("WorktreeService", { timeout: 20_000 }, () => {
+  it("fast-forwards only to the validated SHA when an external Git writer advances the source branch", async () => {
+    const repo = await repository();
+    let sourcePath: string | undefined;
+    let mergeArguments: readonly string[] | undefined;
+    let laterCommit: string | undefined;
+    const worktrees = service(undefined, async (cwd, args) => {
+      // The final source check already ran. Interpose another Git client at the
+      // first target mutation, then execute the exact command Cake issued.
+      if (cwd === repo && args[0] === "merge" && args[1] === "--ff-only" && sourcePath) {
+        mergeArguments = [...args];
+        await writeFile(join(sourcePath, "later.txt"), "not validated\n");
+        await commitAll(sourcePath, "new work after the check");
+        laterCommit = (await git(sourcePath, "rev-parse", "HEAD")).stdout.trim();
+      }
+      return (await git(cwd, ...args)).stdout;
+    });
+    const source = await worktrees.create(repo);
+    sourcePath = source.worktreePath;
+    await writeFile(join(sourcePath, "feature.txt"), "validated\n");
+    await commitAll(sourcePath, "validated work");
+    const checked = (await git(sourcePath, "rev-parse", "HEAD")).stdout.trim();
+    await expect(
+      worktrees.land(sourcePath, {
+        operationId: "validated-attempt",
+        request: {
+          strategy: "preserve",
+          expectedSourceCommit: checked,
+          automaticSessionId: "owner",
+        },
+      }),
+    ).resolves.toEqual({ outcome: "landed", commit: checked });
+    expect(mergeArguments).toEqual(["merge", "--ff-only", checked]);
+    expect(laterCommit).toBeDefined();
+    expect(laterCommit).not.toBe(checked);
+    expect((await git(repo, "rev-parse", "HEAD")).stdout.trim()).toBe(checked);
+    expect(await worktrees.status(sourcePath)).toMatchObject({
+      aheadCount: 1,
+      record: {
+        state: "landed",
+        landedSourceCommit: checked,
+        automaticLandingReceipt: {
+          operationId: "validated-attempt",
+          sessionId: "owner",
+          commit: checked,
+        },
+      },
+    });
+    await expect(worktrees.cleanupResolved(sourcePath)).rejects.toThrow(/unlanded work/i);
+    expect((await git(sourcePath, "rev-parse", source.branch)).stdout.trim()).toBe(laterCommit);
+    expect(await readFile(join(sourcePath, "later.txt"), "utf8")).toBe("not validated\n");
+  });
   it("does not squash the target's pre-existing staged work, even with dirty-target approval", async () => {
     const repo = await repository();
     const worktrees = service();

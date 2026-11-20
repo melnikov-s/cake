@@ -200,6 +200,8 @@ export const SessionRelationship = Schema.Struct({
   /** Creation intent is retained across purpose changes. */
   createdPurpose: SessionPurpose,
   movedToUserAt: Schema.optionalKey(Schema.String),
+  /** Explicit re-delegation supersedes spawn provenance for automatic landing. */
+  delegatedBySessionId: Schema.optionalKey(Schema.NullOr(BoundedId)),
 });
 export interface SessionRelationship extends Schema.Schema.Type<typeof SessionRelationship> {}
 

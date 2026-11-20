@@ -31,6 +31,7 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
     record: WorktreeRecord,
     state: "landed" | "resolved" | "discarded" | "missing",
     landedSourceCommit?: string,
+    automaticLandingReceipt?: WorktreeRecord["automaticLandingReceipt"],
   ) => Effect.Effect<void, WorktreeStorageError>,
 ) {
   const {
@@ -300,6 +301,7 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
     record: WorktreeRecord,
     request: WorktreeLandRequest,
     prepareOnly = false,
+    operationId?: string,
   ): Effect.fn.Return<WorktreeLandOutcome | { readonly outcome: "ready" }, unknown, never> {
     // Queue waiters must use the checkpoint committed by the preceding landing.
     const current = (yield* Ref.get(recordsRef)).find(
@@ -386,10 +388,17 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
       repository.gitService,
     );
     const sourceCommit = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
+    const expected = request.strategy === "preserve" ? request.expectedSourceCommit : undefined;
+    if (expected && sourceCommit !== expected)
+      return yield* internalError("Merge readiness is stale: HEAD changed after validation");
+    const automaticReceipt =
+      expected && request.strategy === "preserve" && request.automaticSessionId && operationId
+        ? { operationId, sessionId: request.automaticSessionId, commit: expected }
+        : undefined;
     if ((yield* newCommitCount(record, sourceCommit)) === 0) {
       if (prepareOnly) return { outcome: "ready" };
-      yield* closeRecord(record, "landed", sourceCommit);
-      return { outcome: "landed" };
+      yield* closeRecord(record, "landed", sourceCommit, automaticReceipt);
+      return expected ? { outcome: "landed", commit: expected } : { outcome: "landed" };
     }
     if (request.strategy === "squash") {
       if (record.landedSourceCommit) {
@@ -420,11 +429,12 @@ export const makeWorktreeLanding = Effect.fn("ManagedWorktrees.makeLanding")(fun
       }
       if (prepareOnly) return { outcome: "ready" };
       const merge = yield* Effect.result(
-        gitMutation(targetPath, "merge", "--ff-only", record.branch),
+        // External Git writers are not bound by Cake's locks.
+        gitMutation(targetPath, "merge", "--ff-only", expected ?? record.branch),
       );
       if (merge._tag === "Success") {
-        const commit = (yield* git(targetPath, "rev-parse", "HEAD")).trim();
-        yield* closeRecord(record, "landed", commit);
+        const commit = expected ?? (yield* git(targetPath, "rev-parse", "HEAD")).trim();
+        yield* closeRecord(record, "landed", commit, automaticReceipt);
         return { outcome: "landed", commit };
       }
       lastError = messageOf(merge.failure);

@@ -23,6 +23,15 @@ export const WorktreeRecord = Schema.Struct({
   landedSourceCommit: Schema.optionalKey(bounded(1, 256)),
   // Adopt this replay base only after conflict resolution completes, never after rebase --abort.
   pendingLandedSourceCommit: Schema.optionalKey(bounded(1, 256)),
+  /** Proof of one automatic attempt, not its (separate) resolve intent or mutable checkpoint. */
+  automaticLandingReceipt: Schema.optionalKey(
+    Schema.Struct({
+      operationId: bounded(1, 512),
+      sessionId: bounded(1, 512),
+      commit: bounded(1, 256),
+      resolutionAuthorized: Schema.optionalKey(Schema.Literal(true)),
+    }),
+  ),
   state: Schema.optional(Schema.Literals(["active", "landed", "resolved", "discarded", "missing"])),
   // Retirement must retain landing classification. Explicit undefined clears the live projection.
   resolvedFrom: Schema.optional(Schema.Literals(["landed", "discarded"])),

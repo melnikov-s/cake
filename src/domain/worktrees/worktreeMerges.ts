@@ -91,6 +91,8 @@ function nextStep(
     "Never land this work by hand with git merge, cherry-pick, or commit in the target checkout.";
   switch (outcome) {
     case "landed":
+      if (operation?.resolvedSessionIds?.includes(operation.sessionId))
+        return `Landed on ${target}${operation.landedCommit ? ` at ${operation.landedCommit}` : ""}; session resolution completed.`;
       return operation?.landedCommit
         ? `Landed on ${target} at ${operation.landedCommit}. The worktree is marked landed but its session is not resolved; resolve it only when the user asks.`
         : `Nothing new to land: ${target} already contains this worktree's commits. The session is not resolved.`;
@@ -116,8 +118,8 @@ function nextStep(
 }
 
 const outcomeOf = (operation: WorktreeLandingOperation | undefined): WorktreeMergeOutcome => {
-  if (!operation) return "canceled";
-  if (operation.phase === "landed" || operation.phase === "complete") return "landed";
+  if (operation?.kind !== "landing") return "canceled";
+  if (operation.phase === "landed") return "landed";
   if (operation.phase === "failed") return "failed";
   if (operation.phase === "stalled") return "stalled";
   if (agentPhases.has(operation.phase)) return "awaiting-agent";
@@ -149,6 +151,12 @@ const mergeWorkflow = Effect.fn("WorktreeMerges.mergeWorkflow")(function* (
   const existing = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
     input.workspacePath,
   );
+  if (!input.resolveAfterLanding && existing?.kind === "rebase" && !isTerminal(existing))
+    return yield* new WorktreeLandingError({
+      operation: "merge",
+      message:
+        "A standalone rebase is in progress or paused for this worktree. Finish or cancel it before merging.",
+    });
   let operationId: string;
   let claimed: WorktreeLandingOperation | undefined;
   if (input.resolveAfterLanding) {
@@ -248,7 +256,9 @@ export const mergeAndResolve = Effect.fn("WorktreeMerges.mergeAndResolve")(funct
       message: "Merge & resolve requires an owning Project Session, not a Side Chat.",
     });
   const { report, operation } = yield* mergeWorkflow({ ...input, resolveAfterLanding: true });
-  const resolved = report.outcome === "landed" && operation?.resolveAfterLanding === true;
+  const resolved =
+    report.outcome === "landed" &&
+    operation?.resolvedSessionIds?.includes(input.sessionId) === true;
   const landed = report.outcome === "landed" || operation?.resolutionError !== undefined;
   const outcome = operation?.resolutionError
     ? "resolution-failed"

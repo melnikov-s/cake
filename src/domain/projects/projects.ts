@@ -30,6 +30,7 @@ import { Terminal } from "../../services/terminal/Terminal";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
+import { removeRegistration } from "../worktrees/autoMergeReadiness";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { resolveRewordingWorkspace } from "../../services/projects/rewording-workspace";
 import type { ProjectCatalogUpdate } from "../../contracts/application/catalog-data";
@@ -45,7 +46,6 @@ import * as projectSessionLifecycle from "../project-sessions/projectSessionLife
 import { ProjectError } from "../../contracts/projects/project-error";
 import {
   observeState,
-  removeProject,
   renameProject,
   mutateGlobalSessionLabels,
   mutateProjectWorkflow,
@@ -547,7 +547,7 @@ export const remove = Effect.fn("Projects.remove")(function* (
     clientWorkspaces.forgetWorkspace(workingDirectory);
   }
   yield* mapProjectError("removeProject", access.forgetWorkingDirectories(workingDirectories));
-  return { state: yield* mapProjectError("removeProject", removeProject(request.path)) };
+  return { state: yield* mapProjectError("removeProject", removeRegistration(request.path)) };
 });
 
 export const deleteSession = Effect.fn("Projects.deleteSession")(function* (

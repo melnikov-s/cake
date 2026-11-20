@@ -98,7 +98,7 @@ it.each([
         validatedCommit: commit,
       });
       const defaults = defaultApplicationState();
-      const application = {
+      let application: ReturnType<typeof defaultApplicationState> = {
         ...defaults,
         projects: [
           {
@@ -115,7 +115,11 @@ it.each([
         WorktreeLandingCoordinatorLive,
         Layer.mock(ApplicationState, {
           snapshot: () => application,
-          transact: (change) => change(application),
+          transact: (change) =>
+            Effect.gen(function* () {
+              application = yield* change(application);
+              return application;
+            }),
         }),
         Layer.mock(CakeSessionRuntimes, {
           executingTurnIds: () => Effect.sync(() => [executingTurn]),
@@ -156,10 +160,11 @@ it.each([
       await engine.run(
         Effect.gen(function* () {
           const families = yield* SessionFamilyStorage;
-          yield* families.setPurpose({
+          yield* families.registerPurpose({
             sessionId: "owner",
             projectPath: root,
             purpose: "delegated",
+            createdPurpose: "delegated",
           });
           yield* families.registerSpawn({
             sessionId: "owner",

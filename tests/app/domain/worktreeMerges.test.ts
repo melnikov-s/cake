@@ -17,6 +17,7 @@ import {
 } from "../../../src/contracts/application/application-data";
 import type {
   WorktreeLandOutcome,
+  WorktreeRebaseOutcome,
   WorktreeStatus,
 } from "../../../src/contracts/worktrees/worktree-contract";
 import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
@@ -59,6 +60,7 @@ interface Harness {
   resolve?: () => Effect.Effect<WorkingDirectoryResolutionResult, WorktreeLandingError>;
   status: Partial<WorktreeStatus>;
   land: () => Effect.Effect<WorktreeLandOutcome, ManagedWorktreeError>;
+  rebase?: () => Effect.Effect<WorktreeRebaseOutcome, ManagedWorktreeError>;
   prepare?: Effect.Effect<void>;
   prompt?: (text: string) => Effect.Effect<void>;
   prompts: string[];
@@ -105,6 +107,7 @@ const layer = (harness: Harness) => {
         ),
       prepareLanding: () => harness.prepare ?? Effect.void,
       land: () => harness.land(),
+      rebase: () => harness.rebase?.() ?? Effect.die("unexpected rebase"),
       releaseLanding: () => Effect.void,
       cancelLanding: () => Effect.void,
       setResolveAfterLanding: (_, enabled) =>
@@ -136,6 +139,52 @@ const merge = (callerSessionId = "cake-chat", timeout?: Duration.Input) =>
   });
 
 describe("WorktreeMerges.merge", () => {
+  it.effect.each(["running", "parked"] as const)(
+    "refuses to join or retry a %s standalone rebase",
+    (kind) =>
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const finish = yield* Deferred.make<void>();
+        const events: string[] = [];
+        const harness: Harness = {
+          events,
+          prompts: [],
+          land: () => Effect.die("must not land while a rebase owns the checkout"),
+          status: { rebasing: kind === "parked" },
+          rebase: () =>
+            Effect.gen(function* () {
+              events.push("rebase");
+              yield* Deferred.succeed(entered, undefined);
+              if (kind === "parked")
+                return { outcome: "resolving", files: ["conflict.ts"] } as const;
+              yield* Deferred.await(finish);
+              return { outcome: "rebased" } as const;
+            }),
+        };
+        yield* Effect.gen(function* () {
+          yield* worktreeLandings.startRebase({
+            workspacePath,
+            sessionId: "owner",
+            operationId: "rebase",
+          });
+          yield* Deferred.await(entered);
+          const coordinator = yield* WorktreeLandingCoordinator;
+          const waitFor = (phase: string) =>
+            SubscriptionRef.changes(coordinator.state).pipe(
+              Stream.filter((state) => state.operations.get(workspacePath)?.phase === phase),
+              Stream.runHead,
+            );
+          if (kind === "parked") yield* waitFor("stalled");
+          const result = yield* Effect.flip(merge());
+          expect(result.message).toContain("standalone rebase");
+          if (kind === "running") {
+            yield* Deferred.succeed(finish, undefined);
+            yield* waitFor("complete");
+          }
+          expect(events).toEqual(["rebase"]);
+        }).pipe(Effect.provide(layer(harness)));
+      }),
+  );
   it.effect("refuses to merge a pull-request project's worktree locally", () => {
     const harness: Harness = {
       status: {},
@@ -385,6 +434,24 @@ const resolvingHarness = (): Harness => {
   return harness;
 };
 const mergeAndResolve = () => worktreeMerges.mergeAndResolve({ sessionId: "owner", workspacePath });
+it.effect("merge-only truthfully observes a joined merge-and-resolve", () =>
+  Effect.gen(function* () {
+    const gate = yield* Deferred.make<void>();
+    const harness = resolvingHarness();
+    const land = harness.land;
+    harness.land = () => Deferred.await(gate).pipe(Effect.andThen(land()));
+    yield* Effect.gen(function* () {
+      yield* worktreeLandings.mergeAndResolve({ sessionId: "owner", workspacePath });
+      const joined = yield* merge().pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.succeed(gate, undefined);
+      const report = yield* Fiber.join(joined);
+      expect(report.outcome).toBe("landed");
+      expect(report.nextStep).toContain("session resolution completed");
+      expect(harness.events?.filter((event) => event === "resolve")).toHaveLength(1);
+    }).pipe(Effect.provide(layer(harness)));
+  }),
+);
+
 const awaitLanded = Effect.gen(function* () {
   const coordinator = yield* WorktreeLandingCoordinator;
   return yield* SubscriptionRef.changes(coordinator.state).pipe(

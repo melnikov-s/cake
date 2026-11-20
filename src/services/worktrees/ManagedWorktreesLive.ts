@@ -120,6 +120,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       record: WorktreeRecord,
       state: "landed" | "resolved" | "discarded" | "missing",
       landedSourceCommit?: string,
+      automaticLandingReceipt?: WorktreeRecord["automaticLandingReceipt"],
     ) {
       yield* updateRecord(record, (current) => {
         const retainPreviousState =
@@ -133,7 +134,15 @@ export const ManagedWorktreesLive: Layer.Layer<
         Reflect.deleteProperty(closed, "pendingStrategy");
         Reflect.deleteProperty(closed, "pendingAutomaticLanding");
         Reflect.deleteProperty(closed, "pendingLandingOperationId");
-        if (state === "landed") Reflect.deleteProperty(closed, "pendingLandedSourceCommit");
+        if (state === "landed") {
+          Reflect.deleteProperty(closed, "pendingLandedSourceCommit");
+          Reflect.deleteProperty(closed, "automaticLandingReceipt");
+          if (automaticLandingReceipt) {
+            closed.automaticLandingReceipt = automaticLandingReceipt;
+            // A prior manual attempt's intent isn't authorized for this automatic success.
+            Reflect.deleteProperty(closed, "resolveAfterLanding");
+          }
+        }
         return closed;
       });
     });
@@ -227,7 +236,15 @@ export const ManagedWorktreesLive: Layer.Layer<
             !options.keepBranch &&
             (yield* revParseExists(record.projectPath, `refs/heads/${record.branch}`))
           )
-            yield* gitMutation(record.projectPath, "branch", "-D", record.branch);
+            if (options.reason === "resolve" && record.automaticLandingReceipt)
+              yield* gitMutation(
+                record.projectPath,
+                "update-ref",
+                "-d",
+                `refs/heads/${record.branch}`,
+                record.automaticLandingReceipt.commit,
+              );
+            else yield* gitMutation(record.projectPath, "branch", "-D", record.branch);
           yield* closeRecord(record, options.state);
         }),
       );
@@ -475,7 +492,7 @@ export const ManagedWorktreesLive: Layer.Layer<
           }),
         ),
       ),
-      setResolveAfterLanding: (worktreePath, enabled) =>
+      setResolveAfterLanding: (worktreePath, enabled, automaticOperationId) =>
         mapError(
           "ManagedWorktrees.setResolveAfterLanding",
           Effect.gen(function* () {
@@ -483,12 +500,28 @@ export const ManagedWorktreesLive: Layer.Layer<
               (entry) => resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
             );
             if (!record) return yield* internalError("Cake could not find that worktree");
+            let matched = false;
             yield* updateRecord(record, (current) => {
+              const receipt = current.automaticLandingReceipt;
+              if (
+                automaticOperationId &&
+                (current.state !== "landed" || receipt?.operationId !== automaticOperationId)
+              )
+                return current;
+              matched = true;
               const next = { ...current };
               if (enabled) next.resolveAfterLanding = true;
               else Reflect.deleteProperty(next, "resolveAfterLanding");
+              if (receipt) {
+                const changed = { ...receipt };
+                if (enabled && automaticOperationId) changed.resolutionAuthorized = true;
+                else Reflect.deleteProperty(changed, "resolutionAuthorized");
+                next.automaticLandingReceipt = changed;
+              }
               return next;
             });
+            if (!matched)
+              return yield* internalError("Confirmed automatic landing receipt no longer matches");
             yield* publish(worktreePath);
           }),
         ),
@@ -550,7 +583,7 @@ export const ManagedWorktreesLive: Layer.Layer<
                               measureLanding(
                                 operationId,
                                 "git-execution",
-                                landRecord(record, request),
+                                landRecord(record, request, false, operationId),
                               ),
                             ),
                           ),

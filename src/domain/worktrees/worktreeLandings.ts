@@ -258,7 +258,7 @@ const completeLanding = Effect.fn("WorktreeLandings.completeLanding")(function* 
         if (automatic) {
           yield* automatic.authorize;
           yield* worktrees
-            .setResolveAfterLanding(operation.workspacePath, true)
+            .setResolveAfterLanding(operation.workspacePath, true, operation.operationId)
             .pipe(asError("resolveWorkingDirectory"));
         }
         const result = yield* measureLanding(
@@ -338,7 +338,11 @@ const performLanding: (
     conflictFiles: undefined,
   }));
   const request: WorktreeLandRequest = automatic
-    ? { strategy: "preserve", expectedSourceCommit: automatic.commit }
+    ? {
+        strategy: "preserve",
+        expectedSourceCommit: automatic.commit,
+        automaticSessionId: operation.sessionId,
+      }
     : {
         strategy: operation.strategy ?? "preserve",
         allowDirtyTarget: operation.allowDirtyTarget || undefined,
@@ -375,14 +379,13 @@ const performLanding: (
   if (outcome.outcome === "landed") {
     if (automatic) {
       // Retain the confirmed Git outcome even if authorization or resolution now fails.
-      if (outcome.commit)
-        yield* update(operation.workspacePath, operation.operationId, (current) => ({
-          ...current,
-          landedCommit: outcome.commit,
-        }));
+      yield* update(operation.workspacePath, operation.operationId, (current) => ({
+        ...current,
+        landedCommit: outcome.commit ?? automatic.commit,
+      }));
       yield* automatic.onLanded;
     }
-    return yield* completeLanding(operation, outcome.commit, automatic);
+    return yield* completeLanding(operation, outcome.commit ?? automatic?.commit, automatic);
   }
   const status = yield* requireStatus(operation.workspacePath);
   if (outcome.outcome === "revalidation-required") {
@@ -1114,6 +1117,7 @@ export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
 export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
   readonly workspacePath: string;
   readonly sessionId: string;
+  readonly automaticOperationId?: string;
 }) {
   const worktrees = yield* ManagedWorktrees;
   const coordinator = yield* WorktreeLandingCoordinator;
@@ -1127,6 +1131,10 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
   if (
     durableRecord?.state === "landed" &&
     durableRecord.resolveAfterLanding &&
+    (!input.automaticOperationId ||
+      (durableRecord.automaticLandingReceipt?.operationId === input.automaticOperationId &&
+        durableRecord.automaticLandingReceipt.sessionId === input.sessionId &&
+        durableRecord.automaticLandingReceipt.resolutionAuthorized)) &&
     (!existing || isTerminal(existing)) &&
     (!status || (!gitBlocked(status) && status.aheadCount === 0))
   ) {

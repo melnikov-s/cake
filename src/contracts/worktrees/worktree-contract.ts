@@ -34,6 +34,8 @@ export type WorktreeLandRequest =
       readonly strategy: "preserve";
       readonly allowDirtyTarget?: true;
       readonly expectedSourceCommit?: string;
+      /** Present for domain-managed automatic attempts that can recover resolution. */
+      readonly automaticSessionId?: string;
     }
   | {
       readonly strategy: "squash";

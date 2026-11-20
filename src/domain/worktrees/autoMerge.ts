@@ -2,7 +2,10 @@ import { Effect, Option, SubscriptionRef } from "effect";
 import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
-import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing-data";
+import {
+  WorktreeLandingError,
+  type WorktreeLandingOperation,
+} from "../../contracts/worktrees/worktree-landing-data";
 import type { AutoMergeOutcome, AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
@@ -71,50 +74,77 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       ? Option.none()
       : Option.some({ ...state, autoMergeRequests: requests }),
   );
+  const operationIdOf = (request: AutoMergeRequest) =>
+    request.attempt ? `${request.id}:${request.attempt}` : request.id;
+  const matchesOperation = (
+    request: AutoMergeRequest,
+    operation: WorktreeLandingOperation | undefined,
+  ) =>
+    operation?.automatic === true &&
+    operation.operationId === operationIdOf(request) &&
+    operation.sessionId === request.sessionId;
+
+  const readReceipt = Effect.fn("AutoMerge.readReceipt")(function* (request: AutoMergeRequest) {
+    const record = (yield* worktrees.records()).find(
+      (item) => item.worktreePath === request.workspacePath,
+    );
+    const receipt = record?.automaticLandingReceipt;
+    return {
+      record,
+      receipt:
+        (record?.state === "landed" ||
+          (record?.state === "resolved" && record.resolvedFrom === "landed")) &&
+        receipt?.operationId === operationIdOf(request) &&
+        receipt.sessionId === request.sessionId &&
+        receipt.commit === request.commit
+          ? receipt
+          : undefined,
+    };
+  });
   const finish = Effect.fn("AutoMerge.finish")(function* (
     request: AutoMergeRequest,
     state: AutoMergeRequest["state"],
     message: string,
+    retire = false,
   ) {
     let outcome: AutoMergeOutcome | undefined;
     if (state === "landed" || state === "failed") {
-      const record = (yield* worktrees.records()).find(
-        (item) => item.worktreePath === request.workspacePath,
-      );
+      const { record, receipt } = yield* readReceipt(request);
       const operation = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
         request.workspacePath,
       );
-      const matchingOperation =
-        operation?.operationId ===
-        (request.attempt ? `${request.id}:${request.attempt}` : request.id)
-          ? operation
-          : undefined;
-      const confirmedRecord =
-        record?.resolveAfterLanding ||
-        (record?.state === "resolved" && record.resolvedFrom === "landed");
-      const landedCommit =
-        matchingOperation?.landedCommit ??
-        (confirmedRecord ? record?.landedSourceCommit : undefined);
-      const merged =
-        state === "landed" || Boolean(matchingOperation?.landedCommit) || Boolean(confirmedRecord);
+      const confirmed =
+        receipt !== undefined ||
+        (matchesOperation(request, operation) && operation?.landedCommit === request.commit);
       outcome = {
         targetBranch: record?.baseBranch ?? "unknown",
-        merged,
-        resolutionSucceeded: state === "landed",
+        merged: confirmed,
+        resolutionSucceeded: confirmed && state === "landed",
         message,
+        ...(confirmed ? { landedCommit: request.commit } : null),
       };
-      if (landedCommit) Object.assign(outcome, { landedCommit });
+      retire ||= confirmed && state !== "landed";
     }
-    yield* storage.updateAutoMerge(request.id, state, message, outcome);
-    yield* SubscriptionRef.update(coordinator.state, (current) => ({
-      ...current,
-      autoMergeProjects: current.autoMergeProjects?.map((item) =>
-        item.projectPath === request.projectPath ? { ...item, status: message } : item,
-      ),
-    }));
+    const applied = yield* storage.updateAutoMerge(
+      request.id,
+      state,
+      message,
+      outcome,
+      request,
+      retire ? false : undefined,
+    );
+    if (applied)
+      yield* SubscriptionRef.update(coordinator.state, (current) => ({
+        ...current,
+        autoMergeProjects: current.autoMergeProjects?.map((item) =>
+          item.projectPath === request.projectPath && item.epoch === request.epoch
+            ? { ...item, status: message }
+            : item,
+        ),
+      }));
   });
   for (const request of requests) {
-    const operationId = request.attempt ? `${request.id}:${request.attempt}` : request.id;
+    const operationId = operationIdOf(request);
     const current = yield* SubscriptionRef.get(coordinator.state);
     const operation = current.operations.get(request.workspacePath);
     const repairPredecessor =
@@ -157,8 +187,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         request.message ??
         "Repair turn did not complete successfully; no retry or resolution occurred";
       yield* SubscriptionRef.update(coordinator.state, (state) => {
-        if (state.operations.get(request.workspacePath)?.operationId !== operation.operationId)
-          return state;
+        if (state.operations.get(request.workspacePath) !== operation) return state;
         const operations = new Map(state.operations);
         operations.set(request.workspacePath, { ...operation, phase: "failed", error });
         return { ...state, operations };
@@ -166,11 +195,12 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       yield* finish(request, "failed", error);
       continue;
     }
-    if (request.state !== "ready" && request.state !== "landing" && request.state !== "pending")
-      continue;
-    if (request.state === "landing") {
-      if (operation?.operationId === operationId) {
-        if (operation.phase === "landed") {
+    if (request.state === "landing" || (request.state === "canceled" && !request.outcome)) {
+      if (matchesOperation(request, operation) && operation) {
+        if (
+          operation.phase === "landed" ||
+          (operation.phase === "failed" && operation.landedCommit === request.commit)
+        ) {
           const resolved = operation.resolvedSessionIds?.includes(request.sessionId) === true;
           yield* finish(
             request,
@@ -181,27 +211,36 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
                 : "Auto-merged and resolved"
               : "Merged, but session resolution was not confirmed",
           );
-        } else if (operation.phase === "failed" || operation.phase === "stalled") {
-          if (operation.phase === "stalled")
-            yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
+        } else if (
+          request.state === "landing" &&
+          (operation.phase === "failed" || operation.phase === "stalled")
+        ) {
           yield* finish(
             request,
             "failed",
             operation.error ?? "Auto-merge blocked; session remains unresolved",
+            operation.phase === "stalled",
           );
         }
         continue;
       }
-      // Never replay a Git attempt after restart or an acknowledged projection. Only a
-      // durable successful landing + committed resolution intent may recover resolution.
-      const record = (yield* worktrees.records()).find(
-        (item) => item.worktreePath === request.workspacePath,
-      );
-      if (record?.state === "resolved" && record.resolvedFrom === "landed") {
+      // Recovery must never replay Git. Both the landing receipt and the later
+      // resolution admission must belong to this attempt.
+      const { record, receipt } = yield* readReceipt(request);
+      if (receipt && record?.state === "resolved") {
         yield* finish(request, "landed", "Auto-merged and resolved");
-      } else if (record?.state === "landed" && record.resolveAfterLanding) {
+      } else if (
+        receipt &&
+        request.state === "landing" &&
+        receipt.resolutionAuthorized &&
+        record?.resolveAfterLanding
+      ) {
         const recovered = yield* landings
-          .inspect({ workspacePath: request.workspacePath, sessionId: request.sessionId })
+          .inspect({
+            workspacePath: request.workspacePath,
+            sessionId: request.sessionId,
+            automaticOperationId: operationId,
+          })
           .pipe(Effect.result);
         if (recovered._tag === "Failure")
           yield* finish(
@@ -210,18 +249,17 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
             `Merged; resolution recovery failed: ${recovered.failure.message}`,
           );
         else {
-          const after = (yield* worktrees.records()).find(
-            (item) => item.worktreePath === request.workspacePath,
-          );
+          const after = yield* readReceipt(request);
+          const resolved = after.receipt && after.record?.state === "resolved";
           yield* finish(
             request,
-            after?.state === "resolved" ? "landed" : "failed",
-            after?.state === "resolved"
-              ? "Auto-merged and resolved"
-              : "Merged; resolution could not be confirmed",
+            resolved ? "landed" : "failed",
+            resolved ? "Auto-merged and resolved" : "Merged; resolution could not be confirmed",
           );
         }
-      } else {
+      } else if (receipt) {
+        yield* finish(request, "failed", "Merged, but session resolution was not confirmed");
+      } else if (request.state === "landing") {
         yield* finish(
           request,
           "failed",
@@ -230,6 +268,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       }
       continue;
     }
+    if (request.state !== "ready" && request.state !== "pending") continue;
     const policyRecord = (yield* worktrees.records()).find(
       (item) => item.worktreePath === request.workspacePath,
     );
@@ -241,21 +280,27 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         request,
         "canceled",
         "This project merges outside Cake; auto-merge is unavailable.",
+        true,
       );
       continue;
     }
     if (request.runId !== current.autoMergeRunId) {
-      yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
+      yield* finish(
+        request,
+        "canceled",
+        "Auto-merge authorization expired; fresh validated completion required",
+        true,
+      );
       continue;
     }
     // A repair declaration belongs to its live predecessor operation. Dismissal
     // must not turn that follow-up into an independent task (or survive off/on).
     if (request.repairAttempt !== undefined && !repairPredecessor) {
-      yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
       yield* finish(
         request,
         "canceled",
         "Automatic repair was canceled; fresh task readiness required",
+        true,
       );
       continue;
     }
@@ -271,7 +316,12 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       owner.state === "discarded" ||
       !application.snapshot().projects.some((item) => item.path === request.projectPath)
     ) {
-      yield* finish(request, "canceled", "Owning project is unavailable; fresh readiness required");
+      yield* finish(
+        request,
+        "canceled",
+        "Owning project is unavailable; fresh readiness required",
+        true,
+      );
       continue;
     }
     const owningProjectChatSessionId = projectChatSessionId(request.projectPath);
@@ -296,7 +346,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
           : sessionPurpose(document, request.sessionId) !== "delegated"
             ? "Manual landing only: User Sessions (My sessions) never auto-merge"
             : !isDirectProjectChatDelegation(
-                  document.spawnedSessions,
+                  document,
                   request,
                   projectChatSessionId(request.projectPath),
                 )
@@ -307,7 +357,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
                   ? "Waiting for session to become idle"
                   : undefined;
     if (reason) {
-      yield* storage.updateAutoMerge(request.id, request.state, reason);
+      yield* storage.updateAutoMerge(request.id, request.state, reason, undefined, request);
       continue;
     }
     if (project?.epoch !== request.epoch) {
@@ -315,57 +365,69 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         request,
         "canceled",
         "Auto-merge authorization expired; fresh validated completion required",
+        true,
       );
       continue;
     }
-    const authorize = Effect.gen(function* () {
-      const authorization = yield* SubscriptionRef.get(coordinator.state);
-      const document = yield* storage.state();
-      const latest = document.autoMergeRequests?.find((item) => item.id === request.id);
-      const authorizedProject = authorization.autoMergeProjects?.find(
-        (item) => item.projectPath === request.projectPath,
+    const authorize = (repairReminder = false) =>
+      Effect.gen(function* () {
+        const owner = (yield* worktrees.records()).find(
+          (item) => item.worktreePath === request.workspacePath,
+        );
+        const busy = (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath);
+        const document = yield* storage.state();
+        const authorization = yield* SubscriptionRef.get(coordinator.state);
+        const latest = document.autoMergeRequests?.find((item) => item.id === request.id);
+        const authorizedProject = authorization.autoMergeProjects?.find(
+          (item) => item.projectPath === request.projectPath,
+        );
+        if (
+          !authorizedProject?.enabled ||
+          authorizedProject.epoch !== request.epoch ||
+          !owner ||
+          owner.projectPath !== request.projectPath ||
+          owner.state === "resolved" ||
+          owner.state === "missing" ||
+          owner.state === "discarded" ||
+          sessionPurpose(document, request.sessionId) !== "delegated" ||
+          !isDirectProjectChatDelegation(
+            document,
+            request,
+            projectChatSessionId(authorizedProject.projectPath),
+          ) ||
+          !application
+            .snapshot()
+            .projects.some(
+              (item) =>
+                item.path === request.projectPath &&
+                item.autoMergeEnabled &&
+                item.settings?.worktreeLanding !== "pull-request",
+            ) ||
+          latest?.state !== "landing" ||
+          latest.attempt !== request.attempt ||
+          latest.runId !== authorization.autoMergeRunId ||
+          latest.runId !== request.runId ||
+          latest.epoch !== request.epoch ||
+          latest.readyToMerge === repairReminder ||
+          authorization.operations.get(request.workspacePath)?.operationId !== operationId ||
+          authorization.operations.get(request.workspacePath)?.cancellationRequested === true ||
+          latest.commit !== request.commit ||
+          document.turns.some((turn) => turn.sessionId === request.sessionId && !turn.reported) ||
+          document.spawnedSessions.some(
+            (spawn) => spawn.sessionId === request.sessionId && !spawn.handoffSettled,
+          ) ||
+          busy
+        )
+          return yield* new WorktreeLandingError({
+            operation: "autoMerge",
+            message:
+              "Auto-merge was disabled or readiness became stale; session remains unresolved",
+          });
+      }).pipe(
+        Effect.mapError(
+          (error) => new WorktreeLandingError({ operation: "autoMerge", message: error.message }),
+        ),
       );
-      const owner = (yield* worktrees.records()).find(
-        (item) => item.worktreePath === request.workspacePath,
-      );
-      if (
-        !authorizedProject?.enabled ||
-        authorizedProject.epoch !== request.epoch ||
-        !owner ||
-        owner.projectPath !== request.projectPath ||
-        owner.state === "resolved" ||
-        owner.state === "missing" ||
-        owner.state === "discarded" ||
-        sessionPurpose(document, request.sessionId) !== "delegated" ||
-        !isDirectProjectChatDelegation(
-          document.spawnedSessions,
-          request,
-          projectChatSessionId(authorizedProject.projectPath),
-        ) ||
-        !application.snapshot().projects.some((item) => item.path === request.projectPath) ||
-        latest?.state !== "landing" ||
-        latest.runId !== authorization.autoMergeRunId ||
-        latest.runId !== request.runId ||
-        latest.epoch !== request.epoch ||
-        !latest.readyToMerge ||
-        (authorization.operations.get(request.workspacePath)?.autoMergeRequestId === request.id &&
-          authorization.operations.get(request.workspacePath)?.cancellationRequested === true) ||
-        latest.commit !== request.commit ||
-        document.turns.some((turn) => turn.sessionId === request.sessionId && !turn.reported) ||
-        document.spawnedSessions.some(
-          (spawn) => spawn.sessionId === request.sessionId && !spawn.handoffSettled,
-        ) ||
-        (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)
-      )
-        return yield* new WorktreeLandingError({
-          operation: "autoMerge",
-          message: "Auto-merge was disabled or readiness became stale; session remains unresolved",
-        });
-    }).pipe(
-      Effect.mapError(
-        (error) => new WorktreeLandingError({ operation: "autoMerge", message: error.message }),
-      ),
-    );
     // Reconcile the source operation before scheduling. Unrelated operations are
     // admitted by the engine's repository-keyed FIFO, not an app-wide scheduler gate.
     if (operation && !["landed", "complete", "failed"].includes(operation.phase)) {
@@ -378,7 +440,9 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       // its Git recovery metadata must survive the fresh authorized attempt.
       yield* worktrees.releaseLanding(request.workspacePath, operation.operationId);
     }
-    yield* storage.updateAutoMerge(request.id, "landing");
+    const admitted = { ...request, state: "landing" as const };
+    if (!(yield* storage.updateAutoMerge(request.id, "landing", undefined, undefined, request)))
+      continue;
     yield* landings
       .start({
         operationId,
@@ -391,16 +455,30 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
         automatic: {
           requestId: request.id,
           commit: request.commit,
-          authorize,
+          authorize: authorize(),
           revalidate: (text, reason, repairFingerprint) => {
             const cleanRebase = reason === "clean-rebase";
             const label = cleanRebase ? "Automatic clean-rebase validation" : "Automatic repair";
             const operation = cleanRebase ? "revalidation" : "repair";
+            const repairing = { ...admitted, readyToMerge: false };
+            let expected = admitted;
             return Effect.gen(function* () {
-              yield* authorize;
-              // Retire the immutable declaration before admitting a follow-up input.
-              // A toggle cycle must not resurrect validation of the old commit.
-              yield* storage.invalidateAutoMerge(request.workspacePath, request.id);
+              yield* authorize();
+              // Retire Git permission, retaining the attempt while its repair is in flight.
+              const retired = yield* storage.updateAutoMerge(
+                request.id,
+                "landing",
+                undefined,
+                undefined,
+                admitted,
+                false,
+              );
+              if (!retired)
+                return yield* new WorktreeLandingError({
+                  operation,
+                  message: "Automatic repair lost authorization; no retry or resolution occurred.",
+                });
+              expected = repairing;
               if (!cleanRebase) {
                 if (!repairFingerprint)
                   return yield* new WorktreeLandingError({
@@ -451,6 +529,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
                 yield* landings
                   .revokeReadiness(request.workspacePath, request.id)
                   .pipe(Effect.provideService(SessionFamilyStorage, storage));
+                yield* authorize(true);
                 yield* agent.promptAndWait({
                   sessionId: request.sessionId,
                   text: cleanRebase
@@ -473,14 +552,24 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
                         : `${label} turn ended with an unknown outcome`
                   } without fresh validated completion: ${problem} No retry or resolution occurred.`,
                 });
+              yield* storage.updateAutoMerge(
+                request.id,
+                "canceled",
+                "Repair requires fresh readiness",
+                undefined,
+                repairing,
+              );
             }).pipe(
               Effect.mapError(
                 (error) => new WorktreeLandingError({ operation, message: error.message }),
               ),
               Effect.tapError((error) =>
-                landings.revokeReadiness(request.workspacePath, request.id).pipe(
-                  Effect.provideService(SessionFamilyStorage, storage),
-                  Effect.andThen(finish(request, "failed", error.message)),
+                finish(expected, "failed", error.message, true).pipe(
+                  Effect.andThen(
+                    landings
+                      .revokeReadiness(request.workspacePath, request.id)
+                      .pipe(Effect.provideService(SessionFamilyStorage, storage)),
+                  ),
                   Effect.mapError(
                     (failure) => new WorktreeLandingError({ operation, message: failure.message }),
                   ),
@@ -505,7 +594,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
           }),
         },
       })
-      .pipe(Effect.catch((error) => finish(request, "failed", error.message)));
+      .pipe(Effect.catch((error) => finish(admitted, "failed", error.message)));
     // Read the next request only after the launched operation is observed on a later pass.
     return;
   }

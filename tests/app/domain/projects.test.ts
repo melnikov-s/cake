@@ -5,6 +5,7 @@ import { Effect, Fiber, Layer, Queue, Stream } from "effect";
 import { beforeEach, describe, expect, vi } from "vitest";
 import * as projects from "../../../src/domain/projects/projects";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { WorktreeLandingCoordinatorLive } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
 import { upsertProject } from "../../../src/domain/application/application";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { ArtifactGarbageCollector } from "../../../src/services/artifacts/ArtifactGarbageCollector";
@@ -124,7 +125,10 @@ describe("portable Project operations", () => {
         }),
         Layer.mock(CakeSessionRuntimes, { catalog: () => Stream.empty }),
         Layer.mock(SessionArchiveStorage, { resolvedProjects: () => Stream.empty }),
+        WorktreeLandingCoordinatorLive,
         Layer.mock(SessionFamilyStorage, {
+          withCreationLock: (_key, effect) => effect,
+          retireProjectAutoMerge: () => Effect.void,
           list: () => Effect.succeed([]),
           removeProject: () => Effect.void,
         }),

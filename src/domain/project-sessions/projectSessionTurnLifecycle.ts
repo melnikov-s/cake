@@ -221,11 +221,14 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
             Boolean(substantiveTurnResult(event.result)) &&
             familyTurn?.report?.outcome !== "blocked" &&
             familyTurn?.report?.outcome !== "failed";
-          if (!ready) yield* families.invalidateAutoMerge(location.workingDirectory);
           yield* families.updateAutoMerge(
             mergeRequest.id,
             ready ? "ready" : "canceled",
             ready ? undefined : "Task turn did not complete successfully",
+            undefined,
+            // The toggle may rebind a pending declaration's epoch, but cannot settle the turn.
+            { state: "pending", readyToMerge: true },
+            ready,
           );
         }
         const resultMessageRef = event.result?.entryId
