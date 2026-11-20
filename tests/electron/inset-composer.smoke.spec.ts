@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { expect, test } from "@playwright/test";
+import { rendererFixturePlugin } from "./fixtures/renderer-fixture-build";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import type { InsetFixtureControls } from "./inset-composer-fixture";
 
@@ -23,18 +24,7 @@ test("production inset composer: exclusive disclosures, live counts, keyboard, f
     jsx: "automatic",
     target: "es2022",
     loader: { ".css": "empty", ".svg": "text", ".png": "dataurl" },
-    plugins: [
-      {
-        name: "asset-urls",
-        setup(builder) {
-          builder.onResolve({ filter: /\?url$/ }, ({ path }) => ({ path, namespace: "asset-url" }));
-          builder.onLoad({ filter: /.*/, namespace: "asset-url" }, ({ path }) => ({
-            contents: `export default ${JSON.stringify(path)}`,
-            loader: "js",
-          }));
-        },
-      },
-    ],
+    plugins: [rendererFixturePlugin],
     define: { "process.env.NODE_ENV": '"production"', "import.meta.env.DEV": "false" },
   });
   const assets = join(repository, "out/renderer/assets");

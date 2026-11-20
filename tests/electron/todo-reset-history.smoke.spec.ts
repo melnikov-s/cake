@@ -35,7 +35,13 @@ test("Project Chat Focus restores commentary and final across engine resets and 
   };
   // The existing scenario module transitively imports ?raw CSS. Bundle local
   // source with its raw asset loader instead of Playwright's JavaScript loader.
-  const engineModule = join(repository, ".visual-captures", "reset-history-engine.mjs");
+  // Emit beside scenarios.ts so its `import.meta.url`-relative fixture paths still resolve.
+  const engineModule = join(
+    repository,
+    "scripts",
+    "visual-capture",
+    `.reset-history-engine-${process.pid}.mjs`,
+  );
   await build({
     stdin: {
       resolveDir: repository,
@@ -68,6 +74,7 @@ test("Project Chat Focus restores commentary and final across engine resets and 
     typeof import("../../src/services/pi-durable/durable-input-presentation") &
     typeof import("../../src/services/pi-durable/durable-task-attribution") &
     typeof import("../../src/services/pi-durable/durable-chat-metadata");
+  await rm(engineModule, { force: true });
   const scenario = findVisualCaptureScenario("project-chat-task-rails")!;
   await scenario.seed(paths, "dark");
   const hash = createHash("sha256").update(paths.project).digest("hex");

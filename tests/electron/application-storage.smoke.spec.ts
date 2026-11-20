@@ -37,9 +37,10 @@ test("legacy Application storage migrates before normal renderer hydration", asy
   const application = await launch(temporaryRoot);
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("heading", { name: "What should we build?" })).toBeVisible({
-      timeout: 20_000,
-    });
+    // Hydration finished once the normal startup destination (global Cake Chat) is usable.
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
     const document = JSON.parse(
       await readFile(join(cakeHome, "state", "application.json"), "utf8"),
     );

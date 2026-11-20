@@ -41,6 +41,44 @@ export async function createSessionInProject(page: Page, name: RegExp) {
     .click();
 }
 
+/**
+ * Opens an existing Session through the real Search sessions dialog. Launch always starts in
+ * global Cake Chat (startup never restores a saved destination), so seeded Sessions are opened
+ * explicitly.
+ */
+export async function openSession(page: Page, title: string) {
+  const trigger = page
+    .getByRole("navigation", { name: "Projects and global utilities" })
+    .getByRole("button", { name: "Search sessions", exact: true });
+  await expect(trigger).toBeVisible({ timeout: 20_000 });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Search sessions", exact: true });
+  await dialog.getByRole("combobox", { name: "Search session titles" }).fill(title);
+  await dialog
+    .getByRole("option", { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
+    .first()
+    .click();
+  await expect(dialog).toHaveCount(0);
+}
+
+/** Opens a registered Project's permanent Project Chat from the global rail. */
+export async function openProjectChat(page: Page, project: string) {
+  const button = page
+    .getByRole("navigation", { name: "Projects and global utilities" })
+    .getByRole("button", { name: `Open Project Chat for ${project}`, exact: true });
+  await expect(button).toBeVisible({ timeout: 20_000 });
+  await button.click();
+}
+
+/** Opens application Settings from the global rail. */
+export async function openSettings(page: Page) {
+  const settings = page
+    .getByRole("navigation", { name: "Projects and global utilities" })
+    .getByRole("button", { name: "Settings", exact: true });
+  await expect(settings).toBeVisible({ timeout: 20_000 });
+  await settings.click();
+}
+
 /** Opens the real exclusive Sessions accessory without changing the focused conversation. */
 export async function showSessions(page: Page) {
   const back = page.getByRole("button", { name: "Back to chat", exact: true });
@@ -53,4 +91,11 @@ export async function showSessions(page: Page) {
   }
   await workspace.getByRole("button", { name: /^Sessions / }).click();
   return workspace;
+}
+
+/** In Browser and VS Code modes, To-dos/Sessions share the tool companion pane with Chat. */
+export async function showCompanionSessions(page: Page) {
+  const strip = page.getByRole("group", { name: "Companion content", exact: true });
+  await strip.getByRole("button", { name: "Sessions", exact: true }).click();
+  return strip;
 }

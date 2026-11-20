@@ -8,6 +8,7 @@ import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent, installLocalModelHttpGuard } from "./main-harness";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -138,9 +139,8 @@ for (const placement of ["old", "latest"] as const) {
     try {
       await installLocalModelHttpGuard(app, origin);
       const page = await app.firstWindow();
-      await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
-        timeout: 20_000,
-      });
+      await openSession(page, "Explain how Cake");
+      await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
       const transcript = page
         .locator('.transcript:not([data-slot="content-transition-outgoing"] *)')
         .first();
@@ -153,13 +153,19 @@ for (const placement of ["old", "latest"] as const) {
           await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
           await page.mouse.wheel(0, -100000);
           await expect(
-            transcript.locator('[data-slot="artifact-disclosure"] iframe').first(),
+            transcript.locator(
+              '[data-part-id="entry-assistant-architecture-text-1"] [data-slot="artifact-disclosure"] iframe',
+            ),
           ).toBeVisible({ timeout: 1000 });
         }).toPass({ timeout: 20_000 });
       }
+      // The publishing tool row also renders a disclosure, and virtualized DOM order is not
+      // display order: select the Markdown reference by its stable part identity.
       const inline =
         placement === "old"
-          ? transcript.locator('[data-slot="artifact-disclosure"]').first()
+          ? transcript.locator(
+              '[data-part-id="entry-assistant-architecture-text-1"] [data-slot="artifact-disclosure"]',
+            )
           : transcript.locator(
               '[data-part-id="entry-later-message-1-text-0"] [data-slot="artifact-disclosure"]',
             );
@@ -213,8 +219,9 @@ for (const placement of ["old", "latest"] as const) {
       expect(sent).toContain('\\"artifactId\\":\\"inline-visual\\"');
       expect(sent).toContain("cake://artifact/inline-visual@r1");
       expect(sent).toContain("Cake application view at submission");
-      expect(sent).toContain("for this message and subsequent messages");
-      expect(sent).toContain("not fresh live content for later messages");
+      // The persisting-target reminder variant carries presentation metadata (wording compacted
+      // in 3eebcea3); the clearing variant carries null.
+      expect(sent).toContain('\\"mode\\":\\"presentation\\"');
       expect(sent).toContain('\\"revision\\":1');
       expect(sent).toContain('\\"title\\":\\"Inline visualization\\"');
       expect(sent).toContain('\\"type\\":\\"widget\\"');
@@ -255,7 +262,7 @@ for (const placement of ["old", "latest"] as const) {
       const followup = JSON.parse(requests[1]!);
       const followupMessage = JSON.stringify(followup.messages.at(-1));
       expect(followupMessage).toContain('\\"artifactId\\":\\"inline-visual\\"');
-      expect(followupMessage).toContain("for this message and subsequent messages");
+      expect(followupMessage).toContain('\\"mode\\":\\"presentation\\"');
       await expect(fullscreen.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
       // Passive background notifications must not navigate, with or without chat.
       for (const chatOpen of [true, false]) {
@@ -287,7 +294,7 @@ for (const placement of ["old", "latest"] as const) {
       const sideChat = fullscreen.getByRole("complementary", { name: "Side chat", exact: true });
       const closeSideChat = sideChat
         .locator(":scope > header")
-        .getByRole("button", { name: "Close Side chat", exact: true });
+        .getByRole("button", { name: "Close side chat", exact: true });
       await expect(closeSideChat).toBeInViewport();
       await expect(
         sideChat.getByRole("combobox", { name: "Message side chat", exact: true }),
@@ -318,11 +325,10 @@ for (const placement of ["old", "latest"] as const) {
       const lastRequest = JSON.parse(
         requests.findLast((body) => body.includes("after leaving presentation"))!,
       );
+      // The clearing reminder variant carries null presentation metadata (wording compacted in
+      // 3eebcea3).
       expect(JSON.stringify(lastRequest.messages.at(-1))).toContain(
         '\\"artifactPresentation\\":null',
-      );
-      expect(JSON.stringify(lastRequest.messages.at(-1))).toContain(
-        "Clear the prior conversational artifact target",
       );
       expect(JSON.stringify(lastRequest.messages)).toContain("cake://artifact/inline-visual@r1");
       await expect(page.getByText("after leaving presentation", { exact: true })).toHaveCount(1);
@@ -330,8 +336,9 @@ for (const placement of ["old", "latest"] as const) {
       await normal.fill("outside again");
       await normal.press("Enter");
       await expect.poll(() => requests.length).toBe(4);
+      // Only the first outside send carries the clearing reminder.
       expect(JSON.stringify(JSON.parse(requests[3]!).messages.at(-1))).not.toContain(
-        "Clear the prior conversational artifact target",
+        "artifactPresentation",
       );
       await expect(page.getByText("outside again", { exact: true })).toHaveCount(1);
     } finally {

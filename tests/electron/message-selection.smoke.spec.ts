@@ -442,7 +442,7 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     await expect(dialog).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeHidden();
 
-    await dialog.getByRole("button", { name: "Close Side chat" }).click();
+    await dialog.getByRole("button", { name: "Close side chat" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
 
@@ -457,7 +457,7 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
       existingSideChat.getByText("Compare the two approaches", { exact: true }),
     ).toBeVisible();
     await expect(existingSideChat.getByText("A saved comparison.", { exact: true })).toBeVisible();
-    await existingSideChat.getByRole("button", { name: "Close Side chat" }).click();
+    await existingSideChat.getByRole("button", { name: "Close side chat" }).click();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -11,7 +11,7 @@ import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
 import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive";
 import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs";
-import { compileInlineWidget } from "../../src/services/widgets/inline-widget-service";
+import { compileFixtureInlineWidget } from "./fixtures/inline-widget";
 import { ArtifactProjection } from "../../src/services/artifacts/ArtifactProjection";
 import { makeArtifactProjectionLive } from "../../src/services/artifacts/ArtifactProjectionLive";
 import { encodePrototype, prototypeFixture } from "../fixtures/prototype-source";
@@ -41,7 +41,7 @@ test("one structured five-option chooser persists a choice independently of visi
     const first = await runtime.runPromise(storage.read(id));
     if (first?.snapshot.kind !== "widget") throw new Error("Missing fixture widget");
     const source = encodePrototype(prototypeFixture());
-    const compiled = await compileInlineWidget("react", source, "artifact");
+    const compiled = await compileFixtureInlineWidget("react", source, "artifact");
     const browser = await runtime.runPromise(
       Effect.flatMap(WidgetBrowserOutputs, (outputs) => outputs.retain(compiled)),
     );

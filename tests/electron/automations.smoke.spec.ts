@@ -3,14 +3,17 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type Page } from "@playwright/test";
-import { seedAutomationVisualFixture } from "../fixtures/automations";
+import { openAutomations, seedAutomationVisualFixture } from "../fixtures/automations";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 async function openHistoryRun(page: Page, name: string) {
-  await page
+  // Automations is a full-window application view without the rail; run views keep the rail.
+  const rail = page
     .getByRole("navigation", { name: "Projects and global utilities" })
-    .getByRole("button", { name: "Automations", exact: true })
-    .click();
+    .getByRole("button", { name: "Automations", exact: true });
+  if (await rail.isVisible()) await rail.click();
+  const overview = page.getByRole("button", { name: "All automations", exact: true });
+  if (await overview.isVisible()) await overview.click();
   await page.getByRole("button", { name: "History", exact: true }).click();
   await page
     .getByRole("region", { name: "Automation run history" })
@@ -46,6 +49,7 @@ async function launchAutomationFixture(theme: "light" | "dark" = "light") {
     await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]!.setContentSize(1440, 1000),
     );
+    await openAutomations(page);
     await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
     await expect(
       page
@@ -249,13 +253,17 @@ test("global history and shared memory open real originals; restore is visibilit
     await expect(composer).toHaveValue("Follow-up without rerunning the automation");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await openHistoryRun(page, "Morning brief");
-    await page.getByRole("button", { name: "Go back in session history", exact: true }).click();
-    await page.getByRole("button", { name: "Go back in session history", exact: true }).click();
+    // Automation run views have no history buttons since 582d0fc7; window navigation remains
+    // available through its keyboard commands.
+    const back = process.platform === "darwin" ? "Meta+BracketLeft" : "Alt+ArrowLeft";
+    const forward = process.platform === "darwin" ? "Meta+BracketRight" : "Alt+ArrowRight";
+    await page.keyboard.press(back);
+    await page.keyboard.press(back);
     await expect(page.locator('[data-slot="workspace-header"]')).toContainText(
       "Review child replies",
     );
-    await page.getByRole("button", { name: "Go forward in session history", exact: true }).click();
-    await page.getByRole("button", { name: "Go forward in session history", exact: true }).click();
+    await page.keyboard.press(forward);
+    await page.keyboard.press(forward);
     await expect(page.locator('[data-slot="workspace-header"]')).toContainText("Morning brief");
     await page.getByRole("button", { name: "Automation", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Morning brief", exact: true })).toBeVisible();

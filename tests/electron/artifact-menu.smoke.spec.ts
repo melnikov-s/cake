@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -106,16 +105,19 @@ for (const theme of ["light", "dark"] as const) {
       const input = page.getByLabel("Message Cake Chat", { exact: true });
       await expect(input).toHaveValue("Use this report");
 
-      // The to-do toggle replaces the artifact in the same accessory slot/width.
-      await page.getByRole("button", { name: "To-do", exact: true }).click();
-      await expect(page.getByRole("searchbox", { name: "Search to-dos" })).toBeVisible();
+      // To-dos live in the separate Workspace accessory beside the artifact pane since the
+      // header To-do toggle was removed (582d0fc7). Reopening from the menu restores the width.
+      const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+      await workspace.getByRole("button", { name: /^To-dos / }).click();
+      await expect(workspace.getByRole("searchbox", { name: "Search to-dos" })).toBeVisible();
+      await expect(pane).toBeVisible();
+      await pane.getByRole("button", { name: "Close Coordinator report" }).click();
       await expect(pane).not.toBeAttached();
       await page.getByRole("button", { name: "1 artifacts" }).click();
       const menu = page.getByRole("dialog", { name: "Artifacts", exact: true });
       await menu.getByRole("button", { name: /Coordinator report/ }).click();
       await expect(pane).toBeVisible();
       await expect.poll(async () => (await pane.boundingBox())?.width).toBe(paneWidth);
-      await expect(page.getByRole("searchbox", { name: "Search to-dos" })).not.toBeAttached();
       await page.setViewportSize({ width: 700, height: 900 });
       await expect(layout).toHaveAttribute("data-presentation", "replacement");
       await expectHeaderAlignment();
@@ -149,30 +151,22 @@ for (const theme of ["light", "dark"] as const) {
               view.getVisible(),
           );
         });
-      for (const mode of ["Main", "Browser", "VS Code"] as const) {
-        if (mode === "VS Code" && !existsSync("/opt/homebrew/bin/code-server")) {
-          test.info().annotations.push({
-            type: "coverage-limit",
-            description: "Native VS Code coverage requires a local code-server installation.",
-          });
-          continue;
-        }
+      // Global Cake Chat has no project directory, so it offers no VS Code mode (582d0fc7).
+      for (const mode of ["Main", "Browser"] as const) {
         if (mode !== "Main") {
           await page
-            .getByRole("button", {
-              name: mode === "Browser" ? "Open Browser Mode" : "Open VS Code",
-              exact: true,
-            })
+            .getByRole("group", { name: "Conversation workspace", exact: true })
+            .getByRole("button", { name: mode, exact: true })
             .click();
           await expect(
             page.getByRole("region", { name: `${mode} workspace`, exact: true }),
           ).toBeVisible();
           await expect.poll(nativeToolVisible, { timeout: 30_000 }).toBe(true);
         }
-        // The ordinary button remains keyboard reachable and supports Enter and Space.
-        await artifacts.focus();
+        // The ordinary button remains keyboard reachable and supports Enter and Space. Plain Tab
+        // is reserved for focusing the writing input (5ee95d62), so reach it with Shift+Tab.
+        await rail.getByRole("button", { name: "Automations", exact: true }).focus();
         await page.keyboard.press("Shift+Tab");
-        await page.keyboard.press("Tab");
         await expect(artifacts).toBeFocused();
         await page.keyboard.press(mode === "Browser" ? "Space" : "Enter");
         const search = page.getByRole("textbox", { name: "Search artifact library" });

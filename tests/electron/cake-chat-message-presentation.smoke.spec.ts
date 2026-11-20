@@ -26,6 +26,7 @@ import { projectSessionEntries } from "../../src/services/pi/runtime/session-pro
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { appendMessageReferences } from "../../src/contracts/conversations/message-reference-forwarding";
 import { protectedResponseNotice } from "../../src/contracts/conversations/reference-notification";
+import { openProjectChat, openSession } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 const usage = {
@@ -330,10 +331,10 @@ for (const [delivery, theme] of [
         ({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setContentSize(width, 1100),
         theme === "light" ? 900 : 1280,
       );
-      // Finish the seeded Project Session's startup selection before navigating away.
-      await expect(
-        page.getByRole("heading", { name: "Repository-owned visual checks" }),
-      ).toBeVisible();
+      // Launch starts in global Cake Chat; finish startup before navigating.
+      await expect(page.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible({
+        timeout: 20_000,
+      });
       await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
       const verify = async (inputName: string, sessionId: string) => {
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
@@ -593,27 +594,21 @@ for (const [delivery, theme] of [
         await expect(missing.getByRole("button", { name: "Retry source" })).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
       };
-      await page.locator(`.session-item[data-session-id="${viewer.getSessionId()}"]`).click();
+      await openSession(page, "Shared response viewer");
       await verify("Message", viewer.getSessionId());
+      // Reload starts in global Cake Chat; reopen the viewer explicitly.
       await page.reload();
+      await openSession(page, "Shared response viewer");
       await verify("Message", viewer.getSessionId());
       await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
       await verify("Message Cake Chat", CAKE_CHAT_SESSION_ID);
       await page.reload();
       await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
       await verify("Message Cake Chat", CAKE_CHAT_SESSION_ID);
-      await page
-        .locator(
-          `[data-slot="project-header"][data-session-id="${projectId}"] [data-slot="project-label"]`,
-        )
-        .click();
+      await openProjectChat(page, "visual-capture-project");
       await verify("Message Project Chat", projectId);
       await page.reload();
-      await page
-        .locator(
-          `[data-slot="project-header"][data-session-id="${projectId}"] [data-slot="project-label"]`,
-        )
-        .click();
+      await openProjectChat(page, "visual-capture-project");
       await verify("Message Project Chat", projectId);
       expect(await readFile(sourceFile, "utf8")).toBe(originalFile);
       await page.getByRole("combobox", { name: "Message Project Chat" }).click();

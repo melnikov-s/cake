@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { expect, type Page } from "@playwright/test";
 import { Effect, ManagedRuntime } from "effect";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import {
@@ -22,6 +23,15 @@ const visualAutomationId = AutomationId.make("10000000-0000-4000-8000-0000000000
 const visualProjectAutomationId = AutomationId.make("10000000-0000-4000-8000-000000000002");
 const visualMemoryId = OptMemoryId.make("40000000-0000-4000-8000-000000000001");
 const visualSessionId = "20000000-0000-4000-8000-000000000001";
+
+/** Opens the seeded Automations view; launch always starts in global Cake Chat. */
+export async function openAutomations(page: Page) {
+  const automations = page
+    .getByRole("navigation", { name: "Projects and global utilities" })
+    .getByRole("button", { name: "Automations", exact: true });
+  await expect(automations).toBeVisible({ timeout: 20_000 });
+  await automations.click();
+}
 
 /** Real backend records/Pi originals; only the external model is a local deterministic provider. */
 export async function seedAutomationVisualFixture(
@@ -176,11 +186,6 @@ export async function seedAutomationVisualFixture(
     await writeFile(
       join(paths.userData, "window-state.json"),
       windowStateDocument({
-        appShellStore: store({
-          navigationVersion: 3,
-          workspace: "home",
-          coveringSurface: "automations",
-        }),
         settingsStore: store({}, { appearance: store({ theme }) }),
       }),
     );

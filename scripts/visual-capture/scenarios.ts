@@ -27,7 +27,7 @@ import {
 import { cakeColorPalettes } from "../../src/utils/cake-color-palettes.ts";
 import { sessionChangesScenario } from "./session-changes";
 import { createSessionChangesToolbarScenario } from "./session-changes-toolbar";
-import { seedAutomationVisualFixture } from "../../tests/fixtures/automations";
+import { openAutomations, seedAutomationVisualFixture } from "../../tests/fixtures/automations";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
 import {
   seedMessageBoardFixture,
@@ -2238,6 +2238,7 @@ const automationUiScenario: VisualCaptureScenario = {
   ],
   seed: seedAutomationVisualFixture,
   async prepare(page, state) {
+    await openAutomations(page);
     await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
     await expect(
       page

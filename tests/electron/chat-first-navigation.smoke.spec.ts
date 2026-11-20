@@ -106,7 +106,7 @@ test("project home and native Browser keep conversation drafts, companion identi
     await expect(
       page.getByRole("combobox", { name: "Reply to side chat", exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Close Side chat", exact: true }).click();
+    await page.getByRole("button", { name: "Close side chat", exact: true }).click();
     await expect(workerDraft).toHaveValue("Keep the worker conversation draft");
     await page.getByRole("button", { name: "Model configuration", exact: true }).click();
     await expect(

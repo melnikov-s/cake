@@ -25,7 +25,8 @@ import { ArtifactProjection } from "../../src/services/artifacts/ArtifactProject
 import { makeArtifactProjectionLive } from "../../src/services/artifacts/ArtifactProjectionLive";
 import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs";
 import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive";
-import { compileInlineWidget } from "../../src/services/widgets/inline-widget-service";
+import { compileFixtureInlineWidget } from "./fixtures/inline-widget";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -93,7 +94,7 @@ button.onclick = async () => {
   await api.replace({title: "Saved from HTML"}, state.version);
 };
 </script></body></html>`;
-      const compiled = await compileInlineWidget(language, revisionSource, "artifact");
+      const compiled = await compileFixtureInlineWidget(language, revisionSource, "artifact");
       const browser = await runtime.runPromise(
         Effect.flatMap(WidgetBrowserOutputs, (outputs) => outputs.retain(compiled)),
       );
@@ -211,6 +212,7 @@ button.onclick = async () => {
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 6500),
     );
+    await openSession(page, "Explain how Cake");
     const disclosures = page.locator('[data-slot="artifact-disclosure"]');
     await expect(disclosures).toHaveCount(5);
     // New stable-reference calls select r3; prior publications retain their actual revision.
@@ -260,6 +262,8 @@ button.onclick = async () => {
     }
     expect(await readFile(join(artifactRoot, "catalog.json"), "utf8")).not.toBe(before);
     await page.reload();
+    // Reload starts in global Cake Chat; reopen the Session explicitly.
+    await openSession(page, "Explain how Cake");
     await expect(
       page
         .locator('[data-slot="artifact-disclosure"]')

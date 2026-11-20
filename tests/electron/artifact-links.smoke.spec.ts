@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario, seedArtifact } from "../../scripts/visual-capture/scenarios";
-import { compileInlineWidget } from "../../src/services/widgets/inline-widget-service";
+import { compileFixtureInlineWidget } from "./fixtures/inline-widget";
 import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs";
 import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
@@ -41,7 +41,7 @@ export default function Links() {
     <a href="#" download="export.txt" onClick={event => {event.currentTarget.href = URL.createObjectURL(new Blob(["export"], {type: "text/plain"}));}}>Download</a>
   </main>;
 }`;
-    const compiled = await compileInlineWidget(language, source, "artifact");
+    const compiled = await compileFixtureInlineWidget(language, source, "artifact");
     const browser = await Effect.runPromise(
       Effect.flatMap(WidgetBrowserOutputs, (outputs) => outputs.retain(compiled)).pipe(
         Effect.provide(

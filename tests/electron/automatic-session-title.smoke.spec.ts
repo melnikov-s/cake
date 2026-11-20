@@ -6,6 +6,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -50,6 +51,13 @@ for (const draft of [false, true]) {
         } else if (body.includes("Choose up to three labels")) {
           response.end(
             chunk({ role: "assistant", content: "[]" }) + chunk({}, "stop") + "data: [DONE]\n\n",
+          );
+        } else if (body.includes("for a to-do description")) {
+          // New Sessions also create a to-do whose description uses the utility model.
+          response.end(
+            chunk({ role: "assistant", content: "Make session titles automatic." }) +
+              chunk({}, "stop") +
+              "data: [DONE]\n\n",
           );
         } else {
           assistantResponse = response;
@@ -123,6 +131,8 @@ for (const draft of [false, true]) {
       });
       try {
         const page = await application.firstWindow();
+        // Launch starts in global Cake Chat; stage a new Session in the Project explicitly.
+        await createSessionInProject(page, /^project(?: |$)/i);
         await page.getByRole("button", { name: "Model configuration" }).click({ timeout: 20_000 });
         await page.getByLabel("Search presets and models").fill("Title fixture");
         await page
@@ -157,6 +167,8 @@ for (const draft of [false, true]) {
             chunk({}, "stop") +
             "data: [DONE]\n\n",
         );
+        // The new Session adds a to-do; its title row lives in the Sessions list.
+        await showSessions(page);
         const row = page
           .locator(".session-item")
           .filter({ hasText: "Fix automatic session titles" });
@@ -167,6 +179,8 @@ for (const draft of [false, true]) {
             .poll(async () => JSON.parse(await readFile(savedDraftFile, "utf8")).records[0]?.title)
             .toBe("Fix automatic session titles");
           await page.reload();
+          // Reload starts in global Cake Chat, whose Sessions list spans every Project.
+          await showSessions(page);
           await expect(row).toBeVisible();
           await row.click();
           await expect(page.getByRole("button", { name: "Activate draft" })).toBeVisible();

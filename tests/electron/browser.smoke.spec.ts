@@ -7,7 +7,12 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
 
-import { openProjectSettings, showSessions } from "./fixtures/workspace-navigation";
+import {
+  openProjectSettings,
+  openSession,
+  showCompanionSessions,
+  showSessions,
+} from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sessionId = "browser-smoke-session";
@@ -160,9 +165,8 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("button", { name: "Browser", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    await openSession(page, "Prepare the local app");
+    await expect(page.getByRole("button", { name: "Browser", exact: true })).toBeVisible();
     await expect(page.getByText("main#seeded", { exact: true })).toBeVisible();
     await expect(page.getByText(/cake-browser-attachment/)).toHaveCount(0);
     await showSessions(page);
@@ -401,10 +405,12 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect.poll(nativeBrowserVisible).toBe(true);
     await expect.poll(nativeBrowserBounds).toEqual(originalBounds);
 
+    await showCompanionSessions(page);
     await page.locator(`.session-item[data-session-id="${otherSessionId}"]`).click();
     await expect(page.locator(".transcript").getByText("Other browser fixture")).toBeVisible();
     await expect(addressInput).toBeHidden();
     await expect.poll(nativeBrowserVisible).toBe(false);
+    await showSessions(page);
     await page.locator(`.session-item[data-session-id="${sessionId}"]`).click();
     await expect(addressInput).toBeVisible();
     await expect.poll(nativeBrowserVisible).toBe(true);
@@ -423,6 +429,8 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       .windows()
       .find((window) => window !== page && window.url().includes("index.html"));
     if (!second) throw new Error("Second desktop window missing");
+    // New windows start in global Cake Chat; reopen the same Session there explicitly.
+    await openSession(second, "Prepare the local app");
     await expect(
       second.locator(".transcript").getByRole("cell", { name: "Running", exact: true }),
     ).toBeVisible();
@@ -439,6 +447,7 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await application.close();
     application = await launch();
     const restoredPage = await application.firstWindow();
+    await openSession(restoredPage, "Prepare the local app");
     const restoredAddress = restoredPage.getByLabel("Browser address");
     await expect(restoredAddress).toHaveValue(`${origin}/changed-default`, { timeout: 20_000 });
     await restoredPage.getByRole("button", { name: "Main", exact: true }).click();

@@ -7,6 +7,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { installLocalModelHttpGuard } from "./main-harness";
+import { openSession, openSettings, showSessions } from "./fixtures/workspace-navigation";
 import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -160,10 +161,13 @@ for (const { disabled, late } of [
       try {
         await installLocalModelHttpGuard(application, origin);
         const page = await application.firstWindow();
+        // Launch starts in global Cake Chat; open the seeded source Session explicitly.
+        await openSession(page, "Source conversation.");
         await expect(
           page.locator(".transcript").getByText("Source conversation.", { exact: true }),
-        ).toBeVisible({ timeout: 20_000 });
+        ).toBeVisible();
         if (late) {
+          await showSessions(page);
           await expect(page.locator(`.session-item[data-session-id="${sourceId}"]`)).toBeVisible();
           await expect(page.locator(`.session-item[data-session-id="${targetId}"]`)).toHaveCount(0);
           // No catalog event accompanies this durable transcript. The explicit UUID
@@ -171,7 +175,7 @@ for (const { disabled, late } of [
           await persistTarget();
         }
         if (disabled) {
-          await page.getByRole("button", { name: "Open settings", exact: true }).click();
+          await openSettings(page);
           await page.getByRole("button", { name: /^Agent Behavior and content$/ }).click();
           const toggle = page.getByRole("switch", { name: "Allow agent session navigation" });
           await expect(toggle).toBeChecked();
@@ -211,6 +215,7 @@ for (const { disabled, late } of [
           await expect(
             page.locator(".transcript").getByText("Navigation request finished.", { exact: true }),
           ).toBeVisible();
+          await showSessions(page);
           await page.locator(`.session-item[data-session-id="${targetId}"] .session-row`).click();
           await expect(
             page.locator(".transcript").getByText("Target conversation.", { exact: true }),
@@ -226,10 +231,7 @@ for (const { disabled, late } of [
           application = await launch();
           await installLocalModelHttpGuard(application, origin);
           const restored = await application.firstWindow();
-          await expect(
-            restored.getByRole("button", { name: "Open settings", exact: true }),
-          ).toBeVisible({ timeout: 20_000 });
-          await restored.getByRole("button", { name: "Open settings", exact: true }).click();
+          await openSettings(restored);
           await restored.getByRole("button", { name: /^Agent Behavior and content$/ }).click();
           await expect(
             restored.getByRole("switch", { name: "Allow agent session navigation" }),

@@ -33,7 +33,7 @@ import { makeSessionFamilyStorageLive } from "../../src/services/storage/Session
 import { ClientEvents } from "../../src/services/clients/ClientEvents";
 import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs";
 import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive";
-import { compileInlineWidget } from "../../src/services/widgets/inline-widget-service";
+import { compileFixtureInlineWidget } from "./fixtures/inline-widget";
 import { CakeOperationRegistry } from "../../src/services/pi/runtime/cake-operation-registry";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -69,7 +69,7 @@ export default function Prototype() {
   const { value, hydrated, save } = useArtifactState({ selected: "stale seed" });
   return <main><h2>Prototype source ${revision}</h2><p>{hydrated ? value.selected : "Hydrating"}</p><button disabled={!hydrated} onClick={() => save({ selected: "Selected option C" })}>Choose C</button></main>;
 }`;
-      const compiled = await compileInlineWidget("react", source, "artifact");
+      const compiled = await compileFixtureInlineWidget("react", source, "artifact");
       const browser = await runtime.runPromise(
         Effect.flatMap(WidgetBrowserOutputs, (outputs) => outputs.retain(compiled)),
       );

@@ -150,7 +150,7 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     await draftInput.pressSequentially("Why is Alpha here?");
     await expect(draftInput).toHaveValue("Why is Alpha here?");
     await expect(sideChat.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Close Side chat", exact: true }).click();
+    await page.getByRole("button", { name: "Close side chat", exact: true }).click();
 
     await artifactControl.click();
     await popup.getByRole("button", { name: /S4 widget/ }).click();

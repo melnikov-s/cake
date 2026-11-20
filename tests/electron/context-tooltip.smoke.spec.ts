@@ -6,6 +6,7 @@ import { build } from "esbuild";
 import { createHash } from "node:crypto";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
+import { rendererFixturePlugin } from "./fixtures/renderer-fixture-build";
 import type { ContextTooltipScope } from "./context-tooltip-fixture";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -30,21 +31,7 @@ for (const scope of scopes) {
       jsx: "automatic",
       target: "es2022",
       loader: { ".css": "empty", ".svg": "text", ".png": "dataurl" },
-      plugins: [
-        {
-          name: "asset-urls",
-          setup(builder) {
-            builder.onResolve({ filter: /\?url$/ }, ({ path }) => ({
-              path,
-              namespace: "asset-url",
-            }));
-            builder.onLoad({ filter: /.*/, namespace: "asset-url" }, ({ path }) => ({
-              contents: `export default ${JSON.stringify(path)}`,
-              loader: "js",
-            }));
-          },
-        },
-      ],
+      plugins: [rendererFixturePlugin],
       define: { "process.env.NODE_ENV": '"production"', "import.meta.env.DEV": "false" },
     });
     const assets = join(repositoryRoot, "out/renderer/assets");
