@@ -73,10 +73,10 @@ for (const global of [false, true])
       await title.click();
       await expect(panel).toBeVisible();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
-      await expect(panel.getByRole("button", { name: titleA, exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
+      // Revealing does not focus; Focus is the row's own action (3977f22d).
+      await expect(
+        panel.getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true }),
+      ).toHaveAttribute("aria-pressed", "false");
       const navigation = firstLabel.getByRole("button", {
         name: `Show in To-do: ${titleA}`,
         exact: true,
@@ -147,11 +147,11 @@ for (const global of [false, true])
       await expect(
         page.getByRole("tooltip").filter({ hasText: /^(Find the startup|Make it easier)/ }),
       ).toHaveCount(0);
-      // Only real travel over the row shows its description; leaving hides it.
-      await selectA.hover({ position: { x: 12, y: 8 } });
-      await expect(description).toBeVisible();
-      await bar.hover();
+      // Descriptions are inline row details, never hover tooltips (3977f22d).
+      await panel.getByRole("button", { name: titleA, exact: true }).hover();
+      await page.waitForTimeout(250);
       await expect(description).toHaveCount(0);
+      await bar.hover();
       await expect(headingsA).toHaveCount(0);
       await expect(transcript.locator('[data-slot="task-section-label"]')).toHaveCount(0);
       await expect(transcript.getByRole("button", { name: `Focus to-do: ${titleA}` })).toHaveCount(

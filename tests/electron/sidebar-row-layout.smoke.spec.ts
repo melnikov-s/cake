@@ -56,7 +56,7 @@ for (const theme of ["light", "dark"] as const) {
         const sessions = tabs.getByRole("button", { name: /^Sessions ·/ });
         const todoBox = await bounds(todos);
         const sessionBox = await bounds(sessions);
-        expect(Math.abs(todoBox.width - sessionBox.width)).toBeLessThan(1);
+        // Workspace tabs are content-sized pills of one height, not equal grid cells (c7c99e7f).
         expect(todoBox.height).toBe(sessionBox.height);
         expect(todoBox.height).toBeLessThanOrEqual(32);
         await expect(sessions.getByRole("img", { name: "1 unread", exact: true })).toBeVisible();

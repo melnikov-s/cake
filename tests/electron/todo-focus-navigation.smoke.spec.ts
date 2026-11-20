@@ -100,7 +100,9 @@ for (const entry of ["pane", "message"] as const) {
       }
       // This is a genuine virtualized reveal, not scrollIntoView on a mounted node.
       await expect(target).toHaveCount(0);
-      if (entry === "pane") await panel.getByRole("button", { name: titleA, exact: true }).click();
+      // The row title discloses details; Focus is its row action (3977f22d).
+      if (entry === "pane")
+        await panel.getByRole("button", { name: `Focus to-do: ${titleA}`, exact: true }).click();
       else
         await (
           await inDisplayOrder(

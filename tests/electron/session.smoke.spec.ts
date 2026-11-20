@@ -191,20 +191,6 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       if (headerTitle) headerTitle.textContent = longTitle;
       if (sidebarTitle) sidebarTitle.textContent = longTitle;
     });
-    console.log(
-      "PROBE geometry",
-      await page.evaluate(() =>
-        JSON.stringify(
-          [".workbench-composer", '[data-slot="workspace"]', '[aria-label="Conversation"]'].map(
-            (selector) =>
-              [...document.querySelectorAll(selector)].map((element) => ({
-                selector,
-                rect: element.getBoundingClientRect().toJSON(),
-              })),
-          ),
-        ),
-      ),
-    );
     expect(
       await page.evaluate(() => {
         // Global Cake Chat stays mounted since launch (40566199); measure the visible surface.

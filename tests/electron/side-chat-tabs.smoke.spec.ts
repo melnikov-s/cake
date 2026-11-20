@@ -209,9 +209,9 @@ for (const theme of ["dark", "light"] as const) {
       const activeBackground = await first.evaluate((el) => getComputedStyle(el).backgroundColor);
       await expect(tabs.nth(1)).not.toHaveCSS("background-color", activeBackground);
       await expect(first).toHaveCSS("height", "32px");
-      await expect
-        .poll(() => first.evaluate((el) => getComputedStyle(el, "::after").height))
-        .toBe("2px");
+      // Selection is an accent-tinted pill; the selected underline was retired (c7c99e7f).
+      const inactiveColor = await tabs.nth(1).evaluate((el) => getComputedStyle(el).color);
+      await expect(first).not.toHaveCSS("color", inactiveColor);
       await expect.poll(() => strip.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
       await pane.screenshot({ path: join(output, `tabs-after-${theme}.png`) });
       const inactiveBackground = await tabs

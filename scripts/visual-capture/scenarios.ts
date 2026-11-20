@@ -7197,10 +7197,10 @@ const sessionUpdateSpacingScenario: VisualCaptureScenario = {
           `[data-todo-id="00000000-0000-4000-8000-${String(index + 71).padStart(12, "0")}"]`,
         );
         await expect(todo).toBeVisible();
-        await expect(todo.getByRole("button", { name: title, exact: true })).toHaveAttribute(
-          "aria-pressed",
-          "false",
-        );
+        // Revealing a linked to-do does not focus it; Focus is its row action (3977f22d).
+        await expect(
+          todo.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
+        ).toHaveAttribute("aria-pressed", "false");
         await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
       }
       const link = batch.getByRole("link", { name: "Open session", exact: true }).nth(index);

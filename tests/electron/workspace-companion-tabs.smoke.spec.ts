@@ -106,13 +106,15 @@ for (const theme of ["dark", "light"] as const) {
         const header = (await windowHeader.boundingBox())!;
         // The title bar is 34px in every mode (06eaa5e4), plus its 1px bottom rule.
         expect(header.height).toBe(CAKE_TITLE_BAR_HEIGHT + 1);
+        // Mode buttons are 24px tall inside the slimmer pill tray (915f0e09).
+        const modeButtons = await modeSelector.getByRole("button").all();
         for (const control of [
-          ...(await modeSelector.getByRole("button").all()),
+          ...modeButtons,
           ...(await page.locator('[data-slot="workspace-actions"] button').all()),
           page.locator('[data-slot="shell-workspace-toggle"]'),
         ]) {
           const box = (await control.boundingBox())!;
-          expect(box.height).toBeGreaterThanOrEqual(28);
+          expect(box.height).toBeGreaterThanOrEqual(modeButtons.includes(control) ? 24 : 28);
           expect(box.y).toBeGreaterThanOrEqual(header.y);
           expect(box.y + box.height).toBeLessThanOrEqual(header.y + header.height - 1);
         }
@@ -156,10 +158,11 @@ for (const theme of ["dark", "light"] as const) {
         const button = modeSelector.getByRole("button", { name, exact: true });
         await expect(button).toHaveText("");
         await expect(button).toHaveCSS("border-width", "0px");
-        await expect(button.locator("svg")).toHaveCSS("width", "20px");
-        await expect(button.locator("svg")).toHaveCSS("height", "20px");
+        // Mode glyphs use the 18px navigation role in the borderless tray (84ece906).
+        await expect(button.locator("svg")).toHaveCSS("width", "18px");
+        await expect(button.locator("svg")).toHaveCSS("height", "18px");
       }
-      await expect(modeSelector).toHaveCSS("border-width", "1px");
+      await expect(modeSelector).toHaveCSS("border-width", "0px");
       await expect(modeSelector).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await expect(modeSelector.locator('button[aria-pressed="true"]')).toHaveCount(1);
       const tools = page.getByRole("group", { name: "Workspace tools", exact: true });
@@ -171,7 +174,8 @@ for (const theme of ["dark", "light"] as const) {
       const terminalBox = (await terminal.boundingBox())!;
       const modeBox = (await modeSelector.boundingBox())!;
       expect(terminalBox.x - (modeBox.x + modeBox.width)).toBeGreaterThanOrEqual(16);
-      await expect(terminal.locator("svg")).toHaveCSS("width", "16px");
+      // Workspace tools use the 18px control glyph role (8abad550).
+      await expect(terminal.locator("svg")).toHaveCSS("width", "18px");
       const main = modeSelector.getByRole("button", { name: "Main", exact: true });
       await expect(main).toHaveAttribute("aria-pressed", "true");
       const selectedBackground = await main.evaluate(

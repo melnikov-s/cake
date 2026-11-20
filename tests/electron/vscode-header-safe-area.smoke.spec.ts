@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 async function headerGeometry(page: Page) {
   return page.locator('[data-slot="workspace-header"]').evaluate((header) => {
@@ -88,7 +89,16 @@ test("VS Code header clears native controls through mode, rail and narrow-window
       .click();
     const main = await headerGeometry(page);
     expect(main.padding).toBe(46);
+    // VS Code honors the shared left-toolbar preference rather than hiding the rail itself
+    // (fbe27cc8): turn on Auto-hide in Settings → Appearance, as a user would.
+    await openSettings(page);
+    await page.getByRole("button", { name: /^Appearance/ }).click();
+    await page.getByRole("switch", { name: "Auto-hide", exact: true }).click();
+    await expect(page.getByRole("switch", { name: "Auto-hide", exact: true })).toBeChecked();
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await page.getByRole("button", { name: "VS Code", exact: true }).click();
+    // Rest the pointer over the editor, away from the auto-hidden rail's reveal edge.
+    await page.mouse.move(600, 220);
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => document.documentElement.dataset.titleBar))
@@ -159,11 +169,12 @@ test("VS Code header clears native controls through mode, rail and narrow-window
     const screenshot = test.info().outputPath("vscode-header.png");
     await page.screenshot({ path: screenshot });
     await test.info().attach("vscode-header", { path: screenshot, contentType: "image/png" });
+    // With Auto-hide on, every mode's header clears the native controls the same way.
     await page.getByRole("button", { name: "Main", exact: true }).click();
-    await expect.poll(async () => (await headerGeometry(page)).left).toBe(main.left);
-    expect((await headerGeometry(page)).padding).toBe(46);
+    await expect.poll(async () => (await headerGeometry(page)).left).toBe(0);
+    await verify();
     await page.getByRole("button", { name: "Browser", exact: true }).click();
-    expect((await headerGeometry(page)).padding).toBe(46);
+    await verify();
     await page.getByRole("button", { name: "VS Code", exact: true }).click();
     await expect.poll(async () => (await headerGeometry(page)).left).toBe(0);
     await verify();

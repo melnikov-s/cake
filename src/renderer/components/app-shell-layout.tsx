@@ -37,6 +37,10 @@ export const AppShellLayout = observer(function AppShellLayout({
   const autoHideRail = toolbar.autoHide;
   const nativeEditorTitlebar =
     workspaceMode === "vscode" && isMacPlatform && !root.props.browserHost;
+  // Without a rail under the traffic lights (VS Code, or an auto-hidden rail in any mode since
+  // fbe27cc8), headers must clear the native window controls themselves.
+  const clearsWindowControls =
+    (nativeEditorTitlebar || autoHideRail) && isMacPlatform && !root.props.browserHost;
   const store = root.projectWorkbenchStore;
   const shell = root.appShellStore;
   const navigator = root.workspaceNavigatorStore;
@@ -92,7 +96,7 @@ export const AppShellLayout = observer(function AppShellLayout({
             "[--project-rail-width:15rem] max-[700px]:[--project-rail-width:15rem]",
           autoHideRail && "[--project-rail-width:0px] max-[700px]:[--project-rail-width:0px]",
           // Match the existing native-control drag area, not the transient rail overlay.
-          nativeEditorTitlebar &&
+          clearsWindowControls &&
             "[--window-controls-width:100px] [@media(display-mode:fullscreen)]:[--window-controls-width:0px]",
           resizingPanel && "cursor-col-resize select-none",
         )}

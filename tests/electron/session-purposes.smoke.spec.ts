@@ -221,6 +221,10 @@ test("My session descendants stay together and mixed to-do session links retain 
     await page.screenshot({ path: testInfo.outputPath("session-order-and-links.png") });
     await page.getByRole("button", { name: /^To-dos/ }).click();
     const todo = page.locator('[data-todo-id="00000000-0000-4000-8000-000000000010"]');
+    // Links collapse into stacked kind tokens until shown (50e4459e).
+    await todo
+      .getByRole("button", { name: "Show 2 links for Explore and implement the same outcome" })
+      .click();
     await expect(todo.getByRole("img", { name: "User Session" })).toBeVisible();
     await expect(todo.getByRole("img", { name: "Delegated Session" })).toBeVisible();
     expect(await todo.getByRole("link").allTextContents()).toEqual([

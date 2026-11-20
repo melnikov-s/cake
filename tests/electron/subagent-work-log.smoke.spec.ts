@@ -378,7 +378,8 @@ test("opens retained historical subagent conversations at exact original respons
     // To-dos live in the Workspace accessory (582d0fc7).
     const todos = page.getByRole("complementary", { name: "Workspace", exact: true });
     await todos.getByRole("button", { name: /^To-dos / }).click();
-    const todo = todos.getByRole("button", { name: "Review joke", exact: true });
+    // Focus is a row action; the row itself discloses inline details (3977f22d).
+    const todo = todos.getByRole("button", { name: "Focus to-do: Review joke", exact: true });
     await todo.click();
     await expect(todo).toBeFocused();
     await expect(todo).toHaveAttribute("aria-pressed", "true");
@@ -386,6 +387,8 @@ test("opens retained historical subagent conversations at exact original respons
     await expect(
       todo.locator('xpath=ancestor::*[contains(concat(" ", @class, " "), " group/nav-item ")][1]'),
     ).toHaveAttribute("data-view-focused", "true");
+    // Work links collapse into stacked kind tokens until shown (50e4459e).
+    await todos.getByRole("button", { name: /^Show \d+ links? for Review joke$/ }).click();
     const link = todos.getByRole("link", { name: "Joke worker", exact: true });
     await expect(link).toHaveAttribute("href", subagentLink(sessionId, handleId));
     await link.click();

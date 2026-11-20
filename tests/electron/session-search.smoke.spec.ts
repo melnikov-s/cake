@@ -40,10 +40,10 @@ for (const theme of ["light", "dark"] as const) {
       await expect(filter).toBeFocused();
       await expect(dialog.getByRole("listbox", { name: "Sessions", exact: true })).toBeVisible();
       await expect(dialog.getByRole("option")).toHaveCount(4);
-      // Launch starts in global Cake Chat (40566199): its composer must not steal focus.
-      await page
-        .getByRole("combobox", { name: "Message Cake Chat", exact: true })
-        .evaluate((element: HTMLElement) => element.focus());
+      // Launch starts in global Cake Chat (40566199): its mounted composer must not steal focus.
+      await expect(
+        page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+      ).toBeAttached();
       await expect(filter).toBeFocused();
       await page.keyboard.type("srch dlg");
       await expect(filter).toHaveValue("srch dlg");

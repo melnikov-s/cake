@@ -142,7 +142,8 @@ test("navigates session history with back, forward, and resolve", async () => {
       page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
     ).toBeVisible();
     await expect(activeForwardSession).toHaveCount(0);
-    console.log("PROBE after-resolve", await back.isEnabled(), await forward.isEnabled());
+    await expect(back).toBeEnabled();
+    await expect(forward).toBeDisabled();
     // Resolved history lives in the Workspace Sessions list (582d0fc7).
     const resolvedLane = page.getByRole("region", { name: "Resolved sessions", exact: true });
     await page.getByRole("button", { name: "Resolved sessions", exact: true }).click();
@@ -161,14 +162,12 @@ test("navigates session history with back, forward, and resolve", async () => {
       "aria-label",
       /^Restore /,
     );
-    console.log("PROBE after-archive", await back.isEnabled(), await forward.isEnabled());
-    if (await back.isEnabled()) {
-      await back.click();
-      console.log(
-        "PROBE back-target",
-        await page.locator('[data-slot="workspace-title"] [aria-current="page"]').textContent(),
-      );
-    }
+    // Opening an archive is an ordinary visit; Back returns to the Project Chat.
+    await expect(forward).toBeDisabled();
+    await back.click();
+    await expect(
+      page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+    ).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

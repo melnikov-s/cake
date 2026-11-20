@@ -9,7 +9,7 @@ import {
   startFixtureModelServer,
   writeFixtureModels,
 } from "./fixtures/fixture-model";
-import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -184,10 +184,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     expect(firstSessionId).toBeTruthy();
     const stop = page.getByRole("button", { name: "Stop" });
     await expect(stop).toBeVisible();
-    console.log("PROBE before-stop", JSON.stringify(models.events));
     await stop.click();
-    await page.waitForTimeout(1000);
-    console.log("PROBE after-stop", JSON.stringify(models.events), await stop.count());
     await createSessionInProject(page, /^project(?: |$)/i);
     await expect(page.locator(".session-item.active")).toHaveCount(0);
     await expect(page.locator('[data-slot="workspace-title"] [aria-current="page"]')).toHaveText(
@@ -206,12 +203,22 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     const firstSessionAfterPromotion = page.locator(
       `.session-item[data-session-id='${firstSessionId}']`,
     );
-    console.log("PROBE events", JSON.stringify(models.events));
     await firstSessionAfterPromotion.locator(".session-row").click();
     await expect(firstSessionAfterPromotion).toHaveClass(/active/);
     await expect(firstSessionAfterPromotion.locator(".session-resolve-action")).toBeAttached();
     await firstSessionAfterPromotion.locator(".session-resolve-action").click();
-    await expect(page.getByRole("region", { name: "Resolved sessions" })).toBeVisible();
+    // Resolving the viewed Session returns to its owning Project Chat (558a1c58); it is then
+    // listed under the Workspace's Resolved sessions.
+    await expect(
+      page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+    ).toBeVisible();
+    const workspace = await showSessions(page);
+    await workspace.getByRole("button", { name: "Resolved sessions", exact: true }).click();
+    await expect(
+      workspace
+        .getByRole("region", { name: "Resolved sessions", exact: true })
+        .locator(`.session-item[data-session-id='${firstSessionId}']`),
+    ).toBeVisible();
     await expect(
       page.locator(`.session-item.active[data-session-id='${firstSessionId}']`),
     ).toHaveCount(0);

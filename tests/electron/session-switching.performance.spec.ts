@@ -7,6 +7,7 @@ import { expect, test, type CDPSession } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent } from "./main-harness";
 import { WINDOW_STATE_DOCUMENT_VERSION } from "../../src/services/storage/WindowStateStorage";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const baselineRoot = process.env.CAKE_PERFORMANCE_BASELINE_APP;
@@ -267,7 +268,11 @@ test("opens a new family child among hundreds of restored session identities", a
     const failures: string[] = [];
     page.on("pageerror", (error) => failures.push(error.message));
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await expect(page.locator(".transcript").getByText(title(0), { exact: true })).toBeVisible();
+    // Launch starts in global Cake Chat (40566199); open the seeded parent explicitly.
+    await openSession(page, title(0));
+    await expect(
+      page.locator(".transcript:visible").getByText(title(0), { exact: true }),
+    ).toBeVisible();
     await emitRendererEvent(application, {
       type: "project-session-control-requested",
       sessionId: id(0),

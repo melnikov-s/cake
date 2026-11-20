@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { widgetAttachmentsScenario } from "../../scripts/visual-capture/scenarios";
-import { emitRendererEvent } from "./main-harness";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -92,11 +92,14 @@ for (const scope of ["global", "session", "project-sessions", "project-chats"] a
               .first()
               .focus();
             await page.mouse.move(800, 800);
-          } else
-            await emitRendererEvent(app, {
-              type: "session-open-requested",
-              sessionId: ownerSession,
-            });
+          } else {
+            // Open the owning Session through the real Search sessions dialog.
+            await openSession(page, "Explain how Cake's desktop architecture works.");
+            await expect(
+              page.locator(`[data-slot="session-pane"][data-session-id="${ownerSession}"]`),
+            ).toBeVisible();
+            await page.mouse.move(800, 800);
+          }
         };
         await openOwner();
         const panel = page.locator('[data-widget-attachment="dashboard-left"]');

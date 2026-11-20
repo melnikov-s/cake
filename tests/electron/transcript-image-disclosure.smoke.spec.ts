@@ -104,6 +104,8 @@ for (const global of [false, true]) {
           .getByRole("button", { name: /^Open Project Chat for / })
           .first()
           .click();
+      // Leave the Dynamic rail, which expands over the conversation while hovered.
+      await page.mouse.move(900, 600);
       // Global Cake Chat stays mounted beside Project Chat; use the visible conversation.
       const transcript = page.locator('[data-slot="session-pane"] .transcript:visible');
       await expect(transcript.locator("figure img")).toHaveCount(3);
@@ -132,10 +134,11 @@ for (const global of [false, true]) {
         exact: true,
       });
       await expect(showB).toBeVisible();
-      await showB.click({ timeout: 5_000 });
-      // To-dos live in the Workspace accessory (582d0fc7); choosing one focuses it.
+      await showB.click();
+      // To-dos live in the Workspace accessory (582d0fc7); their Focus row action focuses
+      // one (3977f22d).
       const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
-      const selectB = panel.getByRole("button", { name: titleB, exact: true });
+      const selectB = panel.getByRole("button", { name: `Focus to-do: ${titleB}`, exact: true });
       await selectB.click();
       await expect(shot).toHaveCount(0);
       // The non-focused task disappears; the focused task and unattributed turn stay visible.

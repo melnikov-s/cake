@@ -102,7 +102,19 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       props.operations.reset(this.composerOperationOwner);
       props.operations.reset(this.configurationOperationOwner);
     });
+    // A Stop pressed while a send still awaits admission applies to that send's turn once the
+    // backend admits it, and is then forgotten: it never carries over to a later turn.
+    this.reaction(
+      () => this.composerStore.deliveryStore.activeOperations.length === 0,
+      (settled) => {
+        if (!settled || !this.stopBeforeAdmission) return;
+        this.stopBeforeAdmission = false;
+        void this.requestStop();
+      },
+    );
   }
+
+  private stopBeforeAdmission = false;
 
   get client() {
     return ClientContext.consume(this)!;
@@ -499,7 +511,17 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   }
 
   private async abort() {
-    if (!this.streaming) return;
+    // Stop is offered while a send is still being admitted (ChatStore.canStop). Before the
+    // backend admits it there is no turn to stop, so remember the request for that send.
+    if (!this.streaming && this.model.activeTurnIds.length === 0) {
+      if (this.composerStore.deliveryStore.activeOperations.length > 0)
+        this.stopBeforeAdmission = true;
+      return;
+    }
+    await this.requestStop();
+  }
+
+  private async requestStop() {
     try {
       await this.client.sessionChats.abort(
         { sessionId: this.sessionId, stop: { by: "user" } },
