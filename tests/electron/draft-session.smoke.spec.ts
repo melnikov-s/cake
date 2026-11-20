@@ -4,6 +4,8 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { store, windowStateChildren, windowStateDocument } from "../fixtures/window-state";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -44,6 +46,43 @@ test("restores, edits, and activates a project draft session", async () => {
       ),
     }),
   );
+  // Activating starts the Session, which needs a registered default model (81eb383b).
+  const server = createServer((_request, response) => {
+    const chunk = (delta: object, finish: string | null) =>
+      `data: ${JSON.stringify({ id: "draft", object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end(
+      chunk({ role: "assistant", content: "Plan noted." }, null) +
+        chunk({}, "stop") +
+        "data: [DONE]\n\n",
+    );
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const { port } = server.address() as AddressInfo;
+  await mkdir(join(cakeHome, "pi"), { recursive: true });
+  await writeFile(
+    join(cakeHome, "pi", "models.json"),
+    JSON.stringify({
+      providers: {
+        "draft-provider": {
+          baseUrl: `http://127.0.0.1:${port}/v1`,
+          apiKey: "fixture",
+          api: "openai-completions",
+          models: [
+            {
+              id: "fixture-model",
+              name: "Draft fixture",
+              reasoning: false,
+              input: ["text"],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 128000,
+              maxTokens: 1024,
+            },
+          ],
+        },
+      },
+    }),
+  );
   await mkdir(join(cakeHome, "state"), { recursive: true });
   const applicationDocument = join(cakeHome, "state", "application.json");
   await writeFile(
@@ -58,6 +97,17 @@ test("restores, edits, and activates a project draft session", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
+      modelPresets: [
+        {
+          id: "10000000-0000-4000-8000-000000000077",
+          name: "Draft",
+          provider: "draft-provider",
+          modelId: "fixture-model",
+          thinkingLevel: "off",
+          fastMode: false,
+        },
+      ],
+      defaultModelPresetId: "10000000-0000-4000-8000-000000000077",
     }),
   );
 
@@ -95,7 +145,12 @@ test("restores, edits, and activates a project draft session", async () => {
       .toBe(sessionId);
     const migratedWindow = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8"));
     expect(JSON.stringify(migratedWindow)).not.toContain("Original plan");
-    await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+    // The Sessions row badges the draft (the composer also offers a "Draft" send choice).
+    await expect(
+      page
+        .locator(`[data-slot="conversation-navigator-row"][data-session-id="${sessionId}"]`)
+        .getByText("Draft", { exact: true }),
+    ).toBeVisible();
     const draftSidebarItem = page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`);
     await expect(draftSidebarItem.getByText("main", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveCount(0);
@@ -172,6 +227,8 @@ test("restores, edits, and activates a project draft session", async () => {
     ).toBeEnabled();
   } finally {
     await application.close();
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });

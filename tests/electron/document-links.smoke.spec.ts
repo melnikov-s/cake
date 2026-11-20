@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openProjectChat, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -87,6 +88,10 @@ test("architecture citations with heading anchors open their workspace document"
   });
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat; open the seeded Session from its Project's Sessions.
+    await openProjectChat(page, "project");
+    await showSessions(page);
+    await page.locator(`.session-item[data-session-id="${sessionId}"] .session-row`).click();
     const citation = page.getByRole("link", { name: "artifact protocol", exact: true });
     await expect(citation).toBeVisible();
     await expect(page.getByRole("link", { name: "the whole document", exact: true })).toBeVisible();
