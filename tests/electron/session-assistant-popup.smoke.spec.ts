@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -116,7 +117,7 @@ for (const dictation of [false, true]) {
       await expect(fullInput).toHaveValue("Full chat draft");
       await fullInput.press("Escape");
       await expect(full).toHaveCount(0);
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await openSettings(page);
       await page.getByRole("button", { name: /^Hotkeys\b/ }).click();
       const binding = page.getByRole("button", { name: "Open companion shortcut", exact: true });
       await expect(binding).toHaveText(process.platform === "darwin" ? "⌘⇧J" : "Ctrl+Shift+J");

@@ -10,6 +10,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -470,7 +471,7 @@ test("remote Electron uses the full shell and only the server owns agent state",
         .toBe(true);
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       await expect(readdir(localHome)).resolves.toEqual(["logs"]);
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await openSettings(page);
       await page.getByRole("button", { name: "Network & privacy", exact: true }).click();
       await expect(page.getByLabel("Cake server URL")).toHaveValue(url);
       await expect(
@@ -551,7 +552,7 @@ test("failed remote connection can retry and deliberately relaunch local, then s
     });
     application = await launch();
     page = await application.firstWindow();
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: "Network & privacy", exact: true }).click();
     await expect(page.getByText("Current host: This computer", { exact: true })).toBeVisible();
     await expect(page.getByRole("switch", { name: "Enable browser sharing" })).toBeVisible();

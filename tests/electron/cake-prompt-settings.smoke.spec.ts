@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { defaultCakePrompts } from "../../src/contracts/application/cake-prompt-defaults";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -34,7 +35,7 @@ test("prompt defaults remain placeholders while custom overrides persist, clear,
   let app = await launch();
   try {
     let page = await app.firstWindow();
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /^Instructions & prompts\b/ }).click();
     let prompt = page.getByRole("textbox", { name: "Commit before merge", exact: true });
     await expect(prompt).toHaveValue("");
@@ -49,10 +50,8 @@ test("prompt defaults remain placeholders while custom overrides persist, clear,
     await app.close();
     app = await launch();
     page = await app.firstWindow();
-    // Window persistence restores Settings; reopen it only if a different surface is selected.
-    if (await page.getByRole("button", { name: "Open settings", exact: true }).isVisible()) {
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    }
+    // Relaunch always starts in global Cake Chat (40566199).
+    await openSettings(page);
     await page.getByRole("button", { name: /^Instructions & prompts\b/ }).click();
     prompt = page.getByRole("textbox", { name: "Commit before merge", exact: true });
     await expect(prompt).toHaveValue("Commit only the intended work.");

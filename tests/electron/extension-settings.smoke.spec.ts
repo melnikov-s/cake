@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 test("automatic extension switches use the independently configured Pi home and persist native overrides", async () => {
@@ -37,7 +38,7 @@ test("automatic extension switches use the independently configured Pi home and 
   });
   try {
     const page = await application.firstWindow();
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: "Execution & resources", exact: true }).click();
     const toggle = page.getByRole("switch", { name: "example.ts", exact: true });
     await expect(toggle).toBeVisible();

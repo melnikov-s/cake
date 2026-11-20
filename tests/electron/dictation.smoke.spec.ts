@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { dictationFixture } from "./fixtures/dictation";
 
-import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { createSessionInProject, openSettings } from "./fixtures/workspace-navigation";
 
 test("discard filters restore typed selection and preserve lowercase speech in the real composer", async () => {
   test.setTimeout(90_000);
@@ -981,7 +981,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await page.getByRole("button", { name: "View 2 annotations", exact: true }).click();
     await page.getByRole("button", { name: "Remove annotation 2", exact: true }).click();
     await page.getByRole("button", { name: "Remove annotation 1", exact: true }).click();
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await page.getByRole("searchbox", { name: "Search settings" }).fill("Submit message by voice");
     await page.getByRole("button", { name: "Submit message by voice", exact: true }).click();
@@ -1020,12 +1020,12 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(composer).toHaveValue("", { timeout: 10_000 });
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
     await page.getByRole("button", { name: "Mute dictation" }).click();
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await voiceSend.click();
     await expect(voiceSend).not.toBeChecked();
     await page.getByRole("button", { name: "Back to chat" }).click();
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await page.getByLabel("Text processing", { exact: true }).selectOption("raw");
     await expect(page.getByRole("switch", { name: "Dictation mode" })).toBeChecked();

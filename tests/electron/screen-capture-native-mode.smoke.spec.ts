@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -97,8 +98,7 @@ test("@foreground screenshot capture preserves macOS foreground process mode", a
     await delay(1100);
     await composer.click();
     await page.keyboard.type("Retain this draft");
-    const settings = page.getByRole("complementary").getByLabel("Open settings", { exact: true });
-    await settings.click();
+    await openSettings(page);
     await page.getByRole("button", { name: /^Screen Capture/ }).click();
     for (const outcome of ["cancel", "attach", "cancel"] as const) {
       const opened = application.waitForEvent("window");
@@ -127,7 +127,7 @@ test("@foreground screenshot capture preserves macOS foreground process mode", a
         await expect(
           page.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
         ).toHaveCount(1);
-        await settings.click();
+        await openSettings(page);
         await page.getByRole("button", { name: /^Screen Capture/ }).click();
       }
     }

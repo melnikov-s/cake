@@ -9,6 +9,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -168,7 +169,9 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await expect(inspectButton).toBeVisible();
     const inspectBounds = await inspectButton.boundingBox();
     const toolbarBounds = await toolbar.boundingBox();
-    expect(inspectBounds!.x).toBeGreaterThan(900);
+    // Startup shows the Workspace accessory (0d0e27f9), so assert placement within the composer
+    // toolbar rather than an absolute window offset: context sits on the trailing side by Send.
+    expect(inspectBounds!.x).toBeGreaterThan(toolbarBounds!.x + toolbarBounds!.width / 2);
     // Context usage belongs beside submit in the composer, not the former header.
     expect(inspectBounds!.y).toBeGreaterThanOrEqual(toolbarBounds!.y);
     expect(inspectBounds!.y + inspectBounds!.height).toBeLessThanOrEqual(
@@ -396,7 +399,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await expect
       .poll(async () => JSON.parse(await readFile(document, "utf8")).data.unreadSessionIds)
       .toContain(CAKE_CHAT_SESSION_ID);
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /^Cake Chat\b/ }).click();
     await expect(page.getByRole("combobox", { name: "Cake Chat history-view budget" })).toHaveValue(
       "40000",
@@ -420,9 +423,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await app.close();
     app = await launch();
     page = await app.firstWindow();
-    if (await page.getByRole("button", { name: "Open settings", exact: true }).isVisible()) {
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    }
+    await openSettings(page);
     await page.getByRole("button", { name: /^Cake Chat\b/ }).click();
     await expect(page.getByRole("combobox", { name: "Cake Chat history-view budget" })).toHaveValue(
       "10000",

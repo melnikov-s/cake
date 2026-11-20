@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -246,7 +247,7 @@ reply({ ready: true });
         timeout: 20_000,
       });
       if (dictationEnabled) {
-        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+        await openSettings(page);
         await page.getByRole("button", { name: /Voice & Dictation/ }).click();
         await page.getByLabel("Text processing", { exact: true }).selectOption("raw");
         await page.getByRole("switch", { name: "Dictation mode" }).click();

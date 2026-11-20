@@ -7,6 +7,7 @@ import { expect, test } from "@playwright/test";
 import { emitRendererEvent } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
 import { vscodeColorThemeFixture } from "../fixtures/vscode-color-themes";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const codeServer = "/opt/homebrew/bin/code-server";
@@ -81,7 +82,7 @@ for (const initialTheme of ["dark", "light"] as const) {
       await expectTheme(initialTheme);
       const editorId = (await editorState())?.id;
       const setTheme = async (theme: "light" | "dark" | "system") => {
-        await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+        await openSettings(page);
         await page.getByRole("button", { name: /^Appearance/ }).click();
         await page
           .getByRole("button", {
@@ -151,7 +152,7 @@ for (const initialTheme of ["dark", "light"] as const) {
         entryPath,
         `// Theme data only\n${JSON.stringify({ ...imported, colors: undefined, include: initialTheme === "dark" ? "../base.json" : "./base.json" })}`,
       );
-      await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+      await openSettings(page);
       await page.getByRole("button", { name: /^Appearance/ }).click();
       if (initialTheme === "dark") {
         await page
@@ -201,7 +202,7 @@ for (const initialTheme of ["dark", "light"] as const) {
       await expectTheme("dark");
       // Returning to the retained native view must not need a reload or app restart.
       expect((await editorState())?.id).toBe(editorId);
-      await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+      await openSettings(page);
       await page.getByRole("button", { name: /^Appearance/ }).click();
       await page.getByRole("button", { name: "Light", exact: true }).click();
       await page.getByRole("button", { name: "Solarized Light theme", exact: true }).click();

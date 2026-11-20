@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { windowState } from "../fixtures/window-state";
-import { showSessions } from "./fixtures/workspace-navigation";
+import { openSettings, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -827,7 +827,7 @@ test("consecutive Enter escalates only the just-sent message without restarting 
     await send("Start held response");
     await expect.poll(() => responses.length).toBe(1);
     await send("Older queued message");
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await page.getByRole("switch", { name: "Dictation mode" }).click();
     await page.getByRole("button", { name: "Back to chat" }).click();
@@ -894,7 +894,10 @@ test("consecutive Enter escalates only the just-sent message without restarting 
           .toBe(false);
         await page.evaluate(() => window.getSelection()?.removeAllRanges());
       } else if (action === "focus") {
-        await page.getByRole("button", { name: "Open settings", exact: true }).focus();
+        await page
+          .getByRole("navigation", { name: "Projects and global utilities" })
+          .getByRole("button", { name: "Settings", exact: true })
+          .focus();
         await page.keyboard.press("Enter");
         await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
         await page.getByRole("button", { name: "Back to chat", exact: true }).click();

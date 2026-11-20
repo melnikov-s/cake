@@ -9,6 +9,8 @@ import {
   restoreClipboardSnapshot,
   saveClipboardSnapshot,
 } from "./clipboard-harness";
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { expectPresentationFitsRail } from "./artifact-layout-assertions";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -63,8 +65,10 @@ test("opens attached images fullscreen from the uniform composer tile and from t
     const clearClipboard = () =>
       application.evaluate(({ clipboard }) => clipboard.writeText("not image pixels"));
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat; stage a new Session in the Project explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
-    await expect(composer).toBeVisible({ timeout: 20_000 });
+    await expect(composer).toBeVisible();
     const imageData = await application.evaluate(({ nativeImage }) =>
       nativeImage
         .createFromBitmap(Buffer.alloc(320 * 20 * 4, 255), { width: 320, height: 20 })
@@ -114,9 +118,8 @@ test("opens attached images fullscreen from the uniform composer tile and from t
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height - 8);
     const fullscreen = page.getByRole("dialog", { name: "wide.png", exact: true });
     await expect(fullscreen).toBeVisible({ timeout: 3_000 });
-    expect(await fullscreen.boundingBox()).toEqual(
-      await page.evaluate(() => ({ x: 0, y: 0, width: innerWidth, height: innerHeight })),
-    );
+    // Fullscreen readers fill the shell beside the always-visible project rail (582d0fc7).
+    await expectPresentationFitsRail(page, fullscreen);
     await expect(fullscreen.locator("img")).toHaveAttribute(
       "src",
       `data:image/png;base64,${imageData}`,

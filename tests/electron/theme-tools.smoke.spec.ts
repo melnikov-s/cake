@@ -9,6 +9,7 @@ import type { JsonObject } from "../../src/contracts/serialization/json-contract
 import { emitRendererEvent } from "./main-harness";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const codeServer = "/opt/homebrew/bin/code-server";
@@ -136,7 +137,7 @@ test("theme tools persist, refresh Settings and drive the same live Cake/native 
       .toMatchObject({ id: editorId, background: "#191322" });
     await expect.poll(async () => (await savedAppearance()).theme).toBe("dark");
     // Shared Settings observes the same catalog, not a separate tool-owned registry.
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /^Appearance/ }).click();
     await expect(
       page.getByRole("button", { name: "Tool Halloween theme", exact: true }),

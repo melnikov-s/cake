@@ -7,6 +7,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -75,11 +76,44 @@ export default function (pi) {
 }
 `,
     );
+    // Runtime startup requires a saved model or default preset (81eb383b). The local
+    // provider is never prompted here.
+    await writeFile(
+      join(cakeHome, "pi", "models.json"),
+      JSON.stringify({
+        providers: {
+          "cold-provider": {
+            baseUrl: `${origin}/v1`,
+            apiKey: "fixture",
+            api: "openai-completions",
+            models: [
+              {
+                id: "fixture-model",
+                name: "Cold fixture",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 128000,
+                maxTokens: 1024,
+              },
+            ],
+          },
+        },
+      }),
+    );
     for (const sessionId of ["source", "target"]) {
       const entries: Array<Record<string, unknown>> = [
         { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+        {
+          type: "model_change",
+          id: "model",
+          parentId: null,
+          timestamp,
+          provider: "cold-provider",
+          modelId: "fixture-model",
+        },
       ];
-      let parentId: string | null = null;
+      let parentId: string | null = "model";
       const count = sessionId === "target" ? 40 : 1;
       for (let index = 0; index < count; index++) {
         const id = `message-${index}`;
@@ -128,9 +162,12 @@ export default function (pi) {
       const page = await application.firstWindow();
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
+      // Launch starts in global Cake Chat; open the seeded source Session explicitly.
+      await openSession(page, "source conversation");
       await expect(
         page.locator(".transcript").getByText("source conversation", { exact: true }),
-      ).toBeVisible({ timeout: 20_000 });
+      ).toBeVisible();
+      await showSessions(page);
       await page.locator('.session-item[data-session-id="target"] .session-row').click();
       await expect.poll(() => Boolean(initialization)).toBe(true);
       const transcript = page.locator(".transcript");

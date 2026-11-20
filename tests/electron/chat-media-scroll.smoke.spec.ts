@@ -6,6 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { recordedRendererErrors, recordRendererErrors } from "../fixtures/renderer-errors";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const diagram = [
@@ -228,10 +229,15 @@ for (const media of ["diagram", "image", "combined"] as const) {
         };
       });
       await page.reload();
+      // Launch and reload start in global Cake Chat; open the seeded Session explicitly.
+      await openSession(page, "Message 0.");
       const transcript = page.locator(".transcript").first();
-      const latest = transcript.locator('[data-slot="transcript-item"]').last();
-      await expect(latest).toContainText("Message 47", { timeout: 20_000 });
-      await expect(transcript.locator('[aria-label="Conversation"]')).toBeVisible();
+      // Virtualized rows recycle DOM containers, so select the newest row by content.
+      const latest = transcript
+        .locator('[data-slot="transcript-item"]')
+        .filter({ hasText: /^(?:You)?\s*Message 47\./ });
+      await expect(latest).toBeVisible({ timeout: 20_000 });
+      await expect(transcript).toHaveAccessibleName("Conversation");
       await expect(latest).toBeInViewport();
       // The opening range starts with an estimate. Do not start scrolling up
       // while it is still a short, unpositioned list at scrollTop zero.

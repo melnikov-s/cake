@@ -883,12 +883,15 @@ const conversationEntryScenario: VisualCaptureScenario = {
       allowedOrigin: conversationEntryOrigin,
       installed: true,
     });
+    await openSeededSession(page, "Project", "Let's discuss this project.");
     const composer = page.locator(".workbench-composer");
     await expect(composer.getByLabel("Message", { exact: true })).toBeVisible({ timeout: 20_000 });
     const entry = composer.getByRole("button", { name: "Enter conversation mode", exact: true });
     await expect(entry).toBeEnabled();
     await expect(
-      page.locator("strong").filter({ hasText: "Let's discuss this project." }),
+      page
+        .getByRole("navigation", { name: "Conversation breadcrumb" })
+        .getByRole("button", { name: "Let's discuss this project.", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Exit conversation mode", exact: true }),

@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 
 import { provokeRendererCrash } from "./renderer-crash-fixture";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -62,13 +63,8 @@ test("crash diagnostics cover DOM and native overlays, reach both consoles, and 
     await reload.click();
     await expect(page.locator('[data-slot="workspace-header"]')).toBeVisible();
     await expect(crash).toHaveCount(0);
-    // Reload may restore Settings, where the sidebar's Settings button is not rendered.
-    // Exercise the recovered application rather than assuming a particular saved surface.
-    const openSettings = page.getByRole("button", { name: "Open settings", exact: true });
-    await expect(
-      openSettings.or(page.getByRole("button", { name: "Back to chat", exact: true })),
-    ).toBeVisible();
-    if (await openSettings.isVisible()) await openSettings.click();
+    // Reload starts in global Cake Chat (40566199); reopen Settings explicitly.
+    await openSettings(page);
     const search = page.getByRole("searchbox", { name: "Search settings", exact: true });
     await search.fill("Appearance");
     await expect(search).toHaveValue("Appearance");

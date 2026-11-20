@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -53,7 +54,7 @@ for (const action of ["close", "quit"] as const) {
       await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
         timeout: 20_000,
       });
-      await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+      await openSettings(page);
       await page.getByRole("button", { name: /^Appearance/ }).click();
       // Native mode control, not direct Store mutation.
       await page.getByRole("button", { name: "Dark", exact: true }).click();

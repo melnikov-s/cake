@@ -7,6 +7,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 const sessionId = "00000000-0000-4000-8000-000000000001";
@@ -292,7 +293,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
     await expect
       .poll(() => readFile(join(project, "hello.ts"), "utf8"))
       .toContain("editedRemotely");
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /^Appearance/ }).click();
     await page.getByRole("button", { name: "Light", exact: true }).click();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();

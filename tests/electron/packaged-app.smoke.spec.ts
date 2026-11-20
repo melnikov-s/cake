@@ -8,6 +8,7 @@ import { expect, test } from "@playwright/test";
 import type * as Esbuild from "esbuild";
 import type * as NodePty from "node-pty";
 import { windowState } from "../fixtures/window-state";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const source = process.env.CAKE_PACKAGED_APP;
 
@@ -178,7 +179,7 @@ test("standalone app launches after relocation and manual replacement preserves 
     });
     expect(runtime.compiled).toContain("42");
     expect(runtime.terminal).toBe("packaged-pty");
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /^Appearance/ }).click();
     await page.getByLabel("Color theme", { exact: true }).selectOption("dark");
     await application.close();

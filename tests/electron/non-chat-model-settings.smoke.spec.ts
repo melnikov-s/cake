@@ -7,6 +7,7 @@ import { defaultApplicationState } from "../../src/contracts/application/applica
 import { nativeNonChatScript, nonChatProviderSource } from "../fixtures/non-chat-provider";
 import { nonChatModelChoiceValue } from "../../src/renderer/lib/non-chat-model-choice";
 import { windowState } from "../fixtures/window-state";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 test("image/classifier preferences and native execution controls persist and reach native codemode", async () => {
@@ -82,7 +83,7 @@ test("image/classifier preferences and native execution controls persist and rea
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
       timeout: 20_000,
     });
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await openSettings(page);
     await page.getByRole("button", { name: /^Images\b/ }).click();
     const images = page.getByRole("combobox", { name: "Preferred image model" });
     await expect(images).toBeEnabled();

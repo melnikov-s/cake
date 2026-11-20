@@ -2,7 +2,11 @@ import { expect, type ElectronApplication, type Page } from "@playwright/test";
 
 /** Exercise the real boundary while independent DOM and native layers cover the application. */
 export async function provokeRendererCrash(page: Page, application: ElectronApplication) {
-  await expect(page.getByRole("button", { name: "Open settings", exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Settings", exact: true }),
+  ).toBeVisible();
   await page.evaluate(() => {
     const cover = document.createElement("dialog");
     cover.textContent = "Existing modal covering the application";
@@ -29,6 +33,8 @@ export async function provokeRendererCrash(page: Page, application: ElectronAppl
   });
   // The existing modal and native view intentionally cover the control being used to provoke the crash.
   await page.evaluate(() =>
-    document.querySelector<HTMLButtonElement>('[aria-label="Open settings"]')!.click(),
+    document
+      .querySelector<HTMLButtonElement>('[data-slot="project-rail"] [aria-label="Settings"]')!
+      .click(),
   );
 }

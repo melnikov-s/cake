@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication } from "@playwright/test";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const signInUrl = "https://auth.example.test/device";
@@ -136,7 +137,7 @@ for (const mode of ["local", "remote"] as const) {
           },
         });
       });
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await openSettings(page);
       await page.getByRole("button", { name: /^Providers/ }).click();
       const provider = page.locator("article").filter({ hasText: "Cake auth fixture" });
       await expect(provider.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
