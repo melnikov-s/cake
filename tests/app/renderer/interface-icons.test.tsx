@@ -112,7 +112,7 @@ it("inherits inline action roles but allows explicit navigation, leaving non-gly
   expect(view.getByTestId("status").className).toContain("bg-accent");
 });
 
-it("only the three view controls are 24px, retaining pressed states and handlers", () => {
+it("title-bar mode controls use 18px navigation icons, retaining pressed states and handlers", () => {
   const main = vi.fn(),
     code = vi.fn(),
     browser = vi.fn(),
@@ -135,9 +135,7 @@ it("only the three view controls are 24px, retaining pressed states and handlers
     ["Terminal", terminal],
   ] as const) {
     const button = view.getByRole("button", { name });
-    expect(button.querySelector("svg")!.getAttribute("width")).toBe(
-      name === "Terminal" ? "18" : "24",
-    );
+    expect(button.querySelector("svg")!.getAttribute("width")).toBe("18");
     expect(button.getAttribute("aria-pressed")).toBe(String(name === "Main"));
     fireEvent.click(button);
     expect(handler).toHaveBeenCalledOnce();

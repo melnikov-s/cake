@@ -2,11 +2,10 @@ import { observer } from "r-state-tree/react";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import { IconButton } from "./ui/icon-button";
 import { BrowserIcon, ChatIcon, TerminalIcon, VsCodeIcon } from "./ui/icons";
-import { SegmentedControlGroup } from "./ui/segmented-control";
 import { WorkspaceModeSlot } from "./ui/workspace-header";
 
 const modeButtonClassName =
-  "rounded-sm aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-xs aria-pressed:ring-1 aria-pressed:ring-border/50 aria-pressed:hover:bg-card focus-visible:outline-foreground/60";
+  "h-6 w-8 rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-[inset_0_1px_0_var(--surface-rim),0_1px_2px_rgb(0_0_0/0.14)] aria-pressed:hover:bg-card focus-visible:outline-foreground/60";
 
 export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   mode,
@@ -32,10 +31,14 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   return (
     <div role="group" aria-label="Workspace tools" className="flex shrink-0 items-center gap-1">
       <WorkspaceModeSlot>
-        <SegmentedControlGroup aria-label="Conversation workspace" className="shrink-0">
+        <div
+          role="group"
+          aria-label="Conversation workspace"
+          className="inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-foreground/[0.05] p-0.5 select-none"
+        >
           <IconButton
             tooltip="Main"
-            iconSize="view"
+            iconSize="navigation"
             className={modeButtonClassName}
             pressedAppearance="subtle"
             aria-pressed={mode === "normal"}
@@ -46,7 +49,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
           {ideAvailable && (
             <IconButton
               tooltip="VS Code"
-              iconSize="view"
+              iconSize="navigation"
               pressedAppearance="subtle"
               aria-pressed={mode === "vscode"}
               className={`${modeButtonClassName} phone:hidden`}
@@ -58,7 +61,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
           {!browserHost && (
             <IconButton
               tooltip="Browser"
-              iconSize="view"
+              iconSize="navigation"
               className={modeButtonClassName}
               pressedAppearance="subtle"
               aria-pressed={mode === "browser"}
@@ -67,7 +70,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
               <BrowserIcon />
             </IconButton>
           )}
-        </SegmentedControlGroup>
+        </div>
       </WorkspaceModeSlot>
       <IconButton
         data-cake-hint-key="t"
