@@ -214,6 +214,28 @@ const anchor = (transcript: Locator) =>
     };
   });
 
+async function withoutScrollbarReveal<Result>(page: Page, run: () => Promise<Result>) {
+  await expect(page.locator(".transcript[data-scrollbar-visible]")).toHaveCount(0);
+  await page.evaluate(() => {
+    let revealed = false;
+    const changes = new MutationObserver((records) => {
+      revealed ||= records.some((record) => record.oldValue === null);
+    });
+    changes.observe(document.body, {
+      subtree: true,
+      attributeFilter: ["data-scrollbar-visible"],
+      attributeOldValue: true,
+    });
+    Reflect.set(window, "stopWatchingScrollbar", () => {
+      changes.disconnect();
+      return revealed;
+    });
+  });
+  const result = await run();
+  expect(await page.evaluate(() => Reflect.get(window, "stopWatchingScrollbar")())).toBe(false);
+  return result;
+}
+
 async function settle(page: Page) {
   await page.evaluate(async () => {
     for (let frame = 0; frame < 6; frame++)
@@ -469,18 +491,20 @@ test.describe("transcript follow rules", () => {
     const transcript = page.locator(".transcript");
     await wheel(page, transcript, -1600);
     const reading = await anchor(transcript);
-    const samples = await anchorEveryFrame(page, async () => {
-      await streamFor(page, 1500);
-      for (const operation of ["stream", "arrive", "activity", "insertBelow"] as const) {
-        if (operation === "insertBelow") await fixtureCall(page, "arrive");
-        else await fixtureCall(page, operation);
+    const samples = await withoutScrollbarReveal(page, () =>
+      anchorEveryFrame(page, async () => {
+        await streamFor(page, 1500);
+        for (const operation of ["stream", "arrive", "activity", "insertBelow"] as const) {
+          if (operation === "insertBelow") await fixtureCall(page, "arrive");
+          else await fixtureCall(page, operation);
+          await settle(page);
+        }
+        // A message above the viewport grows (a tool card expanding, an image loading).
+        await fixtureCall(page, "grow", "message-2");
         await settle(page);
-      }
-      // A message above the viewport grows (a tool card expanding, an image loading).
-      await fixtureCall(page, "grow", "message-2");
-      await settle(page);
-      await page.waitForTimeout(300);
-    });
+        await page.waitForTimeout(300);
+      }),
+    );
     expect(samples).toEqual([`${reading.id}@${reading.offset}`]);
   });
 
@@ -509,7 +533,9 @@ test.describe("transcript follow rules", () => {
   test("rule 5: at the bottom, streaming output stays pinned", async ({ fixturePage: page }) => {
     const transcript = page.locator(".transcript");
     expect(await gap(transcript)).toBeLessThanOrEqual(1);
-    const frames = await pinnedFrames(page, () => streamFor(page, 2000));
+    const frames = await withoutScrollbarReveal(page, () =>
+      pinnedFrames(page, () => streamFor(page, 2000)),
+    );
     // The list places a newly added row, then pins the end on the next frame.
     expect(frames.longestShortRun).toBe(0);
     expect(frames.final).toBeLessThan(1);
@@ -865,11 +891,12 @@ test("reopening a conversation restores the reader's position", async ({ fixture
   const transcript = page.locator(".transcript");
   await wheel(page, transcript, -1500);
   const reading = await anchor(transcript);
-  await page.waitForTimeout(200);
-  await fixtureCall(page, "switchConversation");
-  await fixtureCall(page, "switchConversation");
-  await settle(page);
-  await expect.poll(() => anchor(transcript)).toEqual(reading);
+  await withoutScrollbarReveal(page, async () => {
+    await fixtureCall(page, "switchConversation");
+    await fixtureCall(page, "switchConversation");
+    await settle(page);
+    await expect.poll(() => anchor(transcript)).toEqual(reading);
+  });
 });
 
 const annotationProse = "Shared guidance for this review.";

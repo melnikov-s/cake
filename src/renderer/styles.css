@@ -16,11 +16,25 @@
   background: var(--selection);
 }
 
+/* Chromium doesn't transition paint on ::-webkit-scrollbar-thumb itself.
+   Animate an inherited value on the scrollport instead. */
+@property --transcript-thumb-color-weight {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 0%;
+}
+
 /* The shell's splitter overlaps the chat edge by 4px. Keep the native
    scrollbar clear of it without adding a second gutter on the left. */
 .transcript {
   border-inline-end: 5px solid transparent;
   scrollbar-gutter: stable;
+  --transcript-thumb-color-weight: 0%;
+  transition: --transcript-thumb-color-weight 140ms ease-out;
+}
+
+.transcript[data-scrollbar-visible] {
+  --transcript-thumb-color-weight: 60%;
 }
 
 .transcript::-webkit-scrollbar:vertical {
@@ -31,26 +45,29 @@
   min-height: 24px;
   border: 3px solid transparent;
   background-clip: padding-box;
-  background-color: var(
-    --transcript-thumb-color,
-    color-mix(in srgb, var(--muted-foreground) 60%, transparent)
+  background-color: color-mix(
+    in srgb,
+    var(--muted-foreground) var(--transcript-thumb-color-weight),
+    transparent
   );
 }
 
-@media (forced-colors: none) {
-  /* Leave the full native hit area in place even when the thumb isn't painted. */
-  .transcript:not([data-scrollbar-visible]) {
-    --transcript-thumb-color: transparent;
+@media (prefers-reduced-motion: reduce) {
+  .transcript {
+    transition: none;
   }
 }
 
-.transcript::-webkit-scrollbar-thumb:vertical:hover {
-  background-color: var(--muted-foreground);
-}
+@media (forced-colors: active) {
+  /* Keep the native target visibly discoverable at all times in high contrast. */
+  .transcript {
+    transition: none;
+  }
 
-/* Chromium owns the press throughout a thumb drag, even outside the gutter. */
-.transcript::-webkit-scrollbar-thumb:vertical:active {
-  background-color: var(--foreground);
+  .transcript::-webkit-scrollbar-thumb:vertical {
+    forced-color-adjust: none;
+    background-color: ButtonText;
+  }
 }
 
 @supports not selector(::-webkit-scrollbar) {
