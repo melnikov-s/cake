@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { widgetAttachmentsScenario } from "../../scripts/visual-capture/scenarios";
+import { openSessionById } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -34,7 +35,9 @@ for (const theme of ["light", "dark"] as const)
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0]!.setContentSize(1600, 1000),
       );
-      await widgetAttachmentsScenario.prepare(page, "default", app);
+      // Open the seeded Session through the real Sessions list, not an injected open event.
+      await openSessionById(page, "visual-widget-attachments");
+      await widgetAttachmentsScenario.prepare(page, "default");
       await page
         .locator('[data-widget-attachment="dashboard-left"] iframe')
         .contentFrame()
