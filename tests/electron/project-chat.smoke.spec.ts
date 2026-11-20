@@ -491,7 +491,8 @@ test("Project Chat isolates history and restores its root workspace, while globa
       "zoom",
     ]);
 
-    // Mouse selection completes without sending; Enter on a filtered option executes.
+    // Mouse selection and Enter on a skill option both complete without sending; a second
+    // Enter sends the prepared skill (229df7e3).
     await input.fill("/skill:global");
     await page.getByRole("option", { name: /skill:global-fixture Global fixture skill/ }).click();
     await expect(input).toBeFocused();
@@ -502,6 +503,9 @@ test("Project Chat isolates history and restores its root workspace, while globa
     expect(requests[3]).toContain("GLOBAL_SKILL_BODY");
     await input.fill("/skill:project");
     await expect(projectSkill).toBeVisible();
+    await input.press("Enter");
+    await expect(input).toHaveValue("/skill:project-fixture ");
+    await expect(page.getByText("Reply 5", { exact: true })).toHaveCount(0);
     await input.press("Enter");
     await expect(page.getByText("Reply 5", { exact: true })).toBeVisible();
     await expect(input).toHaveValue("");
@@ -592,6 +596,10 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await sendInMode("Only the current chat view matters");
 
     // A real Durable fork imports full dialogue without another provider request.
+    // Side chats sit beside the chat only with 860px to spare (accessory-panel-layout); close
+    // the Workspace accessory that chat-first Project Chat opens (582d0fc7) to make room.
+    const closeWorkspace = page.getByRole("button", { name: "Close Workspace", exact: true });
+    if (await closeWorkspace.isVisible()) await closeWorkspace.click();
     await input.fill("/side");
     await input.press("Enter");
     const sideChat = page.getByRole("complementary", { name: "Side chat", exact: true });

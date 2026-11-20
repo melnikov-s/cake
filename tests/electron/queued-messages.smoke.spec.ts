@@ -655,6 +655,9 @@ test("multiline queue previews ellipsize responsively and open a bounded keyboar
       await expect(queue.getByRole("button", { name: /^Send now as steering:/ })).toBeInViewport();
     }
     expect(widths[0]).toBeGreaterThan(widths[1]!);
+    // At 640px the open Workspace accessory overlays the conversation (582d0fc7); close it
+    // as a reader would before using the queue.
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
     await preview.click();
     const popup = page.getByRole("dialog", { name: "Queued message", exact: true });
     await expect(popup).toContainText("Paragraph 39:");
