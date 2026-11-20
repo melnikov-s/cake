@@ -16,7 +16,7 @@ export const browserVisualScenarios = [
   {
     name: "browser-sidebar-defaults",
     description:
-      "Initial Cake Chat/sidebar defaults, restoration, manual navigation and links on phone and desktop",
+      "Cake Chat page entry after reloading a visited session/Workspace/Settings, manual navigation and links on phone and desktop",
     states: ["default", "restored-open", "restored-closed", "restored-settings"],
   },
   {
@@ -39,12 +39,12 @@ export const browserVisualScenarios = [
   {
     name: "browser-shared-chat",
     description:
-      "Chromium shared sidebar, project transcript and composer; session-menu opens a My sessions row's actions",
+      "Chromium shared rail, project transcript and composer; session-menu opens a My sessions row's actions",
     states: ["default", "session-menu"],
   },
   {
     name: "browser-phone-navigation",
-    description: "Shared browser navigation drawer at a phone viewport",
+    description: "Shared browser Workspace Sessions overlay at a phone viewport",
     states: ["default"],
   },
   {
@@ -260,9 +260,7 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
     await prepareSessionMenu(page);
     return;
   }
-  if (!(await page.locator('[data-slot="sidebar"]').isVisible()))
-    await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
-  await page.locator(`[data-slot="sidebar"] [data-session-id="${sessionId}"]`).last().click();
+  await openSession(page, sessionId);
   await expect(
     page.getByText("Can I use the same Cake workspace in my browser?", { exact: true }).last(),
   ).toBeVisible();
@@ -293,17 +291,11 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
   } else {
     await expect(page.locator('[data-slot="workspace"] textarea').first()).toBeVisible();
   }
-  if (scenario === "browser-phone-navigation" || scenario === "browser-phone-settings") {
-    await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
-    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
-    if (scenario === "browser-phone-settings") {
-      await page
-        .locator('[data-slot="sidebar"]')
-        .getByRole("button", { name: "Open settings", exact: true })
-        .click();
-      await page.getByRole("combobox", { name: "Settings section" }).selectOption("network");
-      await expect(page.getByRole("heading", { name: "Network & privacy" })).toBeVisible();
-    }
+  if (scenario === "browser-phone-navigation") await showSessions(page);
+  if (scenario === "browser-phone-settings") {
+    await rail(page).getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("combobox", { name: "Settings section" }).selectOption("network");
+    await expect(page.getByRole("heading", { name: "Network & privacy" })).toBeVisible();
   }
   if (scenario === "browser-responsive") {
     const input = page.locator('[data-slot="workspace"] textarea').first();
@@ -369,13 +361,7 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
       await page.getByRole("button", { name: "Session tree", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Session tree", exact: true })).toBeVisible();
     } else if (state === "cake-chat" || state === "inspector") {
-      if (!(await page.locator('[data-slot="sidebar"]').isVisible()))
-        await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
-      await page
-        .locator('[data-slot="sidebar"]')
-        .getByRole("button", { name: "Cake Chat", exact: true })
-        .first()
-        .click();
+      await rail(page).getByRole("button", { name: "Open Cake Chat", exact: true }).click();
       await expect(
         page.getByRole("heading", { name: "What can I help you find or do?" }),
       ).toBeVisible();
@@ -383,18 +369,19 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
         await page.getByRole("button", { name: "Browse context", exact: true }).click();
         await expect(page.getByRole("dialog")).toBeVisible();
       }
-    } else if (state === "new-session" || state === "project-settings") {
-      if (!(await page.locator('[data-slot="sidebar"]').isVisible()))
-        await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
-      if (state === "new-session") {
-        await page.getByRole("button", { name: "New session", exact: true }).first().click();
-      } else {
-        await page
-          .getByRole("button", { name: /^Project actions for / })
-          .first()
-          .click();
-        await page.getByRole("menuitem", { name: /^Open settings for / }).click();
-      }
+    } else if (state === "new-session") {
+      await rail(page).getByRole("button", { name: "New session", exact: true }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+    } else if (state === "project-settings") {
+      // The browser host opens project actions as an in-page dialog, not a native menu.
+      await rail(page)
+        .getByRole("button", { name: /^Open Project Chat for / })
+        .first()
+        .click({ button: "right" });
+      await page
+        .getByRole("dialog", { name: "Project actions" })
+        .getByRole("button", { name: "Project Settings…", exact: true })
+        .click();
       await expect(page.getByRole("dialog")).toBeVisible();
     }
   }
@@ -423,130 +410,123 @@ async function prepareSessionMenu(page: Page) {
   await page.waitForFunction(() => document.fonts.status === "loaded");
 }
 
+function rail(page: Page) {
+  return page.getByRole("navigation", { name: "Projects and global utilities" });
+}
+
+/** Opens the Workspace accessory's Sessions source list through the real shell controls. */
+async function showSessions(page: Page) {
+  const toggle = page.locator('[data-slot="shell-workspace-toggle"]');
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await page
+    .getByRole("complementary", { name: "Workspace", exact: true })
+    .getByRole("button", { name: /^Sessions / })
+    .click();
+  const sessions = page.getByRole("region", { name: "Sessions", exact: true });
+  await expect(sessions).toBeVisible();
+  return sessions;
+}
+
+/** Chooses a seeded Project Session from Sessions and waits for it to own the workspace. */
+async function openSession(page: Page, id: string) {
+  const sessions = await showSessions(page);
+  const project = sessions.getByRole("button", { name: "Expand Browser experience", exact: true });
+  if (await project.count()) await project.click();
+  await sessions.locator(`.session-item[data-session-id="${id}"]`).first().click();
+  await expect(page.locator('[data-slot="workspace"]')).toHaveAttribute("data-session-id", id);
+}
+
+/**
+ * Every page entry starts in global Cake Chat (40566199), whatever was visited before the
+ * reload; on phones the Workspace overlay starts collapsed and closes after a choice.
+ */
 async function prepareSidebarDefaults(page: Page, state: string) {
   const phone = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
-  const sidebar = page.locator('[data-slot="sidebar"]');
-  const headerToggle = page.locator('[data-slot="header-sidebar-toggle"]').first();
-  await expect(headerToggle).toBeAttached();
+  // The Workspace accessory overlays the conversation only at narrow widths (max-[700px]).
+  const overlay = await page.evaluate(() => matchMedia("(max-width: 700px)").matches);
+  const toggle = page.locator('[data-slot="shell-workspace-toggle"]');
+  const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
   const cakeChat = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
-  if (phone) {
-    await expect(sidebar).toBeHidden();
+  const expectCakeChatEntry = async () => {
     await expect(cakeChat).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "What can I help you find or do?" }),
     ).toBeVisible();
-  } else await expect(sidebar).toBeVisible();
+    if (phone && overlay) {
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(workspace).toHaveCount(0);
+    }
+  };
+  const transcriptQuestion = page
+    .locator(".transcript")
+    .getByText("Can I use the same Cake workspace in my browser?", { exact: true });
+  await expectCakeChatEntry();
 
   if (state !== "default") {
-    // Persist a real visited Project Session (and optionally Settings), including
-    // its registry and layout, rather than fabricating a partial navigation record.
-    if (!(await sidebar.isVisible())) await headerToggle.click();
-    await sidebar.locator(`[data-session-id="${sessionId}"]`).last().click();
-    await expect(
-      page
-        .locator(".transcript")
-        .getByText("Can I use the same Cake workspace in my browser?", { exact: true }),
-    ).toBeVisible();
+    // Visit real surfaces before reloading rather than fabricating saved navigation.
+    await openSession(page, sessionId);
+    await expect(transcriptQuestion).toBeVisible();
+    if (state === "restored-open") await showSessions(page);
+    if (state === "restored-closed" && (await toggle.getAttribute("aria-expanded")) === "true")
+      await toggle.click();
     if (state === "restored-settings") {
-      if (!(await sidebar.isVisible())) await headerToggle.click();
-      await sidebar.getByRole("button", { name: "Open settings", exact: true }).click();
+      await rail(page).getByRole("button", { name: "Settings", exact: true }).click();
       await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
     }
-    // Seed visibility only after the outgoing page flushes its coherent snapshot.
-    await page.addInitScript((hidden) => {
-      const key = "cake.browser.presentation.v1";
-      const saved = JSON.parse(sessionStorage.getItem(key) ?? '{"state":{},"children":{}}');
-      const sidebar = saved.children.sidebarStore ?? { state: {}, children: {} };
-      saved.children.sidebarStore = { ...sidebar, state: { ...sidebar.state, hidden } };
-      sessionStorage.setItem(key, JSON.stringify(saved));
-    }, state === "restored-closed");
     await page.reload();
-    if (phone) {
-      await expect(sidebar).toBeHidden();
-      await expect(cakeChat).toBeVisible();
-    } else if (state === "restored-settings") {
-      await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Back to chat", exact: true }).click();
-    } else {
-      await expect(
-        page
-          .locator(".transcript")
-          .getByText("Can I use the same Cake workspace in my browser?", { exact: true }),
-      ).toBeVisible();
-      if (state === "restored-closed") await expect(sidebar).toBeHidden();
-      else await expect(sidebar).toBeVisible();
-    }
-    // Settings intentionally replaces conversation navigation with Back to chat.
-    // Check the shared toggle after returning to its owning conversation surface.
-    await expect(headerToggle).toBeAttached();
+    await expectCakeChatEntry();
   }
 
-  if (!(await sidebar.isVisible())) await headerToggle.click();
-  await expect(sidebar).toBeVisible();
-  await expect(sidebar.getByRole("button", { name: "Open settings", exact: true })).toBeVisible();
-  // Ordinary reactive changes must not reapply the initial phone default.
-  await sidebar.getByRole("button", { name: "Show activity", exact: true }).click();
-  await expect(sidebar).toBeVisible();
-  await sidebar.getByRole("button", { name: "Show projects", exact: true }).click();
-  await expect(sidebar).toBeVisible();
-  await sidebar.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
-  await expect(sidebar).toBeHidden();
-  await headerToggle.click();
-  await expect(sidebar).toBeVisible();
-  await sidebar.locator(`[data-session-id="${sessionId}"]`).last().click();
+  // Manual navigation: choose a session, visit Settings and return to that conversation.
+  await openSession(page, sessionId);
   const input = page.locator('[data-slot="workspace"] textarea').first();
   await expect(input).toBeVisible();
-  await expect(
-    page
-      .locator(".transcript")
-      .getByText("Can I use the same Cake workspace in my browser?", { exact: true }),
-  ).toBeVisible();
-  // Selecting a conversation retains the existing narrow-drawer close behavior.
-  if (phone) await expect(sidebar).toBeHidden();
-  else await expect(sidebar).toBeVisible();
+  await expect(transcriptQuestion).toBeVisible();
+  // Where the accessory overlays the conversation, choosing one closes it to reveal it.
+  if (overlay) await expect(workspace).toHaveCount(0);
   const editor = page.getByRole("button", { name: "VS Code", exact: true });
   const terminal = page.getByRole("button", { name: "Terminal", exact: true });
   if (phone) {
     await expect(editor).toBeHidden();
     await expect(terminal).toBeHidden();
-    await headerToggle.click();
   } else {
     await expect(editor).toBeVisible();
     await expect(terminal).toBeVisible();
   }
-  await sidebar.getByRole("button", { name: "Open settings", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
+  await rail(page).getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Back to chat", exact: true }).click();
   await expect(input).toBeVisible();
-  if (phone) await expect(sidebar).toBeHidden();
-  else await expect(sidebar).toBeVisible();
+  await expect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+    "data-session-id",
+    sessionId,
+  );
 
-  // Viewport changes must not reapply either startup default after manual navigation.
-  if (!(await sidebar.isVisible())) await headerToggle.click();
+  // Viewport changes keep the chosen conversation rather than reapplying page entry.
   const viewport = page.viewportSize()!;
   await page.setViewportSize(phone ? { width: 1200, height: 800 } : { width: 500, height: 800 });
   await expect(input).toBeVisible();
-  await expect(sidebar).toBeVisible();
   await page.setViewportSize(viewport);
   await expect(input).toBeVisible();
-  await expect(sidebar).toBeVisible();
+  await expect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+    "data-session-id",
+    sessionId,
+  );
 
   // Intentional session and exact-message links still select their requested target.
   for (const name of ["original session", "exact request"]) {
-    if (!(await sidebar.isVisible())) await headerToggle.click();
-    await sidebar.locator(`[data-session-id="${linkSessionId}"]`).last().click();
-    await page.getByRole("link", { name, exact: true }).click();
-    await expect(
-      page
-        .locator(".transcript")
-        .getByText("Can I use the same Cake workspace in my browser?", { exact: true }),
-    ).toBeVisible();
+    await openSession(page, linkSessionId);
+    // Session links add their target's title to the accessible name; match the visible text.
+    await page
+      .getByRole("link")
+      .filter({ hasText: new RegExp(`^${name}$`) })
+      .click();
+    await expect(transcriptQuestion).toBeVisible();
     if (name === "exact request")
       await expect(
         page.locator('[data-slot="transcript-item"][aria-current="true"]'),
       ).toContainText("Can I use the same Cake workspace in my browser?");
-    if (phone) await expect(sidebar).toBeHidden();
-    else await expect(sidebar).toBeVisible();
+    if (overlay) await expect(workspace).toHaveCount(0);
   }
   await page.waitForFunction(() => document.fonts.status === "loaded");
   await page.mouse.move(1, 1);
