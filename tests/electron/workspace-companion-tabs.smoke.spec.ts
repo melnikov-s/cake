@@ -30,21 +30,25 @@ async function expectAlignedTabs(strip: Locator) {
       tabs: [...element.querySelectorAll("button")].map(box),
     };
   });
-  expect(geometry.header.height).toBe(40);
-  // The pane's single left divider is the only horizontal inset.
-  expect(geometry.strip.x).toBe(geometry.pane.x + 1);
-  expect(geometry.strip.width).toBe(geometry.pane.width - 1);
-  expect(geometry.strip.y).toBe(geometry.header.y);
-  expect(geometry.strip.height).toBe(geometry.header.height - 1);
+  // Companion tabs are content-sized pills in a 44px pane header (c7c99e7f), not an
+  // equal-width segmented track: 14px header inset, 4px gaps, vertically centered.
+  expect(geometry.header.height).toBe(44);
+  expect(geometry.strip.x).toBe(geometry.header.x + 14);
   expect(geometry.tabs).toHaveLength(3);
-  // Keep the original track's 1px border, 2px padding and 2px segment gaps.
-  const tabWidth = (geometry.strip.width - 6 - 4) / 3;
   for (const [index, tab] of geometry.tabs.entries()) {
-    expect(tab.y).toBe(geometry.strip.y + 3);
-    expect(tab.height).toBe(geometry.strip.height - 6);
-    expect(tab.width).toBeCloseTo(tabWidth, 1);
-    expect(tab.x).toBeCloseTo(geometry.strip.x + 3 + (tabWidth + 2) * index, 1);
+    expect(tab.height).toBe(28);
+    expect(tab.y + tab.height / 2).toBeCloseTo(
+      geometry.header.y + (geometry.header.height - 1) / 2,
+      0,
+    );
+    if (index > 0) {
+      const previous = geometry.tabs[index - 1]!;
+      expect(tab.x - (previous.x + previous.width)).toBeCloseTo(4, 1);
+    }
   }
+  expect(geometry.tabs.at(-1)!.x + geometry.tabs.at(-1)!.width).toBeLessThanOrEqual(
+    geometry.header.x + geometry.header.width - 14,
+  );
   return geometry.header;
 }
 
