@@ -466,7 +466,12 @@ test.describe("transcript follow rules", () => {
 
     await input.fill("");
     const jump = page.getByRole("button", { name: "Scroll to bottom", exact: true });
-    await jump.hover();
+    // Move the pointer onto the button as a reader would; locator.hover() may first scroll
+    // its container, and any scroll dismisses tooltips by design.
+    const jumpBox = (await jump.boundingBox())!;
+    await page.mouse.move(jumpBox.x + jumpBox.width / 2, jumpBox.y + jumpBox.height / 2, {
+      steps: 4,
+    });
     await expect(page.getByRole("tooltip")).toContainText("⌘↓");
     await input.press("Meta+ArrowDown");
     await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);

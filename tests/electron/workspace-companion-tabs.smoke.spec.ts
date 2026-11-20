@@ -11,7 +11,8 @@ const repositoryRoot = resolve(import.meta.dirname, "../..");
 async function expectSearchGap(search: Locator, header: Locator) {
   const searchBox = (await search.boundingBox())!;
   const headerBox = (await header.boundingBox())!;
-  expect(searchBox.y - (headerBox.y + headerBox.height)).toBe(8);
+  // Inset Workspace panes space their searches 12px below the pane header (c7c99e7f).
+  expect(searchBox.y - (headerBox.y + headerBox.height)).toBe(12);
 }
 
 async function expectAlignedTabs(strip: Locator) {
@@ -127,8 +128,10 @@ for (const theme of ["dark", "light"] as const) {
             accessoryHeader.y + accessoryHeader.height - 1,
           );
         }
-        expect(accessoryHeader.y).toBe(header.y + header.height);
-        expect(accessoryHeader.height).toBe(header.height);
+        // The Workspace is a soft inset pane (c7c99e7f): its 44px header sits inside the pane's
+        // 1px border, directly below the title bar, rather than continuing the title bar.
+        expect(accessoryHeader.y).toBe(header.y + header.height + 1);
+        expect(accessoryHeader.height).toBe(44);
         const modes = (await modeSelector.boundingBox())!;
         // Title-bar modes are centered on the window, not the workspace header (3d1fb588).
         const windowWidth = await page.evaluate(() => innerWidth);

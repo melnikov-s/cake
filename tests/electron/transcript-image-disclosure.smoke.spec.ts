@@ -10,7 +10,6 @@ import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 import { TaskAttributionDoc } from "../../src/services/pi-durable/durable-task-attribution";
-import { inDisplayOrder } from "./fixtures/transcript-order";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 
 const repository = resolve(import.meta.dirname, "../..");
@@ -109,13 +108,12 @@ for (const global of [false, true]) {
       // Global Cake Chat stays mounted beside Project Chat; use the visible conversation.
       const transcript = page.locator('[data-slot="session-pane"] .transcript:visible');
       await expect(transcript.locator("figure img")).toHaveCount(3);
-      // Virtualized rows are not in DOM order (fc455223); take the first displayed figure.
-      const key = await (
-        await inDisplayOrder(transcript.locator("figure"), "first")
-      )
-        .locator('xpath=ancestor::*[@data-slot="transcript-item"]')
-        .getAttribute("data-transcript-item-key");
-      const shot = transcript.locator(`[data-transcript-item-key='${key}'] figure`);
+      // Locate task A's turn by its content: item keys are deduplicated per rendered list,
+      // so they can move to another turn when focus filters the transcript.
+      const shot = transcript
+        .locator('[data-slot="transcript-item"]')
+        .filter({ hasText: "Screenshot turn 0" })
+        .locator("figure");
       const collapse = shot.getByRole("button", { name: /^Collapse image:/ });
       await expect(collapse).toHaveAttribute("aria-expanded", "true");
       const bodyId = await collapse.getAttribute("aria-controls");
@@ -140,18 +138,17 @@ for (const global of [false, true]) {
       const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
       const selectB = panel.getByRole("button", { name: `Focus to-do: ${titleB}`, exact: true });
       await selectB.click();
+      await expect(selectB).toHaveAttribute("aria-pressed", "true");
+      // Focus shows only the focused task's tagged messages (1a6b0776): task A's turn, the
+      // unattributed turn and untagged attachments all leave the view.
       await expect(shot).toHaveCount(0);
-      // The non-focused task disappears; the focused task and unattributed turn stay visible.
-      await expect(transcript.locator("figure img")).toHaveCount(2);
-      await transcript.getByRole("button", { name: titleA, exact: true }).press("Enter");
-      await expect(expand).toBeVisible();
+      await expect(transcript.getByText("Screenshot turn 1", { exact: true })).toBeVisible();
+      await expect(transcript.getByText("Screenshot turn 2", { exact: true })).toHaveCount(0);
+      await expect(transcript.locator("figure img")).toHaveCount(0);
+      await page.getByRole("button", { name: "Clear to-do focus" }).click();
+      // Clearing focus restores every turn; task A's image keeps the fold the reader chose.
       await expect(expand).toHaveAttribute("aria-expanded", "false");
       await expand.press("Space");
-      await expect(shot.getByRole("img")).toBeVisible();
-      await expect(selectB).toHaveAttribute("aria-pressed", "true");
-      await transcript.getByRole("button", { name: titleA, exact: true }).press("Space");
-      await expect(shot).toHaveCount(0);
-      await page.getByRole("button", { name: "Clear to-do focus" }).click();
       await expect(shot.getByRole("img")).toBeVisible();
       await expect(transcript.locator("figure img")).toHaveCount(3);
 

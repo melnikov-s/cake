@@ -14,6 +14,7 @@
  *    would start again within a pixel of the end; Cake requires the reader to
  *    actually return to the end. So does the reader expanding content in the
  *    transcript (a disclosure or `<details>`): what they opened stays where it is.
+ *    A Work log is the exception: it is bounded and scrolls inside itself.
  * 3. A selected message or a fullscreen reader over the transcript pauses
  *    following, so new output cannot move them (`paused`).
  * 4. Input inside an embedded widget frame counts too. The list cannot see it;
@@ -159,6 +160,9 @@ export function useTranscriptFollow({
           ? event.target.closest('[aria-expanded="false"], details:not([open]) > summary')
           : null;
       if (!control || !scroller.contains(control)) return;
+      // A Work log is bounded and scrolls inside itself, so opening it (or anything in it)
+      // cannot push what the reader opened out of view; following continues.
+      if (control.closest('[data-slot="activity-group"]')) return;
       if (state.current.released || state.current.paused) return;
       current.cancelScroll();
       release();

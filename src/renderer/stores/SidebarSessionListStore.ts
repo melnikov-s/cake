@@ -462,12 +462,14 @@ export class SidebarSessionListStore extends Store<{
       (!navigator.visible || navigator.showingWidget || navigator.mode !== "sessions")
     )
       return [];
-    const scoped = !searchDemand ? navigator?.projectPath : undefined;
+    const shown = navigator?.projectPath;
+    const scoped = !searchDemand ? shown : undefined;
     const paths = scoped ? [scoped] : this.projects.orderedProjectPaths;
     return paths.flatMap((projectPath) => [
       { projectPath, resolved: false },
-      // The shown Project's archive page also supplies the collapsed Resolved count.
-      ...(projectPath === scoped || this.isResolvedGroupExpanded(projectPath)
+      // The shown Project's archive page also supplies the collapsed Resolved count, and
+      // stays observed while Search sessions widens demand so its resolved rows stay findable.
+      ...(projectPath === shown || this.isResolvedGroupExpanded(projectPath)
         ? [{ projectPath, resolved: true, limit: this.sessionLimit(projectPath, true) }]
         : []),
     ]);

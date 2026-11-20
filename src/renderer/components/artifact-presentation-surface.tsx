@@ -115,7 +115,11 @@ export const ArtifactPresentationSurface = observer(function ArtifactPresentatio
               <WorkspacePanelToggle
                 panel="chat"
                 visible={store.chatVisible}
-                onToggle={() => store.toggleChat()}
+                onToggle={() => {
+                  // "Open chat" shows the chat, not whichever companion tab was last used.
+                  if (!store.chatVisible) root.workspaceNavigatorStore.selectCompanionChat();
+                  store.toggleChat();
+                }}
               />
             )}
           </>

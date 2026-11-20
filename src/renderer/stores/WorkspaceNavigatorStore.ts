@@ -110,6 +110,11 @@ export class WorkspaceNavigatorStore extends Store<{
     else this.accessoryVisible = !this.accessoryVisible;
   }
 
+  /** Selects the companion's Chat tab without opening or rebinding any pane. */
+  selectCompanionChat() {
+    this.companionTab = "chat";
+  }
+
   showChat() {
     this.widgetActive = false;
     this.companionTab = "chat";

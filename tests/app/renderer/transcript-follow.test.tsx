@@ -35,7 +35,13 @@ function Transcript({ list }: { list: LegendListRef }) {
         Open report
       </button>
       <details>
+        <summary>Long details</summary>
+      </details>
+      <details data-slot="activity-group">
         <summary>Work log</summary>
+        <button type="button" aria-expanded="false">
+          Thinking
+        </button>
       </details>
     </div>
   );
@@ -52,8 +58,17 @@ it("stops following when the reader expands a disclosure, so its header stays in
 
 it("stops following when the reader opens a details summary", () => {
   render(<Transcript list={fakeList()} />);
-  act(() => fireEvent.click(screen.getByText("Work log")));
+  act(() => fireEvent.click(screen.getByText("Long details")));
   expect(screen.getByRole("status")).toHaveProperty("textContent", "released");
+});
+
+it("keeps following when the reader opens a bounded Work log or a disclosure inside it", () => {
+  const list = fakeList();
+  render(<Transcript list={list} />);
+  act(() => fireEvent.click(screen.getByText("Work log")));
+  act(() => fireEvent.click(screen.getByRole("button", { name: "Thinking" })));
+  expect(screen.getByRole("status")).toHaveProperty("textContent", "following");
+  expect(list.cancelScroll).not.toHaveBeenCalled();
 });
 
 it("keeps following when the reader collapses content", () => {

@@ -91,7 +91,12 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
           .contentView.children.map((view) => view.getBounds())
           .find((bounds) => bounds.width > 0),
       );
-    await expect.poll(async () => (await nativeBounds())?.x).toBe(0);
+    // The native editor fills its pane, which sits in the soft inset workspace surface
+    // (c7c99e7f) rather than at the window edge; no rail gap remains beside it.
+    const paneLeft = async () =>
+      Math.round((await page.locator(".embedded-editor-pane").boundingBox())!.x);
+    expect(await paneLeft()).toBeLessThanOrEqual(12);
+    await expect.poll(async () => (await nativeBounds())?.x).toBe(await paneLeft());
 
     // The DOM target works over host chrome/iframe surfaces.
     const edgeBounds = (await edge.boundingBox())!;
@@ -103,7 +108,7 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
     expect(await workspace.boundingBox()).toEqual(before);
     await page.mouse.move(600, 220);
     await expect.poll(width).toBe(0);
-    await expect.poll(async () => (await nativeBounds())?.x).toBe(0);
+    await expect.poll(async () => (await nativeBounds())?.x).toBe(await paneLeft());
 
     // Real input into the native WebContentsView must reveal too: it covers the
     // DOM target when collapsed, with no reserved activation pixels.

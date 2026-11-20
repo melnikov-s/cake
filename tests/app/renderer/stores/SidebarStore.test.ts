@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { projectRecord } from "../fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 
@@ -45,5 +45,27 @@ describe("Sidebar catalog demand", () => {
     expect(list.cakeChatCatalogQueries).toContainEqual({ resolved: true, limit: 20 });
     list.toggleResolvedGroupExpanded("cake-chat");
     expect(list.cakeChatCatalogQueries).toContainEqual({ resolved: true, limit: 20 });
+  });
+
+  it("keeps the shown Project's resolved page observed while Search sessions is open", () => {
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/cake" }), projectRecord({ path: "/pi" })],
+    });
+    const navigator = fixture.root.workspaceNavigatorStore;
+    navigator.show("sessions");
+    vi.spyOn(navigator, "projectPath", "get").mockReturnValue("/cake");
+    const list = fixture.root.sidebarStore.sessionListStore;
+    const shownArchive = { projectPath: "/cake", resolved: true, limit: 10 };
+    expect(list.projectSessionCatalogQueries).toEqual([
+      { projectPath: "/cake", resolved: false },
+      shownArchive,
+    ]);
+    // Search covers every Project; the resolved rows already shown must stay searchable.
+    fixture.root.sidebarStore.sessionSearchStore.show();
+    expect(list.projectSessionCatalogQueries).toEqual([
+      { projectPath: "/cake", resolved: false },
+      shownArchive,
+      { projectPath: "/pi", resolved: false },
+    ]);
   });
 });

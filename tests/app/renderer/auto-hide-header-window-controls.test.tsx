@@ -27,8 +27,7 @@ it.each([undefined, "browser", "vscode"] as const)(
       </StoreProvider>,
     );
     const shell = view.container.querySelector("main")!;
-    const reservesControls = () =>
-      shell.classList.contains("[--window-controls-width:100px]");
+    const reservesControls = () => shell.classList.contains("[--window-controls-width:100px]");
     expect(reservesControls()).toBe(workspaceMode === "vscode");
     act(() => {
       fixture.root.settingsStore.appearance.leftToolbar.preferences = {
