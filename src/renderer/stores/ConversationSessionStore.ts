@@ -422,7 +422,13 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
 
   private async configureActiveSession(command: () => Promise<void>) {
     return this.withTranscript(async () => {
-      if (await this.activeSession()) await command();
+      // A runtime that could not start (for example, its saved model is unavailable) is
+      // reconfigured anyway: the backend starts it with the chosen model and observation retries.
+      const active = await this.activeSession().catch((error: unknown) => {
+        if (this.model.observationError) return true;
+        throw error;
+      });
+      if (active) await command();
     });
   }
 

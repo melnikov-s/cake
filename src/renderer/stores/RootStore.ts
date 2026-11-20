@@ -892,11 +892,21 @@ export class RootStore extends Store<{
       .filter((session) =>
         this.projectWorkbenchStore.canObserveWorkingDirectory(session.workspacePath),
       )
-      .map((session) => ({
-        sessionId: session.sessionId,
-        workingDirectory: session.workspacePath,
-        allowCreate: this.sessionRegistry.pendingSessions.canCreateRuntime(session.sessionId),
-      }));
+      .map((session) => {
+        const allowCreate = this.sessionRegistry.pendingSessions.canCreateRuntime(
+          session.sessionId,
+        );
+        // A new identity's runtime starts with the model the user chose for it (81eb383b).
+        const configuration = allowCreate
+          ? this.projectSessionCreationStore.request(session.sessionId)?.configuration
+          : undefined;
+        return {
+          sessionId: session.sessionId,
+          workingDirectory: session.workspacePath,
+          allowCreate,
+          ...(configuration ? { configuration } : null),
+        };
+      });
   }
 
   /** Staged Project Sessions whose Discussion catalog is observed before they have a transcript. */

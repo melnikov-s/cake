@@ -72,13 +72,18 @@ for (const theme of ["light", "dark"] as const) {
       let linkColor: string | undefined;
       for (const [label, destination, description, glyph] of destinations) {
         const link = page.getByRole("link", { name: label, exact: true });
-        await link.hover();
         await expect(link).toHaveAttribute("href", destination);
         await expect(link.locator(glyph)).toHaveCount(1);
         await expect(link.locator(glyph)).toBeVisible();
         await expect(link).toHaveAccessibleDescription(description);
-        await expect(page.getByRole("tooltip")).toBeVisible();
-        await expect(page.getByRole("tooltip")).toHaveText(description);
+        // A settling transcript scroll dismisses a pending tooltip by design and can move the
+        // link out from under the pointer; re-hover as a reader would.
+        await expect(async () => {
+          await page.mouse.move(1, 1);
+          await link.hover();
+          await expect(page.getByRole("tooltip")).toHaveText(description, { timeout: 1_500 });
+          expect(await link.evaluate((element) => element.matches(":hover"))).toBe(true);
+        }).toPass({ timeout: 15_000 });
         const presentation = await link.evaluate((element) => {
           const style = getComputedStyle(element);
           return {
@@ -90,13 +95,18 @@ for (const theme of ["light", "dark"] as const) {
             display: style.display,
           };
         });
+        if (destination === sessionLink) {
+          // Session links render as named pills rather than underlined prose (5c284c46).
+          expect(presentation.decoration).toBe("none");
+          continue;
+        }
         linkColor ??= presentation.color;
         expect(presentation.color).toBe(linkColor);
         expect(presentation.color).toBe(presentation.surroundingColor);
         expect(presentation.weight).toBe("600");
         expect(presentation.decoration).toBe("underline");
         expect(presentation.thickness).toBe("2px");
-        if (destination !== sessionLink) expect(presentation.display).toBe("inline");
+        expect(presentation.display).toBe("inline");
       }
       await page.mouse.move(1, 1);
       await expect(page.getByRole("tooltip")).not.toBeAttached();

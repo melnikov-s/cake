@@ -13,7 +13,7 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import { openSession } from "./fixtures/workspace-navigation";
+import { openProjectChat, openSession } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -131,11 +131,8 @@ test("Project Chat response cards route conversation links, report missing files
       "boards.read",
     ]);
     await bootstrap.click();
-    await page
-      .locator(
-        `[data-slot="project-header"][data-session-id="project-chat:${hash}"] [data-slot="project-label"]`,
-      )
-      .click();
+    // Chat-first navigation (582d0fc7) opens the Project Chat from the rail.
+    await openProjectChat(page, "visual-capture-project");
     const card = page
       .locator('[data-slot="session-message"]')
       .filter({ hasText: "Investigation update" });

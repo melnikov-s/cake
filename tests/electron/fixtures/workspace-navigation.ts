@@ -59,11 +59,7 @@ async function leaveRail(page: Page) {
  * global Cake Chat (startup never restores a saved destination), so seeded Sessions are opened
  * explicitly.
  */
-export async function openSession(
-  page: Page,
-  title: string,
-  options: { includeResolved?: boolean } = {},
-) {
+export async function openSession(page: Page, title: string) {
   const trigger = page
     .getByRole("navigation", { name: "Projects and global utilities" })
     .getByRole("button", { name: "Search sessions", exact: true });
@@ -71,8 +67,6 @@ export async function openSession(
   await trigger.click();
   await leaveRail(page);
   const dialog = page.getByRole("dialog", { name: "Search sessions", exact: true });
-  if (options.includeResolved)
-    await dialog.getByRole("switch", { name: "Include resolved", exact: true }).click();
   await dialog.getByRole("combobox", { name: "Search session titles" }).fill(title);
   await dialog
     .getByRole("option", { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
@@ -87,6 +81,19 @@ export async function openSession(
  */
 export async function openSessionById(page: Page, sessionId: string) {
   const workspace = await showSessions(page);
+  await workspace.locator(`.session-item[data-session-id="${sessionId}"] .session-row`).click();
+  await expect(
+    page.locator(`[data-slot="session-pane"][data-session-id="${sessionId}"]`),
+  ).toBeVisible();
+  return workspace;
+}
+
+/** Opens a resolved Session from the Workspace Sessions list's Resolved sessions group. */
+export async function openResolvedSessionById(page: Page, sessionId: string) {
+  const workspace = await showSessions(page);
+  const group = workspace.getByRole("button", { name: "Resolved sessions", exact: true }).first();
+  await expect(group).toBeVisible({ timeout: 20_000 });
+  if ((await group.getAttribute("aria-expanded")) !== "true") await group.click();
   await workspace.locator(`.session-item[data-session-id="${sessionId}"] .session-row`).click();
   await expect(
     page.locator(`[data-slot="session-pane"][data-session-id="${sessionId}"]`),

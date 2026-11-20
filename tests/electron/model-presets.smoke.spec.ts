@@ -226,9 +226,13 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
     await expect
       .poll(
         async () =>
-          (await call<Projection>(restartedHarness, "listModelPresets")).presets.find(
-            (preset) => preset.id === unavailable.id,
-          )?.prompt,
+          (
+            await call<{ prompt: string }>(
+              restartedHarness,
+              "readModelPresetPrompt",
+              unavailable.id,
+            )
+          ).prompt,
       )
       .toBe("Explain deeply.");
 

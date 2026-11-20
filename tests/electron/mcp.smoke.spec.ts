@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 import { startMcpServer } from "../fixtures/mcp-server";
 import { windowState } from "../fixtures/window-state";
 
-import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -175,6 +175,8 @@ export default (pi) => {
         (await readdir(cakeHome, { recursive: true })).filter((path) => path.endsWith(".jsonl")),
       ).toEqual([]);
 
+      // The Workspace can switch to To-dos after a first message; read the Sessions list.
+      await showSessions(page);
       const commandSession = page.locator(".session-item.active");
       await expect(commandSession).toHaveCount(1);
       const commandSessionId = await commandSession.getAttribute("data-session-id");
@@ -201,6 +203,7 @@ export default (pi) => {
           (path) => path.endsWith(".jsonl") && path.includes(commandSessionId!),
         ),
       ).toBe(false);
+      await showSessions(page);
       await page
         .locator(`.session-item[data-session-id='${commandSessionId}'] .session-row`)
         .click();

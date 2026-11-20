@@ -235,7 +235,9 @@ for (const { mode, chatSidebarVisible, width } of [
         "src",
         artwork!,
       );
-      const paneId = await pane.getAttribute("data-pane-id");
+      // Single focused-pane layout (582d0fc7): reuse means the same mounted pane element.
+      const mountedPane = (await pane.elementHandle())!;
+      const paneReused = () => mountedPane.evaluate((element) => element.isConnected);
       const input = page.getByRole("combobox", { name: "Message Project Chat" });
       await input.click();
       await expect(input).toBeFocused();
@@ -243,11 +245,11 @@ for (const { mode, chatSidebarVisible, width } of [
       await expect(input).toHaveValue("Keep this project draft");
       await projectLink().focus();
       await page.keyboard.press("Space");
-      await expect(pane).toHaveAttribute("data-pane-id", paneId!);
+      await expect.poll(paneReused).toBe(true);
       await expect(page.locator('[data-slot="session-pane"]')).toHaveCount(1);
       await expect(input).toHaveValue("Keep this project draft");
       await projectLink().click();
-      await expect(pane).toHaveAttribute("data-pane-id", paneId!);
+      await expect.poll(paneReused).toBe(true);
       await expect(input).toHaveValue("Keep this project draft");
       // Invoking from Project Chat defaults to Global, preserving both windows' drafts.
       await summonQuickChat();

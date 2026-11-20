@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
-import { openSession } from "./fixtures/workspace-navigation";
+import { openResolvedSessionById, openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -108,9 +108,8 @@ for (const state of ["active", "resolved"] as const) {
         const application = await launch();
         try {
           const page = await application.firstWindow();
-          await openSession(page, "Retained conversation content", {
-            includeResolved: state === "resolved",
-          });
+          if (state === "resolved") await openResolvedSessionById(page, sessionId);
+          else await openSession(page, "Retained conversation content");
           await expect(
             page
               .locator('[data-slot="session-pane"]')

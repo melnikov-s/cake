@@ -99,9 +99,9 @@ test("an expanded long incoming message is fully reachable", async () => {
         return (await offsetInTranscript(last)).bottom;
       })
       .toBeLessThanOrEqual(0);
-    await expect(
-      card.getByRole("link", { name: "Fix the flaky build", exact: true }),
-    ).toBeVisible();
+    // The card's source link is the shared Open source action (dc869d46), shown on hover.
+    await card.hover();
+    await expect(card.getByRole("link", { name: "Open source", exact: true })).toBeVisible();
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

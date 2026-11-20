@@ -331,12 +331,14 @@ for (const theme of ["light", "dark"] as const) {
         .toBe(946);
       await assertFilled();
       await app.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()[0]!.setContentSize(680, 760),
+        BrowserWindow.getAllWindows()[0]!.setContentSize(760, 760),
       );
-      await expect(page.locator('[data-slot="project-rail"]')).toHaveCSS("width", "44px");
+      // The desktop window's minimum width is 760px (ElectronLive), so its narrowest shell keeps
+      // the 54px rail; the 44px rail applies only below 700px (browser hosts).
+      await expect(page.locator('[data-slot="project-rail"]')).toHaveCSS("width", "54px");
       await expect
         .poll(() => fullFrame.evaluate((element) => element.getBoundingClientRect().width))
-        .toBe(636);
+        .toBe(706);
       await assertFilled();
       if (theme === "dark") {
         await fullscreen

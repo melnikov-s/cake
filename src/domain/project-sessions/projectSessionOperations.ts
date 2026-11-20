@@ -374,6 +374,8 @@ const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(functio
 export const observeConversation = Effect.fn("ProjectSessions.observeConversation")(function* (
   target: ProjectSessionTarget,
   allowCreate = false,
+  /** A new identity (for example, a command-only first turn) starts with this configuration. */
+  configuration?: ChatConfiguration,
 ) {
   const catalogs = yield* SessionCatalogChanges;
   const family = yield* (yield* SessionFamilyStorage)
@@ -424,7 +426,12 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
                     .pipe(asError("observe"))
                 : undefined;
               const live = Stream.unwrap(
-                acquireTarget(location, target.sessionId, allowCreate && !persisted).pipe(
+                acquireTarget(
+                  location,
+                  target.sessionId,
+                  allowCreate && !persisted,
+                  allowCreate && !persisted ? configuration : undefined,
+                ).pipe(
                   Effect.map(observeConversationUpdates),
                 ),
               );

@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import {
   ConversationUpdate,
+  SessionChatConfiguration,
   SessionChatError,
   SessionChatTarget,
 } from "../../contracts/conversations/conversation-data";
@@ -15,6 +16,8 @@ const ConversationObservationTarget = Schema.TaggedUnion({
     ...ProjectSessionTarget.fields,
     /** A renderer-known new identity may not have a Pi transcript yet. */
     allowCreate: Schema.optionalKey(Schema.Boolean),
+    /** The configuration chosen for a new identity; Pi needs a model to start it. */
+    configuration: Schema.optionalKey(SessionChatConfiguration),
   },
   CakeChatSession: CakeChatTarget.fields,
 });

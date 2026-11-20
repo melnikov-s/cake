@@ -12,7 +12,8 @@
  *    to the end (`followEnd`). Other sends leave following unchanged.
  * 2. Upward reader input stops following for good (`released`). The list alone
  *    would start again within a pixel of the end; Cake requires the reader to
- *    actually return to the end.
+ *    actually return to the end. So does the reader expanding content in the
+ *    transcript (a disclosure or `<details>`): what they opened stays where it is.
  * 3. A selected message or a fullscreen reader over the transcript pauses
  *    following, so new output cannot move them (`paused`).
  * 4. Input inside an embedded widget frame counts too. The list cannot see it;
@@ -150,6 +151,18 @@ export function useTranscriptFollow({
     const pointerEnd = () => {
       if (Number.isNaN(state.current.input)) input(0);
     };
+    // Expansion is reading input too: release before the content grows, so the
+    // list keeps the opened content in place instead of pinning its end.
+    const expand = (event: MouseEvent) => {
+      const control =
+        event.target instanceof Element
+          ? event.target.closest('[aria-expanded="false"], details:not([open]) > summary')
+          : null;
+      if (!control || !scroller.contains(control)) return;
+      if (state.current.released || state.current.paused) return;
+      current.cancelScroll();
+      release();
+    };
     const embedded = (event: Event) => {
       if (!(event instanceof CustomEvent) || (event.detail !== -1 && event.detail !== 1)) return;
       input(event.detail);
@@ -180,6 +193,7 @@ export function useTranscriptFollow({
     scroller.addEventListener("touchstart", touchStart, options);
     scroller.addEventListener("touchmove", touchMove, options);
     scroller.addEventListener("pointerdown", pointer, options);
+    scroller.addEventListener("click", expand, options);
     document.addEventListener("pointerup", pointerEnd, options);
     document.addEventListener("pointercancel", pointerEnd, options);
     scroller.addEventListener("transcript-reader-input", embedded, options);
@@ -191,6 +205,7 @@ export function useTranscriptFollow({
       scroller.removeEventListener("touchstart", touchStart, options);
       scroller.removeEventListener("touchmove", touchMove, options);
       scroller.removeEventListener("pointerdown", pointer, options);
+      scroller.removeEventListener("click", expand, options);
       document.removeEventListener("pointerup", pointerEnd, options);
       document.removeEventListener("pointercancel", pointerEnd, options);
       scroller.removeEventListener("transcript-reader-input", embedded, options);

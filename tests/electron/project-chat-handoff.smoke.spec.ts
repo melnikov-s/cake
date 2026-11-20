@@ -281,7 +281,9 @@ for (const timing of ["next-user", "timer"] as const)
         await expect(
           handoff().getByRole("button", { name: "Cake Chat", exact: true }),
         ).toHaveAttribute("aria-expanded", "true");
-        // The sender's exact response is linked by the shared Open source action (dc869d46).
+        // The sender's exact response is linked by the shared Open source action (dc869d46),
+        // which the card reveals on hover.
+        await handoff().hover();
         await expect(
           handoff().getByRole("link", { name: "Open source", exact: true }),
         ).toHaveAttribute("href", new RegExp(`^cake://session/${CAKE_CHAT_SESSION_ID}\\?message=`));

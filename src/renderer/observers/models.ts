@@ -66,11 +66,13 @@ import { applyScheduledMessageUpdate } from "../reducers/ScheduledMessageReducer
 import { applyManagedWorktreeCatalogUpdate } from "../reducers/WorktreeCatalogReducer";
 import { applyWorktreeOperationCatalogUpdate } from "../reducers/WorktreeOperationReducer";
 import type { StreamFailureAction } from "./observe-stream";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { ConversationNavigationMetadataTarget } from "../lib/conversation-navigation-tree";
 
 type ObservedProjectSessionTarget = ProjectSessionTarget & {
   readonly workingDirectory: string;
   readonly allowCreate?: boolean;
+  readonly configuration?: ChatConfiguration;
 };
 
 interface ModelSource {

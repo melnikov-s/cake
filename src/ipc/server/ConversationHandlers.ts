@@ -24,7 +24,11 @@ export const makeConversationHandlers = (configuration: CakeChatRuntimeConfigura
           )
         : target._tag === "ProjectSession"
           ? Stream.unwrap(
-              projectSessionOperations.observeConversation(target, target.allowCreate),
+              projectSessionOperations.observeConversation(
+                target,
+                target.allowCreate,
+                target.configuration,
+              ),
             ).pipe(asError("observeProjectSession"))
           : Stream.unwrap(cakeChatOperations.observeConversation(target, configuration)).pipe(
               asError("observeCakeChatSession"),

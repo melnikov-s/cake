@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 import { localSnoozeDateTime } from "../../src/renderer/lib/project-todo-snooze";
-import { showTodos } from "./fixtures/workspace-navigation";
+import { openProjectChat, showTodos } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -83,9 +83,7 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
         .getByRole("navigation", { name: "Projects and global utilities" })
         .getByRole("button", { name: "Open Cake Chat", exact: true })
         .click();
-      await page
-        .getByRole("button", { name: "Open Project Chat for project", exact: true })
-        .click();
+      await openProjectChat(page, "Project");
       await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
       await showTodos(page);
     };

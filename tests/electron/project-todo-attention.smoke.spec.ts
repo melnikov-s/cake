@@ -5,7 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
-import { showTodos } from "./fixtures/workspace-navigation";
+import { openProjectChat, showTodos } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -90,9 +90,7 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
         .getByRole("navigation", { name: "Projects and global utilities" })
         .getByRole("button", { name: "Open Cake Chat", exact: true })
         .click();
-      await page
-        .getByRole("button", { name: "Open Project Chat for project", exact: true })
-        .click();
+      await openProjectChat(page, "Project");
       const input = page.getByRole("combobox", { name: "Message Project Chat" });
       await expect(input).toBeVisible();
       // To-dos live in the shared Workspace accessory since chat-first navigation (582d0fc7).
@@ -117,7 +115,9 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
       return dialog;
     };
     await expect(category("Needs attention").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
-    await expect(action).toHaveText(reason);
+    // Needs attention rows lead with the to-do title; the reason shows beneath (0876d9f5).
+    await expect(action).toHaveText(title);
+    await expect(row).toContainText(reason);
     await expect(row.getByRole("link", { name: "Startup findings", exact: true })).toBeVisible();
     const attach = row.getByRole("button", { name: `Attach to-do as context: ${title}` });
     const dismiss = row.getByRole("button", { name: `Dismiss attention: ${title}` });
@@ -161,7 +161,9 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     );
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Restore needs attention", exact: true }).click();
-    await expect(action).toHaveText(reason);
+    // Needs attention rows lead with the to-do title; the reason shows beneath (0876d9f5).
+    await expect(action).toHaveText(title);
+    await expect(row).toContainText(reason);
     // Plain Tab returns to the composer; Shift+Tab retains native row navigation.
     // With the pointer away, keyboard focus reveals the inline action and X.
     await page.mouse.move(1, 1);

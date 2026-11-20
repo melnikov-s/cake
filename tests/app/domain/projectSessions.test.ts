@@ -6330,6 +6330,42 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect("observation starts a new identity with the configuration chosen for it", () => {
+    const configuration = {
+      provider: "fixture-provider",
+      modelId: "fixture-model",
+      thinkingLevel: "off" as const,
+      fastMode: false,
+    };
+    const started: unknown[] = [];
+    return Effect.gen(function* () {
+      const stream = yield* projectSessionOperations.observeConversation(
+        { sessionId: "session-1", workingDirectory: "/project" },
+        true,
+        configuration,
+      );
+      const snapshot = yield* stream.pipe(
+        Stream.filter((update) => update._tag === "Snapshot"),
+        Stream.take(1),
+        Stream.runCollect,
+      );
+      assert.equal(Array.from(snapshot).length, 1);
+      // Without a saved model or default preset, Pi can start only with this choice.
+      assert.deepEqual(started, [configuration]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          sessionExists: false,
+          createRuntime: (options) =>
+            Effect.sync(() => {
+              started.push(options.initialConfiguration);
+              return fakeRuntime(options);
+            }),
+        }),
+      ),
+    );
+  });
+
   it.effect(
     "observation retains a command-only new identity across start, commands, and its first message",
     () => {
@@ -6830,6 +6866,60 @@ describe("Project Sessions domain", () => {
       }).pipe(Effect.provide(layer));
     });
   });
+
+  it.effect(
+    "starts a Project Session whose saved model is unavailable with the configuration the user chose",
+    () => {
+      const configuration = {
+        provider: "fixture-provider",
+        modelId: "fixture-model",
+        thinkingLevel: "medium" as const,
+        fastMode: false,
+      };
+      const started: unknown[] = [];
+      const operations: string[] = [];
+      return Effect.gen(function* () {
+        // Opening the history could not start Pi: the saved model is gone.
+        const opened = yield* projectSessionOperations
+          .acquireTarget(
+            {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: "/project",
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved-sessions",
+            },
+            "session-1",
+            false,
+          )
+          .pipe(Effect.flip);
+        assert.match(opened.message, /is unavailable/);
+        yield* sessionChats.applyConfiguration({ sessionId: "session-1" }, configuration);
+        assert.deepEqual(started, [configuration]);
+        assert.deepEqual(operations, ["configuration"]);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            onOperation: (operation) => operations.push(operation),
+            createRuntime: (options) =>
+              options.initialConfiguration
+                ? Effect.sync(() => {
+                    started.push(options.initialConfiguration);
+                    return fakeRuntime(
+                      options,
+                      undefined,
+                      undefined,
+                      undefined,
+                      undefined,
+                      (operation) => operations.push(operation),
+                    );
+                  })
+                : Effect.fail(new Error("Selected model anthropic/retired is unavailable.")),
+          }),
+        ),
+      );
+    },
+  );
 
   it.effect(
     "routes matching conversation controls through one acquired Project Session runtime",

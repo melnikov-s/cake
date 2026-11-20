@@ -35,6 +35,9 @@ import { RendererRequestCoordinator } from "../../services/renderer-requests/Ren
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type { PiQueuedMessages } from "../../contracts/conversations/pending-message-data";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import { acquireTarget } from "../project-sessions/projectSessionOperations";
+import { findLocation } from "../project-sessions/projectSessionMetadata";
 import {
   addReferenceNotifications,
   isReferenceNotification,
@@ -125,6 +128,20 @@ const acquire = Effect.fn("SessionChats.acquire")(function* (sessionId: string) 
   const sessions = yield* CakeSessionRuntimes;
   return yield* sessions.acquireSession(sessionId).pipe(asError("acquire"));
 });
+
+/** A Project Session whose runtime could not start (for example, its saved model is no longer
+ * available) starts with the configuration the user chose instead, never a substituted one. */
+const acquireConfigured = (sessionId: string, configuration: ChatConfiguration) =>
+  acquire(sessionId).pipe(
+    Effect.catch((error) =>
+      isCakeChatSessionId(sessionId)
+        ? Effect.fail(error)
+        : findLocation({ sessionId }).pipe(
+            Effect.flatMap((location) => acquireTarget(location, sessionId, false, configuration)),
+            asError("acquire"),
+          ),
+    ),
+  );
 
 /**
  * Deliberate primary-session submission updates its current renderer binding.
@@ -657,7 +674,10 @@ export const applyConfiguration = Effect.fn("SessionChats.applyConfiguration")(f
   target: SessionChatTarget,
   configuration: ChatConfiguration,
 ) {
-  yield* applyConversationConfiguration(acquire(target.sessionId), configuration).pipe(
+  yield* applyConversationConfiguration(
+    acquireConfigured(target.sessionId, configuration),
+    configuration,
+  ).pipe(
     asError("applyConfiguration"),
   );
 });
@@ -667,7 +687,11 @@ export const setModel = Effect.fn("SessionChats.setModel")(function* (
   provider: string,
   modelId: string,
 ) {
-  yield* setConversationModel(acquire(target.sessionId), provider, modelId).pipe(
+  yield* setConversationModel(
+    acquireConfigured(target.sessionId, { provider, modelId, thinkingLevel: "off", fastMode: false }),
+    provider,
+    modelId,
+  ).pipe(
     asError("setModel"),
   );
 });

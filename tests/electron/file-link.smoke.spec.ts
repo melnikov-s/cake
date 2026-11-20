@@ -172,33 +172,24 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await openSessionById(page, sessionId);
     const link = page.locator('a[href="src/modelMeta.ts#L1"]');
     await expect(link).toHaveText("src/modelMeta.ts#L1");
-    // The freshly opened transcript settles (image decode, row measurement) before hovering;
-    // a link that moves out from under the pointer never shows its tooltip.
-    let previousBounds = "";
-    await expect
-      .poll(
-        async () => {
-          const bounds = JSON.stringify(await link.boundingBox());
-          const settled = bounds === previousBounds;
-          previousBounds = bounds;
-          return settled;
-        },
-        { intervals: [250] },
-      )
-      .toBe(true);
-    await link.hover();
+    // A freshly opened transcript can still emit a settling scroll, which dismisses a pending
+    // tooltip by design. Re-hover as a reader would until the destination tooltip shows.
+    const hoverTooltip = async (target: typeof link, text: string | RegExp) =>
+      expect(async () => {
+        await page.mouse.move(1, 1);
+        await target.hover();
+        await expect(page.getByRole("tooltip")).toHaveText(text, { timeout: 1_500 });
+      }).toPass({ timeout: 15_000 });
+    await hoverTooltip(link, "src/modelMeta.ts#L1");
     await expect(link).toHaveAccessibleDescription("src/modelMeta.ts#L1");
-    await expect(page.getByRole("tooltip")).toHaveText("src/modelMeta.ts#L1");
     const websiteLink = page.getByRole("link", { name: "the website" });
-    await websiteLink.hover();
+    await hoverTooltip(websiteLink, "https://example.com/docs");
     await expect(websiteLink).toHaveAccessibleDescription("https://example.com/docs");
-    await expect(page.getByRole("tooltip")).toHaveText("https://example.com/docs");
     const sessionLink = page.getByRole("link", { name: "this session" });
-    await sessionLink.hover();
     // Session links describe their label, the Session's title and then the reference (5c284c46).
     const sessionDescription = new RegExp(`^this session.+cake://session/${sessionId}$`, "s");
+    await hoverTooltip(sessionLink, sessionDescription);
     await expect(sessionLink).toHaveAccessibleDescription(sessionDescription);
-    await expect(page.getByRole("tooltip")).toHaveText(sessionDescription);
     const presentation = (element: HTMLElement) => {
       const style = getComputedStyle(element);
       return { color: style.color, decoration: style.textDecorationLine };
@@ -206,7 +197,8 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     const filePresentation = await link.evaluate(presentation);
     expect(filePresentation.decoration).toBe("underline");
     expect(await websiteLink.evaluate(presentation)).toEqual(filePresentation);
-    expect(await sessionLink.evaluate(presentation)).toEqual(filePresentation);
+    // Session links render as named pills rather than underlined prose (5c284c46).
+    expect(await sessionLink.evaluate(presentation)).toMatchObject({ decoration: "none" });
     const agentInput = page.getByRole("combobox", { name: "Message" });
     const hasVsCodeTitleAction = (label: string) =>
       application.evaluate(async ({ webContents }, actionLabel) => {

@@ -5,7 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
-import { showTodos } from "./fixtures/workspace-navigation";
+import { openProjectChat, showTodos } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -72,9 +72,7 @@ for (const reducedMotion of [false, true]) {
       .getByRole("navigation", { name: "Projects and global utilities" })
       .getByRole("button", { name: "Open Cake Chat", exact: true })
       .click();
-      await page
-        .getByRole("button", { name: "Open Project Chat for project", exact: true })
-        .click();
+      await openProjectChat(page, "Project");
       const composer = page.getByRole("combobox", { name: "Message Project Chat" });
       await expect(composer).toBeVisible();
       // To-dos live in the shared Workspace accessory since chat-first navigation (582d0fc7).
@@ -131,7 +129,8 @@ for (const reducedMotion of [false, true]) {
       await expect.poll(() => pane.evaluate((element) => element.scrollTop)).toBe(0);
       const scrolls = () =>
         page.evaluate(() => JSON.parse(document.body.dataset.todoScrolls ?? "[]"));
-      expect(await scrolls()).toEqual([{ top: 0, behavior: reducedMotion ? "instant" : "smooth" }]);
+      // The virtualized To-dos pane jumps to the top; row motion carries the animation (73be2e7c).
+      expect(await scrolls()).toEqual([{ top: 0, behavior: "instant" }]);
       const motion = await page.evaluate(() =>
         JSON.parse(document.body.dataset.todoAnimations ?? "[]"),
       );
@@ -167,9 +166,11 @@ for (const reducedMotion of [false, true]) {
       await action(0).click();
       // Unrelated attention updates preserve scroll and the active composer, not the last focused row.
       await composer.fill("Keep this draft");
-      await pane.evaluate((element) => {
-        element.scrollTop = 120;
-      });
+      // Scroll with the reader's wheel; the pointer then rests outside the pane.
+      await pane.hover();
+      await page.mouse.wheel(0, 120);
+      await expect.poll(() => pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      await page.mouse.move(1, 1);
       const top = await pane.evaluate((element) => element.scrollTop);
       await panel
         .getByRole("button", { name: "Dismiss attention: Task 31" })

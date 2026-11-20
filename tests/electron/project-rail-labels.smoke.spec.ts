@@ -71,30 +71,35 @@ for (const theme of ["light", "dark"] as const) {
       await rail.hover();
       await expect(rail).toHaveAttribute("data-labels-visible", "true");
       await expect.poll(async () => (await rail.boundingBox())!.width).toBe(240);
-      for (const name of [
-        "Open Cake Chat",
-        "Add project",
-        "Open Project Chat for cake",
-        "New session",
-        "Search sessions",
-        "Browser sharing: Offline — go online",
-        "Artifacts",
-        "Automations",
-        "Settings",
-      ]) {
+      // Sidebar hierarchy (fc5d8353, DESIGN.md): regular-weight rows with only the selected row
+      // medium, 32px content and action rows, and quieter 28px bottom utilities.
+      for (const [name, weight, height] of [
+        ["Open Cake Chat", "400", "32px"],
+        ["Open Project Chat for cake", "500", "32px"],
+        ["New session", "400", "32px"],
+        ["Search sessions", "400", "32px"],
+        ["Artifacts", "400", "28px"],
+        ["Automations", "400", "28px"],
+        ["Settings", "400", "28px"],
+      ] as const) {
         const button = rail.getByRole("button", { name, exact: true });
         await expect(button.locator('[data-slot="icon-button-label"]')).toHaveCSS(
           "font-weight",
-          "600",
+          weight,
         );
-        await expect(button).toHaveCSS("height", "36px");
+        await expect(button).toHaveCSS("height", height);
+        // A visible name never gets a duplicate tooltip.
         await button.hover();
         await page.waitForTimeout(180);
         await expect(page.getByRole("tooltip")).toHaveCount(0);
       }
       await expect(project).toHaveAttribute("aria-current", "page");
-      const status = rail.getByText(": Offline", { exact: true });
-      await expect(status).toHaveCSS("font-weight", "400");
+      // Icon-only targets keep naming tooltips: the Projects heading's Add project action and
+      // Browser sharing, whose status is a dot.
+      for (const name of ["Add project", "Browser sharing: Offline — go online"]) {
+        await rail.getByRole("button", { name, exact: true }).hover();
+        await expect(page.getByRole("tooltip")).toHaveText(name);
+      }
       const evidence = await labels.first().evaluate((label) => {
         const nav = label.closest("nav")!;
         const canvas = document.createElement("canvas");

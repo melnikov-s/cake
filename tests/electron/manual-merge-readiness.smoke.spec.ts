@@ -8,7 +8,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
-import { openSession, showSessions } from "./fixtures/workspace-navigation";
+import { openResolvedSessionById, showSessions } from "./fixtures/workspace-navigation";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -188,7 +188,7 @@ for (const retainedAutomaticIntent of [false, true]) {
       await expect(
         page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
       ).toBeVisible();
-      await openSession(page, parent, { includeResolved: true });
+      await openResolvedSessionById(page, parent);
       await expect(parentPane.getByText("Resolved session", { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("manual-merge-after.png") });
     } finally {
