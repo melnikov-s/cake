@@ -16,6 +16,7 @@ import { observer } from "r-state-tree/react";
 import type { Code, Root, RootContent } from "mdast";
 import remarkParse from "remark-parse";
 import {
+  defaultRehypePlugins,
   parseMarkdownIntoBlocks,
   Streamdown,
   type Components,
@@ -492,6 +493,11 @@ const configuredPlugins = {
 };
 
 const codeLanguagePattern = /language-([^\s]+)/;
+const inlineElements = ["a", "code", "strong", "em", "del"];
+// Without rehype-raw, authored HTML stays literal text.
+const htmlFreeRehypePlugins = Object.entries(defaultRehypePlugins)
+  .filter(([name]) => name !== "raw")
+  .map(([, plugin]) => plugin);
 
 /**
  * Own fenced renderers here rather than through Streamdown's MarkdownCode:
@@ -633,6 +639,13 @@ export type MarkdownProps = Omit<
   omitArtifactEmbeds?: readonly string[];
   /** Invoked when the reader selects a workspace source reference. */
   onOpenSourceLocation?(location: SourceLocation): void;
+  /**
+   * Keeps links, code and emphasis but flattens blocks into one run of text,
+   * so a caller can line-clamp a preview without headings or lists changing its height.
+   */
+  inline?: boolean;
+  /** Shows authored HTML as literal text instead of rendering sanitized elements. */
+  omitHtml?: boolean;
 };
 
 type RichMarkdownPlugins = Partial<Pick<NonNullable<StreamdownProps["plugins"]>, "math">>;
@@ -677,6 +690,8 @@ function MarkdownRenderer({
   renderModelReferences = false,
   omitArtifactEmbeds,
   onOpenSourceLocation,
+  inline = false,
+  omitHtml = false,
   richPlugins,
   ...props
 }: MarkdownProps & { richPlugins?: RichMarkdownPlugins }) {
@@ -866,10 +881,14 @@ function MarkdownRenderer({
           components={components}
           className={cn(
             "markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_[data-streamdown=code-block-body]]:overflow-x-hidden [&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap [&_[data-streamdown=code-block-body]_pre]:[overflow-wrap:anywhere]",
+            inline && "space-y-0",
             className,
           )}
           isAnimating={false}
-          mode="streaming"
+          // One static block keeps the line breaks between flattened blocks as spaces.
+          mode={inline ? "static" : "streaming"}
+          {...(inline && { allowedElements: inlineElements, unwrapDisallowed: true })}
+          {...(omitHtml && { rehypePlugins: htmlFreeRehypePlugins })}
           parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
           plugins={plugins}
           skipHtml

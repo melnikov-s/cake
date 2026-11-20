@@ -225,7 +225,9 @@ it("shows one latest update and preserves attention, activity and independent li
   const title = screen.getByRole("button", { name: item.title });
   expect(title.getAttribute("aria-expanded")).toBe("false");
   expect(screen.getAllByText(item.description)).toHaveLength(1);
-  expect(title.getAttribute("aria-describedby")).toBe(screen.getByText(item.description).id);
+  expect(document.getElementById(title.getAttribute("aria-describedby")!)?.textContent).toBe(
+    item.description,
+  );
   expect(screen.queryByText(item.status)).toBeNull();
   expect(screen.getByText(item.attentionReason!)).toBeDefined();
   expect(screen.getByRole("img", { name: "Needs attention" })).toBeDefined();
@@ -254,5 +256,66 @@ it("shows one latest update and preserves attention, activity and independent li
   await user.click(toggle());
   expect(toggle().getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByRole("link", { name: "Deep consultant review" })).toBeNull();
+  view.unmount();
+});
+
+it("renders description Markdown whose links navigate without toggling the card", async () => {
+  using fixture = createRendererStoreFixture();
+  const store = fixture.root.cakeChatCollectionStore.registry.load("project-chat:test").todos;
+  const description = [
+    "## Rollout",
+    "",
+    "[#2486609](https://delta.shopify.io/shop/world/pull/2486609) live since 20 Nov 00:55. Fix 1 (`ba24be3c`): see [worker](cake://session/task).",
+    "",
+    "- **first** step",
+    "- <b>raw</b> second step",
+  ].join("\n");
+  const item: ProjectTodo = {
+    id: "00000000-0000-4000-8000-000000000012",
+    title: "Ship the rollout",
+    description,
+    status: "",
+    state: "open",
+    revision: 0,
+    associations: [],
+  };
+  const openExternalUrl = vi.fn();
+  const openSession = vi.fn();
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <MarkdownLinkProvider actions={{ openSession, openExternalUrl }}>
+        <ProjectTodoItem item={item} store={store} />
+      </MarkdownLinkProvider>
+    </StoreProvider>,
+  );
+  const user = userEvent.setup();
+  const title = screen.getByRole("button", { name: item.title });
+  const preview = () => document.getElementById(title.getAttribute("aria-describedby")!)!;
+  // The clamped preview keeps inline Markdown and flattens blocks to one run of text.
+  expect(preview().textContent).not.toContain("](");
+  expect(preview().textContent).not.toContain("`");
+  expect(preview().querySelector("code")?.textContent).toBe("ba24be3c");
+  expect(preview().querySelector("strong, [data-streamdown=strong]")?.textContent).toBe("first");
+  expect(preview().querySelector("h2, ul, li, p, b")).toBeNull();
+  expect(preview().textContent).toMatch(/^Rollout\s+#2486609 live since/);
+  // Authored HTML stays literal text rather than becoming elements.
+  expect(preview().textContent).toContain("<b>raw</b> second step");
+
+  await user.click(screen.getByRole("link", { name: "#2486609" }));
+  expect(openExternalUrl).toHaveBeenCalledWith("https://delta.shopify.io/shop/world/pull/2486609");
+  await user.click(screen.getByRole("link", { name: /worker/ }));
+  expect(openSession).toHaveBeenCalledWith("task");
+  expect(title.getAttribute("aria-expanded")).toBe("false");
+
+  // The expanded card renders the full Markdown.
+  await user.click(title);
+  expect(title.getAttribute("aria-expanded")).toBe("true");
+  expect(preview().querySelector("h2")?.textContent).toBe("Rollout");
+  expect(preview().querySelectorAll("li")).toHaveLength(2);
+  expect(preview().querySelector("b")).toBeNull();
+  expect(preview().textContent).toContain("<b>raw</b> second step");
+  await user.click(screen.getByRole("link", { name: "#2486609" }));
+  expect(openExternalUrl).toHaveBeenCalledTimes(2);
+  expect(title.getAttribute("aria-expanded")).toBe("true");
   view.unmount();
 });

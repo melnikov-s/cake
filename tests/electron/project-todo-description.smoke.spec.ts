@@ -35,7 +35,9 @@ test("one latest update expands inline; the existing dot and independent row act
         associations: [],
       });
     const description =
-      "The report-card fix passed review. We just need to verify that the cards show the right source names.";
+      "The report-card fix [#2486609](https://example.com/pull/2486609) passed review. We just need to verify that the cards show the right source names (`ba24be3c`).";
+    const renderedDescription =
+      "The report-card fix #2486609 passed review. We just need to verify that the cards show the right source names (ba24be3c).";
     const label = { id: "10000000-0000-4000-8000-000000000001", name: "Research", color: "violet" };
     items.push({
       id: "00000000-0000-4000-8000-000000000011",
@@ -99,9 +101,9 @@ test("one latest update expands inline; the existing dot and independent row act
     const row = panel.locator('[data-todo-id="00000000-0000-4000-8000-000000000011"]');
     const marker = row.locator('[data-slot="nav-trailing"]').getByRole("img", { name: "Open" });
     const dot = marker.locator("span");
-    const preview = row.getByText(description, { exact: true });
+    const preview = row.locator('[data-slot="todo-description"]');
     const legacyTitle = panel.getByRole("button", { name: "Additional task 0", exact: true });
-    const legacyPreview = legacyTitle.locator("..").getByText(legacyUpdate, { exact: true });
+    const legacyPreview = legacyTitle.locator("..").locator('[data-slot="todo-description"]');
     const isClipped = (element: Element) => element.scrollHeight > element.clientHeight;
     const report = row.getByRole("link", { name: "Exact investigation report", exact: true });
     const actions = row.locator('[data-slot="todo-actions"]');
@@ -128,13 +130,16 @@ test("one latest update expands inline; the existing dot and independent row act
     await expect(labelPicker.locator("[data-session-label-color]")).toHaveCount(1);
     await expect(title).toHaveAttribute("aria-expanded", "false");
     await expect(preview).toHaveCount(1);
+    await expect(preview).toHaveText(renderedDescription);
+    await expect(preview.getByRole("link", { name: "#2486609", exact: true })).toBeVisible();
+    await expect(preview.locator("code")).toHaveText("ba24be3c");
     await expect(preview).toHaveCSS("-webkit-line-clamp", "4");
     await expect.poll(() => preview.evaluate(isClipped)).toBe(false);
     await expect.poll(() => legacyPreview.evaluate(isClipped)).toBe(true);
     await legacyTitle.press("Enter");
     await expect(legacyTitle).toHaveAttribute("aria-expanded", "true");
     await expect(legacyPreview).toHaveCount(1);
-    await expect(legacyPreview).toHaveCSS("white-space", "pre-wrap");
+    await expect(legacyPreview.locator("p")).toHaveCount(12);
     await expect.poll(() => legacyPreview.evaluate(isClipped)).toBe(false);
     await legacyTitle.press("Enter");
     await expect(legacyTitle).toHaveAttribute("aria-expanded", "false");
@@ -160,12 +165,13 @@ test("one latest update expands inline; the existing dot and independent row act
       page.getByRole("tooltip", { name: "Focus to-do: Fix report-card source names" }),
     ).toBeVisible();
 
-    await preview.click();
+    // Click the description's prose, not its link.
+    await preview.click({ position: { x: 2, y: 2 } });
     await expect(title).toHaveAttribute("aria-expanded", "true");
     await expect(title).toBeFocused();
     await expect(focus).toHaveAttribute("aria-pressed", "false");
     await expect(preview).toHaveCSS("-webkit-line-clamp", "none");
-    await expect(preview).toHaveCSS("white-space", "pre-wrap");
+    await expect(preview.locator("p")).toHaveText(renderedDescription);
     await expect(preview).toHaveCount(1);
     await expect(row.getByText(/Report ready for review/)).toHaveCount(0);
     await expect(report).toBeVisible();

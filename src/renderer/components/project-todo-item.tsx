@@ -12,6 +12,7 @@ import { ProjectTodoWorkLink } from "./project-todo-work-link";
 import { ProjectTodoSnoozePicker } from "./project-todo-snooze-picker";
 import { ProjectTodoAttentionEditor } from "./project-todo-attention-editor";
 import { Button } from "@/components/ui/button";
+import { Markdown } from "./ai-elements/markdown";
 import { IconButton } from "@/components/ui/icon-button";
 import { ChatIcon, PaperclipIcon, CloseIcon, ExpandIcon } from "@/components/ui/icons";
 import { projectTodoAssociationDestination } from "../lib/project-todo-association";
@@ -21,6 +22,10 @@ import { ProjectTodoStatusIndicator } from "./project-todo-status-indicator";
 import { cn } from "@/lib/utils";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
+
+/** Chat Markdown, scaled to the card's caption text. */
+const descriptionClassName =
+  "space-y-2 [&_:is(h1,h2,h3,h4,h5,h6)]:mt-2 [&_:is(h1,h2,h3,h4,h5,h6)]:mb-1 [&_:is(h1,h2,h3,h4,h5,h6)]:text-xs [&_:is(h1,h2,h3,h4,h5,h6)]:leading-4 [&_:is(ul,ol)]:my-1 [&_code]:py-0 [&_code]:text-xs [&_code]:leading-4";
 
 const hoverActionClassName =
   "opacity-0 disabled:opacity-0 group-hover/nav-item:opacity-100 group-hover/nav-item:disabled:opacity-30 group-has-[:focus-visible]/nav-item:opacity-100 group-has-[:focus-visible]/nav-item:disabled:opacity-30 [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:disabled:opacity-30";
@@ -288,17 +293,23 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
       </div>
       <div id={detailsId} className="@container/todo-update col-start-2 col-span-2 min-w-0">
         {latestUpdate && (
-          <p
+          <div
             id={updateId}
+            data-slot="todo-description"
             className={cn(
-              "mt-1 min-w-0 break-words text-xs leading-4 text-muted-foreground",
-              expanded
-                ? "whitespace-pre-wrap"
-                : "line-clamp-4 @max-[192px]/todo-update:line-clamp-5",
+              "mt-1 min-w-0 text-xs leading-4 text-muted-foreground",
+              !expanded && "line-clamp-4 @max-[192px]/todo-update:line-clamp-5",
             )}
+            onClick={(event) => {
+              // A description link navigates; it never also toggles the card.
+              if (event.target instanceof Element && event.target.closest("a"))
+                event.stopPropagation();
+            }}
           >
-            {latestUpdate}
-          </p>
+            <Markdown inline={!expanded} omitHtml className={descriptionClassName}>
+              {latestUpdate}
+            </Markdown>
+          </div>
         )}
         {attentionDetail && (
           <p className="mt-1.5 min-w-0 break-words rounded-md bg-attention/15 px-2 py-1 text-xs leading-4 text-foreground">

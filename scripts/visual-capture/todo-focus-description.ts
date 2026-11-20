@@ -7,7 +7,9 @@ const title = "Investigate slow project startup and repeated configuration reads
 const intro = "Find the startup bottleneck and recommend a focused fix.";
 const shortTitle = "Fix report-card source names";
 const shortUpdate =
-  "The report-card fix passed review. We just need to verify that the cards show the right source names.";
+  "[#2486609](https://delta.shopify.io/shop/world/pull/2486609) live since 20 Nov 00:55. Fix 1 [#2492393](https://delta.shopify.io/shop/world/pull/2492393) (`ba24be3c`) passed review.";
+const renderedShortUpdate =
+  "#2486609 live since 20 Nov 00:55. Fix 1 #2492393 (ba24be3c) passed review.";
 const legacyUpdate = `${intro}\n\nCompare two cold launches with a warm launch. Record the repeated reads and check whether caching still picks up edits to the project config.\n\nUse the baseline measurements in the investigation report to distinguish a slow launch from a delayed refresh.`;
 const isClipped = (element: Element) => element.scrollHeight > element.clientHeight;
 
@@ -17,7 +19,7 @@ export function createTodoFocusDescriptionScenario(
   return {
     name: "todo-focus-description",
     description:
-      "Short and legacy Latest updates with inline expansion, named links and row actions",
+      "Short Markdown and legacy Latest updates with inline expansion, named links and row actions",
     states: [
       "collapsed",
       "expanded",
@@ -63,9 +65,9 @@ export function createTodoFocusDescriptionScenario(
       }
       const disclosure = workspace.getByRole("button", { name: title, exact: true });
       const row = disclosure.locator("..");
-      const preview = row.getByText(legacyUpdate, { exact: true });
+      const preview = row.locator('[data-slot="todo-description"]');
       const shortDisclosure = workspace.getByRole("button", { name: shortTitle, exact: true });
-      const shortPreview = shortDisclosure.locator("..").getByText(shortUpdate, { exact: true });
+      const shortPreview = shortDisclosure.locator("..").locator('[data-slot="todo-description"]');
       const status = row.locator('[data-slot="nav-trailing"] [role="img"]');
       const marker = await status.getAttribute("aria-label");
       const focus = row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true });
@@ -79,7 +81,9 @@ export function createTodoFocusDescriptionScenario(
         state.startsWith("narrow-") ? "5" : "4",
       );
       await expect.poll(() => preview.evaluate(isClipped)).toBe(true);
-      await expect(shortPreview).toHaveCount(1);
+      await expect(shortPreview).toHaveText(renderedShortUpdate);
+      await expect(shortPreview.getByRole("link", { name: "#2486609", exact: true })).toBeVisible();
+      await expect(shortPreview.locator("code")).toHaveText("ba24be3c");
       await expect.poll(() => shortPreview.evaluate(isClipped)).toBe(false);
       await expect(report).toHaveCount(0);
       await disclosure.hover();
@@ -94,12 +98,12 @@ export function createTodoFocusDescriptionScenario(
         );
       } else {
         if (state.endsWith("expanded")) {
-          await shortPreview.click();
+          await shortDisclosure.click();
           await expect(shortDisclosure).toHaveAttribute("aria-expanded", "true");
           await preview.click();
           await expect(disclosure).toHaveAttribute("aria-expanded", "true");
           await expect(preview).toHaveCount(1);
-          await expect(preview).toHaveCSS("white-space", "pre-wrap");
+          await expect(preview.locator("p")).toHaveCount(3);
           await expect.poll(() => preview.evaluate(isClipped)).toBe(false);
           await expect(report).toBeVisible();
           await expect(row.getByText(/Report delivered; awaiting your review/)).toHaveCount(0);
