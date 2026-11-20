@@ -4,7 +4,7 @@ import { SessionArchiveStorage } from "../../../src/services/storage/SessionArch
 type Service = SessionArchiveStorage["Service"];
 
 /** An empty archive: nothing is located or resolved, and mutations have nothing to move. */
-export const neutralSessionArchiveStorage = (): Service => ({
+const neutralSessionArchiveStorage = (): Service => ({
   relocate: () => Effect.void,
   resolve: () => Effect.succeed(false),
   restore: () => Effect.succeed(false),

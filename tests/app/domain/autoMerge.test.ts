@@ -60,6 +60,7 @@ import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { retainNotification } from "../../../src/domain/session-families/sessionFamilyCompletion";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { fakeApplicationState } from "../../helpers/fakes/applicationState";
 import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
 import { fakeClientEvents } from "../../helpers/fakes/clientEvents";

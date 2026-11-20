@@ -5,7 +5,7 @@ import { unstubbed } from "./unstubbed";
 type Service = ManagedWorktrees["Service"];
 
 /** No managed checkouts: queries find nothing; operations that need a checkout are unstubbed. */
-export const neutralManagedWorktrees = (): Service => ({
+const neutralManagedWorktrees = (): Service => ({
   records: () => Effect.succeed([]),
   observeLandingQueue: () => Stream.never,
   observe: () => Stream.never,

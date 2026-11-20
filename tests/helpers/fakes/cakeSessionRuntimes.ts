@@ -5,7 +5,7 @@ import { unstubbed } from "./unstubbed";
 type Service = CakeSessionRuntimes["Service"];
 
 /** No sessions and no live runtimes. Acquiring or inspecting a session is unstubbed. */
-export const neutralCakeSessionRuntimes = (): Service => ({
+const neutralCakeSessionRuntimes = (): Service => ({
   sessionIds: () => Stream.empty,
   catalog: () => Stream.empty,
   catalogSnapshot: (query) =>

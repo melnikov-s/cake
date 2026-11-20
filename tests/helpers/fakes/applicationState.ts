@@ -11,7 +11,7 @@ import {
 type Service = ApplicationState["Service"];
 
 /** In-memory application state: transactions update it without persistence. */
-export const neutralApplicationState = (
+const neutralApplicationState = (
   projection: SubscriptionRef.SubscriptionRef<ApplicationStateProjection>,
 ): Service => ({
   initialize: () => SubscriptionRef.get(projection).pipe(Effect.map((value) => value.state)),

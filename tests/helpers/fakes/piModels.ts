@@ -4,7 +4,7 @@ import { makePiModels, PiModels } from "../../../src/services/pi/PiModels";
 type Service = PiModels["Service"];
 
 /** The real catalog logic over an empty provider catalog: nothing resolves or completes. */
-export const neutralPiModels = (): Service =>
+const neutralPiModels = (): Service =>
   makePiModels({
     loadCatalog: () => Effect.succeed([]),
     loadNonChatCatalog: () => Effect.succeed([]),

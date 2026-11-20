@@ -4,7 +4,7 @@ import { ProjectAccess, ProjectAccessError } from "../../../src/services/project
 type Service = ProjectAccess["Service"];
 
 /** In-memory access: nothing is allowed until `allow`, and sessions resolve once remembered. */
-export const neutralProjectAccess = (): Service => {
+const neutralProjectAccess = (): Service => {
   const allowed = new Set<string>();
   const sessions = new Map<string, string>();
   return {

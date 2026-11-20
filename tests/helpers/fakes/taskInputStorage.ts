@@ -14,7 +14,7 @@ const unknownReferences = (operation: string, ids: readonly string[]) =>
 
 /** An empty task-input store: no references exist and nobody is a protected recipient.
  * Plain attachments resolve as themselves; storing new inputs is unstubbed. */
-export const neutralTaskInputStorage = (): Service => ({
+const neutralTaskInputStorage = (): Service => ({
   isolate: (_owner, attachments) =>
     attachments.length === 0 ? Effect.succeed([]) : unstubbed("TaskInputStorage.isolate"),
   authorizeForward: (_owner, ids) => unknownReferences("authorizeForward", ids),
