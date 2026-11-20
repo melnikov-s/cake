@@ -1312,7 +1312,8 @@ test.describe("real application", () => {
       models.write("Background response started.\n\n");
       await expect(transcript).toContainText("Background response started.");
       await openRow(page, "follow-first");
-      await expect.poll(() => anchor(transcript)).toEqual(reading);
+      // The returning transcript renders its rows a moment after the switch; poll until it does.
+      await expect.poll(() => anchor(transcript).catch(() => undefined)).toEqual(reading);
       models.write("Background content keeps growing.\n\n".repeat(100));
       models.release();
       await page.waitForTimeout(500);
