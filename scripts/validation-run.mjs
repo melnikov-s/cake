@@ -84,7 +84,8 @@ export const validationCommands = {
     steps: [
       ["pnpm", "build:slim"],
       ["node", "scripts/build-server.mjs"],
-      ["playwright", "test"],
+      // The whole serial suite outlasts the default 30-minute Electron run deadline.
+      ["env", "CAKE_ELECTRON_RUN_TIMEOUT_MINUTES=180", "playwright", "test"],
     ],
   },
   "test:electron:full": {
@@ -92,7 +93,8 @@ export const validationCommands = {
     steps: [
       ["pnpm", "build"],
       ["node", "scripts/build-server.mjs"],
-      ["playwright", "test"],
+      // The whole serial suite outlasts the default 30-minute Electron run deadline.
+      ["env", "CAKE_ELECTRON_RUN_TIMEOUT_MINUTES=180", "playwright", "test"],
     ],
   },
   "test:electron:run": { priority: 2, steps: [["playwright", "test"]] },

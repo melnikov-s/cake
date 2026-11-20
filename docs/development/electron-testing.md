@@ -96,6 +96,9 @@ FIFO tickets and the shared limit live in `/tmp/cake-electron-runs-<uid>.sqlite`
 internal launch waiting, timeout, and release. Ctrl-C/SIGTERM withdraws a queued request or
 aborts its running job. The programmatic `runElectronCommand` also accepts an AbortSignal
 and positive `timeoutMs`; the default running deadline is 30 minutes, excluding queue wait.
+The whole-suite `pnpm test:electron` and `test:electron:full` scripts raise it to 180 minutes
+through `CAKE_ELECTRON_RUN_TIMEOUT_MINUTES`, because the serial suite outlasts 30 minutes;
+targeted `pnpm test:electron:run` reruns keep the default.
 Interactive apps opt out: `pnpm dev`, `dev:agent`, `dev:manual`, `start` and `start:direct`
 pass `--no-timeout` (CLI) or `timeoutMs: Infinity`, so they are never killed with exit 124.
 

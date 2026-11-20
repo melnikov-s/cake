@@ -566,4 +566,14 @@ test("all heavy package entrypoints are gated; defaults bound workers and preser
   assert.equal(validationPriority("test", ["-t", "specific case"]), 0);
   assert.equal(validationPriority("test:integration", ["tests/integration/example.test.ts"]), 1);
   assert.equal(validationPriority("test:electron", ["tests/electron/example.spec.ts"]), 2);
+  // Whole-suite Electron scripts outlast the default run deadline; targeted reruns do not.
+  for (const name of ["test:electron", "test:electron:full"])
+    assert.deepEqual(validationCommands[name].steps.at(-1), [
+      "env",
+      "CAKE_ELECTRON_RUN_TIMEOUT_MINUTES=180",
+      "playwright",
+      "test",
+    ]);
+  assert.deepEqual(validationCommands["test:electron:run"].steps, [["playwright", "test"]]);
+  assert.match(readFileSync("playwright.config.ts", "utf8"), /CAKE_ELECTRON_RUN_TIMEOUT_MINUTES/);
 });
