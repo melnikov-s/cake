@@ -229,7 +229,9 @@ test("separate Node backend serves a real leased code-server workbench to remote
       join(observerPresentation, "window-state.json"),
       await readFile(join(presentation, "window-state.json")),
     );
+    // A second remote desktop stays open beside the first to observe the exclusive editor lease.
     observer = await electron.launch({
+      alongsideCurrentApplication: true,
       args: [repository],
       cwd: repository,
       env: {
@@ -242,6 +244,8 @@ test("separate Node backend serves a real leased code-server workbench to remote
       },
     });
     const observerPage = await observer.firstWindow();
+    // Each desktop launches into global Cake Chat (40566199); open the same remote Session.
+    await openSession(observerPage, "Remote editor fixture");
     await expect(observerPage.getByRole("link", { name: "hello.ts", exact: true })).toBeVisible({
       timeout: 25_000,
     });
@@ -287,6 +291,9 @@ test("separate Node backend serves a real leased code-server workbench to remote
     await expect(
       observerPage.getByText("Selected on the remote desktop", { exact: true }),
     ).toHaveCount(0);
+    // The preview popover covers the composer; its attachment tile toggles it closed.
+    await sourceAttachment.click();
+    await expect(page.getByText("Selected on the remote desktop", { exact: true })).toHaveCount(0);
     await page.getByRole("combobox", { name: "Message", exact: true }).click();
     await editor.locator(".view-lines").first().click();
     await editor.keyboard.press("Meta+End");
@@ -304,7 +311,8 @@ test("separate Node backend serves a real leased code-server workbench to remote
         editor.locator(".monaco-workbench").evaluate((element) => element.classList.contains("vs")),
       )
       .toBe(true);
-    await editor.getByRole("button", { name: "Cake: Back to Agent", exact: true }).click();
+    // The shell's mode switcher returns to Chat; VS Code has no Back to Agent action (d34db73a).
+    await page.getByRole("button", { name: "Main", exact: true }).click();
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
     // Hiding presentation does not surrender its exclusive backend lease.
     await observerPage.getByRole("link", { name: "hello.ts", exact: true }).click();
@@ -338,9 +346,10 @@ test("separate Node backend serves a real leased code-server workbench to remote
     await application.close();
     application = undefined;
     await expect.poll(async () => (await fetch(state.url)).status).toBe(403);
+    // The editor error's own recovery control (embedded-editor.tsx), not the mode switcher.
     await observerPage
       .getByRole("alert")
-      .getByRole("button", { name: "Main", exact: true })
+      .getByRole("button", { name: "Back to agent", exact: true })
       .click();
     await observerPage.getByRole("link", { name: "hello.ts", exact: true }).click();
     const second = observer;

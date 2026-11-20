@@ -8,7 +8,12 @@ const executablePath = fileURLToPath(new URL("./electron-queue-executable.mjs", 
 // The executable handshake, not app code after startup, registers detached
 // Electron groups with the supervisor before any real application is started.
 export const _electron = {
-  async launch(options = {}) {
+  /**
+   * Launches are serialized within one admitted run: close the current application first.
+   * `alongsideCurrentApplication` starts a second desktop client while the current one stays
+   * open, for tests of several desktops sharing one backend.
+   */
+  async launch({ alongsideCurrentApplication = false, ...options } = {}) {
     const socketPath = process.env.CAKE_ELECTRON_QUEUE_SOCKET;
     if (!socketPath)
       throw new Error(
@@ -21,6 +26,7 @@ export const _electron = {
         ...(options.env ?? process.env),
         CAKE_ELECTRON_QUEUE_SOCKET: socketPath,
         CAKE_QUEUED_ELECTRON_EXECUTABLE: options.executablePath ?? electronExecutable,
+        CAKE_ELECTRON_QUEUE_ALONGSIDE: alongsideCurrentApplication ? "1" : "",
       },
     });
   },

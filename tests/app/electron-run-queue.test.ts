@@ -311,6 +311,17 @@ it("serializes parallel detached launches within one admitted runner", async () 
   await empty();
 }, 20_000);
 
+it("starts an explicitly alongside launch while the run's current application stays open", async () => {
+  const run = start("alongside", { mode: "alongside" });
+  const first = await started("alongside");
+  const second = await started("alongside-second");
+  expect([alive(first.pid), alive(second.pid)]).toEqual([true, true]);
+  await release("alongside-second");
+  await release("alongside");
+  expect(await run.exit).toBe(0);
+  await empty();
+}, 20_000);
+
 it("observes a registration cleanup rejection and still cleans the enclosing job before shutdown", async () => {
   const run = start("cleanup-failure", { mode: "detached", cleanupFault: "EIO" });
   const app = await started("cleanup-failure");

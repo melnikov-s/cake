@@ -67,7 +67,9 @@ Use canonical pnpm validation scripts to acquire validation before Electron admi
 - Playwright launches import `_electron` from `scripts/queued-electron.mjs`. Its executable
   shim registers detached process groups before starting the real executable. Even
   concurrent launch calls inside one runner are serialized; close the current application
-  before awaiting another launch. The single-instance smoke test's bare second-instance
+  before awaiting another launch. A test of several desktop clients sharing one backend
+  passes `alongsideCurrentApplication: true` to start its second client while the first stays
+  open; later ordinary launches still wait for both. The single-instance smoke test's bare second-instance
   probe intentionally runs within the admitted test against the **same locked profile**;
   it must exit without starting another application backend.
 - For an additional validation script use `pnpm electron:run node path/to/script.mjs` (and

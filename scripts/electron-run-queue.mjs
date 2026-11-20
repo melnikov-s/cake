@@ -402,8 +402,11 @@ async function supervise() {
           }
           // Capture ownership while the registered shim is still waiting to start.
           const groupIdentity = identity(message.pid);
-          // Serialize actual launches too, including Promise.all inside one test.
-          const previous = launchTail;
+          // Serialize actual launches too, including Promise.all inside one test. A launch that
+          // explicitly runs alongside the current application (a second desktop client of the
+          // same test) starts now, within this run's admission, and later launches wait for it.
+          const alongside = message.alongside === true;
+          const previous = alongside ? Promise.resolve() : launchTail;
           if (registrations.size)
             console.error(`[cake:electron] queued application launch within #${id}`);
           const closed = new Promise((resolve) => socket.once("close", resolve));
@@ -427,7 +430,7 @@ async function supervise() {
           registrations.add(registration);
           // Observe rejection immediately, even if it settles before shutdown.
           // A discarded .finally() would create another rejecting promise.
-          launchTail = registration.then(
+          const settled = registration.then(
             () => registrations.delete(registration),
             (error) => {
               registrations.delete(registration);
@@ -437,6 +440,7 @@ async function supervise() {
               cancel("SIGTERM");
             },
           );
+          launchTail = alongside ? Promise.all([launchTail, settled]) : settled;
         });
         socket.on("error", () => {});
         socket.on("close", () => sockets.delete(socket));

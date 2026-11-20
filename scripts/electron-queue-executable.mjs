@@ -31,7 +31,14 @@ const parent = process.ppid;
 const watchdog = setInterval(() => {
   if (process.ppid !== parent) stop();
 }, 100);
-socket.once("connect", () => socket.write(`${JSON.stringify({ pid: process.pid })}\n`));
+socket.once("connect", () =>
+  socket.write(
+    `${JSON.stringify({
+      pid: process.pid,
+      alongside: process.env.CAKE_ELECTRON_QUEUE_ALONGSIDE === "1",
+    })}\n`,
+  ),
+);
 socket.once("data", () => {
   if (stopping) return;
   child = spawn(executable, process.argv.slice(2), { stdio: "inherit", env: process.env });
