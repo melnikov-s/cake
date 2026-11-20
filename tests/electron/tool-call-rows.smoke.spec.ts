@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { wheelIntoView } from "./fixtures/pointer";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { toolCallRowsScenario } from "../../scripts/visual-capture/tool-call-rows";
@@ -67,6 +68,9 @@ for (const { theme, width } of [
       await page.setViewportSize({ width, height: 900 });
       await toolCallRowsScenario.prepare(page);
       const row = (id: string) => page.locator(`[data-part-id="tool-${id}"]`);
+      // Reach rows with the wheel as a reader does; a programmatic scroll-into-view is not
+      // reader input, so the following transcript can move the row back mid-drag.
+      const transcript = page.locator(".transcript");
       const home = row("home");
       const disclosure = home.locator("[aria-expanded]");
       const path = home.getByRole("button", { name: "~/.pi/agent/example.md", exact: true });
@@ -127,7 +131,7 @@ for (const { theme, width } of [
       // A long home path must shrink before the disclosure: otherwise its text
       // disappears and the path crowds/overlaps the non-shrinking status dot.
       const longHome = row("long-home");
-      await longHome.scrollIntoViewIfNeeded();
+      await wheelIntoView(page, transcript, longHome);
       const longTrigger = longHome.locator("[aria-expanded]");
       const longPath = longHome.getByRole("button", { name: /^~\/\.pi\/agent\/cake-docs\// });
       const longTriggerBounds = await longTrigger.boundingBox();
@@ -145,7 +149,7 @@ for (const { theme, width } of [
           .locator("span")
           .evaluate((element) => element.clientWidth < element.scrollWidth),
       ).toBe(true);
-      await home.scrollIntoViewIfNeeded();
+      await wheelIntoView(page, transcript, home);
       const disclosureBounds = await disclosure.boundingBox();
       const pathBounds = await path.boundingBox();
       expect(pathBounds!.x - (disclosureBounds!.x + disclosureBounds!.width)).toBe(
@@ -169,7 +173,7 @@ for (const { theme, width } of [
 
       await page.evaluate(() => window.getSelection()?.removeAllRanges());
       const command = row("bash").locator("[aria-expanded]");
-      await command.scrollIntoViewIfNeeded();
+      await wheelIntoView(page, transcript, command);
       await dragText(page, command.locator("span.truncate"));
       await expect
         .poll(() => page.evaluate(() => window.getSelection()?.toString()))
@@ -188,7 +192,7 @@ for (const { theme, width } of [
       await page.evaluate(() => window.getSelection()?.removeAllRanges());
       await command.click();
       await expect(command).toHaveAttribute("aria-expanded", "false");
-      await home.scrollIntoViewIfNeeded();
+      await wheelIntoView(page, transcript, home);
       await home.hover();
       await home
         .getByRole("button", {

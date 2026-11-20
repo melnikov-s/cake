@@ -12,6 +12,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-i
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
 import { openProjectChat, openSession } from "./fixtures/workspace-navigation";
+import { pointAt } from "./fixtures/pointer";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const usage = {
@@ -33,6 +34,8 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
     const projectId = "01957936-0000-7000-8000-0001f80c961e";
     const coordinator = surface !== "Project Session";
     const linkedAnswerLabel = coordinator ? "Linked answer" : "f80c961e";
+    // A Session link's purpose glyph names the link (b6cd0f2d).
+    const linkedAnswerName = coordinator ? "Linked answer" : "User Session f80c961e";
     const sessionId =
       surface === "Project Chat"
         ? `project-chat:${createHash("sha256").update(project).digest("hex")}`
@@ -214,11 +217,13 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
           },
         });
       });
-      const identityLink = selected.getByRole("link", { name: linkedAnswerLabel, exact: true });
+      const identityLink = selected.getByRole("link", { name: linkedAnswerName, exact: true });
       const destination = `cake://session/${encodeURIComponent(sessionId)}?message=${assistants.get(6)}`;
       await expect(identityLink).toHaveAttribute("href", destination);
-      await identityLink.hover();
-      await expect(page.getByRole("tooltip", { name: destination, exact: true })).toBeVisible();
+      // Point at the painted link; a programmatic scroll-into-view is not reader input.
+      await pointAt(page, identityLink);
+      // Session link tooltips list the label and Session title before the reference (5c284c46).
+      await expect(page.getByRole("tooltip")).toContainText(destination);
       await identityLink.click();
       await expect(selected).toContainText("Answer 6.");
       await expectRevealed(transcript, selected);

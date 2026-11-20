@@ -43,6 +43,7 @@ import { transcriptItemParts, type TranscriptContentPart } from "./chat-transcri
 import { ChatTranscriptItem, transcriptAnchorId } from "./chat-transcript-item";
 import { transcriptItemKeys } from "./chat-transcript-items";
 import { transcriptTaskSections } from "../lib/transcript-task-sections";
+import { revealTranscriptSelection } from "../lib/transcript-selection-reveal";
 import {
   transcriptPresentationRows,
   type TranscriptPresentationRow,
@@ -540,13 +541,11 @@ export const ChatTranscript = observer(function ChatTranscript({
     // The composer dock overlays the bottom of the transcript.
     const dock =
       Number.parseFloat(getComputedStyle(scroller).getPropertyValue("--composer-dock-height")) || 0;
-    void list.scrollIndexIntoView({
+    void revealTranscriptSelection(list, {
       index,
-      animated: false,
-      viewportMargin: {
-        start: revealMargin(list, selectedItemKey),
-        end: dock + selectionRevealMargin,
-      },
+      key: selectedItemKey,
+      start: revealMargin(list, selectedItemKey),
+      end: dock + selectionRevealMargin,
     });
   }, [messageSelection, scroller, selectedItemKey, stopFollowing]);
   // Clicking anywhere outside the selected message ends the selection; clicks

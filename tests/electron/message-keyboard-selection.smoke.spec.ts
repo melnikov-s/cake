@@ -249,7 +249,9 @@ test("selects mixed conversational entries once, in display order, only in the f
     await expect(selected).toHaveCount(0);
 
     // Only the conversation that holds focus responds. Chat-first navigation has one pane
-    // (582d0fc7); a side chat's composer is the other keyboard owner beside it.
+    // (582d0fc7); a side chat's composer is the other keyboard owner beside it. A side chat
+    // replaces conversation areas narrower than 860px (b39d2426), so widen the window first.
+    await page.setViewportSize({ width: 1280, height: 900 });
     await composer.click();
     await composer.pressSequentially("/side");
     await expect(

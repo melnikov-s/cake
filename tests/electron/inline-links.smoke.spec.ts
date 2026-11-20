@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { pointAt } from "./fixtures/pointer";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -78,7 +79,7 @@ for (const theme of ["light", "dark"] as const) {
         // link out from under the pointer; re-hover as a reader would.
         await expect(async () => {
           await page.mouse.move(1, 1);
-          await link.hover();
+          await pointAt(page, link);
           await expect(page.getByRole("tooltip")).toHaveText(description, { timeout: 1_500 });
           expect(await link.evaluate((element) => element.matches(":hover"))).toBe(true);
         }).toPass({ timeout: 15_000 });
