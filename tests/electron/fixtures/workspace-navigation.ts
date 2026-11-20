@@ -46,7 +46,7 @@ export async function createSessionInProject(page: Page, name: RegExp) {
  * Moves the pointer off the project rail, as a user does after choosing a rail action.
  * The Dynamic rail stays expanded over the conversation while hovered.
  */
-async function leaveRail(page: Page) {
+export async function leaveRail(page: Page) {
   const { width, height } = await page.evaluate(() => ({
     width: innerWidth,
     height: innerHeight,

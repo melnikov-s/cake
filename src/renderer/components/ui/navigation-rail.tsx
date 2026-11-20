@@ -55,6 +55,8 @@ export function NavigationRail({
   }, []);
   const [focused, setFocused] = useState(false);
   const [interacting, setInteracting] = useState(false);
+  // Set between a rail press and its release: focus it moves is not keyboard focus.
+  const pointerFocus = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [owners, setOwners] = useState<ReadonlySet<symbol>>(() => new Set());
   const retain = useCallback((owner: symbol, open: boolean) => {
@@ -74,7 +76,10 @@ export function NavigationRail({
   const context = useMemo(() => ({ retain }), [retain]);
 
   useEffect(() => {
-    const endPointer = () => setInteracting(false);
+    const endPointer = () => {
+      pointerFocus.current = false;
+      setInteracting(false);
+    };
     const endDrag = () => setDragging(false);
     const blur = () => {
       setHovered(false);
@@ -187,7 +192,10 @@ export function NavigationRail({
             setHovered(false);
             onRevealChange?.(false);
           }}
-          onPointerDown={() => setInteracting(true)}
+          onPointerDown={() => {
+            pointerFocus.current = true;
+            setInteracting(true);
+          }}
           onDragStart={() => setDragging(true)}
           onDragEnter={() => setDragging(true)}
           onDragLeave={(event) => {
@@ -197,7 +205,11 @@ export function NavigationRail({
             )
               setDragging(false);
           }}
-          onFocusCapture={(event) => setFocused(event.currentTarget.contains(event.target))}
+          // Only keyboard focus holds the rail open: a clicked rail action keeps focus, and the
+          // expanded rail would otherwise stay over the destination after the pointer leaves.
+          onFocusCapture={(event) =>
+            setFocused(!pointerFocus.current && event.currentTarget.contains(event.target))
+          }
           onBlurCapture={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
           }}

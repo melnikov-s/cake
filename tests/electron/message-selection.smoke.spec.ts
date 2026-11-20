@@ -82,8 +82,9 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     role: "assistant",
     content: [{ type: "text", text: "A saved comparison." }],
     api: "openai-completions",
+    // The sidecar reopens with its saved model; Cake never substitutes another (81eb383b).
     provider: "fixture",
-    model: "fixture",
+    model: "fixture-model",
     stopReason: "stop",
     timestamp: 1,
     usage: {
@@ -456,8 +457,13 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     const sideChatsButton = page.getByRole("button", { name: "Side chats, 1 open" });
     await sideChatsButton.click();
     const sideChatsList = page.getByRole("dialog", { name: "Open side chats" });
-    // Discussion catalogs carry thread metadata; the live sidecar owns its transcript.
-    await sideChatsList.getByRole("button", { name: /Compare the two approaches/ }).click();
+    // Discussion catalogs carry thread metadata; the live sidecar owns its transcript. Untitled
+    // side chats are listed as "Side chat" until named asynchronously (0c5a68ab); the saved
+    // reply identifies this one.
+    await sideChatsList
+      .getByRole("button", { name: "Side chat", exact: true })
+      .filter({ hasText: "A saved comparison." })
+      .click();
     const existingSideChat = page.getByRole("complementary", { name: "Side chat" });
     await expect(existingSideChat).toBeVisible();
     await expect(

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
-import { openSession } from "./fixtures/workspace-navigation";
+import { leaveRail, openSession } from "./fixtures/workspace-navigation";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import {
   seedMessageBoardFixture,
@@ -195,6 +195,8 @@ test("Workboards update live, preserve reading state, and reconcile after board 
       .getByRole("navigation", { name: "Projects and global utilities" })
       .getByRole("button", { name: "Artifacts", exact: true })
       .click();
+    // The Dynamic rail stays expanded over the library while hovered; move off it as a user does.
+    await leaveRail(page);
     await expect(page.getByLabel("Filter artifacts by kind")).toBeVisible();
     await page
       .getByRole("navigation", { name: "Artifact lineages" })

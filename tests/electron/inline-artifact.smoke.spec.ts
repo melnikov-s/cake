@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { wheelIntoView } from "./fixtures/pointer";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
@@ -96,12 +97,18 @@ for (const theme of ["light", "dark"] as const) {
       await expect
         .poll(() => inline.evaluate((element) => element.getBoundingClientRect().width))
         .toBeGreaterThan(900);
-      await page
-        .locator(".transcript")
-        .first()
-        .evaluate((element) => {
-          element.scrollTop = 0;
-        });
+      // Read from the start with the wheel: reader input stops the transcript following its
+      // end, so later layout cannot move the resize grip out from under the pointer.
+      const reading = page.locator(".transcript").first();
+      const transcriptBounds = (await reading.boundingBox())!;
+      await page.mouse.move(
+        transcriptBounds.x + transcriptBounds.width / 2,
+        transcriptBounds.y + transcriptBounds.height / 2,
+      );
+      await expect(async () => {
+        await page.mouse.wheel(0, -2000);
+        expect(await reading.evaluate((element) => element.scrollTop)).toBe(0);
+      }).toPass();
       const prose = page
         .locator(".markdown-content > p")
         .filter({ hasText: "saved visualization" })
@@ -120,6 +127,8 @@ for (const theme of ["light", "dark"] as const) {
       await resize.focus();
       await resize.press("ArrowDown");
       await expect(resize).toHaveAttribute("aria-valuenow", "616");
+      // The grip must be clear of the composer docked over the transcript's bottom.
+      await wheelIntoView(page, reading, resize);
       const grip = (await resize.boundingBox())!;
       await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
       await page.mouse.down();

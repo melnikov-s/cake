@@ -166,17 +166,20 @@ test("all left toolbar disclosures preserve a populated transcript's scroll and 
           ),
         )
         .toBeLessThanOrEqual(1);
-      const bottom = await transcript.evaluate((element) => element.scrollTop);
       await transcript.hover({ position: { x: 300, y: 100 } });
       await page.mouse.wheel(0, -180);
-      // The reader leaves the bottom. Legend List may then re-measure rows and shift scrollTop
-      // to keep the visible content still (fc455223), so wait for a settled reading position.
+      // The reader leaves the bottom. Legend List may then re-measure rows above and shift
+      // scrollTop to keep the visible content still (fc455223), so measure how far the reader
+      // is from the end, not the raw offset, and wait for a settled reading position.
       let previous = -1;
       await expect
         .poll(
           async () => {
-            const current = await transcript.evaluate((element) => element.scrollTop);
-            const settled = current === previous && current <= bottom - 180;
+            const [current, fromEnd] = await transcript.evaluate((element) => [
+              element.scrollTop,
+              element.scrollHeight - element.clientHeight - element.scrollTop,
+            ]);
+            const settled = current === previous && fromEnd >= 179;
             previous = current;
             return settled;
           },

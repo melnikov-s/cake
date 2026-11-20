@@ -75,6 +75,20 @@ it("shares actual hover/focus disclosure, retaining expansion between child focu
   expect(nav.dataset.labelsVisible).toBe("false");
 });
 
+it("collapses after a clicked rail action keeps focus and the pointer leaves", () => {
+  render(rail());
+  const nav = screen.getByRole("navigation");
+  const action = screen.getByRole("button", { name: "Project" });
+  fireEvent.mouseEnter(nav);
+  // A press focuses the clicked button before its release, as Chromium does.
+  fireEvent.pointerDown(action);
+  fireEvent.focus(action);
+  fireEvent.pointerUp(window);
+  fireEvent.mouseLeave(nav);
+  expect(nav.dataset.expanded).toBe("false");
+  expect(nav.dataset.labelsVisible).toBe("false");
+});
+
 it("keeps icon-only tooltips on non-hover input and cancels them when disclosure changes", () => {
   canHover = false;
   render(rail());
