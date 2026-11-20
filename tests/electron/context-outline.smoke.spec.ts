@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type Page } from "@playwright/test";
-import { createHash } from "node:crypto";
 import { openRequestInspectorFixture } from "../../scripts/visual-capture/request-inspector-fixture";
+import { openProjectChat } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -52,17 +52,12 @@ for (const scope of ["global", "project-chat"] as const) {
           PI_CODING_AGENT_SESSION_DIR: "",
         },
       });
-    const projectId = `project-chat:${createHash("sha256").update(project).digest("hex")}`;
     const openChat = async (page: Page) => {
       await page.setViewportSize({ width: 1280, height: 900 });
       if (scope === "global") {
         await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
       } else {
-        await page
-          .locator(
-            `[data-slot="project-header"][data-session-id="${projectId}"] [data-slot="project-label"]`,
-          )
-          .click();
+        await openProjectChat(page, "visual-capture-project");
       }
       await expect(
         page.getByRole("combobox", {
@@ -110,13 +105,17 @@ for (const scope of ["global", "project-chat"] as const) {
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
       const warm = page.getByRole("button", { name: "Browse context", exact: true });
       await expect(warm).toHaveAttribute("data-cache-state", "likely-warm");
-      await expect(warm).toHaveText(/^≈[\d.]+k?\/[\d.]+k$/);
+      // Wide composers show only the estimate; the percentage label is hidden there (001e44fe).
+      await expect(warm).toHaveText(/^≈[\d.]+k?\/[\d.]+k$/, { useInnerText: true });
       await expect(warm).toHaveAccessibleDescription(
         /Estimated active context .* System .*memory .*messages .*Cache:/,
       );
       await warm.hover();
       const hover = page.getByRole("tooltip");
-      await expect(hover).toHaveText("Cache: Likely warm\nExpires: ≈5 min\nNext: Continue");
+      // The tooltip carries the full estimate too, since narrow badges hide it (001e44fe).
+      await expect(hover).toHaveText(
+        /^Estimated active context [\d,]+ of 14,000 tokens\. System [\d,]+; memory [\d,]+; messages [\d,]+\. Cache: Likely warm\nExpires: ≈5 min\nNext: Continue$/,
+      );
       await page.mouse.move(1, 1);
       await input.fill("Unsent draft stays here");
       const trigger = page.getByRole("button", { name: "Browse context", exact: true });

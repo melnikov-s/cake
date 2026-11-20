@@ -60,6 +60,11 @@ for (const theme of ["dark", "light"] as const)
             expect(row.height - bounds.height).toBeLessThanOrEqual(8);
             for (const button of await label.getByRole("button").all()) {
               const target = (await button.boundingBox())!;
+              // The to-do label picker (81947630) is a standard 24px compact icon control.
+              if ((await button.getAttribute("aria-label"))?.startsWith("Change label for ")) {
+                expect(target).toMatchObject({ width: 24, height: 24 });
+                continue;
+              }
               // Preserve the existing title target (~27px) and 28px disclosure.
               expect(target.height).toBeGreaterThanOrEqual(27);
               expect(target.width).toBeGreaterThanOrEqual(28);
