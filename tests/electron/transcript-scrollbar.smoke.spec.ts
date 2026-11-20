@@ -7,7 +7,7 @@ import { seedCakeChatHistory } from "./durable-chat-fixture";
 
 const repository = resolve(import.meta.dirname, "../..");
 
-test("Cake Chat's native thumb drags across its width without resizing Workspace", async () => {
+test("Cake Chat's native scrollbar reveals only at the gutter or during scrolling and drag", async ({}, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), "cake-transcript-scrollbar-"));
   const cakeHome = join(directory, "cake-home");
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
@@ -48,6 +48,56 @@ test("Cake Chat's native thumb drags across its width without resizing Workspace
       await expect(jump).toHaveCount(0);
     };
 
+    const geometry = () =>
+      transcript.evaluate((node) => ({
+        width: node.clientWidth,
+        height: node.clientHeight,
+        scrollHeight: node.scrollHeight,
+        scrollTop: node.scrollTop,
+        gutter: node.offsetWidth - node.clientWidth,
+        item: node.querySelector("[data-slot=transcript-item]")?.getBoundingClientRect().toJSON(),
+      }));
+    const thumb = (inset: number) =>
+      transcript.evaluate((node, inset) => {
+        const rect = node.getBoundingClientRect();
+        const thumbHeight = Math.max(24, node.clientHeight ** 2 / node.scrollHeight);
+        const progress = node.scrollTop / (node.scrollHeight - node.clientHeight);
+        return {
+          x: rect.right - inset,
+          y: rect.top + progress * (node.clientHeight - thumbHeight) + thumbHeight / 2,
+        };
+      }, inset);
+    const expectThumb = async (visible: boolean) => {
+      // Compare the painted thumb with the transparent strip alongside it so
+      // this verifies actual native scrollbar painting, not just an attribute.
+      await expect
+        .poll(async () => {
+          const { x, y } = await thumb(13);
+          const png = await page.screenshot({
+            clip: { x: Math.floor(x), y: Math.floor(y), width: 8, height: 1 },
+            scale: "css",
+          });
+          return page.evaluate(
+            async (bytes) => {
+              const bitmap = await createImageBitmap(
+                new Blob([Uint8Array.from(bytes)], { type: "image/png" }),
+              );
+              const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+              const context = canvas.getContext("2d")!;
+              context.drawImage(bitmap, 0, 0);
+              bitmap.close();
+              const { data } = context.getImageData(0, 0, canvas.width, 1);
+              const end = data.length - 4;
+              return [0, 1, 2].some(
+                (channel) => Math.abs(data[channel]! - data[end + channel]!) > 12,
+              );
+            },
+            [...png],
+          );
+        })
+        .toBe(visible);
+    };
+
     for (const paneOpen of [true, false]) {
       if (paneOpen) await expect(handle).toBeVisible();
       else {
@@ -57,22 +107,55 @@ test("Cake Chat's native thumb drags across its width without resizing Workspace
       const pane = paneOpen ? await workspace.boundingBox() : null;
       const value = paneOpen ? await handle.getAttribute("aria-valuenow") : null;
       await atBottom();
+      const rect = (await transcript.boundingBox())!;
+      const text = await transcript.locator('[data-slot="message-content"]').evaluate((node) => {
+        const line = "Message line 90";
+        const text = node.firstChild!;
+        const offset = text.textContent!.indexOf(line);
+        const range = document.createRange();
+        range.setStart(text, offset);
+        range.setEnd(text, offset + line.length);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+      const edge = { x: rect.x + rect.width - 13, y: text.y };
+      const label = paneOpen ? "workspace-open" : "workspace-closed";
+      // The shell's inset chat surface stops 5px before the open Workspace.
+      if (paneOpen) expect(pane!.x - (rect.x + rect.width)).toBeCloseTo(5, 0);
+      await page.mouse.move(text.x, text.y);
+      await expectThumb(false);
+      const idleGeometry = await geometry();
+      expect(idleGeometry.gutter).toBe(16 + 5); // Native hit area + transparent border.
+      await page.screenshot({ path: testInfo.outputPath(`${label}-idle.png`) });
+      // Hover over the track, not the thumb. No scroll input has occurred.
+      await page.mouse.move(edge.x, edge.y);
+      await page.waitForTimeout(750); // Edge hover doesn't expire while still over the track.
+      await expectThumb(true);
+      expect(await geometry()).toEqual(idleGeometry);
+      await page.screenshot({ path: testInfo.outputPath(`${label}-edge.png`) });
+      await page.mouse.move(text.x, text.y);
+      await expectThumb(false);
+      expect(await geometry()).toEqual(idleGeometry);
+
+      await page.mouse.wheel(0, -1600);
+      await expect.poll(gap).toBeGreaterThan(viewportHeight);
+      await expectThumb(true);
+      await expectThumb(false);
+      await jumpToBottom();
+
       for (const inset of [6, 20]) {
-        // Sample both sides of the thumb, 14px apart. With Workspace open,
-        // its divider sits at rect.right and the first sample is next to its hit area.
-        const point = await transcript.evaluate((node, inset) => {
-          const rect = node.getBoundingClientRect();
-          const thumbHeight = Math.max(24, node.clientHeight ** 2 / node.scrollHeight);
-          return { x: rect.right - inset, y: rect.bottom - thumbHeight / 2 };
-        }, inset);
-        if (paneOpen) expect(Math.abs(pane!.x - (point.x + inset))).toBeLessThanOrEqual(1);
+        // Sample both sides of the native thumb, including the side nearest the divider.
+        const point = await thumb(inset);
         await page.mouse.move(point.x, point.y);
         await page.mouse.down();
         try {
           // Pressing the thumb alone shouldn't jump as a track click would.
           expect(await gap()).toBeLessThanOrEqual(1);
-          await page.mouse.move(point.x - 8, point.y - 310, { steps: 8 });
+          await page.mouse.move(rect.x + rect.width - 30, point.y - 310, { steps: 8 });
           await expect.poll(gap).toBeGreaterThan(viewportHeight);
+          // Hold outside the gutter, without moving, longer than the idle delay.
+          await page.waitForTimeout(750);
+          await expectThumb(true);
           if (paneOpen) {
             await expect(handle).toHaveAttribute("aria-valuenow", value!);
             await expect(page.locator("main.select-none")).toHaveCount(0);
@@ -80,15 +163,22 @@ test("Cake Chat's native thumb drags across its width without resizing Workspace
         } finally {
           await page.mouse.up();
         }
+        await expectThumb(true); // Release outside the gutter starts a new idle delay.
+        await expectThumb(false);
         if (paneOpen) expect(await workspace.boundingBox()).toEqual(pane);
         await jumpToBottom();
       }
     }
 
-    await transcript.hover({ position: { x: 60, y: 150 } });
-    await page.mouse.wheel(0, -1600);
-    await expect.poll(gap).toBeGreaterThan(viewportHeight);
-    await jumpToBottom();
+    await transcript.focus();
+    await expect(transcript).toBeFocused();
+    await page.keyboard.press("PageUp");
+    await expect.poll(gap).toBeGreaterThan(0);
+    await expectThumb(true);
+    await expectThumb(false);
+    await page.keyboard.press("End");
+    await atBottom();
+    await expect(transcript).toBeFocused();
 
     // Explicitly returning to the end re-enables following across viewport changes.
     await page.setViewportSize({ width: 1280, height: 680 });

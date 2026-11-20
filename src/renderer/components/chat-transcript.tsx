@@ -52,6 +52,7 @@ import {
   cakeChatSideChatParentId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { useArrivals } from "../hooks/use-arrivals";
+import { useTranscriptScrollbar } from "../hooks/use-transcript-scrollbar";
 import { useTranscriptFollow } from "../lib/transcript-follow";
 
 export {
@@ -415,6 +416,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const navigationItemIndex = messageSelection?.origin === "navigation" ? selectedItemIndex : -1;
   const selecting = selectedMessageId !== undefined;
   const covered = presentedFullscreens > 0;
+  useTranscriptScrollbar(covered ? null : scroller);
   // The only place that decides when new output moves the viewport.
   const follow = useTranscriptFollow({
     list: listRef,

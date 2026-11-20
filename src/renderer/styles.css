@@ -31,13 +31,24 @@
   min-height: 24px;
   border: 3px solid transparent;
   background-clip: padding-box;
-  background-color: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  background-color: var(
+    --transcript-thumb-color,
+    color-mix(in srgb, var(--muted-foreground) 60%, transparent)
+  );
+}
+
+@media (forced-colors: none) {
+  /* Leave the full native hit area in place even when the thumb isn't painted. */
+  .transcript:not([data-scrollbar-visible]) {
+    --transcript-thumb-color: transparent;
+  }
 }
 
 .transcript::-webkit-scrollbar-thumb:vertical:hover {
   background-color: var(--muted-foreground);
 }
 
+/* Chromium owns the press throughout a thumb drag, even outside the gutter. */
 .transcript::-webkit-scrollbar-thumb:vertical:active {
   background-color: var(--foreground);
 }
