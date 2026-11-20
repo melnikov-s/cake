@@ -87,6 +87,11 @@ for (const theme of ["dark", "light"] as const) {
         await composer.press("Escape");
         await expect(composer).toBeFocused();
         await expect(panel).toBeVisible();
+        // Below 700px the startup Workspace accessory (0d0e27f9) overlays the conversation; close
+        // it to work in the composer, as a user must.
+        await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
+        await composer.click();
+        await expect(composer).toBeFocused();
         for (const width of [1280, 640]) {
           await page.setViewportSize({ width, height: width === 640 ? 480 : 800 });
           const geometry = await panel.evaluate((element) => {
