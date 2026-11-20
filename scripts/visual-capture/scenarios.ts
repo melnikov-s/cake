@@ -5366,8 +5366,10 @@ const reportHeadersScenario: VisualCaptureScenario = {
           badgeLeft: badge.left,
           badgeTop: badge.top,
           badgeBottom: badge.bottom,
-          cardBottom: element.closest('[data-slot="session-message-card"]')!.getBoundingClientRect()
-            .bottom,
+          card: element
+            .closest('[data-slot="session-message-card"]')!
+            .getBoundingClientRect()
+            .toJSON() as { top: number; bottom: number; left: number; right: number },
           height: bounds.height,
           lineHeight: parseFloat(style.lineHeight),
           textOverflow: style.textOverflow,
@@ -5393,7 +5395,17 @@ const reportHeadersScenario: VisualCaptureScenario = {
       expect(fullscreenBounds.y + fullscreenBounds.height).toBeLessThanOrEqual(
         geometry.rowBottom + 1,
       );
-    } else expect(fullscreenBounds.y).toBeGreaterThanOrEqual(geometry.cardBottom);
+    } else {
+      // An open card's shared action bar floats outside the card (0303fc2b): above it,
+      // beside it, or below it, never over the title or body.
+      const { card: box } = geometry;
+      expect(
+        fullscreenBounds.y + fullscreenBounds.height <= box.top ||
+          fullscreenBounds.y >= box.bottom ||
+          fullscreenBounds.x + fullscreenBounds.width <= box.left ||
+          fullscreenBounds.x >= box.right,
+      ).toBe(true);
+    }
     await fullscreen.click();
     const reader = page.getByRole("dialog", { name: title, exact: true });
     await expect(reader).toContainText("The report remains readable.");

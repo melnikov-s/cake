@@ -6,6 +6,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { seedCakeChatHistory, seedPermanentChatHistory } from "./durable-chat-fixture";
+import { chooseNextNativeMenuItem } from "./fixtures/native-menu";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -60,22 +61,8 @@ test("Remove only releases the active Project Chat dialog and leaves Cake intera
     });
     await projectButton.click();
     await expect(page.getByText("PRESERVED_PROJECT_HISTORY", { exact: true })).toBeVisible();
-    // Select the real native menu action without showing an OS popup.
-    await app.evaluate(({ Menu }) => {
-      const build = Menu.buildFromTemplate.bind(Menu);
-      Menu.buildFromTemplate = (template) => {
-        const menu = build(template);
-        const remove = menu.items.find((item) => item.label === "Remove Project…");
-        if (remove) {
-          Menu.buildFromTemplate = build;
-          menu.popup = (options) => {
-            remove.click(remove, options!.window!, { triggeredByAccelerator: false });
-            options?.callback?.();
-          };
-        }
-        return menu;
-      };
-    });
+    // Hidden windows cannot drive the OS popup; the shared chooser keeps the real item.
+    await chooseNextNativeMenuItem(app, "Remove Project…");
     await projectButton.click({ button: "right" });
     const dialog = page.getByRole("alertdialog", { name: "Remove Removal fixture?" });
     await expect(dialog).toBeVisible();

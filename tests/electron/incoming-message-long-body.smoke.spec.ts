@@ -100,8 +100,17 @@ test("an expanded long incoming message is fully reachable", async () => {
       })
       .toBeLessThanOrEqual(0);
     // The card's source link is the shared Open source action (dc869d46), shown on hover.
-    await card.hover();
-    await expect(card.getByRole("link", { name: "Open source", exact: true })).toBeVisible();
+    // While the card still runs under the composer, its floating action bar has nowhere to
+    // sit outside it (0303fc2b); reading on to the card's end brings the bar into view.
+    const source = card.getByRole("link", { name: "Open source", exact: true });
+    await expect
+      .poll(async () => {
+        await page.mouse.move(box.x + box.width / 2, 300);
+        if (await source.isVisible()) return true;
+        await page.mouse.wheel(0, 400);
+        return false;
+      })
+      .toBe(true);
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

@@ -61,7 +61,8 @@ for (const theme of ["dark", "light"] as const) {
       });
       expect(marker).toMatchObject({
         width: "2px",
-        height: "20px",
+        // Content rows are 32px tall (fc5d8353); the marker is inset 8px top and bottom.
+        height: "16px",
         position: "absolute",
         pointerEvents: "none",
       });

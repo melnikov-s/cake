@@ -112,8 +112,16 @@ for (const theme of ["dark", "light"] as const)
           fullscreen: box(".fullscreen-trigger"),
         };
       });
+      // The shared action bar keeps its footer row below the card; its toolbar may float
+      // above or beside a tall open card (0303fc2b), but never over it.
       expect(geometry.actions.y).toBeGreaterThanOrEqual(geometry.card.bottom);
-      expect(geometry.fullscreen.y).toBeGreaterThanOrEqual(geometry.card.bottom);
+      const { card: box, fullscreen: button } = geometry;
+      expect(
+        button.bottom <= box.top ||
+          button.top >= box.bottom ||
+          button.right <= box.left ||
+          button.left >= box.right,
+      ).toBe(true);
       await sourceToggle.evaluate((button) => button.blur());
       await page.mouse.move(1, 1);
       await expect(toolbar).toHaveCSS("opacity", "0");
