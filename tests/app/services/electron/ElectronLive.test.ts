@@ -252,7 +252,16 @@ describe("ElectronLive client state", () => {
           dictionarySuggestions: ["word", "rod", "wood", "road", "row", "sixth"],
           editFlags: { canCut: true, canCopy: false, canPaste: true },
         };
-        owner.webContents.emit("context-menu", {}, params);
+        vi.useFakeTimers();
+        try {
+          owner.webContents.emit("context-menu", {}, params);
+          // An editable's generic menu waits briefly for a late composer request.
+          expect(native.popup).not.toHaveBeenCalled();
+          vi.advanceTimersByTime(150);
+        } finally {
+          vi.useRealTimers();
+        }
+        expect(native.popup).toHaveBeenCalledOnce();
         expect(native.template.filter((item) => item.label).map((item) => item.label)).toEqual(
           params.dictionarySuggestions.slice(0, 5),
         );
@@ -462,6 +471,53 @@ describe("ElectronLive client state", () => {
           "Reword with Prompt…",
         ]);
         expect(owner.webContents.listenerCount("destroyed")).toBe(destroyedListeners);
+      }),
+  );
+
+  it.effect(
+    "a composer request arriving after Chromium's native event still shows Cake's composer menu",
+    () =>
+      Effect.gen(function* () {
+        native.destroyed = false;
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        yield* electron.start(windowLifecycle);
+        Context.get(context, ClientWorkspaces).associateWorkspace(1, "/project");
+        const owner = electron.windowsForWorkspace("/project")[0]![1];
+        native.fromWebContents.mockReturnValue(owner);
+        native.fromId.mockReturnValue(owner.webContents);
+        native.popup.mockImplementation(({ callback }) => {
+          const item = native.template.find((entry) => entry.label === "Insert model reference");
+          if (!item?.click) throw new Error("Missing composer action");
+          Reflect.apply(item.click, undefined, []);
+          callback?.();
+        });
+        // Chromium's native event wins the race with the renderer's composer request.
+        owner.webContents.emit(
+          "context-menu",
+          {},
+          {
+            isEditable: true,
+            misspelledWord: "",
+            dictionarySuggestions: [],
+            editFlags: { canCut: true, canCopy: true, canPaste: true },
+          },
+        );
+        expect(
+          yield* electron.showComposerContextMenu(1, {
+            selection: "",
+            x: 24,
+            y: 48,
+            canInsertModel: true,
+            canInsertSession: true,
+            canMoveDraft: false,
+            canReword: false,
+          }),
+        ).toEqual({ action: "insert-model" });
+        expect(native.popup).toHaveBeenCalledOnce();
+        // The held native event is consumed; the generic edit menu never follows.
+        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
+        expect(native.popup).toHaveBeenCalledOnce();
       }),
   );
 

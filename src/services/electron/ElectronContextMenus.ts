@@ -21,6 +21,9 @@ interface ElectronContextMenuOptions {
   readonly reportClipboardError: (window: BrowserWindow, error: unknown) => void;
 }
 
+/** How long an editable's native context menu waits for a late composer menu request. */
+const COMPOSER_MENU_REQUEST_GRACE_MS = 150;
+
 const electronError = (cause: unknown) =>
   new ElectronError({ message: cause instanceof Error ? cause.message : String(cause) });
 
@@ -47,6 +50,13 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
       show(params: ContextMenuParams): void;
       dismiss(): void;
     }
+  >();
+  // The renderer's composer request and Chromium's native event travel separately, so the
+  // native event can arrive first. Hold an editable's native params briefly for that request
+  // instead of showing the generic edit menu without Cake's composer actions.
+  const unclaimedEditableMenus = new Map<
+    number,
+    { params: ContextMenuParams; timer: ReturnType<typeof setTimeout> }
   >();
   const spellingItems = (
     sender: WebContents,
@@ -187,6 +197,12 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
                   menu.popup({ window: owner, x: request.x, y: request.y, callback: dismiss });
                 },
               });
+              const unclaimed = unclaimedEditableMenus.get(sender.id);
+              if (unclaimed) {
+                clearTimeout(unclaimed.timer);
+                unclaimedEditableMenus.delete(sender.id);
+                composerMenus.get(sender.id)?.show(unclaimed.params);
+              }
             }),
           catch: electronError,
         });
@@ -334,12 +350,8 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
   return {
     operations,
     installEditMenu: (window: BrowserWindow) => {
-      window.webContents.on("context-menu", (_event, params) => {
-        const composer = composerMenus.get(window.webContents.id);
-        if (composer) {
-          composer.show(params);
-          return;
-        }
+      const id = window.webContents.id;
+      const showEditMenu = (params: ContextMenuParams) => {
         if (
           !params.isEditable &&
           !params.selectionText &&
@@ -364,9 +376,31 @@ export const makeElectronContextMenus = (options: ElectronContextMenuOptions) =>
             { role: "selectAll" },
           );
         Menu.buildFromTemplate(template).popup({ window });
+      };
+      window.webContents.on("context-menu", (_event, params) => {
+        const composer = composerMenus.get(id);
+        if (composer) {
+          composer.show(params);
+          return;
+        }
+        if (params.isEditable) {
+          const previous = unclaimedEditableMenus.get(id);
+          if (previous) clearTimeout(previous.timer);
+          unclaimedEditableMenus.set(id, {
+            params,
+            timer: setTimeout(() => {
+              unclaimedEditableMenus.delete(id);
+              if (!window.isDestroyed()) showEditMenu(params);
+            }, COMPOSER_MENU_REQUEST_GRACE_MS),
+          });
+          return;
+        }
+        showEditMenu(params);
       });
     },
     stop: () => {
+      for (const { timer } of unclaimedEditableMenus.values()) clearTimeout(timer);
+      unclaimedEditableMenus.clear();
       for (const composer of composerMenus.values()) composer.dismiss();
       for (const menu of openSessionContextMenus) menu.closePopup();
       openSessionContextMenus.clear();

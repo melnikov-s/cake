@@ -394,7 +394,8 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     process.platform !== "darwin" || process.arch !== "arm64",
     "Parakeet installation targets Apple Silicon",
   );
-  test.setTimeout(90_000);
+  // One long journey with two relaunches; the annotation confirmations add steps.
+  test.setTimeout(150_000);
   const { root, userData, cakeHome, sessionId, dictation, model, configure, launch } =
     await dictationFixture();
   let application = await launch();
@@ -949,6 +950,12 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(indicator).toHaveText("Listening");
     await configure({ ready: true, text: "Continued off focus" });
     await expect(edit).toHaveValue(annotationText + " Continued off focus");
+    // Leaving an edited annotation asks first (b71a07ad); submitting keeps the dictated edit
+    // once its dictation finishes.
+    await composer.click();
+    const unsubmitted = page.getByRole("alertdialog", { name: "Unsubmitted annotation" });
+    await unsubmitted.getByRole("button", { name: "Submit", exact: true }).click();
+    await expect(unsubmitted).toHaveCount(0);
     await configure({ ready: true, hold: true });
     await composer.click();
     await expect(details).toHaveCount(0);
@@ -982,7 +989,10 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(edit).toBeFocused();
     await expect(details).toBeVisible();
     await expect(page.getByRole("button", { name: "Unmute dictation" })).toBeVisible();
+    // Escape from a changed edit asks first (b71a07ad); discarding returns to the details.
     await edit.press("Escape");
+    await unsubmitted.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(unsubmitted).toHaveCount(0);
     await expect(edit).toHaveCount(0);
     await expect(details).toBeVisible();
     await page.keyboard.press("Escape");
