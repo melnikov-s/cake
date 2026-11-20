@@ -13,13 +13,9 @@ async function expectTitlebarAlignment(application: ElectronApplication, page: P
   let center = lights!.y + 7;
   const breadcrumb = page.getByRole("navigation", { name: "Conversation breadcrumb" });
   const first = breadcrumb.getByRole("button").first();
-  const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
-  const targets = [
-    first,
-    workspace.getByRole("button", { name: /^To-dos / }),
-    workspace.getByRole("button", { name: /^Sessions / }),
-    page.getByRole("button", { name: "Close Workspace", exact: true }),
-  ];
+  // The shell header carries the breadcrumb and the Workspace toggle on the traffic-light line;
+  // the Workspace's own To-dos/Sessions strip sits below it (468c9f44, 3d30e85c).
+  const targets = [first, page.getByRole("button", { name: "Close Workspace", exact: true })];
   await expect
     .poll(async () => {
       lights = await window.evaluate((native) => native.getWindowButtonPosition());

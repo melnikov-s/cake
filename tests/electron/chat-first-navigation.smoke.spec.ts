@@ -120,17 +120,21 @@ test("project home and native Browser keep conversation drafts, companion identi
       "Keyboard Editing & Navigation",
     );
 
-    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
-    await workspace.getByRole("button", { name: /^To-dos / }).click();
-    await workspace
+    // In Browser Mode, To-dos share the tool companion pane with Chat through its tabs.
+    const companionTabs = page.getByRole("group", { name: "Companion content", exact: true });
+    const companion = page.locator("#workspace-companion");
+    await companionTabs.getByRole("button", { name: "Todos", exact: true }).click();
+    // Hover, not click: clicking a to-do title focuses its Project Chat on that to-do.
+    await companion
       .getByRole("button", { name: "Review conversation navigation", exact: true })
-      .click();
-    await workspace
+      .hover();
+    await companion
       .getByRole("button", {
         name: "Attach to-do as context: Review conversation navigation",
         exact: true,
       })
       .click();
+    await companionTabs.getByRole("button", { name: "Chat", exact: true }).click();
     await expect(
       page.getByRole("button", {
         name: "Remove To-do · Review conversation navigation",
@@ -231,18 +235,23 @@ test("Discussion-owned subagent launches through supported controls and its rele
     await scenario.prepare(page, "sessions", application);
     const tree = page.getByRole("region", { name: "Sessions", exact: true });
     await tree.getByRole("button", { name: /^Focus restoration(?: |$)/ }).click();
+    // Open the Side chats menu of the selected Session, not the one being replaced.
+    await expect(
+      page.getByRole("navigation", { name: "Conversation breadcrumb" }).getByRole("button").last(),
+    ).toHaveText("Focus restoration");
     await page.getByRole("button", { name: /^Side chats/ }).click();
     await page
       .getByRole("dialog", { name: "Open side chats" })
       .getByRole("button", { name: "Selection-path audit", exact: true })
       .click();
+    // The released worker's history opens from its delivered report (the Side chats menu
+    // lists only side chats since 3eebcea3).
     const discussion = page.getByRole("complementary", { name: "Side chat", exact: true });
-    await discussion.getByRole("button", { name: /^Side chats and subagents,/ }).click();
-    const menu = page.getByRole("dialog", { name: "Open side chats" });
-    await expect(
-      menu.getByRole("button", { name: "Nested discussion review", exact: true }),
-    ).toContainText("Resources released");
-    await menu.getByRole("button", { name: "Nested discussion review", exact: true }).click();
+    await discussion
+      .getByRole("region", { name: "Message from another session" })
+      .filter({ hasText: "Nested discussion review" })
+      .getByRole("link", { name: "Open source", exact: true })
+      .click();
     await expect(page.getByText(/Nested review complete\./)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
       "Selection-path audit",

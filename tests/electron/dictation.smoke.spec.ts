@@ -280,14 +280,16 @@ for (const referenceKind of ["Model", "Session"] as const) {
         await expect(composer).toBeFocused();
         await expect(indicator).toHaveText("Listening");
 
-        // Outside dismissal must not resume in a different control. The open picker covers the
-        // toolbar, so dismiss it by clicking the transcript.
+        // Outside dismissal must not resume in a different control. The session picker covers
+        // the toolbar, so it is dismissed from the transcript instead of Model configuration.
         await openMenu();
         await finishMenu(true);
         await expect(reference).toBeVisible();
-        await page.getByText("Inspect this implementation before changing it.").click();
+        if (referenceKind === "Model") await configuration.click();
+        else await page.getByText("Inspect this implementation before changing it.").click();
         await expect(reference).toBeHidden();
         await expect(indicator).toHaveCount(0);
+        if (referenceKind === "Model") await page.keyboard.press("Escape");
         await composer.focus();
         await expect(indicator).toHaveText("Listening");
 

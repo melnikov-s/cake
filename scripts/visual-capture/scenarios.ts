@@ -1834,6 +1834,11 @@ async function retainArtifactBrowser(
   );
 }
 
+/** seedArtifactScenario's Session, opened explicitly because launch starts in Cake Chat. */
+async function openArtifactScenarioSession(page: Page) {
+  await openSeededSession(page, "Cake architecture", "Explain how Cake");
+}
+
 async function seedArtifactScenario(
   paths: ScenarioFixturePaths,
   theme: "light" | "dark",
@@ -2065,6 +2070,7 @@ export default function Visual() {
     );
   },
   async prepare(page, state) {
+    await openArtifactScenarioSession(page);
     await page
       .locator(".transcript")
       .first()
@@ -2392,6 +2398,7 @@ const automationApprovedWalkthrough: VisualCaptureScenario = {
     );
   },
   async prepare(page, state) {
+    await openArtifactScenarioSession(page);
     const disclosure = page.locator('[data-slot="artifact-disclosure"]').first();
     await expect(disclosure.locator("iframe").contentFrame().locator(".walkthrough")).toBeVisible();
     await disclosure
@@ -2589,6 +2596,7 @@ document.querySelector("button").onclick = (event) => {
       );
     },
     async prepare(page, state) {
+      await openArtifactScenarioSession(page);
       const host = page.locator('[data-slot="artifact-disclosure"]').first();
       const frame = host.locator("iframe").contentFrame();
       await expect(frame.getByRole("heading", { name: /Live Cake theme/ })).toBeVisible();
@@ -2659,6 +2667,7 @@ const requestExplanationScenario: VisualCaptureScenario = {
     });
   },
   async prepare(page, state) {
+    await openArtifactScenarioSession(page);
     await page.getByRole("button", { name: "1 artifacts" }).click();
     await page
       .getByRole("dialog", { name: "Artifacts", exact: true })

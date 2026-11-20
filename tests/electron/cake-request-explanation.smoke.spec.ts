@@ -46,7 +46,9 @@ for (const theme of ["light", "dark"] as const) {
       expect(nextBox!.y + nextBox!.height).toBeLessThanOrEqual(900);
       const globals = await frame.locator("body").evaluate(() => ({
         node: "process" in globalThis,
-        hostBridge: "cake" in globalThis,
+        // The sandbox has the postMessage widget SDK as `cake` (dfb48756), never the host
+        // preload bridge, whose only member is `rpc`.
+        hostBridge: "rpc" in ((globalThis as { cake?: object }).cake ?? {}),
         requestCapability: "cakeRequest" in globalThis,
         horizontalOverflow: document.body.scrollWidth > document.body.clientWidth,
       }));

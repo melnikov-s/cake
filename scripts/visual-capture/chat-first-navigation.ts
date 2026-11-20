@@ -730,13 +730,11 @@ export function createChatFirstNavigationScenario(
               rail.getByRole("img", { name: "Work running in cake", exact: true }),
             ).toBeVisible();
           } else {
-            await page.getByRole("button", { name: /^Side chats and subagents,/ }).click();
+            // Running workers are summarized by the composer Activity disclosure; the Side chats
+            // menu lists only side chats (3eebcea3).
             await expect(
-              page
-                .getByRole("dialog", { name: "Open side chats" })
-                .getByRole("img", { name: "Running", exact: true }),
-            ).toHaveCount(3);
-            await page.keyboard.press("Escape");
+              page.getByRole("button", { name: /^Activity · 3 running/ }),
+            ).toBeVisible();
           }
           runningStarted = true;
           if (
@@ -1018,13 +1016,13 @@ export function createChatFirstNavigationScenario(
             await expect
               .poll(async () => (await nestedRecord(true))?.parentSessionId, { timeout: 20_000 })
               .toBe(discussionSidecarId);
+            // Released subagents reopen from their delivered report's source link; the Side
+            // chats menu lists only side chats since 3eebcea3.
             await page
               .getByRole("complementary", { name: "Side chat", exact: true })
-              .getByRole("button", { name: /^Side chats and subagents,/ })
-              .click();
-            await page
-              .getByRole("dialog", { name: "Open side chats" })
-              .getByRole("button", { name: nestedTask, exact: true })
+              .getByRole("region", { name: "Message from another session" })
+              .filter({ hasText: nestedTask })
+              .getByRole("link", { name: "Open source", exact: true })
               .click();
             await expect(page.getByText(/Nested review complete\./)).toBeVisible({
               timeout: 20_000,
@@ -1036,11 +1034,9 @@ export function createChatFirstNavigationScenario(
           if (state === "nested-subagent") {
             await page
               .getByRole("complementary", { name: "Side chat", exact: true })
-              .getByRole("button", { name: /^Side chats and subagents,/ })
-              .click();
-            await page
-              .getByRole("dialog", { name: "Open side chats" })
-              .getByRole("button", { name: "Nested selection review", exact: true })
+              .getByRole("region", { name: "Message from another session" })
+              .filter({ hasText: "Nested selection review" })
+              .getByRole("link", { name: "Open source", exact: true })
               .click();
             await expect(
               page.locator('[data-slot="focused-secondary-conversation"]'),
@@ -1051,15 +1047,15 @@ export function createChatFirstNavigationScenario(
             .locator(`[data-session-id="${sessions[0][0]}"]`)
             .getByRole("button", { name: /^UI Layout Refactor(?: |$)/ })
             .click();
-          await page.getByRole("button", { name: /^Side chats and subagents,/ }).click();
           if (state === "side-chats-menu") {
+            await page.getByRole("button", { name: /^Side chats/ }).click();
             await settle();
             return;
           }
+          // Running subagents open from the composer Activity disclosure (3eebcea3).
+          await page.getByRole("button", { name: /^Activity · \d+ running/ }).click();
           await page
-            .getByRole("dialog", { name: "Open side chats" })
-            .getByRole("button", { name: "Breadcrumb audit", exact: true })
-            .filter({ hasText: "Working…" })
+            .getByRole("button", { name: "Inspect subagent: Breadcrumb audit", exact: true })
             .click();
           await expect(
             page.getByText("Reviewing the conversation lineage…", { exact: true }),

@@ -9,6 +9,8 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { researchMarkdown } from "../fixtures/subagent-report";
 import { verifyInlineActivity } from "./fixtures/activity-disclosure";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { showSessions } from "./fixtures/workspace-navigation";
+import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -207,8 +209,10 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     ).toBeVisible();
     const foreground = page.locator(".workbench-composer").filter({ has: composer });
     await expect(foreground.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    // Cake Chat's running activity lives on its Sessions row since 582d0fc7.
+    await showSessions(page);
     const sidebarRunning = page
-      .locator('[data-slot="cake-chat-group"]')
+      .locator(`[data-slot="conversation-navigator-row"][data-session-id="${CAKE_CHAT_SESSION_ID}"]`)
       .getByRole("img", { name: "Running", exact: true });
     await expect(sidebarRunning).toBeVisible();
     const activity = page
