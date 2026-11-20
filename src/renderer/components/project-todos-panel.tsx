@@ -40,6 +40,8 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
   const projectPath = store.source?.scope;
   const list = useRef<LegendListRef>(null);
   const [focusedKey, setFocusedKey] = useState<string>();
+  // Pointer focus is retained only after its press completes (see onFocusCapture).
+  const pointerPress = useRef<{ key?: string } | undefined>(undefined);
   // Scroll promises can settle before React commits the destination. The row ref
   // completes navigation on its actual mount instead of racing the virtualizer.
   const pending = useRef<{ key: string; apply(element: HTMLElement): void } | undefined>(undefined);
@@ -207,11 +209,28 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
           ? { keys: [focusedKey] }
           : undefined
       }
+      onPointerDownCapture={() => {
+        const press: { key?: string } = {};
+        pointerPress.current = press;
+        const release = () => {
+          window.removeEventListener("pointerup", release, true);
+          window.removeEventListener("pointercancel", release, true);
+          if (pointerPress.current !== press) return;
+          pointerPress.current = undefined;
+          // After the click has been dispatched to the pressed control.
+          if ("key" in press) setTimeout(() => setFocusedKey(press.key));
+        };
+        window.addEventListener("pointerup", release, true);
+        window.addEventListener("pointercancel", release, true);
+      }}
       onFocusCapture={(event) => {
         if (!(event.target instanceof HTMLElement)) return;
-        setFocusedKey(
-          event.target.closest<HTMLElement>("[data-todo-virtual-key]")?.dataset.todoVirtualKey,
-        );
+        const key =
+          event.target.closest<HTMLElement>("[data-todo-virtual-key]")?.dataset.todoVirtualKey;
+        // Changing alwaysRender re-renders the row over the pressed control, so a quick release
+        // misses it and the click falls through to the row's details disclosure.
+        if (pointerPress.current) pointerPress.current.key = key;
+        else setFocusedKey(key);
       }}
       onBlurCapture={(event) => {
         if (

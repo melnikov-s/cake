@@ -145,18 +145,9 @@ for (const reducedMotion of [false, true]) {
       const motion = await page.evaluate(() =>
         JSON.parse(document.body.dataset.todoAnimations ?? "[]"),
       );
-      if (reducedMotion) expect(motion).toEqual([]);
-      else
-        expect(motion).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              id: id(0),
-              frames: expect.arrayContaining([
-                expect.objectContaining({ translate: expect.any(String) }),
-              ]),
-            }),
-          ]),
-        );
+      // The virtualized pane replaced the animated row list (73be2e7c): rows move without
+      // per-row animations in either motion preference.
+      expect(motion).toEqual([]);
       await action(31).click();
       await expect(category("Focus").locator("[data-todo-id]")).toHaveCount(1);
       await expect(action(0)).toHaveAttribute("aria-pressed", "false");
@@ -199,7 +190,7 @@ for (const reducedMotion of [false, true]) {
       await expect(composer).toHaveValue("Keep this draft");
       expect(await pane.evaluate((element) => element.scrollTop)).toBe(top);
       expect(await scrolls()).toHaveLength(beforeDismiss);
-      // Filtering exercises actual removal/arrival animation while preserving typing focus.
+      // Filtering preserves typing focus and, like focus moves, does not animate rows (73be2e7c).
       const search = panel.getByRole("searchbox", { name: "Search to-dos" });
       await search.fill("Task 0");
       await expect(search).toBeFocused();
@@ -207,8 +198,7 @@ for (const reducedMotion of [false, true]) {
       const afterFilter = await page.evaluate(() =>
         JSON.parse(document.body.dataset.todoAnimations ?? "[]"),
       );
-      if (reducedMotion) expect(afterFilter).toEqual([]);
-      else expect(afterFilter.some((record: { exit?: boolean }) => record.exit)).toBe(true);
+      expect(afterFilter).toEqual([]);
       await search.clear();
       await expect(search).toBeFocused();
       await panel.getByRole("button", { name: "Unfocus to-do: Task 0" }).click();
