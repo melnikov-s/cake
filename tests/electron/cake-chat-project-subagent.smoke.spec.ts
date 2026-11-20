@@ -1,6 +1,6 @@
 import { createServer, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
@@ -67,10 +67,15 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     let body = "";
     for await (const chunk of request) body += chunk;
     const parsed: unknown = JSON.parse(body);
-    if (body.includes("temporary general research investigator")) {
+    // Classify by request structure, not prompt wording: utility completions carry no tools,
+    // and only subagents receive message_parent.
+    const tools = JSON.stringify((parsed as { tools?: unknown[] }).tools ?? []);
+    const subagent = tools.includes('"message_parent"');
+    if (tools === "[]") reply(response, "Fixture utility result");
+    else if (subagent && body.includes("Compare Godot and Three.js")) {
       researchRequests.push(parsed);
       reply(response, researchMarkdown);
-    } else if (body.includes("## Project investigation worker")) {
+    } else if (subagent) {
       workerRequests.push(parsed);
       if (workerRequests.length === 1)
         reply(response, { name: "read", arguments: { path: "config.ts" } });
@@ -251,7 +256,8 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await expect(activity).toBeFocused();
     await activity.click();
     await activityMenu.getByRole("button", { name: /^Inspect subagent:/ }).click();
-    const panel = page.getByRole("complementary", { name: "Subagent" });
+    // Subagents open as the focused secondary conversation, not a side panel.
+    const panel = page.getByRole("region", { name: "Subagent", exact: true });
     await expect(panel).toBeVisible();
     await expect.poll(() => workerRequests.length).toBe(2);
     await expect(panel.getByRole("combobox", { name: "Message subagent" })).toBeVisible();
@@ -277,7 +283,7 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await expect(activity).toHaveCount(0);
     await expect(sidebarRunning).toHaveCount(0);
     // A second assistant-authored delivery must retain the same provenance as launch.
-    await panel.getByRole("button", { name: "Close Subagent" }).click();
+    await page.getByRole("button", { name: "Back to source conversation", exact: true }).click();
     await composer.fill("Ask the worker for a formatted follow-up");
     await page
       .locator('[data-slot="composer-dock"]')
@@ -338,11 +344,12 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await expect(
       panel.locator('[data-slot="message-label"]').filter({ hasText: /^You$/ }),
     ).toHaveCount(1);
-    await panel.getByRole("button", { name: "Close Subagent" }).click();
+    await page.getByRole("button", { name: "Back to source conversation", exact: true }).click();
     await composer.click();
     await composer.pressSequentially("Research Godot and Three.js without a project");
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    const report = page.locator('[data-slot="subagent-report"]');
+    // The project worker's report is also in this chat; select the general researcher's.
+    const report = page.locator('[data-slot="subagent-report"]').filter({ hasText: "Godot" });
     await expect(report.getByText("Completed", { exact: true })).toBeVisible({ timeout: 20_000 });
     const disclosure = report.locator('[data-slot="response-disclosure"]');
     await expect(disclosure).toHaveAttribute("aria-expanded", "false");
@@ -373,7 +380,14 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     );
     expect(JSON.stringify(researchRequests)).not.toContain("PROJECT_CONTEXT_SENTINEL");
     expect(JSON.stringify(researchRequests)).not.toContain("PRIVATE_TOOL_OUTPUT");
-    expect(JSON.stringify(researchRequests)).toContain("web/search access is not guaranteed");
+    // The researcher runs on the shipped general-research prompt (wording compacted in 3eebcea3).
+    const researchPrompt = (
+      await readFile(
+        join(repositoryRoot, "src/services/pi/runtime/prompts/general-research.md"),
+        "utf8",
+      )
+    ).split("\n")[0]!;
+    expect(JSON.stringify(researchRequests)).toContain(JSON.stringify(researchPrompt).slice(1, -1));
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     await page.reload();
     await expect(disclosure).toHaveAttribute("aria-expanded", "false", { timeout: 20_000 });
@@ -394,7 +408,14 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     const workerContext = JSON.stringify(workerRequests);
     expect(workerContext).toContain("PROJECT_CONTEXT_SENTINEL");
     expect(workerContext).toContain("PRIVATE_TOOL_OUTPUT");
-    expect(workerContext).toContain("Refuse mutation requests even if your parent");
+    // Read-only workers carry the shipped investigation-only policy (wording compacted in 3eebcea3).
+    const investigationOnly = (
+      await readFile(
+        join(repositoryRoot, "src/services/pi/runtime/prompts/worker-investigation-only.md"),
+        "utf8",
+      )
+    ).trim();
+    expect(workerContext).toContain(JSON.stringify(investigationOnly).slice(1, -1));
     expect(JSON.stringify(coordinatorRequests)).not.toContain("PRIVATE_TOOL_OUTPUT");
     expect(await SessionManager.list(project, join(cakeHome, "pi", "subagent-sessions"))).toEqual(
       [],
