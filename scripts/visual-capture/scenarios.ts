@@ -28,6 +28,7 @@ import { cakeColorPalettes } from "../../src/utils/cake-color-palettes.ts";
 import { sessionChangesScenario } from "./session-changes";
 import { createSessionChangesToolbarScenario } from "./session-changes-toolbar";
 import { openAutomations, seedAutomationVisualFixture } from "../../tests/fixtures/automations";
+import { chooseNextNativeMenuItem } from "../../tests/electron/fixtures/native-menu";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
 import {
   seedMessageBoardFixture,
@@ -8796,29 +8797,30 @@ const compactComposerScenario: VisualCaptureScenario = {
     if (annotation) {
       if (!application) throw new Error("Annotation selection requires Electron");
       // Keep the real selection and context-menu workflow; replace only the native popup.
-      await application.evaluate(({ Menu }) => {
-        const build = Menu.buildFromTemplate.bind(Menu);
-        Menu.buildFromTemplate = (template) => {
-          const menu = build(template);
-          menu.popup = (options) => {
-            const item = menu.items.find((item) => item.label === "Add annotation");
-            if (!item?.click || !options?.window)
-              throw new Error("Missing annotation action window");
-            item.click(item, options.window, { triggeredByAccelerator: false });
-            options.callback?.();
-          };
-          return menu;
-        };
-      });
+      await chooseNextNativeMenuItem(application, "Add annotation");
       const message = page.getByText("widgets.instantiate accepts a skillTemplate plus content.", {
         exact: true,
       });
-      await message.dblclick();
-      const rect = (await message.boundingBox())!;
-      await message.dispatchEvent("contextmenu", {
-        clientX: rect.x + rect.width / 2,
-        clientY: rect.y + rect.height / 2,
+      // Select a plain word (the first is a file link) and open its real context menu there.
+      const word = await message.evaluate((element) => {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const offset = node.textContent?.indexOf("plus") ?? -1;
+          if (offset < 0) continue;
+          const range = document.createRange();
+          range.setStart(node, offset);
+          range.setEnd(node, offset + 4);
+          const word = range.getBoundingClientRect();
+          const box = element.getBoundingClientRect();
+          return {
+            x: word.left - box.left + word.width / 2,
+            y: word.top - box.top + word.height / 2,
+          };
+        }
+        throw new Error("Missing annotation target word");
       });
+      await message.dblclick({ position: word });
+      await message.click({ button: "right", position: word });
     } else {
       await page
         .getByRole("button", { name: "Ask session assistant", exact: true })

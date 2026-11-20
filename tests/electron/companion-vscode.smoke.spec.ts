@@ -7,6 +7,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 import { installLocalModelHttpGuard } from "./main-harness";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 function chunk(delta: object, finishReason: string | null = null) {
@@ -107,8 +108,10 @@ test("Companion discovers VS Code scripting, arranges editors and configures the
   try {
     await installLocalModelHttpGuard(application, origin);
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat; open the seeded Project Session explicitly.
+    await openSession(page, "Let's discuss this project.");
     const trigger = page.getByRole("button", { name: "Ask session assistant", exact: true });
-    await expect(trigger).toBeVisible({ timeout: 20_000 });
+    await expect(trigger).toBeVisible();
     await trigger.click({ button: "right" });
     const dialog = page.getByRole("dialog", { name: "Session assistant chat", exact: true });
     const input = dialog.getByRole("combobox", { name: "Message session assistant", exact: true });

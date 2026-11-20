@@ -175,9 +175,15 @@ for (const [surface, theme] of [
         await expectCenterline();
         await input.press("Shift+Tab");
         await expect(voice).toBeFocused();
-        // Both assistant popovers capture Escape to dismiss; Tab follows their
-        // inline DOM order. Annotation's voice control retains Escape-to-input.
-        await voice.press(annotation ? "Escape" : "Tab");
+        // Both assistant popovers capture Escape to dismiss; Tab follows their inline DOM
+        // order. Escape in an annotation with a draft asks before discarding (b71a07ad);
+        // Keep editing returns to the input.
+        if (annotation) {
+          await voice.press("Escape");
+          const confirmation = page.getByRole("alertdialog", { name: "Unsubmitted annotation" });
+          await confirmation.getByRole("button", { name: "Keep editing", exact: true }).click();
+          await expect(input).toHaveValue(draft);
+        } else await voice.press("Tab");
         await expect(input).toBeFocused();
         await voice.click();
         await expect(voice).toHaveAttribute("aria-pressed", "false");

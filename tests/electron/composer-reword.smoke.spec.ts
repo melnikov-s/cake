@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type Locator } from "@playwright/test";
-import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 import { windowState } from "../fixtures/window-state";
+import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { chooseNextNativeMenuItem } from "./fixtures/native-menu";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -31,7 +32,9 @@ async function expectQuickReplyLayout(dialog: Locator, trigger: Locator, viewpor
     expect(
       Math.abs(bounds.height - Math.min(content.height, 288, viewportHeight * 0.6)),
     ).toBeLessThanOrEqual(1);
-    expect(bounds.x + bounds.width).toBeLessThanOrEqual(anchor.x);
+    // The reply sits beside the trigger without covering it: left when there is room, else
+    // flipped right. The compact rail (582d0fc7) leaves no room on the left at this width.
+    expect(bounds.x + bounds.width <= anchor.x || bounds.x >= anchor.x + anchor.width).toBe(true);
     expect(bounds.y).toBeGreaterThanOrEqual(8);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewportHeight - 8);
     expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
@@ -177,23 +180,46 @@ test("rewords composer text and opens the focused session assistant", async () =
   try {
     const page = await application.firstWindow();
     await page.emulateMedia({ colorScheme: "light" });
+    // Launch starts in global Cake Chat; stage a new Session in the Project explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
-    await expect(composer).toBeVisible({ timeout: 20_000 });
+    await expect(composer).toBeVisible();
     await composer.fill("Before rough ramble after");
-    await composer.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(7, 19));
+    // Select "rough ramble" with the keyboard, as a user would.
+    const selectRoughRamble = async () => {
+      await composer.focus();
+      await composer.press("Home");
+      for (let index = 0; index < 7; index++) await composer.press("ArrowRight");
+      for (let index = 0; index < 12; index++) await composer.press("Shift+ArrowRight");
+      await expect
+        .poll(() =>
+          composer.evaluate((input: HTMLTextAreaElement) =>
+            input.value.slice(input.selectionStart, input.selectionEnd),
+          ),
+        )
+        .toBe("rough ramble");
+    };
+    await selectRoughRamble();
 
-    const harness = await openRpcHarness(application, "composer-reword");
-    const rewritten = await callRpcHarness<{ text: string }>(harness, "invokeNative", {
-      type: "reword-composer-selection",
-      selection: "rough ramble",
+    // Reword through the composer's real context menu (known limit: native popup replaced).
+    await chooseNextNativeMenuItem(application, "Reword");
+    // Right-click inside the selected words so the context menu acts on that selection.
+    const insideSelection = await composer.evaluate((input: HTMLTextAreaElement) => {
+      const style = getComputedStyle(input);
+      const context = document.createElement("canvas").getContext("2d")!;
+      context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      return {
+        x:
+          parseFloat(style.borderLeftWidth) +
+          parseFloat(style.paddingLeft) +
+          context.measureText(input.value.slice(0, 12)).width,
+        y:
+          parseFloat(style.borderTopWidth) +
+          parseFloat(style.paddingTop) +
+          parseFloat(style.lineHeight) / 2,
+      };
     });
-    expect(rewritten).toEqual({ text: "Clear request" });
-    await composer.evaluate((input: HTMLTextAreaElement, text: string) => {
-      input.focus();
-      input.setSelectionRange(7, 19);
-      document.execCommand("insertText", false, text);
-    }, rewritten.text);
-
+    await composer.click({ button: "right", position: insideSelection });
     await expect(composer).toHaveValue("Before Clear request after");
     await expect(composer).toBeFocused();
     await composer.press(process.platform === "darwin" ? "Meta+z" : "Control+z");
@@ -203,10 +229,7 @@ test("rewords composer text and opens the focused session assistant", async () =
     await expect(composer).toHaveValue("Before rough ramble after!");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 
-    await composer.evaluate((input: HTMLTextAreaElement) => {
-      input.focus();
-      input.setSelectionRange(7, 19);
-    });
+    await selectRoughRamble();
     const assistantTrigger = page.getByRole("button", { name: "Ask session assistant" });
     await assistantTrigger.click();
     const quickAssistant = page.getByRole("dialog", { name: "Quick session assistant" });
@@ -233,9 +256,14 @@ test("rewords composer text and opens the focused session assistant", async () =
     await expectQuickComposerLayout();
     const triggerBox = (await assistantTrigger.boundingBox())!;
     const quickInputBox = (await quickAssistant.boundingBox())!;
-    expect(
-      Math.abs(quickInputBox.x + quickInputBox.width / 2 - (triggerBox.x + triggerBox.width / 2)),
-    ).toBeLessThan(2);
+    // Centered over the trigger, clamped to the window's 8px popover inset. The compact rail
+    // (582d0fc7) puts the trigger close enough to the left edge for that clamp to apply.
+    const viewportWidth = await page.evaluate(() => innerWidth);
+    const centeredX = Math.min(
+      Math.max(triggerBox.x + triggerBox.width / 2, 8 + quickInputBox.width / 2),
+      viewportWidth - 8 - quickInputBox.width / 2,
+    );
+    expect(Math.abs(quickInputBox.x + quickInputBox.width / 2 - centeredX)).toBeLessThan(2);
     expect(quickInputBox.y + quickInputBox.height).toBeLessThan(triggerBox.y);
     await quickInput.pressSequentially("Hi");
     await expect(quickInput).toHaveValue("Hi");
@@ -267,8 +295,7 @@ test("rewords composer text and opens the focused session assistant", async () =
       await page.evaluate(() => innerHeight),
     );
     await quickAssistant.screenshot({ path: test.info().outputPath("quick-reply-short.png") });
-    const responseBox = (await quickAssistant.boundingBox())!;
-    expect(responseBox.x + responseBox.width).toBeLessThan(triggerBox.x);
+
     await expect(composer).toHaveValue("Before rough ramble after!");
     expect(prompts).toHaveLength(2);
     expect(prompts[1]).toContain("app-wide companion");
@@ -359,9 +386,19 @@ test("rewords composer text and opens the focused session assistant", async () =
         await expect(replyDialog.getByText("Reply line 24:", { exact: false })).toBeInViewport();
       }
       await replyDialog.screenshot({ path: test.info().outputPath(`quick-reply-${name}.png`) });
-      if (name.startsWith("greeting"))
-        await reopened.getByRole("combobox", { name: "Message", exact: true }).click();
-      else await reopened.keyboard.press("Escape");
+      if (name.startsWith("greeting")) {
+        // Relaunch starts in global Cake Chat (40566199). The reply flips beside the trigger
+        // over the composer's left side, so click the visible end of the composer.
+        const cakeChatComposer = reopened.getByRole("combobox", {
+          name: "Message Cake Chat",
+          exact: true,
+        });
+        const field = (await cakeChatComposer.boundingBox())!;
+        const bubble = (await replyDialog.boundingBox())!;
+        const x = Math.max(bubble.x + bubble.width + 12, field.x + 12) - field.x;
+        expect(x).toBeLessThan(field.width);
+        await cakeChatComposer.click({ position: { x, y: field.height / 2 } });
+      } else await reopened.keyboard.press("Escape");
       await expect(replyDialog).toHaveCount(0);
       if (!name.startsWith("greeting")) await expect(reopenedTrigger).toBeFocused();
     }

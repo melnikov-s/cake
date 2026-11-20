@@ -16,8 +16,11 @@ import {
 } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
 import { openSession, openSettings } from "./fixtures/workspace-navigation";
+import { defaultCakePrompts } from "../../src/contracts/application/cake-prompt-defaults";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+// Identify cleanup requests by the shipped default prompt, not a copy of its wording.
+const dictationCleanupMarker = defaultCakePrompts().dictationCleanup.split("\n")[0]!;
 async function launch({
   reasoning = false,
   recognizeSpeech = false,
@@ -58,7 +61,7 @@ async function launch({
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = Buffer.concat(chunks).toString("utf8");
-    if (postProcessedText !== undefined && body.includes("Lightly clean speech-to-text:")) {
+    if (postProcessedText !== undefined && body.includes(dictationCleanupMarker)) {
       utilityRequests.push(body);
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.end(
@@ -364,6 +367,14 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     await page.getByLabel("Voice", { exact: true }).selectOption("fixture-voice");
     await expect(page.getByLabel("Voice", { exact: true })).toHaveValue("fixture-voice");
     await page.getByLabel("Text processing", { exact: true }).selectOption(processingMode);
+    if (processingMode === "utility") {
+      // Short fixture transcripts clean up only below the minimum-length gate (94aea93e).
+      const minimum = page.getByRole("spinbutton", {
+        name: "Minimum characters for post-processing",
+      });
+      await minimum.fill("0");
+      await expect(minimum).toHaveValue("0");
+    }
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await openSession(page, "Fixture history");
   };
@@ -489,6 +500,8 @@ test("speech input sliders support keyboard input, scope labels, persistence and
         countdownDelaySeconds: 0.25,
         dictationVoiceSend: false,
         dictationSendPhrase: "send it",
+        // Whole-utterance discard filters persist with speech input (6b950882).
+        dictationDiscardFilters: [],
         maximumUtteranceSeconds: 5,
         interruptionWords: 10,
         interruptionWindowMs: 500,
@@ -596,8 +609,9 @@ test("shared sensitivity rejects ambiguous noise in both workflows and lowering 
           .every((request) => request.settings.thresholds.start === 0.85),
       )
       .toBe(true);
-    // A shared setting change applies to the next dictation capture, without
-    // changing voice-only send policy or submitting a dictated draft.
+    // A shared setting change applies to the running dictation capture, without
+    // changing voice-only send policy or submitting a dictated draft. Composer dictation keeps
+    // its one capture while Settings covers the chat (d7d5ccbe, 15de23dc).
     await openSettings(f.page);
     await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await sensitivity.focus();
@@ -618,7 +632,7 @@ test("shared sensitivity rejects ambiguous noise in both workflows and lowering 
             ).processors.length,
         ),
       )
-      .toBe(3);
+      .toBe(2);
     await f.frames([[0.1, 20]]);
     await expect(composer).toHaveValue("Typed prefix: Recognized speech");
     await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
@@ -1705,7 +1719,8 @@ test("speech settings accept a masked key and voice selection through native inp
     await expect(f.page.getByText(/Key configured/)).toBeVisible();
     await expect(f.page.getByLabel("Voice", { exact: true })).toHaveValue("fixture-voice");
     await f.page.reload();
-    // Settings itself is restored by window-state persistence.
+    // Reload starts in global Cake Chat (40566199); reopen Settings explicitly.
+    await openSettings(f.page);
     await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await expect(key).toHaveAttribute("placeholder", "••••••••••••••••");
     await key.focus();

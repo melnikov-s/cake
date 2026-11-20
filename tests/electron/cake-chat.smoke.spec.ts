@@ -9,7 +9,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
-import { openSettings } from "./fixtures/workspace-navigation";
+import { openSettings, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -279,7 +279,12 @@ test("permanent Cake Chat retains its input, history and settings across restart
     expect(JSON.stringify(requests)).not.toContain(privateImage);
     expect(JSON.stringify(requests)).not.toContain("image_url");
     expect(JSON.stringify(requests)).toContain("cake-task-input");
-    const coordinator = page.locator('[data-slot="cake-chat-group"]');
+    // Cake Chat's activity and permanent-chat menu live on its Sessions row since the
+    // sidebar group was removed (582d0fc7).
+    await showSessions(page);
+    const coordinator = page.locator(
+      `[data-slot="conversation-navigator-row"][data-session-id="${CAKE_CHAT_SESSION_ID}"]`,
+    );
     await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
     // No headers or response output have arrived: Stop must interrupt the request,
     // settle Churning, and leave the composer usable without releasing the server.
@@ -336,21 +341,14 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await expect(inspectButton).toBeFocused();
     await page.getByRole("button", { name: "0 artifacts", exact: true }).click();
     await page.getByRole("button", { name: "Browse all artifacts", exact: true }).click();
-    await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
+    await expect(page.getByLabel("Search artifact library")).toBeVisible();
+    // The artifact library covers the Workspace accessory and its Sessions rows (582d0fc7),
+    // so the reply lands while Cake Chat is covered and is read on return.
     releaseFirstReply?.();
-    await expect(coordinator.getByRole("img", { name: "Ready, unread" })).toBeVisible();
-    await interceptMenu(app, "Mark as Read");
-    await coordinator.click({ button: "right" });
-    await expect
-      .poll(() => menuItems(app))
-      .toEqual([
-        { label: "Mark as Read", enabled: true },
-        { label: "Mark as Unread", enabled: false },
-        { label: "Copy Session ID", enabled: true },
-      ]);
-    await expect(coordinator.getByRole("img")).toHaveCount(0);
-    await coordinator.click();
+    await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
     await expect(page.getByText(/^Coordinator reply\./).first()).toBeVisible();
+    await showSessions(page);
+    await expect(coordinator.getByRole("img")).toHaveCount(0);
     await expect(page.locator("[data-context-state]")).toHaveCount(0);
     const database = join(cakeHome, "pi", "global-chat", "coordinator.sqlite");
     await expect
@@ -436,14 +434,19 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await expect(page.getByRole("combobox", { name: "Cake Chat history-view budget" })).toHaveValue(
       "10000",
     );
-    expect(JSON.parse(await readFile(document, "utf8")).data.unreadSessionIds).toContain(
-      CAKE_CHAT_SESSION_ID,
-    );
-    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
-    await expect(page.locator('[data-slot="cake-chat-group"]').getByRole("img")).toHaveCount(0);
+    // Relaunch always opens global Cake Chat first (40566199), which reads it.
     await expect
       .poll(async () => JSON.parse(await readFile(document, "utf8")).data.unreadSessionIds)
       .not.toContain(CAKE_CHAT_SESSION_ID);
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await showSessions(page);
+    await expect(
+      page
+        .locator(
+          `[data-slot="conversation-navigator-row"][data-session-id="${CAKE_CHAT_SESSION_ID}"]`,
+        )
+        .getByRole("img"),
+    ).toHaveCount(0);
     await expect(page.getByText(/^Coordinator reply\./).first()).toBeVisible();
     await expect(page.locator("[data-context-state]")).toHaveCount(0);
     input = page.getByRole("combobox", { name: "Message Cake Chat" });

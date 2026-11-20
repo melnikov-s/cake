@@ -348,7 +348,10 @@ export const Chat = observer(function Chat({
     >
       <div
         className={cn(
-          "relative mx-auto w-full min-w-0 pr-12",
+          "relative mx-auto w-full min-w-0",
+          // Pane composers keep a stable gutter for Scroll to bottom. Embedded popover
+          // composers are narrow, so they reserve it only while the control is shown.
+          (!embedded || bottomNavigation?.conversationId === store.id) && "pr-12",
           composerLeadingAccessory?.content ? "max-w-[58.25rem]" : "max-w-[54.25rem]",
         )}
       >
