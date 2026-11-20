@@ -4223,6 +4223,7 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
     "Project, Browser Mode, VS Code and top terminal title bars, with and without the project sidebar; use --capture native for traffic lights",
   states: [
     "project",
+    "project-hover-focus",
     "project-collapsed",
     "browser",
     "browser-collapsed",
@@ -4297,6 +4298,19 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
               ? navigator.getBoundingClientRect().bottom
               : undefined,
           headerBottom: box.bottom,
+          modeTray: (() => {
+            const group = header.querySelector('[aria-label="Conversation workspace"]')!;
+            const bounds = group.getBoundingClientRect();
+            const buttons = [...group.querySelectorAll("button")].map((button) =>
+              button.getBoundingClientRect(),
+            );
+            return {
+              height: bounds.height,
+              bottom: bounds.bottom,
+              buttons: buttons.map((button) => [button.width, button.height]),
+              gaps: buttons.slice(1).map((b, index) => b.left - buttons[index]!.right),
+            };
+          })(),
           sessionTools: (() => {
             const group = header.querySelector('[data-slot="session-tools"]')!;
             const buttons = [...group.querySelectorAll("button")];
@@ -4304,6 +4318,8 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
             return {
               names: buttons.map((button) => button.getAttribute("aria-label")),
               gaps: bounds.slice(1).map((b, index) => b.left - bounds[index]!.right),
+              height: group.getBoundingClientRect().height,
+              bottom: group.getBoundingClientRect().bottom,
             };
           })(),
           windowCenter: window.innerWidth / 2,
@@ -4336,6 +4352,16 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
       expect(geometry.titleCenter).toBe(geometry.titleBarHeight / 2);
       expect(geometry.actionsCenter).toBe(geometry.titleBarHeight / 2);
       expect(geometry.buttonsContained).toBe(true);
+      expect(geometry.modeTray.height).toBe(26);
+      expect(geometry.headerBottom - geometry.modeTray.bottom).toBe(5);
+      expect(geometry.modeTray.buttons).toEqual([
+        [32, 24],
+        [32, 24],
+        [32, 24],
+      ]);
+      expect(geometry.modeTray.gaps).toEqual([2, 2]);
+      expect(geometry.sessionTools.height).toBe(28);
+      expect(geometry.headerBottom - geometry.sessionTools.bottom).toBe(4);
       expect(geometry.sessionTools.names).toEqual([
         "0 artifacts",
         "Side chats",
@@ -4366,6 +4392,25 @@ const titleBarAlignmentScenario: VisualCaptureScenario = {
         "drag",
       );
       console.log("TITLE_BAR_GEOMETRY", JSON.stringify({ ...geometry, nativeCenter }));
+    }
+    if (state === "project-hover-focus") {
+      const modes = page.getByRole("group", { name: "Conversation workspace" });
+      const main = modes.getByRole("button", { name: "Main", exact: true });
+      const editor = modes.getByRole("button", { name: "VS Code", exact: true });
+      const tools = page.getByRole("group", { name: "Session tools" });
+      const workLog = tools.getByRole("button", { name: "Work log display options" });
+      await expect(main).toHaveAttribute("aria-pressed", "true");
+      // Plain Tab returns to the composer; reverse-tab stays in the toolbar.
+      await modes.getByRole("button", { name: "Browser", exact: true }).press("Shift+Tab");
+      await expect(editor).toBeFocused();
+      await expect(editor).toHaveCSS("outline-style", "solid");
+      await expect(editor).toHaveCSS("outline-offset", "-2px");
+      const restingBackground = await workLog.evaluate(
+        (button) => getComputedStyle(button).backgroundColor,
+      );
+      await workLog.hover();
+      await expect(workLog).not.toHaveCSS("background-color", restingBackground);
+      await expect(workLog).toHaveCSS("background-clip", "padding-box");
     }
   },
   region: (page) => page.locator("body"),

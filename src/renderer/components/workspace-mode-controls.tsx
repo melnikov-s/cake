@@ -5,7 +5,7 @@ import { BrowserIcon, ChatIcon, TerminalIcon, VsCodeIcon } from "./ui/icons";
 import { WorkspaceModeSlot } from "./ui/workspace-header";
 
 const modeButtonClassName =
-  "h-6 w-8 rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-[inset_0_1px_0_var(--surface-rim),0_1px_2px_rgb(0_0_0/0.14)] aria-pressed:hover:bg-card focus-visible:outline-foreground/60";
+  "h-6 w-8 rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-[inset_0_1px_0_var(--surface-rim),0_1px_2px_rgb(0_0_0/0.14)] aria-pressed:hover:bg-card focus-visible:outline-foreground/60 focus-visible:-outline-offset-2";
 
 export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   mode,
@@ -34,7 +34,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
         <div
           role="group"
           aria-label="Conversation workspace"
-          className="inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-foreground/[0.05] p-0.5 select-none"
+          className="inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-foreground/[0.05] px-0.5 py-px select-none"
         >
           <IconButton
             tooltip="Main"
