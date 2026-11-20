@@ -282,7 +282,8 @@ for (const surface of ["project", "global", "session"] as const) {
       await page.keyboard.press(`${modifier}+Enter`);
       await expect(reader).toContainText(ending);
       // A Session opened from search has no earlier visit in its history; go up instead.
-      if (surface === "session") await page.keyboard.press(`${modifier === "Meta" ? "Meta" : "Control"}+Shift+H`);
+      if (surface === "session")
+        await page.keyboard.press(`${modifier === "Meta" ? "Meta" : "Control"}+Shift+H`);
       else await page.keyboard.press(process.platform === "darwin" ? "Meta+[" : "Alt+ArrowLeft");
       await expect(reader).toHaveCount(0);
     } finally {

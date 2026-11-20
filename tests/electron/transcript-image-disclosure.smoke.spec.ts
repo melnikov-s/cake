@@ -108,7 +108,9 @@ for (const global of [false, true]) {
       const transcript = page.locator('[data-slot="session-pane"] .transcript:visible');
       await expect(transcript.locator("figure img")).toHaveCount(3);
       // Virtualized rows are not in DOM order (fc455223); take the first displayed figure.
-      const key = await (await inDisplayOrder(transcript.locator("figure"), "first"))
+      const key = await (
+        await inDisplayOrder(transcript.locator("figure"), "first")
+      )
         .locator('xpath=ancestor::*[@data-slot="transcript-item"]')
         .getAttribute("data-transcript-item-key");
       const shot = transcript.locator(`[data-transcript-item-key='${key}'] figure`);

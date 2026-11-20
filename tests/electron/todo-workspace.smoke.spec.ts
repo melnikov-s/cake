@@ -79,7 +79,10 @@ for (const mode of ["Browser Mode", "VS Code"] as const) {
       const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
       await workspace.getByRole("button", { name: /^To-dos / }).click();
       const todoList = page.getByRole("list", { name: "To-dos", exact: true });
-      const selected = workspace.getByRole("button", { name: `Focus to-do: ${title}`, exact: true });
+      const selected = workspace.getByRole("button", {
+        name: `Focus to-do: ${title}`,
+        exact: true,
+      });
       await selected.click();
       await expect(selected).toHaveAttribute("aria-pressed", "true");
       const readTodos = async () =>

@@ -7196,10 +7196,9 @@ const sessionUpdateSpacingScenario: VisualCaptureScenario = {
       await expect(link).toHaveAttribute("href", `cake://session/${sessionId}`);
       if (index >= 2)
         // Session links lead with their session-kind glyph, part of the name (1d32332f).
-        await expect(batch.getByRole("link", { name: `User Session ${title}`, exact: true })).toHaveAttribute(
-          "href",
-          `cake://session/${sessionId}`,
-        );
+        await expect(
+          batch.getByRole("link", { name: `User Session ${title}`, exact: true }),
+        ).toHaveAttribute("href", `cake://session/${sessionId}`);
       if (index === 2)
         await batch.getByRole("link", { name: `User Session ${title}`, exact: true }).click();
       else await link.click();
@@ -10663,9 +10662,7 @@ async function readSeededArtifact(
   return Effect.runPromise(
     Effect.gen(function* () {
       const storage = yield* ArtifactStorage;
-      const record = yield* storage.read(
-        yield* Schema.decodeUnknownEffect(ArtifactLineageId)(id),
-      );
+      const record = yield* storage.read(yield* Schema.decodeUnknownEffect(ArtifactLineageId)(id));
       if (!record) return yield* Effect.die(new Error(`Missing seeded artifact ${id}`));
       return record.snapshot as CakeArtifactV1;
     }).pipe(

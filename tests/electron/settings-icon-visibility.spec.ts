@@ -46,7 +46,9 @@ test("global Settings stays usable when Workspace closes and reopens", async () 
   try {
     const page = await application.firstWindow();
     // Launch always starts in global Cake Chat (40566199).
-    await expect(page.getByRole("combobox", { name: "Message Cake Chat", exact: true })).toBeVisible({
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({
       timeout: 20_000,
     });
 

@@ -164,7 +164,10 @@ test("navigates session history with back, forward, and resolve", async () => {
     console.log("PROBE after-archive", await back.isEnabled(), await forward.isEnabled());
     if (await back.isEnabled()) {
       await back.click();
-      console.log("PROBE back-target", await page.locator('[data-slot="workspace-title"] [aria-current="page"]').textContent());
+      console.log(
+        "PROBE back-target",
+        await page.locator('[data-slot="workspace-title"] [aria-current="page"]').textContent(),
+      );
     }
   } finally {
     await application.close();

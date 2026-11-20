@@ -177,22 +177,22 @@ export async function seedSessionChanges(
   // Unmanaged checkouts have no recorded landing target, so Changes infers parent branches.
   if (managed)
     await writeFile(
-    join(paths.cakeHome, "state", "worktrees.json"),
-    JSON.stringify({
-      schemaVersion: 1,
-      records: [
-        {
-          projectPath: paths.project,
-          worktreePath: worktree,
-          branch: "agent/changes-review",
-          baseBranch: "main",
-          baseCommit,
-          state: "active",
-          createdAt: timestamp,
-        },
-      ],
-    }),
-  );
+      join(paths.cakeHome, "state", "worktrees.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        records: [
+          {
+            projectPath: paths.project,
+            worktreePath: worktree,
+            branch: "agent/changes-review",
+            baseBranch: "main",
+            baseCommit,
+            state: "active",
+            createdAt: timestamp,
+          },
+        ],
+      }),
+    );
   await writeFile(
     join(paths.userData, "window-state.json"),
     windowState({

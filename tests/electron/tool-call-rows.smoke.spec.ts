@@ -28,10 +28,13 @@ async function dragText(page: Page, target: Locator) {
     return { x: rect.left + 1, end: rect.right - 1, y: rect.top + rect.height / 2 };
   });
   const probe = () =>
-    page.evaluate(({ x, end, y }) => ({
-      start: document.elementFromPoint(x, y)?.outerHTML.slice(0, 120),
-      end: document.elementFromPoint(end, y)?.outerHTML.slice(0, 120),
-    }), points);
+    page.evaluate(
+      ({ x, end, y }) => ({
+        start: document.elementFromPoint(x, y)?.outerHTML.slice(0, 120),
+        end: document.elementFromPoint(end, y)?.outerHTML.slice(0, 120),
+      }),
+      points,
+    );
   console.log("PROBE before", JSON.stringify(await probe()));
   await page.mouse.move(points.x, points.y);
   await page.mouse.down();

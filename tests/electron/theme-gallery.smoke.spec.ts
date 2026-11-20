@@ -104,10 +104,8 @@ for (const hostTheme of ["light", "dark"] as const) {
         if ((await gallery.getAttribute("aria-expanded")) === "false") await gallery.click();
         await page.getByRole("button", { name: `Cake ${inactive} theme`, exact: true }).click();
         await expect(
-        page.getByRole("region", { name: "Appearance", exact: true }).getByRole("status"),
-      ).toHaveText(
-          `This theme will apply when ${inactive} mode is active.`,
-        );
+          page.getByRole("region", { name: "Appearance", exact: true }).getByRole("status"),
+        ).toHaveText(`This theme will apply when ${inactive} mode is active.`);
         await expect(page.getByRole("button", { name: "System", exact: true })).toHaveAttribute(
           "aria-pressed",
           "true",
@@ -132,9 +130,7 @@ for (const hostTheme of ["light", "dark"] as const) {
       await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
       await expect(
         page.getByRole("region", { name: "Appearance", exact: true }).getByRole("status"),
-      ).toHaveText(
-        "This theme will apply when Dark mode is active.",
-      );
+      ).toHaveText("This theme will apply when Dark mode is active.");
       await expect(
         page.getByRole("button", { name: "Fogbank theme", exact: true }),
       ).toHaveAttribute("aria-pressed", "true");

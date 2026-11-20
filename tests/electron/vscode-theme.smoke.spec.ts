@@ -209,9 +209,7 @@ for (const initialTheme of ["dark", "light"] as const) {
       await page.getByRole("button", { name: "Nord theme", exact: true }).click();
       await expect(
         page.getByRole("region", { name: "Appearance", exact: true }).getByRole("status"),
-      ).toHaveText(
-        "This theme will apply when Dark mode is active.",
-      );
+      ).toHaveText("This theme will apply when Dark mode is active.");
       await expect(page.locator("html")).toHaveCSS("--background", "#FDF6E3");
       await page.getByRole("button", { name: "Back to chat", exact: true }).click();
       await expect

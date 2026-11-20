@@ -15,7 +15,7 @@ export interface FixtureModelOptions {
   readonly name?: string;
 }
 
-export const fixtureModelPresetId = "00000000-0000-4000-8000-0000000000f1";
+const fixtureModelPresetId = "00000000-0000-4000-8000-0000000000f1";
 
 /** Writes Pi's models.json with one local OpenAI-compatible model. */
 export async function writeFixtureModels(cakeHome: string, options: FixtureModelOptions) {
@@ -81,7 +81,7 @@ export function fixtureModelChange(
 }
 
 /** One OpenAI-compatible streaming chunk. */
-export function fixtureChunk(delta: object, finishReason: string | null = null) {
+function fixtureChunk(delta: object, finishReason: string | null = null) {
   return `data: ${JSON.stringify({
     id: "fixture",
     object: "chat.completion.chunk",
