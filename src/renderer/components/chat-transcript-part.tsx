@@ -410,7 +410,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         item={{ name: part.name, ...part.widgetItem }}
       />
     ) : part.attachmentKind === "browser" ? (
-      <Badge variant="mono" className="w-fit">
+      <Badge variant="mono" className="w-fit rounded-xl [&>svg]:shrink-0">
         <BrowserIcon />
         {part.selector || part.name}
       </Badge>
@@ -420,7 +420,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         reference={part.inputReference}
       />
     ) : (
-      <Badge variant="mono" className="w-fit">
+      <Badge variant="mono" className="w-fit rounded-xl">
         {part.name}
       </Badge>
     );

@@ -40,14 +40,14 @@ export function WidgetItemAttachment({
   if (presentation === "transcript")
     return (
       <Popover>
-        <Badge variant="mono" className="w-fit max-w-full p-0" data-slot="widget-item">
+        <Badge variant="mono" className="w-fit max-w-full rounded-xl p-0" data-slot="widget-item">
           <PopoverTrigger
             variant="ghost"
-            className="h-auto min-w-0 gap-1 rounded-full px-2 py-0.5 font-mono text-xs font-normal text-muted-foreground"
+            className="h-auto min-w-0 gap-1 whitespace-normal rounded-xl px-2 [&>svg]:shrink-0 py-0.5 text-left font-mono text-xs font-normal text-muted-foreground"
             aria-label={`${item.name} from ${source(item)}`}
           >
             <ArtifactIcon size={12} />
-            <span className="min-w-0 truncate">{item.name}</span>
+            <span className="min-w-0">{item.name}</span>
           </PopoverTrigger>
         </Badge>
         <PopoverContent className="w-[min(28rem,90vw)]" data-cake-private-preview="true">

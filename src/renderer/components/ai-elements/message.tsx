@@ -22,7 +22,11 @@ export function Message({
   return (
     <article
       data-slot="message"
-      className={cn("group group/msg relative grid min-w-0 max-w-full gap-2", className)}
+      // One shrinkable column: unbreakable content wraps instead of widening the bubble past the chat.
+      className={cn(
+        "group group/msg relative grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 [overflow-wrap:anywhere]",
+        className,
+      )}
       {...props}
     >
       {children}

@@ -42,7 +42,7 @@ export const TranscriptImageAttachment = observer(function TranscriptImageAttach
   const name = reference?.name ?? part.name;
   return (
     <figure className="my-1 mb-2 ml-auto w-[min(76%,34rem)] overflow-hidden rounded-[14px] border border-border bg-card">
-      <figcaption className="flex h-8 min-w-0 items-center gap-1 px-1 text-xs text-muted-foreground">
+      <figcaption className="flex min-h-8 min-w-0 items-center gap-1 px-1 text-xs text-muted-foreground">
         <IconButton
           tooltip={`${expanded ? "Collapse" : "Expand"} image: ${name}`}
           aria-expanded={expanded}
@@ -54,7 +54,7 @@ export const TranscriptImageAttachment = observer(function TranscriptImageAttach
         {reference && sessionId ? (
           <AttachmentReference sessionId={sessionId} reference={reference} />
         ) : (
-          <span className="truncate">{name}</span>
+          <span className="min-w-0">{name}</span>
         )}
       </figcaption>
       <div

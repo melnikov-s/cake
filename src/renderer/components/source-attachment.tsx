@@ -34,11 +34,14 @@ export function SourceAttachment({
       : formatSourceLocation(attachment.location);
   const content = (
     <>
-      <span className="block truncate pr-8 font-mono text-xs font-medium" title={label}>
+      <span
+        className="block pr-8 font-mono text-xs font-medium [overflow-wrap:anywhere]"
+        title={label}
+      >
         {label}
       </span>
       {attachment.selectedText ? (
-        <pre className="mt-2 line-clamp-4 whitespace-pre-wrap border-l-2 border-border pl-2 font-mono text-xs text-foreground">
+        <pre className="mt-2 line-clamp-4 whitespace-pre-wrap border-l-2 border-border pl-2 font-mono text-xs text-foreground [overflow-wrap:anywhere]">
           {attachment.selectedText}
         </pre>
       ) : null}

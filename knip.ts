@@ -18,6 +18,8 @@ export default {
     "tests/integration/fixtures/restart-backend.ts",
     // Bundled dynamically by the isolated tooltip lifecycle Electron test.
     "tests/electron/tooltip-lifecycle-fixture.tsx",
+    // Bundled dynamically by the isolated user-message overflow Electron test.
+    "tests/electron/user-message-overflow-fixture.tsx",
     // Forked dynamically by the Node validation-queue suite.
     "tests/fixtures/validation-queue-client.mjs",
     "tests/fixtures/validation-queue-job.mjs",
