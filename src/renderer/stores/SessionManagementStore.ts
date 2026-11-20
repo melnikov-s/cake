@@ -86,7 +86,10 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     onResolved?: (sessionIds: readonly string[]) => Promise<void> | void,
     origin: "user" | "agent" = "user",
   ) {
-    const session = this.props.catalog.find(sessionId);
+    // The Sessions list loads on demand; agent resolution must also reach sessions that only
+    // the background signals know, such as from a window showing To-dos.
+    const session =
+      this.props.catalog.find(sessionId) ?? this.props.catalog.backgroundSession(sessionId);
     if (!session || this.signal.aborted) return false;
     if (this.pending.savedRecord(sessionId)?.status === "activating") return false;
     if (this.pending.isDraft(sessionId)) {
@@ -103,9 +106,10 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     const transitionSessionId = session.sessionId;
     if (this.transitioningSessionIds.has(transitionSessionId)) return false;
     this.transitioningSessionIds.add(transitionSessionId);
-    const resolutionSessionIds = session.familyId
+    const familyId = "familyId" in session ? session.familyId : undefined;
+    const resolutionSessionIds = familyId
       ? this.props.catalog.sessions
-          .filter((member) => member.familyId === session.familyId)
+          .filter((member) => member.familyId === familyId)
           .map((member) => member.sessionId)
       : [sessionId];
     try {

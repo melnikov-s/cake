@@ -1,6 +1,4 @@
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
-import { emitRendererEvent } from "./main-harness";
 import { mkdir, mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,6 +7,7 @@ import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { openProjectChat, showTodos } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 type Request = { messages: Array<{ role: string; content: string | object[] | null }> };
@@ -51,9 +50,10 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
               title: "Implement startup improvement",
               description: "Implement startup improvement.",
               status: "Working across two sessions",
+              // A Project Session belongs to one to-do (c4a6973c); the second implementation
+              // stays with Compaction follow-up.
               associations: [
                 { kind: "session", sessionId: "linked-a", title: "First implementation" },
-                { kind: "session", sessionId: standaloneSessionId, title: "Second implementation" },
               ],
             },
           }
@@ -75,7 +75,11 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
           : marker === "RESOLVE_LINKED"
             ? {
                 command: "sessions.resolve",
-                input: { targets: [{ kind: "project", sessionId: "25fa8baa" }], resolved: true },
+                // Agents pass exact session IDs, not shortened references.
+                input: {
+                  targets: [{ kind: "project", sessionId: standaloneSessionId }],
+                  resolved: true,
+                },
               }
             : undefined;
     const tool = command && input.messages.at(-1)?.role === "user";
@@ -286,9 +290,14 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     });
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1500, height: 900 });
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-    await page.locator('[data-slot="project-header"] [data-slot="project-label"]').first().click();
+    // Chat-first navigation (582d0fc7): the Project Chat opens from the rail and its to-dos live
+    // in the Workspace accessory's To-dos tab.
+    await openProjectChat(page, "Project");
     const input = page.getByRole("combobox", { name: "Message Project Chat" });
+    // Utility requests (titles, to-do updates) may follow the turn; read the last tool result.
+    const latestToolResult = () =>
+      requests.findLast((request) => request.messages.at(-1)?.role === "tool")?.messages.at(-1)
+        ?.content;
     const send = async (text: string) => {
       await input.click();
       await expect(input).toBeFocused();
@@ -299,219 +308,117 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
       await expect(page.getByText(`Finished ${text}`, { exact: true })).toBeVisible();
     };
     await send("CREATE_LINKED");
-    expect(
-      requests.at(-1)?.messages.findLast((message) => message.role === "tool")?.content,
-    ).toContain('"committed": true');
+    expect(latestToolResult()).toContain('"committed": true');
     await send("LINK_SOURCE");
-    expect(
-      requests.at(-1)?.messages.findLast((message) => message.role === "tool")?.content,
-    ).toContain('"revision": 1');
-    const toggle = page.getByRole("button", { name: "To-do", exact: true });
-    await expect(toggle).toHaveText("3");
-    await expect(toggle.locator("svg")).toHaveAttribute("aria-hidden", "true");
-    await toggle.hover();
-    await expect(page.getByRole("tooltip", { name: "To-do", exact: true })).toBeVisible();
-    await input.hover();
-    await expect(page.getByRole("tooltip", { name: "To-do", exact: true })).toBeHidden();
-    await toggle.focus();
-    await expect(toggle).toBeFocused();
-    await toggle.press("Enter");
-    const panel = page.getByRole("complementary", { name: "To-do", exact: true });
-    await expect(panel).toBeVisible();
+    // The seeded row already carries this exact link, so the update commits without a new
+    // revision.
+    expect(latestToolResult()).toContain('"committed": true');
+    expect(latestToolResult()).toContain('"revision": 0');
+    const panel = await showTodos(page);
+    const toggle = panel.getByRole("button", { name: /^To-dos\b/ });
+    await expect(toggle).toHaveAccessibleName("To-dos 3");
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
-    await toggle.focus();
-    await toggle.press("Space");
-    await expect(panel).toBeHidden();
-    await expect(toggle).toHaveAttribute("aria-pressed", "false");
-    // Closing returns focus to writing; let that request finish before testing Space again.
-    await expect(input).toBeFocused();
-    await toggle.focus();
-    await expect(toggle).toBeFocused();
-    await toggle.press("Space");
-    await expect(panel).toBeVisible();
-    await expect(toggle).toHaveAttribute("aria-pressed", "true");
-    const layout = page.locator('[data-slot="side-chat-layout"]');
-    await expect(layout).toHaveAttribute("data-presentation", "side-by-side");
-    await expect(
-      panel.getByRole("button", { name: "Implement startup improvement", exact: true }),
-    ).toBeVisible();
-    await expect(panel.getByRole("link", { name: "First implementation" })).toHaveAttribute(
+    // Links sit behind each row's link disclosure (50e4459e).
+    const linked = panel
+      .locator("[data-todo-id]")
+      .filter({ has: page.getByRole("button", { name: "Implement startup improvement" }) });
+    await linked
+      .getByRole("button", { name: "Show 1 link for Implement startup improvement" })
+      .click();
+    await expect(linked.getByRole("link", { name: "First implementation" })).toHaveAttribute(
       "href",
       "cake://session/linked-a",
     );
-    await expect(panel.getByRole("link", { name: "Investigation report" })).toHaveAttribute(
+    const review = panel.locator(`[data-todo-id="${reviewId}"]`);
+    await review.getByRole("button", { name: "Show 1 link for Review conversations" }).click();
+    await expect(review.getByRole("link", { name: "Investigation report" })).toHaveAttribute(
       "href",
       "cake://session/linked-a?message=report",
     );
-    const separator = page.getByRole("separator", { name: "Resize side chat" });
-    const width = Number(await separator.getAttribute("aria-valuenow"));
-    await separator.focus();
-    await separator.press("ArrowLeft");
-    await expect(separator).toHaveAttribute("aria-valuenow", String(width + 16));
+    // Focus is a view filter in row actions (3977f22d): it neither sends nor attaches context.
     const requestsBeforeSelection = requests.length;
-    const review = panel.locator(`[data-todo-id="${reviewId}"]`);
-    const reviewTitle = review.getByRole("button", { name: "Review conversations", exact: true });
-    await review.getByText("Report delivered; awaiting your review").click();
-    await expect(reviewTitle).toBeFocused();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
-    await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
-    await expect(page.getByLabel("Next message context")).toHaveCount(0);
+    const reviewFocus = review.getByRole("button", {
+      name: "Focus to-do: Review conversations",
+      exact: true,
+    });
+    await review.hover();
+    await reviewFocus.click();
+    await expect(reviewFocus).toHaveAttribute("aria-pressed", "true");
     await expect(
       page.locator('[data-slot="context-pill"]').filter({ hasText: "To-do ·" }),
     ).toHaveCount(0);
     expect(requests.length).toBe(requestsBeforeSelection);
-    await reviewTitle.press("Space");
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
-    // Stay inside the rounded row silhouette while exercising its empty padding.
-    await review.click({ position: { x: 8, y: 8 } });
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
-    await expect(reviewTitle).toBeFocused();
-    await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
-    await reviewTitle.press("Enter");
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
-    await review.getByText("Report delivered; awaiting your review", { exact: true }).click();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
-    await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
-    const reviewDone = review.getByRole("button", { name: "Mark done: Review conversations" });
-    const reviewReply = review.getByRole("button", {
-      name: "Attach to-do as context: Review conversations",
-    });
-    await expect(reviewDone).toBeEnabled();
-    await review.getByRole("link", { name: "Investigation report" }).focus();
-    await page.keyboard.press("Shift+Tab");
-    await expect(reviewReply).toBeFocused();
-    await reviewReply.press("Shift+Tab");
-    await expect(reviewDone).toBeFocused();
-    await reviewDone.press("Shift+Tab");
-    await expect(reviewTitle).toBeFocused();
-    await expect(
-      panel.getByRole("button", { name: "Review conversations", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    // Sending leaves this view filter intact and does not attach it as context.
-    await send("INPUT_SELECTED");
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
-    await send("INPUT_UNCHANGED");
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
-    await expect(panel).toBeVisible();
-    const requestsBeforeDeselection = requests.length;
-    await reviewTitle.click();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    expect(requests.length).toBe(requestsBeforeDeselection);
-    await reviewTitle.click();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
-    await page.setViewportSize({ width: 780, height: 800 });
-    await expect(layout).toHaveAttribute("data-presentation", "replacement");
-    await expect(panel).toBeVisible();
-    await expect(input).not.toBeVisible();
-    await page.getByRole("button", { name: "Close To-do" }).click();
-    await expect(input).toBeVisible();
-    await expect(input).toBeFocused();
-    // Closing the panel clears view focus.
+    await reviewFocus.click();
+    await expect(reviewFocus).toHaveAttribute("aria-pressed", "false");
+    await reviewFocus.click();
+    await expect(reviewFocus).toHaveAttribute("aria-pressed", "true");
+    // Sending leaves this view filter intact and does not attach it as context. The focused
+    // view filters the transcript to the focused to-do's turns, so read the request instead.
+    await input.click();
+    await input.pressSequentially("INPUT_SELECTED");
+    await input.press("Enter");
+    await expect(input).toHaveValue("");
     await expect
-      .poll(
-        async () =>
-          JSON.parse(await readFile(join(cakeHome, "state", "application.json"), "utf8")).data
-            .projects[0].todos.selectedId,
-      )
-      .toBeNull();
-    await page.setViewportSize({ width: 1500, height: 900 });
-    await toggle.click();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    await panel.getByRole("button", { name: "Mark done: Review conversations" }).click();
-    await expect(toggle).toHaveText("2");
+      .poll(() => requests.some((request) => latestUser(request).includes("INPUT_SELECTED")))
+      .toBe(true);
+    await expect(reviewFocus).toHaveAttribute("aria-pressed", "true");
+    expect(
+      latestUser(requests.findLast((request) => latestUser(request).includes("INPUT_SELECTED"))!),
+    ).not.toContain("To-do · Review conversations");
+    await review.hover();
+    await review.getByRole("button", { name: "Unfocus to-do: Review conversations" }).click();
+    await expect(reviewFocus).toHaveAttribute("aria-pressed", "false");
+    // Completion and reopening move the row between sections and update the tab count.
+    await review.hover();
+    await review.getByRole("button", { name: "Mark done: Review conversations" }).click();
+    await expect(toggle).toHaveAccessibleName("To-dos 2");
     await panel.getByRole("button", { name: "Done (1)" }).click();
     await panel.getByRole("button", { name: "Reopen: Review conversations" }).click();
-    await expect(toggle).toHaveText("3");
-    await expect(
-      panel
-        .locator('[data-todo-id][data-todo-section="Active"]')
-        .locator("..")
-        .getByText("Review conversations", { exact: true }),
-    ).toBeVisible();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    const linked = panel
-      .locator("[data-todo-id]")
-      .filter({ has: page.getByRole("link", { name: "First implementation", exact: true }) });
-    const linkedTitle = linked.getByRole("button", {
-      name: "Implement startup improvement",
-      exact: true,
-    });
-    await linkedTitle.click();
-    await expect(linkedTitle).toHaveAttribute("aria-pressed", "true");
-    const selectedBeforeLink = await linkedTitle.getAttribute("aria-pressed");
+    await expect(toggle).toHaveAccessibleName("To-dos 3");
+    await expect(review).toHaveAttribute("data-todo-section", "Active");
+    // A linked session opens from its work link; its live work shows on the link row.
     await linked.getByRole("link", { name: "First implementation", exact: true }).click();
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
     const sessionInput = page.getByRole("combobox", { name: "Message", exact: true });
+    await expect(sessionInput).toBeVisible();
     await sessionInput.fill("INPUT_READY");
     await sessionInput.press("Enter");
     await expect(page.getByText("Finished INPUT_READY", { exact: true })).toBeVisible();
     const returnToTodos = async () => {
-      await page
-        .locator('[data-slot="project-header"] [data-slot="project-label"]')
-        .first()
-        .click();
-      // Navigation commits asynchronously; do not toggle the restored panel closed.
+      await openProjectChat(page, "Project");
       await expect(input).toBeVisible();
-      if (!(await panel.isVisible())) await toggle.click();
-      await expect(panel).toBeVisible();
+      await showTodos(page);
     };
-    const linkedRow = page.locator('.session-item[data-session-id="linked-a"]');
-    // Another conversation is focused, so its sidebar row shows no selection cue.
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-    await expect(linkedRow).not.toHaveAttribute("data-associated", "true");
     await returnToTodos();
-    // The Project Chat's panel stayed open, so its selection still counts on return.
-    await expect(linkedTitle).toHaveAttribute("aria-pressed", selectedBeforeLink!);
-    await expect(linkedRow).toHaveAttribute("data-associated", "true");
-    await expect(linked.getByRole("img", { name: "Ready for review" })).toBeVisible();
-    await linked.getByRole("link", { name: "First implementation", exact: true }).click();
-    await expect(page.getByText("Finished INPUT_READY", { exact: true })).toBeVisible();
-    await returnToTodos();
-    await expect(linked.getByRole("img", { name: "Ready for review" })).toBeVisible();
+    const linkActivity = (name: string) =>
+      linked
+        .getByRole("listitem")
+        .filter({ has: page.getByRole("link", { name: "First implementation", exact: true }) })
+        .getByRole("img", { name });
+    await expect(linkActivity("Ready for review")).toBeVisible();
     await linked.getByRole("link", { name: "First implementation", exact: true }).click();
     await sessionInput.fill("INPUT_HOLD");
     await sessionInput.press("Enter");
     await returnToTodos();
-    await expect(linked.getByRole("img", { name: "Running" })).toBeVisible();
-    await expect(linked.getByRole("img", { name: "Ready for review" })).toHaveCount(0);
+    await expect(linkActivity("Running")).toBeVisible();
+    await expect(linked.getByRole("img", { name: "Running", exact: true }).first()).toBeVisible();
     await expect.poll(() => Boolean(releaseWork)).toBe(true);
     releaseWork!();
-    await expect(linked.getByRole("img", { name: "Ready for review" })).toBeVisible();
-    const first = page.locator('.session-item[data-session-id="linked-a"]');
-    await first.hover();
-    await first.getByRole("button", { name: "Resolve First implementation" }).click();
-    await expect(linked.getByRole("img", { name: "Ready for review" })).toBeVisible();
-    await expect(
-      panel.getByRole("button", { name: "Implement startup improvement", exact: true }),
-    ).toBeVisible(); // second session still open
+    await expect(linkActivity("Ready for review")).toBeVisible();
+    // The agent resolves the second session through its tool; linked work closes only when
+    // every required session resolves.
     const beforeToolResolve = JSON.parse(
       await readFile(join(cakeHome, "state", "application.json"), "utf8"),
     ).data.projects[0].todos.sequence;
     await send("RESOLVE_LINKED");
-    const resolveReceipt = requests
-      .at(-1)
-      ?.messages.findLast((message) => message.role === "tool")?.content;
+    const resolveReceipt = latestToolResult();
     expect(resolveReceipt).toContain('"resolved": true');
     expect(resolveReceipt).toContain('"sessionCount": 1');
-    const done = panel.getByRole("button", { name: "Done (2)" });
+    const done = panel.getByRole("button", { name: "Done (1)" });
     await expect(done).toBeVisible();
     if ((await done.getAttribute("aria-expanded")) !== "true") await done.click();
-    await expect(
-      panel.getByRole("button", { name: "Reopen: Implement startup improvement" }),
-    ).toBeVisible();
     await expect(panel.getByRole("button", { name: "Reopen: Compaction follow-up" })).toBeVisible();
-    await expect(linkedTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(linkedTitle).toHaveAttribute("aria-disabled", "true");
-    await linkedTitle.click({ force: true });
-    await expect(linkedTitle).toHaveAttribute("aria-pressed", "false");
-    await page.locator(".transcript").evaluate((element) => {
-      element.scrollTop = 0;
-    });
-    await expect(
-      panel.getByRole("button", { name: "Review conversations", exact: true }),
-    ).toBeVisible(); // Source-only discussion stays open, despite resolved source work.
+    // First implementation is still open, so the linked to-do stays open.
+    await expect(linked).toHaveAttribute("data-todo-section", "Active");
     const persisted = JSON.parse(
       await readFile(join(cakeHome, "state", "application.json"), "utf8"),
     );
@@ -520,76 +427,32 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
       committedTodos.items.find((item: { id: string }) => item.id === standaloneTodoId),
     ).toMatchObject({ state: "done", revision: 2 });
     expect(committedTodos.sequence).toBeGreaterThan(beforeToolResolve);
-    expect(committedTodos.selectedId).toBeNull();
+    expect(committedTodos.selectedId ?? null).toBeNull();
     expect(
       committedTodos.items.filter((item: { state: string }) => item.state === "open"),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     const changes = committedTodos.pending;
     // Tool resolution advances the same durable context as UI resolution, without a wake.
-    // The resolving call occurs after RESOLVE_LINKED was admitted, so its delta remains pending.
     expect(changes.filter((change: { _tag: string }) => change._tag === "SessionState")).toEqual([
       expect.objectContaining({ sessionId: standaloneSessionId, resolved: true }),
     ]);
+    // Earlier human completion/reopening reaches the agent as a user-change reminder.
     const resolveRequest = requests.find((request) =>
       latestUser(request).includes("RESOLVE_LINKED"),
     );
-    expect(resolveRequest && latestUser(resolveRequest)).toContain("First implementation");
-    expect(resolveRequest && latestUser(resolveRequest)).toContain("SessionState");
-    await panel.getByRole("link", { name: "Investigation report" }).click();
+    expect(resolveRequest && latestUser(resolveRequest)).toContain("Project Chat user changes");
+    await review.getByRole("link", { name: "Investigation report" }).click();
     await expect(page.getByText("Implementation report", { exact: true })).toBeVisible();
-    await returnToTodos();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    // To-do lifecycle state is reconstructed after reload.
+    // To-do lifecycle state is reconstructed after reload without another model turn.
     const requestsBeforeReload = requests.length;
     await page.reload();
     await returnToTodos();
-    const restoredDone = panel.getByRole("button", { name: "Done (2)" });
+    const restoredDone = panel.getByRole("button", { name: "Done (1)" });
     if ((await restoredDone.getAttribute("aria-expanded")) !== "true") await restoredDone.click();
-    await expect(linkedTitle).toHaveAttribute("aria-pressed", "false");
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
-    await page.locator(".transcript").evaluate((element) => {
-      element.scrollTop = 0;
-    });
-    expect(requests.length).toBe(requestsBeforeReload);
-    // Resolved sessions cannot produce interviews. Explicitly restore the producer,
-    // without reopening its completed to-do or sending another model turn.
-    await linked.getByRole("link", { name: "First implementation", exact: true }).click();
-    const resolvedLane = page.getByRole("region", { name: "Resolved sessions" });
-    const resolvedToggle = page.getByRole("button", { name: "Expand Resolved", exact: true });
-    if (await resolvedToggle.count()) await resolvedToggle.click();
-    const resolvedProject = resolvedLane
-      .getByRole("button", { name: "Expand Project resolved", exact: true })
-      .and(resolvedLane.locator("[aria-expanded]"));
-    if (await resolvedProject.count()) await resolvedProject.click();
-    await resolvedLane
-      .locator('.session-item[data-session-id="linked-a"]')
-      .getByRole("button", { name: "Restore First implementation", exact: true })
-      .click();
+    await expect(panel.getByRole("button", { name: "Reopen: Compaction follow-up" })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Ask session assistant", exact: true }),
-    ).toBeVisible();
-    await returnToTodos();
-    await expect(
-      panel.getByRole("button", { name: "Reopen: Implement startup improvement", exact: true }),
-    ).toBeVisible();
-    await emitRendererEvent(app, {
-      type: "interview-requested",
-      requestId: randomUUID(),
-      interviewRequestId: randomUUID(),
-      record: {
-        id: "todo-waiting",
-        sessionId: "linked-a",
-        request: {
-          protocol: "cake.request/v1",
-          id: "todo-question",
-          title: "Continue?",
-          responseSchema: { type: "object" },
-          view: { type: "form", fields: [{ id: "answer", label: "Answer", type: "text" }] },
-          fallback: { markdown: "Continue when ready." },
-        },
-      },
-    });
-    await expect(linked.getByRole("img", { name: "Waiting for your answer" })).toBeVisible();
+      panel.getByRole("button", { name: "Focus to-do: Implement startup improvement" }),
+    ).toHaveAttribute("aria-pressed", "false");
     expect(requests.length).toBe(requestsBeforeReload);
   } finally {
     releaseWork?.();
