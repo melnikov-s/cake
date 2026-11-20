@@ -35,10 +35,23 @@ export async function createSessionInProject(page: Page, name: RegExp) {
     .getByRole("navigation", { name: "Projects and global utilities" })
     .getByRole("button", { name: "New session", exact: true })
     .click();
+  await leaveRail(page);
   await page
     .getByRole("dialog", { name: "New session", exact: true })
     .getByRole("option", { name })
     .click();
+}
+
+/**
+ * Moves the pointer off the project rail, as a user does after choosing a rail action.
+ * The Dynamic rail stays expanded over the conversation while hovered.
+ */
+async function leaveRail(page: Page) {
+  const { width, height } = await page.evaluate(() => ({
+    width: innerWidth,
+    height: innerHeight,
+  }));
+  await page.mouse.move(width / 2, height / 2);
 }
 
 /**
@@ -52,6 +65,7 @@ export async function openSession(page: Page, title: string) {
     .getByRole("button", { name: "Search sessions", exact: true });
   await expect(trigger).toBeVisible({ timeout: 20_000 });
   await trigger.click();
+  await leaveRail(page);
   const dialog = page.getByRole("dialog", { name: "Search sessions", exact: true });
   await dialog.getByRole("combobox", { name: "Search session titles" }).fill(title);
   await dialog
@@ -68,6 +82,7 @@ export async function openProjectChat(page: Page, project: string) {
     .getByRole("button", { name: `Open Project Chat for ${project}`, exact: true });
   await expect(button).toBeVisible({ timeout: 20_000 });
   await button.click();
+  await leaveRail(page);
 }
 
 /** Opens application Settings from the global rail. */
