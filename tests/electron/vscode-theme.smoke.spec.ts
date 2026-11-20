@@ -4,10 +4,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
-import { emitRendererEvent } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
 import { vscodeColorThemeFixture } from "../fixtures/vscode-color-themes";
-import { openSettings } from "./fixtures/workspace-navigation";
+import { createSessionInProject, openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const codeServer = "/opt/homebrew/bin/code-server";
@@ -58,8 +57,10 @@ for (const initialTheme of ["dark", "light"] as const) {
       await application.evaluate(({ nativeTheme }, theme) => {
         nativeTheme.themeSource = theme;
       }, opposite);
+      // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+      await createSessionInProject(page, /^Theme fixture(?: |$)/);
       const open = page.getByRole("button", { name: "VS Code", exact: true });
-      await expect(open).toBeVisible({ timeout: 20_000 });
+      await expect(open).toBeVisible();
       await open.click();
       const editorState = () =>
         application.evaluate(async ({ webContents }) => {
@@ -192,10 +193,8 @@ for (const initialTheme of ["dark", "light"] as const) {
         .poll(editorState)
         .toMatchObject({ id: editorId, theme: "light", background: "#f5f7f9" });
 
-      await emitRendererEvent(application, {
-        type: "embedded-editor-back-to-agent",
-        workspacePath: project,
-      });
+      // Leave VS Code through the header's workspace mode control.
+      await page.getByRole("button", { name: "Main", exact: true }).click();
       await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
       await setTheme("dark");
       await open.click();
@@ -208,7 +207,9 @@ for (const initialTheme of ["dark", "light"] as const) {
       await page.getByRole("button", { name: "Solarized Light theme", exact: true }).click();
       await page.getByRole("button", { name: "Dark theme", exact: true }).click();
       await page.getByRole("button", { name: "Nord theme", exact: true }).click();
-      await expect(page.getByRole("status")).toHaveText(
+      await expect(
+        page.getByRole("region", { name: "Appearance", exact: true }).getByRole("status"),
+      ).toHaveText(
         "This theme will apply when Dark mode is active.",
       );
       await expect(page.locator("html")).toHaveCSS("--background", "#FDF6E3");

@@ -55,9 +55,10 @@ test("a second launch on the same profile exits and hands its window request to 
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("heading", { name: "What should we build?" })).toBeVisible({
-      timeout: 20_000,
-    });
+    // Every launch starts in global Cake Chat (40566199).
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
     await expectBackgroundWindows();
 
     // The primary owns the profile: a second launch exits cleanly without opening anything.
@@ -73,7 +74,7 @@ test("a second launch on the same profile exits and hands its window request to 
     const reopened = application.waitForEvent("window");
     expect(await launchSecondInstance(env)).toBe(0);
     await expect(
-      (await reopened).getByRole("heading", { name: "What should we build?" }),
+      (await reopened).getByRole("combobox", { name: "Message Cake Chat", exact: true }),
     ).toBeVisible({ timeout: 20_000 });
     await expectBackgroundWindows();
   } finally {

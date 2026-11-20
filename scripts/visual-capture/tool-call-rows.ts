@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../../tests/fixtures/window-state";
+import { openSession } from "../../tests/electron/fixtures/workspace-navigation";
 import type { VisualCaptureTheme } from "./arguments";
 
 export const toolCallRowsScenario = {
@@ -174,6 +175,8 @@ export const toolCallRowsScenario = {
     );
   },
   async prepare(page: Page, state = "default") {
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Inspect the tool calls.");
     const group = page.locator('[data-slot="activity-group"]');
     await group.locator(":scope > summary").click();
     await expect(

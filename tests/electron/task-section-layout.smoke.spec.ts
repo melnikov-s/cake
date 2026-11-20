@@ -80,9 +80,15 @@ for (const theme of ["dark", "light"] as const)
           const disclosure = label.locator('[data-slot="task-section-disclosure"]');
           const disclosureBounds = (await disclosure.boundingBox())!;
           const titleBounds = (await title.boundingBox())!;
-          expect(disclosureBounds.x + disclosureBounds.width).toBeCloseTo(
+          // Completion is the trailing heading action since 81947630; the disclosure precedes it.
+          const completion = label.getByRole("button", { name: `Mark done: ${longTitle}` });
+          const completionBounds = (await completion.boundingBox())!;
+          expect(completionBounds.x + completionBounds.width).toBeCloseTo(
             labelBounds.x + labelBounds.width,
             0,
+          );
+          expect(disclosureBounds.x + disclosureBounds.width).toBeLessThanOrEqual(
+            completionBounds.x,
           );
           expect(titleBounds.x + titleBounds.width).toBeLessThanOrEqual(disclosureBounds.x);
           const railBounds = (await row.locator('[data-slot="margin-rail"]').boundingBox())!;

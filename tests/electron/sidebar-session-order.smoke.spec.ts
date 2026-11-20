@@ -5,7 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
-import { showSessions } from "./fixtures/workspace-navigation";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -85,15 +85,15 @@ for (const resolveSelected of [true, false]) {
     });
     try {
       const page = await application.firstWindow();
+      // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+      await openSession(page, "previous");
       await showSessions(page);
       const rows = page.locator('[data-slot="workspace-navigator"] .session-item');
       const order = () =>
         rows.evaluateAll((elements) =>
           elements.map((element) => element.getAttribute("data-session-id")),
         );
-      await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
-        timeout: 20_000,
-      });
+      await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
       await expect.poll(order).toEqual(ids);
       const row = (id: string) => page.locator(`.session-item[data-session-id="${id}"]`);
       await row("previous").locator(".session-row").click();
@@ -103,7 +103,13 @@ for (const resolveSelected of [true, false]) {
         await expect(row("newer")).toHaveClass(/active/);
       }
       await row("newer").locator(".session-resolve-action").click();
-      await expect(row("previous")).toHaveClass(/active/);
+      // Resolving the viewed Session returns to its owning Project Chat (558a1c58); resolving
+      // another row keeps the current selection.
+      if (resolveSelected)
+        await expect(
+          page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+        ).toBeVisible();
+      else await expect(row("previous")).toHaveClass(/active/);
       await expect.poll(order).toEqual(["previous", "older"]);
       await row("older").locator(".session-row").click();
       await expect(row("older")).toHaveClass(/active/);

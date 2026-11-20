@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { seedCakeChatHistory } from "./durable-chat-fixture";
 import { windowState } from "../fixtures/window-state";
-import { showSessions } from "./fixtures/workspace-navigation";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -69,9 +69,9 @@ test("uses native session menus and preserves Cake Chat settings context", async
   });
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Original session title");
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
     // Exercise native menu construction without displaying an OS popup.
     await application.evaluate(({ Menu }) => {
       const original = Menu.buildFromTemplate.bind(Menu);
@@ -98,8 +98,9 @@ test("uses native session menus and preserves Cake Chat settings context", async
       .getByRole("navigation", { name: "Projects and global utilities" })
       .getByRole("button", { name: "Open Cake Chat", exact: true })
       .click();
-    await showSessions(page);
-    const cakeChatRow = page.getByRole("button", { name: "Cake Chat", exact: true });
+    const workspace = await showSessions(page);
+    // The breadcrumb also names Cake Chat; use its Sessions row.
+    const cakeChatRow = workspace.getByRole("button", { name: "Cake Chat", exact: true });
     await cakeChatRow.click({ button: "right" });
     await expect
       .poll(() => application.evaluate(() => Reflect.get(globalThis, "sidebarMenus").length))

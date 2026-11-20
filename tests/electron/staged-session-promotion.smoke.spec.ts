@@ -4,7 +4,11 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
-
+import {
+  fixtureDefaultPreset,
+  startFixtureModelServer,
+  writeFixtureModels,
+} from "./fixtures/fixture-model";
 import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -29,8 +33,12 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
+      // Sessions start only with a model (81eb383b); the fixture keeps each turn streaming.
+      ...fixtureDefaultPreset(),
     }),
   );
+  const models = await startFixtureModelServer();
+  await writeFixtureModels(cakeHome, { baseUrl: models.baseUrl });
 
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -52,8 +60,10 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
       const text = message.text();
       if (text.includes("synchronization failed")) synchronizationErrors.push(text);
     });
+    // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
-    await expect(composer).toBeVisible({ timeout: 20_000 });
+    await expect(composer).toBeVisible();
 
     const avatar = page.locator('[data-slot="avatar"][data-animated="true"]');
     await expect(avatar).toBeVisible();
@@ -193,6 +203,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     const firstSessionAfterPromotion = page.locator(
       `.session-item[data-session-id='${firstSessionId}']`,
     );
+    console.log("PROBE events", JSON.stringify(models.events));
     await firstSessionAfterPromotion.locator(".session-row").click();
     await expect(firstSessionAfterPromotion).toHaveClass(/active/);
     await expect(firstSessionAfterPromotion.locator(".session-resolve-action")).toBeAttached();
@@ -204,6 +215,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     await expect.poll(() => synchronizationErrors).toEqual([]);
   } finally {
     await application.close();
+    await models.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });

@@ -7,7 +7,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 import { emitRendererEvent } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
-import { showSessions } from "./fixtures/workspace-navigation";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -79,9 +79,9 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Test the terminal");
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
 
     // Menu items remain clickable while configurable keyboard shortcuts are
     // handled centrally by the renderer.

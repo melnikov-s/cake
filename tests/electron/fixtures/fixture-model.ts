@@ -125,6 +125,8 @@ export interface FixtureModelServerOptions {
 export async function startFixtureModelServer(options: FixtureModelServerOptions = {}) {
   const held = new Set<ServerResponse>();
   const assistantRequests: string[] = [];
+  /** Observable request lifecycle, for assertions about what the backend actually did. */
+  const events: string[] = [];
   const server = createServer(async (request, response) => {
     if (request.method === "GET") {
       response.writeHead(200, { "content-type": "application/json" });
@@ -159,13 +161,16 @@ export async function startFixtureModelServer(options: FixtureModelServerOptions
       return;
     }
     assistantRequests.push(body);
+    events.push(`assistant ${assistantRequests.length}`);
     const reply = options.assistant?.(body, assistantRequests.length - 1);
     if (reply !== undefined) {
       response.end(reply);
       return;
     }
     held.add(response);
-    response.on("close", () => held.delete(response));
+    response.on("close", () => {
+      if (held.delete(response)) events.push(`aborted assistant ${assistantRequests.length}`);
+    });
     response.write(fixtureChunk({ role: "assistant", content: "" }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -175,6 +180,7 @@ export async function startFixtureModelServer(options: FixtureModelServerOptions
     baseUrl: `http://127.0.0.1:${address.port}/v1`,
     origin: `http://127.0.0.1:${address.port}`,
     assistantRequests,
+    events,
     /** Ends every held streaming response. */
     release() {
       for (const response of held) response.end(fixtureChunk({}, "stop") + "data: [DONE]\n\n");

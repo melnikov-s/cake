@@ -9,6 +9,7 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { installLocalModelHttpGuard } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -232,14 +233,14 @@ for (const scenario of ["migrated", "unavailable"] as const) {
       try {
         await installLocalModelHttpGuard(application, origin);
         const page = await application.firstWindow();
+        // Launch starts in global Cake Chat (40566199); open the seeded source explicitly.
+        await openSession(page, "Find my earlier conversation.");
         await expect(
           page.locator(".transcript").getByText("Find my earlier conversation.", { exact: true }),
-        ).toBeVisible({ timeout: 20_000 });
-        await page.getByRole("button", { name: "Expand Resolved", exact: true }).click();
-        await page
-          .getByRole("button", { name: "Expand project resolved", exact: true })
-          .last()
-          .click();
+        ).toBeVisible();
+        // Resolved history lives in the Workspace Sessions list (582d0fc7).
+        const workspace = await showSessions(page);
+        await workspace.getByRole("button", { name: "Resolved sessions", exact: true }).click();
         await expect(page.locator(`.session-item[data-session-id="${targetId}"]`)).toBeVisible();
         await page.getByRole("button", { name: "Ask session assistant", exact: true }).click();
         const input = page.getByRole("combobox", { name: "Ask session assistant", exact: true });
@@ -264,6 +265,10 @@ for (const scenario of ["migrated", "unavailable"] as const) {
           const live = page.locator('[data-slot="content-transition-live"]').first();
           await expect(live).not.toHaveClass(/opacity-0/);
           expect(await live.evaluate((element) => element.inert)).toBe(false);
+          // The quick assistant keeps its reply open over the composer until dismissed.
+          const quick = page.getByRole("dialog", { name: "Quick session assistant", exact: true });
+          await page.keyboard.press("Escape");
+          await expect(quick).toHaveCount(0);
           const composer = page.getByRole("combobox", { name: "Message", exact: true });
           await composer.click();
           await expect(composer).toBeFocused();

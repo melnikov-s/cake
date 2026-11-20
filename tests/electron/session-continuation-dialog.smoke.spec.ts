@@ -7,6 +7,8 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { fixtureModelChange, writeFixtureModels } from "./fixtures/fixture-model";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execFileAsync = promisify(execFile);
@@ -66,10 +68,12 @@ test("forks sessions across working directories", async () => {
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      // Session runtimes, including the fork's, start only with a saved model (81eb383b).
+      fixtureModelChange(timestamp),
       {
         type: "message",
         id: "user-1",
-        parentId: null,
+        parentId: "model",
         timestamp,
         message: {
           role: "user",
@@ -104,6 +108,8 @@ test("forks sessions across working directories", async () => {
       .map((entry) => JSON.stringify(entry))
       .join("\n") + "\n",
   );
+  // Never prompted: forking copies history without a model request.
+  await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:1/v1" });
 
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -120,6 +126,8 @@ test("forks sessions across working directories", async () => {
 
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Plan the focused fix");
     const fork = page.getByRole("button", {
       name: "Fork response with full context into new chat",
     });

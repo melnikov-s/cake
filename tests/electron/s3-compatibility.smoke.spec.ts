@@ -5,6 +5,8 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
 import { installLocalModelHttpGuard } from "./main-harness";
+import { fixtureDefaultPreset, writeFixtureModels } from "./fixtures/fixture-model";
+import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -36,8 +38,12 @@ test("adapts extension dialogs and reports unsupported widgets", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
+      // The extension runs only once the Session runtime starts with a model (81eb383b).
+      ...fixtureDefaultPreset(),
     }),
   );
+  // Never prompted: extension commands run without a model request.
+  await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:1/v1" });
   await writeFile(
     join(project, ".pi", "settings.json"),
     JSON.stringify({ packages: ["../fixture-package"] }),
@@ -131,6 +137,8 @@ export default function (pi) {
     const page = await application.firstWindow();
     const rendererErrors: string[] = [];
     page.on("pageerror", (error) => rendererErrors.push(error.message));
+    // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
       timeout: 20_000,
     });

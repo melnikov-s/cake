@@ -1709,6 +1709,28 @@ describe("Discussion Sessions domain", () => {
     }).pipe(Effect.provide(fixture.layer));
   });
 
+  it.effect("starts a new thread on the parent's model without a Cake default preset", () => {
+    const fixture = makeLayer();
+    return Effect.gen(function* () {
+      yield* discussionSessions.start({
+        parentSessionId: "parent-1",
+        workingDirectory: "/project",
+        anchor,
+        text: "Explain this",
+        model: { provider: "parent-provider", id: "parent-model" },
+        thinkingLevel: "high",
+      });
+      // A new sidecar has no saved model; the parent's choice is its launch configuration.
+      const sidecar = fixture.options.find((options) => options.directSessionDir);
+      assert.deepEqual(sidecar?.initialConfiguration, {
+        provider: "parent-provider",
+        modelId: "parent-model",
+        thinkingLevel: "high",
+        fastMode: false,
+      });
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
   it.effect(
     "serves every later conversation operation through the shared Session Chat core",
     () => {

@@ -8,6 +8,7 @@ import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execFileAsync = promisify(execFile);
@@ -194,9 +195,9 @@ test("workspace changes use Source Control, committed files fall back to the fil
         }
         return undefined;
       });
-    await expect(page.getByRole("button", { name: "VS Code", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Review the project changes");
+    await expect(page.getByRole("button", { name: "VS Code", exact: true })).toBeVisible();
     // Real RPC authorization and fullscreen reader, before any editor is started.
     await page.getByRole("link", { name: "Markdown report" }).click();
     const markdownReader = page.getByRole("dialog", { name: /project-sibling\/report\.md/ });

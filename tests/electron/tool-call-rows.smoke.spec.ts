@@ -6,6 +6,20 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { toolCallRowsScenario } from "../../scripts/visual-capture/tool-call-rows";
 
 async function dragText(page: Page, target: Locator) {
+  // The virtualized transcript keeps measuring rows after scrolling (fc455223). Drag only once
+  // the row has stopped moving, or the press lands on whatever row slid under the pointer.
+  await expect
+    .poll(() =>
+      target.evaluate(async (element) => {
+        const tops: number[] = [];
+        for (let frame = 0; frame < 4; frame++) {
+          tops.push(element.getBoundingClientRect().top);
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        }
+        return tops.every((top) => top === tops[0]);
+      }),
+    )
+    .toBe(true);
   const points = await target.evaluate((element) => {
     const node = element.firstChild!;
     const range = document.createRange();
@@ -13,10 +27,18 @@ async function dragText(page: Page, target: Locator) {
     const rect = range.getBoundingClientRect();
     return { x: rect.left + 1, end: rect.right - 1, y: rect.top + rect.height / 2 };
   });
+  const probe = () =>
+    page.evaluate(({ x, end, y }) => ({
+      start: document.elementFromPoint(x, y)?.outerHTML.slice(0, 120),
+      end: document.elementFromPoint(end, y)?.outerHTML.slice(0, 120),
+    }), points);
+  console.log("PROBE before", JSON.stringify(await probe()));
   await page.mouse.move(points.x, points.y);
   await page.mouse.down();
+  console.log("PROBE down", JSON.stringify(await probe()));
   await page.mouse.move(points.end, points.y, { steps: 12 });
   await page.mouse.up();
+  console.log("PROBE after", JSON.stringify(await probe()));
 }
 
 for (const { theme, width } of [
@@ -143,7 +165,11 @@ for (const { theme, width } of [
         .poll(() => page.evaluate(() => window.getSelection()?.toString()))
         .toBe("~/.pi/agent/example.md");
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-      await expect(page.getByRole("button", { name: "Main", exact: true })).toHaveCount(0);
+      // Selecting a path does not open it in the native editor: Main mode stays current.
+      await expect(page.getByRole("button", { name: "Main", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
       await page.keyboard.press(process.platform === "darwin" ? "Meta+c" : "Control+c");
       expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(
         "~/.pi/agent/example.md",
@@ -183,7 +209,11 @@ for (const { theme, width } of [
         .toBe(join(homedir(), ".pi/agent/example.md"));
       const projectLink = row("project").getByRole("button", { name: "example.ts", exact: true });
       await projectLink.click();
-      await expect(page.getByRole("button", { name: "Main", exact: true })).toBeVisible();
+      // Mode buttons are always shown since 582d0fc7; the project file opens VS Code mode.
+      await expect(page.getByRole("button", { name: "VS Code", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
       expect(
         await app.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().every((window) => !window.isVisible()),

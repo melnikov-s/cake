@@ -9,6 +9,7 @@ import { workingDirectorySessionPath } from "../../src/services/storage/session-
 import { windowState } from "../fixtures/window-state";
 
 import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
+import { writeFixtureModels } from "./fixtures/fixture-model";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -47,6 +48,8 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     project,
     workingDirectorySessionPath(project, paths.piSessions),
   );
+  // The runtime (and its reset path) starts only with a saved model (81eb383b).
+  existing.appendModelChange("fixture", "fixture-model");
   existing.appendSessionInfo("Existing investigation");
   existing.appendMessage({ role: "user", content: "Earlier investigation", timestamp: Date.now() });
   existing.appendMessage({
@@ -67,6 +70,8 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     },
   });
 
+  // Never prompted: nothing here submits a turn.
+  await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:1/v1" });
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
@@ -82,9 +87,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
     await showSessions(page);
     await expect(page.getByRole("button", { name: "New session", exact: true })).toBeVisible();
     const configuration = page.getByRole("button", { name: "Model configuration" });
@@ -188,10 +193,15 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     });
     expect(
       await page.evaluate(() => {
-        const transcript = document.querySelector(".transcript");
-        const composer = document.querySelector(".workbench-composer");
-        const workspace = document.querySelector('[data-slot="workspace"]');
-        const conversation = document.querySelector('[aria-label="Conversation"]');
+        // Global Cake Chat stays mounted since launch (40566199); measure the visible surface.
+        const visible = (selector: string) =>
+          [...document.querySelectorAll(selector)].find(
+            (element) => element.getClientRects().length > 0,
+          );
+        const transcript = visible(".transcript");
+        const composer = visible(".workbench-composer");
+        const workspace = visible('[data-slot="workspace"]');
+        const conversation = visible('[aria-label="Conversation"]');
         const workspaceRect = workspace?.getBoundingClientRect();
         const composerRect = composer?.getBoundingClientRect();
         const conversationRect = conversation?.getBoundingClientRect();

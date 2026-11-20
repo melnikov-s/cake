@@ -6,6 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -95,6 +96,8 @@ test("topbar sharing supports keyboard access, real listener actions and Setting
   try {
     const page = await application.firstWindow();
     page.setDefaultTimeout(15_000);
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Offline sharing fixture");
     await expect(
       page.locator(".transcript").getByText("Offline sharing fixture", { exact: true }),
     ).toBeVisible();

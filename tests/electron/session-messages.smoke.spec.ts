@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { inDisplayOrder } from "./fixtures/transcript-order";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -125,7 +126,11 @@ for (const state of ["default", "project", "reference"]) {
     try {
       const page = await application.firstWindow();
       await scenario.prepare(page, state);
-      const card = page.getByRole("region", { name: "Message from another session" }).first();
+      // Virtualized rows are not in DOM order (fc455223).
+      const card = await inDisplayOrder(
+        page.getByRole("region", { name: "Message from another session" }),
+        "first",
+      );
       await expect(card.getByRole("heading", { name: "Completed" })).toBeVisible();
       await expect(card.locator('[data-slot="session-message-card"]')).toHaveCSS(
         "border-width",
@@ -155,7 +160,10 @@ for (const state of ["default", "project", "reference"]) {
       expect(copied).toContain("Installed the **manual post-mortem skill**");
       expect(copied).not.toContain("cake-session-message");
       if (state === "reference") {
-        const reply = page.getByRole("region", { name: "Message from another session" }).last();
+        const reply = await inDisplayOrder(
+          page.getByRole("region", { name: "Message from another session" }),
+          "last",
+        );
         await expect(reply.locator('[data-slot="message-source"]')).toHaveCount(0);
         await expect(reply).not.toContainText("Referenced Cake messages");
         await expect(reply).not.toContainText("messages.read");
@@ -193,7 +201,10 @@ for (const state of ["default", "project", "reference"]) {
       await expect(page.getByText(/Cake response mode: text/)).toBeVisible();
       await context.click();
       if (state === "project") {
-        const fallback = page.getByRole("region", { name: "Message from another session" }).last();
+        const fallback = await inDisplayOrder(
+          page.getByRole("region", { name: "Message from another session" }),
+          "last",
+        );
         await expect(
           fallback.getByRole("button", { name: "Untitled session", exact: true }),
         ).toBeVisible();

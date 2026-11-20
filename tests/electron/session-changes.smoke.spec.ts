@@ -98,7 +98,9 @@ for (const theme of ["dark", "light"] as const) {
     };
     let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
     try {
-      await seedSessionChanges(paths, theme);
+      // A managed worktree always compares with its recorded landing target (7244b311); the
+      // comparison selector belongs to unmanaged checkouts with inferred parent branches.
+      await seedSessionChanges(paths, theme, { managed: false });
       app = await electron.launch({
         args: [repository],
         cwd: repository,
@@ -149,8 +151,14 @@ for (const theme of ["dark", "light"] as const) {
       await expect(picker).toHaveAttribute("title", sessionChangesComparisonBranch);
       await picker.focus();
       await expect(picker).toBeFocused();
+      // Inferred alternatives are ranked, so move toward main from the inferred base.
+      const branches = await picker.locator("option").allTextContents();
+      const toward =
+        branches.indexOf("main") < branches.indexOf(sessionChangesComparisonBranch)
+          ? "ArrowUp"
+          : "ArrowDown";
       await picker.press("Space");
-      await picker.press("ArrowDown");
+      await picker.press(toward);
       await picker.press("Enter");
       await expect(picker).toHaveValue("main");
       await expect(picker).toBeFocused();
@@ -344,7 +352,8 @@ test("Changes shares responsive panels: wide split, narrow and Browser Mode repl
     await commit.focus();
     await page.keyboard.press("Space");
     await expect(commit).toHaveAttribute("aria-expanded", "true");
-    const file = panel.getByRole("button", { name: /src\/review-pane.ts/ }).first();
+    // The expanded commit's own file, not the net Contribution row above it (4bd86cf4).
+    const file = commit.locator("xpath=..").getByRole("button", { name: /src\/review-pane.ts/ });
     await expect(file).toContainText("+1");
     await expect(file).toContainText("−0");
     await expect(panel.getByRole("region", { name: "Staged", exact: true })).toContainText(

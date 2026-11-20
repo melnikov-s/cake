@@ -11,6 +11,7 @@ import { createModels } from "@earendil-works/pi-durable-ai";
 import { cakeChatSideChatSessionId } from "../../src/contracts/cake-chats/cake-chat-identity";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { store, windowStateDocument } from "../fixtures/window-state";
+import { MIN_WORKSPACE_PANEL_WIDTH } from "../../src/renderer/lib/workspace-panel-geometry";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -187,7 +188,8 @@ for (const theme of ["dark", "light"] as const) {
         await divider.press("Home");
         await openPicker();
         await expectContained(popup, pane);
-        expect((await popup.boundingBox())!.width).toBe(304);
+        // Home sizes the companion to its 240px minimum (06eaa5e4); the popup keeps a 16px inset.
+        expect((await popup.boundingBox())!.width).toBe(MIN_WORKSPACE_PANEL_WIDTH - 16);
         // Keyboard split resizing leaves the popup open and its toolbar anchor unchanged.
         await divider.press("End");
         await expectContained(popup, pane);

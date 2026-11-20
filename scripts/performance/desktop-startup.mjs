@@ -33,8 +33,9 @@ export async function measureDesktopStartup(
     if (recoveryDelay) {
       const { readdir } = await import("node:fs/promises");
       const directory = join(temporary, "out/main");
+      // Match the recovery program independently of the bundler's indentation (tabs today).
       const marker =
-        "const recovery = yield* RuntimeRecoveryStorage;\n      const coordination = yield* SessionCoordination;";
+        /const recovery = yield\* RuntimeRecoveryStorage;\s*const coordination = yield\* SessionCoordination;/;
       const settled = 'yield* startupDiagnostics.mark("backend-recovery-ready");';
       // Rollup may name the shared desktop chunk main-* or index-*. Find the
       // actual recovery program in this snapshot instead of assuming its name.
@@ -43,13 +44,13 @@ export async function measureDesktopStartup(
         if (!file.endsWith(".js")) continue;
         const path = join(directory, file);
         const source = await readFile(path, "utf8");
-        if (source.includes(marker) && source.includes(settled)) candidates.push({ path, source });
+        if (marker.test(source) && source.includes(settled)) candidates.push({ path, source });
       }
       if (candidates.length !== 1) throw new Error("Expected one recovery fixture injection point");
       const { path, source } = candidates[0];
       await writeFile(
         path,
-        `globalThis.cakeRecoverySettled = Promise.withResolvers();\n${source.replace(marker, `yield* Effect.sleep(${recoveryDelay});\n${marker}`).replace(settled, `${settled}\nglobalThis.cakeRecoverySettled.resolve();`)}`,
+        `globalThis.cakeRecoverySettled = Promise.withResolvers();\n${source.replace(marker, (match) => `yield* Effect.sleep(${recoveryDelay});\n${match}`).replace(settled, `${settled}\nglobalThis.cakeRecoverySettled.resolve();`)}`,
       );
     }
     if (auditImports) {

@@ -7,6 +7,7 @@ import { defaultApplicationState } from "../../src/contracts/application/applica
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
 import { showSessions } from "./fixtures/workspace-navigation";
+import { fixtureModelChange, writeFixtureModels } from "./fixtures/fixture-model";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -49,10 +50,12 @@ for (const theme of ["light", "dark"] as const) {
       join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
       [
         { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+        // The runtime, and its injected context, starts only with a saved model (81eb383b).
+        fixtureModelChange(timestamp),
         {
           type: "session_info",
           id: "title",
-          parentId: null,
+          parentId: "model",
           timestamp,
           name: "Session navigation: clearer breadcrumbs and parent-home navigation",
         },
@@ -60,6 +63,8 @@ for (const theme of ["light", "dark"] as const) {
         .map((entry) => JSON.stringify(entry))
         .join("\n") + "\n",
     );
+    // Never prompted: opening the Session only starts its runtime.
+    await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:1/v1" });
     const application = await electron.launch({
       args: [repository],
       cwd: repository,
@@ -220,7 +225,8 @@ for (const theme of ["light", "dark"] as const) {
         ),
       ).toBe(true);
       await expect(currentTitle).toHaveCSS("white-space", "nowrap");
-      await expect(breadcrumb).toHaveCSS("overflow-x", "auto");
+      // Breadcrumbs ellipsize instead of scrolling (012a7135).
+      await expect(breadcrumb).toHaveCSS("overflow-x", "hidden");
       await expect(back).toHaveCount(1);
       await expect(back).toBeVisible();
       const narrow = (await back.boundingBox())!;

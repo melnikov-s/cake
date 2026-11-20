@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
+import { openProjectChat } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -69,30 +70,38 @@ for (const mode of ["Browser Mode", "VS Code"] as const) {
       });
       const page = await app.firstWindow();
       await page.setViewportSize({ width: 1500, height: 900 });
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-      await page
-        .locator('[data-slot="project-header"] [data-slot="project-label"]')
-        .first()
-        .click();
+      // Launch starts in global Cake Chat (40566199); open the Project Chat from the rail.
+      await openProjectChat(page, "Project");
       await expect(
         page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
       ).toBeVisible();
-      await page.getByRole("button", { name: "To-do", exact: true }).click();
-      const panel = page.getByRole("complementary", { name: "To-do", exact: true });
-      const selected = panel.getByRole("button", { name: `Focus to-do: ${title}`, exact: true });
+      // To-dos live in the Workspace accessory (582d0fc7); Focus is a row action (3977f22d).
+      const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+      await workspace.getByRole("button", { name: /^To-dos / }).click();
+      const todoList = page.getByRole("list", { name: "To-dos", exact: true });
+      const selected = workspace.getByRole("button", { name: `Focus to-do: ${title}`, exact: true });
       await selected.click();
       await expect(selected).toHaveAttribute("aria-pressed", "true");
       const readTodos = async () =>
         JSON.parse(await readFile(statePath, "utf8")).data.projects[0].todos;
       await expect.poll(async () => (await readTodos()).selectedId).toBe(id);
-      await page.getByRole("button", { name: `Open ${mode}`, exact: true }).click();
+      const modeButton = page
+        .getByRole("group", { name: "Conversation workspace", exact: true })
+        .getByRole("button", { name: mode === "VS Code" ? "VS Code" : "Browser", exact: true });
+      await modeButton.click();
       await expect(
         page.getByRole("region", {
           name: mode === "VS Code" ? "VS Code workspace" : "Browser workspace",
           exact: true,
         }),
       ).toBeVisible();
-      await expect(panel).toHaveCount(0);
+      // Tool modes share the companion pane, which shows Chat rather than the to-do list.
+      const companion = page.getByRole("group", { name: "Companion content", exact: true });
+      await expect(companion.getByRole("button", { name: "Chat", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await expect(todoList).toHaveCount(0);
       const composer = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
       await expect(composer).toBeVisible();
       await composer.click();
@@ -100,16 +109,16 @@ for (const mode of ["Browser Mode", "VS Code"] as const) {
       await expect(composer).toHaveValue("Continue reviewing");
       await expect(composer).toBeFocused();
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-      await page.getByRole("button", { name: "Main", exact: true }).first().click();
-      await expect(panel).toBeVisible();
+      await page.getByRole("button", { name: "Main", exact: true }).click();
+      await expect(todoList).toBeVisible();
       await expect(selected).toHaveAttribute("aria-pressed", "true");
       expect(await readTodos()).toMatchObject({
         selectedId: id,
         items: [{ id, state: "open", revision: 0 }],
       });
       // Opening a workspace without an accessory still shows the normal chat.
-      await page.getByRole("button", { name: "Close To-do", exact: true }).click();
-      await page.getByRole("button", { name: `Open ${mode}`, exact: true }).click();
+      await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
+      await modeButton.click();
       await expect(composer).toBeVisible();
       await expect(composer).toHaveValue("Continue reviewing");
       if (mode === "Browser Mode") {

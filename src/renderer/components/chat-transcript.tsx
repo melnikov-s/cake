@@ -698,7 +698,9 @@ export const ChatTranscript = observer(function ChatTranscript({
           data-slot="task-section-header"
           data-transcript-item-index={index}
           data-transcript-section-anchor-id={transcriptAnchorId(item)}
-          className="bg-background pb-3 has-[[aria-expanded=false]]:pb-0"
+          // Only a collapsed section disclosure removes the gap; the heading's label picker
+          // popover trigger also carries aria-expanded (81947630).
+          className="bg-background pb-3 has-[[data-slot=task-section-disclosure][aria-expanded=false]]:pb-0"
         >
           <div className="mx-auto w-full max-w-3xl min-w-0 [&_[data-slot=task-section-label]]:mb-0 [&_[data-slot=task-section-label]]:bg-background">
             <TaskSectionRail

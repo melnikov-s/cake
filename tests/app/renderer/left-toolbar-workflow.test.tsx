@@ -228,6 +228,30 @@ describe("rail disclosure", () => {
     },
   );
 
+  it("leaves Escape to other surfaces while a Dynamic rail rests, and collapses it when expanded", () => {
+    render(
+      <NavigationRail
+        layout="dynamic"
+        label="Test rail"
+        header={
+          <IconButton tooltip="Action" label="Action">
+            A
+          </IconButton>
+        }
+        children={null}
+        footer={null}
+        onOverlayRightChange={() => {}}
+      />,
+    );
+    const nav = screen.getByRole("navigation");
+    // A resting rail must not swallow the window-level Escape that closes Changes or Session tree.
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(true);
+    fireEvent.pointerEnter(nav);
+    expect(nav.dataset.expanded).toBe("true");
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false);
+    expect(nav.dataset.expanded).toBe("false");
+  });
+
   it("retains a portaled popover on pointer leave and releases it on disposal", () => {
     const right = vi.fn();
     const f = render(

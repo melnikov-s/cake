@@ -10,6 +10,7 @@ import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 import { TaskAttributionDoc } from "../../src/services/pi-durable/durable-task-attribution";
+import { inDisplayOrder } from "./fixtures/transcript-order";
 
 const repository = resolve(import.meta.dirname, "../..");
 const titleA = "Investigate slow project startup and repeated configuration reads";
@@ -92,17 +93,18 @@ for (const global of [false, true]) {
     try {
       const page = await app.firstWindow();
       await page.setViewportSize({ width: 1400, height: 2200 });
-      if (global) await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      const rail = page.getByRole("navigation", { name: "Projects and global utilities" });
+      if (global) await rail.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
       else
-        await page
+        await rail
           .getByRole("button", { name: /^Open Project Chat for / })
           .first()
           .click();
-      const transcript = page.locator('[data-slot="session-pane"] .transcript').last();
+      // Global Cake Chat stays mounted beside Project Chat; use the visible conversation.
+      const transcript = page.locator('[data-slot="session-pane"] .transcript:visible');
       await expect(transcript.locator("figure img")).toHaveCount(3);
-      const key = await transcript
-        .locator("figure")
-        .first()
+      // Virtualized rows are not in DOM order (fc455223); take the first displayed figure.
+      const key = await (await inDisplayOrder(transcript.locator("figure"), "first"))
         .locator('xpath=ancestor::*[@data-slot="transcript-item"]')
         .getAttribute("data-transcript-item-key");
       const shot = transcript.locator(`[data-transcript-item-key='${key}'] figure`);
@@ -122,7 +124,8 @@ for (const global of [false, true]) {
       await transcript
         .getByRole("button", { name: `Show in To-do: ${titleB}`, exact: true })
         .click();
-      const panel = page.getByRole("complementary", { name: "To-do" });
+      // To-dos live in the Workspace accessory (582d0fc7); choosing one focuses it.
+      const panel = page.getByRole("complementary", { name: "Workspace", exact: true });
       const selectB = panel.getByRole("button", { name: titleB, exact: true });
       await selectB.click();
       await expect(shot).toHaveCount(0);

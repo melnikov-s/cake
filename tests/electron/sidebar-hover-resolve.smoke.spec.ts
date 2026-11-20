@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
-import { showSessions } from "./fixtures/workspace-navigation";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -79,9 +79,11 @@ for (const theme of ["light", "dark"] as const) {
     });
     try {
       const page = await application.firstWindow();
+      // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+      await openSession(page, "selected");
       const sidebar = await showSessions(page);
       const selected = sidebar.locator('.session-item[data-session-id="selected"]');
-      await expect(selected).toHaveAttribute("data-navigation-active", "true", { timeout: 20_000 });
+      await expect(selected).toHaveAttribute("data-navigation-active", "true");
       for (const sessionId of ["completed-first", "completed-second"]) {
         const row = sidebar.locator(`.session-item[data-session-id="${sessionId}"]`);
         const dot = row.getByRole("img", { name: "Ready, unread" });

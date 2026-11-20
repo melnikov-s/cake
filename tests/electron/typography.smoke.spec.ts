@@ -78,7 +78,7 @@ for (const theme of ["light", "dark"] as const) {
                     count++;
                     if (Number.parseFloat(style.fontSize) < floor - 0.1) {
                       undersized.push(
-                        `${parent.tagName}: ${text.textContent.trim().slice(0, 60)} (${style.fontSize})`,
+                        `${parent.tagName}: ${text.textContent.trim().slice(0, 60)} (${style.fontSize}) PROBE ${parent.outerHTML.slice(0, 300)} IN ${parent.parentElement?.parentElement?.outerHTML.slice(0, 600)}`,
                       );
                     }
                     const before = getComputedStyle(parent, "::before");

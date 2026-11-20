@@ -7,6 +7,8 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type Locator } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
+import { isUtilityRequest } from "./fixtures/fixture-model";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -54,9 +56,14 @@ async function verifySideChat(
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   const timestamp = new Date(0).toISOString();
   const responses: ServerResponse[] = [];
-  const server = createServer((_request, response) => {
+  const server = createServer(async (request, response) => {
+    let body = "";
+    for await (const data of request) body += data;
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.flushHeaders();
+    // Utility requests (titles, labels, to-do descriptions) are not chat turns; leave them
+    // pending so only real Side Chat and parent turns are counted and driven below.
+    if (isUtilityRequest(body)) return;
     responses.push(response);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -129,10 +136,19 @@ async function verifySideChat(
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      // The runtime starts only with a saved model (81eb383b).
+      {
+        type: "model_change",
+        id: "model",
+        parentId: null,
+        timestamp,
+        provider: "stream-provider",
+        modelId: "fixture-model",
+      },
       {
         type: "message",
         id: "user-1",
-        parentId: null,
+        parentId: "model",
         timestamp,
         message: {
           role: "user",
@@ -185,18 +201,9 @@ async function verifySideChat(
   });
   try {
     const page = await application.firstWindow();
-    if (parentStreaming) {
-      // Current startup opens Cake Chat; select this fixture through the real UI
-      // rather than relying on legacy window-state active-selection restoration.
-      await page
-        .getByRole("button", { name: "Open Project Chat for project", exact: true })
-        .click();
-      await page.getByRole("button", { name: /^Sessions ·/ }).click();
-      await page.locator(`.session-item[data-session-id="${sessionId}"] .session-row`).click();
-    }
-    await expect(page.getByText("The settings shape is explicit.")).toBeVisible({
-      timeout: 20_000,
-    });
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Show the settings shape");
+    await expect(page.getByText("The settings shape is explicit.")).toBeVisible();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await composer.click();
     await expect(composer).toBeFocused();
@@ -296,7 +303,11 @@ async function verifySideChat(
       await expect(page.getByText("The parent is still working.")).toBeVisible();
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Side chats, 1 open", exact: true }).click();
-      await page.getByRole("dialog", { name: "Open side chats" }).getByRole("button").click();
+      // The picker also offers a new side chat; reopen the existing one by its title.
+      await page
+        .getByRole("dialog", { name: "Open side chats" })
+        .getByRole("button", { name: "Side chat", exact: true })
+        .click();
       await expect(sideChatInput).toBeVisible();
       await sideChatInput.fill("My response while the parent runs");
       await sideChatInput.press("Enter");

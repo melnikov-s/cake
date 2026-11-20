@@ -97,9 +97,11 @@ export function NavigationRail({
   }, [onRevealChange]);
 
   useEffect(() => {
+    // Claim Escape only to collapse a revealed or expanded rail. A resting Dynamic rail must
+    // leave Escape to the window-level dismissal of panels such as Changes or Session tree.
+    const dismissible = autoHide ? visible : layout === "dynamic" && active;
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || menuOpen || !visible) return;
-      if (!autoHide && layout !== "dynamic") return;
+      if (event.key !== "Escape" || event.defaultPrevented || menuOpen || !dismissible) return;
       event.preventDefault();
       setHovered(false);
       onRevealChange?.(false);
@@ -112,7 +114,7 @@ export function NavigationRail({
     // Nested popovers dismiss on document first; they own the first Escape.
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
-  }, [autoHide, layout, menuOpen, visible, onRevealChange]);
+  }, [autoHide, layout, menuOpen, visible, active, onRevealChange]);
 
   useLayoutEffect(() => {
     const element = ref.current;

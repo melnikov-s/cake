@@ -7,7 +7,8 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { seedCakeChatHistory } from "./durable-chat-fixture";
 import { windowState } from "../fixtures/window-state";
 
-import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { createSessionInProject, showSessions } from "./fixtures/workspace-navigation";
+import { fixtureDefaultPreset, writeFixtureModels } from "./fixtures/fixture-model";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -48,8 +49,12 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
+      // Observed conversations start their runtimes only with a model (81eb383b).
+      ...fixtureDefaultPreset(),
     }),
   );
+  // Never prompted: observation only opens existing conversations.
+  await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:1/v1" });
   for (const directory of [projectSessions]) {
     await writeFile(
       join(directory, ".pi-session-metadata.json"),
@@ -112,13 +117,18 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
         }
       }).observe(document.body, { childList: true, subtree: true });
     });
+    // Launch starts in global Cake Chat (40566199); its Sessions list spans every Project.
+    await showSessions(page);
     for (const session of [...sessions, sessions[0]!, sessions[1]!]) {
       await page.locator(`.session-item[data-session-id="${session.id}"] .session-row`).click();
       await expect(
         page.locator(".transcript").getByText(session.title, { exact: true }),
-      ).toBeVisible({ timeout: 20_000 });
+      ).toBeVisible();
     }
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Open Cake Chat", exact: true })
+      .click();
     await expect(
       page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
     ).toBeVisible();

@@ -51,8 +51,11 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
 
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); each Project Session is staged below.
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
-    await expect(composer).toBeVisible({ timeout: 20_000 });
     const newFirst = () => createSessionInProject(page, /^First(?: |$)/i);
     const newSecond = () => createSessionInProject(page, /^Second(?: |$)/i);
 
@@ -91,7 +94,10 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
     await expect(projectChat).toHaveValue("Project Chat draft");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .getByRole("button", { name: "Open Cake Chat", exact: true })
+      .click();
     const cakeChat = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
     await expect(cakeChat).toBeFocused();
     await cakeChat.pressSequentially("Cake Chat draft");
@@ -103,7 +109,8 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
 
     await page.getByRole("button", { name: "Open Project Chat for first", exact: true }).click();
     await expect(projectChat).toHaveValue("Project Chat draft");
-    await page.getByRole("button", { name: /^(?:\d+ artifacts|Artifacts)$/ }).click();
+    // The Project Chat header's artifact control, not the rail's global Artifacts library.
+    await page.getByRole("button", { name: /^\d+ artifacts$/ }).click();
     await page.getByRole("button", { name: "Browse all artifacts", exact: true }).click();
     await expect(
       page.getByRole("textbox", { name: "Search artifact library", exact: true }),

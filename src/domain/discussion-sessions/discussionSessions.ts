@@ -56,6 +56,7 @@ import { ReviewStorage } from "../../services/storage/ReviewStorage";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import type { InterviewRecord } from "../../contracts/interviews/interview";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 
 export * from "../../contracts/discussion-sessions/discussion-session-data";
 
@@ -287,6 +288,7 @@ const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguratio
 /** Acquires a thread's sidecar; the parent projection is regenerated per turn, not here. */
 const prepare = Effect.fn("DiscussionSessions.prepare")(function* (
   record: DiscussionSessionRecord,
+  initialConfiguration?: ChatConfiguration,
 ) {
   const sidecarSessionId = record.sidecarSessionId ?? crypto.randomUUID();
   yield* (yield* SessionFamilyStorage)
@@ -297,7 +299,13 @@ const prepare = Effect.fn("DiscussionSessions.prepare")(function* (
     })
     .pipe(asError("prepare"));
   const configuration = yield* sideChatConfiguration({ ...record, sidecarSessionId });
-  return yield* acquireRecord(record, configuration, sidecarSessionId);
+  return yield* acquireRecord(
+    record,
+    initialConfiguration && record.sidecarSessionId === undefined
+      ? { ...configuration, runtime: { ...configuration.runtime, initialConfiguration } }
+      : configuration,
+    sidecarSessionId,
+  );
 });
 
 /** Assemble the actual Discussion profile, including after a backend restart. */
@@ -535,7 +543,16 @@ const deliverFirstPrompt = Effect.fn("DiscussionSessions.deliverFirstPrompt")(fu
 ) {
   const environment = yield* DiscussionSessionEnvironment;
   const annotations = input.annotations ?? [];
-  const prepared = yield* prepare(record);
+  // A new thread starts on the parent's chosen model, even without a Cake default preset.
+  const prepared = yield* prepare(
+    record,
+    input.model && {
+      provider: input.model.provider,
+      modelId: input.model.id,
+      thinkingLevel: input.thinkingLevel ?? "off",
+      fastMode: false,
+    },
+  );
   yield* bindSidecarRenderer(prepared.handle, connectionId);
   if (input.model)
     yield* prepared.handle.setModel(input.model.provider, input.model.id).pipe(asError("start"));

@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
-
+import { fixtureDefaultPreset, writeFixtureModels } from "./fixtures/fixture-model";
 import { createSessionInProject } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -32,8 +32,12 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
+      // Commands run only once the Session runtime starts with a model (81eb383b).
+      ...fixtureDefaultPreset(),
     }),
   );
+  // Never prompted: the artifact command runs without a model request.
+  await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:1/v1" });
   let application: ElectronApplication | undefined;
   try {
     application = await electron.launch({
@@ -50,6 +54,8 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     });
     const page = await application.firstWindow();
     await page.setViewportSize({ width: 1_600, height: 1_000 });
+    // Launch starts in global Cake Chat (40566199); stage a Project Session explicitly.
+    await createSessionInProject(page, /^project(?: |$)/i);
     const input = page.getByLabel("Message", { exact: true });
     await expect(input).toBeVisible({ timeout: 20_000 });
     const emptyControl = page.getByRole("button", { name: "0 artifacts" });

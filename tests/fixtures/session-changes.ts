@@ -17,8 +17,10 @@ export const sessionChangesComparisonBranch =
 export async function seedSessionChanges(
   paths: { project: string; cakeHome: string; userData: string },
   theme: "light" | "dark" = "dark",
+  { managed = true }: { readonly managed?: boolean } = {},
 ) {
-  const worktree = resolve(paths.project, "../review-worktree");
+  // Unmanaged review happens in the Project checkout itself, on its own feature branch.
+  const worktree = managed ? resolve(paths.project, "../review-worktree") : paths.project;
   const timestamp = new Date(0).toISOString();
   await Promise.all([
     mkdir(paths.project, { recursive: true }),
@@ -35,7 +37,8 @@ export async function seedSessionChanges(
   await git(paths.project, "commit", "-m", "Initial fixture");
   const baseCommit = (await git(paths.project, "rev-parse", "HEAD")).stdout.trim();
   await git(paths.project, "branch", sessionChangesComparisonBranch);
-  await git(paths.project, "worktree", "add", "-b", "agent/changes-review", worktree);
+  if (managed) await git(paths.project, "worktree", "add", "-b", "agent/changes-review", worktree);
+  else await git(paths.project, "checkout", "-b", "agent/changes-review");
   await mkdir(join(worktree, "src"), { recursive: true });
   await writeFile(
     join(worktree, "src", "review-pane.ts"),
@@ -171,7 +174,9 @@ export async function seedSessionChanges(
       } satisfies ApplicationState,
     }),
   );
-  await writeFile(
+  // Unmanaged checkouts have no recorded landing target, so Changes infers parent branches.
+  if (managed)
+    await writeFile(
     join(paths.cakeHome, "state", "worktrees.json"),
     JSON.stringify({
       schemaVersion: 1,

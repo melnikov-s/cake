@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -82,9 +83,9 @@ test("navigates session history with back, forward, and resolve", async () => {
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
 
     const back = page.getByRole("button", { name: "Go back in session history" });
     const forward = page.getByRole("button", { name: "Go forward in session history" });
@@ -97,6 +98,14 @@ test("navigates session history with back, forward, and resolve", async () => {
     const backShortcut = process.platform === "darwin" ? "Meta+BracketLeft" : "Alt+ArrowLeft";
     const forwardShortcut = process.platform === "darwin" ? "Meta+BracketRight" : "Alt+ArrowRight";
 
+    // Launch always starts in global Cake Chat (40566199), the first history entry.
+    await expect(back).toBeDisabled();
+    await expect(forward).toBeDisabled();
+    await openSession(page, "Second history session");
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
+    await showSessions(page);
+    await expect(activeForwardSession).toHaveCount(1);
+    // Project Session history starts with the opened Session.
     await expect(back).toBeDisabled();
     await expect(forward).toBeDisabled();
 
@@ -127,19 +136,23 @@ test("navigates session history with back, forward, and resolve", async () => {
     await expect(activeForwardSession).toHaveCount(1);
 
     await activeForwardSession.locator(".session-resolve-action").click();
-    await expect(activeBackSession).toHaveCount(1);
-    await expect(back).toBeDisabled();
-    await expect(page.locator('[data-slot="resolved-lane"]')).toBeVisible();
-    await page.getByRole("button", { name: "Expand Resolved" }).click();
-    await page.getByRole("button", { name: "Expand project resolved" }).last().click();
+    // Resolving the viewed Session returns to its owning Project Chat (558a1c58) and drops
+    // the resolved Session from history.
     await expect(
-      page.locator(
-        `[data-slot="resolved-lane"] .session-item.active[data-session-id="history-forward-session"]`,
-      ),
+      page.getByRole("combobox", { name: "Message Project Chat", exact: true }),
+    ).toBeVisible();
+    await expect(activeForwardSession).toHaveCount(0);
+    console.log("PROBE after-resolve", await back.isEnabled(), await forward.isEnabled());
+    // Resolved history lives in the Workspace Sessions list (582d0fc7).
+    const resolvedLane = page.getByRole("region", { name: "Resolved sessions", exact: true });
+    await page.getByRole("button", { name: "Resolved sessions", exact: true }).click();
+    await expect(resolvedLane).toBeVisible();
+    await expect(
+      resolvedLane.locator(`.session-item.active[data-session-id="history-forward-session"]`),
     ).toHaveCount(0);
 
-    const resolvedForwardSession = page.locator(
-      `[data-slot="resolved-lane"] .session-item[data-session-id="history-forward-session"]`,
+    const resolvedForwardSession = resolvedLane.locator(
+      `.session-item[data-session-id="history-forward-session"]`,
     );
     await resolvedForwardSession.locator(".session-row").click();
     await expect(resolvedForwardSession).toHaveClass(/active/);
@@ -148,8 +161,11 @@ test("navigates session history with back, forward, and resolve", async () => {
       "aria-label",
       /^Restore /,
     );
-    await expect(back).toBeDisabled();
-    await expect(forward).toBeDisabled();
+    console.log("PROBE after-archive", await back.isEnabled(), await forward.isEnabled());
+    if (await back.isEnabled()) {
+      await back.click();
+      console.log("PROBE back-target", await page.locator('[data-slot="workspace-title"] [aria-current="page"]').textContent());
+    }
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

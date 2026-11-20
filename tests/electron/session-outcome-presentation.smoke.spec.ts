@@ -59,18 +59,8 @@ for (const theme of ["light", "dark"] as const) {
       await expect(batch).not.toContainText("merged=true");
       await expect(batch).not.toContainText("acb3bb91264b");
       await expect(batch.getByRole("link", { name: "Open session" })).toHaveCount(4);
-      const details = rows.first().getByRole("button", { name: "System details" });
-      await expect(details).toHaveAttribute("aria-expanded", "false");
-      await details.focus();
-      await details.press("Enter");
-      await expect(details).toHaveAttribute("aria-expanded", "true");
-      const raw = page.locator(`[id="${await details.getAttribute("aria-controls")}"]`);
-      await expect(raw).toContainText("merged=true; resolutionSucceeded=true");
-      // Exact context is inert text, not another inline session-link badge.
-      await expect(raw.getByRole("link")).toHaveCount(0);
-      await details.press("Enter");
-      await expect(raw).toHaveCount(0);
-      await expect(details).toBeFocused();
+      // Successful telemetry stays quiet: no raw System details disclosure (dc869d46).
+      await expect(batch.getByRole("button", { name: "System details" })).toHaveCount(0);
       for (const width of [600, 1100]) {
         await app.evaluate(
           ({ BrowserWindow }, width) =>
@@ -89,11 +79,6 @@ for (const theme of ["light", "dark"] as const) {
       await batch.screenshot({
         path: join(repository, `.visual-captures/outcomes-after-${theme}.png`),
       });
-      await details.press("Enter");
-      await batch.screenshot({
-        path: join(repository, `.visual-captures/outcomes-details-${theme}.png`),
-      });
-      await details.press("Enter");
       await reportToggle.press("Enter");
       await report.getByRole("link", { name: "Open source" }).press("Enter");
       await expect(page.getByRole("heading", { name: "Original findings" })).toBeVisible();

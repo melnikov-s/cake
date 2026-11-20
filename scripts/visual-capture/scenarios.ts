@@ -30,6 +30,7 @@ import { createSessionChangesToolbarScenario } from "./session-changes-toolbar";
 import { openAutomations, seedAutomationVisualFixture } from "../../tests/fixtures/automations";
 import { chooseNextNativeMenuItem } from "../../tests/electron/fixtures/native-menu";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
+import { inDisplayOrder } from "../../tests/electron/fixtures/transcript-order.ts";
 import {
   seedMessageBoardFixture,
   MESSAGE_BOARD_FIXTURE_ID,
@@ -3861,9 +3862,17 @@ const projectChatTaskRails: VisualCaptureScenario = {
     const row = page
       .getByText("Investigate slow project startup.", { exact: true })
       .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
-    const first = transcript
-      .getByRole("button", { name: `Show in To-do: ${taskTitle}`, exact: true })
-      .first();
+    // Virtualized rows are not in display order (fc455223); the heading belongs to its row by
+    // index rather than by DOM position.
+    const sectionHeader = async (item: Locator) =>
+      transcript.locator(
+        `[data-slot="task-section-header"][data-transcript-item-index="${await item.getAttribute("data-transcript-item-index")}"]`,
+      );
+    const header = await sectionHeader(row);
+    const first = header.getByRole("button", {
+      name: `Show in To-do: ${taskTitle}`,
+      exact: true,
+    });
     await expect(first).toBeVisible();
     // Headings stay above the rule at every pane width, including wrapping
     // titles and narrower accessory layouts.
@@ -3890,7 +3899,7 @@ const projectChatTaskRails: VisualCaptureScenario = {
       true,
     );
     if (state === "collapsed") {
-      const disclosure = transcript.getByRole("button", { name: taskTitle, exact: true }).first();
+      const disclosure = header.getByRole("button", { name: taskTitle, exact: true });
       await disclosure.click();
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
     }
@@ -3910,13 +3919,14 @@ const projectChatTaskRails: VisualCaptureScenario = {
       await page
         .getByText("Back to startup—compare a cold launch too.", { exact: true })
         .scrollIntoViewIfNeeded();
-      const returned = page
-        .getByRole("button", { name: `Show in To-do: ${taskTitle}`, exact: true })
-        .last();
-      await expect(returned).toBeVisible();
       const returnedRow = page
         .getByText("Back to startup—compare a cold launch too.", { exact: true })
         .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
+      const returned = (await sectionHeader(returnedRow)).getByRole("button", {
+        name: `Show in To-do: ${taskTitle}`,
+        exact: true,
+      });
+      await expect(returned).toBeVisible();
       const previousRow = page
         .getByText("I’ll keep the sidebar compact and preserve the shortcuts.", { exact: true })
         .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
@@ -6557,24 +6567,34 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
     }
   },
   async prepare(page, state) {
-    await page
-      .locator('[data-slot="session-message"]')
-      .first()
-      .waitFor({ state: "visible", timeout: 20_000 });
     if (state === "default" || state === "reference" || state === "original") {
       await page.getByRole("button", { name: "Open Cake Chat", exact: true }).first().click();
       await expect(page.getByRole("navigation", { name: "Conversation breadcrumb" })).toContainText(
         "Cake Chat",
       );
-    }
+    } else
+      await openSeededSession(
+        page,
+        "visual-capture-project",
+        "How should agents capture Cake UI changes?",
+      );
+    await page
+      .locator('[data-slot="session-message"]')
+      .first()
+      .waitFor({ state: "visible", timeout: 20_000 });
     await expect(
-      page.getByRole("region", { name: "Notice about another session" }).last(),
+      await inDisplayOrder(
+        page.getByRole("region", { name: "Notice about another session" }),
+        "last",
+      ),
     ).toBeVisible();
     if (state.endsWith("reference") || state.endsWith("original")) {
-      const response = page
-        .getByRole("region", { name: "Message from another session" })
-        .last()
-        .locator('[data-slot="response-disclosure"]');
+      const response = (
+        await inDisplayOrder(
+          page.getByRole("region", { name: "Message from another session" }),
+          "last",
+        )
+      ).locator('[data-slot="response-disclosure"]');
       await response.scrollIntoViewIfNeeded();
       await expect(response).toHaveAttribute(
         "aria-label",
@@ -6587,7 +6607,12 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     if (state === "hover") {
-      await page.getByRole("region", { name: "Message from another session" }).last().hover();
+      await (
+        await inDisplayOrder(
+          page.getByRole("region", { name: "Message from another session" }),
+          "last",
+        )
+      ).hover();
     } else {
       await page.mouse.move(1, 1);
     }
@@ -9838,6 +9863,11 @@ const nestedToolActivityScenario: VisualCaptureScenario = {
     );
   },
   async prepare(page, state) {
+    await openSeededSession(
+      page,
+      "visual-capture-project",
+      "Show the script and its nested tool calls.",
+    );
     const log = page.locator('[data-slot="activity-group"]');
     await expect(log).toBeVisible();
     await log.locator(":scope > summary").click();

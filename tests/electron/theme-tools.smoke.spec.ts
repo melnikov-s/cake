@@ -9,7 +9,7 @@ import type { JsonObject } from "../../src/contracts/serialization/json-contract
 import { emitRendererEvent } from "./main-harness";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
-import { openSettings } from "./fixtures/workspace-navigation";
+import { openSession, openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const codeServer = "/opt/homebrew/bin/code-server";
@@ -89,7 +89,9 @@ test("theme tools persist, refresh Settings and drive the same live Cake/native 
     const savedAppearance = async () =>
       JSON.parse(await readFile(join(userData, "window-state.json"), "utf8")).data.children
         .settingsStore.children.appearance.state;
-    await page.getByRole("button", { name: "VS Code", exact: true }).click({ timeout: 20_000 });
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Theme tools fixture");
+    await page.getByRole("button", { name: "VS Code", exact: true }).click();
     await expect(
       page.getByRole("region", { name: "VS Code workspace", exact: true }),
     ).toBeVisible();
@@ -162,8 +164,9 @@ test("theme tools persist, refresh Settings and drive the same live Cake/native 
     page = await application.firstWindow();
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveCSS("--background", "#191322", { timeout: 20_000 });
-    const open = page.getByRole("button", { name: "VS Code", exact: true });
-    if (await open.isVisible()) await open.click();
+    // Relaunch starts in global Cake Chat; reopen the Session's native editor explicitly.
+    await openSession(page, "Theme tools fixture");
+    await page.getByRole("button", { name: "VS Code", exact: true }).click();
     await expect.poll(editor, { timeout: 25_000 }).toMatchObject({ background: "#191322" });
   } finally {
     await application.close().catch(() => undefined);

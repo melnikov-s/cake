@@ -5,6 +5,8 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
+import { fixtureModelChange, writeFixtureModels } from "./fixtures/fixture-model";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -39,10 +41,12 @@ test("opens tree navigation from its shortcut and individual messages", async ()
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      // Tree navigation runs in the Session runtime, which starts only with a model (81eb383b).
+      fixtureModelChange(timestamp),
       {
         type: "message",
         id: "user-1",
-        parentId: null,
+        parentId: "model",
         timestamp,
         message: {
           role: "user",
@@ -78,6 +82,8 @@ test("opens tree navigation from its shortcut and individual messages", async ()
       .join("\n") + "\n",
   );
 
+  // Never prompted: tree navigation rewrites the draft without a model request.
+  await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:1/v1" });
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
@@ -93,8 +99,10 @@ test("opens tree navigation from its shortcut and individual messages", async ()
 
   try {
     const page = await application.firstWindow();
-    const composer = page.getByRole("combobox", { name: "Message" });
-    await expect(composer).toBeVisible({ timeout: 20_000 });
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Hello");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await expect(composer).toBeVisible();
 
     // The tree remains available through its existing shortcut.
     await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+E" : "Control+Shift+E");

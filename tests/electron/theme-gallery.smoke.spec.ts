@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -102,7 +103,9 @@ for (const hostTheme of ["light", "dark"] as const) {
         const gallery = page.getByRole("button", { name: `${inactive} theme`, exact: true });
         if ((await gallery.getAttribute("aria-expanded")) === "false") await gallery.click();
         await page.getByRole("button", { name: `Cake ${inactive} theme`, exact: true }).click();
-        await expect(page.getByRole("status")).toHaveText(
+        await expect(
+        page.getByRole("region", { name: "Appearance", exact: true }).getByRole("status"),
+      ).toHaveText(
           `This theme will apply when ${inactive} mode is active.`,
         );
         await expect(page.getByRole("button", { name: "System", exact: true })).toHaveAttribute(
@@ -127,7 +130,9 @@ for (const hostTheme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Dark theme", exact: true }).click();
       await page.getByRole("button", { name: "Fogbank theme", exact: true }).click();
       await expect(page.locator("html")).toHaveCSS("--background", "#fff8e8");
-      await expect(page.getByRole("status")).toHaveText(
+      await expect(
+        page.getByRole("region", { name: "Appearance", exact: true }).getByRole("status"),
+      ).toHaveText(
         "This theme will apply when Dark mode is active.",
       );
       await expect(
@@ -146,9 +151,9 @@ for (const hostTheme of ["light", "dark"] as const) {
       expect(saved.importedThemes).toHaveLength(2);
       application = await launch();
       page = await application.firstWindow();
-      await page
-        .getByRole("button", { name: "Appearance", exact: true })
-        .click({ timeout: 20_000 });
+      // Relaunch never restores the covering Settings surface (40566199); reopen it.
+      await openSettings(page);
+      await page.getByRole("button", { name: "Appearance", exact: true }).click();
       await expect(
         page.getByRole("button", { name: "Warm paper theme", exact: true }),
       ).toHaveAttribute("aria-pressed", "true");

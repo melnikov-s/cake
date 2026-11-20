@@ -254,8 +254,9 @@ test("captures and annotates through the hidden native overlay into the existing
       })
       .toBe("cyan");
     await page.reload();
-    await expect(page.getByRole("button", { name: "Back to chat" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to chat" }).click();
+    // Reload starts in global Cake Chat (40566199), not the covering Settings surface. The
+    // Project's staged Session, with its draft, is reopened through New session.
+    await createSessionInProject(page, /^project(?:\s|$)/);
     await expect(composer).toHaveValue("Keep this draft");
     await expect(
       page.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),

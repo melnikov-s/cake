@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -12,6 +11,8 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { windowState } from "../fixtures/window-state";
 import { CAKE_TITLE_BAR_HEIGHT } from "../../src/services/electron/Electron";
 import { emitRendererEvent } from "./main-harness";
+import { openProjectChat, openSession } from "./fixtures/workspace-navigation";
+import { isUtilityRequest } from "./fixtures/fixture-model";
 
 const repository = resolve(import.meta.dirname, "../..");
 const partial = "Streaming fullscreen response. ".repeat(180);
@@ -33,7 +34,11 @@ for (const surface of ["project", "global", "session"] as const) {
     const turnIds: string[] = [];
     const server = createServer(async (request, response) => {
       // Consume the request before starting our explicitly controlled stream.
-      const body = JSON.parse(Buffer.concat(await request.toArray()).toString()) as {
+      const raw = Buffer.concat(await request.toArray()).toString();
+      // Utility work (to-do descriptions, titles, labels) is not a chat turn: leave it
+      // pending so only the turns driven below are counted.
+      if (isUtilityRequest(raw)) return;
+      const body = JSON.parse(raw) as {
         messages: Array<{ role: string; content: string | Array<{ text?: string }> | null }>;
       };
       const content = body.messages.findLast((message) => message.role === "user")?.content;
@@ -145,21 +150,21 @@ for (const surface of ["project", "global", "session"] as const) {
         },
       });
       const page = await app.firstWindow();
-      await expect(page.getByText("Earlier session input", { exact: true })).toBeVisible({
-        timeout: 20_000,
-      });
+      // Launch starts in global Cake Chat (40566199); open other surfaces explicitly.
+      await expect(
+        page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+      ).toBeVisible({ timeout: 20_000 });
       if (surface === "session") {
-        await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-        await page.getByRole("button", { name: /^Fullscreen session / }).click();
+        await openSession(page, "Fullscreen session");
+        await expect(page.getByText("Earlier session input", { exact: true })).toBeVisible();
       }
-      if (surface === "global")
-        await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-      if (surface === "project") {
-        const id = `project-chat:${createHash("sha256").update(project).digest("hex")}`;
+      if (surface === "project") await openProjectChat(page, "Fullscreen project");
+      if (surface === "global") {
+        // Give Cake Chat a previous visit so history Back is ordinary navigation below.
+        await openProjectChat(page, "Fullscreen project");
         await page
-          .locator(
-            `[data-slot="project-header"][data-session-id="${id}"] [data-slot="project-label"]`,
-          )
+          .getByRole("navigation", { name: "Projects and global utilities" })
+          .getByRole("button", { name: "Open Cake Chat", exact: true })
           .click();
       }
       const composer = page.getByRole("combobox", {
@@ -172,8 +177,9 @@ for (const surface of ["project", "global", "session"] as const) {
         exact: true,
       });
       if (surface === "project") {
-        await page.getByRole("button", { name: "To-do", exact: true }).click();
-        await page.getByRole("button", { name: "Current task", exact: true }).click();
+        const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+        await workspace.getByRole("button", { name: /^To-dos / }).click();
+        await workspace.getByRole("button", { name: "Current task", exact: true }).click();
       }
       const reader = page.getByRole("dialog", { name: "Cake", exact: true });
       const modifier = process.platform === "darwin" ? "Meta" : "Alt";
@@ -271,7 +277,9 @@ for (const surface of ["project", "global", "session"] as const) {
       await page.mouse.move(1, 1);
       await page.keyboard.press(`${modifier}+Enter`);
       await expect(reader).toContainText(ending);
-      await page.keyboard.press(process.platform === "darwin" ? "Meta+[" : "Alt+ArrowLeft");
+      // A Session opened from search has no earlier visit in its history; go up instead.
+      if (surface === "session") await page.keyboard.press(`${modifier === "Meta" ? "Meta" : "Control"}+Shift+H`);
+      else await page.keyboard.press(process.platform === "darwin" ? "Meta+[" : "Alt+ArrowLeft");
       await expect(reader).toHaveCount(0);
     } finally {
       for (const response of responses) response.end();

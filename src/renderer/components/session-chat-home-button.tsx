@@ -15,8 +15,8 @@ export const SessionChatHomeButton = observer(function SessionChatHomeButton() {
       ? `Project Chat for ${root.projectCatalogStore.nameForPath(home.projectPath)}`
       : "Cake Chat";
   return (
-    // Float over content, aligned with the rail's pt-2 / h-9 top action.
-    <nav aria-label="Session home" className="absolute left-4 top-2 z-20 flex h-9 items-center">
+    // Float over content, aligned with the rail's pt-2 / h-8 top action row (fc5d8353).
+    <nav aria-label="Session home" className="absolute left-4 top-2 z-20 flex h-8 items-center">
       <IconButton
         data-slot="session-chat-home"
         className="rounded-full bg-sidebar/80 ring-1 ring-border/65"

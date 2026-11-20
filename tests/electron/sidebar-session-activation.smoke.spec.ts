@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
-import { showSessions } from "./fixtures/workspace-navigation";
+import { openSession, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -68,6 +68,8 @@ test("Sessions activation happens before mouseup and keeps row actions independe
   });
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "selected");
     const sidebar = await showSessions(page);
     const pane = page.locator('[data-slot="session-pane"]');
     const row = (id: string) => sidebar.locator(`.session-item[data-session-id="${id}"]`);

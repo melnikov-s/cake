@@ -51,9 +51,10 @@ for (const action of ["close", "quit"] as const) {
     let application = await launch();
     try {
       const page = await application.firstWindow();
-      await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
-        timeout: 20_000,
-      });
+      // Launch always starts in global Cake Chat (40566199).
+      await expect(
+        page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+      ).toBeVisible({ timeout: 20_000 });
       await openSettings(page);
       await page.getByRole("button", { name: /^Appearance/ }).click();
       // Native mode control, not direct Store mutation.
@@ -79,7 +80,9 @@ for (const action of ["close", "quit"] as const) {
       if (action === "close") await application.close();
       application = await launch();
       const restored = await application.firstWindow();
-      await restored.getByRole("button", { name: /^Appearance/ }).click({ timeout: 20_000 });
+      // Relaunch never restores the covering Settings surface; reopen it from the rail.
+      await openSettings(restored);
+      await restored.getByRole("button", { name: /^Appearance/ }).click();
       await expect(restored.getByRole("button", { name: "Dark", exact: true })).toHaveAttribute(
         "aria-pressed",
         "true",

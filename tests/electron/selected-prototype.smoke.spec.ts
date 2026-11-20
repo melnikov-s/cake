@@ -12,6 +12,7 @@ import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStor
 import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive";
 import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs";
 import { compileFixtureInlineWidget } from "./fixtures/inline-widget";
+import { openSession } from "./fixtures/workspace-navigation";
 import { ArtifactProjection } from "../../src/services/artifacts/ArtifactProjection";
 import { makeArtifactProjectionLive } from "../../src/services/artifacts/ArtifactProjectionLive";
 import { encodePrototype, prototypeFixture } from "../fixtures/prototype-source";
@@ -87,6 +88,9 @@ test("one structured five-option chooser persists a choice independently of visi
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1000),
     );
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    const sessionTitle = "Explain how Cake's desktop architecture works.";
+    await openSession(page, sessionTitle);
     const host = page.locator(
       '[data-artifact-reference="cake://artifact/inline-visual@r2"] [data-artifact-id="inline-visual"]',
     );
@@ -115,6 +119,8 @@ test("one structured five-option chooser persists a choice independently of visi
     await expect(reopened.getByText("Saved: option-3", { exact: true })).toBeVisible();
     await expect(reopened.getByText("option-5 design", { exact: true })).toBeVisible();
     await page.reload();
+    // Reload also starts in global Cake Chat; reopen the Session to observe the saved choice.
+    await openSession(page, sessionTitle);
     await expect(
       host.locator("iframe").contentFrame().getByText("Saved: option-3", { exact: true }),
     ).toBeVisible();

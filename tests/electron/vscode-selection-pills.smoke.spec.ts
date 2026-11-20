@@ -9,6 +9,7 @@ import type { JsonObject } from "../../src/contracts/serialization/json-contract
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent, installLocalModelHttpGuard } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sessionId = "c08076de-555a-4e06-8957-02c9ef4f6740";
@@ -137,7 +138,9 @@ async function fixture() {
         controlRequestId: randomUUID(),
         invocation: { _tag: "InvokeAppControl", command, input },
       });
-    await expect(page.getByLabel("Message", { exact: true })).toBeVisible({ timeout: 20_000 });
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Give me a code tour");
+    await expect(page.getByLabel("Message", { exact: true })).toBeVisible();
     await installLocalModelHttpGuard(application, `http://127.0.0.1:${address.port}`);
     await page.getByRole("button", { name: "Model configuration" }).click();
     const search = page.getByLabel("Search presets and models");

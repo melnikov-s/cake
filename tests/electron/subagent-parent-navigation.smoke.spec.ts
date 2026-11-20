@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { isUtilityRequest } from "./fixtures/fixture-model";
 
 function reply(response: ServerResponse, content: string | { name: string; arguments: object }) {
   const tool = typeof content !== "string";
@@ -42,6 +43,8 @@ test("global activity and tool inspection can return home through Back, breadcru
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
+    // Utility work (titles, to-do descriptions) is not a chat turn; leave it pending.
+    if (isUtilityRequest(body)) return;
     if (body.includes("You are a hidden general researcher for Cake Chat.")) {
       await gate.promise;
       reply(response, "Worker finished.");
@@ -190,6 +193,7 @@ test("global activity and tool inspection can return home through Back, breadcru
   } finally {
     gate.resolve();
     await app.close();
+    server.closeAllConnections();
     await new Promise<void>((done) => server.close(() => done()));
     await rm(temporary, { recursive: true, force: true });
   }

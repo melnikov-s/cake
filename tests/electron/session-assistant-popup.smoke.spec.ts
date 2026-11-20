@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
-import { openSettings } from "./fixtures/workspace-navigation";
+import { openSession, openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -35,13 +35,18 @@ for (const dictation of [false, true]) {
     try {
       const page = await application.firstWindow();
       const parent = page.getByRole("combobox", { name: "Message", exact: true });
-      await expect(parent).toBeVisible({ timeout: 20_000 });
       if (dictation) {
+        // Prepare opens the seeded Session and enables dictation through the real UI.
         await scenario.prepare(page, "default", application);
+        await expect(parent).toBeVisible();
         await page.evaluate(() => {
           navigator.mediaDevices.getUserMedia = async () =>
             new AudioContext().createMediaStreamDestination().stream;
         });
+      } else {
+        // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+        await openSession(page, "Let's discuss this project.");
+        await expect(parent).toBeVisible();
       }
       const trigger = page.getByRole("button", { name: "Ask session assistant", exact: true });
       const quick = page.getByRole("dialog", { name: "Quick session assistant", exact: true });

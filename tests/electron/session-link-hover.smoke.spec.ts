@@ -49,6 +49,16 @@ for (const theme of ["light", "dark"] as const) {
       const rowLinks = rows.getByRole("link", { name: "Open session", exact: true });
       await expect(rows).toHaveCount(4);
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+      // A collapsed card is one compact row whose source action stays inline and visible
+      // (1a4dacc9); expanded cards reveal the shared action bar on their own hover.
+      await expect(sourceActions).toHaveAttribute("data-placement", "inline");
+      await expect(sourceActions).toHaveCSS("opacity", "1");
+      await disclosure.click();
+      await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+      await expect(sourceActions).not.toHaveAttribute("data-placement", "inline");
+      // Return focus to the composer so only hover or focus inside the card reveals actions.
+      await page.getByRole("combobox", { name: "Message Cake Chat", exact: true }).click();
+      await page.mouse.move(1, 1);
 
       for (const link of [sourceActions, ...(await rowLinks.all())]) {
         await expect(link).toHaveCSS("opacity", "0");
@@ -87,8 +97,12 @@ for (const theme of ["light", "dark"] as const) {
       await sourceLink.focus();
       await expect(sourceLink).toBeFocused();
       await expect(sourceActions).toHaveCSS("opacity", "1");
+      // In the expanded card the link is the action bar's last control; Shift+Tab reaches the
+      // preceding action (Copy), keeping the bar revealed.
       await sourceLink.press("Shift+Tab");
-      await expect(disclosure).toBeFocused();
+      await expect(sourceLink).not.toBeFocused();
+      await expect(sourceActions.locator(":focus")).toHaveCount(1);
+      await expect(sourceActions).toHaveCSS("opacity", "1");
       await sourceLink.focus();
       await sourceLink.press("Enter");
       await expect(page.getByRole("heading", { name: "Original findings" })).toBeVisible();

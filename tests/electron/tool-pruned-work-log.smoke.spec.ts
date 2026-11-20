@@ -10,6 +10,7 @@ import { addResponseModeReminder } from "../../src/contracts/conversations/respo
 import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { windowState } from "../fixtures/window-state";
+import { openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const timestamp = new Date(0).toISOString();
@@ -294,12 +295,16 @@ test("shows compacted historical work in place, muted and expandable", async () 
 
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Inspect it");
     const groups = page.locator('[data-slot="activity-group"]');
-    await expect(groups).toHaveCount(2, { timeout: 20_000 });
+    await expect(groups).toHaveCount(2);
     await expect(page.getByText("Check again", { exact: true })).toBeVisible();
     const incoming = page.getByRole("region", { name: "Message from another session" });
     await expect(incoming.getByRole("button", { name: "Cake Chat", exact: true })).toBeVisible();
-    await expect(incoming.getByRole("link", { name: "Cake Chat", exact: true })).toHaveAttribute(
+    // The sender link is the shared message action bar's icon link (c4afb09e), revealed on hover.
+    await incoming.hover();
+    await expect(incoming.getByRole("link", { name: "Open session", exact: true })).toHaveAttribute(
       "href",
       "cake://session/coordinator",
     );

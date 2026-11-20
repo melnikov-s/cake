@@ -10,6 +10,7 @@ import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 import { subagentLink } from "../../src/contracts/subagents/subagent-reference";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { openProjectChat, openSession } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -326,8 +327,10 @@ test("opens retained historical subagent conversations at exact original respons
 
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Delegate a joke.");
     const log = page.locator('[data-slot="activity-group"]');
-    await expect(log).toHaveCount(1, { timeout: 20_000 });
+    await expect(log).toHaveCount(1);
     await expect(log.locator(":scope > summary")).toContainText("1 tool call");
 
     await log.locator(":scope > summary").click();
@@ -344,15 +347,17 @@ test("opens retained historical subagent conversations at exact original respons
     await expect(openSubagentChat).toHaveCount(1);
 
     await openSubagentChat.click();
-    const sideChat = page.getByRole("complementary", { name: "Subagent" });
-    await expect(page.locator('[data-slot="side-chat-layout"]')).toHaveAttribute(
-      "data-presentation",
-      "side-by-side",
-    );
-    await expect(sideChat).toContainText("complete");
+    // Subagents open as a focused secondary conversation, not a Side Chat split (2c616318).
+    const sideChat = page.locator('[data-slot="focused-secondary-conversation"]');
+    const backToSource = page.getByRole("button", {
+      name: "Back to source conversation",
+      exact: true,
+    });
+    await expect(sideChat).toBeVisible();
     await expect(sideChat).toContainText("The loop opened a bakery because it knew how to roll.");
     await expect(sideChat.locator("textarea")).toHaveCount(0);
-    await sideChat.getByRole("button", { name: "Close Subagent" }).click();
+    await backToSource.click();
+    await expect(sideChat).toHaveCount(0);
 
     const exactLink = page.getByRole("link", { name: "Full agent response", exact: true });
     await expect(exactLink).toHaveAttribute(
@@ -360,29 +365,31 @@ test("opens retained historical subagent conversations at exact original respons
       subagentLink(sessionId, handleId, "worker-answer"),
     );
     await exactLink.click();
-    const original = page.getByRole("complementary", { name: request.task, exact: true });
+    const original = page.locator('[data-slot="focused-secondary-conversation"]');
     await expect(original.getByRole("heading", { name: "Original joke" })).toBeVisible();
     const selected = original.locator('[data-slot="transcript-item"][aria-current="true"]');
     await expect(selected).toContainText("Exact worker response");
     await expect(selected).not.toContainText("Later unrelated worker answer");
-    await original.getByRole("button", { name: `Close ${request.task}` }).click();
+    await backToSource.click();
+    await expect(original).toHaveCount(0);
 
     await expect(page.getByRole("button", { name: /^Activity ·/ })).toHaveCount(0);
-    await page
-      .getByRole("button", { name: /^Open Project Chat for / })
-      .first()
-      .click();
-    await page.getByRole("button", { name: "To-do", exact: true }).click();
-    const todos = page.getByRole("complementary", { name: "To-do", exact: true });
+    await openProjectChat(page, "project");
+    // To-dos live in the Workspace accessory (582d0fc7).
+    const todos = page.getByRole("complementary", { name: "Workspace", exact: true });
+    await todos.getByRole("button", { name: /^To-dos / }).click();
     const todo = todos.getByRole("button", { name: "Review joke", exact: true });
     await todo.click();
     await expect(todo).toBeFocused();
     await expect(todo).toHaveAttribute("aria-pressed", "true");
-    await expect(todo.locator("..")).toHaveCSS("outline-style", "dashed");
+    // A focused to-do shows the view-focus cue, not the dashed association outline (aa4992a2).
+    await expect(
+      todo.locator('xpath=ancestor::*[contains(concat(" ", @class, " "), " group/nav-item ")][1]'),
+    ).toHaveAttribute("data-view-focused", "true");
     const link = todos.getByRole("link", { name: "Joke worker", exact: true });
     await expect(link).toHaveAttribute("href", subagentLink(sessionId, handleId));
     await link.click();
-    const report = page.getByRole("complementary", { name: request.task, exact: true });
+    const report = page.locator('[data-slot="focused-secondary-conversation"]');
     await expect(report).toContainText("The loop opened a bakery because it knew how to roll.");
     await expect(report.getByRole("combobox")).toHaveCount(0);
     await expect(report.getByRole("heading", { name: "Original joke" })).toBeVisible();
@@ -466,15 +473,17 @@ test("never restores an interrupted subagent as running", async () => {
 
   try {
     const page = await application.firstWindow();
+    // Launch starts in global Cake Chat (40566199); open the seeded Session explicitly.
+    await openSession(page, "Delegate work.");
     const log = page.locator('[data-slot="activity-group"]');
-    await expect(log).toHaveCount(1, { timeout: 20_000 });
+    await expect(log).toHaveCount(1);
     await log.locator(":scope > summary").click();
     const subagent = log.locator('[data-slot="subagent-call"]');
     await expect(subagent).toHaveCount(1);
     await expect(subagent).toHaveAttribute("data-status", "unavailable");
     await expect(subagent).toContainText("no retained handle-to-Pi mapping");
     await subagent.getByRole("button", { name: "Open subagent chat" }).click();
-    const unavailable = page.getByRole("complementary", { name: "Subagent", exact: true });
+    const unavailable = page.locator('[data-slot="focused-secondary-conversation"]');
     await expect(unavailable).toContainText("no retained handle-to-Pi mapping");
     await expect(unavailable.getByRole("combobox")).toHaveCount(0);
     await expect(log.locator(".animate-pulse")).toHaveCount(0);
