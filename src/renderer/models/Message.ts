@@ -164,10 +164,6 @@ export class Message extends Model {
         this.response = part.response;
         this.origin = part.origin;
         return true;
-      case "source":
-        this.title = part.title;
-        this.url = part.url;
-        return true;
       case "attachment":
         this.inputReference = part.inputReference;
         this.name = part.name;
@@ -305,8 +301,6 @@ export class Message extends Model {
           response: this.response,
           origin: this.origin,
         };
-      case "source":
-        return { id: this.partKey, kind: this.kind, title: this.title!, url: this.url! };
       case "attachment":
         return {
           id: this.partKey,

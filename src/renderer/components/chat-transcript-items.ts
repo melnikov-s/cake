@@ -21,7 +21,6 @@ export type TranscriptItem =
       parts: TranscriptContentPart[];
       source: NonNullable<UiPart["sideChatImport"]>;
     }
-  | { kind: "source-group"; id: string; parts: Extract<UiPart, { kind: "source" }>[] }
   | { kind: "context-group"; id: string; parts: Extract<UiPart, { kind: "context" }>[] }
   | { kind: "loading-state"; id: string };
 
@@ -133,7 +132,6 @@ function groupTranscriptDialogue(parts: UiPart[]): TranscriptItem[] {
   let activity: UiPart[] = [];
   let activityCompacted: boolean | undefined;
   let activityGroupIndex = 0;
-  let sources: Extract<UiPart, { kind: "source" }>[] = [];
   let context: Extract<UiPart, { kind: "context" }>[] = [];
   const flushContext = () => {
     if (context.length === 0) return;
@@ -150,17 +148,11 @@ function groupTranscriptDialogue(parts: UiPart[]): TranscriptItem[] {
     activity = [];
     activityCompacted = undefined;
   };
-  const flushSources = () => {
-    if (sources.length === 0) return;
-    items.push({ kind: "source-group", id: `sources-${sources[0]!.id}`, parts: sources });
-    sources = [];
-  };
   // History paging and restored projections can prepend dialogue to a current baseline.
   // Keep the same invariant for every shared Chat consumer, not just live reduction.
   for (const part of groupUserMessageContent(systemPromptBaselineFirst(parts))) {
     if (part.sideChatImport) {
       flushActivity();
-      flushSources();
       flushContext();
       if (imported?.source.groupId !== part.sideChatImport.groupId) {
         flushImported();
@@ -177,28 +169,21 @@ function groupTranscriptDialogue(parts: UiPart[]): TranscriptItem[] {
     flushImported();
     if (part.kind === "context") {
       flushActivity();
-      flushSources();
       context.push(part);
       continue;
     }
     flushContext();
     if (isWorkLogPart(part)) {
-      flushSources();
       const compacted = isCompactedWorkLogPart(part);
       if (activity.length > 0 && compacted !== activityCompacted) flushActivity();
       activityCompacted = compacted;
       activity.push(part);
-    } else if (part.kind === "source") {
-      flushActivity();
-      sources.push(part);
     } else {
       flushActivity();
-      flushSources();
       items.push(part);
     }
   }
   flushActivity();
-  flushSources();
   flushContext();
   flushImported();
   return items;

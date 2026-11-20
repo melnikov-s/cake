@@ -465,7 +465,6 @@ describe("Conversation display projection after tool pruning", () => {
     expect(summarized(parts)).toMatchObject([
       { kind: "text", text: "same text" },
       { kind: "text", text: "I checked https://example.com/a." },
-      { kind: "source" },
       { kind: "reasoning", text: "inspect before reading", origin: "compacted" },
       { kind: "tool", origin: "compacted", state: "success" },
       { kind: "text", text: "same text" },

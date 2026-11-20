@@ -1646,6 +1646,43 @@ const inlineLinks: VisualCaptureScenario = {
   },
 };
 
+const assistantWebUrls: VisualCaptureScenario = {
+  name: "assistant-web-urls",
+  description: "Assistant reply with website URLs shows them only inline, with no domain row",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const sessionFile = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    const entries = (await readFile(sessionFile, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    entries.find((entry) => entry.id === "assistant-1").message.content = [
+      {
+        type: "text",
+        text: "Checked [the dashboard](https://delta.example.com/dashboard), https://delta.example.com/runs/1 and https://delta.example.com/runs/2.",
+      },
+    ];
+    await writeFile(sessionFile, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  },
+  async prepare(page) {
+    await openSeededSession(
+      page,
+      "visual-capture-project",
+      "How should agents capture Cake UI changes?",
+    );
+    await expect(page.getByRole("link", { name: "the dashboard" })).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.locator('[data-slot="transcript-item"]').last().locator("xpath=..");
+  },
+};
+
 const sessionReferencePills: VisualCaptureScenario = {
   name: "session-reference-pills",
   description: "Named session pills in human and assistant prose, alongside model mentions",
@@ -10089,6 +10126,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   agentNavigationSettingsScenario,
   screenCaptureOverlayScenario,
   inlineLinks,
+  assistantWebUrls,
   sessionReferencePills,
   requestExplanationScenario,
   messageBoardScenario,

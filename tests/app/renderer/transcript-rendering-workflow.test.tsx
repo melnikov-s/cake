@@ -8,6 +8,7 @@ import { renderTranscriptRendering } from "./transcript-rendering-workflow-fixtu
 import { godotDiagram } from "../../fixtures/godot-diagram";
 import * as messageHighlights from "../../../src/renderer/lib/message-highlights";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { DiagramTestWorker, installDiagramMeasurement } from "./diagram-browser-fixture";
 
 const user: Extract<UiPart, { kind: "text" }> = {
@@ -230,7 +231,49 @@ describe("Projected transcript rendering workflows", () => {
     expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
   });
 
-  it("keeps persisted user, review, skill and source content in order and lets the reader inspect a loaded skill", async () => {
+  it("renders URLs in an assistant reply only inline, with no domain-link row beneath it", () => {
+    const text =
+      "See [the dashboard](https://delta.shopify.io/a) and https://delta.shopify.io/b for details.";
+    const parts = projectSessionEntries([
+      {
+        type: "message",
+        id: "assistant-urls",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "fixture",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "stop",
+          timestamp: 1,
+        },
+      },
+    ] as never);
+    using fixture = renderTranscriptRendering([user, ...parts]);
+
+    expect(fixture.container.querySelectorAll('[data-slot="transcript-item"]')).toHaveLength(2);
+    expect(screen.queryByRole("link", { name: "delta.shopify.io" })).toBeNull();
+    const body = fixture.container.querySelectorAll('[data-slot="message-content"]')[1];
+    if (!(body instanceof HTMLElement)) throw new Error("Missing assistant message content");
+    expect(within(body).getByRole("link", { name: "the dashboard" }).getAttribute("href")).toBe(
+      "https://delta.shopify.io/a",
+    );
+    expect(
+      within(body).getByRole("link", { name: "https://delta.shopify.io/b" }).getAttribute("href"),
+    ).toBe("https://delta.shopify.io/b");
+  });
+
+  it("keeps persisted user, review and skill content in order and lets the reader inspect a loaded skill", async () => {
     using fixture = renderTranscriptRendering([
       user,
       {
@@ -247,8 +290,6 @@ describe("Projected transcript rendering workflows", () => {
         name: "pdf-tools",
         content: "# PDF tools\n\nExtract text from PDFs.",
       },
-      { id: "source-one", kind: "source", title: "Reference one", url: "https://example.com/one" },
-      { id: "source-two", kind: "source", title: "Reference two", url: "https://example.com/two" },
       answer,
     ]);
     const message = screen.getByText("# Literal heading **Literal emphasis**");
@@ -259,15 +300,8 @@ describe("Projected transcript rendering workflows", () => {
       expect.stringContaining(user.text),
       expect.stringContaining("1 comment replied"),
       expect.stringContaining("Skill loadedpdf-tools"),
-      expect.stringContaining("Reference oneReference two"),
       expect.stringContaining(answer.text),
     ]);
-    expect(screen.getByRole("link", { name: "Reference one" }).getAttribute("href")).toBe(
-      "https://example.com/one",
-    );
-    expect(screen.getByRole("link", { name: "Reference two" }).getAttribute("href")).toBe(
-      "https://example.com/two",
-    );
     const skill = screen.getByLabelText("Skill loaded: pdf-tools");
     expect(skill.closest("details")?.open).toBe(false);
     await fixture.user.click(skill);

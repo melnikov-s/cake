@@ -357,9 +357,6 @@ export function partsFromMessage(
         const text = String(Reflect.get(item, "text") ?? "");
         // Attribution filtering can leave only whitespace; it is not a response surface.
         if (!text.trim()) return [];
-        const sources = [...new Set(text.match(/https?:\/\/[^\s)\]}>,]+/g) ?? [])]
-          .filter((url) => url.length <= 8_192)
-          .slice(0, 20);
         return [
           {
             id: `${baseId}-text-${index}`,
@@ -387,12 +384,6 @@ export function partsFromMessage(
                 : "complete",
             response: takeResponse(),
           },
-          ...sources.map((url, sourceIndex): UiPart => ({
-            id: `${baseId}-source-${index}-${sourceIndex}`,
-            kind: "source",
-            title: sourceTitle(url),
-            url,
-          })),
         ];
       }
       if (type === "thinking") {
@@ -711,14 +702,6 @@ export function createLiveMessageProjector(
     return partIds;
   };
   return project;
-}
-
-function sourceTitle(url: string) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return "Source";
-  }
 }
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);

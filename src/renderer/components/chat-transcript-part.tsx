@@ -4,7 +4,6 @@ import { InlineArtifactContext } from "./inline-artifact-context";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { ShellCommand } from "@/components/ai-elements/shell-command";
-import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
 import { WorkLogRunTimer } from "./work-log-run-timer";
 import { AnnotationSummary } from "@/components/annotation-summary";
@@ -384,7 +383,6 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       />
     );
   }
-  if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment")
     return part.attachmentKind === "source" && part.location ? (
       <SourceAttachment

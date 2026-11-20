@@ -38,8 +38,6 @@ function sameItem(left: TranscriptItem, right: TranscriptItem) {
     return sameParts(left.parts, right.parts);
   if (left.kind === "context-group" && right.kind === "context-group")
     return sameParts(left.parts, right.parts);
-  if (left.kind === "source-group" && right.kind === "source-group")
-    return sameParts(left.parts, right.parts);
   return left.kind === "loading-state" || left.kind === "history-divider";
 }
 
@@ -48,7 +46,6 @@ export function transcriptAnchorId(item: TranscriptItem) {
   if (item.kind === "history-divider") return undefined;
   return item.kind === "side-chat-import" ||
     item.kind === "activity-group" ||
-    item.kind === "source-group" ||
     item.kind === "context-group"
     ? item.parts[0]?.id
     : item.id;
@@ -114,12 +111,6 @@ export const ChatTranscriptItem = memo(
             <SideChatImportGroup group={item} behavior={behavior} />
           ) : item.kind === "activity-group" ? (
             <ActivityGroup groupId={item.id} parts={item.parts} behavior={behavior} />
-          ) : item.kind === "source-group" ? (
-            <div className="flex flex-wrap items-center gap-2" data-slot="source-group">
-              {item.parts.map((part) => (
-                <TranscriptPart key={part.id} part={part} behavior={behavior} />
-              ))}
-            </div>
           ) : item.kind === "context-group" ? (
             <div className="flex flex-wrap items-start gap-2" data-slot="context-group">
               {item.parts.map((part) => (

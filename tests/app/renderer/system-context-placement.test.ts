@@ -72,7 +72,6 @@ function visibleParts(model: Conversation): UiPart[] {
   return groupTranscriptParts(model.uiParts).flatMap((item) =>
     item.kind === "context-group" ||
     item.kind === "activity-group" ||
-    item.kind === "source-group" ||
     item.kind === "side-chat-import"
       ? item.parts
       : item.kind === "loading-state" || item.kind === "history-divider"

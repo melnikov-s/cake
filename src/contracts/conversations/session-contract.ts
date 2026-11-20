@@ -427,12 +427,6 @@ export const uiPartSchema = Schema.Union([
   }),
   Schema.Struct({
     ...partBase,
-    kind: Schema.Literal("source"),
-    title: ipcProjectionString(1_024),
-    url: stringMax(8_192),
-  }),
-  Schema.Struct({
-    ...partBase,
     kind: Schema.Literal("attachment"),
     inputReference: Schema.optionalKey(TaskInputReference),
     name: ipcProjectionString(512),
