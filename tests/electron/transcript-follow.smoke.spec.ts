@@ -751,12 +751,10 @@ for (const scenario of [
         await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
         await fixtureCall(page, "delaySubmission");
         if (attempt === 1) await fixtureCall(page, "queueNextSubmission");
-        const reading = await anchor(transcript);
         const before = await gap(transcript);
         await input.press("Enter");
-        await settle(page);
-        expect(await anchor(transcript)).toEqual(reading);
-        expect(await gap(transcript)).toBeGreaterThan(100);
+        // Locally accepted input is revealed before asynchronous delivery (ab343b86).
+        await expect.poll(() => gap(transcript)).toBeLessThan(1);
         await fixtureCall(page, "setDockHeight", 100 + attempt * 40);
         await fixtureCall(page, "admitSubmission");
         await expect(input).toHaveValue("");
@@ -894,27 +892,37 @@ test("non-submit Enter, failed admission and conversation switches never leak fo
   expect(await anchor(transcript)).toEqual(reading);
   expect(await fixtureCall(page, "submittedText")).toBeUndefined();
 
+  // A locally consumed submission is revealed once, even if delivery then fails (ab343b86);
+  // its Enter intent must not be reused afterwards.
   await fixtureCall(page, "rejectNextSubmission");
   await input.fill("Rejected message");
   await input.press("Enter");
   await expect(page.getByText("Fixture admission rejected", { exact: true })).toBeAttached();
+  await expect.poll(() => gap(transcript)).toBeLessThan(1);
+  await wheel(page, transcript, -3000);
+  const afterRejection = await anchor(transcript);
+  await fixtureCall(page, "arrive");
   await settle(page);
-  expect(await anchor(transcript)).toEqual(reading);
+  expect(await anchor(transcript)).toEqual(afterRejection);
 
   await fixtureCall(page, "delaySubmission");
   await input.fill("Accepted after switching away");
   await input.press("Enter");
   await expect.poll(() => fixtureCall(page, "submittedText")).toBe("Accepted after switching away");
+  await expect.poll(() => gap(transcript)).toBeLessThan(1);
+  // Reading elsewhere before admission: the later admission must not force the bottom again.
+  await wheel(page, transcript, -3000);
+  const beforeSwitch = await anchor(transcript);
   await fixtureCall(page, "switchConversation");
   await fixtureCall(page, "admitSubmission");
   await settle(page);
   await expect(transcript.getByText("Accepted after switching away")).toHaveCount(0);
   await fixtureCall(page, "switchConversation");
   await settle(page);
-  expect(await anchor(transcript)).toEqual(reading);
+  await expect.poll(() => anchor(transcript)).toEqual(beforeSwitch);
   await fixtureCall(page, "arrive");
   await settle(page);
-  expect(await anchor(transcript)).toEqual(reading);
+  expect(await anchor(transcript)).toEqual(beforeSwitch);
 });
 
 test("reopening a conversation restores the reader's position", async ({ fixturePage: page }) => {
