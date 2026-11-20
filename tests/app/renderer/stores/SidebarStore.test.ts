@@ -47,6 +47,28 @@ describe("Sidebar catalog demand", () => {
     expect(list.cakeChatCatalogQueries).toContainEqual({ resolved: true, limit: 20 });
   });
 
+  it("observes every Project's archive while the global Resolved sessions group is expanded", () => {
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/cake" }), projectRecord({ path: "/pi" })],
+    });
+    // Launch shows global Cake Chat; its Sessions list has one Resolved group for all Projects.
+    fixture.root.workspaceNavigatorStore.show("sessions");
+    expect(fixture.root.workspaceNavigatorStore.projectPath).toBeUndefined();
+    const list = fixture.root.sidebarStore.sessionListStore;
+    list.toggleResolvedGroupExpanded("cake-chat");
+    expect(list.projectSessionCatalogQueries).toEqual([
+      { projectPath: "/cake", resolved: false },
+      { projectPath: "/cake", resolved: true, limit: 10 },
+      { projectPath: "/pi", resolved: false },
+      { projectPath: "/pi", resolved: true, limit: 10 },
+    ]);
+    list.toggleResolvedGroupExpanded("cake-chat");
+    expect(list.projectSessionCatalogQueries).toEqual([
+      { projectPath: "/cake", resolved: false },
+      { projectPath: "/pi", resolved: false },
+    ]);
+  });
+
   it("keeps the shown Project's resolved page observed while Search sessions opens over it", () => {
     using fixture = createRendererStoreFixture({
       projects: [projectRecord({ path: "/cake" }), projectRecord({ path: "/pi" })],

@@ -465,9 +465,12 @@ export class SidebarSessionListStore extends Store<{
     const shown = showsSessions ? navigator?.projectPath : undefined;
     const scoped = !searchDemand ? shown : undefined;
     const paths = scoped ? [scoped] : this.projects.orderedProjectPaths;
+    // The global Sessions list's one Resolved group also lists every Project's archive.
+    const globalResolved =
+      showsSessions && shown === undefined && this.isResolvedGroupExpanded("cake-chat");
     return paths.flatMap((projectPath) => [
       { projectPath, resolved: false },
-      ...(projectPath === shown || this.isResolvedGroupExpanded(projectPath)
+      ...(projectPath === shown || globalResolved || this.isResolvedGroupExpanded(projectPath)
         ? [{ projectPath, resolved: true, limit: this.sessionLimit(projectPath, true) }]
         : []),
     ]);
