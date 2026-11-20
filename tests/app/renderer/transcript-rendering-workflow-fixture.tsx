@@ -42,7 +42,7 @@ export function renderTranscriptRendering(
   session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
     kind: "top",
   });
-  const view = render(
+  const element = (
     <StoreProvider store={fixture.root}>
       <>
         <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
@@ -53,12 +53,20 @@ export function renderTranscriptRendering(
           />
         </StoreProvider>
       </>
-    </StoreProvider>,
+    </StoreProvider>
   );
+  let view = render(element);
   return {
     user,
     chat: session.conversationSessionStore.chatStore,
-    container: view.container,
+    get container() {
+      return view.container;
+    },
+    /** Replaces the rendered tree, as switching conversations away and back does. */
+    remount() {
+      view.unmount();
+      view = render(element);
+    },
     publish(nextParts: UiPart[], streaming = false) {
       act(() => {
         applyConversationUpdate(session.model, {

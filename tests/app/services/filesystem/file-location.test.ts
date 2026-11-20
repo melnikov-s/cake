@@ -324,4 +324,63 @@ describe("file location routing", () => {
         ),
       ),
   );
+
+  it.effect(
+    "resolves cwd- and repository-relative links from a repository subdirectory without doubling it",
+    () =>
+      withFiles((root) =>
+        Effect.gen(function* () {
+          // The checkout is the repository root; the session works in a subdirectory.
+          const checkout = join(root, "site-fetch-audit-4fc366", "src");
+          const session = join(checkout, "system", "self-healing");
+          yield* Effect.promise(() => mkdir(join(checkout, ".git"), { recursive: true }));
+          yield* Effect.promise(() => mkdir(join(session, "app", "tests"), { recursive: true }));
+          yield* Effect.promise(() => mkdir(join(checkout, "docs"), { recursive: true }));
+          yield* Effect.promise(() =>
+            writeFile(join(session, "app", "tests", "site-directory.test.ts"), "test"),
+          );
+          yield* Effect.promise(() => writeFile(join(checkout, "docs", "root.md"), "root notes"));
+          const files = yield* WorkspaceFiles;
+          const route = (path: string, view?: "changes") =>
+            files.prepareFileLocation(1, {
+              workspacePath: session,
+              originatingDirectory: session,
+              location: {
+                kind: "working-directory",
+                path,
+                ...(view ? { view, side: "before" as const } : null),
+              },
+            });
+          for (const view of [undefined, "changes"] as const) {
+            for (const path of [
+              "app/tests/site-directory.test.ts",
+              "system/self-healing/app/tests/site-directory.test.ts",
+            ])
+              expect(yield* route(path, view)).toMatchObject({
+                viewer: "vscode",
+                location: { path: "app/tests/site-directory.test.ts" },
+              });
+          }
+          // A deleted file in the changes view keeps revision navigation, still undoubled.
+          expect(
+            yield* route("system/self-healing/app/tests/deleted.test.ts", "changes"),
+          ).toMatchObject({ viewer: "vscode", location: { path: "app/tests/deleted.test.ts" } });
+          expect(yield* route("app/tests/deleted.test.ts", "changes")).toMatchObject({
+            viewer: "vscode",
+            location: { path: "app/tests/deleted.test.ts" },
+          });
+          // Repository files outside the session open read-only rather than failing.
+          expect(yield* route("docs/root.md")).toMatchObject({
+            viewer: "text",
+            content: "root notes",
+          });
+        }).pipe(
+          Effect.provide(
+            makeWorkspaceFilesLive("/agent", join(root, "global-chat")).pipe(
+              Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
+            ),
+          ),
+        ),
+      ),
+  );
 });

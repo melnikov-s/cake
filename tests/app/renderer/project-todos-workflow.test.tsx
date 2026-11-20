@@ -482,6 +482,13 @@ it("shows repair failures without closing the pane or claiming completion, and r
   );
   expect(fixture.store.openItems).toHaveLength(1);
   expect(fixture.mutations).toEqual([]);
+  // The notice is dismissible and later projections of the same list do not restore it.
+  await fixture.user.click(
+    within(screen.getByRole("alert")).getByRole("button", { name: "Dismiss error" }),
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
+  await fixture.updateTodos(fixture.todos());
+  expect(screen.queryByRole("alert")).toBeNull();
   await fixture.user.click(screen.getAllByRole("button", { name: "Close Workspace" })[0]!);
   await fixture.user.click(screen.getByRole("button", { name: "Open Workspace" }));
   await waitFor(() => expect(fixture.reconciliationScopes).toHaveLength(2));

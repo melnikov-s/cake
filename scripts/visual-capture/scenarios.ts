@@ -1647,6 +1647,49 @@ const inlineLinks: VisualCaptureScenario = {
   },
 };
 
+const fileOpenFailureToast: VisualCaptureScenario = {
+  name: "file-open-failure-toast",
+  description: "A failed file-link open reports a dismissible corner toast, not a chat notice",
+  states: ["default", "details"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const sessionFile = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    const entries = (await readFile(sessionFile, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    entries.find((entry) => entry.id === "assistant-1").message.content = [
+      {
+        type: "text",
+        text: "Added [site-directory.test.ts](system/self-healing/app/tests/site-directory.test.ts) for the shared directory read.",
+      },
+    ];
+    await writeFile(sessionFile, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  },
+  async prepare(page, state) {
+    await openSeededSession(
+      page,
+      "visual-capture-project",
+      "How should agents capture Cake UI changes?",
+    );
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.getByRole("link", { name: "site-directory.test.ts" }).click();
+    const toast = page.getByRole("alert").filter({ hasText: "Could not open file" });
+    await expect(toast).toBeVisible();
+    await expect(toast.getByRole("button", { name: "Dismiss notification" })).toBeVisible();
+    if (state === "details") await toast.getByText("Technical details").click();
+    await page.mouse.move(1, 1);
+    // The enter animation starts transparent; visibility checks ignore opacity.
+    await toast.evaluate((element) =>
+      Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)),
+    );
+  },
+  region: (page) => page.locator("body"),
+};
+
 const assistantWebUrls: VisualCaptureScenario = {
   name: "assistant-web-urls",
   description: "Assistant reply with website URLs shows them only inline, with no domain row",
@@ -10184,6 +10227,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   screenCaptureOverlayScenario,
   inlineLinks,
   assistantWebUrls,
+  fileOpenFailureToast,
   sessionReferencePills,
   requestExplanationScenario,
   messageBoardScenario,

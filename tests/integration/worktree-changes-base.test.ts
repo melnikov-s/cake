@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -206,5 +206,35 @@ describe("Changes base inferred from the Git graph", () => {
     const result = await changes(agent);
     expect(result.base).toBe("main");
     expect(subjects(result)).toEqual(["agent work"]);
+  });
+
+  it("lists a subdirectory session's files relative to that subdirectory, not the repository root", async () => {
+    const root = await repository();
+    const agent = await worktree(root, "agent/subdirectory", "main");
+    const subdirectory = join(agent, "system", "self-healing");
+    await mkdir(join(subdirectory, "app", "tests"), { recursive: true });
+    await writeFile(join(subdirectory, "app", "tests", "committed.test.ts"), "committed\n");
+    await writeFile(join(agent, "outside.md"), "outside\n");
+    await git(agent, "add", "-A");
+    await git(agent, "commit", "-m", "subdirectory work");
+    await writeFile(join(subdirectory, "app", "tests", "staged.test.ts"), "staged\n");
+    await git(agent, "add", "-A");
+    await writeFile(join(subdirectory, "app", "tests", "untracked.test.ts"), "untracked\n");
+
+    // Git prints `system/self-healing/app/...` from the root; joining that onto the
+    // subdirectory produced `system/self-healing/system/self-healing/app/...`.
+    const result = await changes(subdirectory);
+    expect(
+      result.commits[0]?.files.map(({ path, workingTreeExists }) => [path, workingTreeExists]),
+    ).toEqual([
+      ["../../outside.md", true],
+      ["app/tests/committed.test.ts", true],
+    ]);
+    expect(result.staged).toMatchObject([
+      { path: "app/tests/staged.test.ts", workingTreeExists: true },
+    ]);
+    expect(result.unstaged).toMatchObject([
+      { path: "app/tests/untracked.test.ts", workingTreeExists: true },
+    ]);
   });
 });

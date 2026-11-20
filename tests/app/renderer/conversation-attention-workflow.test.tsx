@@ -515,7 +515,15 @@ it("never borrows the global chat's list and keeps a failed activation visible",
   await act(async () =>
     fireEvent.click(screen.getByRole("button", { name: "Open attention: Choose shortcut" })),
   );
-  expect(screen.getByRole("alert").textContent).toContain("Report delivery unavailable");
+  // A one-off action failure is a toast, not a notice inside the composer list.
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(fixture.root.toastStore.toasts).toMatchObject([
+    {
+      tone: "error",
+      title: "Could not open attention item",
+      message: "Report delivery unavailable",
+    },
+  ]);
   expect(
     screen
       .getByRole("button", { name: "Open attention: Choose shortcut" })

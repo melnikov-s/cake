@@ -848,7 +848,10 @@ describe("Secondary conversation workflows", () => {
     await fixture.user.click(screen.getByRole("button", { name: "First discussion" }));
     await fixture.user.click(screen.getByRole("button", { name: "Close and resolve" }));
     expect(screen.getByRole("complementary", { name: "Side chat" })).toBeDefined();
-    expect(screen.getByText("Could not resolve side chat. Try again.")).toBeDefined();
+    expect(screen.queryByText(/Could not resolve side chat/)).toBeNull();
+    expect(fixture.root.toastStore.toasts).toMatchObject([
+      { tone: "error", title: "Could not resolve side chat", message: "Try again." },
+    ]);
     await fixture.user.click(screen.getByRole("button", { name: "Close and resolve" }));
     expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
     expect(setResolved).toHaveBeenCalledTimes(2);

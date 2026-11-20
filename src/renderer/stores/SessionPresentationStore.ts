@@ -10,6 +10,12 @@ import {
   sourceAttachmentFromEditorSelection,
 } from "../../utils/editor-selection";
 import { reviewThreadAnnotations } from "../lib/review-thread-annotations";
+import {
+  isAbortError,
+  openFileFailureToast,
+  selectionHighlightWarningToast,
+} from "../lib/open-file-failure";
+import { ToastContext } from "./context/ToastContext";
 import type { StoreEvent } from "../events/StoreEvent";
 import { BrowserStore } from "./BrowserStore";
 import { EmbeddedEditorStore } from "./EmbeddedEditorStore";
@@ -212,13 +218,23 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     else await this.openBrowser();
   }
 
-  async openFile(location: EditorLocation) {
-    const session = this.session;
-    if (!session || this.props.activeSessionResolved())
-      throw new Error("Select an active conversation to open files.");
-    this.props.dismissCommandPane();
-    this.browserStore.suspend();
-    await session.editorSelectionsStore.open(location);
+  /** User navigation from links and lists; a failure becomes a dismissible toast. */
+  async openFile(location: EditorLocation): Promise<void> {
+    try {
+      const session = this.session;
+      if (!session || this.props.activeSessionResolved())
+        throw new Error("Select an active conversation to open files.");
+      this.props.dismissCommandPane();
+      this.browserStore.suspend();
+      const { warning } = await session.editorSelectionsStore.open(location);
+      if (warning) ToastContext.consume(this)?.show(selectionHighlightWarningToast(warning));
+    } catch (error) {
+      if (this.signal.aborted || isAbortError(error)) return;
+      // A failed editor launch already shows its own error card with recovery actions.
+      const editor = this.embeddedEditorStore;
+      if (editor.visible && editor.error) return;
+      ToastContext.consume(this)?.show(openFileFailureToast(location.path, error));
+    }
   }
 
   /** Route before launching VS Code; the backend owns realpath and read authorization. */

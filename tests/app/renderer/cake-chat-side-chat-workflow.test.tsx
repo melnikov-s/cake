@@ -318,13 +318,11 @@ it.each(["Merge into main chat", "Close and resolve"])(
         .discussionCatalog(CAKE_CHAT_SESSION_ID)
         .threads.every((thread) => thread.status === "open"),
     ).toBe(true);
-    expect(
-      screen.getByText(
-        action === "Merge into main chat"
-          ? "Action failed"
-          : "Could not resolve side chat. Try again.",
-      ),
-    ).toBeDefined();
+    expect(fixture.root.toastStore.toasts).toMatchObject([
+      action === "Merge into main chat"
+        ? { title: "Could not merge side chat", message: "Action failed" }
+        : { title: "Could not resolve side chat", message: "Try again." },
+    ]);
     await user.click(screen.getByRole("button", { name: action }));
     expect(panel.target?.navigationTarget).toMatchObject({ threadId: "second-thread" });
     expect(screen.getByRole("complementary", { name: "Second chat" })).toBeDefined();
@@ -686,7 +684,11 @@ it("keeps merge available while busy and permits retry after failure without clo
   });
   await waitFor(() => expect(button().disabled).toBe(false));
   await user.click(button());
-  expect(await screen.findByText("Import failed")).toBeDefined();
+  await waitFor(() =>
+    expect(fixture.root.toastStore.toasts).toMatchObject([
+      { tone: "error", title: "Could not merge side chat", message: "Import failed" },
+    ]),
+  );
   expect(fixture.setResolved).not.toHaveBeenCalled();
   expect(
     screen.getByRole<HTMLButtonElement>("button", { name: "Close and resolve" }).disabled,

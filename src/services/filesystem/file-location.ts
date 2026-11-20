@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
-import { open, realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { lstat, open, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type {
   PrepareFileLocation,
   PreparedFileLocation,
@@ -13,6 +13,30 @@ import { resolveSourceTarget } from "../vscode/source-path-policy";
 function containsFile(directory: string, target: string): boolean {
   const path = relative(directory, target);
   return Boolean(path) && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
+}
+
+/** The nearest enclosing Git checkout root, if any. */
+async function repositoryRoot(directory: string): Promise<string | undefined> {
+  for (let current = directory; ; current = dirname(current)) {
+    if (await lstat(join(current, ".git")).then(Boolean, () => false)) return current;
+    if (dirname(current) === current) return undefined;
+  }
+}
+
+/**
+ * Bases for a relative path: the origin first, then its repository root, where
+ * Git prints paths from. A missing path that already starts with the origin's
+ * subdirectory (`app/x` from `<root>/app`) is repository-relative; `primary`
+ * never joins it onto that subdirectory again.
+ */
+async function relativeBases(origin: string, path: string) {
+  const root = await repositoryRoot(origin);
+  if (!root || root === origin) return { bases: [origin], primary: origin };
+  const prefix = relative(root, origin).split(sep).join("/");
+  return {
+    bases: [origin, root],
+    primary: path.replaceAll("\\", "/").startsWith(`${prefix}/`) ? root : origin,
+  };
 }
 
 /** Canonical target of the first existing candidate; a miss names every absolute path tried. */
@@ -49,9 +73,10 @@ export async function prepareFileLocation(
   if (request.location.kind === "absolute-file" && !isAbsolute(path))
     throw new Error("An absolute file path is required");
   if (!path) throw new Error("A file path is required");
+  const { bases, primary } = await relativeBases(origin, path);
   const target = await resolveExistingPath(path, [
     ...(request.authorDirectories ?? []),
-    origin,
+    ...bases,
   ]).catch(async (cause: unknown) => {
     // A deleted project file still has revision content. Missing external files
     // and ordinary file navigation retain their existing error behavior.
@@ -60,7 +85,7 @@ export async function prepareFileLocation(
       request.location.kind === "working-directory" &&
       request.location.view === "changes"
     ) {
-      const resolved = await resolveSourceTarget(origin, path);
+      const resolved = await resolveSourceTarget(primary, path);
       if (containsFile(workspace, resolved.target)) return resolved.target;
     }
     throw cause;

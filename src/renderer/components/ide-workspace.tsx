@@ -114,7 +114,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
             transcriptBehavior={transcriptBehavior}
             composerHeader={
               <>
-                {(selections.selections.length > 0 || selections.error) && (
+                {selections.selections.length > 0 && (
                   <div className="px-4 pb-2">
                     <EditorSelectionPills store={selections} />
                   </div>

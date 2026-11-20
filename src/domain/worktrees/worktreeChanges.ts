@@ -1,3 +1,4 @@
+import { posix } from "node:path";
 import { Effect, FileSystem, Schema } from "effect";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { WorktreeChanges, commitListLimit } from "../../contracts/worktrees/worktree-changes";
@@ -24,6 +25,18 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
     const run = (args: readonly string[]) => git.run(workspacePath, args);
     const status = yield* (yield* ManagedWorktrees).status(workspacePath);
     const branch = (yield* run(["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    // Diff and log print repository-root paths, but every consumer (existence checks,
+    // editor navigation, untracked `ls-files`) is relative to this working directory.
+    const prefix = (yield* run(["rev-parse", "--show-prefix"])).trim();
+    const fromRoot = <File extends { readonly path: string }>(files: readonly File[]) =>
+      prefix
+        ? files.map((file) => ({
+            ...file,
+            path: file.path.startsWith(prefix)
+              ? file.path.slice(prefix.length)
+              : posix.relative(prefix, file.path),
+          }))
+        : [...files];
     const record = status?.record;
     const inferred = record
       ? {
@@ -80,7 +93,7 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
           .filter(Boolean)
           .map((entry) => {
             const [hash = "", subject = "", ...stats] = entry.split("\0");
-            return { hash, subject, files: parseNumstat(stats.join("\0")) };
+            return { hash, subject, files: fromRoot(parseNumstat(stats.join("\0"))) };
           }),
       catch: (cause) => new ManagedWorktreeError({ operation: "changes", message: String(cause) }),
     });
@@ -118,9 +131,9 @@ export const inspect = Effect.fn("WorktreeChanges.inspect")(
     );
     const tracked = yield* Effect.try({
       try: () => ({
-        files: parseNumstat(filesOutput),
-        staged: parseNumstat(stagedOutput),
-        unstaged: parseNumstat(unstagedOutput),
+        files: fromRoot(parseNumstat(filesOutput)),
+        staged: fromRoot(parseNumstat(stagedOutput)),
+        unstaged: fromRoot(parseNumstat(unstagedOutput)),
       }),
       catch: (cause) => new ManagedWorktreeError({ operation: "changes", message: String(cause) }),
     });

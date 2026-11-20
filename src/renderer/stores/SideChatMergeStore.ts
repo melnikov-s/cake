@@ -3,6 +3,7 @@ import type { ReviewThread } from "../models/ReviewThread";
 import type { ChatStore } from "./ChatStore";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
+import { ToastContext } from "./context/ToastContext";
 
 interface SideChatMergeStoreProps {
   thread: ReviewThread;
@@ -22,7 +23,6 @@ export class SideChatMergeStore extends Store<SideChatMergeStoreProps> {
   private get sourceTail() {
     return this.props.sideChat().parts.at(-1)?.id ?? "";
   }
-  error: string | undefined;
 
   private get busy() {
     const side = this.props.sideChat();
@@ -42,7 +42,6 @@ export class SideChatMergeStore extends Store<SideChatMergeStoreProps> {
   async run() {
     if (this.pending || this.signal.aborted) return false;
     this.pending = true;
-    this.error = undefined;
     const sourceTail = this.sourceTail;
     try {
       const thread = this.props.thread;
@@ -58,7 +57,14 @@ export class SideChatMergeStore extends Store<SideChatMergeStoreProps> {
       this.alreadyMergedThrough = result.importedMessages === 0 ? sourceTail : undefined;
       return true;
     } catch (error) {
-      if (!this.signal.aborted) this.error = describeError(error).message;
+      // A one-off action failure: the side chat stays open for a retry.
+      if (!this.signal.aborted)
+        ToastContext.consume(this)?.show({
+          tone: "error",
+          title: "Could not merge side chat",
+          message: describeError(error).message,
+          coalesceKey: `side-chat-merge:${this.props.thread.id}`,
+        });
       return false;
     } finally {
       this.pending = false;

@@ -85,6 +85,11 @@ export class ProjectTodosStore extends Store<{
   busy = false;
   error: string | undefined;
 
+  /** The user closed the error notice; the next failure sets a new one. */
+  clearError() {
+    this.error = undefined;
+  }
+
   constructor(props: ProjectTodosStore["props"]) {
     super(props);
     this.reaction(
@@ -442,21 +447,29 @@ export class ProjectTodosStore extends Store<{
     if (item.state !== "open" || !item.snoozedUntil) return;
     return this.mutate(item, { _tag: "Unsnooze", id: item.id, expectedRevision: item.revision });
   }
-  setAttention(item: ProjectTodo, needsAttention: boolean, attentionReason?: string) {
+  setAttention(
+    item: ProjectTodo,
+    needsAttention: boolean,
+    attentionReason?: string,
+    options?: { notifyOnError?: boolean },
+  ) {
     if (item.state !== "open") return;
-    return this.mutate(item, {
-      _tag: "SetAttention",
-      id: item.id,
-      expectedRevision: item.revision,
-      needsAttention,
-      ...(attentionReason !== undefined ? { attentionReason: attentionReason.trim() } : null),
-    });
+    return this.mutate(
+      item,
+      {
+        _tag: "SetAttention",
+        id: item.id,
+        expectedRevision: item.revision,
+        needsAttention,
+        ...(attentionReason !== undefined ? { attentionReason: attentionReason.trim() } : null),
+      },
+      options,
+    );
   }
   async activateAttention(item: ProjectTodo) {
     const scope = this.sourceFor(item)?.scope;
     if (!scope || this.busy || this.signal.aborted) return;
     this.busy = true;
-    this.error = undefined;
     try {
       const receipt = await ClientContext.consume(this)!.projectTodos.activateAttention(
         { scope, id: item.id, expectedRevision: item.revision },
@@ -464,13 +477,19 @@ export class ProjectTodosStore extends Store<{
       );
       if (!this.signal.aborted) return receipt;
     } catch (error) {
-      if (!this.signal.aborted) this.error = describeError(error).message;
+      // Only the composer's Needs attention list activates; it has no error surface.
+      if (!this.signal.aborted)
+        ToastContext.consume(this)?.show({
+          title: "Could not open attention item",
+          message: describeError(error).message,
+          tone: "error",
+        });
     } finally {
       if (!this.signal.aborted) this.busy = false;
     }
   }
-  dismissAttention(item: ProjectTodo) {
-    return this.setAttention(item, false);
+  dismissAttention(item: ProjectTodo, options?: { notifyOnError?: boolean }) {
+    return this.setAttention(item, false, undefined, options);
   }
   restoreAttention(item: ProjectTodo) {
     return this.setAttention(item, true);

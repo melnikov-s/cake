@@ -37,15 +37,7 @@ export function projectTranscriptBehaviorFor(
     openSourceLocation: resolved
       ? undefined
       : (location: SourceLocation) => {
-          void store.presentationStore
-            .openFile(editorLocationFromPath(location))
-            .catch((error: unknown) =>
-              root.toastStore.show({
-                tone: "error",
-                title: "Could not open file",
-                message: error instanceof Error ? error.message : String(error),
-              }),
-            );
+          void store.presentationStore.openFile(editorLocationFromPath(location));
         },
     onOpenReviewRun: resolved
       ? undefined

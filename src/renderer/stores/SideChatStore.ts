@@ -1,5 +1,6 @@
 import { Store } from "r-state-tree";
 import { describeError } from "../lib/error-details";
+import { ToastContext } from "./context/ToastContext";
 import type { ArtifactMenuStore } from "./ArtifactMenuStore";
 import type { ThinkingLevel } from "../../contracts/conversations/session-contract";
 import type { SideChatMergeStore } from "./SideChatMergeStore";
@@ -91,7 +92,6 @@ export class SideChatStore extends Store<SideChatStoreProps> {
   }
   width = 416;
   resolving = false;
-  resolutionError: string | undefined;
   private releaseTranscript: (() => void) | undefined;
 
   constructor(props: SideChatStore["props"]) {
@@ -131,7 +131,6 @@ export class SideChatStore extends Store<SideChatStoreProps> {
       release?.();
       releaseParent?.();
     };
-    this.resolutionError = undefined;
     this.target = target;
   }
 
@@ -139,18 +138,27 @@ export class SideChatStore extends Store<SideChatStoreProps> {
     const target = this.target;
     if (!target?.resolve || this.resolving || target.merge?.pending) return;
     this.resolving = true;
-    this.resolutionError = undefined;
     try {
       const resolved = await target.resolve();
       if (this.signal.aborted || this.target !== target) return;
       if (resolved) this.closeRemovedTab();
-      else this.resolutionError = "Could not resolve side chat. Try again.";
+      else this.reportResolutionFailure("Try again.");
     } catch (error) {
       if (!this.signal.aborted && this.target === target)
-        this.resolutionError = describeError(error).message;
+        this.reportResolutionFailure(describeError(error).message);
     } finally {
       this.resolving = false;
     }
+  }
+
+  /** A one-off action failure: the side chat stays open for a retry. */
+  private reportResolutionFailure(message: string) {
+    ToastContext.consume(this)?.show({
+      tone: "error",
+      title: "Could not resolve side chat",
+      message,
+      coalesceKey: "side-chat-resolution",
+    });
   }
 
   /** A successful merge/resolve removes this tab, not the whole accessory pane. */

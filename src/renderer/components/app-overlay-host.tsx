@@ -31,9 +31,18 @@ export const AppOverlayHost = observer(function AppOverlayHost({
   ) : undefined;
 
   // Workspace modes intentionally retain their existing smaller overlay set.
-  if (workspaceMode)
+  if (workspaceMode) {
+    // The native editor/browser view paints over the DOM; keep toasts inside the
+    // conversation companion on the right, which stays DOM.
+    const presentation = workbench.presentationStore;
+    const companion = presentation.browserStore.visible
+      ? presentation.browserStore
+      : presentation.embeddedEditorStore;
     return (
       <>
+        <AppNotifications
+          maxWidth={companion.chatSidebarVisible ? companion.chatSidebarWidth - 32 : undefined}
+        />
         {floatingTerminal}
         <FileLocationPreview store={workbench.presentationStore} />
         <MessageReferencePreview store={root.navigationStore.messageReferencePreview} />
@@ -43,6 +52,7 @@ export const AppOverlayHost = observer(function AppOverlayHost({
         <UiHintMode store={root.uiHintModeStore} />
       </>
     );
+  }
 
   return (
     <>

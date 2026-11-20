@@ -662,4 +662,23 @@ describe("Projected transcript rendering workflows", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
+
+  it("keeps a dismissed operation failure closed after the transcript remounts", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
+      throw new Error("Model request failed");
+    });
+    using fixture = renderTranscriptRendering([], { client: { sessionChats: { prompt } } });
+    await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Please retry");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    const error = await screen.findByRole("alert");
+    await fixture.user.click(within(error).getByRole("button", { name: "Dismiss error" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    fixture.remount();
+    expect(screen.queryByText("Model request failed")).toBeNull();
+    // A new failure is a new event and is shown again.
+    prompt.mockRejectedValueOnce(new Error("Provider unavailable"));
+    await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Again");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Provider unavailable")).toBeDefined();
+  });
 });

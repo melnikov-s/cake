@@ -39,11 +39,16 @@ function ExtensionNotice({
   );
 }
 
-export const AppNotifications = observer(function AppNotifications() {
+export const AppNotifications = observer(function AppNotifications({
+  maxWidth,
+}: {
+  /** Pixel cap when only part of the window is DOM, such as beside a native editor view. */
+  maxWidth?: number;
+}) {
   const root = useStore(RootStore);
   const extensionUi = root.extensionUiStore;
   return (
-    <ToastHost store={root.toastStore}>
+    <ToastHost store={root.toastStore} maxWidth={maxWidth}>
       {extensionUi.notifications.map((notification) => (
         <ExtensionNotice key={notification.id} notification={notification} store={extensionUi} />
       ))}

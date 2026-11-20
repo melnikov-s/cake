@@ -260,6 +260,8 @@ export class ChatStore extends Store<ChatStoreProps> {
   submittingLocally = false;
   rewording = false;
   rewordError: string | undefined;
+  /** The transcript footer notice the user closed; outlives transcript remounts. */
+  dismissedFooterNotice: string | undefined;
   private draftRevision = 0;
   private pendingImagePastes = 0;
 
@@ -551,6 +553,14 @@ export class ChatStore extends Store<ChatStoreProps> {
         title: "Could not cancel scheduled message",
       };
     return this.props.error?.();
+  }
+  dismissFooterNotice(key: string) {
+    this.dismissedFooterNotice = key;
+  }
+  /** A different footer notice, or none, means the dismissed failure is over. */
+  observeFooterNotice(key: string | undefined) {
+    if (this.dismissedFooterNotice !== undefined && key !== this.dismissedFooterNotice)
+      this.dismissedFooterNotice = undefined;
   }
   get canRewordComposerSelection() {
     return Boolean(this.props.composerReword);

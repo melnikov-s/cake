@@ -15,7 +15,11 @@ import { observer } from "r-state-tree/react";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { Conversation } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
-import { ChatTranscriptFooter, type ChatTranscriptFooterError } from "./chat-transcript-footer";
+import {
+  ChatTranscriptFooter,
+  footerNoticeKey,
+  type ChatTranscriptFooterError,
+} from "./chat-transcript-footer";
 import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 import { FullscreenTranscriptContext } from "./fullscreen-transcript-context";
 import { Button } from "@/components/ui/button";
@@ -577,7 +581,14 @@ export const ChatTranscript = observer(function ChatTranscript({
     const position = list && captureScrollPosition(list, currentAnchorIds.current);
     if (position) store.transcriptInteraction.setTranscriptScrollPosition(position);
   }, [store]);
-  const error: ChatTranscriptFooterError | undefined = errorOverride ?? store.error;
+  const reportedError = errorOverride ?? store.error;
+  const errorKey = reportedError?.message ? footerNoticeKey(reportedError) : undefined;
+  // A different notice, or none, forgets an earlier dismissal.
+  useEffect(() => store.observeFooterNotice(errorKey), [store, errorKey]);
+  const error: ChatTranscriptFooterError | undefined =
+    errorKey && store.dismissedFooterNotice !== errorKey
+      ? { ...reportedError, onDismiss: () => store.dismissFooterNotice(errorKey) }
+      : undefined;
   // Right-clicking any selection inside this conversation keeps the native
   // Electron edit menu. The capture is held until that menu sends its
   // "Chat about this" action back to this transcript.
@@ -841,6 +852,7 @@ export const ChatTranscript = observer(function ChatTranscript({
                 title={error.title ?? "Operation failed"}
                 message={error.message}
                 details={error.details}
+                onDismiss={error.onDismiss}
               />
             )}
           </Conversation>

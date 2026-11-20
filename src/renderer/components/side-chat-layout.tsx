@@ -5,7 +5,6 @@ import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
 import { SidePanel } from "@/components/ui/side-panel";
 import { PaneTabs } from "@/components/ui/pane-tabs";
 import { Button } from "@/components/ui/button";
-import { Callout } from "@/components/ui/callout";
 import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { SideChatContext } from "./side-chat-context";
@@ -103,7 +102,6 @@ export const SideChatLayout = observer(function SideChatLayout({
           aria-label={title}
           className="flex h-full min-h-0 min-w-0 flex-col"
         >
-          {target.merge?.error && <Callout variant="error">{target.merge.error}</Callout>}
           <div className="min-h-0 flex-1">
             <ConversationIdentityDock
               sessionId={target.navigationTarget?.sessionId}
@@ -173,10 +171,6 @@ export const SideChatLayout = observer(function SideChatLayout({
                   />
                 )}
                 {showExitActions && !dockActions && actions}
-                {store.resolutionError && (
-                  <Callout variant="error">{store.resolutionError}</Callout>
-                )}
-                {target.merge?.error && <Callout variant="error">{target.merge.error}</Callout>}
                 <div
                   key={target.key}
                   id={panelId}

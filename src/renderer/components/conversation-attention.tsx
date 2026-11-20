@@ -3,7 +3,6 @@ import { projectTodoAttentionDetail } from "../../contracts/projects/project-tod
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
-import { Callout } from "./ui/callout";
 import { CloseIcon } from "./ui/icons";
 
 export const ConversationAttention = observer(function ConversationAttention({
@@ -17,11 +16,6 @@ export const ConversationAttention = observer(function ConversationAttention({
 
   return (
     <div aria-busy={todos.busy} className="flex min-w-0 flex-col">
-      {todos.error && (
-        <Callout variant="error" role="alert">
-          {todos.error}
-        </Callout>
-      )}
       <div
         role="list"
         aria-label="Needs attention items"
@@ -53,7 +47,7 @@ export const ConversationAttention = observer(function ConversationAttention({
                 tooltip={`Clear attention: ${item.title}`}
                 disabled={todos.busy}
                 className="mr-1 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground [@media(hover:hover)_and_(not_(any-pointer:coarse))]:opacity-0 [@media(hover:hover)_and_(not_(any-pointer:coarse))]:group-hover/attention:opacity-100 group-focus-within/attention:opacity-100"
-                onClick={() => void todos.dismissAttention(item)}
+                onClick={() => void todos.dismissAttention(item, { notifyOnError: true })}
               >
                 <CloseIcon size={12} />
               </IconButton>

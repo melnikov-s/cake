@@ -47,6 +47,8 @@ function dependencies(
     target?: string;
     fork?: string;
     fail?: { command: string; message: string };
+    /** `git rev-parse --show-prefix`: the checkout's subdirectory within its repository. */
+    prefix?: string;
   } = {},
 ) {
   const commands: string[][] = [];
@@ -64,6 +66,8 @@ function dependencies(
               message: options.fail.message,
             }),
           );
+        if (args[0] === "rev-parse" && args.includes("--show-prefix"))
+          return Effect.succeed(`${options.prefix ?? ""}\n`);
         if (args[0] === "rev-parse")
           return Effect.succeed(
             args.includes("--abbrev-ref")

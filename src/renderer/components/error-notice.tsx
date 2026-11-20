@@ -7,10 +7,13 @@ export function ErrorNotice({
   title,
   message,
   details = message,
+  onDismiss,
 }: {
   title: string;
   message: string;
   details?: string;
+  /** Owner-held dismissal that outlives remounts; local state only lasts while mounted. */
+  onDismiss?: () => void;
 }) {
   const signature = `${title}\u0000${message}\u0000${details}`;
   const [dismissedSignature, setDismissedSignature] = useState<string>();
@@ -28,7 +31,7 @@ export function ErrorNotice({
       <IconButton
         className="absolute right-2 top-2"
         tooltip="Dismiss error"
-        onClick={() => setDismissedSignature(signature)}
+        onClick={() => (onDismiss ? onDismiss() : setDismissedSignature(signature))}
       >
         <CloseIcon size={16} />
       </IconButton>

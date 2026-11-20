@@ -4,6 +4,7 @@ import { workingDirectoryEditorLocation } from "../../contracts/editor/editor-lo
 import type { WorktreeStoreProps } from "./WorktreeStore";
 import { ClientContext } from "./context/ClientContext";
 import { SessionPresentationContext } from "./context/SessionPresentationContext";
+import { ToastContext } from "./context/ToastContext";
 import type { SideChatStore } from "./SideChatStore";
 import { describeError } from "../lib/error-details";
 
@@ -150,18 +151,23 @@ export class SessionChangesStore extends Store<SessionChangesStoreProps> {
             side: file.workingTreeExists ? "after" : "before",
           },
     );
-    try {
-      await SessionPresentationContext.consume(this)!.openFile(location);
-    } catch (error) {
-      if (!this.signal.aborted) this.error = describeError(error).message;
-    }
+    // Presentation reports a failed open as a toast.
+    await SessionPresentationContext.consume(this)!.openFile(location);
   }
 
   async openWorkspaceChanges() {
     try {
       if (await SessionPresentationContext.consume(this)!.openWorkspaceChanges()) this.close();
     } catch (error) {
-      if (!this.signal.aborted) this.error = describeError(error).message;
+      if (this.signal.aborted) return;
+      const described = describeError(error);
+      // A one-off action failure; the panel error is reserved for reading changes.
+      ToastContext.consume(this)?.show({
+        tone: "error",
+        title: "Could not open changes in VS Code",
+        message: described.message,
+        coalesceKey: "open-workspace-changes",
+      });
     }
   }
 }

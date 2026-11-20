@@ -4,6 +4,8 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { Avatar } from "@/components/ui/avatar";
 import { Callout } from "@/components/ui/callout";
+import { IconButton } from "@/components/ui/icon-button";
+import { CloseIcon } from "@/components/ui/icons";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { cn } from "@/lib/utils";
 import type { ProjectIcon } from "../../contracts/application/application-data";
@@ -277,8 +279,15 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
       }}
       ListHeaderComponent={
         store.error ? (
-          <Callout variant="error" role="alert">
+          <Callout variant="error" role="alert" className="relative pr-9">
             {store.error}
+            <IconButton
+              className="absolute right-1.5 top-1.5 size-7"
+              tooltip="Dismiss error"
+              onClick={() => store.clearError()}
+            >
+              <CloseIcon size={15} />
+            </IconButton>
           </Callout>
         ) : null
       }

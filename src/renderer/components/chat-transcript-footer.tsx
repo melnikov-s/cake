@@ -5,6 +5,12 @@ export interface ChatTranscriptFooterError {
   message?: string;
   details?: string;
   title?: string;
+  onDismiss?: () => void;
+}
+
+/** Identifies one reported failure so its dismissal can outlive remounts. */
+export function footerNoticeKey(error: ChatTranscriptFooterError): string {
+  return [error.title ?? "", error.message ?? "", error.details ?? ""].join("\u0000");
 }
 
 /** Content after the last row, plus room for the composer docked over the transcript. */
@@ -26,6 +32,7 @@ export function ChatTranscriptFooter({
           title={error.title ?? "Operation failed"}
           message={error.message}
           details={error.details}
+          onDismiss={error.onDismiss}
         />
       )}
     </div>

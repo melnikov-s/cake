@@ -30,15 +30,7 @@ export function cakeChatTranscriptBehaviorFor(
     inlineWidgets: root.inlineWidgetStore,
     inlineArtifactPreviews: root.inlineArtifactPreviewStore,
     openSourceLocation: (location) => {
-      void root.projectWorkbenchStore.presentationStore
-        .openFile(editorLocationFromPath(location))
-        .catch((error: unknown) =>
-          root.toastStore.show({
-            tone: "error",
-            title: "Could not open file",
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        );
+      void root.projectWorkbenchStore.presentationStore.openFile(editorLocationFromPath(location));
     },
   };
 }

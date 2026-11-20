@@ -27,13 +27,15 @@ export function ToastItem({ toast, store }: { toast: Toast; store: ToastStore })
           onClick={() => store.runAction(toast.id)}
         >
           <strong>{toast.title}</strong>
-          <span className="text-muted-foreground">{toast.message}</span>
+          <span className="text-muted-foreground [overflow-wrap:anywhere]">{toast.message}</span>
           <span className="mt-0.5 text-xs font-semibold">{toast.action.label}</span>
         </Button>
       ) : (
         <>
           <strong className="pr-7">{toast.title}</strong>
-          <span className="pr-5 text-muted-foreground">{toast.message}</span>
+          <span className="pr-5 text-muted-foreground [overflow-wrap:anywhere]">
+            {toast.message}
+          </span>
         </>
       )}
       <IconButton

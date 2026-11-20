@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -158,17 +158,27 @@ describe("Editor selection pills workflow", () => {
     expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty("value", "");
   });
 
-  it("reports a failed reveal without dropping or duplicating pills and permits retry", async () => {
+  it("reports a failed reveal as a dismissible toast, not a notice above the composer, and permits retry", async () => {
     using fixture = await renderSelectionUi();
-    fixture.reveal.mockRejectedValueOnce(new Error("File missing"));
-    await fixture.user.click(revealTour());
-    expect(await screen.findByText("Could not open editor location: File missing")).toBeDefined();
-    expect(screen.getAllByRole("button", { name: /^Reveal src\// })).toHaveLength(2);
-    expect(revealNext()).toBeDefined();
-    await fixture.user.click(revealTour());
-    await waitFor(() =>
-      expect(screen.queryByText("Could not open editor location: File missing")).toBeNull(),
+    fixture.reveal.mockRejectedValueOnce(
+      new Error("Unable to resolve nonexistent file /checkout/src/tour.ts"),
     );
+    await fixture.user.click(revealTour());
+    const toast = await screen.findByRole("alert");
+    expect(within(toast).getByText("Could not open file")).toBeDefined();
+    expect(within(toast).getByText("src/tour.ts")).toBeDefined();
+    // The chat surface carries no copy of the failure.
+    expect(screen.queryByText(/Could not open editor location/)).toBeNull();
+    expect(screen.queryByText(/Unable to resolve nonexistent file/)).toBeNull();
+    await fixture.user.click(within(toast).getByText("Technical details"));
+    expect(toast.querySelector("pre")?.textContent).toBe(
+      "src/tour.ts\n\nUnable to resolve nonexistent file /checkout/src/tour.ts",
+    );
+    expect(within(toast).getByRole("button", { name: "Copy full error details" })).toBeDefined();
+    expect(screen.getAllByRole("button", { name: /^Reveal src\// })).toHaveLength(2);
+    await fixture.user.click(within(toast).getByRole("button", { name: "Dismiss notification" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    await fixture.user.click(revealTour());
     expect(fixture.reveal).toHaveBeenLastCalledWith(
       selectionWorkspace,
       {
@@ -178,6 +188,7 @@ describe("Editor selection pills workflow", () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getAllByRole("button", { name: /^Reveal src\// })).toHaveLength(2);
   });
 
@@ -187,8 +198,12 @@ describe("Editor selection pills workflow", () => {
     // external authority. Keep it unavailable for the whole failed dismissal.
     fixture.highlights.mockRejectedValue(new Error("Editor disconnected"));
     await fixture.user.click(removeTour());
+    // Reported once as a toast; nothing is left above the composer.
+    const warning = (await screen.findByText("Editor highlights are out of date")).closest(
+      '[role="status"]',
+    ) as HTMLElement;
     expect(
-      await screen.findByText("Could not refresh selection highlights: Editor disconnected"),
+      within(warning).getByText("Could not refresh selection highlights: Editor disconnected"),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: /^Reveal src\/tour\.ts/ })).toBeNull();
     expect(revealNext()).toBeDefined();
@@ -197,14 +212,12 @@ describe("Editor selection pills workflow", () => {
       { locations: [expect.objectContaining({ path: "src/next.ts" })] },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+    await fixture.user.click(within(warning).getByRole("button", { name: "Dismiss notification" }));
+    expect(screen.queryByText("Editor highlights are out of date")).toBeNull();
     fixture.highlights.mockResolvedValue(undefined);
     await fixture.user.click(removeNext());
-    await waitFor(() =>
-      expect(
-        screen.queryByText("Could not refresh selection highlights: Editor disconnected"),
-      ).toBeNull(),
-    );
-    expect(screen.queryByLabelText("Editor selections")).toBeNull();
+    await waitFor(() => expect(screen.queryByLabelText("Editor selections")).toBeNull());
+    expect(screen.queryByText("Editor highlights are out of date")).toBeNull();
     expect(fixture.highlights).toHaveBeenLastCalledWith(
       selectionWorkspace,
       { locations: [] },

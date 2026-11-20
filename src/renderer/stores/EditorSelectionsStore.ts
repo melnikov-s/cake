@@ -37,7 +37,6 @@ function locationKey(location: EditorSelectionLocation): string {
 /** Ephemeral selection authority for exactly one retained project session. */
 export class EditorSelectionsStore extends Store<EditorSelectionsStoreProps> {
   readonly selections: EditorSelection[] = observable([]);
-  error: string | undefined;
   private pending: Promise<void> = Promise.resolve();
 
   private ensureActive(): void {
@@ -56,30 +55,21 @@ export class EditorSelectionsStore extends Store<EditorSelectionsStoreProps> {
     return result;
   }
 
+  /** Failures reach the caller: agents get the tool error, user entry points show a toast. */
   private async navigate(location: EditorLocation): Promise<EditorSelectionReveal> {
-    try {
-      const reveal = await this.props.openLocation(location, this.signal);
-      this.ensureActive();
-      this.error = undefined;
-      return reveal;
-    } catch (error) {
-      this.ensureActive();
-      this.error = `Could not open editor location: ${error instanceof Error ? error.message : String(error)}`;
-      throw error;
-    }
+    const reveal = await this.props.openLocation(location, this.signal);
+    this.ensureActive();
+    return reveal;
   }
 
   private async refresh(): Promise<string | undefined> {
     try {
       await this.props.refreshHighlights();
       this.ensureActive();
-      this.error = undefined;
       return undefined;
     } catch (error) {
       this.ensureActive();
-      const warning = `Could not refresh selection highlights: ${error instanceof Error ? error.message : String(error)}`;
-      this.error = warning;
-      return warning;
+      return `Could not refresh selection highlights: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
 
