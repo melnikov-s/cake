@@ -131,8 +131,9 @@ for (const { theme, width } of [
       // A long home path must shrink before the disclosure: otherwise its text
       // disappears and the path crowds/overlaps the non-shrinking status dot.
       const longHome = row("long-home");
-      await wheelIntoView(page, transcript, longHome);
       const longTrigger = longHome.locator("[aria-expanded]");
+      // Rows use display: contents; their trigger is what the reader sees.
+      await wheelIntoView(page, transcript, longTrigger);
       const longPath = longHome.getByRole("button", { name: /^~\/\.pi\/agent\/cake-docs\// });
       const longTriggerBounds = await longTrigger.boundingBox();
       const longPathBounds = await longPath.boundingBox();
@@ -149,7 +150,7 @@ for (const { theme, width } of [
           .locator("span")
           .evaluate((element) => element.clientWidth < element.scrollWidth),
       ).toBe(true);
-      await wheelIntoView(page, transcript, home);
+      await wheelIntoView(page, transcript, disclosure);
       const disclosureBounds = await disclosure.boundingBox();
       const pathBounds = await path.boundingBox();
       expect(pathBounds!.x - (disclosureBounds!.x + disclosureBounds!.width)).toBe(
@@ -171,7 +172,7 @@ for (const { theme, width } of [
         "~/.pi/agent/example.md",
       );
 
-      await page.evaluate(() => window.getSelection()?.removeAllRanges());
+      // Dragging across the next row's text replaces this selection, as it does for a reader.
       const command = row("bash").locator("[aria-expanded]");
       await wheelIntoView(page, transcript, command);
       await dragText(page, command.locator("span.truncate"));
@@ -184,15 +185,20 @@ for (const { theme, width } of [
         "tool calls are selectable",
       );
 
-      // Keyboard activation remains available even while text is selected.
-      await command.focus();
+      // Keyboard activation remains available even while text is selected: the press that
+      // started the drag focused the row.
+      await expect(command).toBeFocused();
       await page.keyboard.press("Enter");
       await expect(command).toHaveAttribute("aria-expanded", "true");
       await expect(row("bash").locator('[data-slot="tool-details"]')).toBeVisible();
-      await page.evaluate(() => window.getSelection()?.removeAllRanges());
+      // Clicking blank transcript space clears the text selection; then a click collapses the row.
+      const commandBounds = (await command.boundingBox())!;
+      const transcriptBounds = (await transcript.boundingBox())!;
+      await page.mouse.click(transcriptBounds.x + 8, commandBounds.y + commandBounds.height / 2);
+      await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe("");
       await command.click();
       await expect(command).toHaveAttribute("aria-expanded", "false");
-      await wheelIntoView(page, transcript, home);
+      await wheelIntoView(page, transcript, disclosure);
       await home.hover();
       await home
         .getByRole("button", {

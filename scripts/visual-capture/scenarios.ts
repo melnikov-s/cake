@@ -1538,7 +1538,9 @@ const inlineLinks: VisualCaptureScenario = {
   description: "Consistent artifact, workspace, website, session, and exact message links in prose",
   states: ["default", "hover", "message", "original", "attachment"],
   async seed(paths, theme) {
-    await assistantMarkdownCode.seed(paths, theme);
+    // The saved session's model must resolve: an unavailable-model error notice docked
+    // under the transcript would otherwise move the links while the reader points at them.
+    await userMessageMarkdown.seed(paths, theme);
     const sessionId = "visual-assistant-markdown-code";
     const sessionFile = join(
       workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),

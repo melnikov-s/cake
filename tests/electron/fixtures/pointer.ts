@@ -13,8 +13,10 @@ export async function pointAt(page: Page, target: Locator) {
 }
 
 /**
- * Scrolls `scroller` with the mouse wheel until `target` lies in its upper reading
- * area: clear of the top chrome and of a composer docked over the bottom.
+ * Scrolls with the mouse wheel until `target` lies in the upper reading area of
+ * `scroller`: clear of the top chrome and of a composer docked over the bottom.
+ * The wheel turns over the target where possible, so a nested scroll area (a Work
+ * log) takes the gesture first, as it does for a reader.
  */
 export async function wheelIntoView(page: Page, scroller: Locator, target: Locator) {
   for (let attempt = 0; attempt < 40; attempt++) {
@@ -23,16 +25,19 @@ export async function wheelIntoView(page: Page, scroller: Locator, target: Locat
     const top = viewport.y + 48;
     const bottom = viewport.y + viewport.height * 0.65;
     if (box && box.y >= top && box.y + box.height <= bottom) return;
-    await page.mouse.move(viewport.x + viewport.width / 2, viewport.y + viewport.height / 2);
+    const x = box ? box.x + Math.min(box.width / 2, 40) : viewport.x + viewport.width / 2;
+    const y = box
+      ? Math.min(Math.max(box.y + box.height / 2, top), bottom)
+      : viewport.y + viewport.height / 2;
+    await page.mouse.move(x, y);
     const delta = box ? box.y - (viewport.y + viewport.height / 3) : -viewport.height / 2;
-    if (box && Math.abs(delta) < 1) return;
-    const before = await scroller.evaluate((element) => element.scrollTop);
     await page.mouse.wheel(0, Math.sign(delta) * Math.min(Math.abs(delta), viewport.height / 2));
     await page.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
-    // At either end of the transcript the target is as visible as reading can make it.
-    if (box && (await scroller.evaluate((element) => element.scrollTop)) === before) return;
+    // At either end of its scroll range the target is as visible as reading can make it.
+    const moved = await target.boundingBox();
+    if (box && moved && Math.abs(moved.y - box.y) < 1) return;
   }
   throw new Error("wheelIntoView: the target never scrolled into view");
 }
