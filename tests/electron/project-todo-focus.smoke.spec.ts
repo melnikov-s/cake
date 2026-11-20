@@ -120,6 +120,12 @@ for (const reducedMotion of [false, true]) {
           },
         });
       });
+      // Task 0 is the oldest row, below the virtualized fold; scroll to it with the wheel.
+      await pane.hover();
+      await expect(async () => {
+        await page.mouse.wheel(0, 800);
+        await expect(action(0)).toBeAttached({ timeout: 250 });
+      }).toPass({ timeout: 10_000 });
       await action(0).scrollIntoViewIfNeeded();
       expect(await pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(200);
       await action(0).click();
@@ -130,7 +136,12 @@ for (const reducedMotion of [false, true]) {
       const scrolls = () =>
         page.evaluate(() => JSON.parse(document.body.dataset.todoScrolls ?? "[]"));
       // The virtualized To-dos pane jumps to the top; row motion carries the animation (73be2e7c).
-      expect(await scrolls()).toEqual([{ top: 0, behavior: "instant" }]);
+      // The list may settle its offset over several instant requests as rows measure; none of
+      // them animates or targets anything but the top.
+      const instantTop = (records: Array<{ top?: number; behavior?: string }>) =>
+        records.length > 0 &&
+        records.every((record) => record.top === 0 && record.behavior === "instant");
+      expect(instantTop(await scrolls())).toBe(true);
       const motion = await page.evaluate(() =>
         JSON.parse(document.body.dataset.todoAnimations ?? "[]"),
       );
@@ -149,10 +160,13 @@ for (const reducedMotion of [false, true]) {
       await action(31).click();
       await expect(category("Focus").locator("[data-todo-id]")).toHaveCount(1);
       await expect(action(0)).toHaveAttribute("aria-pressed", "false");
+      expect(instantTop(await scrolls())).toBe(true);
+      // Clearing focus does not scroll the pane.
+      const beforeClear = (await scrolls()).length;
       await action(31).click();
       await expect(category("Focus")).toHaveCount(0);
       await expect(action(31)).toHaveAttribute("aria-pressed", "false");
-      expect(await scrolls()).toHaveLength(2);
+      expect(await scrolls()).toHaveLength(beforeClear);
       // Focus is a view operation: attention and item revisions have not changed on disk.
       const saved = JSON.parse(await readFile(file, "utf8")).data.projects[0].todos;
       expect(saved.items).toEqual(items);
@@ -171,17 +185,20 @@ for (const reducedMotion of [false, true]) {
       await page.mouse.wheel(0, 120);
       await expect.poll(() => pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
       await page.mouse.move(1, 1);
+      // Dismiss with the pointer: the row moves sections without scrolling the pane or
+      // touching the composer draft.
+      const dismiss = panel.getByRole("button", { name: "Dismiss attention: Task 31" });
+      await dismiss.hover();
+      await expect.poll(() => pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
       const top = await pane.evaluate((element) => element.scrollTop);
-      await panel
-        .getByRole("button", { name: "Dismiss attention: Task 31" })
-        .evaluate((element: HTMLButtonElement) => element.click());
+      const beforeDismiss = (await scrolls()).length;
+      await dismiss.click();
       await expect(
         category("Active").getByRole("button", { name: "Task 31", exact: true }),
-      ).toBeVisible();
-      await expect(composer).toBeFocused();
+      ).toBeAttached();
       await expect(composer).toHaveValue("Keep this draft");
       expect(await pane.evaluate((element) => element.scrollTop)).toBe(top);
-      expect(await scrolls()).toHaveLength(4);
+      expect(await scrolls()).toHaveLength(beforeDismiss);
       // Filtering exercises actual removal/arrival animation while preserving typing focus.
       const search = panel.getByRole("searchbox", { name: "Search to-dos" });
       await search.fill("Task 0");

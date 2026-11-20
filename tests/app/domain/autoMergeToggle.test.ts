@@ -16,7 +16,11 @@ import {
   defaultApplicationState,
   defaultProjectSettings,
 } from "../../../src/contracts/application/application-data";
-import { initialize, setEnabled } from "../../../src/domain/worktrees/autoMergeReadiness";
+import {
+  initialize,
+  removeRegistration,
+  setEnabled,
+} from "../../../src/domain/worktrees/autoMergeReadiness";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {
   ApplicationStorage,
@@ -255,3 +259,14 @@ it.effect("disable skips readiness authorization but waits for durable preferenc
     }).pipe(Effect.provide(test.layer));
   }),
 );
+
+it.effect("removes a project whose family document has never recorded auto-merge requests", () => {
+  const test = fixture(() => Effect.void);
+  return Effect.gen(function* () {
+    yield* test.seed;
+    const state = yield* removeRegistration(projectPath);
+    expect(state.projects).toEqual([]);
+    const family = JSON.parse(test.files.get("state/session-families.json") ?? "{}");
+    expect(family.data?.autoMergeRequests ?? []).toEqual([]);
+  }).pipe(Effect.provide(test.layer));
+});

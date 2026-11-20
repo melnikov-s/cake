@@ -97,14 +97,19 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
         .click();
       const custom = page.getByRole("menuitem", { name: "Custom", exact: true });
       await expect(custom).toHaveAttribute("aria-haspopup", "dialog");
-      await custom.focus();
-      await custom.press("ArrowRight");
+      // Arrow keys walk the five presets down to Custom; ArrowRight opens its panel.
+      for (let step = 0; step < 6; step += 1) await page.keyboard.press("ArrowDown");
+      await expect(custom).toBeFocused();
+      await page.keyboard.press("ArrowRight");
       const dialog = page.getByRole("dialog", { name: "Custom", exact: true });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByRole("grid")).toBeVisible();
       return dialog;
     };
-    await action.press("Shift+F10");
+    // The row's disclosure takes keyboard focus; Shift+F10 opens its context menu.
+    await action.click();
+    await expect(action).toBeFocused();
+    await page.keyboard.press("Shift+F10");
     await expect(page.getByRole("menuitem", { name: "Snooze", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
     await row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }).click();
@@ -142,6 +147,16 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await expect(timeInput).toHaveValue(future.split("T")[1]!);
     await dialog.getByRole("button", { name: "Snooze", exact: true }).click();
     await expect(dialog).toBeHidden();
+    // Focus is a window-local overlay that outlasts snoozing (e52180ef); unfocusing returns
+    // the row to its underlying Snoozed section.
+    await expect(
+      panel
+        .locator('[data-todo-id][data-todo-section="Focus"]')
+        .locator("..")
+        .locator(`[data-todo-id="${id}"]`),
+    ).toHaveCount(1);
+    await row.hover();
+    await row.getByRole("button", { name: `Unfocus to-do: ${title}`, exact: true }).click();
     await expect(
       panel
         .locator('[data-todo-id][data-todo-section="Snoozed"]')
@@ -154,8 +169,14 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await expect(
       row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
     ).toHaveAttribute("aria-pressed", "false");
-    await expect(action).toHaveAttribute("aria-disabled", "true");
+    // Snoozed rows keep their details disclosure available (3977f22d).
+    await expect(action).toHaveAttribute("aria-disabled", "false");
     await expect(row.locator("time")).toHaveAttribute("datetime", new Date(future).toISOString());
+    // Links sit behind the row's link disclosure (50e4459e); expanding the row's details
+    // earlier opened them too (3977f22d).
+    await expect(
+      row.getByRole("button", { name: `Hide 1 link for ${title}`, exact: true }),
+    ).toHaveAttribute("aria-expanded", "true");
     await expect(row.getByRole("link", { name: "Release details" })).toBeVisible();
     await expect(toggle).toHaveAccessibleName("To-dos 0");
     // Deadlines belong to the backend, not the pane or renderer's lifetime.
@@ -191,8 +212,9 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
     await expect(toggle).toHaveAccessibleName("To-dos 1");
     await expect(action).toHaveAttribute("aria-disabled", "false");
     // Keyboard context actions and submenu navigation use the same preset mutation.
-    await action.focus();
-    await action.press("Shift+F10");
+    await action.click();
+    await expect(action).toBeFocused();
+    await page.keyboard.press("Shift+F10");
     const snooze = page.getByRole("menuitem", { name: "Snooze", exact: true });
     await expect(snooze).toBeFocused();
     await snooze.press("ArrowRight");
@@ -208,7 +230,9 @@ test("to-do context submenu, custom local deadline, renderer reload, reschedulin
         .locator("..")
         .locator(`[data-todo-id="${id}"]`),
     ).toHaveCount(1);
-    await action.press("Shift+F10");
+    await action.click();
+    await expect(action).toBeFocused();
+    await page.keyboard.press("Shift+F10");
     await expect(page.getByRole("menuitem", { name: "Snooze", exact: true })).toHaveCount(0);
     await row.getByRole("button", { name: `Reopen: ${title}` }).click();
     await expect(

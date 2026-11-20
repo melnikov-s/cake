@@ -102,14 +102,15 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     const action = row.getByRole("button", { name: title, exact: true });
     const category = (name: string) =>
       panel.locator(`[data-todo-id][data-todo-section="${name}"]`).locator("..");
-    const editor = async (label: string, target = action) => {
+    // The row's context menu opens on its first item; arrow keys reach the reason editor.
+    const editor = async (label: string, target = action, steps = 1) => {
       await expect(panel.locator('[aria-busy="true"]')).toHaveCount(0);
-      await target.focus();
-      await target.press("Shift+F10");
+      await target.click({ button: "right" });
       await expect(page.getByRole("menuitem", { name: /^(Snooze|Change snooze)$/ })).toBeFocused();
       const menuitem = page.getByRole("menuitem", { name: label, exact: true });
-      await menuitem.focus();
-      await menuitem.press("ArrowRight");
+      for (let step = 0; step < steps; step += 1) await page.keyboard.press("ArrowDown");
+      await expect(menuitem).toBeFocused();
+      await page.keyboard.press("ArrowRight");
       const dialog = page.getByRole("dialog", { name: label, exact: true });
       await expect(dialog).toBeVisible();
       return dialog;
@@ -118,6 +119,9 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     // Needs attention rows lead with the to-do title; the reason shows beneath (0876d9f5).
     await expect(action).toHaveText(title);
     await expect(row).toContainText(reason);
+    // Links sit behind the row's link disclosure (50e4459e).
+    const showLinks = row.getByRole("button", { name: `Show 1 link for ${title}`, exact: true });
+    await showLinks.click();
     await expect(row.getByRole("link", { name: "Startup findings", exact: true })).toBeVisible();
     const attach = row.getByRole("button", { name: `Attach to-do as context: ${title}` });
     const dismiss = row.getByRole("button", { name: `Dismiss attention: ${title}` });
@@ -142,7 +146,9 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await expect(unfocus).toHaveCSS("opacity", "1");
     await unfocus.click();
     await expect(category("Needs attention").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
-    await expect(action).toHaveText(reason);
+    // The title stays the row's label; the reason shows beneath it (0876d9f5).
+    await expect(action).toHaveText(title);
+    await expect(row).toContainText(reason);
     await expect(
       row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
     ).toHaveAttribute("aria-pressed", "false");
@@ -164,30 +170,41 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     // Needs attention rows lead with the to-do title; the reason shows beneath (0876d9f5).
     await expect(action).toHaveText(title);
     await expect(row).toContainText(reason);
-    // Plain Tab returns to the composer; Shift+Tab retains native row navigation.
-    // With the pointer away, keyboard focus reveals the inline action and X.
+    // Shift+Tab retains native row navigation back from the row's details into its actions.
+    // With the pointer away, keyboard focus reveals the inline actions and X.
+    const hideLinks = row.getByRole("button", { name: `Hide 1 link for ${title}`, exact: true });
+    await expect(row.getByRole("link", { name: "Startup findings", exact: true })).toBeVisible();
+    // Clicking the disclosure twice keeps the links shown and leaves keyboard focus on it.
+    await hideLinks.click();
+    await showLinks.click();
+    await expect(hideLinks).toBeFocused();
     await page.mouse.move(1, 1);
-    const findings = row.getByRole("link", { name: "Startup findings", exact: true });
-    await findings.focus();
-    await findings.press("Shift+Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(
+      row.getByRole("button", { name: `Change label for ${title}. Current label: Unlabelled` }),
+    ).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
     await expect(dismiss).toBeFocused();
     await expect(attach).toHaveCSS("opacity", "1");
     await expect(dismiss).toHaveCSS("opacity", "1");
-    await dismiss.press("Shift+Tab");
-    const done = row.getByRole("button", { name: `Mark done: ${title}` });
-    await expect(done).toBeFocused();
-    await done.press("Shift+Tab");
+    await page.keyboard.press("Shift+Tab");
     await expect(attach).toBeFocused();
     await expect(attach).toHaveCSS("opacity", "1");
-    await attach.press("Enter");
+    await page.keyboard.press("Shift+Tab");
+    const done = row.getByRole("button", { name: `Mark done: ${title}` });
+    await expect(done).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true })).toBeFocused();
+    await row.hover();
+    await attach.click();
     const removeAttachment = page.getByRole("button", { name: `Remove To-do · ${title}` });
     await expect(removeAttachment).toBeVisible();
     await expect(
       row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
     ).toHaveAttribute("aria-pressed", "false");
     await removeAttachment.click();
-    await dismiss.focus();
-    await dismiss.press("Enter");
+    await row.hover();
+    await dismiss.click();
     await expect(
       row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }),
     ).toHaveAttribute("aria-pressed", "false");
@@ -206,7 +223,7 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
     await input.press("Enter");
     await expect(dialog).toBeHidden();
-    await expect(action).toHaveText("Review the change before merging");
+    await expect(row).toContainText("Review the change before merging");
     // Editing and dismissing never send the existing Project Chat draft.
     const composer = page.getByRole("combobox", { name: "Message Project Chat" });
     await composer.fill("Discuss these findings");
@@ -215,9 +232,9 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await expect(category("Active").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(title);
     // Restore reuses the retained reason without a model. Reload persistence is checked below.
-    await action.press("Shift+F10");
+    await action.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Restore needs attention", exact: true }).click();
-    await expect(action).toHaveText("Review the change before merging");
+    await expect(row).toContainText("Review the change before merging");
     await row.getByRole("button", { name: `Focus to-do: ${title}`, exact: true }).click();
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
@@ -227,7 +244,7 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await expect(category("Snoozed").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     await expect(action).toHaveText(title);
     const snoozedDeadline = await row.locator("time").getAttribute("datetime");
-    const snoozedDialog = await editor("Edit attention reason…");
+    const snoozedDialog = await editor("Edit attention reason…", action, 2);
     const snoozedInput = snoozedDialog.getByRole("textbox", { name: "What needs your attention?" });
     await snoozedInput.fill("Approve the revised scope");
     await snoozedInput.press("Enter");
@@ -235,7 +252,7 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await row.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Unsnooze", exact: true }).click();
     await expect(category("Needs attention").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
-    await expect(action).toHaveText("Approve the revised scope");
+    await expect(row).toContainText("Approve the revised scope");
     await row.getByRole("button", { name: `Mark done: ${title}` }).click();
     await panel.getByRole("button", { name: "Done (1)" }).click();
     await expect(category("Done").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
@@ -258,8 +275,8 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await expect(manual.getByRole("button", { name: "Add", exact: true })).toBeEnabled();
     await manualInput.press("Enter");
     await expect(
-      category("Needs attention").getByRole("button", { name: "Choose navigation", exact: true }),
-    ).toHaveText("Choose sidebar or tabs");
+      category("Needs attention").locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]'),
+    ).toContainText("Choose sidebar or tabs");
     await expect
       .poll(async () => {
         const saved = JSON.parse(await readFile(file, "utf8"));
@@ -269,8 +286,8 @@ test("action-first attention: keyboard reason editor, dismiss/restore, snooze, c
     await page.reload();
     await open();
     await expect(
-      category("Needs attention").getByRole("button", { name: "Choose navigation", exact: true }),
-    ).toHaveText("Choose sidebar or tabs");
+      category("Needs attention").locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]'),
+    ).toContainText("Choose sidebar or tabs");
     await expect(category("Active").locator(`[data-todo-id="${id}"]`)).toHaveCount(1);
     expect(
       await app.evaluate(({ BrowserWindow }) =>

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { showSessions, showTodos } from "./fixtures/workspace-navigation";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -55,42 +56,45 @@ for (const theme of ["light", "dark"] as const) {
         '.session-item[data-session-id="visual-todo-waiting"]',
       );
       await expect(startupCue).toHaveAttribute("data-associated", "true");
-      await expect(startupCue).toHaveCSS("outline-style", "dashed");
-      await expect(startupSession).toHaveAttribute("data-associated", "true");
-      await expect(startupSession).toHaveCSS("outline-style", "dashed");
-      await expect
-        .poll(
-          async () =>
-            (await startupCue.evaluate((row) => getComputedStyle(row).backgroundColor)) ===
-            (await startupSession.evaluate((row) => getComputedStyle(row).backgroundColor)),
-        )
-        .toBe(true);
+      // A focused to-do shows the stronger view-focus ring instead of the dashed advisory cue;
+      // its linked session keeps the dashed cue (aa4992a2).
+      await expect(startupCue).toHaveAttribute("data-view-focused", "true");
+      await expect(startupCue).toHaveCSS("outline-style", "none");
+      await expect(startupCue).not.toHaveCSS("box-shadow", "none");
+      // Sessions and To-dos are exclusive Workspace tabs since chat-first navigation (582d0fc7);
+      // the window-local to-do focus carries the cue into the Sessions list.
+      const inSessions = async (check: () => Promise<void>) => {
+        await showSessions(page);
+        await check();
+        await showTodos(page);
+      };
+      await inSessions(async () => {
+        await expect(startupSession).toHaveAttribute("data-associated", "true");
+        await expect(startupSession).toHaveCSS("outline-style", "dashed");
+      });
       await expect(startup).not.toHaveAttribute("aria-current");
-      await focusStartup.click();
+      // The scenario focused Startup through its row action; Unfocus releases the cue.
       await expect(focusStartup).toHaveAttribute("aria-pressed", "true");
       await panel
         .getByRole("button", { name: "Unfocus to-do: Startup investigation", exact: true })
         .click();
       await expect(focusStartup).toHaveAttribute("aria-pressed", "false");
-      await expect(startupSession).not.toHaveAttribute("data-associated");
+      await inSessions(() => expect(startupSession).not.toHaveAttribute("data-associated"));
       await focusNavigation.click();
-      await expect(startupSession).not.toHaveAttribute("data-associated");
-      await expect(navigationSession).toHaveAttribute("data-associated", "true");
+      await inSessions(async () => {
+        await expect(startupSession).not.toHaveAttribute("data-associated");
+        await expect(navigationSession).toHaveAttribute("data-associated", "true");
+      });
       await focusStartup.click();
+      await expect(focusStartup).toHaveAttribute("aria-pressed", "true");
+      await showSessions(page);
       await expect(startupSession).toHaveAttribute("data-associated", "true");
       await expect(navigationSession).not.toHaveAttribute("data-associated", "true");
+      // Hover keeps the dashed advisory cue (the shared hover layer left with 582d0fc7).
       await startupSession.locator(".session-row").hover();
       await expect(startupSession).toHaveCSS("outline-style", "dashed");
-      const hover = page.locator('[data-slot="navigation-hover"]');
-      await expect(hover).toHaveAttribute("data-visible", "true");
-      await expect
-        .poll(
-          async () =>
-            (await startupSession.evaluate((row) => getComputedStyle(row).backgroundColor)) ===
-            (await hover.evaluate((layer) => getComputedStyle(layer).backgroundColor)),
-        )
-        .toBe(true);
       await page.mouse.move(1, 1);
+      await showTodos(page);
       await panel
         .getByRole("button", { name: "Show 6 links for Startup investigation", exact: true })
         .click();
@@ -129,8 +133,17 @@ for (const theme of ["light", "dark"] as const) {
       }
       expect(new Set(icons.slice(0, 5)).size).toBe(5);
       // Modified Tab retains native sequential navigation; plain Tab returns to writing.
+      // Start from the next row's disclosure and walk back across the Active header with Shift+Tab.
+      const hideLinks = panel.getByRole("button", {
+        name: "Hide 6 links for Startup investigation",
+        exact: true,
+      });
+      await navigation.click();
+      await expect(navigation).toBeFocused();
       await page.keyboard.press("Shift");
-      await panel.getByRole("link", { name: destinations.at(-1)![0], exact: true }).focus();
+      await page.keyboard.press("Shift+Tab");
+      await expect(panel.getByRole("button", { name: "Active (1)", exact: true })).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
       for (const [index, [title, href]] of [...destinations].reverse().entries()) {
         if (index > 0) await page.keyboard.press("Shift+Tab");
         const link = panel.getByRole("link", { name: title, exact: true });
@@ -139,9 +152,7 @@ for (const theme of ["light", "dark"] as const) {
         await expect(link).toHaveCSS("outline-style", "solid");
       }
       await page.keyboard.press("Shift+Tab");
-      await expect(
-        panel.getByRole("button", { name: "Hide 6 links for Startup investigation", exact: true }),
-      ).toBeFocused();
+      await expect(hideLinks).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(
         panel.getByRole("button", { name: /^Change label for Startup investigation\./ }),
@@ -172,6 +183,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(
         page.locator('[data-slot="transcript-item"][aria-current="true"]'),
       ).toContainText("Repository-owned visual checks");
+      await showSessions(page);
       // Navigation selection wins over the advisory cue without clearing the to-do context.
       await expect(startupSession).toHaveAttribute("data-navigation-active", "true");
       await expect(startupSession).not.toHaveAttribute("data-associated");
@@ -179,10 +191,6 @@ for (const theme of ["light", "dark"] as const) {
       await expect(startupSession.locator(".session-row > button")).toHaveAttribute(
         "aria-current",
         "page",
-      );
-      await expect(page.locator('[data-slot="navigation-selection"]')).toHaveAttribute(
-        "data-visible",
-        "true",
       );
     } finally {
       await app.close();

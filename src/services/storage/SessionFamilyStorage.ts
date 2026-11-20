@@ -759,7 +759,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         (projectPath: string) =>
           update((document) => ({
             ...document,
-            autoMergeRequests: document.autoMergeRequests?.map((item) =>
+            // Documents that never recorded auto-merge have no array; never encode undefined.
+            autoMergeRequests: (document.autoMergeRequests ?? []).map((item) =>
               item.projectPath === projectPath && item.readyToMerge && item.state !== "landed"
                 ? {
                     ...item,

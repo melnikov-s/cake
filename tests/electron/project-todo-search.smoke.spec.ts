@@ -51,16 +51,16 @@ for (const theme of ["light", "dark"] as const) {
         0,
       );
       await expect(panel.getByRole("region", { name: "Snoozed", exact: true })).toHaveCount(0);
-      // The input-blocked navigation task takes precedence over the ready startup report.
-      await expect
-        .poll(() =>
-          panel
-            .locator('[data-todo-id][data-todo-section="Active"]')
-            .locator("..")
-            .locator(":scope > li")
-            .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-todo-id"))),
-        )
-        .toEqual(["00000000-0000-4000-8000-000000000012", "00000000-0000-4000-8000-000000000011"]);
+      // The focused startup report sits in the Focus overlay above the input-blocked
+      // navigation task, which keeps its Active section (e52180ef, 3977f22d).
+      const sectionIds = (section: string) =>
+        panel
+          .locator(`[data-todo-id][data-todo-section="${section}"]`)
+          .locator("..")
+          .locator(":scope > li")
+          .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-todo-id")));
+      await expect.poll(() => sectionIds("Focus")).toEqual(["00000000-0000-4000-8000-000000000011"]);
+      await expect.poll(() => sectionIds("Active")).toEqual(["00000000-0000-4000-8000-000000000012"]);
 
       for (const width of [1500, 780]) {
         await page.setViewportSize({ width, height: 900 });
@@ -93,11 +93,13 @@ for (const theme of ["light", "dark"] as const) {
 
         await search.pressSequentially("STARTUP");
         await expect(selected).toBeVisible();
-        // The clear control follows the search box in keyboard order.
-        await search.focus();
+        // Plain Tab is the window's writing shortcut (5ee95d62): it never moves an explicit
+        // writing focus such as the search box. Clearing returns focus to search.
+        await expect(search).toBeFocused();
         await page.keyboard.press("Tab");
-        await expect(clear).toBeFocused();
-        await clear.press("Enter");
+        await expect(search).toBeFocused();
+        await expect(search).toHaveValue("STARTUP");
+        await clear.click();
         await expect(search).toBeFocused();
         await expect(search).toHaveValue("");
 

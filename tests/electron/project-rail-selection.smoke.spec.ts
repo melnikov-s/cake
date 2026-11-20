@@ -77,16 +77,20 @@ for (const theme of ["dark", "light"] as const) {
       await selected.hover();
       await expect(selected).toHaveCSS("background-color", fill);
       expect(await selected.boundingBox()).toEqual(bounds);
-      await selected.press("Tab");
-      await expect(other).toBeFocused();
-      await expect(other).toHaveCSS("outline-style", "solid");
+      // Plain Tab is the window's writing shortcut (5ee95d62); Shift+Tab is sequential rail
+      // navigation. The previous rail control takes the focus ring; selection keeps its fill.
+      await page.keyboard.press("Shift+Tab");
+      await expect(selected).not.toBeFocused();
+      const previous = rail.locator(":focus-visible");
+      await expect(previous).toHaveCount(1);
+      await expect(previous).toHaveCSS("outline-style", "solid");
       await expect(selected).toHaveAttribute("aria-current", "page");
       await expect(selected).toHaveCSS("background-color", fill);
       await expect(activity).toBeVisible();
 
       const workspace = page.locator('[data-slot="workspace"]');
       const workspaceBounds = await workspace.boundingBox();
-      await page.getByRole("combobox", { name: "Message Project Chat", exact: true }).focus();
+      await page.getByRole("combobox", { name: "Message Project Chat", exact: true }).click();
       await page.mouse.move(500, 220);
       await expect.poll(async () => (await rail.boundingBox())!.width).toBe(54);
       expect(await workspace.boundingBox()).toEqual(workspaceBounds);
@@ -103,8 +107,7 @@ for (const theme of ["dark", "light"] as const) {
       expect(markerBounds.left).toBeGreaterThanOrEqual(0);
       expect(markerBounds.right).toBeLessThan((await rail.boundingBox())!.width);
 
-      await other.focus();
-      await other.press("Enter");
+      await other.click();
       await expect(other).toHaveAttribute("aria-current", "page");
       await expect(selected).not.toHaveAttribute("aria-current", "page");
       expect(
