@@ -323,9 +323,13 @@ test("background family children show running activity and only offer Mark as Un
       for (const theme of ["light", "dark"] as const) {
         await page.emulateMedia({ colorScheme: theme });
         await expect(childRow.getByRole("img", { name: "Running" })).toBeVisible();
-        const childStatusBox = (await childRow.locator('[data-slot="own-activity"]').boundingBox())!;
+        const childStatusBox = (await childRow
+          .locator('[data-slot="own-activity"]')
+          .boundingBox())!;
         // Navigator rows show inherited descendant work whether expanded or collapsed.
-        await expect(projectStatus.getByRole("img", { name: "Running", exact: true })).toBeVisible();
+        await expect(
+          projectStatus.getByRole("img", { name: "Running", exact: true }),
+        ).toBeVisible();
         await projectHeader.getByRole("button", { name: "Collapse project", exact: true }).click();
         await composer.click();
         const dot = projectStatus.getByRole("img", { name: "Running", exact: true });
@@ -335,7 +339,9 @@ test("background family children show running activity and only offer Mark as Un
         expect(bounds).not.toBeNull();
         // The home row's status leads its Auto-merge switch (752e8b85); the status column itself
         // shares the session rows' fixed width.
-        const autoMerge = (await projectHeader.getByRole("switch", { name: /^Auto-merge:/ }).boundingBox())!;
+        const autoMerge = (await projectHeader
+          .getByRole("switch", { name: /^Auto-merge:/ })
+          .boundingBox())!;
         expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(autoMerge.x);
         const statusBox = (await projectStatus.boundingBox())!;
         expect(statusBox.width).toBe(childStatusBox.width);
@@ -343,7 +349,9 @@ test("background family children show running activity and only offer Mark as Un
         await expect(parentPane).toHaveAttribute("data-session-id", parentId!);
         await projectHeader.getByRole("button", { name: "Expand project", exact: true }).click();
         await composer.click();
-        await expect(projectStatus.getByRole("img", { name: "Running", exact: true })).toBeVisible();
+        await expect(
+          projectStatus.getByRole("img", { name: "Running", exact: true }),
+        ).toBeVisible();
         await expect(childRow.getByRole("img", { name: "Running" })).toBeVisible();
       }
     }

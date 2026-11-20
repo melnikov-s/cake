@@ -5,12 +5,20 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { dictationFixture } from "./fixtures/dictation";
 
-import { createSessionInProject, openSession, openSettings, showSessions } from "./fixtures/workspace-navigation";
+import {
+  createSessionInProject,
+  openSession,
+  openSettings,
+  showSessions,
+} from "./fixtures/workspace-navigation";
 import { chooseNextNativeMenuItem } from "./fixtures/native-menu";
 
 /** Moves focus out of the composer the way a user does: click the transcript's empty edge. */
 async function clickOutsideComposer(page: Page) {
-  await page.locator(".transcript").first().click({ position: { x: 4, y: 4 } });
+  await page
+    .locator(".transcript")
+    .first()
+    .click({ position: { x: 4, y: 4 } });
 }
 
 test("discard filters restore typed selection and preserve lowercase speech in the real composer", async () => {

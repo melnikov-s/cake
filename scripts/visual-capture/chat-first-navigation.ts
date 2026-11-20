@@ -732,9 +732,7 @@ export function createChatFirstNavigationScenario(
           } else {
             // Running workers are summarized by the composer Activity disclosure; the Side chats
             // menu lists only side chats (3eebcea3).
-            await expect(
-              page.getByRole("button", { name: /^Activity · 3 running/ }),
-            ).toBeVisible();
+            await expect(page.getByRole("button", { name: /^Activity · 3 running/ })).toBeVisible();
           }
           runningStarted = true;
           if (

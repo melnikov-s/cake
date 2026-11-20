@@ -217,7 +217,9 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     // Cake Chat's running activity lives on its Sessions row since 582d0fc7.
     await showSessions(page);
     const sidebarRunning = page
-      .locator(`[data-slot="conversation-navigator-row"][data-session-id="${CAKE_CHAT_SESSION_ID}"]`)
+      .locator(
+        `[data-slot="conversation-navigator-row"][data-session-id="${CAKE_CHAT_SESSION_ID}"]`,
+      )
       .getByRole("img", { name: "Running", exact: true });
     await expect(sidebarRunning).toBeVisible();
     const activity = page
