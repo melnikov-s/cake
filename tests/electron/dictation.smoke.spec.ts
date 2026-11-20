@@ -2,10 +2,16 @@ import { readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { dictationFixture } from "./fixtures/dictation";
 
 import { createSessionInProject, openSession, openSettings, showSessions } from "./fixtures/workspace-navigation";
+import { chooseNextNativeMenuItem } from "./fixtures/native-menu";
+
+/** Moves focus out of the composer the way a user does: click the transcript's empty edge. */
+async function clickOutsideComposer(page: Page) {
+  await page.locator(".transcript").first().click({ position: { x: 4, y: 4 } });
+}
 
 test("discard filters restore typed selection and preserve lowercase speech in the real composer", async () => {
   test.setTimeout(90_000);
@@ -116,7 +122,7 @@ for (const draft of ["typed", "dictated"] as const) {
       await configure({ ready: true, speech: true, text: "Send it." });
       await expect(composer).toHaveValue(expected + " Send it.");
       expect(userInputs).toEqual([]);
-      await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+      await clickOutsideComposer(page);
       await expect(composer).not.toBeFocused();
       await configure({ ready: true, speech: false, text: "  SEND IT!  " });
       await expect(composer).toHaveValue("", { timeout: 10_000 });
@@ -576,13 +582,12 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
     // Blur before any speech keeps dictating into this field, not wherever focus went.
-    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+    await clickOutsideComposer(page);
     await expect(indicator).toHaveText("Listening");
     await configure({ ready: true, speech: true, text: "Spoken after blur" });
     await expect(composer).toHaveValue("Explicitly chosen input Spoken after blur");
     await composer.focus();
     // Transcript UI does not revoke the insertion either.
-    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
     await page
       .getByText("Inspect this implementation before changing it.", { exact: true })
       .click();
@@ -596,7 +601,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await composer.focus();
     await composer.fill("Explicitly chosen input");
     // Refocusing the same input continues its capture.
-    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+    await clickOutsideComposer(page);
     await expect(indicator).toHaveText("Listening");
     await composer.focus();
     await expect(indicator).toHaveText("Listening");
@@ -607,17 +612,14 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(indicator).toHaveCount(0);
     await expect(composer).toHaveValue("Explicitly chosen input kept typing");
     await composer.fill("Explicitly chosen input");
-    await composer.evaluate((element: HTMLTextAreaElement) => {
-      element.blur();
-      element.focus();
-    });
+    await clickOutsideComposer(page);
+    await composer.click();
     await expect(indicator).toHaveText("Listening");
 
     // Detector false positives must not delete selected text or move the caret before words exist.
     await configure({ ready: true, hold: true, speech: true, text: "" });
-    await composer.evaluate((element: HTMLTextAreaElement) => {
-      element.setSelectionRange(11, 11);
-    });
+    await composer.press("Home");
+    for (let index = 0; index < 11; index++) await composer.press("ArrowRight");
     for (let index = 0; index < 6; index++) await composer.press("Shift+ArrowRight");
     const requestCount = async () =>
       JSON.parse(await readFile(join(model, "request.json"), "utf8")).count as number;
@@ -659,11 +661,9 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(indicator).toHaveText("Listening");
     await expect(composer).toHaveValue("");
     const captures = await page.evaluate(() => Reflect.get(window, "dictationCaptures"));
-    // A real DOM focus handoff must not reopen the device or rebuild its worklet.
-    await composer.evaluate((element: HTMLTextAreaElement) => {
-      element.blur();
-      element.focus();
-    });
+    // A real focus handoff must not reopen the device or rebuild its worklet.
+    await clickOutsideComposer(page);
+    await composer.click();
     await expect(composer).toBeFocused();
     await expect(indicator).toHaveText("Listening");
     expect(await page.evaluate(() => Reflect.get(window, "dictationCaptures"))).toBe(captures);
@@ -808,7 +808,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
       .toBeGreaterThan(before);
     const heldRequest = await requestCount();
     // The owner is sticky, but Escape must stop it even when its input lacks focus.
-    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
+    await clickOutsideComposer(page);
     await page.keyboard.press("Escape");
     await expect(indicator).toHaveCount(0);
     await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -884,27 +884,11 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     const prose = page.getByText("Inspect this implementation before changing it.", {
       exact: true,
     });
-    await prose.evaluate((element) => {
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-    });
-    await application.evaluate(({ Menu }) => {
-      const build = Menu.buildFromTemplate.bind(Menu);
-      Menu.buildFromTemplate = (template) => {
-        const menu = build(template);
-        menu.popup = (options) => {
-          const item = menu.items.find((item) => item.label === "Add annotation");
-          if (!item) throw new Error("Annotation action missing");
-          item.click(item, options.window!, { triggeredByAccelerator: false });
-          options.callback?.();
-        };
-        return menu;
-      };
-    });
-    await prose.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
+    // Select the paragraph with a real triple-click, then use its native context menu
+    // (known limit: only the hidden window's OS popup is replaced).
+    await prose.click({ clickCount: 3 });
+    await chooseNextNativeMenuItem(application, "Add annotation");
+    await prose.click({ button: "right" });
     const annotation = page.getByLabel("Annotation comment");
     await expect(annotation).toBeFocused();
     const annotationText = "Typed: Is this a question that I should be asking?";
@@ -919,17 +903,20 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await annotation.press("Enter");
     await expect(page.getByRole("dialog", { name: "Add annotation" })).toHaveCount(0);
     await configure({ ready: true, hold: true });
-    await prose.evaluate((element) => {
-      const range = document.createRange();
+    // Double-click the first word to select it, then open the context menu on it.
+    const firstWord = await prose.evaluate((element) => {
       const text = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode();
       if (!text) throw new Error("Transcript text missing");
+      const range = document.createRange();
       range.setStart(text, 0);
       range.setEnd(text, "Inspect".length);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
+      const word = range.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      return { x: word.left - box.left + word.width / 2, y: word.top - box.top + word.height / 2 };
     });
-    await prose.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
+    await prose.dblclick({ position: firstWord });
+    await chooseNextNativeMenuItem(application, "Add annotation");
+    await prose.click({ button: "right", position: firstWord });
     await expect(annotation).toBeFocused();
     await annotation.pressSequentially("Second note");
     await configure({ ready: true, text: "Second annotation speech" });
@@ -977,8 +964,8 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect(details).toBeVisible();
     await edit.pressSequentially(" typed instead");
     await expect(edit).toHaveValue(/ typed instead$/);
-    await edit.evaluate((element: HTMLTextAreaElement) => element.blur());
-    await edit.focus();
+    await details.getByRole("button", { name: "Save annotation", exact: true }).focus();
+    await edit.click();
     await expect(page.getByRole("button", { name: "Unmute dictation" })).toBeVisible();
     await page.getByRole("button", { name: "Unmute dictation" }).click();
     await expect(page.getByRole("button", { name: "Mute dictation" })).toBeVisible();
@@ -1027,7 +1014,6 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     await expect.poll(finalCount, { timeout: 10_000 }).toBeGreaterThan(beforePause);
     await configure({ ready: true, speech: true, text: "over and out" });
     await expect(composer).toHaveValue("over and out"); // interim never sends
-    await composer.evaluate((element: HTMLTextAreaElement) => element.blur());
     await page
       .getByText("Inspect this implementation before changing it.", { exact: true })
       .click();
