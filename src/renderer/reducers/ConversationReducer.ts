@@ -25,8 +25,12 @@ export function applyConversationUpdate(model: Conversation, update: Conversatio
     batch(() => {
       applyConversationSnapshot(model, update.snapshot, false, update._tag === "Preview");
       model.historyOnly = update._tag === "Preview";
-      if (!model.historyOnly) model.observedSnapshotRevision += 1;
-      model.observationError = undefined;
+      // A history preview precedes every live (re)acquisition, including retries after a
+      // runtime start failure. Only a live snapshot proves the failure has recovered.
+      if (!model.historyOnly) {
+        model.observedSnapshotRevision += 1;
+        model.observationError = undefined;
+      }
     });
     return;
   }

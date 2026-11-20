@@ -114,7 +114,7 @@ describe("VsCodeViewsRuntime native presentation", () => {
     expect(view.setVisible).toHaveBeenLastCalledWith(true);
   });
 
-  it("forwards left-edge motion and taps without a gutter, only for a visible edge-aligned editor", async () => {
+  it("forwards left-edge motion and taps measured from the window edge, only for a visible editor", async () => {
     const { runtime, open, send } = fixture();
     runtime.updateBounds(7, { ...shownBounds, x: 0 });
     await open();
@@ -159,6 +159,25 @@ describe("VsCodeViewsRuntime native presentation", () => {
     runtime.setFullscreenSurfaceOpen(7, true);
     move(1);
     expect(send).not.toHaveBeenCalled();
+    runtime.setFullscreenSurfaceOpen(7, false);
+
+    // The soft inset workspace surface places a collapsed-rail editor 9px from the window
+    // edge. Hover there belongs to the DOM gutter; the tap target still spans 28px.
+    runtime.updateBounds(7, { ...shownBounds, x: 9 });
+    move(1);
+    expect(send).not.toHaveBeenCalled();
+    move(19, "mouseDown");
+    expect(send).toHaveBeenLastCalledWith(7, {
+      type: "embedded-editor-navigation-reveal",
+      workspacePath: endpoint.workspacePath,
+      revealed: true,
+    });
+    move(20, "mouseDown");
+    expect(send).toHaveBeenLastCalledWith(7, {
+      type: "embedded-editor-navigation-reveal",
+      workspacePath: endpoint.workspacePath,
+      revealed: false,
+    });
   });
 
   it("routes Back to Agent only to the native owner", async () => {

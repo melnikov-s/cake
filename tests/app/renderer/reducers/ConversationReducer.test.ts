@@ -131,6 +131,21 @@ describe("Conversation authority isolation", () => {
     expect(model.parts[0]).toBe(message);
   });
 
+  it("keeps a runtime start failure through retried history previews until a live snapshot", () => {
+    // Every observation retry replays the history preview before live acquisition fails
+    // again. Clearing the error per preview unmounted and remounted the transcript's error
+    // notice every retry, which jumped the reader's scroll position.
+    using model = Conversation.create({ sessionId: "session" });
+    applyConversationUpdate(model, { _tag: "Preview", revision: 1, snapshot: snapshot() });
+    model.observationError = "Selected model anthropic/missing is unavailable.";
+
+    applyConversationUpdate(model, { _tag: "Preview", revision: 1, snapshot: snapshot() });
+    expect(model.observationError).toBe("Selected model anthropic/missing is unavailable.");
+
+    applyConversationUpdate(model, { _tag: "Snapshot", revision: 2, snapshot: snapshot() });
+    expect(model.observationError).toBeUndefined();
+  });
+
   it.each(["Preview", "Snapshot", "SnapshotUpdated"] as const)(
     "rejects a mismatched %s without mutating the Conversation",
     (kind) => {

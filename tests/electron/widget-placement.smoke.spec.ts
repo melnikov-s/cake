@@ -5,6 +5,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { widgetAttachmentsScenario } from "../../scripts/visual-capture/scenarios";
 import { openSession } from "./fixtures/workspace-navigation";
+import { pointAtWidgetControl } from "./fixtures/inline-widget";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -111,11 +112,12 @@ for (const scope of ["global", "session", "project-sessions", "project-chats"] a
         await expect(
           panel.locator("iframe").contentFrame().getByRole("button", { name: "Save count" }),
         ).toBeEnabled();
-        await panel
+        const saveCount = panel
           .locator("iframe")
           .contentFrame()
-          .getByRole("button", { name: "Save count" })
-          .click();
+          .getByRole("button", { name: "Save count" });
+        await pointAtWidgetControl(saveCount);
+        await saveCount.click();
         await expect(
           panel.locator("iframe").contentFrame().getByText("Shared count: 1"),
         ).toBeVisible();

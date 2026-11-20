@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { pointAtWidgetControl } from "./fixtures/inline-widget";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -49,7 +50,9 @@ for (const theme of ["light", "dark"] as const) {
       await expect(old.getByText("Old version")).toBeVisible();
       const frame = old.locator("iframe").contentFrame();
       await expect(frame.getByRole("heading", { name: "One artifact, two views" })).toBeVisible();
-      await frame.getByRole("button", { name: "Explore detail" }).click();
+      const explore = frame.getByRole("button", { name: "Explore detail" });
+      await pointAtWidgetControl(explore);
+      await explore.click();
       await expect(frame.getByRole("button", { name: "Hide detail" })).toBeVisible();
       await currentToggle.click();
       await expect(disclosures.locator('[data-artifact-id="inline-visual"]')).toHaveCount(2);

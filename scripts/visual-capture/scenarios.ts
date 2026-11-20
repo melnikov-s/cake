@@ -31,6 +31,7 @@ import { openAutomations, seedAutomationVisualFixture } from "../../tests/fixtur
 import { chooseNextNativeMenuItem } from "../../tests/electron/fixtures/native-menu";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
 import { inDisplayOrder } from "../../tests/electron/fixtures/transcript-order.ts";
+import { pointAtWidgetControl } from "../../tests/electron/fixtures/inline-widget.ts";
 import {
   seedMessageBoardFixture,
   MESSAGE_BOARD_FIXTURE_ID,
@@ -2617,7 +2618,11 @@ document.querySelector("button").onclick = (event) => {
       const host = page.locator(inlineArtifactEmbed);
       const frame = host.locator("iframe").contentFrame();
       await expect(frame.getByRole("heading", { name: /Live Cake theme/ })).toBeVisible();
-      if (state === "expanded") await frame.getByRole("button", { name: "Report details" }).click();
+      if (state === "expanded") {
+        const details = frame.getByRole("button", { name: "Report details" });
+        await pointAtWidgetControl(details);
+        await details.click();
+      }
     },
     region: (page) => page.locator(inlineArtifactEmbed),
   };

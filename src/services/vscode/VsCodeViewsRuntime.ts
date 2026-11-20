@@ -72,16 +72,17 @@ export class VsCodeViewsRuntime {
     });
     // Native views paint above Cake's DOM, so an HTML edge target alone cannot
     // receive the pointer. Forward edge motion and taps; reserve no layout gutter.
-    // A tap gets the same 28px target as the explicit DOM reveal button.
+    // A tap gets the same 28px target as the explicit DOM reveal button. Targets are
+    // measured from the window edge: an inset editor (soft workspace surface) leaves
+    // hover to the DOM gutter but still covers part of the tap target.
     let navigationAtEdge = false;
     view.webContents.on("before-mouse-event", (_event, mouse) => {
       if (mouse.type !== "mouseMove" && mouse.type !== "mouseDown") return;
       const bounds = this.requestedBounds.get(nativeId);
       const atEdge = Boolean(
         mouse.x >= 0 &&
-        mouse.x <= (mouse.type === "mouseDown" ? 28 : 2) &&
         bounds?.visible &&
-        bounds.x === 0 &&
+        bounds.x + mouse.x <= (mouse.type === "mouseDown" ? 28 : 2) &&
         !this.fullscreenWindows.has(nativeId),
       );
       if (atEdge === navigationAtEdge) return;

@@ -110,30 +110,12 @@ test("VS Code navigation has no rail gap and reveals from both DOM and native ed
     await expect.poll(width).toBe(0);
     await expect.poll(async () => (await nativeBounds())?.x).toBe(await paneLeft());
 
-    // Real input into the native WebContentsView must reveal too: it covers the
-    // DOM target when collapsed, with no reserved activation pixels.
-    await application.evaluate(({ BrowserWindow }) => {
-      const view = BrowserWindow.getAllWindows()[0]!.contentView.children.find(
-        (candidate) => candidate.getBounds().width > 0,
-      );
-      if (!view || !("webContents" in view)) throw new Error("No native editor");
-      (view as import("electron").WebContentsView).webContents.sendInputEvent({
-        type: "mouseMove",
-        x: 1,
-        y: 150,
-      });
-    });
-    await expect.poll(width).toBe(240);
-    await expect.poll(async () => (await nativeBounds())?.x).toBe(240);
-    await application.evaluate(({ BrowserWindow }) => {
-      const view = BrowserWindow.getAllWindows()[0]!.contentView.children.find(
-        (candidate) => candidate.getBounds().width > 0,
-      ) as import("electron").WebContentsView;
-      view.webContents.sendInputEvent({ type: "mouseMove", x: 30, y: 150 });
-    });
-    await expect.poll(width).toBe(0);
+    // The inset editor no longer covers the window edge (c7c99e7f); the DOM gutter above
+    // owns hover reveal (unit-covered: motion inside the inset editor does not reveal).
+    expect((await nativeBounds())!.x).toBeGreaterThan(2);
 
-    // A synthesized touch/click at the native edge also reveals without hover.
+    // A native touch/click within the 28px window-edge tap target reveals without hover,
+    // even where the inset editor covers it.
     await application.evaluate(({ BrowserWindow }) => {
       const view = BrowserWindow.getAllWindows()[0]!.contentView.children.find(
         (candidate) => candidate.getBounds().width > 0,
