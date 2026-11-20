@@ -1867,7 +1867,7 @@ async function openArtifactScenarioSession(page: Page) {
   await openSeededSession(page, "Cake architecture", artifactScenarioSessionTitle);
 }
 
-async function seedArtifactScenario(
+export async function seedArtifactScenario(
   paths: ScenarioFixturePaths,
   theme: "light" | "dark",
   artifact: CakeArtifactV1,
