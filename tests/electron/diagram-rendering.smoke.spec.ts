@@ -278,7 +278,10 @@ for (const { theme, standalone, godot } of scenarios) {
       expect(fits).toBe(true);
       await page.setViewportSize({ width: 1280, height: 900 });
 
-      const transcript = page.locator(".transcript").first();
+      // The outgoing Cake Chat transcript can remain mounted; use the live one.
+      const transcript = page
+        .locator('.transcript:not([data-slot="content-transition-outgoing"] *)')
+        .first();
       await transcript.evaluate((element) => element.scrollTo(0, 0));
       await expect(diagram).toHaveCount(0);
       await transcript.evaluate((element) => element.scrollTo(0, element.scrollHeight));
