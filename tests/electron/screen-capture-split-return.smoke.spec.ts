@@ -87,7 +87,10 @@ test("capture focuses its composer without collapsing a visible human Side Chat 
           app.evaluate(() => typeof Reflect.get(globalThis, "splitReturnCaptureShortcut")),
         )
         .toBe("function");
-      const opened = app.waitForEvent("window");
+      // Browser mode's workspace page is also a window; wait for the capture overlay itself.
+      const opened = app.waitForEvent("window", {
+        predicate: (window) => new URL(window.url()).searchParams.has("screenCapture"),
+      });
       await app.evaluate(() => Reflect.get(globalThis, "splitReturnCaptureShortcut")());
       const overlay = await opened;
       await expect(overlay.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();

@@ -70,6 +70,33 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     },
   });
 
+  // A real saved title, rather than DOM text, stresses header and sidebar truncation.
+  const longTitle = `Investigate-${"very-long-session-name-".repeat(500)}`;
+  const long = SessionManager.create(
+    project,
+    workingDirectorySessionPath(project, paths.piSessions),
+  );
+  long.appendModelChange("fixture", "fixture-model");
+  long.appendSessionInfo(longTitle);
+  long.appendMessage({ role: "user", content: "Long title check", timestamp: Date.now() });
+  long.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "Long title recorded." }],
+    api: "openai-completions",
+    provider: "fixture",
+    model: "fixture",
+    stopReason: "stop",
+    timestamp: Date.now(),
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+  });
+
   // Never prompted: nothing here submits a turn.
   await writeFixtureModels(cakeHome, { baseUrl: "http://127.0.0.1:1/v1" });
   const application = await electron.launch({
@@ -182,17 +209,8 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       "New chat",
     );
     await expect(page.getByLabel("Back to chat")).toHaveCount(0);
-    await page.evaluate(() => {
-      const longTitle = `Investigate-${"very-long-session-name-".repeat(500)}`;
-      const headerTitle = document.querySelector<HTMLElement>(
-        '[aria-label="Conversation breadcrumb"] [aria-current="page"]',
-      );
-      const sidebarTitle = document.querySelector<HTMLElement>(".session-row span");
-      if (headerTitle) headerTitle.textContent = longTitle;
-      if (sidebarTitle) sidebarTitle.textContent = longTitle;
-    });
-    expect(
-      await page.evaluate(() => {
+    const fitsCentered = () =>
+      page.evaluate(() => {
         // Global Cake Chat stays mounted since launch (40566199); measure the visible surface.
         const visible = (selector: string) =>
           [...document.querySelectorAll(selector)].find(
@@ -200,7 +218,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
           );
         const transcript = visible(".transcript");
         const composer = visible(".workbench-composer");
-        const workspace = visible('[data-slot="workspace"]');
+        // The conversation sits in the soft inset workspace surface, whose chassis padding is
+        // intentionally asymmetric beside the rail and Workspace (c7c99e7f).
+        const workspace = visible('[data-slot="workspace-surface"]');
         const conversation = visible('[aria-label="Conversation"]');
         const workspaceRect = workspace?.getBoundingClientRect();
         const composerRect = composer?.getBoundingClientRect();
@@ -222,15 +242,25 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
             Math.abs(conversationRect.left + conversationRect.width / 2 - visibleWorkspaceCenter) <
               1,
         };
-      }),
-    ).toEqual({
+      });
+    const fittedAndCentered = {
       documentFits: true,
       transcriptFits: true,
       workspaceFits: true,
       composerFits: true,
       composerCentered: true,
       conversationCentered: true,
-    });
+    };
+    expect(await fitsCentered()).toEqual(fittedAndCentered);
+    const longRow = page.locator(".session-item").filter({ hasText: "Investigate-very-long" });
+    await expect(longRow.locator(".session-title")).toHaveAttribute("title", longTitle);
+    await longRow.click();
+    await expect(
+      page
+        .getByRole("navigation", { name: "Conversation breadcrumb" })
+        .locator('[aria-current="page"]'),
+    ).toContainText("Investigate-very-long");
+    expect(await fitsCentered()).toEqual(fittedAndCentered);
 
     await page.locator(".session-item").filter({ hasText: "Existing investigation" }).click();
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();

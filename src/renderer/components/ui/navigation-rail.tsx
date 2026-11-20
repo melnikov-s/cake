@@ -81,18 +81,26 @@ export function NavigationRail({
       setInteracting(false);
     };
     const endDrag = () => setDragging(false);
+    // Activating a rail control can replace the hovered node; Chromium then dispatches no
+    // pointerleave/mouseleave for the rail, so entering any outside element ends hover.
+    const pointerOver = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || !ref.current?.contains(event.target))
+        setHovered(false);
+    };
     const blur = () => {
       setHovered(false);
       setInteracting(false);
       setDragging(false);
       onRevealChange?.(false);
     };
+    window.addEventListener("pointerover", pointerOver);
     window.addEventListener("pointerup", endPointer);
     window.addEventListener("pointercancel", endPointer);
     window.addEventListener("dragend", endDrag);
     window.addEventListener("drop", endDrag);
     window.addEventListener("blur", blur);
     return () => {
+      window.removeEventListener("pointerover", pointerOver);
       window.removeEventListener("pointerup", endPointer);
       window.removeEventListener("pointercancel", endPointer);
       window.removeEventListener("dragend", endDrag);

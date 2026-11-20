@@ -89,6 +89,25 @@ it("collapses after a clicked rail action keeps focus and the pointer leaves", (
   expect(nav.dataset.labelsVisible).toBe("false");
 });
 
+it("ends hover when the pointer enters outside content without a rail leave event", () => {
+  // Activating a rail control can replace the hovered node; Chromium then sends the rail no
+  // pointerleave/mouseleave, which left a Dynamic rail expanded over the conversation.
+  render(
+    <>
+      {rail()}
+      <main>Conversation</main>
+    </>,
+  );
+  const nav = screen.getByRole("navigation");
+  fireEvent.pointerEnter(nav);
+  fireEvent.mouseEnter(nav);
+  expect(nav.dataset.expanded).toBe("true");
+  fireEvent.pointerOver(screen.getByRole("button", { name: "Project" }));
+  expect(nav.dataset.expanded).toBe("true");
+  fireEvent.pointerOver(screen.getByRole("main"));
+  expect(nav.dataset.expanded).toBe("false");
+});
+
 it("keeps icon-only tooltips on non-hover input and cancels them when disclosure changes", () => {
   canHover = false;
   render(rail());
