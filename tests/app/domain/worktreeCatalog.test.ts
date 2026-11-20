@@ -5,9 +5,9 @@ import type { ManagedWorktreeCatalogUpdate } from "../../../src/contracts/worktr
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { observe } from "../../../src/domain/worktrees/worktreeCatalog";
 import { Git, GitError } from "../../../src/services/git/Git";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { changeFeedResync } from "../../../src/services/change-feeds/ChangeFeed";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
 
 it.effect(
   "reads the local default once per Project per update and preserves ordered lifecycle facts",
@@ -28,7 +28,7 @@ it.effect(
         Effect.provide(
           Layer.mergeAll(
             Layer.mock(SessionCatalogChanges, { initialThenChanges: (initial) => initial }),
-            Layer.mock(ManagedWorktrees, {
+            fakeManagedWorktrees({
               observe: () =>
                 Stream.make(
                   { _tag: "Snapshot", worktrees: [record, sibling] },
@@ -109,7 +109,7 @@ it.effect(
         Stream.runForEach((update) => Queue.offer(updates, update)),
         Effect.provide(
           Layer.mergeAll(
-            Layer.mock(ManagedWorktrees, {
+            fakeManagedWorktrees({
               records: () => Effect.succeed([record]),
               observe: () =>
                 Stream.make({
@@ -257,7 +257,7 @@ it.effect("refreshes every worktree after the catalog dropped activity changes",
           Layer.mock(SessionCatalogChanges, {
             initialThenChanges: () => Stream.make(changeFeedResync),
           }),
-          Layer.mock(ManagedWorktrees, {
+          fakeManagedWorktrees({
             records: () => Effect.succeed(records),
             observe: () =>
               Stream.make({ _tag: "Snapshot" as const, worktrees: records }).pipe(

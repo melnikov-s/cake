@@ -18,6 +18,7 @@ import {
 import * as todos from "../../../src/domain/projects/projectTodos";
 import * as updates from "../../../src/domain/projects/projectTodoUpdates";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
+import { fakePiModels } from "../../helpers/fakes/piModels";
 
 const model = { provider: "test", modelId: "utility", thinkingLevel: "minimal" as const };
 const setup = Effect.fn("Test.setupInitialDescriptions")(function* () {
@@ -34,7 +35,7 @@ function fixture(complete: PiModels["Service"]["complete"]) {
     logs,
     layer: Layer.mergeAll(
       projectTodoLayer(),
-      Layer.mock(PiModels, { complete }),
+      fakePiModels({ complete }),
       Layer.mock(ProjectTodoReports, {
         offerInitial: (request) =>
           Effect.sync(() => {
@@ -154,7 +155,7 @@ it.effect("background summaries use the configured utility model without blockin
         Layer.mergeAll(
           projectTodoLayer(),
           ProjectTodoReports.layer,
-          Layer.mock(PiModels, {
+          fakePiModels({
             complete: (input) =>
               Deferred.succeed(started, input).pipe(
                 Effect.andThen(Deferred.await(release)),

@@ -17,17 +17,15 @@ import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
 import { ArtifactRuntimeLive } from "../../../src/services/artifact-runtime/ArtifactRuntimeLive";
 import { ArtifactRuntimeHostLive } from "../../../src/layers/ArtifactRuntimeHostLive";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
-import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
+import { PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import * as artifactCommands from "../../../src/domain/artifacts/artifactCommands";
 import {
   ClientConnectionsLive,
   ClientConnections,
 } from "../../../src/services/clients/ClientConnections";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import {
   RendererRequestCoordinatorLive,
   RendererRequestCoordinator,
@@ -36,6 +34,9 @@ import { unusedEndpointServices } from "../ipc/rpc-endpoint-test-backend";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "../domain/projectSessionRuntimeTestLayer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { widgetRunGateFake } from "../helpers/widgetRunGate";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
 
 const lineageId = decodeArtifactLineageId("unlinked-global-widget");
 const revision = Schema.decodeUnknownSync(ArtifactRevision)({
@@ -78,7 +79,7 @@ const revision = Schema.decodeUnknownSync(ArtifactRevision)({
 
 const fixture = Effect.gen(function* () {
   const events = yield* Queue.unbounded<{ connectionId: number; event: CakeEvent }>();
-  const clients = Layer.mock(ClientEvents, {
+  const clients = fakeClientEvents({
     broadcast: () => {},
     sendTo: (connectionId, event) => {
       const parsed = Schema.decodeUnknownSync(applicationEventSchema)(event);
@@ -101,7 +102,7 @@ const fixture = Effect.gen(function* () {
       storage,
       gate,
       runtime,
-      Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+      fakeApplicationState({ snapshot: defaultApplicationState }),
     ),
   );
   yield* Layer.build(ArtifactRuntimeHostLive).pipe(Effect.provide(context));
@@ -235,7 +236,7 @@ describe("Global widget window bridge", () => {
       Effect.gen(function* () {
         const f = yield* fixture;
         const acquired: string[] = [];
-        const sessions = Layer.mock(CakeSessionRuntimes, {
+        const sessions = fakeCakeSessionRuntimes({
           acquireSession: (sessionId) => {
             acquired.push(sessionId);
             return Effect.fail(

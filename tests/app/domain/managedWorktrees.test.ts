@@ -10,26 +10,24 @@ import {
   type ApplicationState as ApplicationStateValue,
   type ProjectSettings,
 } from "../../../src/contracts/application/application-data";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import {
   SessionCatalogChanges,
   type SessionCatalogChange,
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import {
   familyMember,
   type SessionFamily,
 } from "../../../src/contracts/session-families/session-family-document";
 import { Terminal } from "../../../src/services/terminal/Terminal";
-import {
-  ManagedWorktrees,
-  type ManagedWorktreesService,
-} from "../../../src/services/worktrees/ManagedWorktrees";
+import { type ManagedWorktreesService } from "../../../src/services/worktrees/ManagedWorktrees";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const record = (
   projectPath: string,
@@ -84,7 +82,7 @@ const makeLayer = (options: {
   const catalogChecks = new Map<string, number>();
   return Layer.mergeAll(
     AgentControlTestLive,
-    Layer.mock(ApplicationState, {
+    fakeApplicationState({
       current: () => Effect.succeed(applicationState),
       snapshot: () => applicationState,
       transact: (transition) =>
@@ -96,20 +94,20 @@ const makeLayer = (options: {
           ),
         ),
     }),
-    Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) }),
+    fakeProjectAccess({ isAllowed: () => Effect.succeed(true) }),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/agent",
       sessionDirectory: "/sessions",
       resolvedSessionDirectory: "/resolved-sessions",
     }),
-    Layer.mock(SessionFamilyStorage, {
+    fakeSessionFamilyStorage({
       list: () => Effect.succeed(options.family ? [options.family] : []),
       familyForMember: (id) =>
         Effect.succeed(
           options.family && familyMember(options.family, id) ? options.family : undefined,
         ),
     }),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       locate: (id, location) => {
         if (options.family && id === options.family.parentSessionId) {
           assert.equal(location.cwd, options.family.workingDirectory);
@@ -140,7 +138,7 @@ const makeLayer = (options: {
           })),
         ),
     }),
-    Layer.mock(CakeSessionRuntimes, {
+    fakeCakeSessionRuntimes({
       catalog: ({ workingDirectory }) => {
         const checks = (catalogChecks.get(workingDirectory) ?? 0) + 1;
         catalogChecks.set(workingDirectory, checks);
@@ -163,7 +161,7 @@ const makeLayer = (options: {
           : Stream.empty;
       },
     }),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () => Effect.succeed(options.records),
       discard: (workingDirectory) =>
         Effect.sync(() => {

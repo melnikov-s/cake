@@ -6,12 +6,12 @@ import { Effect, Layer, ManagedRuntime } from "effect";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
 import * as artifacts from "../../../src/domain/artifacts/artifactWorkflows";
 import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ArtifactLibrary } from "../../../src/renderer/components/artifact-library";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
 import { messageBoardEvents } from "./message-board-event-fixture";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const family = {
   familyId: "family",
@@ -39,7 +39,7 @@ describe("message-board artifact workflow", () => {
       const backend = ManagedRuntime.make(
         Layer.merge(
           Layer.merge(messageBoardHarness().layer, events.layer),
-          Layer.mock(SessionFamilyStorage, {
+          fakeSessionFamilyStorage({
             familyForMember: () => Effect.succeed(family),
             state: () => Effect.succeed({ families: [family], turns: [], spawnedSessions: [] }),
             list: () => Effect.succeed([family]),

@@ -1,4 +1,3 @@
-import { PiModels } from "../../../src/services/pi/PiModels";
 import {
   UnknownPiModelError,
   UnavailablePiModelError,
@@ -77,7 +76,6 @@ import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
 import { backendAgentTools } from "../../../src/contracts/application/backend-agent-tools";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
@@ -111,7 +109,6 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import {
   SessionArchiveStorage,
   SessionArchiveStorageError,
@@ -157,6 +154,11 @@ const location = {
   resolvedSessionDirectory: "/cake/resolved",
 };
 import { discoveryResultText } from "../../../src/contracts/agent/discovery-result-text";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const caller = {
   kind: "project-session" as const,
@@ -530,7 +532,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
         return Effect.runPromise(requests.requestProjectControl(source, invocation, abort));
       },
     }),
-    Layer.mock(PiModels, {
+    fakePiModels({
       resolve: (selection) =>
         selection.modelId === "valid"
           ? Effect.succeed(selection)
@@ -551,7 +553,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
                     }),
             ),
     }),
-    Layer.mock(ProjectAccess, {
+    fakeProjectAccess({
       rememberSessionLocation: () => Effect.void,
       isAllowed: (path) => Effect.succeed(!deniedPaths.has(path)),
       allowedWorkingDirectories: () =>
@@ -562,7 +564,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     familyHarness.layer,
     SessionCatalogChanges.layer,
     ApplicationState.layer.pipe(Layer.provide(storage)),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () =>
         Effect.sync(() => {
           listReads.records++;
@@ -570,7 +572,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
         }),
       awaitSetup: () => Effect.void,
     }),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       resolvedProjectEntry: (id) => Effect.succeed(archivedEntries.get(id)),
       resolvedEntry: (id) => Effect.succeed(summary(id)),
       resolvedProjects: (path) =>
@@ -602,7 +604,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
           return undefined;
         }),
     }),
-    Layer.mock(TaskInputStorage, {
+    fakeTaskInputStorage({
       recipients: () =>
         Effect.sync(() => {
           redactionReads.inventories++;

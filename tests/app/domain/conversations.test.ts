@@ -12,18 +12,16 @@ import {
   projectPreviewSnapshot,
 } from "../../../src/domain/conversations/conversations";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
-import {
-  CakeSessionRuntimes,
-  type CakeSessionHandle,
-} from "../../../src/services/pi/CakeSessionRuntimes";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
+import { type CakeSessionHandle } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const snapshot = (streaming: boolean): ConversationSnapshot => ({
   workspacePath: "/project",
@@ -283,9 +281,9 @@ describe("conversation domain", () => {
         Effect.provide(
           Layer.mergeAll(
             familyStorageHarness().layer,
-            Layer.mock(ApplicationState, { snapshot: () => defaultApplicationState() }),
-            Layer.mock(TaskInputStorage, {}),
-            Layer.mock(CakeSessionRuntimes, { acquireSession: () => Effect.succeed(handle) }),
+            fakeApplicationState({ snapshot: () => defaultApplicationState() }),
+            fakeTaskInputStorage(),
+            fakeCakeSessionRuntimes({ acquireSession: () => Effect.succeed(handle) }),
           ),
         ),
       );
@@ -319,7 +317,7 @@ describe("conversation domain", () => {
       Effect.provide(
         Layer.mergeAll(
           familyStorageHarness().layer,
-          Layer.mock(CakeSessionRuntimes, { acquireSession: () => Effect.succeed(handle) }),
+          fakeCakeSessionRuntimes({ acquireSession: () => Effect.succeed(handle) }),
         ),
       ),
     );
@@ -339,8 +337,8 @@ describe("conversation domain", () => {
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
-          Layer.mock(CakeSessionRuntimes, { acquireSession: () => Effect.succeed(handle) }),
-          Layer.mock(RendererRequestCoordinator, {
+          fakeCakeSessionRuntimes({ acquireSession: () => Effect.succeed(handle) }),
+          fakeRendererRequestCoordinator({
             bind: (target, connectionId) =>
               Effect.sync(() => bindings.push({ target, connectionId })),
           }),
@@ -365,8 +363,8 @@ describe("conversation domain", () => {
       ),
       Effect.provide(
         Layer.mergeAll(
-          Layer.mock(CakeSessionRuntimes, { acquireSession: () => Effect.succeed(handle) }),
-          Layer.mock(RendererRequestCoordinator, {
+          fakeCakeSessionRuntimes({ acquireSession: () => Effect.succeed(handle) }),
+          fakeRendererRequestCoordinator({
             bind: (target, connectionId) =>
               Effect.sync(() => bindings.push({ target, connectionId })),
           }),

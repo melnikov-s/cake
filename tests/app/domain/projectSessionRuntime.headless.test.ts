@@ -11,10 +11,7 @@ import {
   type CakeSessionRuntimesAdapter,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import {
@@ -22,6 +19,9 @@ import {
   fakeRuntime,
   snapshot,
 } from "../helpers/piRuntimeFixture";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const input = {
   sessionId: "session-1",
@@ -51,15 +51,15 @@ const dependencies = Layer.mergeAll(
     Layer.provide(Layer.mock(ApplicationStorage, { save: () => Effect.void })),
   ),
   SessionCatalogChanges.layer,
-  Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active") }),
-  Layer.mock(SessionFamilyStorage, {
+  fakeSessionArchiveStorage({ locate: () => Effect.succeed("active") }),
+  fakeSessionFamilyStorage({
     familyForMember: () => Effect.succeed(undefined),
     invalidateAutoMerge: () => Effect.void,
     withMemberLock: (_sessionId, effect) => effect,
     state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
     settleTurn: () => Effect.void,
   }),
-  Layer.mock(ManagedWorktrees, {}),
+  fakeManagedWorktrees(),
 );
 
 it.effect.each([false, true])(

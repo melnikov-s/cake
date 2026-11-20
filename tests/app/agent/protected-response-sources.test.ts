@@ -1,6 +1,6 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { vi } from "vitest";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
 import {
@@ -18,7 +18,7 @@ import { createGlobalControlOperations } from "../../../src/domain/application/c
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { projectCakeOperationRuntime } from "../../../src/services/pi/runtime/cake-operation-context";
 import { readMessageReference } from "../../../src/services/pi/runtime/message-references";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const metadata = {
   version: 1 as const,
@@ -29,7 +29,7 @@ const metadata = {
   resultDelivery: "reply" as const,
   sender: { sessionId: "worker", title: "Private derived title", kind: "project-session" as const },
 };
-const protectedInputs = Layer.mock(TaskInputStorage, {
+const protectedInputs = fakeTaskInputStorage({
   isRecipient: () => Effect.succeed(true),
 });
 

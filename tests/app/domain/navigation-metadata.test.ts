@@ -1,15 +1,11 @@
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Queue, Scope, Semaphore, Stream, SubscriptionRef } from "effect";
 import { expect } from "vitest";
-import {
-  CakeSessionRuntimes,
-  type CakeSessionRuntimeAcquireOptions,
-} from "../../../src/services/pi/CakeSessionRuntimes";
+import { type CakeSessionRuntimeAcquireOptions } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { SubagentError, SubagentResult } from "../../../src/contracts/subagents/subagent-data";
 import * as subagentObservation from "../../../src/domain/subagents/subagentObservation";
 import * as discussions from "../../../src/domain/discussion-sessions/discussionSessions";
 import * as cakeChatMetadata from "../../../src/domain/cake-chats/cakeChatMetadata";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { projectRecord } from "../renderer/fixtures/catalog-fixtures";
 import {
@@ -28,6 +24,8 @@ import {
   makeSubagentStorageTestLayer,
   subagentHistoryFixture,
 } from "../helpers/subagentStorageFixture";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
 
 it.effect(
   "Project Chat catalog reports running and idle without opening or inspecting its transcript",
@@ -46,13 +44,13 @@ it.effect(
     }).pipe(
       Effect.provide(
         Layer.merge(
-          Layer.mock(ApplicationState, {
+          fakeApplicationState({
             snapshot: () => ({
               ...defaultApplicationState(),
               projects: [projectRecord({ path: "/other" })],
             }),
           }),
-          Layer.mock(CakeSessionRuntimes, {
+          fakeCakeSessionRuntimes({
             catalogEntry: () => Effect.succeed(undefined),
             currentStatus: () =>
               Effect.succeed({ streaming: running, pending: false, persisted: false }),
@@ -172,7 +170,7 @@ it.effect(
       Effect.provide(
         Layer.merge(
           SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
-          Layer.mock(CakeSessionRuntimes, {
+          fakeCakeSessionRuntimes({
             inspect: () => Effect.die("Metadata must not inspect history"),
           }),
         ),
@@ -275,7 +273,7 @@ it.effect(
               throw new Error("Metadata must not generate transcript context");
             },
           }),
-          Layer.mock(CakeSessionRuntimes, {
+          fakeCakeSessionRuntimes({
             currentStatus: () =>
               Effect.succeed({ streaming: true, pending: false, persisted: true }),
           }),
@@ -352,7 +350,7 @@ it.effect("does not republish empty discussion metadata for unrelated storage ch
             throw new Error("Metadata must not request parent context");
           },
         }),
-        Layer.mock(CakeSessionRuntimes, {}),
+        fakeCakeSessionRuntimes(),
         Layer.mock(SessionCatalogChanges, { initialThenChanges: () => Stream.empty }),
       ),
     ),

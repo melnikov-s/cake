@@ -1,10 +1,9 @@
-import { Layer } from "effect";
 import type { RequestEncoded, FromServerEncoded } from "effect/rpc/RpcMessage";
 import type { artifactEventSchema } from "../../../src/contracts/application/cake-rpc-contract";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { observeArtifactEvents } from "../../../src/renderer/observers";
 import { makeRuntime } from "../../../src/renderer/runtime";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
 
 /** Keeps domain broadcasts, validated event decoding and the real renderer router in workflow tests. */
 export function messageBoardEvents() {
@@ -17,7 +16,7 @@ export function messageBoardEvents() {
   const emit = (event: Event) => {
     if (requestId !== undefined) respond({ _tag: "Chunk", requestId, values: [event] });
   };
-  const layer = Layer.mock(ClientEvents, {
+  const layer = fakeClientEvents({
     sendTo: () => false,
     broadcast: (event) => {
       if (

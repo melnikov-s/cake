@@ -1,17 +1,17 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect } from "effect";
 import * as agentPolicy from "../../../../src/domain/project-sessions/projectSessionAgentPolicy";
 import {
   ResolutionCleanupFailed,
   ResolutionRejected,
 } from "../../../../src/contracts/project-sessions/project-session-resolution";
-import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
 import { type SessionFamily } from "../../../../src/contracts/session-families/session-family-document";
 import { makePiCallbackExecutor } from "../../../../src/services/pi/PiCallbackAdapter";
 import { describe, expect, it, vi } from "vitest";
 import type { CakeSessionRuntimeOptions } from "../../../../src/services/pi/runtime/cake-session-runtime";
 import type { ProjectSessionLivePolicyControl } from "../../../../src/contracts/agent/cake-operation-options";
 import { createCakeSessionRuntimeContinuations } from "../../../../src/services/pi/runtime/cake-session-runtime-continuations";
+import { fakeSessionFamilyStorage } from "../../../helpers/fakes/sessionFamilyStorage";
 
 function deferred<Value>() {
   let resolve!: (value: Value) => void;
@@ -107,7 +107,7 @@ const promotedFamily: SessionFamily = {
 describe("live Project Session continuation policy", () => {
   it("checks current policy before scheduling a fork and again before executing it", async () => {
     const state: { family?: SessionFamily } = {};
-    const storage = Layer.mock(SessionFamilyStorage, {
+    const storage = fakeSessionFamilyStorage({
       familyForMember: () => Effect.succeed(state.family),
     });
     const execute = vi.fn(async () => ({ sessionId: "fork" }));

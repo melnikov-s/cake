@@ -15,16 +15,10 @@ import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
 } from "../../../src/contracts/conversations/cross-session-message";
-import {
-  makeCakeSessionRuntimesLayer,
-  CakeSessionRuntimes,
-} from "../../../src/services/pi/CakeSessionRuntimes";
+import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import {
@@ -33,6 +27,10 @@ import {
   snapshot,
 } from "../helpers/piRuntimeFixture";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const location = {
   projectPath: "/project",
@@ -65,7 +63,7 @@ const outcome = {
 const environment = Layer.mergeAll(
   AgentControlTestLive,
   makeProjectSessionRuntimeMechanismTestLayer(),
-  Layer.mock(ApplicationState, {
+  fakeApplicationState({
     snapshot: () => ({
       ...defaultApplicationState(),
       projects: [
@@ -78,7 +76,7 @@ const environment = Layer.mergeAll(
       ],
     }),
   }),
-  Layer.mock(ManagedWorktrees, {
+  fakeManagedWorktrees({
     records: () => Effect.succeed([]),
     proposeSquashMessage: () => Effect.void,
   }),
@@ -123,8 +121,8 @@ describe("Session Family outcome delivery", () => {
           environment,
           familyStorageHarness().layer,
           makeRuntimeRecoveryStorageTestLayer(),
-          Layer.mock(CakeSessionRuntimes, {}),
-          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+          fakeCakeSessionRuntimes(),
+          fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
           Layer.mock(MessageBoardStorage, { takeChangedBoards: () => Effect.never }),
           Layer.mock(SessionCatalogChanges, {
             publish: () => Deferred.succeed(retained, undefined).pipe(Effect.asVoid),
@@ -175,8 +173,8 @@ describe("Session Family outcome delivery", () => {
             Layer.mock(SessionCatalogChanges, {
               publish: () => Deferred.succeed(retained, undefined).pipe(Effect.asVoid),
             }),
-            Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-            Layer.mock(CakeSessionRuntimes, {}),
+            fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
+            fakeCakeSessionRuntimes(),
             Layer.effect(
               SessionFamilyStorage,
               Effect.gen(function* () {
@@ -316,8 +314,8 @@ describe("Session Family outcome delivery", () => {
           Layer.mergeAll(
             environment,
             familyStorageHarness().layer,
-            Layer.mock(CakeSessionRuntimes, {}),
-            Layer.mock(SessionArchiveStorage, {
+            fakeCakeSessionRuntimes(),
+            fakeSessionArchiveStorage({
               locate: () => Effect.succeed("active" as const),
             }),
           ),
@@ -350,7 +348,7 @@ describe("Session Family outcome delivery", () => {
             Layer.mergeAll(
               familyStorageHarness().layer,
               environment,
-              Layer.mock(SessionArchiveStorage, {
+              fakeSessionArchiveStorage({
                 locate: () => Effect.succeed("active" as const),
               }),
               makeCakeSessionRuntimesLayer({
@@ -399,7 +397,7 @@ describe("Session Family outcome delivery", () => {
           Layer.mergeAll(
             familyStorageHarness().layer,
             environment,
-            Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+            fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
             makeCakeSessionRuntimesLayer({
               sessionIds: () => Stream.empty,
               catalog: () => Stream.empty,
@@ -440,7 +438,7 @@ describe("Session Family outcome delivery", () => {
         Layer.mergeAll(
           familyStorageHarness().layer,
           environment,
-          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+          fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
           makeCakeSessionRuntimesLayer({
             sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
@@ -500,7 +498,7 @@ describe("Session Family outcome delivery", () => {
             Layer.mergeAll(
               familyStorageHarness().layer,
               environment,
-              Layer.mock(SessionArchiveStorage, {
+              fakeSessionArchiveStorage({
                 locate: () => Effect.succeed("active" as const),
               }),
               makeCakeSessionRuntimesLayer({
@@ -569,7 +567,7 @@ describe("Session Family outcome delivery", () => {
         Layer.mergeAll(
           familyStorageHarness().layer,
           environment,
-          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+          fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
           makeCakeSessionRuntimesLayer({
             sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
@@ -649,7 +647,7 @@ describe("Session Family outcome delivery", () => {
         const dependencies = Layer.mergeAll(
           environment,
           pi,
-          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+          fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
         );
         return yield* Effect.gen(function* () {
           yield* Effect.gen(function* () {
@@ -716,7 +714,7 @@ describe("Session Family outcome delivery", () => {
             Layer.mergeAll(
               familyStorageHarness().layer,
               environment,
-              Layer.mock(SessionArchiveStorage, {
+              fakeSessionArchiveStorage({
                 locate: () => Effect.succeed("active" as const),
               }),
               makeCakeSessionRuntimesLayer({
@@ -753,7 +751,7 @@ describe("Session Family outcome delivery", () => {
           Layer.mergeAll(
             familyStorageHarness().layer,
             environment,
-            Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+            fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
             makeCakeSessionRuntimesLayer({
               sessionIds: () => Stream.empty,
               catalog: () => Stream.empty,
@@ -790,8 +788,8 @@ describe("Session Family outcome delivery", () => {
         Layer.mergeAll(
           familyStorageHarness().layer,
           environment,
-          Layer.mock(CakeSessionRuntimes, { currentStatus: () => Effect.succeed(undefined) }),
-          Layer.mock(SessionArchiveStorage, {
+          fakeCakeSessionRuntimes({ currentStatus: () => Effect.succeed(undefined) }),
+          fakeSessionArchiveStorage({
             locateMany: (ids) => Effect.succeed(new Set(ids.filter((id) => id !== childId))),
           }),
         ),
@@ -811,8 +809,8 @@ describe("Session Family outcome delivery", () => {
         Layer.mergeAll(
           familyStorageHarness().layer,
           environment,
-          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("resolved" as const) }),
-          Layer.mock(CakeSessionRuntimes, {}),
+          fakeSessionArchiveStorage({ locate: () => Effect.succeed("resolved" as const) }),
+          fakeCakeSessionRuntimes(),
         ),
       ),
     ),

@@ -6,14 +6,14 @@ import { expect, vi } from "vitest";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
-import { PiModels } from "../../../src/services/pi/PiModels";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 it.effect.each([
   { open: false, launchFails: false, rendererUnavailable: false },
@@ -56,10 +56,10 @@ it.effect.each([
     SessionCatalogChanges.layer,
     familyStorageHarness().layer,
     messageBoardHarness().layer,
-    Layer.mock(PiModels, { resolve: (selection) => Effect.succeed(selection) }),
+    fakePiModels({ resolve: (selection) => Effect.succeed(selection) }),
     projectTodoLayer(),
-    Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) }),
-    Layer.mock(ManagedWorktrees, {
+    fakeSessionArchiveStorage({ locate: () => Effect.succeed(undefined) }),
+    fakeManagedWorktrees({
       records: () => Effect.succeed([]),
       awaitSetup: () => Effect.void,
     }),

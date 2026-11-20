@@ -9,6 +9,7 @@ import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardS
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const family = {
   familyId: "family",
@@ -33,7 +34,7 @@ const family = {
     },
   ],
 };
-const familyLayer = Layer.mock(SessionFamilyStorage, {
+const familyLayer = fakeSessionFamilyStorage({
   familyForMember: (id) =>
     Effect.succeed(["parent", "child", "sibling"].includes(id) ? family : undefined),
   list: () => Effect.succeed([family]),
@@ -150,7 +151,7 @@ describe("Workboard policy", () => {
           },
         ],
       };
-      const receiptFamilyLayer = Layer.mock(SessionFamilyStorage, {
+      const receiptFamilyLayer = fakeSessionFamilyStorage({
         familyForMember: () => Effect.succeed(receiptFamily),
         list: () => Effect.succeed([receiptFamily]),
         state: () => Effect.succeed({ families: [receiptFamily], turns: [], spawnedSessions: [] }),
@@ -291,7 +292,7 @@ describe("Workboard policy", () => {
         Effect.provide(
           Layer.merge(
             messageBoardHarness().layer,
-            Layer.mock(SessionFamilyStorage, {
+            fakeSessionFamilyStorage({
               familyForMember: (id) =>
                 Effect.succeed(ids.includes(id) ? referenceFamily : undefined),
               list: () => Effect.succeed([referenceFamily]),

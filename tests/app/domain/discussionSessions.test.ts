@@ -1,7 +1,6 @@
 import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
 import { SubagentCoordinator } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { toJsonValue } from "../../../src/utils/to-json-value";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
@@ -9,8 +8,6 @@ import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture"
 import assert from "node:assert/strict";
 import { AttachmentUploadError } from "../../../src/contracts/filesystem/attachment-uploads-errors";
 import { DurableChatError } from "../../../src/services/pi-durable/durable-chat-data";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { it } from "@effect/vitest";
@@ -49,7 +46,6 @@ import {
 import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -65,6 +61,11 @@ import { listAppControlTools } from "../../../src/renderer/app-control/AppContro
 import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const makeSnapshot = (sessionId: string, sessionFile: string): ConversationSnapshot => ({
   workspacePath: "/project",
@@ -543,7 +544,7 @@ const makeLayer = (
       ),
       discussions,
       projectRuntime,
-      Layer.mock(TaskInputStorage, {
+      fakeTaskInputStorage({
         resolve: (_session, attachments) => Effect.succeed(attachments),
         authorizeForward: () => Effect.succeed([]),
         isRecipient: () => Effect.succeed(false),
@@ -556,7 +557,7 @@ const makeLayer = (
       familyStorageHarness().layer,
       ...(options.mergeReferences
         ? [
-            Layer.mock(TaskInputStorage, {
+            fakeTaskInputStorage({
               authorizeForward: (owner, refs, recipient) =>
                 Effect.sync(() => {
                   forwardedInputs.push({ owner, refs, recipient });
@@ -573,11 +574,11 @@ const makeLayer = (
       ...(options.backendControl
         ? [
             familyStorageHarness().layer,
-            Layer.mock(ManagedWorktrees, {
+            fakeManagedWorktrees({
               records: () => Effect.succeed([]),
               awaitSetup: () => Effect.void,
             }),
-            Layer.mock(TaskInputStorage, {
+            fakeTaskInputStorage({
               isRecipient: () => Effect.succeed(false),
               authorizeForward: (owner, refs, recipient) =>
                 Effect.sync(() => {
@@ -588,7 +589,7 @@ const makeLayer = (
             }),
           ]
         : []),
-      Layer.mock(RendererRequestCoordinator, {
+      fakeRendererRequestCoordinator({
         bind: (target, connectionId) =>
           Effect.sync(() => {
             rendererBindings.push({
@@ -610,7 +611,7 @@ const makeLayer = (
             return { ok: true };
           }),
       }),
-      Layer.mock(ApplicationState, {
+      fakeApplicationState({
         snapshot: () => applicationState,
         current: () => Effect.succeed(applicationState),
         transact: (transition) =>
@@ -1154,11 +1155,11 @@ describe("agent-owned context-fork tool boundary", () => {
                     seeds.push(recipient);
                   }),
               }),
-              Layer.mock(ProjectAccess, {
+              fakeProjectAccess({
                 isAllowed: () => Effect.succeed(true),
                 allow: () => Effect.void,
               }),
-              Layer.mock(ManagedWorktrees, {
+              fakeManagedWorktrees({
                 createCheckout: () =>
                   Effect.succeed({
                     projectPath: "/project",
@@ -1285,7 +1286,7 @@ describe("Cake Chat side chats", () => {
                   : Effect.succeed("10000000-0000-4000-8000-000000000009");
               },
             }),
-            Layer.mock(TaskInputStorage, {
+            fakeTaskInputStorage({
               isRecipient: () => Effect.succeed(false),
               authorizeForward: (owner, refs, recipient) => {
                 events.push("authorize");

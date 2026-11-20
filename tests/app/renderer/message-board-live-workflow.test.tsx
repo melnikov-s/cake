@@ -5,13 +5,13 @@ import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
 import * as artifacts from "../../../src/domain/artifacts/artifactWorkflows";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ArtifactLibrary } from "../../../src/renderer/components/artifact-library";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { messageBoardEvents } from "./message-board-event-fixture";
 import type { TestClientOverrides } from "./test-client";
 import type { ArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const family = {
   familyId: "family",
@@ -43,7 +43,7 @@ function makeBackend(events: ReturnType<typeof messageBoardEvents>) {
   return ManagedRuntime.make(
     Layer.merge(
       Layer.merge(messageBoardHarness().layer, events.layer),
-      Layer.mock(SessionFamilyStorage, {
+      fakeSessionFamilyStorage({
         familyForMember: (id) => Effect.succeed(id === "other-parent" ? otherFamily : family),
         state: () => Effect.succeed({ families: [family], turns: [], spawnedSessions: [] }),
         list: () => Effect.succeed([family, otherFamily]),

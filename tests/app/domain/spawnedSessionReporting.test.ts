@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 import * as agentMessaging from "../../../src/domain/application/agentSessionMessaging";
@@ -48,16 +47,12 @@ import {
   parseCrossSessionMessage,
 } from "../../../src/contracts/conversations/cross-session-message";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,
   PiSessionError,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import { PiModels } from "../../../src/services/pi/PiModels";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
@@ -81,6 +76,13 @@ import {
   CAKE_CHAT_COMPOSING_HOLD_MS,
   CakeChatComposerPresence,
 } from "../../../src/services/session-catalogs/CakeChatComposerPresence";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const location = {
   projectPath: "/project",
@@ -154,7 +156,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const environment = Layer.mergeAll(
     AgentControlTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
-    Layer.mock(ProjectAccess, {
+    fakeProjectAccess({
       rememberSessionLocation: () => Effect.void,
       isAllowed: () => Effect.succeed(true),
       allowedWorkingDirectories: () => Effect.succeed(promptRoot ? [promptRoot] : []),
@@ -162,12 +164,12 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     messageBoardHarness().layer,
     harness.layer,
     projectTodoLayer(),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () => Effect.succeed([]),
       awaitSetup: () => Effect.void,
     }),
-    Layer.mock(PiModels, { resolve: (selection) => Effect.succeed(selection) }),
-    Layer.mock(SessionArchiveStorage, {
+    fakePiModels({ resolve: (selection) => Effect.succeed(selection) }),
+    fakeSessionArchiveStorage({
       resolvedProjectEntry: () => Effect.succeed(undefined),
       locate: (id) => Effect.succeed(materialized.has(id) ? ("active" as const) : undefined),
       locateMany: (ids) => Effect.succeed(new Set(ids.filter((id) => materialized.has(id)))),
@@ -183,7 +185,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
         }),
       ),
     ),
-    Layer.mock(RendererRequestCoordinator, {
+    fakeRendererRequestCoordinator({
       releaseSession: () => Effect.void,
       requestCakeChatControl: () =>
         Effect.die("Creation and reports must not depend on a renderer lookup"),
@@ -1349,7 +1351,7 @@ describe("automatic spawned-session reporting", () => {
               assert.equal(f.deliveries.length, 1);
             }).pipe(
               Effect.provide(
-                Layer.mock(TaskInputStorage, {
+                fakeTaskInputStorage({
                   isRecipient: () => Effect.succeed(false),
                   authorizeForward: () => Effect.succeed([]),
                   grant: () => Effect.succeed([]),
@@ -1717,9 +1719,7 @@ describe("automatic spawned-session reporting", () => {
             assert.equal(f.transcript[2], "Another question");
             assert.equal((yield* pendingReports.list(CAKE_CHAT_SESSION_ID, {})).total, 0);
           }).pipe(
-            Effect.provide(
-              Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
-            ),
+            Effect.provide(fakeTaskInputStorage({ isRecipient: () => Effect.succeed(false) })),
           ),
         );
       }),
@@ -1781,9 +1781,7 @@ describe("automatic spawned-session reporting", () => {
             assert.equal((yield* f.storage.state()).deferredReferences?.length, 1);
             assert.equal((yield* f.storage.state()).deferredReferences?.[0]?.admissions, 1);
           }).pipe(
-            Effect.provide(
-              Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
-            ),
+            Effect.provide(fakeTaskInputStorage({ isRecipient: () => Effect.succeed(false) })),
           ),
         );
       }),
@@ -1820,7 +1818,7 @@ describe("automatic spawned-session reporting", () => {
               )
               .pipe(
                 Effect.provide(
-                  Layer.mock(CakeSessionRuntimes, {
+                  fakeCakeSessionRuntimes({
                     acquireSession: () =>
                       Effect.succeed({
                         ...handle,
@@ -1877,9 +1875,7 @@ describe("automatic spawned-session reporting", () => {
             assert.equal((yield* f.storage.state()).deferredReferences?.length ?? 0, 0);
             assert.ok(f.transcript[0]?.includes(turn.report.text));
           }).pipe(
-            Effect.provide(
-              Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
-            ),
+            Effect.provide(fakeTaskInputStorage({ isRecipient: () => Effect.succeed(false) })),
           ),
         );
       }),
@@ -2003,7 +1999,7 @@ describe("automatic spawned-session reporting", () => {
               assert.equal(transcript[1], "Another question");
             }).pipe(
               Effect.provide(
-                Layer.mock(TaskInputStorage, {
+                fakeTaskInputStorage({
                   isRecipient: () => Effect.succeed(false),
                 }),
               ),
@@ -2113,9 +2109,7 @@ describe("automatic spawned-session reporting", () => {
             assert.equal(f.transcript[1], "Next question");
             assert.equal((yield* completionInbox.list(parentId)).items[0]?.state, "deferred");
           }).pipe(
-            Effect.provide(
-              Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
-            ),
+            Effect.provide(fakeTaskInputStorage({ isRecipient: () => Effect.succeed(false) })),
           ),
         );
       }),
@@ -2159,7 +2153,7 @@ describe("automatic spawned-session reporting", () => {
                 },
                 "prompt",
               )
-              .pipe(Effect.provide(Layer.mock(TaskInputStorage, {})));
+              .pipe(Effect.provide(fakeTaskInputStorage()));
           yield* send(CAKE_CHAT_SESSION_ID);
           while (!f.transcript.length) yield* Effect.yieldNow;
           assert.ok(f.transcript[0]?.includes("GLOBAL_RESULT"));
@@ -3503,7 +3497,7 @@ describe("automatic spawned-session reporting", () => {
           },
           "prompt",
         )
-        .pipe(Effect.provide(Layer.mock(TaskInputStorage, {})));
+        .pipe(Effect.provide(fakeTaskInputStorage()));
 
     it.effect.each([CAKE_CHAT_TODO_SCOPE, "/project"])(
       "routine linked completion stays quiet and deliverable without actionable attention in %s",
@@ -3557,7 +3551,7 @@ describe("automatic spawned-session reporting", () => {
                   },
                   "prompt",
                 )
-                .pipe(Effect.provide(Layer.mock(TaskInputStorage, {})));
+                .pipe(Effect.provide(fakeTaskInputStorage()));
               yield* Deferred.await(f.received);
               const submitted = f.chatTranscripts.get(recipient)?.[0] ?? f.transcript[0] ?? "";
               assert.ok(submitted.includes(ref));
@@ -3630,7 +3624,7 @@ describe("automatic spawned-session reporting", () => {
               const settled = yield* onlyTurn();
               yield* sessionFamilyCompletion.deliver(settled).pipe(
                 Effect.provide(
-                  Layer.mock(TaskInputStorage, {
+                  fakeTaskInputStorage({
                     isRecipient: () => Effect.succeed(protectedInput),
                   }),
                 ),
@@ -3658,7 +3652,7 @@ describe("automatic spawned-session reporting", () => {
               if (protectedInput) assert.ok(!todo.attentionReason?.includes(resultText));
               yield* sessionFamilyCompletion.deliver(settled).pipe(
                 Effect.provide(
-                  Layer.mock(TaskInputStorage, {
+                  fakeTaskInputStorage({
                     isRecipient: () => Effect.succeed(protectedInput),
                   }),
                 ),
@@ -3672,7 +3666,7 @@ describe("automatic spawned-session reporting", () => {
                 .pipe(
                   Effect.provide(
                     Layer.mergeAll(
-                      Layer.mock(TaskInputStorage, {
+                      fakeTaskInputStorage({
                         isRecipient: () => Effect.succeed(protectedInput),
                       }),
                       Layer.succeed(ProjectSessionConfiguration, {
@@ -3702,7 +3696,7 @@ describe("automatic spawned-session reporting", () => {
                 (yield* Effect.result(
                   projectTodoAttention.activate(CAKE_CHAT_TODO_SCOPE, todo.id, todo.revision).pipe(
                     Effect.provide(
-                      Layer.mock(TaskInputStorage, {
+                      fakeTaskInputStorage({
                         isRecipient: () => Effect.succeed(protectedInput),
                       }),
                     ),

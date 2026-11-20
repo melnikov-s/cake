@@ -1,10 +1,7 @@
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { fork as forkAgentContext } from "../../../src/domain/subagents/agentContextFork";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { CakeChatDurable } from "../../../src/services/pi-durable/CakeChatDurable";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import type { PiContextFork } from "../../../src/services/pi/context-fork";
 import {
   prepareTasks,
@@ -22,7 +19,6 @@ import type {
   SubagentRecord,
   SubagentHistory,
 } from "../../../src/services/storage/SubagentStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
@@ -99,6 +95,11 @@ import {
   SubagentEnvironment,
 } from "../../../src/services/subagents/SubagentEnvironment";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const applicationValue: ApplicationStateValue = {
   ...defaultApplicationState(),
@@ -454,7 +455,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     changelog: () => Effect.succeed("# Changelog"),
   };
   const layer = Layer.mergeAll(
-    Layer.mock(TaskInputStorage, {}),
+    fakeTaskInputStorage(),
     applicationLayer,
     makeCakeSessionRuntimesLayer(adapter).pipe(
       Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
@@ -654,7 +655,7 @@ describe("subagent exact message references", () => {
                   }),
                 ),
         );
-        const storage = Layer.mock(TaskInputStorage, {
+        const storage = fakeTaskInputStorage({
           authorizeForward,
           grant: (recipient, tokens) =>
             Effect.sync(() => {
@@ -1069,7 +1070,7 @@ describe("subagent exact message references", () => {
           Effect.provide(
             Layer.merge(
               fixture.layer,
-              Layer.mock(TaskInputStorage, { authorizeForward, grant: () => Effect.succeed([]) }),
+              fakeTaskInputStorage({ authorizeForward, grant: () => Effect.succeed([]) }),
             ),
           ),
         );
@@ -1089,7 +1090,7 @@ describe("subagent attachment references", () => {
         const grant = vi.fn<TaskInputStorage["Service"]["grant"]>(() =>
           Effect.succeed([imageReference]),
         );
-        const storage = Layer.mock(TaskInputStorage, { authorizeForward, grant });
+        const storage = fakeTaskInputStorage({ authorizeForward, grant });
         yield* Effect.gen(function* () {
           const context = yield* Effect.context<
             | ApplicationState
@@ -1703,16 +1704,16 @@ describe("agent-owned context forks", () => {
                       return Effect.succeed(inherited);
                     },
                   }),
-                  Layer.mock(ProjectAccess, {
+                  fakeProjectAccess({
                     isAllowed: () => Effect.succeed(true),
                     allow: () => Effect.void,
                   }),
-                  Layer.mock(PiModels, {}),
-                  Layer.mock(ManagedWorktrees, {
+                  fakePiModels(),
+                  fakeManagedWorktrees({
                     createCheckout: () => Effect.succeed(worktree),
                     awaitSetup: () => Effect.void,
                   }),
-                  Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
+                  fakeTaskInputStorage({ isRecipient: () => Effect.succeed(false) }),
                 ),
               ),
             );
@@ -1751,11 +1752,11 @@ describe("agent-owned context forks", () => {
           Effect.provide(
             Layer.mergeAll(
               fixture.layer,
-              Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(allowed) }),
+              fakeProjectAccess({ isAllowed: () => Effect.succeed(allowed) }),
               Layer.mock(CakeChatDurable, {}),
-              Layer.mock(PiModels, {}),
-              Layer.mock(ManagedWorktrees, {}),
-              Layer.mock(TaskInputStorage, {}),
+              fakePiModels(),
+              fakeManagedWorktrees(),
+              fakeTaskInputStorage(),
             ),
           ),
         );
@@ -2558,9 +2559,7 @@ describe("Subagents", () => {
               "prompt",
             )
             .pipe(
-              Effect.provide(
-                Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
-              ),
+              Effect.provide(fakeTaskInputStorage({ isRecipient: () => Effect.succeed(false) })),
             );
           while (!(yield* Ref.get(fixture.parentMessages)).length) yield* Effect.yieldNow;
           const delivered = (yield* Ref.get(fixture.parentMessages))[0];
@@ -3219,7 +3218,7 @@ describe("Subagents", () => {
           yield* TestClock.adjust("6 minutes");
           yield* completeChild(fixture, child);
           yield* Queue.take(fixture.reports);
-        }).pipe(Effect.provide(Layer.merge(fixture.layer, Layer.mock(TaskInputStorage, {}))));
+        }).pipe(Effect.provide(Layer.merge(fixture.layer, fakeTaskInputStorage())));
       }),
   );
 
@@ -3357,9 +3356,7 @@ describe("Subagents", () => {
             }),
           );
           assert.match(released.message, /released/);
-        }).pipe(
-          Effect.provide(Layer.merge(fixture.layer, Layer.mock(TaskInputStorage, { inspect }))),
-        );
+        }).pipe(Effect.provide(Layer.merge(fixture.layer, fakeTaskInputStorage({ inspect }))));
       }),
   );
 
@@ -3766,7 +3763,7 @@ describe("Subagents", () => {
         }).pipe(
           Effect.provide(fixture.layer),
           Effect.provide(
-            Layer.mock(SessionArchiveStorage, {
+            fakeSessionArchiveStorage({
               deleteAuxiliary: (id, location) =>
                 Effect.sync(() => {
                   assert.equal(location.activeRoot, "/private-sessions");

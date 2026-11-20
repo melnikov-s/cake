@@ -27,15 +27,15 @@ import {
 } from "../../../src/services/pi/runtime/session-discovery";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import {
   type SessionFileSnapshot,
   workingDirectorySessionPath,
 } from "../../../src/services/storage/session-files";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const fs = await importOriginal<typeof fsPromises>();
@@ -122,18 +122,18 @@ const makeFixture = async () => {
   const layer = Layer.mergeAll(
     runtimes,
     SessionCatalogChanges.layer,
-    Layer.mock(ApplicationState, { current: () => Effect.succeed(state), snapshot: () => state }),
+    fakeApplicationState({ current: () => Effect.succeed(state), snapshot: () => state }),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: join(root, "agent"),
       sessionDirectory: sessions,
       resolvedSessionDirectory: join(root, "resolved"),
     }),
-    Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
-    Layer.mock(SessionFamilyStorage, {
+    fakeManagedWorktrees({ records: () => Effect.succeed([]) }),
+    fakeSessionFamilyStorage({
       state: () => Effect.succeed({ families, turns: [], spawnedSessions: [] }),
       familyForMember: (id) => Effect.succeed(families.find((family) => familyMember(family, id))),
     }),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       locate: () => Effect.succeed("active"),
       resolvedIds: () => Effect.succeed(new Set<string>()),
       resolvedProjectEntry: () => Effect.succeed(undefined),

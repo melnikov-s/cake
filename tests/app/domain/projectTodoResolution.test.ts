@@ -20,11 +20,8 @@ import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { sessionDirectoryPath } from "../../../src/services/storage/session-files";
 import { upsertProject } from "../../../src/domain/application/application";
 import * as todos from "../../../src/domain/projects/projectTodos";
@@ -44,6 +41,10 @@ import {
   ProjectTodoList,
   type ProjectTodoControl,
 } from "../../../src/contracts/projects/project-todos";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const project = "/project";
 const a = "00000000-0000-4000-8000-000000000011";
@@ -74,7 +75,7 @@ function fixture(
   const layer = Layer.mergeAll(
     app,
     makeSubagentStorageTestLayer(workers, history),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       resolvedProjectEntry: () => Effect.succeed(undefined),
       locate: (sessionId) =>
         Effect.succeed(resolved.has(sessionId) ? ("resolved" as const) : ("active" as const)),
@@ -85,7 +86,7 @@ function fixture(
           return { version: 1 as const, directories: { [directory]: [...resolved] } };
         }),
     }),
-    Layer.mock(SessionFamilyStorage, {
+    fakeSessionFamilyStorage({
       familyForMember: () => Effect.succeed(undefined),
       state: () =>
         Effect.sync(() => {
@@ -114,7 +115,7 @@ function fixture(
           };
         }),
     }),
-    Layer.mock(CakeSessionRuntimes, {
+    fakeCakeSessionRuntimes({
       catalogSnapshot: (query) =>
         Effect.succeed({
           directory: query.sessionDirectory,
@@ -141,7 +142,7 @@ function fixture(
           }),
         ).pipe(Stream.flatMap(Stream.fromIterable)),
     }),
-    Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
+    fakeManagedWorktrees({ records: () => Effect.succeed([]) }),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/agent",
       sessionDirectory: "/sessions",

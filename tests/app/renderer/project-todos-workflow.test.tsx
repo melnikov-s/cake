@@ -11,10 +11,6 @@ import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { projectTodoHandlers } from "../../../src/ipc/server/ProjectTodoHandlers";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { sessionDirectoryPath } from "../../../src/services/storage/session-files";
 import {
@@ -36,6 +32,10 @@ import { applySessionSignalsUpdate } from "../../../src/renderer/reducers/Sessio
 import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 // A virtual section spans non-contiguous mounted rows in the pane's one list.
 function todoSection(label: string) {
@@ -391,7 +391,7 @@ it("repairs only the opened list through the real backend and projection, never 
           }),
         ),
       ),
-      Layer.mock(SessionArchiveStorage, {
+      fakeSessionArchiveStorage({
         resolutionSnapshot: () =>
           Effect.sync(() => {
             indexReads++;
@@ -405,11 +405,11 @@ it("repairs only the opened list through the real backend and projection, never 
             };
           }),
       }),
-      Layer.mock(SessionFamilyStorage, {
+      fakeSessionFamilyStorage({
         state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
       }),
-      Layer.mock(CakeSessionRuntimes, { sessionIds: () => Stream.make("first", "second") }),
-      Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
+      fakeCakeSessionRuntimes({ sessionIds: () => Stream.make("first", "second") }),
+      fakeManagedWorktrees({ records: () => Effect.succeed([]) }),
       Layer.succeed(ProjectSessionConfiguration, {
         agentDirectory: "/agent",
         sessionDirectory: "/sessions",

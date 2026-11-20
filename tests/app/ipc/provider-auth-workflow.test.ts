@@ -7,12 +7,12 @@ import { providerAuthHandlers } from "../../../src/ipc/server/ProviderAuthHandle
 import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { makePiModelsLayer } from "../../../src/services/pi/PiModels";
 import {
   RendererRequestCoordinator,
   RendererRequestCoordinatorLive,
 } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
 
 const testFixture = Effect.fn("ProviderAuthTest.fixture")(function* (
   flow: "device" | "manual" = "device",
@@ -66,7 +66,7 @@ const testFixture = Effect.fn("ProviderAuthTest.fixture")(function* (
           credentials.value = undefined;
         }),
     }),
-    Layer.mock(CakeSessionRuntimes, {
+    fakeCakeSessionRuntimes({
       refreshModels: () =>
         Effect.sync(() => {
           refreshed.count++;

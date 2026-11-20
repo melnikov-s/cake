@@ -28,7 +28,6 @@ import {
   type CakeSessionRuntimesAdapter,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { PiModel } from "../../../src/contracts/pi/model-data";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { McpSettings } from "../../../src/services/pi/McpSettings";
 import { LocalMcpServer } from "../../../src/services/local-mcp/LocalMcpServer";
 import { LocalMcpSettings } from "../../../src/services/storage/LocalMcpSettings";
@@ -69,11 +68,8 @@ import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardS
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ArtifactProjection } from "../../../src/services/artifacts/ArtifactProjection";
 import { ArtifactGarbageCollector } from "../../../src/services/artifacts/ArtifactGarbageCollector";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { Git } from "../../../src/services/git/Git";
 import { makeSubagentStorageLive } from "../../../src/services/storage/SubagentStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
@@ -88,6 +84,10 @@ import type {
   Attachment,
   ConversationSnapshot,
 } from "../../../src/contracts/conversations/session-contract";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 /** A mechanism fixture, NOT proof of production graph acquisition. Real RPC/domain policy,
  * ApplicationState, connection authorities and CakeSessionRuntimes; controlled Pi/storage/worktree
@@ -243,12 +243,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     ClientWorkspacesLive,
     observedRewording,
   );
-  const worktrees = Layer.mock(ManagedWorktrees, {
-    records: () => Effect.succeed([]),
-    observe: () => Stream.never,
-    observeLandingQueue: () => Stream.never,
-    awaitSetup: () => Effect.void,
-  });
+  const worktrees = fakeManagedWorktrees();
   const access = Layer.effect(
     ProjectAccess,
     Effect.map(ProjectAccess, (service) =>
@@ -351,33 +346,8 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       sessionDirectory: "/sessions",
       resolvedSessionDirectory: "/resolved",
     }),
-    Layer.mock(SessionFamilyStorage, {
-      state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
-      list: () => Effect.succeed([]),
-      familyForMember: () => Effect.succeed(undefined),
-      settleTurn: () => Effect.void,
-      closeUpdateBatch: () => Effect.void,
-      discardUpdates: () => Effect.void,
-      withMemberLock: (_sessionId, effect) => effect,
-      withNoticeDelivery: (_recipientSessionId, _operation, effect) => effect,
-      withNoticeDeliveryDeadline: (_recipientSessionId, _operation, effect) => effect,
-      withNoticeDeliveryIfAvailable: (_recipientSessionId, _operation, effect) =>
-        Effect.map(effect, Option.some),
-      withUserDelivery: (_recipientSessionId, effect) => effect,
-      setBoardDeliveryPaused: () => Effect.void,
-      changes: () => Stream.never,
-      registerPurpose: () => Effect.void,
-      invalidateAutoMerge: () => Effect.void,
-    }),
-    Layer.mock(SessionArchiveStorage, {
-      resolvedIds: () => Effect.succeed(new Set<string>()),
-      projectMigrationComplete: () => Effect.succeed(true),
-      resolvedProjects: () => Stream.empty,
-      locate: () => Effect.succeed("active" as const),
-      resolvedProjectEntry: () => Effect.succeed(undefined),
-      resolutionSnapshot: () => Effect.succeed({ version: 1 as const, directories: {} }),
-      projectTitles: () => Effect.succeed(new Map<string, string>()),
-    }),
+    fakeSessionFamilyStorage(),
+    fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
     Layer.mock(Terminal, {
       closeWorkingDirectory: () => Effect.void,
       closeOwner: () => Effect.void,
@@ -410,10 +380,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
         throw new Error("Unused reviews");
       },
     }),
-    Layer.mock(PiModels, {
-      list: () => Effect.succeed(options?.models ?? []),
-      listNonChat: () => Effect.succeed([]),
-    }),
+    fakePiModels({ list: () => Effect.succeed(options?.models ?? []) }),
     Layer.mock(PiSettings, {
       load: () => Effect.succeed(projectPiSettings(SettingsManager.inMemory())),
     }),

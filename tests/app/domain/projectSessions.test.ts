@@ -7,7 +7,6 @@ import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { toJsonValue } from "../../../src/utils/to-json-value";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { coordinationStorageHarness } from "../helpers/coordinationStorageHarness";
 import { RuntimeRecoveryStorage } from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
@@ -93,9 +92,7 @@ import type {
   ProjectSessionSummary,
 } from "../../../src/contracts/project-sessions/project-session-data";
 import { Electron } from "../../../src/services/electron/Electron";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { sessionDirectoryPath } from "../../../src/services/storage/session-files";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
@@ -117,7 +114,6 @@ import {
   SubagentCoordinator,
 } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
 import {
@@ -131,6 +127,11 @@ import type {
 import type { ConversationUpdate } from "../../../src/contracts/conversations/conversation-data";
 import { SubagentHandleId as subagentsHandleId } from "../../../src/contracts/subagents/subagent-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const snapshot: ConversationSnapshot = {
   workspacePath: "/project",
@@ -482,7 +483,7 @@ const makeLayer = (
     : SessionCatalogChanges.layer;
   return Layer.mergeAll(
     Layer.mock(DiscussionSessionEnvironment, {}),
-    Layer.mock(TaskInputStorage, {
+    fakeTaskInputStorage({
       resolve: (_sessionId, attachments) => Effect.succeed(attachments),
       isRecipient: () => Effect.succeed(false),
     }),
@@ -590,13 +591,13 @@ const makeLayer = (
       Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer()),
     ),
     SubagentCoordinatorLive.pipe(Layer.provideMerge(makeSubagentStorageTestLayer())),
-    Layer.mock(RendererRequestCoordinator, {}),
+    fakeRendererRequestCoordinator(),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/agent",
       sessionDirectory: "/sessions",
       resolvedSessionDirectory: "/resolved-sessions",
     }),
-    Layer.mock(ProjectAccess, {
+    fakeProjectAccess({
       rememberSessionLocation: () => Effect.void,
       forgetSessionLocation: () => Effect.void,
       isAllowed: () => Effect.succeed(true),
@@ -622,7 +623,7 @@ const makeLayer = (
           };
         }),
     }),
-    Layer.mock(PiModels, {}),
+    fakePiModels(),
     Layer.mock(Electron, {
       requireRendererConnection: vi.fn(),
       windowsForWorkspace: () => [],
@@ -883,7 +884,7 @@ const makeLayer = (
               }),
       }),
     ),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () => {
         hooks.onLocations?.();
         return Effect.succeed(

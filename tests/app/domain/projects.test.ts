@@ -9,20 +9,16 @@ import { WorktreeLandingCoordinatorLive } from "../../../src/services/worktrees/
 import { upsertProject } from "../../../src/domain/application/application";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { ArtifactGarbageCollector } from "../../../src/services/artifacts/ArtifactGarbageCollector";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ClientWorkspaces } from "../../../src/services/clients/ClientWorkspaces";
 import { ClientWorkspacesLive } from "../../../src/services/clients/ClientWorkspacesLive";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { makeProjectAccessLive } from "../../../src/services/projects/ProjectAccessLive";
 import { ProjectConfiguration } from "../../../src/services/projects/ProjectConfiguration";
@@ -30,7 +26,11 @@ import { RewordingRequests } from "../../../src/services/projects/RewordingReque
 import { RewordingRequestsLive } from "../../../src/services/projects/RewordingRequestsLive";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const pi = vi.hoisted(() => ({ reword: vi.fn() }));
 vi.mock("../../../src/services/pi/PiWorkflows", () => ({
@@ -71,7 +71,7 @@ function testLayer(records: ReadonlyArray<WorktreeRecord> = []) {
   );
   const foundation = Layer.merge(
     application,
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () => Effect.succeed(records),
     }),
   );
@@ -84,7 +84,7 @@ function testLayer(records: ReadonlyArray<WorktreeRecord> = []) {
     ClientWorkspacesLive,
     RewordingRequestsLive,
     Layer.succeed(ProjectConfiguration, { agentDirectory: "/agent" }),
-    Layer.mock(PiModels, { complete: () => Effect.succeed("Generic rewrite") }),
+    fakePiModels({ complete: () => Effect.succeed("Generic rewrite") }),
   );
 }
 
@@ -123,10 +123,10 @@ describe("portable Project operations", () => {
               closed.push(path);
             }),
         }),
-        Layer.mock(CakeSessionRuntimes, { catalog: () => Stream.empty }),
-        Layer.mock(SessionArchiveStorage, { resolvedProjects: () => Stream.empty }),
+        fakeCakeSessionRuntimes({ catalog: () => Stream.empty }),
+        fakeSessionArchiveStorage({ resolvedProjects: () => Stream.empty }),
         WorktreeLandingCoordinatorLive,
-        Layer.mock(SessionFamilyStorage, {
+        fakeSessionFamilyStorage({
           withCreationLock: (_key, effect) => effect,
           retireProjectAutoMerge: () => Effect.void,
           list: () => Effect.succeed([]),

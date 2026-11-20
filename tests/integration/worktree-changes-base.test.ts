@@ -8,8 +8,8 @@ import { Effect, Layer } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 import { inspect } from "../../src/domain/worktrees/worktreeChanges";
 import { makeGitLive } from "../../src/services/git/GitLive";
-import { ProjectAccess } from "../../src/services/projects/ProjectAccess";
-import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees";
+import { fakeManagedWorktrees } from "../helpers/fakes/managedWorktrees";
+import { fakeProjectAccess } from "../helpers/fakes/projectAccess";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -59,8 +59,8 @@ const changes = (path: string, options: { base?: string } = {}) =>
         Layer.mergeAll(
           makeGitLive(),
           NodeFileSystem.layer,
-          Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) }),
-          Layer.mock(ManagedWorktrees, { status: () => Effect.succeed(undefined) }),
+          fakeProjectAccess({ isAllowed: () => Effect.succeed(true) }),
+          fakeManagedWorktrees({ status: () => Effect.succeed(undefined) }),
         ),
       ),
     ),

@@ -3,19 +3,19 @@ import { Context, Effect, Layer, Stream } from "effect";
 import { describe, expect } from "vitest";
 import { providerAuthHandlers } from "../../../src/ipc/server/ProviderAuthHandlers";
 import { RendererConnection } from "../../../src/ipc/protocol/RendererConnectionMiddleware";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { makePiModelsLayer } from "../../../src/services/pi/PiModels";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import {
   makeRuntimeRecoveryStorageTestLayer,
   fakeRuntime,
   options,
   snapshot,
 } from "../helpers/piRuntimeFixture";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
 
 const projectedModel = (authenticated: boolean) => ({
   provider: "example",
@@ -90,8 +90,8 @@ describe("provider auth across acquired Pi sessions", () => {
                   credentials.value = undefined;
                 }),
             }),
-            Layer.mock(ClientEvents, { sendTo: () => true, broadcast: () => undefined }),
-            Layer.mock(RendererRequestCoordinator, {
+            fakeClientEvents({ sendTo: () => true, broadcast: () => undefined }),
+            fakeRendererRequestCoordinator({
               requestUiForConnection: () => Effect.succeed("server-key"),
             }),
           );

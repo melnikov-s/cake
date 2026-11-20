@@ -17,7 +17,6 @@ import {
 
 import { createProjectSessionRuntime } from "../../src/layers/CakeOperations";
 import { makeCakeSessionRuntimesLayer } from "../../src/services/pi/CakeSessionRuntimes";
-import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage";
 import { ApplicationState } from "../../src/services/storage/ApplicationState";
 import { SubagentCoordinatorLive } from "../../src/services/subagents/SubagentCoordinator";
 import { makeSubagentEnvironmentLayer } from "../../src/services/subagents/SubagentEnvironment";
@@ -28,6 +27,7 @@ import {
   snapshot,
 } from "../app/helpers/piRuntimeFixture";
 import { makeSubagentStorageTestLayer } from "../app/helpers/subagentStorageFixture";
+import { fakeTaskInputStorage } from "../helpers/fakes/taskInputStorage";
 
 /**
  * A real Pi worker runtime, assembled exactly as `subagents.run` assembles it, against a
@@ -184,7 +184,7 @@ async function setUp(work: (afterTool: boolean) => Reply) {
     }),
   );
   const layer = Layer.mergeAll(
-    Layer.mock(TaskInputStorage, {}),
+    fakeTaskInputStorage(),
     application,
     makeCakeSessionRuntimesLayer({
       sessionIds: () => Stream.empty,

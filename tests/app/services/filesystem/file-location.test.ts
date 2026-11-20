@@ -5,7 +5,6 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { WorkspaceFiles } from "../../../../src/services/filesystem/WorkspaceFiles";
 import { makeWorkspaceFilesLive } from "../../../../src/services/filesystem/WorkspaceFilesLive";
-import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import type { WorkspaceFileError } from "../../../../src/contracts/filesystem/workspace-files-errors";
 import type { EditorLocation } from "../../../../src/contracts/editor/editor-location";
 import { projectChatSessionId } from "../../../../src/domain/cake-chats/cakeChatLocations";
@@ -13,6 +12,7 @@ import {
   cakeChatScratchDirectory,
   cakeChatSessionDirectory,
 } from "../../../../src/services/pi-durable/cake-chat-directories";
+import { fakeProjectAccess } from "../../../helpers/fakes/projectAccess";
 
 const withFiles = (test: (root: string) => Effect.Effect<void, WorkspaceFileError>) =>
   Effect.acquireUseRelease(
@@ -116,7 +116,7 @@ describe("file location routing", () => {
           Effect.provide(
             makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(
               Layer.provide(
-                Layer.mock(ProjectAccess, {
+                fakeProjectAccess({
                   isAllowed: () => Effect.succeed(true),
                 }),
               ),
@@ -177,7 +177,7 @@ describe("file location routing", () => {
         }).pipe(
           Effect.provide(
             makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(
-              Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
+              Layer.provide(fakeProjectAccess({ isAllowed: () => Effect.succeed(true) })),
             ),
           ),
         ),
@@ -264,7 +264,7 @@ describe("file location routing", () => {
           Effect.provide(
             makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(
               Layer.provide(
-                Layer.mock(ProjectAccess, {
+                fakeProjectAccess({
                   isAllowed: (path) =>
                     Effect.succeed(
                       path === join(root, "project") || path === join(root, "allowed"),
@@ -318,7 +318,7 @@ describe("file location routing", () => {
         }).pipe(
           Effect.provide(
             makeWorkspaceFilesLive("/agent", join(root, "global-chat")).pipe(
-              Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
+              Layer.provide(fakeProjectAccess({ isAllowed: () => Effect.succeed(true) })),
             ),
           ),
         ),

@@ -13,7 +13,6 @@ import * as boards from "../../../src/domain/artifacts/messageBoards";
 import { MessageBoardError } from "../../../src/contracts/artifacts/message-board";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { createSessionFamilyOperations } from "../../../src/domain/session-families/cake-session-family-operations";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import {
@@ -22,7 +21,6 @@ import {
   type RuntimeRecoveryRecord,
 } from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { fullProjectTodos, projectTodoLayer } from "../helpers/projectTodoHarness";
@@ -33,6 +31,8 @@ import {
   options,
   makeRuntimeRecoveryStorageTestLayer,
 } from "../helpers/piRuntimeFixture";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const location = {
   projectPath: "/project",
@@ -75,8 +75,8 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
       projectTodoLayer(settings.todoSettings),
       board.layer,
       SessionCatalogChanges.layer,
-      Layer.mock(PiModels, { resolve: (model) => Effect.succeed(model) }),
-      Layer.mock(SessionArchiveStorage, {
+      fakePiModels({ resolve: (model) => Effect.succeed(model) }),
+      fakeSessionArchiveStorage({
         locate: () => Effect.succeed(undefined),
         locateMany: () => Effect.succeed(new Set<string>()),
       }),

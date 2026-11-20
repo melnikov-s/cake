@@ -11,7 +11,6 @@ import {
 } from "../../../../src/contracts/application/settings-catalog";
 import { CakePrompts } from "../../../../src/contracts/application/cake-prompt-data";
 import { PiSettings } from "../../../../src/services/pi/PiSettings";
-import { CakeSessionRuntimes } from "../../../../src/services/pi/CakeSessionRuntimes";
 import { it } from "@effect/vitest";
 import { describe } from "vitest";
 import * as autoMergeReadiness from "../../../../src/domain/worktrees/autoMergeReadiness";
@@ -22,7 +21,6 @@ import {
 import { familyStorageHarness } from "../../helpers/familyStorageHarness";
 import { SubscriptionRef, Stream } from "effect";
 import { observeOperations } from "../../../../src/domain/worktrees/worktreeLandings";
-import { ManagedWorktrees } from "../../../../src/services/worktrees/ManagedWorktrees";
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PlatformError, Schema } from "effect";
 import {
   APPLICATION_DOCUMENT_NAME,
@@ -52,6 +50,8 @@ import {
 } from "../../../../src/contracts/application/cake-prompt-defaults";
 import { setCakePrompts } from "../../../../src/domain/application/application";
 import versionFivePromptDefaults from "../../../../src/services/storage/internal/application-v5-prompt-defaults.json";
+import { fakeCakeSessionRuntimes } from "../../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../../helpers/fakes/managedWorktrees";
 
 interface FakeFileSystemControls {
   readonly files: Map<string, string>;
@@ -197,7 +197,7 @@ describe("ApplicationStorage", () => {
       ),
       WorktreeLandingCoordinatorLive,
       familyStorageHarness(fake.controls.files).layer,
-      Layer.mock(ManagedWorktrees, { observeLandingQueue: () => Stream.succeed([]) }),
+      fakeManagedWorktrees({ observeLandingQueue: () => Stream.succeed([]) }),
     );
 
   const initializeAutoMerge = Effect.gen(function* () {
@@ -505,9 +505,7 @@ describe("ApplicationStorage", () => {
           }).pipe(
             Effect.provide(owner, { local: true }),
             // Application catalog writes must not acquire Pi or conversation runtimes.
-            Effect.provide(
-              Layer.merge(Layer.mock(PiSettings, {}), Layer.mock(CakeSessionRuntimes, {})),
-            ),
+            Effect.provide(Layer.merge(Layer.mock(PiSettings, {}), fakeCakeSessionRuntimes())),
           );
           assert.deepEqual((yield* storage.load()).state, committed);
           yield* Effect.gen(function* () {

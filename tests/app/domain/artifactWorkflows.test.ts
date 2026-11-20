@@ -21,10 +21,10 @@ import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
 import type { ArtifactRuntimeTarget } from "../../../src/contracts/artifacts/artifact-runtime";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { type SessionFamily } from "../../../src/contracts/session-families/session-family-document";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -89,7 +89,7 @@ const makeLayer = async (
   const storage = makeArtifactStorageLive(join(root, "artifacts")).pipe(
     Layer.provide(Layer.merge(fileSystem, NodePath.layer)),
   );
-  const membership = Layer.mock(SessionFamilyStorage, {
+  const membership = fakeSessionFamilyStorage({
     withMemberLock: (_sessionId, effect) => effect,
     familyForMember: (sessionId) => {
       const lookupFailure = getLookupFailure();
@@ -393,7 +393,7 @@ describe("artifact lineage workflows", () => {
           (path) => reads.push(path),
         ),
       );
-      const access = Layer.mock(ProjectAccess, {
+      const access = fakeProjectAccess({
         resolveSessionWorkingDirectory: () => Effect.succeed("/project"),
         isAllowed: () => Effect.succeed(true),
       });
@@ -438,7 +438,7 @@ describe("artifact lineage workflows", () => {
   effectIt.effect("preserves direct-over-family selection and pinned latest metadata", () =>
     Effect.gen(function* () {
       const base = yield* Effect.promise(() => makeLayer(() => [family(["child"])]));
-      const access = Layer.mock(ProjectAccess, {
+      const access = fakeProjectAccess({
         resolveSessionWorkingDirectory: () => Effect.succeed("/project"),
         isAllowed: () => Effect.succeed(true),
       });
@@ -808,7 +808,7 @@ describe("artifact lineage workflows", () => {
 
   it("authorizes renderer session reads and translates effective refs", async () => {
     const base = await makeLayer(() => []);
-    const allowed = Layer.mock(ProjectAccess, {
+    const allowed = fakeProjectAccess({
       resolveSessionWorkingDirectory: () => Effect.succeed("/project"),
       isAllowed: () => Effect.succeed(true),
     });
@@ -828,7 +828,7 @@ describe("artifact lineage workflows", () => {
       }).pipe(Effect.provide(Layer.merge(base, allowed))),
     );
 
-    const denied = Layer.mock(ProjectAccess, {
+    const denied = fakeProjectAccess({
       resolveSessionWorkingDirectory: () => Effect.succeed("/project"),
       isAllowed: () => Effect.succeed(false),
     });
@@ -862,7 +862,7 @@ describe("artifact lineage workflows", () => {
           const values = yield* artifacts.listEffective(CAKE_CHAT_SESSION_ID);
           expect(values.map((value) => value.revision.lineageId)).toEqual(["coordinator-report"]);
           expect(values[0]?.exactRef).toBe("cake://artifact/coordinator-report@r1");
-        }).pipe(Effect.provide(Layer.merge(base, Layer.mock(ProjectAccess, {}))));
+        }).pipe(Effect.provide(Layer.merge(base, fakeProjectAccess())));
       }),
   );
 

@@ -5,8 +5,8 @@ import { describe } from "vitest";
 import { admitTurn } from "../../../src/domain/session-families/sessionFamilyAdmission";
 import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const reservation = {
   familyId: "family",
@@ -22,7 +22,7 @@ const archiveLocation = { cwd: "/worktree", activeRoot: "/active", resolvedRoot:
 const layer = (rootResolved = false) =>
   Layer.mergeAll(
     familyStorageHarness().layer,
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       locate: (id) =>
         Effect.succeed(
           rootResolved && id === "parent" ? ("resolved" as const) : ("active" as const),

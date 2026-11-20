@@ -8,16 +8,16 @@ import { acquireOptions } from "../../../src/domain/project-sessions/projectSess
 import { initialize } from "../../../src/domain/session-families/sessionFamilies";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import {
   makeCakeSessionRuntimesLayer,
   CakeSessionRuntimes,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const location = {
   projectPath: "/project",
@@ -61,11 +61,11 @@ const environment = (disposed: Deferred.Deferred<void>) =>
     ApplicationState.layer.pipe(
       Layer.provide(Layer.mock(ApplicationStorage, { save: () => Effect.void })),
     ),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       locate: () => Effect.succeed("active" as const),
       locateMany: (sessionIds) => Effect.succeed(new Set(sessionIds)),
     }),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () => Effect.succeed([]),
       proposeSquashMessage: () => Effect.void,
     }),

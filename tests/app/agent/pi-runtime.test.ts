@@ -1,9 +1,8 @@
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 import { linkedArtifactSystemGuidance } from "../../../src/domain/artifacts/cake-artifact-operations";
 import { createProjectSessionRuntime } from "../../../src/layers/CakeOperations";
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import { snapshotPromptFiles } from "../../../src/services/filesystem/prompt-files";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 import {
   ProjectSessionFamilyInfo,
@@ -53,6 +52,7 @@ import {
   type ExtensionUiIntent,
   type ConversationSnapshot,
 } from "../../../src/contracts/conversations/session-contract";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
 
 const fixturePreset = {
   provider: "openai",
@@ -264,7 +264,7 @@ describe("Pi 1.0.0 foundation contract", () => {
                 workingDirectory: directory,
               }).pipe(
                 Effect.provide(
-                  Layer.mock(ProjectAccess, {
+                  fakeProjectAccess({
                     allowedWorkingDirectories: () => Effect.succeed([directory]),
                   }),
                 ),

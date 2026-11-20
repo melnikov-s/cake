@@ -3,12 +3,12 @@ import { Deferred, Effect, Layer } from "effect";
 import { describe, expect } from "vitest";
 import * as discussionTitles from "../../../src/domain/discussion-sessions/discussionTitles";
 import { DiscussionTitleRequests } from "../../../src/services/discussion-sessions/DiscussionTitleRequests";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { PiModelCompletionError } from "../../../src/contracts/pi/model-data";
 import type { ReviewThreadRecord } from "../../../src/contracts/reviews/review-contract";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakePiModels } from "../../helpers/fakes/piModels";
 
 const request = {
   workingDirectory: "/project",
@@ -41,7 +41,7 @@ const utilityModel = {
   thinkingLevel: "low" as const,
 };
 const application = (configured = true) =>
-  Layer.mock(ApplicationState, {
+  fakeApplicationState({
     snapshot: () => ({ ...defaultApplicationState(), ...(configured ? { utilityModel } : {}) }),
   });
 
@@ -83,7 +83,7 @@ describe("side-chat utility naming", () => {
                     yield* Deferred.succeed(saved, title);
                   }),
               }),
-              Layer.mock(PiModels, {
+              fakePiModels({
                 complete: (input) =>
                   Effect.gen(function* () {
                     expect(input.selection).toEqual({ ...utilityModel, fastMode: false });
@@ -111,7 +111,7 @@ describe("side-chat utility naming", () => {
             ...reviewPaths,
             get: () => Effect.succeed({ ...record, title: "Saved title" }),
           }),
-          Layer.mock(PiModels, {}),
+          fakePiModels(),
         ),
       ),
     ),
@@ -125,7 +125,7 @@ describe("side-chat utility naming", () => {
           Layer.mergeAll(
             application(false),
             Layer.mock(ReviewStorage, reviewPaths),
-            Layer.mock(PiModels, {}),
+            fakePiModels(),
           ),
         ),
       ),
@@ -151,7 +151,7 @@ describe("side-chat utility naming", () => {
               setDiscussionTitle: (_cwd, _parent, _thread, title) =>
                 Deferred.succeed(saved, title).pipe(Effect.asVoid),
             }),
-            Layer.mock(PiModels, {
+            fakePiModels({
               complete: (input) =>
                 input.context.includes(request.firstUserMessage)
                   ? Effect.fail(new PiModelCompletionError({ message: "Unavailable" }))

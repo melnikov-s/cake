@@ -3,8 +3,9 @@ import { Effect, Exit, Layer } from "effect";
 import { describe, expect } from "vitest";
 import { loadMcpSettings, mutateMcpSettings } from "../../../src/domain/mcp/mcp-settings";
 import { McpSettings, makeMcpSettingsLayer } from "../../../src/services/pi/McpSettings";
-import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
+import { PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
 
 function fixture(allowed = true, reloadFails = false) {
   const data = new Map<string, string>();
@@ -20,8 +21,8 @@ function fixture(allowed = true, reloadFails = false) {
         data.set(path, content);
       },
     }),
-    Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(allowed) }),
-    Layer.mock(CakeSessionRuntimes, {
+    fakeProjectAccess({ isAllowed: () => Effect.succeed(allowed) }),
+    fakeCakeSessionRuntimes({
       reloadAll: () =>
         reloadFails
           ? Effect.fail(new PiSessionError({ operation: "reload", message: "controlled failure" }))

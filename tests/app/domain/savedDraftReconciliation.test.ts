@@ -7,8 +7,8 @@ import {
 } from "../../../src/domain/project-sessions/savedDrafts";
 import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
 
 const claimed: SavedDraft = {
   sessionId: "00000000-0000-4000-8000-000000000001",
@@ -37,7 +37,7 @@ it.effect("does not release an accepted-but-not-yet-cataloged turn after restart
             release,
             complete,
           }),
-          Layer.mock(CakeSessionRuntimes, {
+          fakeCakeSessionRuntimes({
             currentStatus: () => Effect.succeed(undefined),
             catalogEntry: () => Effect.succeed(undefined),
           }),
@@ -66,7 +66,7 @@ it.effect("a catalog entry with no messages is not proof that the first turn was
             release,
             complete,
           }),
-          Layer.mock(CakeSessionRuntimes, {
+          fakeCakeSessionRuntimes({
             currentStatus: () =>
               Effect.succeed({ pending: false, streaming: false, persisted: true }),
             catalogEntry: () =>
@@ -103,7 +103,7 @@ it.effect("explicit recovery rejects a claim if Pi has a live turn", () =>
               list: () => Effect.succeed([claimed]),
               release,
             }),
-            Layer.mock(CakeSessionRuntimes, {
+            fakeCakeSessionRuntimes({
               currentStatus: () =>
                 Effect.succeed({ pending: true, streaming: false, persisted: false }),
               catalogEntry: () => Effect.succeed(undefined),
@@ -133,7 +133,7 @@ it.effect("user-confirmed uncertain claim can be released when Pi has no current
             list: () => Effect.succeed([claimed]),
             release,
           }),
-          Layer.mock(CakeSessionRuntimes, {
+          fakeCakeSessionRuntimes({
             currentStatus: () => Effect.succeed(undefined),
             catalogEntry: () => Effect.succeed(undefined),
           }),
@@ -162,7 +162,7 @@ it.effect("completes an interrupted claim when the durable Pi catalog contains i
             release,
             complete,
           }),
-          Layer.mock(CakeSessionRuntimes, {
+          fakeCakeSessionRuntimes({
             currentStatus: () => Effect.succeed(undefined),
             catalogEntry: () =>
               Effect.succeed({

@@ -22,8 +22,6 @@ import type {
 } from "../../../src/contracts/worktrees/worktree-contract";
 import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
 import * as worktreeMerges from "../../../src/domain/worktrees/worktreeMerges";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import {
@@ -39,9 +37,12 @@ import {
 } from "../../../src/contracts/project-sessions/project-session-resolution";
 import * as worktreeLandings from "../../../src/domain/worktrees/worktreeLandings";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const workspacePath = "/worktrees/change";
 const record = {
@@ -82,9 +83,9 @@ const layer = (harness: Harness) => {
   };
   return Layer.mergeAll(
     WorktreeLandingCoordinatorLive,
-    Layer.mock(SessionFamilyStorage, { invalidateAutoMerge: () => Effect.void }),
-    Layer.mock(ApplicationState, { snapshot: () => state }),
-    Layer.mock(ManagedWorktrees, {
+    fakeSessionFamilyStorage({ invalidateAutoMerge: () => Effect.void }),
+    fakeApplicationState({ snapshot: () => state }),
+    fakeManagedWorktrees({
       records: () => Effect.sync(() => [harness.record ?? record]),
       status: () =>
         Effect.sync(() =>
@@ -714,14 +715,14 @@ describe("WorktreeMerges.resolveSessionWorktree", () => {
     };
     return Layer.mergeAll(
       familyStorageHarness().layer,
-      Layer.mock(ApplicationState, { snapshot: () => state, current: () => Effect.succeed(state) }),
+      fakeApplicationState({ snapshot: () => state, current: () => Effect.succeed(state) }),
       Layer.succeed(ProjectSessionConfiguration, {
         agentDirectory: "/cake",
         sessionDirectory: "/cake/sessions",
         resolvedSessionDirectory: "/cake/resolved",
       }),
-      Layer.mock(SessionArchiveStorage, { resolvedProjectEntry: () => Effect.succeed(undefined) }),
-      Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([childRecord]) }),
+      fakeSessionArchiveStorage({ resolvedProjectEntry: () => Effect.succeed(undefined) }),
+      fakeManagedWorktrees({ records: () => Effect.succeed([childRecord]) }),
     );
   };
   const member = (

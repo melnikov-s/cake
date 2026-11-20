@@ -1,10 +1,8 @@
 import { Context, Effect, Layer, ManagedRuntime } from "effect";
 import {
-  CakeSessionRuntimes,
   PiSessionError,
   type CakeSessionHandle,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import {
   messageReference,
@@ -14,13 +12,15 @@ import { projectTodoLayer } from "./projectTodoHarness";
 import type { ProjectTodos } from "../../../src/contracts/projects/project-todos";
 import { familyStorageHarness } from "./familyStorageHarness";
 import { snapshot } from "./piRuntimeFixture";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 export const unusedMessageLookupLayer = Layer.mergeAll(
-  Layer.mock(ManagedWorktrees, {}),
-  Layer.mock(SessionArchiveStorage, {}),
+  fakeManagedWorktrees(),
+  fakeSessionArchiveStorage(),
   Layer.succeed(ProjectSessionConfiguration, {
     agentDirectory: "/test/agent",
     sessionDirectory: "/test/sessions",
@@ -141,7 +141,7 @@ export function heldAttentionHarness(
   const sessions = Layer.unwrap(
     Effect.gen(function* () {
       const handle = yield* TestHandle;
-      return Layer.mock(CakeSessionRuntimes, {
+      return fakeCakeSessionRuntimes({
         acquireSession: (sessionId) =>
           Effect.sync(() => {
             acquired.push(sessionId);
@@ -154,7 +154,7 @@ export function heldAttentionHarness(
     projectTodoLayer(options),
     unusedMessageLookupLayer,
     storage.layer,
-    Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
+    fakeTaskInputStorage({ isRecipient: () => Effect.succeed(false) }),
     sessions,
   );
   return {

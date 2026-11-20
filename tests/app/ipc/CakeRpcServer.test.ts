@@ -40,7 +40,6 @@ import {
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
 import { ClientWorkspacesLive } from "../../../src/services/clients/ClientWorkspacesLive";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
@@ -49,6 +48,7 @@ import { ElevenLabsSpeech } from "../../../src/services/speech/ElevenLabsSpeech"
 import { PocketTts } from "../../../src/services/speech/PocketTts";
 import { pocketTtsState } from "../../helpers/speech-output";
 import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
 
 const configuration = {
   agentDirectory: "/agent",
@@ -137,7 +137,7 @@ const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (
           synthesize: () => Stream.empty,
         }),
       ),
-      Layer.mock(ProjectAccess, {
+      fakeProjectAccess({
         isAllowed: () => Effect.succeed(false),
         allow: (path) =>
           failHome

@@ -16,7 +16,6 @@ import * as discussionSessions from "../../../src/domain/discussion-sessions/dis
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionMetadata from "../../../src/domain/project-sessions/projectSessionMetadata";
 import {
-  CakeSessionRuntimes,
   PiSessionError,
   type CakeSessionHandle,
 } from "../../../src/services/pi/CakeSessionRuntimes";
@@ -37,6 +36,8 @@ import type { ScheduledInputReceipt } from "../../../src/contracts/scheduled-mes
 import type { PiPendingMessages } from "../../../src/contracts/conversations/pending-message-data";
 import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
 import { ScheduledMessageStorage } from "../../../src/services/storage/ScheduledMessageStorage";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
 
 // SAFETY: this fixture replaces all target dependencies, leaving only its state services.
 const cancel = (id: string) =>
@@ -144,8 +145,8 @@ const fixture = Effect.fn("ScheduledMessagesTest.fixture")(function* (initial = 
       }),
     ),
   );
-  const application = Layer.mock(ApplicationState, { snapshot: () => app });
-  const existing = Layer.mock(CakeSessionRuntimes, {
+  const application = fakeApplicationState({ snapshot: () => app });
+  const existing = fakeCakeSessionRuntimes({
     acquireSession: () =>
       Effect.suspend(() =>
         existingAvailable

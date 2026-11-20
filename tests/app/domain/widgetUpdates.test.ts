@@ -3,10 +3,10 @@ import { Effect, Layer, Queue, Stream } from "effect";
 import { expect } from "vitest";
 import { events } from "../../../src/domain/widgets/widgetUpdates";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { changeFeedResync } from "../../../src/services/change-feeds/ChangeFeed";
 import type { WidgetEvent } from "../../../src/contracts/widgets/widget-updates";
 import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
 
 it.effect(
   "subscribes before ready, filters session invalidations, and never copies transcript contents",
@@ -43,7 +43,7 @@ it.effect(
       Effect.provide(
         Layer.mergeAll(
           SessionCatalogChanges.layer,
-          Layer.mock(ClientEvents, { sendTo: () => false, broadcast: () => {} }),
+          fakeClientEvents({ sendTo: () => false, broadcast: () => {} }),
         ),
       ),
     ),
@@ -64,7 +64,7 @@ it.effect("exposes typed execution invalidations and a reconnect-ready signal", 
     Effect.provide(
       Layer.mergeAll(
         SessionCatalogChanges.layer,
-        Layer.mock(ClientEvents, {
+        fakeClientEvents({
           sendTo: () => false,
           broadcast: () => {},
           artifacts: () =>
@@ -101,7 +101,7 @@ it.effect("asks widgets to re-read current data after the catalog dropped their 
           initialThenChanges: (initial) =>
             initial.pipe(Stream.concat(Stream.make(changeFeedResync))),
         }),
-        Layer.mock(ClientEvents, { sendTo: () => false, broadcast: () => {} }),
+        fakeClientEvents({ sendTo: () => false, broadcast: () => {} }),
       ),
     ),
   ),

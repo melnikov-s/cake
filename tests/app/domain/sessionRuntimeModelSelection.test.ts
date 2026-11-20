@@ -5,11 +5,11 @@ import { Effect, Layer } from "effect";
 import { describe } from "vitest";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as acquireCakeChatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
 
 const inherited = {
   provider: "anthropic",
@@ -39,9 +39,9 @@ describe("Session model policy composition", () => {
         const environment = Layer.mergeAll(
           AgentControlTestLive,
           makeProjectSessionRuntimeTestLayer(),
-          Layer.mock(CakeSessionRuntimes, {}),
-          Layer.mock(RendererRequestCoordinator, {}),
-          Layer.mock(ApplicationState, { snapshot: () => state }),
+          fakeCakeSessionRuntimes(),
+          fakeRendererRequestCoordinator(),
+          fakeApplicationState({ snapshot: () => state }),
         );
         return Effect.gen(function* () {
           const location = {

@@ -21,13 +21,14 @@ import {
   DiscussionSessionEnvironment,
   type DiscussionSessionRecord,
 } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 function fixture(parentSessionId = projectChatSessionId("/project")) {
   const sessionId = cakeChatSideChatSessionId(7, parentSessionId);
@@ -74,7 +75,7 @@ function fixture(parentSessionId = projectChatSessionId("/project")) {
       location: { workingDirectory: "/home", sessionDirectory: "/cake/chat" },
       agentDirectory: "/cake",
     }),
-    Layer.mock(ApplicationState, {
+    fakeApplicationState({
       snapshot: () => state,
       current: () => Effect.succeed(state),
       transact: (transition) =>
@@ -99,17 +100,17 @@ function fixture(parentSessionId = projectChatSessionId("/project")) {
           return present && parent === parentSessionId ? [record()] : [];
         }),
     }),
-    Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([worktree]) }),
+    fakeManagedWorktrees({ records: () => Effect.succeed([worktree]) }),
     Layer.succeed(ProjectSessionConfiguration, {
       sessionDirectory: "/sessions",
       resolvedSessionDirectory: "/resolved",
       agentDirectory: "/agent",
     }),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       resolvedProjects: () => Stream.empty,
       resolutionSnapshot: () => Effect.succeed({ version: 1 as const, directories: {} }),
     }),
-    Layer.mock(CakeSessionRuntimes, { sessionIds: () => Stream.empty }),
+    fakeCakeSessionRuntimes({ sessionIds: () => Stream.empty }),
   );
   const register = Effect.gen(function* () {
     yield* (yield* SessionFamilyStorage).registerSpawn({

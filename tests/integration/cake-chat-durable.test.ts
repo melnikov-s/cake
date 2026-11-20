@@ -64,6 +64,7 @@ import { familyStorageHarness } from "../app/helpers/familyStorageHarness";
 import { toJsonValue } from "../../src/utils/to-json-value";
 import { passiveNoticeContext } from "../../src/contracts/conversations/passive-notice";
 import type { InternalInput } from "../../src/contracts/conversations/internal-input";
+import { fakeCakeSessionRuntimes } from "../helpers/fakes/cakeSessionRuntimes";
 
 it("keeps a zero-preset Cake Chat usable for setup without sending to the available catalog model", async () => {
   const h = await fixture();
@@ -762,7 +763,7 @@ it("saves and reloads global Pi settings while permanent Cake Chat is busy witho
       makePiSettingsLive(f.agentDir).pipe(
         Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
       ),
-      Layer.mock(CakeSessionRuntimes, {
+      fakeCakeSessionRuntimes({
         reloadAll: () =>
           Effect.tryPromise({
             try: () => runtime.reload!(),

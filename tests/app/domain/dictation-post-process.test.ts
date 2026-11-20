@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { Deferred, Effect, Fiber, Schema } from "effect";
 import { describe, expect } from "vitest";
 import { postProcessDictation } from "../../../src/domain/dictation/post-process";
 import {
@@ -14,6 +14,7 @@ import {
   type BoundedCompletionInput,
 } from "../../../src/contracts/pi/model-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
 
 const utilityModel = { provider: "fixture", modelId: "utility", thinkingLevel: "off" as const };
 const run = <A, E>(
@@ -25,7 +26,7 @@ const run = <A, E>(
 ) =>
   effect.pipe(
     Effect.provide(
-      Layer.mock(ApplicationState, {
+      fakeApplicationState({
         snapshot: () => ({
           ...defaultApplicationState(),
           dictationCleanupMinimumCharacters: minimumCharacters,

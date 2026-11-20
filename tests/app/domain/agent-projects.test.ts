@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect } from "vitest";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import * as projects from "../../../src/domain/projects/projects";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -17,7 +16,8 @@ import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { makeProjectAccessLive } from "../../../src/services/projects/ProjectAccessLive";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
 
 let root: string;
 beforeEach(async () => {
@@ -56,12 +56,12 @@ function testLayer(records: () => ReadonlyArray<WorktreeRecord> = () => []) {
   );
   const foundation = Layer.merge(
     application,
-    Layer.mock(ManagedWorktrees, { records: () => Effect.sync(records) }),
+    fakeManagedWorktrees({ records: () => Effect.sync(records) }),
   );
   return Layer.mergeAll(
     foundation,
     SessionCatalogChanges.layer,
-    Layer.mock(CakeSessionRuntimes, { activeWorkingDirectories: () => Effect.succeed([]) }),
+    fakeCakeSessionRuntimes({ activeWorkingDirectories: () => Effect.succeed([]) }),
     SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
     makeProjectAccessLive({
       projectSessionDirectory: "/sessions",

@@ -10,7 +10,6 @@ import type { TaskInputReference } from "../../../src/contracts/conversations/ta
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { deliver } from "../../../src/domain/session-families/sessionFamilyCompletion";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { Cause, Deferred, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
@@ -28,10 +27,7 @@ import {
   SessionCatalogChanges,
   type SessionCatalogChange,
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import {
   makeRuntimeRecoveryStorageTestLayer,
@@ -39,6 +35,12 @@ import {
   snapshot,
 } from "../helpers/piRuntimeFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const location = {
   projectPath: "/project",
@@ -74,14 +76,14 @@ const environment = (
     AgentControlTestLive,
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
-    Layer.mock(RendererRequestCoordinator, { releaseSession: () => Effect.void }),
+    fakeRendererRequestCoordinator({ releaseSession: () => Effect.void }),
     Layer.mock(SessionCatalogChanges, {
       publish: (change) =>
         Effect.sync(() => {
           changes.push(change);
         }),
     }),
-    Layer.mock(ApplicationState, {
+    fakeApplicationState({
       snapshot: () => ({
         ...defaultApplicationState(),
         projects: [
@@ -94,12 +96,12 @@ const environment = (
         ],
       }),
     }),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       locate: () => Effect.succeed(namespace),
       resolvedProjects: () => Stream.empty,
       resolved: () => Stream.empty,
     }),
-    Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
+    fakeManagedWorktrees({ records: () => Effect.succeed([]) }),
     pi,
   );
 
@@ -541,7 +543,7 @@ it.effect.each(
       Effect.provide(
         Layer.mergeAll(
           environment(pi),
-          Layer.mock(TaskInputStorage, {
+          fakeTaskInputStorage({
             isRecipient: () => Effect.succeed(false),
             authorizeForward,
             grant,
@@ -601,9 +603,7 @@ it.effect("records a substantive completion report without sending it before set
   }).pipe(
     Effect.provide(
       Layer.merge(
-        environment(
-          Layer.mock(CakeSessionRuntimes, { executingTurnIds: () => Effect.succeed(["turn"]) }),
-        ),
+        environment(fakeCakeSessionRuntimes({ executingTurnIds: () => Effect.succeed(["turn"]) })),
         ProjectTodoReports.layer,
       ),
     ),
@@ -625,7 +625,7 @@ it.effect("rejects delivery to a resolved family without admitting or publishing
     );
     assert.deepEqual((yield* (yield* SessionFamilyStorage).state()).turns, []);
     assert.deepEqual(changes, []);
-  }).pipe(Effect.provide(environment(Layer.mock(CakeSessionRuntimes, {}), changes, "resolved")));
+  }).pipe(Effect.provide(environment(fakeCakeSessionRuntimes(), changes, "resolved")));
 });
 
 it.effect("retains the not-handled fallback for unrelated destinations and unmatched replies", () =>
@@ -645,7 +645,7 @@ it.effect("retains the not-handled fallback for unrelated destinations and unmat
     );
   }).pipe(
     Effect.provide(
-      environment(Layer.mock(CakeSessionRuntimes, { executingTurnIds: () => Effect.succeed([]) })),
+      environment(fakeCakeSessionRuntimes({ executingTurnIds: () => Effect.succeed([]) })),
     ),
   ),
 );
@@ -687,7 +687,7 @@ it.effect("propagates callback cancellation to routing and runs its finalizers",
     assert.ok(failure instanceof Error);
     assert.match(failure.message, /interrupt/i);
     assert.equal(Schema.is(ProjectSessionError)(failure), false);
-  }).pipe(Effect.provide(environment(Layer.mock(CakeSessionRuntimes, {})))),
+  }).pipe(Effect.provide(environment(fakeCakeSessionRuntimes()))),
 );
 
 it.effect("maps expected routing failures without converting defects or interruption", () =>
@@ -723,5 +723,5 @@ it.effect("maps expected routing failures without converting defects or interrup
       Effect.exit,
     );
     assert.ok(Exit.isFailure(interrupted) && Cause.hasInterrupts(interrupted.cause));
-  }).pipe(Effect.provide(environment(Layer.mock(CakeSessionRuntimes, {})))),
+  }).pipe(Effect.provide(environment(fakeCakeSessionRuntimes()))),
 );

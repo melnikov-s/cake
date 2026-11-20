@@ -4,11 +4,9 @@ import { Deferred, Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
 import { createChild } from "../../../src/domain/session-families/sessionFamilyAdmission";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyMember } from "../../../src/contracts/session-families/session-family-document";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import {
   RuntimeRecoveryStorage,
   type RuntimeRecoveryRecord,
@@ -28,6 +26,8 @@ import {
   fakeRuntime,
   options,
 } from "../helpers/piRuntimeFixture";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const location = {
   projectPath: "/project",
@@ -43,8 +43,8 @@ const input = {
   model: { provider: "test", modelId: "test", thinkingLevel: "off" as const, fastMode: false },
   senderContext: { usedTokens: 64_000, windowTokens: 128_000 },
 };
-const modelLayer = Layer.mock(PiModels, { resolve: (selection) => Effect.succeed(selection) });
-const archiveLayer = Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) });
+const modelLayer = fakePiModels({ resolve: (selection) => Effect.succeed(selection) });
+const archiveLayer = fakeSessionArchiveStorage({ locate: () => Effect.succeed(undefined) });
 
 describe("Session Family creation", () => {
   for (const association of ["none", "explicit", "historical"] as const) {

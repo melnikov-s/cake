@@ -45,9 +45,9 @@ import {
 } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const workspacePath = "/worktree";
 const record = {
@@ -189,7 +189,7 @@ function services(options: {
   });
   return Layer.mergeAll(
     Layer.succeed(ApplicationState, application),
-    Layer.mock(SessionFamilyStorage, { invalidateAutoMerge: () => Effect.void }),
+    fakeSessionFamilyStorage({ invalidateAutoMerge: () => Effect.void }),
     Layer.succeed(ManagedWorktrees, managed),
     Layer.succeed(WorktreeLandingAgent, agent),
     WorktreeLandingCoordinatorLive,

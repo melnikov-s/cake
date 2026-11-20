@@ -11,11 +11,8 @@ import { observeConversation } from "../../../src/domain/project-sessions/projec
 import { lookup, open } from "../../../src/domain/project-sessions/projectSessionMetadata";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { type SessionFamily } from "../../../src/contracts/session-families/session-family-document";
 import { makeSessionArchiveStorageLive } from "../../../src/services/storage/SessionArchiveStorageLive";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import {
   streamSessionFileIds,
   workingDirectorySessionPath,
@@ -31,6 +28,9 @@ import {
   snapshot,
 } from "../helpers/piRuntimeFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const parent = "01957936-0000-7000-8000-000012345678";
 const child = "01957936-0000-7000-8000-000087654321";
@@ -198,18 +198,18 @@ it.effect.each([0, 1000, 5000])(
           activeRoot: f.activeRoot,
           resolvedRoot: f.resolvedRoot,
         }).pipe(Layer.provide(Layer.mergeAll(measuredFs, NodePath.layer))),
-        Layer.mock(ApplicationState, {
+        fakeApplicationState({
           snapshot: () => state,
           current: () => Effect.succeed(state),
         }),
-        Layer.mock(SessionFamilyStorage, {
+        fakeSessionFamilyStorage({
           familyForMember: () => Effect.succeed(f.family),
           list: () => Effect.succeed([f.family]),
           state: () => Effect.succeed({ families: [f.family], turns: [], spawnedSessions: [] }),
           settleTurn: () => Effect.void,
           changes: () => Stream.empty,
         }),
-        Layer.mock(ManagedWorktrees, {
+        fakeManagedWorktrees({
           records: () => Effect.succeed(f.records),
           awaitSetup: () => Effect.void,
         }),

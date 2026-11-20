@@ -5,8 +5,8 @@ import { describe } from "vitest";
 import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
 import { makeProjectAccessLive } from "../../../../src/services/projects/ProjectAccessLive";
 import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
-import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
-import { ManagedWorktrees } from "../../../../src/services/worktrees/ManagedWorktrees";
+import { fakeApplicationState } from "../../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../../helpers/fakes/managedWorktrees";
 
 const live = makeProjectAccessLive({
   projectSessionDirectory: "/sessions",
@@ -14,8 +14,8 @@ const live = makeProjectAccessLive({
 }).pipe(
   Layer.provide(
     Layer.merge(
-      Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
-      Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
+      fakeApplicationState({ snapshot: defaultApplicationState }),
+      fakeManagedWorktrees({ records: () => Effect.succeed([]) }),
     ),
   ),
 );

@@ -30,7 +30,6 @@ import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
 import { makeArtifactProjectionLive } from "../../src/services/artifacts/ArtifactProjectionLive";
 import { makeSessionFamilyStorageLive } from "../../src/services/storage/SessionFamilyStorage";
-import { ClientEvents } from "../../src/services/clients/ClientEvents";
 import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs";
 import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive";
 import { compileFixtureInlineWidget } from "./fixtures/inline-widget";
@@ -53,7 +52,7 @@ test("non-owner Project Chat and global Cake Chat hydrate persisted inline proto
       makeArtifactProjectionLive(join(root, "projections")),
       makeSessionFamilyStorageLive(join(paths.cakeHome, "state", "session-families.json")),
       makeWidgetBrowserOutputsLive(join(artifactRoot, "browser-outputs")),
-      Layer.mock(ClientEvents, { broadcast: () => undefined }),
+      fakeClientEvents({ broadcast: () => undefined }),
     ).pipe(Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer))),
   );
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
@@ -65,6 +64,7 @@ test("non-owner Project Chat and global Cake Chat hydrate persisted inline proto
     for (const revision of [2, 3]) {
       const source = `import React from "react";
 import { useArtifactState } from "@cake/artifact-sdk";
+import { fakeClientEvents } from "../helpers/fakes/clientEvents";
 export default function Prototype() {
   const { value, hydrated, save } = useArtifactState({ selected: "stale seed" });
   return <main><h2>Prototype source ${revision}</h2><p>{hydrated ? value.selected : "Hydrating"}</p><button disabled={!hydrated} onClick={() => save({ selected: "Selected option C" })}>Choose C</button></main>;

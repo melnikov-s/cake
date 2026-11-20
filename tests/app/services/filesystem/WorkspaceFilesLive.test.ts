@@ -5,7 +5,6 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { makeWorkspaceFilesLive } from "../../../../src/services/filesystem/WorkspaceFilesLive";
 import { WorkspaceFiles } from "../../../../src/services/filesystem/WorkspaceFiles";
-import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import {
   CAKE_CHAT_SESSION_ID,
   cakeChatSideChatSessionId,
@@ -15,10 +14,11 @@ import {
   cakeChatScratchDirectory,
   cakeChatSessionDirectory,
 } from "../../../../src/services/pi-durable/cake-chat-directories";
+import { fakeProjectAccess } from "../../../helpers/fakes/projectAccess";
 
 const filesLayer = (cakeChatDirectory: string) =>
   makeWorkspaceFilesLive("/tmp/cake-agent-test", cakeChatDirectory).pipe(
-    Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
+    Layer.provide(fakeProjectAccess({ isAllowed: () => Effect.succeed(true) })),
   );
 const workspaceFilesLayer = filesLayer("/tmp/cake-chat-test");
 
@@ -38,7 +38,7 @@ describe("WorkspaceFilesLive", () => {
     }).pipe(
       Effect.provide(
         makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(
-          Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(false) })),
+          Layer.provide(fakeProjectAccess({ isAllowed: () => Effect.succeed(false) })),
         ),
       ),
     ),

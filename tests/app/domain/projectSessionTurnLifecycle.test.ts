@@ -15,6 +15,8 @@ import {
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const location = {
   projectPath: "/project",
@@ -41,11 +43,11 @@ const fixture = Effect.fn("ProjectSessionTurnLifecycleTest.fixture")((options: {
       sessionDirectory: location.sessionDirectory,
       resolvedSessionDirectory: location.resolvedSessionDirectory,
     }),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       locate: () => options.locate ?? Effect.succeed("active"),
     }),
     options.familyLayer ??
-      Layer.mock(SessionFamilyStorage, {
+      fakeSessionFamilyStorage({
         familyForMember: () => Effect.succeed(undefined),
         state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
         settleTurn: settle,

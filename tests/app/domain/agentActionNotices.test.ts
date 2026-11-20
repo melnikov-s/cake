@@ -1,9 +1,9 @@
 import { it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { describe, expect } from "vitest";
 import type { AgentActionNotice } from "../../../src/contracts/application/agent-action-notice";
 import * as agentActionNotices from "../../../src/domain/application/agentActionNotices";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
 
 const caller: AgentActionNotice["source"] = {
   kind: "project-session",
@@ -17,7 +17,7 @@ const present = (result: Parameters<typeof agentActionNotices.present>[0]) =>
     const notices: AgentActionNotice[] = [];
     yield* agentActionNotices.present(result, caller).pipe(
       Effect.provide(
-        Layer.mock(RendererRequestCoordinator, {
+        fakeRendererRequestCoordinator({
           presentAgentAction: (notice) => Effect.sync(() => notices.push(notice)),
         }),
       ),

@@ -9,18 +9,18 @@ import {
 } from "../../../src/contracts/application/application-data";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import type { ProjectSessionControlInvocation } from "../../../src/contracts/project-sessions/project-session-data";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { WorktreeLandingCoordinatorLive } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
 import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const rootId = "root";
 const sharedChildId = "shared-child";
@@ -115,13 +115,13 @@ describe("Project Session runtime worktree controls", () => {
         }),
         familyStorageHarness().layer,
         SessionCatalogChanges.layer,
-        Layer.mock(CakeSessionRuntimes, { sessionIds: () => Stream.empty }),
-        Layer.mock(SessionArchiveStorage, {
+        fakeCakeSessionRuntimes({ sessionIds: () => Stream.empty }),
+        fakeSessionArchiveStorage({
           locate: () => Effect.succeed("active" as const),
           resolved: () => Stream.empty,
           resolvedProjects: () => Stream.empty,
         }),
-        Layer.mock(ApplicationState, {
+        fakeApplicationState({
           transact: (transition) => transition(defaultApplicationState()),
           snapshot: () => ({
             ...defaultApplicationState(),
@@ -145,7 +145,7 @@ describe("Project Session runtime worktree controls", () => {
             ],
           }),
         }),
-        Layer.mock(ManagedWorktrees, {
+        fakeManagedWorktrees({
           records: () => Effect.succeed(worktreeRecords),
           status: (workspacePath) =>
             Effect.succeed({

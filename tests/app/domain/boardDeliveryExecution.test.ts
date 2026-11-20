@@ -16,15 +16,11 @@ import {
   PiSessionError,
   makeCakeSessionRuntimesLayer,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import {
   RuntimeRecoveryStorage,
   type RuntimeRecoveryRecord,
 } from "../../../src/services/storage/RuntimeRecoveryStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
@@ -34,6 +30,10 @@ import {
   snapshot,
   makeRuntimeRecoveryStorageTestLayer,
 } from "../helpers/piRuntimeFixture";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
   settings: {
@@ -67,16 +67,16 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
       family.layer,
       board.layer,
       SessionCatalogChanges.layer,
-      Layer.mock(ApplicationState, {
+      fakeApplicationState({
         snapshot: () => defaultApplicationState(),
         current: () => Effect.succeed(defaultApplicationState()),
       }),
-      Layer.mock(PiModels, { resolve: (model) => Effect.succeed(model) }),
-      Layer.mock(ManagedWorktrees, {
+      fakePiModels({ resolve: (model) => Effect.succeed(model) }),
+      fakeManagedWorktrees({
         records: () => Effect.succeed([]),
         awaitSetup: () => Effect.void,
       }),
-      Layer.mock(SessionArchiveStorage, {
+      fakeSessionArchiveStorage({
         locate: () =>
           Effect.succeed(settings.resolved ? ("resolved" as const) : ("active" as const)),
         resolvedProjectEntry: () => Effect.succeed(undefined),

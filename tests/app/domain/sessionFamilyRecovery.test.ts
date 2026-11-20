@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { initialize } from "../../../src/domain/session-families/sessionFamilies";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { RuntimeRecoveryStorage } from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { type FamilyTurn } from "../../../src/contracts/session-families/session-family-document";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const child = {
   familyId: "family",
@@ -27,7 +27,7 @@ const turn = (turnId: string, overrides: Partial<FamilyTurn> = {}): FamilyTurn =
   reported: false,
   ...overrides,
 });
-const archive = Layer.mock(SessionArchiveStorage, {
+const archive = fakeSessionArchiveStorage({
   locateMany: () => Effect.succeed(new Set<string>()),
 });
 
@@ -70,7 +70,7 @@ it.effect("indexes protecting turns once and batches only unprotected children b
         },
       }),
       Effect.provide(
-        Layer.mock(SessionArchiveStorage, {
+        fakeSessionArchiveStorage({
           locateMany: (ids, location) => {
             lookups.push({ ids, cwd: location.cwd });
             return Effect.succeed(new Set(["present", "other-present"]));

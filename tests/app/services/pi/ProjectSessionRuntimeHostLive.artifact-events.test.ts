@@ -12,8 +12,6 @@ import { ArtifactProjection } from "../../../../src/services/artifacts/ArtifactP
 import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
 import { createCakeArtifactOperations } from "../../../../src/domain/artifacts/cake-artifact-operations";
 import { makeArtifactProjectionLive } from "../../../../src/services/artifacts/ArtifactProjectionLive";
-import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
-import { PiModels } from "../../../../src/services/pi/PiModels";
 import type {
   PreparedProjectSessionRuntime,
   ProjectSessionRuntimeIntegrations,
@@ -31,7 +29,6 @@ import {
 } from "../../helpers/piRuntimeFixture";
 import { ProjectSessionRuntimeHost } from "../../../../src/services/pi/ProjectSessionRuntimeHost";
 import { makeProjectSessionRuntimeHostLive } from "../../../../src/layers/ProjectSessionRuntimeHostLive";
-import { RendererRequestCoordinator } from "../../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
 import { ArtifactRuntime } from "../../../../src/services/artifact-runtime/ArtifactRuntime";
 import { makeMessageBoardStorageLive } from "../../../../src/services/storage/MessageBoardStorageLive";
@@ -48,6 +45,9 @@ import { makeWidgetBrowserOutputsLive } from "../../../../src/services/widgets/W
 import { WidgetBrowserOutputs } from "../../../../src/services/widgets/WidgetBrowserOutputs";
 import { RenderedWidgetCaptureError } from "../../../../src/contracts/widgets/rendered-widget-capture-errors";
 import { inlineWidgetDocument } from "../../../../src/services/widgets/inline-widget-document-registry";
+import { fakeClientEvents } from "../../../helpers/fakes/clientEvents";
+import { fakePiModels } from "../../../helpers/fakes/piModels";
+import { fakeRendererRequestCoordinator } from "../../../helpers/fakes/rendererRequestCoordinator";
 
 const roots: string[] = [];
 const disposals: Array<() => Promise<void>> = [];
@@ -114,13 +114,13 @@ const makeHarness = async (
     }).pipe(Layer.provide(platform)),
     makeSessionFamilyStorageLive(join(root, "session-families.json")).pipe(Layer.provide(platform)),
     makeArtifactProjectionLive(join(root, "projection-cache")).pipe(Layer.provide(platform)),
-    Layer.mock(ClientEvents, {
+    fakeClientEvents({
       sendTo: () => false,
       broadcast: (event) => {
         events.push(event);
       },
     }),
-    Layer.mock(RendererRequestCoordinator, {
+    fakeRendererRequestCoordinator({
       registerProjectSession: (sessionId) =>
         Effect.sync(() => {
           registrations.push(sessionId);
@@ -131,7 +131,7 @@ const makeHarness = async (
         }),
       releaseWorkingDirectory: () => Effect.void,
     }),
-    Layer.mock(PiModels, {}),
+    fakePiModels(),
     Layer.mock(RenderedWidgetCapture, capture ? { capture } : {}),
     Layer.mock(WidgetPackages, { directory: join(root, "widget-packages") }),
     makeWidgetBrowserOutputsLive(join(root, "artifacts", "browser-outputs")),

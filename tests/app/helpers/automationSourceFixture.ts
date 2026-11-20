@@ -4,13 +4,13 @@ import type { AutomationSourceEvent } from "../../../src/contracts/automations/a
 import { AutomationEvents } from "../../../src/services/automations/AutomationEvents";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "../domain/projectSessionRuntimeTestLayer";
 import { projectTodoLayer } from "./projectTodoHarness";
 import { familyStorageHarness } from "./familyStorageHarness";
 import { fakeRuntime, makeRuntimeRecoveryStorageTestLayer } from "./piRuntimeFixture";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 export const automationSourceFixture = Effect.fn("AutomationSourceFixture.make")(function* () {
   const events: AutomationSourceEvent[] = [];
@@ -39,8 +39,8 @@ export const automationSourceFixture = Effect.fn("AutomationSourceFixture.make")
     SessionCatalogChanges.layer,
     familyStorageHarness().layer,
     projectTodoLayer(),
-    Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-    Layer.mock(ManagedWorktrees, {
+    fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
+    fakeManagedWorktrees({
       records: () => Effect.succeed([]),
       awaitSetup: () => Effect.void,
     }),

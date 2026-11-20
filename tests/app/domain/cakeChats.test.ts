@@ -8,7 +8,6 @@ import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactS
 import { makeArtifactProjectionLive } from "../../../src/services/artifacts/ArtifactProjectionLive";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import * as artifactWorkflows from "../../../src/domain/artifacts/artifactWorkflows";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { AgentControlTestLive } from "../helpers/agentControlTestLayer";
 import { cakeChatControlTools } from "../../../src/contracts/application/window-control-definitions";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
@@ -40,7 +39,6 @@ import {
 import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {
   CakeSessionRuntimes,
   PiSessionError,
@@ -56,19 +54,23 @@ import {
   makeRuntimeRecoveryStorageTestLayer,
   snapshot as runtimeSnapshot,
 } from "../helpers/piRuntimeFixture";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import {
   SessionCatalogChanges,
   type SessionCatalogChange,
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const location = {
   workingDirectory: "/home/user",
@@ -97,9 +99,9 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
   const layer = Layer.mergeAll(
     AgentControlTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
-    Layer.mock(ManagedWorktrees, {}),
-    Layer.mock(SessionFamilyStorage, {}),
-    Layer.mock(ApplicationState, {
+    fakeManagedWorktrees(),
+    fakeSessionFamilyStorage(),
+    fakeApplicationState({
       snapshot: () => state,
       current: () => Effect.succeed(state),
       changes: () => Stream.succeed({ revision: 0, state }),
@@ -112,7 +114,7 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
           ),
         ),
     }),
-    Layer.mock(PiModels, {
+    fakePiModels({
       complete: (input) =>
         Effect.sync(() => {
           completions.push(input.selection.modelId);
@@ -120,7 +122,7 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
           return "summary";
         }),
     }),
-    Layer.mock(RendererRequestCoordinator, { releaseSession: () => Effect.void }),
+    fakeRendererRequestCoordinator({ releaseSession: () => Effect.void }),
     Layer.mock(SessionCatalogChanges, {
       publish: (change) =>
         Effect.sync(() => {
@@ -128,7 +130,7 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
         }),
       initialThenChanges: (initial) => initial.pipe(Stream.concat(Stream.fromIterable(changes))),
     }),
-    Layer.mock(CakeSessionRuntimes, {
+    fakeCakeSessionRuntimes({
       currentStatus: () => Effect.succeed(undefined),
       catalogEntry: (_, id) =>
         Effect.sync(() => {
@@ -141,7 +143,7 @@ function fixture(runtimeOverrides: Partial<CakeSessionRuntimes["Service"]> = {})
         ),
       ...runtimeOverrides,
     }),
-    Layer.mock(SessionArchiveStorage, {}),
+    fakeSessionArchiveStorage(),
     SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
     Layer.mock(SubagentEnvironment, {}),
   );
@@ -261,7 +263,7 @@ describe("permanent Cake Chat", () => {
             Layer.mock(AttachmentUploads, {
               admit: (_owner, attachments) => Effect.succeed(attachments),
             }),
-            Layer.mock(RendererRequestCoordinator, {
+            fakeRendererRequestCoordinator({
               bind: (target, connectionId) =>
                 Effect.sync(() => {
                   bindings.push({
@@ -717,9 +719,9 @@ describe("permanent Cake Chat", () => {
                   },
                 ]),
             }),
-            Layer.mock(RendererRequestCoordinator, { requestCakeChatControl: request }),
-            Layer.mock(SessionFamilyStorage, { familyForMember: () => Effect.succeed(undefined) }),
-            Layer.mock(SessionArchiveStorage, {
+            fakeRendererRequestCoordinator({ requestCakeChatControl: request }),
+            fakeSessionFamilyStorage({ familyForMember: () => Effect.succeed(undefined) }),
+            fakeSessionArchiveStorage({
               resolvedProjectEntry: () => Effect.succeed(undefined),
               locate: (id, location) =>
                 Effect.succeed(
@@ -728,7 +730,7 @@ describe("permanent Cake Chat", () => {
                     : undefined,
                 ),
             }),
-            Layer.mock(ManagedWorktrees, {
+            fakeManagedWorktrees({
               records: () =>
                 Effect.succeed([
                   {
@@ -1064,8 +1066,8 @@ describe("permanent Cake Chat", () => {
           f.layer,
           artifacts,
           Layer.mock(ProjectSessionRuntimeHost, { prepare }),
-          Layer.mock(ClientEvents, { broadcast, sendTo: () => false }),
-          Layer.mock(SessionFamilyStorage, {
+          fakeClientEvents({ broadcast, sendTo: () => false }),
+          fakeSessionFamilyStorage({
             withMemberLock: (_id, effect) => effect,
             familyForMember: () => Effect.succeed(undefined),
           }),

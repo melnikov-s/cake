@@ -21,6 +21,7 @@ import {
 import { upsertProject } from "../../../src/domain/application/application";
 import * as todos from "../../../src/domain/projects/projectTodos";
 import * as updates from "../../../src/domain/projects/projectTodoUpdates";
+import { fakePiModels } from "../../helpers/fakes/piModels";
 
 const model = { provider: "test", modelId: "utility", thinkingLevel: "minimal" as const };
 const report = {
@@ -47,7 +48,7 @@ function fixture(complete: PiModels["Service"]["complete"]) {
   return {
     layer: Layer.mergeAll(
       ApplicationState.layer.pipe(Layer.provide(storage)),
-      Layer.mock(PiModels, { complete }),
+      fakePiModels({ complete }),
       ProjectTodoReports.layer,
     ),
     persisted: () => persisted,

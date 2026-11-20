@@ -25,7 +25,6 @@ import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessi
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { makeTurnLifecycle } from "../../../src/domain/project-sessions/projectSessionTurnLifecycle";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCoordination } from "../../../src/services/session-catalogs/SessionCoordination";
 import {
   cancel,
@@ -37,8 +36,6 @@ import {
   observeOperations,
 } from "../../../src/domain/worktrees/worktreeLandings";
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { initialize, report, setEnabled } from "../../../src/domain/worktrees/autoMergeReadiness";
 import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
@@ -46,11 +43,8 @@ import {
   defaultApplicationState,
   defaultProjectSettings,
 } from "../../../src/contracts/application/application-data";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import {
   WorktreeLandingAgent,
   WorktreeLandingAgentError,
@@ -66,6 +60,12 @@ import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { retainNotification } from "../../../src/domain/session-families/sessionFamilyCompletion";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const target = { sessionId: "owner", workingDirectory: "/tree", sessionDirectory: "/sessions" };
 /** What the repair turn's runtime settled with; void means a successful turn. */
@@ -200,7 +200,7 @@ function fixture(
   const layer = Layer.mergeAll(
     family.layer,
     WorktreeLandingCoordinatorLive,
-    Layer.mock(ClientEvents, {
+    fakeClientEvents({
       broadcast: () => {
         throw new Error("Auto-merge must not broadcast notifications");
       },
@@ -209,7 +209,7 @@ function fixture(
         return true;
       },
     }),
-    Layer.mock(RendererRequestCoordinator, {
+    fakeRendererRequestCoordinator({
       connectionForSession: (sessionId) =>
         Effect.sync(() => {
           recipients.push(sessionId);
@@ -247,22 +247,17 @@ function fixture(
     }),
     Layer.mock(ProjectSessionRuntimeHost, { stopWorkingDirectory: () => Effect.void }),
     Layer.mock(Terminal, { closeWorkingDirectory: () => Effect.void }),
-    Layer.mock(SessionArchiveStorage, {
-      locate: () => Effect.succeed("active"),
-      resolvedProjectEntry: () => Effect.succeed(undefined),
-    }),
+    fakeSessionArchiveStorage({ locate: () => Effect.succeed("active") }),
     Layer.mock(SessionCoordination, {
       settleTurn: () => Effect.void,
       checkStorage: () => Effect.void,
     }),
-    Layer.mock(CakeSessionRuntimes, {
-      currentStatus: () => Effect.succeed(undefined),
-      catalogEntry: () => Effect.succeed(undefined),
+    fakeCakeSessionRuntimes({
       executingTurnIds: () =>
         Effect.sync(() => executingTurns ?? options.executingTurns ?? ["turn"]),
       activeWorkingDirectories: () => Effect.sync(() => active),
     }),
-    Layer.mock(ApplicationState, {
+    fakeApplicationState({
       transact: (transition) =>
         Effect.gen(function* () {
           application = yield* transition(application);
@@ -280,7 +275,7 @@ function fixture(
         ),
       }),
     }),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       status: () =>
         Effect.succeed({
           record: currentRecord,

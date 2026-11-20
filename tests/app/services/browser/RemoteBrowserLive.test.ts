@@ -9,12 +9,12 @@ import {
 } from "../../../../src/services/clients/ClientConnections";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
-import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import {
   RendererRequestCoordinator,
   RendererRequestCoordinatorLive,
 } from "../../../../src/services/renderer-requests/RendererRequestCoordinator";
 import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
+import { fakeProjectAccess } from "../../../helpers/fakes/projectAccess";
 
 it.effect(
   "backend browser has no Chromium; project access and desktop binding gate agent requests, disconnect releases pending",
@@ -23,7 +23,7 @@ it.effect(
       const foundation = Layer.mergeAll(
         ClientConnectionsLive,
         ClientEventsLive,
-        Layer.mock(ProjectAccess, {
+        fakeProjectAccess({
           isAllowed: (path: string) => Effect.succeed(path === "/allowed"),
         }),
       );

@@ -11,26 +11,20 @@ import { DesktopSharing } from "../../../src/services/electron/DesktopSharing";
 import { Dictation } from "../../../src/services/dictation/Dictation";
 import { Effect, Layer } from "effect";
 import { AgentAvailability } from "../../../src/services/pi/AgentAvailability";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ArtifactProjection } from "../../../src/services/artifacts/ArtifactProjection";
 import { Browser } from "../../../src/services/browser/Browser";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { Git } from "../../../src/services/git/Git";
 import { Electron } from "../../../src/services/electron/Electron";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { VsCodeViews } from "../../../src/services/vscode/VsCodeViews";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { DiscussionSessionEnvironment } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
@@ -48,11 +42,17 @@ import { ScheduledMessages } from "../../../src/services/scheduled-messages/Sche
 import { WorkspaceFiles } from "../../../src/services/filesystem/WorkspaceFiles";
 import { NativeAttachments } from "../../../src/services/filesystem/NativeAttachments";
 import { AttachmentUploads } from "../../../src/services/filesystem/AttachmentUploads";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { ProjectConfiguration } from "../../../src/services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
 import { PiAgentResources } from "../../../src/services/pi/PiAgentResources";
 import { ArtifactGarbageCollector } from "../../../src/services/artifacts/ArtifactGarbageCollector";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const unexpectedCapability = (): never => {
   throw new Error("Unrelated endpoint capability invoked");
@@ -68,17 +68,17 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(DesktopSharing, { keepsProcessAlive: () => false }),
   Layer.mock(Dictation, {}),
   Layer.mock(AgentAvailability, {}),
-  Layer.mock(RendererRequestCoordinator, {}),
+  fakeRendererRequestCoordinator(),
   Layer.mock(ArtifactStorage, {}),
   Layer.mock(WidgetPackages, { directory: "/backend/widget-packages" }),
   Layer.mock(MessageBoardStorage, {}),
   Layer.mock(SavedDraftStorage, {}),
-  Layer.mock(SessionFamilyStorage, {}),
+  fakeSessionFamilyStorage(),
   Layer.mock(ArtifactProjection, {}),
   Layer.mock(Browser, {}),
   Layer.mock(SessionCatalogChanges, {}),
-  Layer.mock(CakeSessionRuntimes, {}),
-  Layer.mock(SessionArchiveStorage, {}),
+  fakeCakeSessionRuntimes(),
+  fakeSessionArchiveStorage(),
   SubagentCoordinatorLive.pipe(Layer.provideMerge(makeSubagentStorageTestLayer())),
   Layer.mock(SubagentEnvironment, {}),
   Layer.succeed(ProjectSessionConfiguration, {
@@ -86,7 +86,7 @@ export const unusedEndpointServices = Layer.mergeAll(
     sessionDirectory: "/sessions",
     resolvedSessionDirectory: "/resolved",
   }),
-  Layer.mock(ManagedWorktrees, {}),
+  fakeManagedWorktrees(),
   Layer.mock(Git, {}),
   Layer.mock(Electron, {
     requireRendererConnection: unexpectedCapability,
@@ -99,7 +99,7 @@ export const unusedEndpointServices = Layer.mergeAll(
     releaseConnection: () => Effect.void,
   }),
   Layer.mock(VsCodeViews, { backToAgentForWindow: unexpectedCapability }),
-  Layer.mock(PiModels, {}),
+  fakePiModels(),
   Layer.mock(Terminal, {}),
   Layer.mock(ReviewStorage, {
     agentSessionDirectory: unexpectedCapability,
@@ -120,7 +120,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(WorkspaceFiles, {}),
   Layer.mock(NativeAttachments, {}),
   Layer.mock(AttachmentUploads, {}),
-  Layer.mock(TaskInputStorage, {}),
+  fakeTaskInputStorage(),
   Layer.succeed(ProjectConfiguration, { agentDirectory: "/agent" }),
   Layer.mock(RewordingRequests, {}),
   Layer.mock(PiAgentResources, {}),

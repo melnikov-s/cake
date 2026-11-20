@@ -14,6 +14,8 @@ import {
 } from "../../../src/contracts/pi/model-data";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakePiModels } from "../../helpers/fakes/piModels";
 
 const artwork = {
   background: "#112233",
@@ -42,10 +44,7 @@ const run = <A, E>(
 ) =>
   effect.pipe(
     Effect.provide(
-      Layer.merge(
-        Layer.mock(ApplicationState, { snapshot: () => snapshot }),
-        Layer.mock(PiModels, { complete }),
-      ),
+      Layer.merge(fakeApplicationState({ snapshot: () => snapshot }), fakePiModels({ complete })),
     ),
   );
 

@@ -2,9 +2,9 @@ import { basename } from "node:path";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Stream } from "effect";
 import { beforeEach, describe, expect, vi } from "vitest";
-import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import { Terminal } from "../../../../src/services/terminal/Terminal";
 import { makeTerminalLive } from "../../../../src/services/terminal/TerminalLive";
+import { fakeProjectAccess } from "../../../helpers/fakes/projectAccess";
 
 const native = vi.hoisted(() => ({
   realpath: vi.fn(),
@@ -47,7 +47,7 @@ beforeEach(() => {
 const layer = () =>
   makeTerminalLive().pipe(
     Layer.provide(
-      Layer.mock(ProjectAccess, {
+      fakeProjectAccess({
         isAllowed: (directory) => Effect.succeed(directory !== "/forbidden"),
       }),
     ),

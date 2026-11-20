@@ -7,14 +7,14 @@ import {
   ClientConnectionsLive,
 } from "../../../../src/services/clients/ClientConnections";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
-import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
-import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
 import { VsCodeServer } from "../../../../src/services/vscode/VsCodeServer";
 import {
   makeInstallSingleFlight,
   makeVsCodeServerLive,
 } from "../../../../src/services/vscode/VsCodeServerLive";
 import type { CompanionManifest } from "../../../../src/services/vscode/vscode-profile";
+import { fakeApplicationState } from "../../../helpers/fakes/applicationState";
+import { fakeProjectAccess } from "../../../helpers/fakes/projectAccess";
 
 const native = vi.hoisted(() => ({
   releaseServer: vi.fn(),
@@ -120,9 +120,9 @@ const liveLayer = (allowed: (path: string) => boolean = () => true) =>
   }).pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+        fakeApplicationState({ snapshot: defaultApplicationState }),
         ClientEventsLive,
-        Layer.mock(ProjectAccess, { isAllowed: (path) => Effect.succeed(allowed(path)) }),
+        fakeProjectAccess({ isAllowed: (path) => Effect.succeed(allowed(path)) }),
       ),
     ),
     Layer.provideMerge(ClientConnectionsLive),

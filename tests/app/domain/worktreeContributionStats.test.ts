@@ -15,8 +15,8 @@ import {
   makeContributionRepository,
   retainContribution,
 } from "../../../src/services/worktrees/WorktreeContribution";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
 
 let directory: string;
 let baseCommit: string;
@@ -74,8 +74,8 @@ const fixture = Effect.fn("test.fixture")(function* () {
         Layer.mergeAll(
           Layer.succeed(Git, git),
           NodeFileSystem.layer,
-          Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) }),
-          Layer.mock(ManagedWorktrees, {
+          fakeProjectAccess({ isAllowed: () => Effect.succeed(true) }),
+          fakeManagedWorktrees({
             status: () =>
               Effect.succeed({
                 record: worktree,

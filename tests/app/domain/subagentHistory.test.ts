@@ -9,8 +9,6 @@ import {
   validateMessageReferenceControl,
 } from "../../../src/domain/conversations/messageReferenceForwarding";
 import * as PiMessageHistory from "../../../src/services/pi/PiMessageHistory";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { makeSubagentParent } from "../../../src/domain/subagents/subagentControl";
 import { jsonValueSchema } from "../../../src/contracts/serialization/json-contract";
 import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
@@ -26,7 +24,7 @@ import { it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Stream } from "effect";
 import { expect, vi } from "vitest";
 
-import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
+import { PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import {
   cakeWorkspaceSessionDirectory,
   loadWorkspacePiSessionPreview,
@@ -39,6 +37,9 @@ import { makeSessionArchiveStorageLive } from "../../../src/services/storage/Ses
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { subagentHistoryFixture } from "../helpers/subagentStorageFixture";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 
@@ -94,7 +95,7 @@ const fixture = Effect.fn("SubagentHistoryTest.fixture")(function* () {
         resolvedRoot: `${root}/resolved`,
       }).pipe(Layer.provide(platform)),
       Layer.mock(SubagentEnvironment, {}),
-      Layer.mock(CakeSessionRuntimes, {
+      fakeCakeSessionRuntimes({
         inspect: (target) =>
           Effect.tryPromise({
             try: async () => {
@@ -251,8 +252,8 @@ it.effect.each(["active", "released"] as const)(
             unusedMessageLookupLayer,
             projectTodoLayer(),
             familyStorageHarness().layer,
-            Layer.mock(TaskInputStorage, {}),
-            Layer.mock(ApplicationState, {
+            fakeTaskInputStorage(),
+            fakeApplicationState({
               snapshot: () => {
                 throw new Error("Unexpected runtime assembly");
               },

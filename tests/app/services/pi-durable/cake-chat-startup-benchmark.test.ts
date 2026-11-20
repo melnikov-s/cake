@@ -11,10 +11,10 @@ import { defaultApplicationState } from "../../../../src/contracts/application/a
 import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import * as metadata from "../../../../src/domain/cake-chats/cakeChatMetadata";
 import { projectLocation } from "../../../../src/domain/cake-chats/cakeChatLocations";
-import { CakeSessionRuntimes } from "../../../../src/services/pi/CakeSessionRuntimes";
-import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
 import { readDurableChatSummary } from "../../../../src/services/pi-durable/durable-chat-catalog";
 import { ChatMetadataDoc } from "../../../../src/services/pi-durable/durable-chat-metadata";
+import { fakeApplicationState } from "../../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../../helpers/fakes/cakeSessionRuntimes";
 
 /** Controlled critical-path comparison, not an end-to-end launch benchmark. Each read
  * reopens SQLite; OS caches are warm. Seeding is outside all measured intervals. */
@@ -74,8 +74,8 @@ it.each([
       try {
         let reads = 0;
         const layer = Layer.mergeAll(
-          Layer.mock(ApplicationState, { snapshot: () => state }),
-          Layer.mock(CakeSessionRuntimes, {
+          fakeApplicationState({ snapshot: () => state }),
+          fakeCakeSessionRuntimes({
             catalogEntry: (query, id) =>
               Effect.promise(() => {
                 reads++;

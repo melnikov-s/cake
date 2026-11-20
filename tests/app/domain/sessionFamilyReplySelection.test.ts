@@ -9,10 +9,7 @@ import {
   parseCrossSessionMessage,
 } from "../../../src/contracts/conversations/cross-session-message";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import {
   makeCakeSessionRuntimesLayer,
@@ -25,6 +22,9 @@ import {
   fakeRuntime,
   snapshot,
 } from "../helpers/piRuntimeFixture";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const location = {
   projectPath: "/project",
@@ -77,7 +77,7 @@ const environment = () =>
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
     SessionCatalogChanges.layer,
-    Layer.mock(ApplicationState, {
+    fakeApplicationState({
       snapshot: () => ({
         ...defaultApplicationState(),
         projects: [
@@ -90,12 +90,12 @@ const environment = () =>
         ],
       }),
     }),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       locate: () => Effect.succeed("active" as const),
       resolvedProjects: () => Stream.empty,
       resolved: () => Stream.empty,
     }),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () => Effect.succeed([]),
       proposeSquashMessage: () => Effect.void,
     }),

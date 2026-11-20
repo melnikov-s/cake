@@ -20,15 +20,11 @@ import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import {
   RuntimeRecoveryStorage,
   type RuntimeRecoveryRecord,
 } from "../../../src/services/storage/RuntimeRecoveryStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
 import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
@@ -41,6 +37,10 @@ import {
   snapshot,
   makeRuntimeRecoveryStorageTestLayer,
 } from "../helpers/piRuntimeFixture";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const START = Date.parse("2026-03-01T12:00:00.000Z");
 const location = {
@@ -91,16 +91,16 @@ const fixture = Effect.fn("UpdateBatchTest.fixture")(function* (
       family.layer,
       board.layer,
       SessionCatalogChanges.layer,
-      Layer.mock(ApplicationState, {
+      fakeApplicationState({
         snapshot: () => defaultApplicationState(),
         current: () => Effect.succeed(defaultApplicationState()),
       }),
-      Layer.mock(PiModels, { resolve: (model) => Effect.succeed(model) }),
-      Layer.mock(ManagedWorktrees, {
+      fakePiModels({ resolve: (model) => Effect.succeed(model) }),
+      fakeManagedWorktrees({
         records: () => Effect.succeed([]),
         awaitSetup: () => Effect.void,
       }),
-      Layer.mock(SessionArchiveStorage, {
+      fakeSessionArchiveStorage({
         locate: () =>
           Effect.succeed(settings.resolved ? ("resolved" as const) : ("active" as const)),
         resolvedProjectEntry: () => Effect.succeed(undefined),

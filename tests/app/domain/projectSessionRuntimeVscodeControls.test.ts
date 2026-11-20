@@ -8,13 +8,13 @@ import { acquireOptions } from "../../../src/domain/project-sessions/projectSess
 import type { ProjectSessionControlInvocation } from "../../../src/contracts/project-sessions/project-session-data";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
 import { EditorSelectionId } from "../../../src/contracts/editor/editor-selection";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const location = {
   projectPath: "/project",
@@ -45,10 +45,10 @@ function environment(
     }),
     familyStorageHarness().layer,
     SessionCatalogChanges.layer,
-    Layer.mock(CakeSessionRuntimes, {}),
-    Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-    Layer.mock(ApplicationState, { snapshot: () => defaultApplicationState() }),
-    Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
+    fakeCakeSessionRuntimes(),
+    fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
+    fakeApplicationState({ snapshot: () => defaultApplicationState() }),
+    fakeManagedWorktrees({ records: () => Effect.succeed([]) }),
   );
 }
 

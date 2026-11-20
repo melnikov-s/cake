@@ -20,17 +20,17 @@ import { SessionFamilyStorageError } from "../../../../src/contracts/storage/ses
 import * as access from "../../../../src/domain/artifacts/agentArtifactAccess";
 import * as workflows from "../../../../src/domain/artifacts/artifactWorkflows";
 import { configureCakeSessionRuntime } from "../../../../src/layers/CakeOperations";
-import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { ArtifactProjection } from "../../../../src/services/artifacts/ArtifactProjection";
 import { makeArtifactProjectionLive } from "../../../../src/services/artifacts/ArtifactProjectionLive";
 import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
 import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
-import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
 import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
 import { projectSessionEntries } from "../../../../src/services/pi/runtime/session-projection";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
+import { fakeClientEvents } from "../../../helpers/fakes/clientEvents";
+import { fakeSessionFamilyStorage } from "../../../helpers/fakes/sessionFamilyStorage";
 
 it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
   "%s presents a non-owned artifact through a real Durable tool loop, preserving exact source and persisted replay",
@@ -41,7 +41,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       Layer.mergeAll(
         makeArtifactStorageLive(join(root, "artifacts")),
         makeArtifactProjectionLive(join(root, "projections")),
-        Layer.mock(SessionFamilyStorage, {
+        fakeSessionFamilyStorage({
           withMemberLock: (_id, effect) => effect,
           familyForMember: () =>
             denied
@@ -50,7 +50,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
                 )
               : Effect.succeed(undefined),
         }),
-        Layer.mock(ClientEvents, { broadcast: () => undefined, sendTo: () => true }),
+        fakeClientEvents({ broadcast: () => undefined, sendTo: () => true }),
       ).pipe(Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer))),
     );
     const id = Schema.decodeUnknownSync(ArtifactLineageId)("prototype");

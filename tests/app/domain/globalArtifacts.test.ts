@@ -36,15 +36,16 @@ import {
   ClientConnections,
   ClientConnectionsLive,
 } from "../../../src/services/clients/ClientConnections";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
 import {
   AutomationStorage,
   type AutomationLedger,
 } from "../../../src/services/storage/AutomationStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -135,19 +136,19 @@ const fixture = async () => {
     ),
   );
   const events: string[] = [];
-  const clients = Layer.mock(ClientEvents, {
+  const clients = fakeClientEvents({
     sendTo: () => false,
     broadcast: (event) => {
       events.push(event.type);
     },
   });
   const views = ArtifactViewsLive.pipe(Layer.provide(ClientConnectionsLive));
-  const families = Layer.mock(SessionFamilyStorage, {
+  const families = fakeSessionFamilyStorage({
     withMemberLock: (_id, effect) => effect,
     familyForMember: () => Effect.succeed(undefined),
   });
   let callingWindow: number | undefined;
-  const coordinator = Layer.mock(RendererRequestCoordinator, {
+  const coordinator = fakeRendererRequestCoordinator({
     connectionForSession: () => Effect.succeed(callingWindow),
   });
   const commands: Array<{ command: string; input: JsonValue; callingSessionId?: string }> = [];
@@ -301,7 +302,7 @@ describe("global artifact domain workflow", () => {
             unusedEndpointServices,
             AgentControlTestLive,
             makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
-            Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+            fakeApplicationState({ snapshot: defaultApplicationState }),
             modelPresetPromptsTestLayer,
             f.layer,
             NodeChildProcessSpawner.layer.pipe(
@@ -378,7 +379,7 @@ describe("global artifact domain workflow", () => {
             unusedEndpointServices,
             AgentControlTestLive,
             makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
-            Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+            fakeApplicationState({ snapshot: defaultApplicationState }),
             modelPresetPromptsTestLayer,
             f.layer,
             Layer.succeed(
@@ -437,7 +438,7 @@ describe("global artifact domain workflow", () => {
             unusedEndpointServices,
             AgentControlTestLive,
             makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
-            Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+            fakeApplicationState({ snapshot: defaultApplicationState }),
             modelPresetPromptsTestLayer,
             f.layer,
           ),

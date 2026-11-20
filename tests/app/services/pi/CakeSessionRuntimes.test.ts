@@ -34,7 +34,6 @@ import {
 import { admitTurn } from "../../../../src/domain/session-families/sessionFamilyAdmission";
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
 import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
-import { SessionArchiveStorage } from "../../../../src/services/storage/SessionArchiveStorage";
 import { familyStorageHarness } from "../../helpers/familyStorageHarness";
 import { currentSessionOutcome } from "../../../../src/contracts/project-sessions/session-reporting";
 import {
@@ -46,6 +45,7 @@ import {
   options,
   fakeRuntime,
 } from "../../helpers/piRuntimeFixture";
+import { fakeSessionArchiveStorage } from "../../../helpers/fakes/sessionArchiveStorage";
 
 const archiveLocation = { cwd: "/project", activeRoot: "/sessions", resolvedRoot: "/resolved" };
 /** A reply-mode request from an independent Project Chat, as `sessions.send` encodes it. */
@@ -667,7 +667,7 @@ describe("CakeSessionRuntimes", () => {
           admitTurn: (input, accept) =>
             admitTurn("session-1", archiveLocation, input, accept).pipe(
               Effect.provideService(SessionFamilyStorage, families),
-              Effect.provide(Layer.mock(SessionArchiveStorage, {})),
+              Effect.provide(fakeSessionArchiveStorage()),
             ),
           onTurnActivityChanged: sessions.currentTurnIds(target).pipe(
             Effect.flatMap((turnIds) =>

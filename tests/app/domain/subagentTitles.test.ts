@@ -9,7 +9,6 @@ import {
 } from "../../../src/contracts/subagents/subagent-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { PiModelCompletionError } from "../../../src/contracts/pi/model-data";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import {
   SubagentCoordinator,
@@ -22,6 +21,8 @@ import {
   makeSubagentStorageTestLayer,
   subagentHistoryFixture,
 } from "../helpers/subagentStorageFixture";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakePiModels } from "../../helpers/fakes/piModels";
 
 const handleId = SubagentHandleId.make("00000000-0000-4000-8000-0000000000aa");
 const longTask = `Read-only investigation.\n\n${"Trace every caller of the Activity row. ".repeat(200)}FINAL-SENTINEL`;
@@ -31,7 +32,7 @@ const utilityModel = {
   thinkingLevel: "low" as const,
 };
 const application = (configured = true) =>
-  Layer.mock(ApplicationState, {
+  fakeApplicationState({
     snapshot: () => ({ ...defaultApplicationState(), ...(configured ? { utilityModel } : null) }),
   });
 
@@ -118,7 +119,7 @@ const layer = (complete: PiModels["Service"]["complete"], configured = true) =>
   Layer.mergeAll(
     SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
     application(configured),
-    Layer.mock(PiModels, { complete }),
+    fakePiModels({ complete }),
   );
 
 describe("subagent utility naming", () => {

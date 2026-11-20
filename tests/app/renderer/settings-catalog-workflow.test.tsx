@@ -22,18 +22,18 @@ import { withChatContextLimit } from "../../../src/domain/cake-chats/cake-chat-c
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
 import { SettingsCakeChatSection } from "../../../src/renderer/components/settings-cake-chat-section";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { makePiSettingsLayer } from "../../../src/services/pi/PiSettings";
 import { mergePiExecutionSetting } from "../../../src/services/pi/live/PiSettingsLive";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
-import { PiModels } from "../../../src/services/pi/PiModels";
 import { McpSettings } from "../../../src/services/pi/McpSettings";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
 
 afterEach(cleanup);
 
@@ -79,13 +79,13 @@ async function fixture() {
           document = JSON.stringify(mergePiExecutionSetting(JSON.parse(document), update));
         }),
       ),
-      Layer.mock(ClientEvents, { sendTo: () => false, broadcast: (event) => onEvent(event) }),
-      Layer.mock(CakeSessionRuntimes, {
+      fakeClientEvents({ sendTo: () => false, broadcast: (event) => onEvent(event) }),
+      fakeCakeSessionRuntimes({
         reloadAll: () => Effect.sync(() => void reloads.push("all")),
       }),
       // Not used by catalog settings; present because the settings dispatcher can reach them.
-      Layer.mock(PiModels, {}),
-      Layer.mock(ProjectAccess, {}),
+      fakePiModels(),
+      fakeProjectAccess(),
       Layer.mock(McpSettings, {}),
       Layer.mock(WidgetPackages, { directory: "/backend/widget-packages" }),
     ),

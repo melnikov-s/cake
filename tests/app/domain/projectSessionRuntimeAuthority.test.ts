@@ -10,12 +10,12 @@ import {
   makeCakeSessionRuntimesLayer,
   type CakeSessionRuntimesAdapter,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 it.effect("creates independent Pi-backed Project Session without any renderer", () => {
   const prompts: string[] = [];
@@ -63,7 +63,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
     ),
     SessionCatalogChanges.layer,
     projectTodoLayer(),
-    Layer.mock(SessionFamilyStorage, {
+    fakeSessionFamilyStorage({
       familyForMember: () => Effect.succeed(undefined),
       invalidateAutoMerge: () => Effect.void,
       withMemberLock: (_sessionId, effect) => effect,
@@ -73,8 +73,8 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
       registerParent: () => Effect.void,
       registerPurpose: () => Effect.void,
     }),
-    Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-    Layer.mock(ManagedWorktrees, {
+    fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
+    fakeManagedWorktrees({
       records: () => Effect.succeed([]),
       awaitSetup: () => Effect.void,
     }),

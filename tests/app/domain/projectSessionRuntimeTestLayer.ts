@@ -1,21 +1,21 @@
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { globalArtifactTestLayer } from "../helpers/globalArtifactTestLayer";
-import { Effect, Layer, Stream } from "effect";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
-import { PiModels } from "../../../src/services/pi/PiModels";
+import { Effect, Layer } from "effect";
 import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { Terminal } from "../../../src/services/terminal/Terminal";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakePiModels } from "../../helpers/fakes/piModels";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const defaultIntegrations: ProjectSessionRuntimeIntegrations = {
   requestUi: async () => undefined,
@@ -35,17 +35,13 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
 ) =>
   Layer.mergeAll(
     globalArtifactTestLayer,
-    Layer.mock(TaskInputStorage, {
-      resolve: (_sessionId, attachments) => Effect.succeed(attachments),
-      authorizeForward: () => Effect.succeed([]),
-      isRecipient: () => Effect.succeed(false),
-    }),
+    fakeTaskInputStorage({ authorizeForward: () => Effect.succeed([]) }),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/cake",
       sessionDirectory: "/cake/sessions",
       resolvedSessionDirectory: "/cake/resolved",
     }),
-    Layer.mock(ProjectAccess, {
+    fakeProjectAccess({
       rememberSessionLocation: () => Effect.void,
       isAllowed: () => Effect.succeed(true),
     }),
@@ -53,8 +49,8 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
       prepare: () =>
         Effect.succeed({ integrations, initialize: Effect.void, release: Effect.void }),
     }),
-    Layer.mock(PiModels, {}),
-    Layer.mock(RendererRequestCoordinator, { presentAgentAction: () => Effect.void }),
+    fakePiModels(),
+    fakeRendererRequestCoordinator({ presentAgentAction: () => Effect.void }),
     Layer.mock(Terminal, {
       closeWorkingDirectory: () => Effect.void,
     }),
@@ -87,18 +83,7 @@ export const makeProjectSessionRuntimeTestLayer = (
   Layer.mergeAll(
     makeProjectSessionRuntimeMechanismTestLayer(integrations),
     SessionCatalogChanges.layer,
-    Layer.mock(SessionArchiveStorage, {
-      resolvedProjectEntry: () => Effect.succeed(undefined),
-      resolvedProjects: () => Stream.empty,
-      locate: () => Effect.succeed("active" as const),
-    }),
-    Layer.mock(SessionFamilyStorage, {
-      familyForMember: () => Effect.succeed(undefined),
-      state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
-      settleTurn: () => Effect.void,
-    }),
-    Layer.mock(ManagedWorktrees, {
-      records: () => Effect.succeed([]),
-      proposeSquashMessage: () => Effect.void,
-    }),
+    fakeSessionArchiveStorage({ locate: () => Effect.succeed("active" as const) }),
+    fakeSessionFamilyStorage(),
+    fakeManagedWorktrees(),
   );

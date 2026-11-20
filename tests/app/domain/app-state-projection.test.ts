@@ -1,8 +1,8 @@
 import { it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { expect, vi } from "vitest";
 import { safeCoordinatorProjection } from "../../../src/domain/cake-chats/taskInputControls";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 it.effect(
   "preserves closed compaction outcomes for protected task sessions, not extra content",
@@ -21,7 +21,7 @@ it.effect(
       }
     }).pipe(
       Effect.provide(
-        Layer.mock(TaskInputStorage, {
+        fakeTaskInputStorage({
           isRecipient: () => Effect.succeed(true),
         }),
       ),
@@ -60,5 +60,5 @@ it.effect("preserves visible window metadata but still protects task session con
       },
     });
     expect(isRecipient).toHaveBeenCalledTimes(1);
-  }).pipe(Effect.provide(Layer.mock(TaskInputStorage, { isRecipient })));
+  }).pipe(Effect.provide(fakeTaskInputStorage({ isRecipient })));
 });

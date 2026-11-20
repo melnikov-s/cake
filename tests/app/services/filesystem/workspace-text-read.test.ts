@@ -15,8 +15,8 @@ import { afterEach, vi } from "vitest";
 import { Effect, Layer } from "effect";
 import { WorkspaceFiles } from "../../../../src/services/filesystem/WorkspaceFiles";
 import { makeWorkspaceFilesLive } from "../../../../src/services/filesystem/WorkspaceFilesLive";
-import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import type { WorkspaceFileError } from "../../../../src/contracts/filesystem/workspace-files-errors";
+import { fakeProjectAccess } from "../../../helpers/fakes/projectAccess";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs/promises")>();
@@ -25,7 +25,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 const maxLength = 2_000_000;
 const workspaceFilesLayer = makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(
-  Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
+  Layer.provide(fakeProjectAccess({ isAllowed: () => Effect.succeed(true) })),
 );
 
 const withWorkspace = (

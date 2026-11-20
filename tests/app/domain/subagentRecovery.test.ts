@@ -19,14 +19,9 @@ import {
   type CakeSessionRuntimeSetup,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import type { SubagentRecord } from "../../../src/services/storage/SubagentStorage";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { SubagentCoordinator } from "../../../src/services/subagents/SubagentCoordinator";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import {
   fakeRuntime,
@@ -35,6 +30,11 @@ import {
 } from "../helpers/piRuntimeFixture";
 import { subagentHistoryFixture } from "../helpers/subagentStorageFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const configuration = {
   location: { workingDirectory: "/home/user", sessionDirectory: "/cake/pi/global-chat" },
@@ -94,19 +94,19 @@ describe("private worker restart recovery", () => {
         familyStorageHarness().layer,
         recoveryStorage,
         Layer.succeed(CakeChatConfiguration, configuration),
-        Layer.mock(ApplicationState, {
+        fakeApplicationState({
           snapshot: () => ({
             ...defaultApplicationState(),
             projects: [{ path: "/project", name: "Project", addedAt: "now", lastOpenedAt: "now" }],
           }),
         }),
-        Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
-        Layer.mock(SessionArchiveStorage, {}),
-        Layer.mock(TaskInputStorage, {
+        fakeManagedWorktrees({ records: () => Effect.succeed([]) }),
+        fakeSessionArchiveStorage(),
+        fakeTaskInputStorage({
           authorizeForward: () => Effect.succeed([]),
           grant: () => Effect.succeed([]),
         }),
-        Layer.mock(RendererRequestCoordinator, { releaseSession: () => Effect.void }),
+        fakeRendererRequestCoordinator({ releaseSession: () => Effect.void }),
         SessionCatalogChanges.layer,
         makeCakeSessionRuntimesLayer({
           sessionIds: () => Stream.empty,

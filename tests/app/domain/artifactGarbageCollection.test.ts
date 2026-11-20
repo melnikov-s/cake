@@ -10,13 +10,14 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import { ArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../../src/contracts/artifacts/artifact-contract";
 import { makeArtifactProjectionLive } from "../../../src/services/artifacts/ArtifactProjectionLive";
-import { PiSessionError, CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
+import { PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -47,10 +48,10 @@ const testLayer = async (options: {
   return {
     root,
     layer: Layer.mergeAll(
-      Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
+      fakeApplicationState({ snapshot: defaultApplicationState }),
       makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
       makeArtifactProjectionLive(join(root, "cache")).pipe(Layer.provide(platform)),
-      Layer.mock(CakeSessionRuntimes, {
+      fakeCakeSessionRuntimes({
         durableArtifactReferences: () =>
           options.pointerFailure
             ? Effect.fail(new PiSessionError({ operation: "scan", message: "uncertain" }))
@@ -59,7 +60,7 @@ const testLayer = async (options: {
                 lineageIds: options.pointerIds ?? [],
               }),
       }),
-      Layer.mock(SessionFamilyStorage, {
+      fakeSessionFamilyStorage({
         list: () =>
           Effect.succeed(
             (options.familyIds ?? []).map((familyId) => ({

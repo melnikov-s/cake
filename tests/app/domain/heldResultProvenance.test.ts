@@ -1,6 +1,6 @@
 import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
 import { appendMessageReferences } from "../../../src/contracts/conversations/message-reference-forwarding";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect, ManagedRuntime } from "effect";
 import { expect, it } from "vitest";
 import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import {
@@ -9,10 +9,10 @@ import {
 } from "../../../src/contracts/conversations/reference-notification";
 import { pendingReportRef } from "../../../src/contracts/conversations/pending-report";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { prepareCoordinatorNotice } from "../../../src/domain/conversations/taskInputs";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { originalRef, producer } from "../helpers/heldAttentionHarness";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const recipient = "project-chat:recipient";
 const responseKey = "request-turn-1";
@@ -158,7 +158,7 @@ it("preserves truthful generated lifecycle status rather than fabricating an unr
     await Effect.runPromise(
       prepareCoordinatorNotice(recipient, notice).pipe(
         Effect.provide(
-          Layer.mock(TaskInputStorage, {
+          fakeTaskInputStorage({
             isRecipient: () => Effect.succeed(true),
           }),
         ),

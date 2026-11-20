@@ -19,10 +19,10 @@ import * as workflows from "../../../src/domain/artifacts/artifactWorkflows";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { makeProjectAccessLive } from "../../../src/services/projects/ProjectAccessLive";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -41,20 +41,20 @@ async function fixture() {
     ...defaultApplicationState(),
     projects: [{ path: projectPath, name: "Project", addedAt: "", lastOpenedAt: "" }],
   };
-  const application = Layer.mock(ApplicationState, { snapshot: () => state });
+  const application = fakeApplicationState({ snapshot: () => state });
   const access = makeProjectAccessLive({
     projectSessionDirectory: join(root, "sessions"),
     resolvedProjectSessionDirectory: join(root, "resolved"),
   }).pipe(
     Layer.provide(
-      Layer.merge(application, Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) })),
+      Layer.merge(application, fakeManagedWorktrees({ records: () => Effect.succeed([]) })),
     ),
   );
   const storage = () =>
     makeArtifactStorageLive(join(root, "artifacts")).pipe(
       Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
     );
-  const families = Layer.mock(SessionFamilyStorage, {
+  const families = fakeSessionFamilyStorage({
     withMemberLock: (_sessionId, effect) => effect,
     familyForMember: (sessionId) =>
       Effect.succeed(

@@ -2,7 +2,7 @@ import { Effect, Layer } from "effect";
 import { ArtifactRuntime } from "../../../src/services/artifact-runtime/ArtifactRuntime";
 import { ArtifactViews } from "../../../src/services/artifacts/ArtifactViews";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
 
 /** Unused artifact boundaries for tests whose subject is another application workflow. */
 export const globalArtifactTestLayer = Layer.mergeAll(
@@ -25,5 +25,5 @@ export const globalArtifactTestLayer = Layer.mergeAll(
     report: () => Effect.void,
     read: () => Effect.succeed({ windows: [] }),
   }),
-  Layer.mock(ClientEvents, { sendTo: () => false, broadcast: () => undefined }),
+  fakeClientEvents({ sendTo: () => false, broadcast: () => undefined }),
 );

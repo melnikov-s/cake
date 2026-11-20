@@ -1,11 +1,7 @@
 import { it } from "@effect/vitest";
 import { expect } from "vitest";
 import { Effect, Layer, Schema } from "effect";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { TestClock } from "effect/testing";
 import type { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
@@ -20,6 +16,10 @@ import * as todos from "../../../src/domain/projects/projectTodos";
 import * as controls from "../../../src/domain/projects/projectTodoAssociations";
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const scope = "/project";
 const reason = "Review the startup findings";
@@ -376,15 +376,15 @@ it.effect(
       Effect.provide(
         Layer.mergeAll(
           projectTodoLayer(),
-          Layer.mock(CakeSessionRuntimes, {}),
-          Layer.mock(SessionArchiveStorage, {}),
-          Layer.mock(SessionFamilyStorage, {}),
+          fakeCakeSessionRuntimes(),
+          fakeSessionArchiveStorage(),
+          fakeSessionFamilyStorage(),
           Layer.succeed(ProjectSessionConfiguration, {
             agentDirectory: "/agent",
             sessionDirectory: "/sessions",
             resolvedSessionDirectory: "/resolved",
           }),
-          Layer.mock(ManagedWorktrees, {}),
+          fakeManagedWorktrees(),
         ),
       ),
     ),

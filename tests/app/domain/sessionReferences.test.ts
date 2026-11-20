@@ -15,13 +15,14 @@ import {
   resolveIn,
 } from "../../../src/domain/project-sessions/sessionReferences";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
+import { PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const active = "01957936-0000-7000-8000-000112345678";
 const inactive = "01957936-0000-7000-8000-000212345678";
@@ -54,7 +55,7 @@ function fixture(includeOther = false) {
     }),
   );
   const layer = Layer.mergeAll(
-    Layer.mock(ApplicationState, {
+    fakeApplicationState({
       snapshot: () => ({
         ...defaultApplicationState(),
         projects: [
@@ -70,7 +71,7 @@ function fixture(includeOther = false) {
       sessionDirectory: "/sessions",
       resolvedSessionDirectory: "/resolved",
     }),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () =>
         Effect.succeed([
           {
@@ -94,7 +95,7 @@ function fixture(includeOther = false) {
             : []),
         ]),
     }),
-    Layer.mock(SessionFamilyStorage, {
+    fakeSessionFamilyStorage({
       state: () =>
         Effect.succeed({
           families: [
@@ -111,7 +112,7 @@ function fixture(includeOther = false) {
           turns: [],
         }),
     }),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       resolvedProjects,
       // Title-bearing resolved() and Pi catalog() deliberately remain unimplemented.
       // Layer.mock defects if reference resolution tries to open either catalog.
@@ -135,7 +136,7 @@ function fixture(includeOther = false) {
           },
         ]),
     }),
-    Layer.mock(CakeSessionRuntimes, { sessionIds }),
+    fakeCakeSessionRuntimes({ sessionIds }),
   );
   return {
     layer,

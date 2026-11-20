@@ -6,9 +6,9 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import type { CakeChatCatalogUpdate } from "../../../src/contracts/application/catalog-data";
 import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
 
 const location = { workingDirectory: "/home/user", sessionDirectory: "/cake/global" };
 const project = (index: number) => ({
@@ -39,8 +39,8 @@ it.effect.each([0, 40])(
       const reads: string[] = [];
       const acquire = vi.fn(() => Effect.die("Listing must not acquire a Harness"));
       const layer = Layer.mergeAll(
-        Layer.mock(ApplicationState, { snapshot: () => state }),
-        Layer.mock(CakeSessionRuntimes, {
+        fakeApplicationState({ snapshot: () => state }),
+        fakeCakeSessionRuntimes({
           catalogEntry: (_query, id) =>
             Effect.gen(function* () {
               reads.push(id);
@@ -89,8 +89,8 @@ it.effect(
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
-          Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
-          Layer.mock(CakeSessionRuntimes, {
+          fakeApplicationState({ snapshot: defaultApplicationState }),
+          fakeCakeSessionRuntimes({
             catalogEntry: () => Effect.succeed(undefined),
             currentStatus: () => Effect.succeed(undefined),
           }),
@@ -113,7 +113,7 @@ it.effect(
       let releases = 0;
       const layer = Layer.mergeAll(
         SessionCatalogChanges.layer,
-        Layer.mock(ApplicationState, {
+        fakeApplicationState({
           snapshot: () => SubscriptionRef.getUnsafe(state).state,
           changes: () =>
             Stream.unwrap(
@@ -129,7 +129,7 @@ it.effect(
               ),
             ),
         }),
-        Layer.mock(CakeSessionRuntimes, {
+        fakeCakeSessionRuntimes({
           catalogEntry: (_query, id) =>
             Effect.gen(function* () {
               reads.push(id);

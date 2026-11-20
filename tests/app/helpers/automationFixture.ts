@@ -11,14 +11,12 @@ import {
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/contracts/application/application-data";
 import { AutomationRecords } from "../../../src/services/automations/AutomationRecords";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {
   AutomationStorage,
   type AutomationLedger,
 } from "../../../src/services/storage/AutomationStorage";
 import { AutomationConfiguration } from "../../../src/services/automations/AutomationConfiguration";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,
@@ -34,8 +32,10 @@ import type { CakeSessionRuntime } from "../../../src/services/pi/runtime/cake-s
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { makeProjectSessionRuntimeTestLayer } from "../domain/projectSessionRuntimeTestLayer";
 import { familyStorageHarness } from "./familyStorageHarness";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { fakeRuntime, makeRuntimeRecoveryStorageTestLayer, snapshot } from "./piRuntimeFixture";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 export const automationDefinition = (
   overrides: Partial<AutomationDefinition> = {},
@@ -175,7 +175,7 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
       }),
   }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer(initial.recovery)));
   const resolved = yield* Ref.make<ReadonlySet<string>>(new Set());
-  const archive = Layer.mock(SessionArchiveStorage, {
+  const archive = fakeSessionArchiveStorage({
     recordedResolvedIds: () => Ref.get(resolved),
     resolve: (id) => Ref.update(resolved, (ids) => new Set([...ids, id])).pipe(Effect.as(true)),
     restore: (id) =>
@@ -198,7 +198,7 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
   const layer = Layer.mergeAll(
     AgentControlTestLive,
     makeProjectSessionRuntimeTestLayer(),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () => Effect.succeed([]),
       awaitSetup: () => Effect.void,
     }),
@@ -207,7 +207,7 @@ export const automationFixture = Effect.fn("AutomationFixture.make")(function* (
     runtimes,
     archive,
     NodePath.layer,
-    Layer.mock(ApplicationState, {
+    fakeApplicationState({
       snapshot: () => application,
       transact: (transition) =>
         transition(application).pipe(

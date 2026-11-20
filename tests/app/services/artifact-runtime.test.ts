@@ -16,8 +16,8 @@ import {
 import { makeArtifactRuntimeWorker } from "../../../src/services/pi/live/ArtifactRuntimeWorker";
 import { ArtifactRuntimeLive } from "../../../src/services/artifact-runtime/ArtifactRuntimeLive";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { widgetRunGateFake } from "../helpers/widgetRunGate";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
 
 const lineageId = decodeArtifactLineageId("pr-dashboard");
 const objectInput = { type: "object", additionalProperties: false };
@@ -131,7 +131,7 @@ function fixture(hostOverride?: ArtifactRuntimeHost) {
         return state;
       }),
   });
-  const clients = Layer.mock(ClientEvents, {
+  const clients = fakeClientEvents({
     sendTo: () => false,
     broadcast: (event) => {
       if (event.type === "artifact-state-invalidated") invalidations += 1;

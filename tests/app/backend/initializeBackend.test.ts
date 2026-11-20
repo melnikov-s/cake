@@ -12,12 +12,12 @@ import {
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/contracts/application/application-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
 
 it.effect("restores access to registered Projects and their managed worktrees", () =>
   Effect.gen(function* () {
@@ -55,7 +55,7 @@ it.effect("restores access to registered Projects and their managed worktrees", 
       Effect.provide(
         Layer.mergeAll(
           WorktreeLandingCoordinatorLive,
-          Layer.mock(ApplicationState, {
+          fakeApplicationState({
             initialize: () =>
               Effect.sync(() => {
                 initialized();
@@ -65,10 +65,10 @@ it.effect("restores access to registered Projects and their managed worktrees", 
             snapshot: () => current,
           }),
           Layer.mock(VsCodeServer, { leaseFor: () => undefined, refreshStatus: () => Effect.void }),
-          Layer.mock(ProjectAccess, { allow: (path) => Effect.sync(() => allow(path)) }),
-          Layer.mock(ManagedWorktrees, { records: () => Effect.succeed(worktrees) }),
+          fakeProjectAccess({ allow: (path) => Effect.sync(() => allow(path)) }),
+          fakeManagedWorktrees({ records: () => Effect.succeed(worktrees) }),
           Layer.mock(SavedDraftStorage, { list: () => Effect.succeed([]) }),
-          Layer.mock(CakeSessionRuntimes, {}),
+          fakeCakeSessionRuntimes(),
           Layer.succeed(ProjectSessionConfiguration, {
             agentDirectory: "/cake",
             sessionDirectory: "/cake/sessions",
@@ -92,7 +92,7 @@ it.effect(
       const release = yield* Deferred.make<void>();
       let current = defaultApplicationState();
       const downstream = vi.fn();
-      const application = Layer.mock(ApplicationState, {
+      const application = fakeApplicationState({
         snapshot: () => current,
         initialize: () =>
           Effect.gen(function* () {
@@ -130,10 +130,10 @@ it.effect(
           Layer.mergeAll(
             application,
             WorktreeLandingCoordinatorLive,
-            Layer.mock(ProjectAccess, { allow: () => Effect.sync(() => downstream()) }),
-            Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
+            fakeProjectAccess({ allow: () => Effect.sync(() => downstream()) }),
+            fakeManagedWorktrees({ records: () => Effect.succeed([]) }),
             Layer.mock(SavedDraftStorage, { list: () => Effect.succeed([]) }),
-            Layer.mock(CakeSessionRuntimes, {}),
+            fakeCakeSessionRuntimes(),
             Layer.mock(VsCodeServer, {
               leaseFor: () => undefined,
               refreshStatus: () => Effect.void,

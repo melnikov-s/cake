@@ -2,11 +2,10 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { snapshotPromptFiles } from "../../../../src/services/filesystem/prompt-files";
-import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import { projectSessionEntries } from "../../../../src/services/pi/runtime/session-projection";
 import {
   promptText,
@@ -19,6 +18,7 @@ import {
   parseCrossSessionMessage,
 } from "../../../../src/contracts/conversations/cross-session-message";
 import { promptFilesSchema } from "../../../../src/contracts/conversations/prompt-files";
+import { fakeProjectAccess } from "../../../helpers/fakes/projectAccess";
 
 const fixture = Effect.fn("PromptFilesTest.fixture")(function* () {
   const directory = yield* Effect.acquireRelease(
@@ -27,7 +27,7 @@ const fixture = Effect.fn("PromptFilesTest.fixture")(function* () {
   );
   const root = join(directory, "project");
   yield* Effect.promise(() => mkdir(root));
-  const layer = Layer.mock(ProjectAccess, {
+  const layer = fakeProjectAccess({
     allowedWorkingDirectories: () => Effect.succeed([root]),
   });
   const capture = (paths?: readonly string[], text = "Follow this task") =>

@@ -16,18 +16,18 @@ import {
   FamilyMessageInput,
   route,
 } from "../../../src/domain/session-families/sessionFamilyMessaging";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectTodoReports } from "../../../src/services/projects/ProjectTodoReports";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { SessionCoordination } from "../../../src/services/session-catalogs/SessionCoordination";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { coordinationStorageHarness } from "../helpers/coordinationStorageHarness";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const location = {
   projectPath: "/project",
@@ -133,13 +133,13 @@ const fixture = () => {
     makeProjectSessionRuntimeMechanismTestLayer(),
     storage.layer,
     SessionCoordination.layer.pipe(Layer.provide(coordination.layer)),
-    Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
-    Layer.mock(CakeSessionRuntimes, {
+    fakeApplicationState({ snapshot: defaultApplicationState }),
+    fakeCakeSessionRuntimes({
       executingTurnIds: () => Effect.succeed(["turn"]),
       acquire: () => unexpected("project acquisition/dispatch"),
       acquireSession: () => unexpected("chat acquisition/dispatch"),
     }),
-    Layer.mock(TaskInputStorage, {
+    fakeTaskInputStorage({
       authorizeForward: () => unexpected("authorizeForward"),
       grant: () => unexpected("grant"),
       protectRecipient: () => unexpected("protectRecipient"),
@@ -150,11 +150,11 @@ const fixture = () => {
     Layer.mock(SessionCatalogChanges, {
       publish: () => unexpected("catalog publish"),
     }),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       locate: () => Effect.succeed("active" as const),
       resolvedProjects: () => Stream.empty,
     }),
-    Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
+    fakeManagedWorktrees({ records: () => Effect.succeed([]) }),
   );
   return { layer, mutations, files: storage.files, coordinationFiles: coordination.files };
 };

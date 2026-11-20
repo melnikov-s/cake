@@ -16,12 +16,12 @@ import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-wo
 import type { WorktreeOperationCatalogUpdate } from "../../../src/contracts/worktrees/worktree-operation-data";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
 import { observeOperations } from "../../../src/domain/worktrees/worktreeLandings";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { makeWorktreeLandingQueue } from "../../../src/services/worktrees/WorktreeLandingQueue";
 import {
   WorktreeLandingCoordinator,
   WorktreeLandingCoordinatorLive,
 } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
 
 const record = (name: string): WorktreeRecord => ({
   projectPath: "/repo",
@@ -130,7 +130,7 @@ it.effect(
         Effect.provide(
           Layer.merge(
             WorktreeLandingCoordinatorLive,
-            Layer.mock(ManagedWorktrees, { observeLandingQueue: queue.observe }),
+            fakeManagedWorktrees({ observeLandingQueue: queue.observe }),
           ),
         ),
       );

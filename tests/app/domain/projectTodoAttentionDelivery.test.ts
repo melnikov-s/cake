@@ -9,11 +9,12 @@ import * as attention from "../../../src/domain/projects/projectTodoAttention";
 import * as todos from "../../../src/domain/projects/projectTodos";
 import * as reports from "../../../src/domain/conversations/pendingReports";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
-import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const report = (recipientSessionId: string, id = crypto.randomUUID()) => ({
   id,
@@ -31,9 +32,9 @@ const layer = () =>
   Layer.mergeAll(
     projectTodoLayer(),
     unusedMessageLookupLayer,
-    Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
+    fakeTaskInputStorage({ isRecipient: () => Effect.succeed(false) }),
     familyStorageHarness().layer,
-    Layer.mock(CakeSessionRuntimes, {
+    fakeCakeSessionRuntimes({
       acquireSession: () =>
         Effect.fail(
           new PiSessionError({ operation: "acquireSession", message: "Test runtime unavailable" }),

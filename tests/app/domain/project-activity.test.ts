@@ -13,8 +13,6 @@ import {
 } from "effect";
 import { expect } from "vitest";
 import { observeProjectActivity } from "../../../src/domain/projects/projectActivity";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import {
   SubagentCoordinator,
@@ -27,9 +25,11 @@ import {
   makeSubagentStorageTestLayer,
   subagentHistoryFixture,
 } from "../helpers/subagentStorageFixture";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { projectRecord } from "../renderer/fixtures/catalog-fixtures";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
 
 it.effect(
   "projects live side-chat activity through managed worktrees without reading saved sessions",
@@ -121,17 +121,17 @@ it.effect(
           Layer.mergeAll(
             SessionCatalogChanges.layer,
             SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
-            Layer.mock(ApplicationState, {
+            fakeApplicationState({
               snapshot: () => ({
                 ...defaultApplicationState(),
                 projects: [projectRecord({ path: "/cake" })],
               }),
               changes: () => Stream.never,
             }),
-            Layer.mock(CakeSessionRuntimes, {
+            fakeCakeSessionRuntimes({
               activeWorkingDirectories: () => Effect.sync(() => directories),
             }),
-            Layer.mock(ManagedWorktrees, {
+            fakeManagedWorktrees({
               records: () =>
                 Effect.succeed([
                   {

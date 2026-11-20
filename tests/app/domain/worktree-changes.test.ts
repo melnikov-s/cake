@@ -3,11 +3,11 @@ import { it } from "@effect/vitest";
 import { Effect, FileSystem, Layer } from "effect";
 import { inspect } from "../../../src/domain/worktrees/worktreeChanges";
 import { Git, GitError } from "../../../src/services/git/Git";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { parseNumstat } from "../../../src/services/git/git-numstat";
 import { changeTotals, commitListLimit } from "../../../src/contracts/worktrees/worktree-changes";
 import type { WorktreeStatus } from "../../../src/contracts/worktrees/worktree-contract";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
 
 const status: WorktreeStatus = {
   record: {
@@ -109,8 +109,8 @@ function dependencies(
   );
   const layer = Layer.mergeAll(
     git,
-    Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(options.allowed ?? true) }),
-    Layer.mock(ManagedWorktrees, { status: () => Effect.succeed(options.status) }),
+    fakeProjectAccess({ isAllowed: () => Effect.succeed(options.allowed ?? true) }),
+    fakeManagedWorktrees({ status: () => Effect.succeed(options.status) }),
     Layer.succeed(
       FileSystem.FileSystem,
       FileSystem.makeNoop({

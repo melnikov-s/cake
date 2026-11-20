@@ -18,12 +18,12 @@ import * as state from "../../../src/domain/artifacts/artifactState";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
 import { makeArtifactProjectionLive } from "../../../src/services/artifacts/ArtifactProjectionLive";
 import { ArtifactProjection } from "../../../src/services/artifacts/ArtifactProjection";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { coordinatorCakeOperations } from "../../../src/layers/CakeOperations";
 import { globalArtifactOperationContracts } from "../../../src/contracts/artifacts/global-artifact-control";
 import { encodePrototype, prototypeFixture } from "../../fixtures/prototype-source";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
+import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -48,11 +48,11 @@ async function fixture(source = encodePrototype(prototypeFixture())) {
     Layer.mergeAll(
       makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
       makeArtifactProjectionLive(join(root, "cache")).pipe(Layer.provide(platform)),
-      Layer.mock(SessionFamilyStorage, {
+      fakeSessionFamilyStorage({
         withMemberLock: (_id, effect) => effect,
         familyForMember: () => Effect.succeed(undefined),
       }),
-      Layer.mock(ClientEvents, { broadcast: () => undefined, sendTo: () => true }),
+      fakeClientEvents({ broadcast: () => undefined, sendTo: () => true }),
     ),
   );
   cleanups.push(async () => {

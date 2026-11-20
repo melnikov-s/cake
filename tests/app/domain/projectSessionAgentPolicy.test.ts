@@ -9,13 +9,13 @@ import { fork } from "../../../src/domain/project-sessions/projectSessionContinu
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { fakeManagedWorktrees } from "../../helpers/fakes/managedWorktrees";
+import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 
 const location = {
   projectPath: "/project",
@@ -50,13 +50,13 @@ const environment = (forked: string[] = []) =>
     SessionCatalogChanges.layer,
     projectTodoLayer(),
     Layer.mock(ArtifactStorage, {}),
-    Layer.mock(SessionArchiveStorage, {
+    fakeSessionArchiveStorage({
       locate: () => Effect.succeed("active" as const),
       resolved: () => Stream.empty,
       resolvedProjects: () => Stream.empty,
       resolvedProjectEntry: () => Effect.succeed(undefined),
     }),
-    Layer.mock(ManagedWorktrees, {
+    fakeManagedWorktrees({
       records: () => Effect.succeed([]),
       awaitSetup: () => Effect.void,
     }),

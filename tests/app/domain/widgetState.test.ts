@@ -9,10 +9,10 @@ import {
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { widgetInstance } from "../helpers/widget-instance";
 import * as attachments from "../../../src/domain/widgets/widgetAttachments";
 import * as state from "../../../src/domain/widgets/widgetState";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
 
 it.effect(
   "requires explicit matching attachment scope, preserves CAS and shares one instance state across views",
@@ -49,7 +49,7 @@ it.effect(
             return current;
           }),
       }),
-      Layer.mock(ClientEvents, {
+      fakeClientEvents({
         sendTo: () => false,
         broadcast: (event) => notifications.push(event.type),
       }),

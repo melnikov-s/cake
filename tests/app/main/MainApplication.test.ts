@@ -12,15 +12,15 @@ import { DesktopSharing } from "../../../src/services/electron/DesktopSharing";
 import { makeBackendRecoveryLive } from "../../../src/services/startup/BackendRecovery";
 import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { AttachmentUploads } from "../../../src/services/filesystem/AttachmentUploads";
 import { InlineWidgets } from "../../../src/services/widgets/InlineWidgets";
 import { VsCodeViews } from "../../../src/services/vscode/VsCodeViews";
+import { fakeApplicationState } from "../../helpers/fakes/applicationState";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
+import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
 
 class TestApplication extends EventEmitter {
   readonly quit = vi.fn(() => this.emit("before-quit", { preventDefault: vi.fn() }));
@@ -68,7 +68,7 @@ const testLayer = (input?: {
   const state = defaultApplicationState();
   return Layer.mergeAll(
     Layer.mock(DesktopSharing, { keepsProcessAlive: input?.keepsProcessAlive ?? (() => false) }),
-    Layer.mock(ApplicationState, {
+    fakeApplicationState({
       snapshot: () => state,
     }),
     Layer.mock(Electron, {
@@ -83,7 +83,7 @@ const testLayer = (input?: {
       windowsForWorkspace: () => [],
       centerTrafficLights: () => {},
     }),
-    Layer.mock(ProjectAccess, {
+    fakeProjectAccess({
       allow: () => Effect.void,
       rememberSessionLocation: () => Effect.void,
     }),
@@ -92,7 +92,7 @@ const testLayer = (input?: {
       release: () => Effect.void,
       disposeOwner: (ownerId) => Effect.sync(() => input?.disposeRewordingOwner?.(ownerId)),
     }),
-    Layer.mock(RendererRequestCoordinator, {
+    fakeRendererRequestCoordinator({
       releaseConnection: (ownerId) =>
         Effect.sync(() => input?.releaseRendererConnection?.(ownerId)),
     }),
@@ -176,10 +176,10 @@ describe("MainApplication", () => {
           const layer =
             mode === "remote"
               ? native
-              : Layer.merge(native, Layer.mock(ApplicationState, { snapshot: () => state }));
+              : Layer.merge(native, fakeApplicationState({ snapshot: () => state }));
           const fiber = yield* Effect.forkChild(
             MainApplication({ application, initializeNativeProtocols: () => {} }).pipe(
-              Effect.provide(Layer.merge(layer, Layer.mock(RendererRequestCoordinator, {}))),
+              Effect.provide(Layer.merge(layer, fakeRendererRequestCoordinator())),
             ),
           );
           const lifecycle = yield* Deferred.await(started);

@@ -10,9 +10,9 @@ import {
 import * as attention from "../../../src/domain/projects/projectTodoAttention";
 import * as todos from "../../../src/domain/projects/projectTodos";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
+import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 it.effect.each(
   (["session", "subagent"] as const).flatMap((kind) =>
@@ -46,7 +46,7 @@ it.effect.each(
     const layer = Layer.mergeAll(
       storage.layer,
       projectTodoLayer({ initialCakeChatTodos: { ...emptyProjectTodos(), items: [item] } }),
-      Layer.mock(TaskInputStorage, {}),
+      fakeTaskInputStorage(),
     );
     const report = {
       id: "held-result",

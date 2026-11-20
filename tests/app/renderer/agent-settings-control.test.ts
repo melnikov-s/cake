@@ -1,5 +1,4 @@
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
-import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import type { AgentControlSource } from "../../../src/renderer/app-control/app-control-data";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { ModelType, ModelTypeMap } from "@earendil-works/pi-ai";
@@ -41,8 +40,6 @@ import type { ModelPresetPrompts } from "../../../src/services/storage/ModelPres
 import { makeMcpSettingsLayer } from "../../../src/services/pi/McpSettings";
 import { PiSettings, makePiSettingsLayer } from "../../../src/services/pi/PiSettings";
 import { mergePiExecutionSetting } from "../../../src/services/pi/live/PiSettingsLive";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createCakeSettingsOperations } from "../../../src/domain/application/cake-settings-operations";
 import { createCakeWidgetPackageOperations } from "../../../src/domain/application/cake-widget-package-operations";
@@ -70,6 +67,9 @@ import {
   defaultSpeechInputPreferences,
   speechInputControls,
 } from "../../../src/utils/speech-input-settings";
+import { fakeCakeSessionRuntimes } from "../../helpers/fakes/cakeSessionRuntimes";
+import { fakeClientEvents } from "../../helpers/fakes/clientEvents";
+import { fakeProjectAccess } from "../../helpers/fakes/projectAccess";
 
 async function fixture(
   catalogs: {
@@ -101,7 +101,7 @@ async function fixture(
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
       modelPresetPromptsTestLayer,
-      Layer.mock(ClientEvents, {
+      fakeClientEvents({
         sendTo: () => false,
         broadcast: (event) => {
           piEvents.push(event);
@@ -135,8 +135,8 @@ async function fixture(
           files.set(path, value);
         },
       }),
-      Layer.mock(ProjectAccess, { isAllowed: (path) => Effect.succeed(path === "/project") }),
-      Layer.mock(CakeSessionRuntimes, {
+      fakeProjectAccess({ isAllowed: (path) => Effect.succeed(path === "/project") }),
+      fakeCakeSessionRuntimes({
         refreshModels: () => Effect.sync(() => void catalogRefreshes.push("sessions")),
         reloadAll: () =>
           Effect.sync(() => {
