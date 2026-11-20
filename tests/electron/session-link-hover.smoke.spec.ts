@@ -84,9 +84,6 @@ for (const theme of ["light", "dark"] as const) {
           await expect(rowLinks.nth(other)).toHaveCSS("opacity", index === other ? "1" : "0");
         }
       }
-      // Leave the last row first, as a pointer travelling to row 1 would: a session hover card
-      // opened over the previous row's title can otherwise cover row 1's leading edge.
-      await page.mouse.move(1, 1);
       await rows.nth(1).hover({ position: { x: 1, y: 18 } });
       await expect(rowLinks.nth(1)).toHaveCSS("opacity", "1");
       expect(await rows.nth(1).boundingBox()).toEqual(rowBounds);

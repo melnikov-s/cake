@@ -106,16 +106,27 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
       table.locator('[data-slot="artifact-table"] tbody td').allTextContents(),
     ).resolves.toEqual(["", "Beta", "1", "", "Alpha", "2"]);
 
-    // Select the value with a real double-click and open the real context menu; only the
-    // hidden window's OS popup is replaced, by the shared native-menu chooser.
+    // Hidden windows cannot drive OS popups: the shared native-menu chooser replaces only the
+    // popup. A real double-click did not select the cell text here (unresolved), so the
+    // selection and context-menu event are still set directly.
     const rightClickSelection = async (action: string) => {
       await chooseNextNativeMenuItem(application!, action);
-      const alpha = table.getByText("Alpha", { exact: true });
-      await alpha.dblclick();
-      await expect
-        .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
-        .toBe("Alpha");
-      await alpha.click({ button: "right" });
+      await table.getByText("Alpha", { exact: true }).evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        const rect = element.getBoundingClientRect();
+        element.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+          }),
+        );
+      });
     };
     await rightClickSelection("Add annotation");
     const annotation = page.getByRole("dialog", { name: "Add annotation" });

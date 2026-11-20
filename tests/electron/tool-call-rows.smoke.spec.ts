@@ -6,10 +6,6 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { toolCallRowsScenario } from "../../scripts/visual-capture/tool-call-rows";
 
 async function dragText(page: Page, target: Locator) {
-  // Arrive over the row first, as a reader's pointer does, so any hover-driven layout settles
-  // before the drag points are measured.
-  const arrival = (await target.boundingBox())!;
-  await page.mouse.move(arrival.x + arrival.width / 2, arrival.y + arrival.height / 2);
   // The virtualized transcript keeps measuring rows after scrolling (fc455223). Drag only once
   // the row has stopped moving, or the press lands on whatever row slid under the pointer.
   await expect
