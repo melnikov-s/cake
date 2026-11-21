@@ -123,8 +123,8 @@ importers:
         specifier: ^1.5.4
         version: 1.5.4
       r-state-tree:
-        specifier: 0.13.0
-        version: 0.13.0(@modelcontextprotocol/sdk@1.32.2(zod@4.4.3))(@preact/signals-react@3.10.3(react@19.2.8))(react@19.2.8)(ws@8.22.2)
+        specifier: 0.14.0
+        version: 0.14.0(@modelcontextprotocol/sdk@1.32.2(zod@4.4.3))(@preact/signals-react@3.10.3(react@19.2.8))(react@19.2.8)(ws@8.22.2)
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -3879,8 +3879,8 @@ packages:
   quickjs-wasi@3.6.2:
     resolution: {integrity: sha512-FCqGtGOrMgzUiIrMNMA2YnsOxCNwo31dzqXvclXUC6xeT35NJLKXQJsvbeCTjvoFAwZgEAPg8U6+KAPDGXn8Mg==}
 
-  r-state-tree@0.13.0:
-    resolution: {integrity: sha512-5K7IRLbiyfefWQT9p4fUrWpVIpYEEsaPPzyGt9ZPWimVgbjK7Ha4BrszQDFZODPe34JsAA/Bq5YhHTcNOgtjtA==}
+  r-state-tree@0.14.0:
+    resolution: {integrity: sha512-kdDCwE4mMud/C8V1zft8bzYe0G1qbJhY0By3LLsND+pjh1eoCXqjnRxU/j8SfHWQyejixqKQb0intRis1MzX9Q==}
     hasBin: true
     peerDependencies:
       '@modelcontextprotocol/sdk': ^1.32.2
@@ -8545,7 +8545,7 @@ snapshots:
 
   quickjs-wasi@3.6.2: {}
 
-  r-state-tree@0.13.0(@modelcontextprotocol/sdk@1.32.2(zod@4.4.3))(@preact/signals-react@3.10.3(react@19.2.8))(react@19.2.8)(ws@8.22.2):
+  r-state-tree@0.14.0(@modelcontextprotocol/sdk@1.32.2(zod@4.4.3))(@preact/signals-react@3.10.3(react@19.2.8))(react@19.2.8)(ws@8.22.2):
     dependencies:
       '@preact/signals-core': 1.14.4
       '@tsmetadata/polyfill': 1.1.3
