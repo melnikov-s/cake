@@ -1,5 +1,8 @@
 import { bootstrapTiming } from "../services/diagnostics/bootstrap-timing";
 import { installStdioErrorHandlers } from "./stdio-errors";
+import { leaveLaunchingRun } from "./electron-run-boundary";
+
+leaveLaunchingRun(process.env);
 
 installStdioErrorHandlers(process.stdout, process.stderr);
 bootstrapTiming.mark("entryMs");

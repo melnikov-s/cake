@@ -12,6 +12,9 @@ import { resolveCakePaths } from "../config/CakePaths";
 import { piAgentDirectory } from "../services/pi/PiPaths";
 import { BootstrapLive } from "../main/BootstrapLive";
 import { makeBackendLoggingLive } from "../services/diagnostics/BackendLoggingLive";
+import { leaveLaunchingRun } from "../main/electron-run-boundary";
+
+leaveLaunchingRun(process.env);
 
 // The network endpoint is explicitly opt-in. CAKE_HOME selects Cake metadata;
 // Pi independently resolves credentials/configuration through PI_CODING_AGENT_DIR.

@@ -322,6 +322,19 @@ it("starts an explicitly alongside launch while the run's current application st
   await empty();
 }, 20_000);
 
+it("keeps nested run steps inside the run but gives work Cake starts its own admission", async () => {
+  // The user's Cake runs inside `pnpm dev`; its agents' `pnpm test:electron:run` must not join it.
+  const run = start("boundary", { mode: "boundary" });
+  expect(await run.exit).toBe(0);
+  expect(JSON.parse(await readFile(join(root, "boundary.json"), "utf8"))).toEqual({
+    runStep: { nested: true, socket: true },
+    startedByApp: { nested: false, socket: false },
+  });
+  for (const entry of ["src/main/main-bootstrap.ts", "src/server/main.ts"])
+    expect(readFileSync(entry, "utf8")).toContain("\nleaveLaunchingRun(process.env);\n");
+  await empty();
+}, 20_000);
+
 it("observes a registration cleanup rejection and still cleans the enclosing job before shutdown", async () => {
   const run = start("cleanup-failure", { mode: "detached", cleanupFault: "EIO" });
   const app = await started("cleanup-failure");
