@@ -100,7 +100,8 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
 
   const workspace = (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-border/65 bg-background/95 px-2.5">
+      {/* Matches the 44px companion header beside it (c7c99e7f). */}
+      <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border/65 bg-background/95 px-2.5">
         <div className="flex shrink-0 items-center gap-0.5">
           <BrowserSharingMenu />
           <span aria-hidden="true" className="mx-1 h-4 w-px bg-border/65" />

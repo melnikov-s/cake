@@ -326,9 +326,11 @@ async function verifySideChat(
     const expectHeaderClose = async () => {
       await expect(close).toBeInViewport();
       await expect(actionClose).toBeInViewport();
+      // Merge-back is a Cake Chat/Project Chat side-chat action (f9365bcd); Project Session
+      // side chats offer only Close and resolve.
       await expect(
-        actions.getByRole("button", { name: "Merge into main chat", exact: true }),
-      ).toBeInViewport();
+        sideChat.getByRole("button", { name: "Merge into main chat", exact: true }),
+      ).toHaveCount(0);
       await expect(
         sideChat.getByRole("button", { name: "Close and resolve", exact: true }),
       ).toHaveCount(1);

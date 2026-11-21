@@ -79,8 +79,12 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
             variant="ghost"
             size="sm"
             className={cn(
-              "h-6 min-w-0 shrink-0 justify-start gap-2 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
-              lineage.length > 0 || currentTitle ? "max-w-1/2" : "max-w-full",
+              // With a current title, the project crumb gives up its name first, down to its
+              // artwork, so the title stays readable beside the history controls and modes.
+              "h-6 justify-start gap-2 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
+              lineage.length > 0 || currentTitle
+                ? "min-w-[26px] max-w-1/2 shrink"
+                : "min-w-0 max-w-full shrink-0",
             )}
             title={projectPath}
             aria-current={lineage.length === 0 && !currentTitle ? "page" : undefined}
