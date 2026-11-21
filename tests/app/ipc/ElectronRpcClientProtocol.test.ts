@@ -2,7 +2,7 @@ import { it } from "@effect/vitest";
 import { Context, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream } from "effect";
 import { Rpc, RpcClient, RpcGroup } from "effect/rpc";
 import type { FromClientEncoded, FromServerEncoded } from "effect/rpc/RpcMessage";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { makeElectronRpcClientProtocol } from "../../../src/ipc/transport/ElectronRpcClientProtocol";
 
 const TestRpc = RpcGroup.make(
@@ -144,5 +144,31 @@ it.effect("a fatal transport defect retires request routing before later message
     };
     host.receive(completed);
     expect(yield* Queue.take(responses)).toEqual(completed);
+  }),
+);
+
+// Regression: Chromium clamps nested setTimeout(0) yields to 4 ms, so a reply queued behind a
+// startup backlog of ~1,650 stream chunks reached its caller seconds late.
+it.effect("drains a reply queued behind a chunk backlog without host-timer yields", () =>
+  Effect.gen(function* () {
+    const host = yield* setup();
+    const client = yield* RpcClient.make(TestRpc).pipe(Effect.provideContext(host.context));
+    const reply = yield* client.echo({ value: "lookup" }).pipe(Effect.forkScoped);
+    const request = yield* Queue.take(host.sent);
+    if (request._tag !== "Request") throw new Error("Expected request");
+    // Effect yields through setImmediate in Node and setTimeout(0) in browsers.
+    const timers = [vi.spyOn(globalThis, "setImmediate"), vi.spyOn(globalThis, "setTimeout")];
+    try {
+      for (let index = 0; index < 5000; index++)
+        host.receive({ _tag: "Chunk", requestId: "999999", values: [String(index)] });
+      host.receive({ _tag: "Exit", requestId: request.id, exit: { _tag: "Success", value: "ok" } });
+      expect(yield* Fiber.join(reply)).toBe("ok");
+      // Only the waiting caller may resume through the host timer, not every delivery yield.
+      expect(
+        timers.reduce((count, timer) => count + timer.mock.calls.length, 0),
+      ).toBeLessThanOrEqual(2);
+    } finally {
+      for (const timer of timers) timer.mockRestore();
+    }
   }),
 );

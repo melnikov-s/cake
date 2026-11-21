@@ -1,6 +1,40 @@
-import { Effect, Layer, Queue, Result } from "effect";
+import { Effect, Layer, Queue, Result, Scheduler } from "effect";
 import { RpcClient, RpcClientError, RpcSerialization } from "effect/rpc";
 import { parseMainRpcMessage, type ElectronRpcTransport } from "./ElectronRpcTransport";
+
+/**
+ * Without setImmediate, Effect yields through setTimeout(0), which Chromium clamps to 4 ms once
+ * nested. The one delivery fiber yields throughout a backlog of startup stream chunks, so a reply
+ * queued behind them waited seconds. A MessageChannel task is not clamped.
+ */
+const makeDeliveryScheduler = Effect.acquireRelease(
+  Effect.sync(() => {
+    const tasks: Array<() => void> = [];
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      for (const task of tasks.splice(0)) task();
+    };
+    // Node's ports would otherwise keep a test process alive.
+    const port: object = channel.port1;
+    if ("unref" in port && typeof port.unref === "function") port.unref();
+    const scheduler = new Scheduler.MixedScheduler("async", (task) => {
+      let cancelled = false;
+      tasks.push(() => {
+        if (!cancelled) task();
+      });
+      channel.port2.postMessage(undefined);
+      return () => {
+        cancelled = true;
+      };
+    });
+    return { channel, scheduler };
+  }),
+  ({ channel }) =>
+    Effect.sync(() => {
+      channel.port1.close();
+      channel.port2.close();
+    }),
+).pipe(Effect.map(({ scheduler }) => scheduler));
 
 export const makeElectronRpcClientProtocol = (transport: ElectronRpcTransport) =>
   Layer.effect(
@@ -23,6 +57,7 @@ export const makeElectronRpcClientProtocol = (transport: ElectronRpcTransport) =
           ),
           (unsubscribe) => Effect.sync(unsubscribe),
         );
+        const deliveryScheduler = yield* makeDeliveryScheduler;
         yield* Effect.forkScoped(
           Effect.forever(
             Queue.take(incoming).pipe(
@@ -41,7 +76,7 @@ export const makeElectronRpcClientProtocol = (transport: ElectronRpcTransport) =
                 });
               }),
             ),
-          ),
+          ).pipe(Effect.provideService(Scheduler.Scheduler, deliveryScheduler)),
         );
 
         return {
