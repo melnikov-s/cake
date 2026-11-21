@@ -68,7 +68,9 @@ export function WorkspaceChatLayout({
           {workspaceHeader}
         </PopoverBoundaryContext.Provider>
         <div className="relative flex min-h-0 min-w-0 flex-1">
-          <section className="min-w-0 flex-1" aria-label={workspaceLabel}>
+          {/* The companion may take all but 5px; clip the tool surface so its toolbar never
+              spills over the companion's tabs and intercepts their clicks. */}
+          <section className="min-w-0 flex-1 overflow-hidden" aria-label={workspaceLabel}>
             {workspace}
           </section>
           {chatSidebarVisible || chatSidebarReplacement ? (

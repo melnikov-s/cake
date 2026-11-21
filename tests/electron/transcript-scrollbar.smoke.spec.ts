@@ -151,7 +151,9 @@ test("native transcript thumb fades only for transcript scrolling or a scrollbar
       // The shell's inset chat surface stops 5px before the open Workspace.
       if (paneOpen) expect(pane!.x - (rect.x + rect.width)).toBeCloseTo(5, 0);
       const idleGeometry = await geometry();
-      expect(idleGeometry.gutter).toBe(16 + 5);
+      // A 16px native gutter plus 5px splitter clearance on the right, mirrored on the left so
+      // transcript content centers in the window under the composer.
+      expect(idleGeometry.gutter).toBe(2 * (16 + 5));
       const count = await revealCount();
       await page.mouse.move(rect.x + rect.width - 13, surface.y); // Track hover.
       await page.mouse.move((await thumb(13)).x, (await thumb(13)).y); // Thumb hover.
@@ -329,7 +331,7 @@ test("native transcript thumb fades only for transcript scrolling or a scrollbar
     expect(await contrast()).toBeLessThanOrEqual(1);
     await page.emulateMedia({ forcedColors: "active" });
     await expect.poll(contrast).toBeGreaterThan(12);
-    expect((await geometry()).gutter).toBe(16 + 5);
+    expect((await geometry()).gutter).toBe(2 * (16 + 5));
     await screenshot("forced-colors-idle");
 
     const background = () =>

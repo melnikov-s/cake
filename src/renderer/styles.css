@@ -24,11 +24,12 @@
   initial-value: 0%;
 }
 
-/* The shell's splitter overlaps the chat edge by 4px. Keep the native
-   scrollbar clear of it without adding a second gutter on the left. */
+/* The shell's splitter overlaps the chat edge by 4px; keep the native scrollbar
+   clear of it. The left edge mirrors the right gutter so transcript content stays
+   centered in the window, under the centered composer. */
 .transcript {
-  border-inline-end: 5px solid transparent;
-  scrollbar-gutter: stable;
+  border-inline: 5px solid transparent;
+  scrollbar-gutter: stable both-edges;
   --transcript-thumb-color-weight: 0%;
   transition: --transcript-thumb-color-weight 140ms ease-out;
 }

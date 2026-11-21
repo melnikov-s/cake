@@ -79,11 +79,12 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
             variant="ghost"
             size="sm"
             className={cn(
-              // With a current title, the project crumb gives up its name first, down to its
-              // artwork, so the title stays readable beside the history controls and modes.
-              "h-6 justify-start gap-2 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
+              // With a title after it, the project crumb gives up its name first, down to its
+              // artwork, so the title stays readable in a narrow window.
+              // Only colors animate: the crumb's width changes with the title beside it.
+              "h-6 justify-start gap-2 px-1 text-xs font-normal text-muted-foreground transition-colors [app-region:no-drag]",
               lineage.length > 0 || currentTitle
-                ? "min-w-[26px] max-w-1/2 shrink"
+                ? "min-w-[26px] max-w-1/2 shrink-[1000]"
                 : "min-w-0 max-w-full shrink-0",
             )}
             title={projectPath}
@@ -123,8 +124,10 @@ export const ConversationBreadcrumb = observer(function ConversationBreadcrumb({
               variant="ghost"
               size="sm"
               className={cn(
-                "h-6 min-w-0 max-w-fit flex-1 px-1 text-xs font-normal text-muted-foreground [app-region:no-drag]",
-                index === lineage.length - 1 && "font-bold text-foreground",
+                // Titles start at their full width and shrink after the project crumb; the
+                // current (last) title gives up space before the ancestors that lead to it.
+                "h-6 min-w-0 max-w-fit flex-auto px-1 text-xs font-normal text-muted-foreground transition-colors [app-region:no-drag]",
+                index === lineage.length - 1 ? "font-bold text-foreground" : "shrink-[0.05]",
               )}
               title={node.title}
               aria-current={index === lineage.length - 1 ? "page" : undefined}

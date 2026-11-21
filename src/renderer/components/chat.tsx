@@ -353,13 +353,7 @@ export const Chat = observer(function Chat({
           // one on the left, so the composer itself stays centered under the transcript.
           // Embedded popover composers are narrow and reserve the right gutter only while shown.
           embedded ? bottomNavigation?.conversationId === store.id && "pr-12" : "px-12",
-          embedded
-            ? composerLeadingAccessory?.content
-              ? "max-w-[58.25rem]"
-              : "max-w-[54.25rem]"
-            : composerLeadingAccessory?.content
-              ? "max-w-[61.25rem]"
-              : "max-w-[57.25rem]",
+          embedded ? "max-w-[54.25rem]" : "max-w-[57.25rem]",
         )}
       >
         <ChatComposer

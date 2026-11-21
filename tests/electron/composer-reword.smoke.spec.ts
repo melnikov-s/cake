@@ -395,9 +395,21 @@ test("rewords composer text and opens the focused session assistant", async () =
         });
         const field = (await cakeChatComposer.boundingBox())!;
         const bubble = (await replyDialog.boundingBox())!;
-        const x = Math.max(bubble.x + bubble.width + 12, field.x + 12) - field.x;
-        expect(x).toBeLessThan(field.width);
-        await cakeChatComposer.click({ position: { x, y: field.height / 2 } });
+        // Click a visible part of the composer: beside the reply if there is room, otherwise
+        // one of its corners the reply does not cover.
+        const covered = (x: number, y: number) =>
+          field.x + x >= bubble.x - 4 &&
+          field.x + x <= bubble.x + bubble.width + 4 &&
+          field.y + y >= bubble.y - 4 &&
+          field.y + y <= bubble.y + bubble.height + 4;
+        const position = [
+          { x: bubble.x + bubble.width + 12 - field.x, y: field.height / 2 },
+          { x: field.width - 6, y: field.height - 4 },
+          { x: field.width - 6, y: 4 },
+          { x: 6, y: field.height - 4 },
+        ].find(({ x, y }) => x > 0 && x < field.width && !covered(x, y));
+        expect(position, JSON.stringify({ field, bubble })).toBeDefined();
+        await cakeChatComposer.click({ position: position! });
       } else await reopened.keyboard.press("Escape");
       await expect(replyDialog).toHaveCount(0);
       if (!name.startsWith("greeting")) await expect(reopenedTrigger).toBeFocused();

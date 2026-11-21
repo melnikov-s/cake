@@ -249,17 +249,20 @@ for (const theme of ["dark", "light"] as const) {
       await input.fill("Keep this companion draft");
       await expect(input).toHaveValue("Keep this companion draft");
       // Plain Tab intentionally focuses the composer; Shift+Tab keeps native traversal.
-      await sessions.focus();
+      await sessions.click();
+      await expect(sessions).toHaveAttribute("aria-pressed", "true");
       await page.keyboard.press("Shift+Tab");
       await expect(todos).toBeFocused();
-      await expect(todos).toHaveCSS("outline-offset", "1px");
-      await expect(todos).toHaveCSS("outline-style", "solid");
+      // Keyboard focus shows the pill tabs' 2px focus ring (c7c99e7f), not an outline.
+      await expect(todos).not.toHaveCSS("box-shadow", "none");
       await page.keyboard.press("Enter");
       await expect(todos).toHaveAttribute("aria-pressed", "true");
       await expect(chat).toHaveAttribute("aria-pressed", "false");
-      await sessions.focus();
-      await expect(sessions).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(chat).toBeFocused();
       await page.keyboard.press("Space");
+      await expect(chat).toHaveAttribute("aria-pressed", "true");
+      await sessions.click();
       await expect(sessions).toHaveAttribute("aria-pressed", "true");
       await expectSearchGap(
         page.getByRole("searchbox", { name: "Search sessions" }),
@@ -377,12 +380,15 @@ for (const theme of ["dark", "light"] as const) {
       await expect(accessory).toBeVisible();
       await expectNeutralFixedToggle();
       await page.getByRole("button", { name: "Browser", exact: true }).click();
-      // Browser preserves manual collapse; explicit VS Code entry reveals Chat.
-      await expect(companion).toBeHidden();
+      // Every tool-mode entry reveals Chat, Browser included (cd6b35a1).
+      await expect(companion).toBeVisible();
       await expect(toggle).toBeVisible();
+      await toggle.click();
+      await expect(companion).toBeHidden();
       await toggle.click();
       await expect(companion).toBeVisible();
       await toggle.click();
+      await expect(companion).toBeHidden();
       await page.getByRole("button", { name: "VS Code", exact: true }).click();
       await expect(
         page.getByRole("region", { name: "VS Code workspace", exact: true }),

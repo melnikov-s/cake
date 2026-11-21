@@ -363,7 +363,10 @@ describe("Workspace mode navigation", () => {
       expect(breadcrumb.classList.contains("overflow-hidden")).toBe(true);
       expect(breadcrumb.classList.contains("overflow-x-auto")).toBe(false);
       for (const button of within(breadcrumb).getAllByRole("button")) {
-        expect(button.classList.contains("min-w-0")).toBe(true);
+        // Every crumb can shrink; a project crumb before a title keeps its artwork (26px).
+        expect(
+          button.classList.contains("min-w-0") || button.classList.contains("min-w-[26px]"),
+        ).toBe(true);
         expect(button.querySelector("span.truncate")).not.toBeNull();
       }
       return {

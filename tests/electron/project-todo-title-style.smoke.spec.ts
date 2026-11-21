@@ -196,7 +196,9 @@ for (const theme of ["light", "dark"] as const) {
               actionsBox.x + actionsBox.width,
               `${width}px: ${name} action group stays inside the row (${JSON.stringify(layout)})`,
             ).toBeLessThanOrEqual(rowBox.x + rowBox.width + 0.1);
-            expect(titleBox.x + titleBox.width).toBeGreaterThan(actionsBox.x);
+            // Actions sit in their own reserved grid column (3977f22d), so the title ends
+            // before them rather than running underneath a floating pill (769a863c).
+            expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(actionsBox.x);
             expect(attachBox.width).toBeGreaterThanOrEqual(24);
             expect(attachBox.height).toBeGreaterThanOrEqual(24);
             const alignment = await action.evaluate((element) => {
@@ -224,11 +226,17 @@ for (const theme of ["light", "dark"] as const) {
                   (content) => content.getBoundingClientRect().left,
                 ),
                 lineHeight: parseFloat(style.lineHeight),
+                actionCount: row.querySelectorAll('[data-slot="todo-actions"] button').length,
               };
             });
-            expect(alignment.iconCenters).toHaveLength(3);
+            // The leading status plus every row action, including Focus (3977f22d).
+            expect(alignment.actionCount).toBeGreaterThanOrEqual(3);
+            expect(alignment.iconCenters).toHaveLength(1 + alignment.actionCount);
             for (const center of alignment.iconCenters)
-              expect(Math.abs(center - alignment.titleCenter)).toBeLessThan(0.5);
+              expect(
+                Math.abs(center - alignment.titleCenter),
+                `${width}px ${name}: icon centers ${JSON.stringify(alignment.iconCenters)} vs title ${alignment.titleCenter}`,
+              ).toBeLessThan(0.5);
             for (const left of alignment.bodyLefts)
               expect(Math.abs(left - alignment.titleLeft)).toBeLessThan(0.5);
             if (name === navigationTitle && width === 1500)

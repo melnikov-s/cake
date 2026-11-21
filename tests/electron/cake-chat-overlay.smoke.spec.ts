@@ -281,12 +281,15 @@ readline.createInterface({input:process.stdin}).on('line', line => {
         ];
         systemPreferences.getMediaAccessStatus = () => "granted";
       });
-      const capturing = app.waitForEvent("window");
+      // Other renderer pages are windows too; wait for the capture overlay itself.
+      const capturing = app.waitForEvent("window", {
+        predicate: (window) => new URL(window.url()).searchParams.has("screenCapture"),
+      });
       await overlay.getByRole("button", { name: "Take screenshot" }).click();
       const capture = await capturing;
       await expect(capture.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();
-      // Enter closes the capture on keydown; there is no surviving target for keyup.
-      await Promise.all([capture.waitForEvent("close"), capture.keyboard.down("Enter")]);
+      // Holding Enter previews automatic bounds; releasing it exports and closes (37700b4f).
+      await Promise.all([capture.waitForEvent("close"), capture.keyboard.press("Enter")]);
       await expect(
         overlay.getByRole("button", { name: /^View [a-z0-9]{3}\.png enlarged$/ }),
       ).toBeVisible();

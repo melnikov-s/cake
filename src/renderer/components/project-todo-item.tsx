@@ -235,61 +235,67 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           item={item}
           summary={summary}
           allowsCakeMerge={allowsCakeMerge}
-          className="mt-0.5"
+          // Top-align the inline indicator so it centers on the title's first line, not its baseline.
+          className="mt-0.5 align-top"
         />
       }
     >
-      <div
-        data-slot="todo-actions"
-        className={cn(
-          "col-start-3 row-start-1 -mt-0.5 flex items-center gap-0.5 rounded-md border border-hairline bg-card/95 p-0.5 shadow-xs backdrop-blur-sm transition-opacity",
-          hoverActionClassName,
-        )}
-      >
-        <IconButton
-          data-slot="todo-focus"
-          iconSize="inline"
-          className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
-          tooltip={`Focus to-do: ${item.title}`}
-          wrapTooltip
-          aria-pressed={selected}
-          onClick={() => store.toggleFocus(item)}
+      {/* Reserve the widest pill (four actions) so revealing Unfocus/Dismiss attention never
+          narrows the title column and rewraps it; the visible pill hugs the right edge. The 30px pill
+          sits 5px above the row so its icons center on the title's first 20px line. */}
+      <div className="col-start-3 row-start-1 -mt-[5px] flex min-w-[6.75rem] justify-end [@media(pointer:coarse)]:min-w-[11.75rem]">
+        <div
+          data-slot="todo-actions"
+          className={cn(
+            "flex items-center gap-0.5 rounded-md border border-hairline bg-card/95 p-0.5 shadow-xs backdrop-blur-sm transition-opacity",
+            hoverActionClassName,
+          )}
         >
-          <ExpandIcon />
-        </IconButton>
-        <ProjectTodoStateAction
-          item={item}
-          title={item.title}
-          done={item.state === "done"}
-          store={store}
-          className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
-        />
-        <IconButton
-          iconSize="inline"
-          className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
-          tooltip={`Attach to-do as context: ${item.title}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            store.reply(item);
-          }}
-        >
-          <PaperclipIcon />
-        </IconButton>
-        {(selected || attention) && (
+          <IconButton
+            data-slot="todo-focus"
+            iconSize="inline"
+            className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
+            tooltip={`Focus to-do: ${item.title}`}
+            wrapTooltip
+            aria-pressed={selected}
+            onClick={() => store.toggleFocus(item)}
+          >
+            <ExpandIcon />
+          </IconButton>
+          <ProjectTodoStateAction
+            item={item}
+            title={item.title}
+            done={item.state === "done"}
+            store={store}
+            className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
+          />
           <IconButton
             iconSize="inline"
             className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
-            tooltip={`${selected ? "Unfocus to-do" : "Dismiss attention"}: ${item.title}`}
-            disabled={!selected && store.busy}
+            tooltip={`Attach to-do as context: ${item.title}`}
             onClick={(event) => {
               event.stopPropagation();
-              if (selected) store.unfocus(item);
-              else void store.dismissAttention(item);
+              store.reply(item);
             }}
           >
-            <CloseIcon size={12} />
+            <PaperclipIcon />
           </IconButton>
-        )}
+          {(selected || attention) && (
+            <IconButton
+              iconSize="inline"
+              className={cn("size-6 [@media(pointer:coarse)]:size-11", hoverActionClassName)}
+              tooltip={`${selected ? "Unfocus to-do" : "Dismiss attention"}: ${item.title}`}
+              disabled={!selected && store.busy}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (selected) store.unfocus(item);
+                else void store.dismissAttention(item);
+              }}
+            >
+              <CloseIcon size={12} />
+            </IconButton>
+          )}
+        </div>
       </div>
       <div id={detailsId} className="@container/todo-update col-start-2 col-span-2 min-w-0">
         {latestUpdate && (

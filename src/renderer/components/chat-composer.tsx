@@ -68,9 +68,9 @@ export const ChatComposer = observer(function ChatComposer({
     <div
       className={cn(
         "workbench-composer @container/context-composer pointer-events-auto mx-auto w-full min-w-0 has-[[data-slot=inset-disclosures]]:[&_form]:rounded-t-none has-[[data-slot=inset-disclosures]]:[&_form]:rounded-b-[14px]",
-        leadingAccessory
-          ? "max-w-[51.25rem] @4xl/composer-dock:max-w-[55.25rem] @4xl/composer-dock:pl-16"
-          : "max-w-[51.25rem]",
+        // The composer itself stays centered; a wide dock hangs the leading accessory
+        // outside its left edge instead of padding the composer for it.
+        "max-w-[51.25rem]",
         className,
       )}
     >

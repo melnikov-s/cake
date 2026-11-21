@@ -180,7 +180,10 @@ export function createSessionHeaderTitleScenario(
       expect(geometry.beforeModes).toBe(true);
       if (state === "long-title" || subagent)
         expect(geometry.labelScrollWidth).toBeGreaterThan(geometry.labelWidth);
-      else expect(geometry.labelScrollWidth).toBe(geometry.labelWidth);
+      // In a narrow window the project name is what gives up space (user decision), so a
+      // Project Chat title may ellipsize there; wider windows show it whole.
+      else if ((await page.evaluate(() => innerWidth)) >= 1000)
+        expect(geometry.labelScrollWidth).toBe(geometry.labelWidth);
 
       // An ellipsis assertion alone misses a logo clipped inside a shrinking home button.
       // Check every breadcrumb and adjacent action's complete bounds and real hit target.
@@ -199,7 +202,15 @@ export function createSessionHeaderTitleScenario(
             const bounds = element.getBoundingClientRect();
             const nav = element.closest("nav")!.getBoundingClientRect();
             const label = element.querySelector(":scope > span:last-child")!;
-            return bounds.left >= nav.left && bounds.right <= nav.right && label.clientWidth > 20;
+            const inside = bounds.left >= nav.left && bounds.right <= nav.right;
+            // The project crumb before a title may collapse to its whole artwork first.
+            const avatar = element.querySelector('[data-slot="avatar"]')?.getBoundingClientRect();
+            const collapsedToArtwork =
+              element.getAttribute("aria-current") !== "page" &&
+              avatar !== undefined &&
+              avatar.left >= bounds.left &&
+              avatar.right <= bounds.right;
+            return inside && (label.clientWidth > 20 || collapsedToArtwork);
           }),
         ).toBe(true);
       }
