@@ -46,6 +46,7 @@ import { withoutPassiveNotices } from "../../contracts/conversations/internal-in
 import { MemorySummaryError, memoryWork, type MemoryWork } from "../opt-memory/memory-work";
 
 import { durableSideChatImport, importedHistoryText } from "./durable-side-chat-history";
+import { durableAntigravityOriginal } from "./durable-antigravity-entries";
 import { recoverRetainedMemory } from "./durable-memory-migration";
 
 const ChatMemoryState = Schema.Struct({
@@ -79,6 +80,16 @@ const StateDoc = defineDoc<ChatMemoryState>({
 // Immutable nodes use indexed entry reads, not document families: Durable retains loaded
 // document trackers for its lifetime. Only StateDoc (bounded views/DAG + logarithmic forest) is live.
 const NodeEntry = defineEntry<MemoryNode>("cake.chat-memory-node/v1");
+const AntigravityStateDoc = defineDoc<ChatMemoryState>({
+  kind: "cake.chat-memory-antigravity-state",
+  version: 1,
+  scope: "conversation",
+  checkpointWhen: () => false,
+  history: "latest",
+  fork: "initial",
+  initial: () => initialMemoryTreeState(),
+});
+const AntigravityNodeEntry = defineEntry<MemoryNode>("cake.chat-memory-antigravity-node/v1");
 
 // SAFETY: SDK ids are branded numbers; values here come from Durable or schema-validated persisted Id fields.
 const entryId = (value: number) => value as EntryId;
@@ -177,6 +188,9 @@ function durableMessageText(message: Message, includeTools = true): string {
   return `user: ${text}`;
 }
 const sourceText = (entry: EntryRecord, includeTools = true) => {
+  const external = durableAntigravityOriginal(entry);
+  if (external?.text)
+    return `${external.role === "user" ? "user" : "talk (Antigravity)"}: ${external.text}`;
   const imported = durableSideChatImport(entry);
   if (imported) return importedHistoryText(imported);
   // Only originals enter the tree. Reset handoffs, system declarations, emergency
@@ -203,24 +217,28 @@ export function createDurableChatMemory(
   root: Conversation,
   storage: Storage,
   options: DurableMemoryOptions,
+  transportSource?: (entry: EntryRecord) => string,
 ) {
+  const memoryState = transportSource ? AntigravityStateDoc : StateDoc;
+  const memoryNode = transportSource ? AntigravityNodeEntry : NodeEntry;
+  const source = transportSource ?? sourceText;
   const contextFor = (signal: AbortSignal) => withAbortSignal(signal, BACKGROUND_CONTEXT);
   let toolHistoryAfter = 0;
   /** Runtime boot calls this before admitting new inputs, including for an old
    * conversation that has no index yet. The saved boundary never moves on reopen. */
   const initializeToolPolicy = async (signal: AbortSignal) => {
-    const snapshot = await harness.snapshot(StateDoc, root.id, contextFor(signal));
+    const snapshot = await harness.snapshot(memoryState, root.id, contextFor(signal));
     if (snapshot && !snapshot.captureToolHistoryAfter) return;
     const through = (await root.entries({}, 1, undefined, contextFor(signal))).items[0]?.id ?? 0;
     await root.commit(async (tx) => {
-      const doc = await tx.doc(StateDoc, root.id);
+      const doc = await tx.doc(memoryState, root.id);
       if (snapshot && !doc.captureToolHistoryAfter) return;
       doc.toolHistoryAfter = through;
       delete doc.captureToolHistoryAfter;
     }, contextFor(signal));
   };
   const state = async (signal: AbortSignal) => {
-    const snapshot = await harness.snapshot(StateDoc, root.id, contextFor(signal));
+    const snapshot = await harness.snapshot(memoryState, root.id, contextFor(signal));
     toolHistoryAfter = snapshot?.toolHistoryAfter ?? 0;
     return structuredClone(
       await Schema.decodeUnknownPromise(MemoryTreeState)(snapshot ?? initialMemoryTreeState()),
@@ -228,7 +246,7 @@ export function createDurableChatMemory(
   };
   const node = async (ref: number, signal: AbortSignal): Promise<StoredNode> => {
     const entry = (await storage.entry(root.id, entryId(ref), contextFor(signal)))?.entry;
-    if (!NodeEntry.is(entry)) throw new Error(`Missing Cake Chat summary entry ${ref}`);
+    if (!memoryNode.is(entry)) throw new Error(`Missing Cake Chat summary entry ${ref}`);
     return { ...(await Schema.decodeUnknownPromise(MemoryNode)(entry.data)), entry: entry.id };
   };
   const tree = createMemoryTree(
@@ -237,26 +255,27 @@ export function createDurableChatMemory(
       node,
       save: (value, signal) =>
         root.commit(async (tx) => {
-          const doc = await tx.doc(StateDoc, root.id);
+          const doc = await tx.doc(memoryState, root.id);
           Object.assign(doc, value);
           if (!value.pending) delete doc.pending;
         }, contextFor(signal)),
       append: async (value, current, assigned, signal) => {
         await root.commit(async (tx) => {
-          const stored = await tx.appendEntry(NodeEntry, root.id, { data: value });
+          const stored = await tx.appendEntry(memoryNode, root.id, { data: value });
           assigned(stored.id);
-          Object.assign(await tx.doc(StateDoc, root.id), current);
+          Object.assign(await tx.doc(memoryState, root.id), current);
         }, contextFor(signal));
       },
       original: async (ref, signal) => {
         const original = (await storage.entry(root.id, entryId(ref), contextFor(signal)))?.entry;
         if (!original) throw new MemorySummaryError({ reason: "missing-original" });
         return (
-          sourceText(original, original.id > toolHistoryAfter) ||
+          source(original, original.id > toolHistoryAfter) ||
           "Historical tool traffic omitted from automatic memory; the original remains retrievable."
         );
       },
       context: async (signal) => {
+        if (transportSource) return { instructions: "", tools: [] };
         const active = await root.context(contextFor(signal));
         return {
           instructions: getCurrentSystemPrompt(active.messages) || MEMORY_COMPACTOR_PROMPT,
@@ -268,9 +287,11 @@ export function createDurableChatMemory(
           ).tools,
         };
       },
-      render,
+      render: transportSource
+        ? (nodes) => nodes.map((node) => node.text.replace(/\p{Cc}+/gu, " ").trim()).join("\n")
+        : render,
     },
-    { ...options, compactionPolicy: MEMORY_COMPACTOR_PROMPT },
+    { ...options, extractive: Boolean(transportSource), compactionPolicy: MEMORY_COMPACTOR_PROMPT },
   );
   const { anchored, save, fitViews, plan, build, lookupIndexed } = tree;
 
@@ -282,15 +303,15 @@ export function createDurableChatMemory(
   ): Promise<DurableChatMemoryView & { complete: boolean }> => {
     const work = batch.work ?? memoryWork(signal);
     signal = work.signal;
-    let snapshot = await harness.snapshot(StateDoc, root.id, contextFor(signal));
+    let snapshot = await harness.snapshot(memoryState, root.id, contextFor(signal));
     if (snapshot?.captureToolHistoryAfter) {
       await initializeToolPolicy(signal);
-      snapshot = await harness.snapshot(StateDoc, root.id, contextFor(signal));
+      snapshot = await harness.snapshot(memoryState, root.id, contextFor(signal));
     }
     if (snapshot?.recoverRetained) {
       const recovered = await recoverRetainedMemory(root, await state(signal), signal);
       await root.commit(async (tx) => {
-        const doc = await tx.doc(StateDoc, root.id);
+        const doc = await tx.doc(memoryState, root.id);
         if (!doc.recoverRetained) return;
         if (recovered) {
           Object.assign(doc, recovered);
@@ -348,7 +369,7 @@ export function createDurableChatMemory(
         let skipped: number | undefined;
         for (const original of page.items) {
           signal.throwIfAborted();
-          if (sourceText(original, original.id > toolHistoryAfter)) {
+          if (source(original, original.id > toolHistoryAfter)) {
             if (batch.readyOnly) return incomplete();
             const firstOriginal = originals[0];
             if (

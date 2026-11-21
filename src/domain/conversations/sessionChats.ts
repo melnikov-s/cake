@@ -37,7 +37,10 @@ import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type { PiQueuedMessages } from "../../contracts/conversations/pending-message-data";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  isCakeChatSessionId,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { acquireTarget } from "../project-sessions/projectSessionOperations";
 import { findLocation } from "../project-sessions/projectSessionMetadata";
 import {
@@ -167,26 +170,33 @@ export const bindRenderer = Effect.fn("SessionChats.bindRenderer")(function* (
   yield* coordinator.bind(target, connectionId).pipe(asError("bindRenderer"));
 });
 
-/** This explicit renderer-only path never enriches the draft with notices,
- * attachments, metadata, transcript, or context from Cake's normal delivery. */
+/** This explicit desktop route never enriches the draft through Pi delivery.
+ * Project Chat computes its own eligible memory at the ACP boundary. */
 export const antigravity = Effect.fn("SessionChats.antigravity")(function* (
   input: { sessionId: string; text: string; renderUserMessageAsMarkdown: boolean },
   connectionId: number,
 ) {
   const connections = yield* ClientConnections;
-  const handle = yield* acquire(input.sessionId);
-  if (
-    connections.kind(connectionId) !== "desktop" ||
-    handle.profile !== "ProjectSession" ||
-    !handle.antigravity
-  )
+  if (connections.kind(connectionId) !== "desktop")
     return yield* new SessionChatError({
       operation: "antigravity",
-      message: "Antigravity is available only in active desktop Project Sessions",
+      message: "Antigravity requires the requesting desktop",
+    });
+  const handle = yield* acquire(input.sessionId);
+  const targetKind =
+    handle.profile === "ProjectSession"
+      ? "ProjectSession"
+      : handle.profile === "CakeChatSession" && isProjectChatSessionId(input.sessionId)
+        ? "CakeChatSession"
+        : undefined;
+  if (!targetKind || !handle.antigravity)
+    return yield* new SessionChatError({
+      operation: "antigravity",
+      message: "Antigravity is available only in active desktop Project Sessions and Project Chat",
     });
   const coordinator = yield* RendererRequestCoordinator;
   yield* coordinator
-    .bind({ _tag: "ProjectSession", sessionId: input.sessionId }, connectionId)
+    .bind({ _tag: targetKind, sessionId: input.sessionId }, connectionId)
     .pipe(asError("antigravity"));
   yield* coordinator
     .requireDesktopConnection(input.sessionId, connectionId)
@@ -196,17 +206,26 @@ export const antigravity = Effect.fn("SessionChats.antigravity")(function* (
     .antigravity(input.text, input.renderUserMessageAsMarkdown, async (request, signal) => {
       if (connections.kind(connectionId) !== "desktop") return undefined;
       const decision = await run(
-        coordinator.requestUiForConnection(connectionId, input.sessionId, {
-          kind: "select",
-          title: "Antigravity permission",
-          message: request.description,
-          options: [
-            { id: "deny", label: "Deny" },
-            ...(request.canAllowOnce ? [{ id: "allow", label: "Allow once" }] : []),
-          ],
-          signal,
-          timeout: 120_000,
-        }),
+        coordinator.requireDesktopConnection(input.sessionId, connectionId).pipe(
+          Effect.andThen(
+            coordinator.requestUiForConnection(
+              connectionId,
+              input.sessionId,
+              {
+                kind: "select",
+                title: "Antigravity permission",
+                message: request.description,
+                options: [
+                  { id: "deny", label: "Deny" },
+                  ...(request.canAllowOnce ? [{ id: "allow", label: "Allow once" }] : []),
+                ],
+                signal,
+                timeout: 120_000,
+              },
+              targetKind,
+            ),
+          ),
+        ),
         { signal },
       );
       return decision === "allow" || decision === "deny" ? decision : undefined;

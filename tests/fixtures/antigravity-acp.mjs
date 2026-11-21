@@ -50,7 +50,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       break;
     case "session/prompt": {
       promptId = request.id;
-      const first = request.params.prompt[0].text;
+      const first = request.params.prompt.at(-1).text;
       text("DO NOT SHOW OTHER CHAT", "other-chat");
       text("ACP first chunk · café");
       if (first === "disconnect") process.exit(1);

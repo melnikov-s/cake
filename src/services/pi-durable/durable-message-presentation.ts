@@ -1,6 +1,8 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { defineDoc, type Conversation, type EntryId } from "@earendil-works/pi-durable";
 
+import { AntigravityUserEntry } from "./durable-antigravity-entries";
+
 /** Display preferences only. Originals, inbox content and model context stay SDK-owned. */
 export const UserMessagePresentationDoc = defineDoc<{
   overrides: Record<string, boolean>;
@@ -27,7 +29,7 @@ export async function setDurableUserMessageMarkdown(
     const entry = await tx.entry(id as EntryId);
     if (
       entry?.conversationId !== conversation.id ||
-      entry.kind !== "pi.user" ||
+      (entry.kind !== "pi.user" && !AntigravityUserEntry.is(entry)) ||
       !entry.model?.some((message) => message.role === "user")
     )
       throw new Error("The user message is not in the active conversation");

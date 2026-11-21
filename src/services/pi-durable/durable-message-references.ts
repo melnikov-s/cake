@@ -13,8 +13,13 @@ import { durableInputPresentation } from "./durable-input-presentation";
 
 import { DURABLE_SIDE_CHAT_IMPORT } from "./durable-side-chat-history";
 
+import { AntigravityUserEntry, durableAntigravityOriginal } from "./durable-antigravity-entries";
+
 /** Original IDs are Pi Durable entry IDs, exactly as in the existing GUI history projection. */
 function original(entry: EntryRecord) {
+  const external = durableAntigravityOriginal(entry);
+  if (external)
+    return { role: external.role, content: external.text, timestamp: external.timestamp };
   if (!["pi.user", "pi.assistant", "pi.tool-result", DURABLE_SIDE_CHAT_IMPORT].includes(entry.kind))
     return undefined;
   return entry.model?.find((message) => message.role !== "system");
@@ -24,7 +29,7 @@ function metadata(sessionId: string, entry: EntryRecord): MessageMetadata | unde
   if (!message) return undefined;
   const text = textFromContent(message.content);
   const attachments =
-    message.role === "user"
+    message.role === "user" && !AntigravityUserEntry.is(entry)
       ? parseContextAttachmentBlocks(durableInputPresentation(text).body).attachments
       : [];
   const ref = messageReference(sessionId, String(entry.id));
@@ -121,7 +126,12 @@ export async function readDurableMessageReference(
           })
           .filter(Boolean)
           .join("\n");
-  const text = message.role === "user" ? durableInputPresentation(raw).text : raw;
+  const text =
+    entry && AntigravityUserEntry.is(entry)
+      ? raw
+      : message.role === "user"
+        ? durableInputPresentation(raw).text
+        : raw;
   const offset = query.offset ?? 0;
   const maxChars = query.maxChars ?? 4_000;
   if (offset > text.length) throw new Error("Message text offset is beyond the original content");

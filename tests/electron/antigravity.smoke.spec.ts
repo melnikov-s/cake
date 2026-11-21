@@ -1,15 +1,19 @@
-import { chmod, copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { cakePortableInstructions } from "../../src/services/pi/runtime/cake-instructions";
+import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation";
+import { seedPermanentChatHistory } from "./durable-chat-fixture";
 import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("Project Session composer chooses Antigravity and authorizes real ACP requests", async ({}, info) => {
+test("desktop Project Session and Project Chat route through the Antigravity picker and permissions", async ({}, info) => {
   const root = await mkdtemp(join(tmpdir(), "cake-antigravity-smoke-"));
   const userData = join(root, "user-data");
   const project = join(root, "project");
@@ -38,6 +42,10 @@ test("Project Session composer chooses Antigravity and authorizes real ACP reque
     manager.appendModelChange(model.provider, model.modelId);
     manager.appendMessage({ role: "user", content: "Pi transcript ready", timestamp: Date.now() });
     const sessionId = manager.getSessionId();
+    await seedPermanentChatHistory(
+      join(pi, "project-chats", createHash("sha256").update(project).digest("hex")),
+      durableInputText("The Project Chat example is an atlas", [], false),
+    );
     await writeFile(join(userData, "window-state.json"), windowState({ project, sessionId }));
     await writeFile(
       join(cakeHome, "state", "application.json"),
@@ -116,7 +124,9 @@ test("Project Session composer chooses Antigravity and authorizes real ACP reque
       await pickerDialog.getByRole("button", { name: /Gemini · via Antigravity/ }).click();
     };
     await chooseAntigravity();
-    await expect(page.getByText(/Cake shares only this message/)).toBeVisible();
+    await expect(
+      page.getByText(/Cake sends its instructions and this message, not Pi history/),
+    ).toBeVisible();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     const send = async (text: string) => {
       await composer.fill(text);
@@ -154,6 +164,53 @@ test("Project Session composer chooses Antigravity and authorizes real ACP reque
     await rename(agy, join(bin, "agy-disabled"));
     await send("show missing CLI");
     await expect(page.getByText(/not on Cake’s PATH/)).toBeVisible();
+    await picker.click();
+    await pickerDialog.getByRole("button", { name: /Return to Pi/ }).click();
+    await expect(picker).not.toContainText("Antigravity");
+
+    // Restore the fixture after the missing-CLI assertion.
+    await rename(join(bin, "agy-disabled"), agy);
+    await rm(join(project, "fixture-auth-required"));
+    // Switch to the permanent chat. It opts in separately from the Project Session.
+    await page.getByRole("button", { name: "Open Project Chat for project", exact: true }).click();
+    await expect(
+      page.getByText("The Project Chat example is an atlas", { exact: true }),
+    ).toBeVisible();
+    await expect(picker).not.toContainText("Antigravity");
+    await chooseAntigravity();
+    await expect(page.getByText(/bounded excerpts of your Project Chat messages/)).toBeVisible();
+    const projectChat = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
+    const question = "fixture permission from Project Chat";
+    await projectChat.fill(question);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(prompt).toContainText("echo fixture-only");
+    await page.screenshot({
+      path: info.outputPath("project-chat-antigravity-permission.png"),
+      animations: "disabled",
+    });
+    await prompt.getByRole("combobox").selectOption({ label: "Allow once" });
+    await prompt.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByText("Allowed fixture reply", { exact: true })).toBeVisible();
+    await expect(page.getByText(question, { exact: true })).toHaveCount(1);
+    await expect(
+      page.getByText(/Fresh Antigravity session using Cake’s instructions/),
+    ).toBeVisible();
+    await page.screenshot({
+      path: info.outputPath("project-chat-antigravity-turn.png"),
+      animations: "disabled",
+    });
+    const wire = await readFile(join(project, "fixture-acp-wire.ndjson"), "utf8");
+    const lastPrompt = wire
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+      .findLast((frame) => frame.method === "session/prompt");
+    expect(lastPrompt.params.prompt).toEqual([
+      { type: "text", text: `Cake instructions:\n${cakePortableInstructions("project-chat")}` },
+      { type: "text", text: expect.stringContaining("The Project Chat example is an atlas") },
+      { type: "text", text: question },
+    ]);
+    expect(JSON.stringify(lastPrompt)).not.toContain("Pi transcript ready");
     await picker.click();
     await pickerDialog.getByRole("button", { name: /Return to Pi/ }).click();
     await expect(picker).not.toContainText("Antigravity");

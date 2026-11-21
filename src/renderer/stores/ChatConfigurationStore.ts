@@ -12,7 +12,9 @@ import { UtilityModelContext } from "./context/UtilityModelContext";
 
 export interface ChatConfigurationStoreProps {
   session(): Conversation | undefined;
-  antigravity?(): { selected: boolean; select(selected: boolean): void } | undefined;
+  antigravity?():
+    | { projectChat: boolean; selected: boolean; select(selected: boolean): void }
+    | undefined;
   operations: {
     start(owner?: string): string;
     finish(operationId: string): void;

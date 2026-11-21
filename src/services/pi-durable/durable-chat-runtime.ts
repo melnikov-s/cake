@@ -101,7 +101,11 @@ import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./ca
 import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { AssistantContextDoc, transitionAssistantContext } from "./durable-assistant-context";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import { createDurableAntigravity } from "./durable-antigravity";
+import {
+  isCakeChatSessionId,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
 import type { InternalInput } from "../../contracts/conversations/internal-input";
@@ -578,6 +582,17 @@ export async function createDurableCakeChatRuntime(
     publish,
     isDisposed: () => disposed,
   });
+  const agy = isProjectChatSessionId(sessionId)
+    ? createDurableAntigravity({
+        engine,
+        sessionId,
+        cwd: options.cwd,
+        budget: () => preferences.preferences().memoryViewBytes,
+        contextLimit: () => preferences.preferences().contextLimitTokens,
+        beforeInput: turnStop.beforeInput,
+        onChanged: publish,
+      })
+    : undefined;
   const {
     inbox,
     requestId,
@@ -588,7 +603,14 @@ export async function createDurableCakeChatRuntime(
     storage,
     kind: "root",
     executingTurnIds: () => activeTurnIds,
-    beforeSendNow: turnStop.beforeInput,
+    beforeSendNow: async () => {
+      agy?.requireIdle();
+      const assertCurrent = await turnStop.beforeInput();
+      return () => {
+        agy?.requireIdle();
+        assertCurrent();
+      };
+    },
   });
   const history = (cursor?: string) =>
     engine.root.commit(
@@ -643,6 +665,7 @@ export async function createDurableCakeChatRuntime(
     internal?: InternalInput,
     presentationMode?: ProjectSessionPresentationMode,
   ) => {
+    agy?.requireIdle();
     const assertCurrent = await turnStop.beforeInput();
     if (!companion && !selection) {
       const preset = defaultConfiguration();
@@ -714,6 +737,7 @@ export async function createDurableCakeChatRuntime(
       },
       // Reference attachments have no image parts.
     ];
+    agy?.requireIdle();
     assertCurrent();
     if (id && canceledScheduledInputs.has(id))
       throw new TurnCanceledError("Scheduled input was canceled");
@@ -761,8 +785,18 @@ export async function createDurableCakeChatRuntime(
         ?.context?.sessionId,
     importSideChatHistory: (input) => sideChats.importHistory(input),
     get streaming() {
-      return !turnStop.stopped() && streaming;
+      return Boolean(agy?.activeId()) || (!turnStop.stopped() && streaming);
     },
+    get antigravityActive() {
+      return agy?.activeId() !== undefined;
+    },
+    antigravity:
+      agy &&
+      ((request) => {
+        if (disposed)
+          throw new Error("Wait for the current work to finish before using Antigravity.");
+        return agy.start(request);
+      }),
     executingTurnIds: () => activeTurnIds,
     scheduledInputReceipt: (turnId) => scheduledInputReceipt(engine.root, turnId),
     async cancelScheduledInput(turnId) {
@@ -836,7 +870,7 @@ export async function createDurableCakeChatRuntime(
           ),
         );
         const selected = selectedModel(agent.model);
-        const parts: UiPart[] = [...page.parts];
+        const parts: UiPart[] = [...page.parts, ...(agy?.parts() ?? [])];
         for (const item of items)
           if (item.mode !== "write") {
             const id = await requestId(item);
@@ -911,10 +945,11 @@ export async function createDurableCakeChatRuntime(
             advisoryAccountingMs: performance.now() - accountingStartedAt,
           }),
         );
-      return turnStop.project({
+      const projected = turnStop.project({
         ...snapshot,
         usage: { ...snapshot.usage, cakeChatContext },
       });
+      return agy?.activeId() ? { ...projected, streaming: true } : projected;
     },
     async prompt(
       text,
@@ -992,17 +1027,22 @@ export async function createDurableCakeChatRuntime(
       await setDurableUserMessageMarkdown(engine.root, entryId, markdown);
     },
     async compact(instructions) {
+      agy?.requireIdle();
       requireSelection();
       const job = await engine.root.compact(instructions, BACKGROUND_CONTEXT);
       await engine.harness.waitForTask(job, BACKGROUND_CONTEXT);
     },
     async compactMemory() {
+      agy?.requireIdle();
       if (disposed) throw new Error("The Cake runtime has been disposed");
       await engine.compact(requireSelection());
       publish();
     },
-    abort: turnStop.abort,
-    waitForStop: turnStop.waitForStop,
+    abort: () => (agy?.activeId() ? agy.abort() : turnStop.abort()),
+    waitForStop: async () => {
+      await agy?.wait();
+      await turnStop.waitForStop();
+    },
     async setModel(provider, modelId) {
       if (companion)
         throw new Error("The companion follows the utility model configured in Settings");
@@ -1111,6 +1151,7 @@ export async function createDurableCakeChatRuntime(
     navigate: unsupported,
     async dispose() {
       disposed = true;
+      await agy?.abort();
       const resource = shutdownResource(sessionId);
       await shutdownDiagnostics.promise("durable.drainReloads", resource, () => reloading);
       await shutdownDiagnostics.promise("durable.publication", resource, () => publishing);

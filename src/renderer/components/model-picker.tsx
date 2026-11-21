@@ -44,7 +44,7 @@ export interface ModelPickerProps {
   /** Current identity's display name, independent of the full availability catalog. */
   currentModelName?: string;
   /** Separate turn runtime. Never enters the Pi model catalog or configuration. */
-  antigravity?: { selected: boolean; select(selected: boolean): void };
+  antigravity?: { projectChat: boolean; selected: boolean; select(selected: boolean): void };
   onOpen?(): void;
   value?: ModelConfigurationValue;
   presets?: readonly ModelPreset[];
@@ -466,7 +466,11 @@ export const ModelPicker = observer(function ModelPicker({
                     <NavItem
                       active={antigravity.selected}
                       label="Gemini · via Antigravity"
-                      description="Google CLI · text only"
+                      description={
+                        antigravity.projectChat
+                          ? "Google CLI · shares selected Project Chat memory"
+                          : "Google CLI · no Pi history"
+                      }
                       onClick={() => {
                         close();
                         antigravity.select(true);

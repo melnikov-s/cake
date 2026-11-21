@@ -7,10 +7,14 @@ import {
   type AcpStatus,
   type AcpTool,
 } from "../../antigravity/acp";
+import { cakePortableInstructions } from "./cake-instructions";
 import { TurnCanceledError } from "./RuntimeTurnCompletion";
 
 const startedType = "cake.antigravity.start/v1";
-const responseType = "cake.antigravity.reply/v1";
+export const antigravityResponseType = "cake.antigravity.reply/v1";
+const responseType = antigravityResponseType;
+export const antigravityReplyLabel =
+  "[External assistant context: the following text was produced by Google Antigravity, not by Pi and not by the user.]";
 const textLimit = 131_072;
 const antigravityPromptLimit = 32_768;
 const toolSegment = Schema.Struct({
@@ -24,22 +28,25 @@ const detailsSchema = Schema.Struct({
   id: Schema.String.check(Schema.isUUID(4)),
   sessionId: Schema.NonEmptyString,
   cwd: Schema.String,
+  scope: Schema.optionalKey(Schema.Literal("project-chat")),
   resumeId: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isMaxLength(1024))),
   status: Schema.Literals(["connecting", "new", "resumed", "no-resume", "resume-unavailable"]),
   ending: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
   segments: Schema.Array(segment).check(Schema.isMaxLength(300)),
 });
 type Segment = typeof segment.Type;
-type Details = typeof detailsSchema.Type;
+export type AntigravityTurnDetails = typeof detailsSchema.Type;
+type Details = AntigravityTurnDetails;
 const acceptedSchema = Schema.Struct({ id: detailsSchema.fields.id });
 const statusText = {
   connecting: "Connecting to the Antigravity CLI…",
-  new: "New Antigravity session. Cake sent only this message.",
-  resumed: "Resumed Antigravity’s own context. Cake sent only this message, not any Pi turns.",
+  new: "New Antigravity session. Cake sent its instructions and this message, not Pi history.",
+  resumed:
+    "Resumed Antigravity’s own context. Cake sent its instructions and this message, not Pi history.",
   "no-resume":
-    "This CLI does not advertise resume. Each turn starts fresh; Cake sends only the current message.",
+    "This CLI does not advertise resume. Cake sent its instructions and this message, not Pi history.",
   "resume-unavailable":
-    "Could not resume Antigravity’s context. A new session received only this message.",
+    "Could not resume Antigravity’s context. Cake started fresh with its instructions and this message.",
 } satisfies Record<AcpStatus, string>;
 
 const readDetails = (details: unknown) =>
@@ -59,7 +66,9 @@ function project(details: Details, texts: readonly string[], live: boolean): UiP
       detail:
         details.status === "connecting" && !live
           ? "This Antigravity turn did not start."
-          : statusText[details.status],
+          : details.scope === "project-chat" && details.status !== "connecting"
+            ? "Fresh Antigravity session using Cake’s instructions, this message and any eligible Project Chat memory."
+            : statusText[details.status],
     },
     ...details.segments.flatMap((part, index): UiPart[] => {
       const id = `agy-${details.id}-${index}`;
@@ -104,7 +113,11 @@ export function antigravityParts(entry: SessionEntry) {
   const texts = entry.content
     .slice(1)
     .flatMap((block) => (block.type === "text" ? [block.text] : []));
-  return project(details, texts, false);
+  return project(details, texts, false).map((part) =>
+    part.kind === "text" && details.scope === "project-chat"
+      ? { ...part, entryId: entry.id }
+      : part,
+  );
 }
 
 export function interruptedAntigravityParts(entries: readonly SessionEntry[]): UiPart[] {
@@ -166,7 +179,50 @@ export function createAntigravityTranscript(input: {
   onStarted(): void;
   onChanged(): void;
 }) {
-  const { session, cwd, onStarted, onChanged } = input;
+  const { session, cwd } = input;
+  const manager = session.sessionManager;
+  return createAntigravityTurnController({
+    ...input,
+    sessionId: () => manager.getSessionId(),
+    scope: "project-session",
+    resume: () => resumeFrom(session, cwd),
+    admit(request) {
+      const entryId = manager.appendMessage({
+        role: "user",
+        content: request.text,
+        timestamp: Date.now(),
+      });
+      manager.appendCustomEntry(startedType, { id: request.id });
+      if (request.markdown)
+        manager.appendCustomEntry("cake.user-message-presentation/v1", {
+          targetId: entryId,
+          renderAs: "markdown",
+        });
+    },
+    persist: async (details, content) => {
+      await session.sendCustomMessage(
+        { customType: responseType, content, display: true, details },
+        { triggerTurn: false },
+      );
+    },
+  });
+}
+
+export function createAntigravityTurnController(input: {
+  sessionId(): string;
+  cwd: string;
+  scope: "project-session" | "project-chat";
+  resume?(): string | undefined;
+  admit(request: CakeAntigravityInput): void | Promise<void>;
+  prepare?(
+    request: CakeAntigravityInput,
+    signal: AbortSignal,
+  ): Promise<{ history?: string; maxPromptBytes: number }>;
+  persist(details: Details, content: { type: "text"; text: string }[]): Promise<void>;
+  onStarted?(): void;
+  onChanged(): void;
+}) {
+  const { cwd, onStarted, onChanged, scope } = input;
   let active: { id: string; controller: AbortController; done: Promise<void> } | undefined;
   let liveParts: UiPart[] = [];
   let persistenceFailed = false;
@@ -181,13 +237,13 @@ export function createAntigravityTranscript(input: {
       throw new Error(
         "Antigravity accepts plain messages of up to 32,768 characters, not Cake commands",
       );
-    const manager = session.sessionManager;
-    const resumeId = resumeFrom(session, cwd);
+    const resumeId = input.resume?.();
     const controller = new AbortController();
     const details: Details = {
       id: request.id,
-      sessionId: manager.getSessionId(),
+      sessionId: input.sessionId(),
       cwd,
+      ...(scope === "project-chat" ? { scope } : null),
       status: "connecting",
       segments: [],
     };
@@ -228,32 +284,34 @@ export function createAntigravityTranscript(input: {
       };
       update();
     }
-    // This journal contains no prompt or output of its own. The Pi user entry
-    // is the only durable copy of what was sent; no automatic recovery runs it.
+    // Save the original before the transport starts. No recovery path runs it.
+    let admitted: void | Promise<void>;
     try {
-      const entryId = manager.appendMessage({
-        role: "user",
-        content: request.text,
-        timestamp: Date.now(),
-      });
-      manager.appendCustomEntry(startedType, { id: request.id });
-      if (request.markdown)
-        manager.appendCustomEntry("cake.user-message-presentation/v1", {
-          targetId: entryId,
-          renderAs: "markdown",
-        });
+      admitted = input.admit(request);
     } catch {
       persistenceFailed = true;
-      throw new Error("Cake could not save the message in Pi. Nothing was sent to Antigravity.");
+      throw new Error("Cake could not save the message. Nothing was sent to Antigravity.");
     }
     const run = async () => {
+      try {
+        await admitted;
+      } catch (error) {
+        liveParts = [];
+        active = undefined;
+        onChanged();
+        throw error;
+      }
       let failure: Error | undefined;
       let truncated = false;
       let nextResume: string | undefined;
       try {
+        const prepared = await input.prepare?.(request, controller.signal);
+        controller.signal.throwIfAborted();
         const result = await runAcpTurn({
+          ...prepared,
           cwd,
           text: request.text,
+          instructions: cakePortableInstructions(scope),
           resumeId,
           signal: controller.signal,
           permission: request.permission,
@@ -289,39 +347,34 @@ export function createAntigravityTranscript(input: {
               ? "Antigravity refused this request."
               : "Antigravity reached a turn limit.",
           );
-        else nextResume = result.resumeId;
+        else if (scope === "project-session") nextResume = result.resumeId;
       } catch (error) {
-        failure =
-          error instanceof Error ? error : new Error("Antigravity could not complete the turn.");
+        failure = controller.signal.aborted
+          ? new TurnCanceledError("Antigravity turn canceled; the next turn starts fresh.")
+          : error instanceof Error
+            ? error
+            : new Error("Antigravity could not complete the turn.");
       }
       clearTimeout(timer);
       liveParts = [];
       try {
-        await session.sendCustomMessage(
+        await input.persist(
           {
-            customType: responseType,
-            content: [
-              {
-                type: "text",
-                text: "[External assistant context: the following text was produced by Google Antigravity, not by Pi and not by the user.]",
-              },
-              ...texts.map((text) => ({ type: "text" as const, text })),
-            ],
-            display: true,
-            details: {
-              ...details,
-              segments,
-              ...(failure ? { ending: failure.message } : null),
-              ...(nextResume ? { resumeId: nextResume } : null),
-            },
+            ...details,
+            segments,
+            ...(failure ? { ending: failure.message } : null),
+            ...(nextResume ? { resumeId: nextResume } : null),
           },
-          { triggerTurn: false },
+          [
+            { type: "text", text: antigravityReplyLabel },
+            ...texts.map((text) => ({ type: "text" as const, text })),
+          ],
         );
       } catch {
         // Do not run Pi with a stale in-memory view after a failed append.
         persistenceFailed = true;
         throw new Error(
-          "Cake could not save Antigravity’s reply in Pi. Reopen the session before continuing.",
+          "Cake could not save Antigravity’s reply. Reopen the conversation before continuing.",
         );
       } finally {
         active = undefined;
@@ -331,7 +384,7 @@ export function createAntigravityTranscript(input: {
     };
     const done = Promise.resolve().then(run);
     active = { id: request.id, controller, done };
-    onStarted();
+    onStarted?.();
     publish();
     return done;
   }

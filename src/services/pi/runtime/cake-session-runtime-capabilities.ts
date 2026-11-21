@@ -35,6 +35,7 @@ import { cakeBuiltinSkillsOverride } from "./cake-builtin-skills";
 import { prepareSkillWidgetTemplates } from "./skill-widget-templates";
 import type { ResolveWidgetTemplate } from "../../../contracts/widgets/widget-template";
 import { createCakeSystemPromptExtension } from "./cake-system-prompt-extension";
+import { cakeActionApproval, cakeSettingsPolicy, cakeUserDirection } from "./cake-instructions";
 import projectPromptTemplate from "./prompts/project.md?raw";
 import commonPromptTemplate from "./prompts/common.md?raw";
 import { projectInvestigationSystemPrompt } from "../subagent-system-prompt";
@@ -206,9 +207,11 @@ export async function createCakeSessionRuntimeCapabilities(input: {
       ? undefined
       : renderPromptTemplate(projectPromptTemplate, {
           commonPrompt: renderPromptTemplate(commonPromptTemplate, {
-            settingsFilePolicy: "Never edit settings files.",
+            userDirection: cakeUserDirection,
+            settingsFilePolicy: cakeSettingsPolicy,
           }),
           cakeDocsDirectory: await cakeAgentDocumentationDirectory(agentDir),
+          actionApproval: cakeActionApproval,
         });
   const detectedWorktree = await detectGitWorktree(options.cwd);
   const detectedWorktreePrompt = detectedWorktree

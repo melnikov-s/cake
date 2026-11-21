@@ -1,7 +1,10 @@
 import type { ChatStore } from "./ChatStore";
 import type { Project } from "../models/Project";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { CAKE_CHAT_TODO_SCOPE, type ProjectTodo } from "../../contracts/projects/project-todos";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ProjectTodosStore } from "./ProjectTodosStore";
@@ -430,6 +433,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
       },
       chat: {
+        antigravityAvailable: () =>
+          isProjectChatSessionId(this.sessionId) &&
+          !this.props.pendingSessions.isPending(this.sessionId) &&
+          this.model.observedSnapshotRevision > 0,
         sendQueuedToSideChat: (sessionId, partId) => this.sendQueuedToSideChat(sessionId, partId),
         contextUsage: true,
         history: this.history,

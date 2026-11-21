@@ -91,8 +91,9 @@ export const ChatComposer = observer(function ChatComposer({
             {children}
             {!inline && configuration?.antigravity?.selected && (
               <p className="px-2 py-1 text-xs text-muted-foreground">
-                Cake shares only this message. Antigravity can access the workspace and may remember
-                its own earlier turns. To share context, paste the text you want to send.
+                {configuration.antigravity.projectChat
+                  ? "Cake sends this message, its instructions, and bounded excerpts of your Project Chat messages and earlier Antigravity replies. No Pi replies, attachments, or tool logs. Each turn starts fresh; Antigravity can access the workspace."
+                  : "Cake sends its instructions and this message, not Pi history. Antigravity can access the workspace and may remember its own earlier turns."}
               </p>
             )}
             {inline && dictationNode}

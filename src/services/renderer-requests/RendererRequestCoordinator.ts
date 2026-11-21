@@ -94,6 +94,7 @@ export interface RendererRequestCoordinatorService {
     connectionId: number,
     requestScopeId: string,
     request: RendererUiRequest,
+    targetKind?: SessionTarget["_tag"],
   ) => Effect.Effect<string | undefined, RendererRequestCoordinatorError>;
   readonly requestInterview: (
     sessionId: string,

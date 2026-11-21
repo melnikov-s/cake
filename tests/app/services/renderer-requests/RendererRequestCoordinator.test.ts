@@ -82,6 +82,48 @@ describe("RendererRequestCoordinator", () => {
     }),
   );
 
+  it.effect("keeps Antigravity permissions pinned to the requesting Project Chat desktop", () =>
+    Effect.gen(function* () {
+      const { coordinator, clients, events } = yield* makeFixture;
+      const sessionId = `project-chat:${"a".repeat(64)}`;
+      const target = { _tag: "CakeChatSession" as const, sessionId };
+      // The fixture subscribes to connection IDs 11 and 22.
+      for (let id = 1; id <= 22; id++) clients.desktop(id);
+      yield* coordinator.bind(target, 11);
+      yield* coordinator.requireDesktopConnection(sessionId, 11);
+      const pending = yield* coordinator
+        .requestUiForConnection(
+          11,
+          sessionId,
+          {
+            kind: "select",
+            title: "Antigravity permission",
+            message: "Run this fixture?",
+            options: [{ id: "allow", label: "Allow once" }],
+          },
+          target._tag,
+        )
+        .pipe(Effect.forkChild);
+      const event = yield* Queue.take(events);
+      assert.equal(event.type, "ui-request");
+      yield* coordinator.bind(target, 22);
+      const approve = {
+        sessionId,
+        requestId: event.requestId,
+        uiRequestId: event.uiRequestId,
+        cancelled: false,
+        value: "allow",
+      };
+      expect((yield* coordinator.respondUi(22, sessionId, approve).pipe(Effect.exit))._tag).toBe(
+        "Failure",
+      );
+      yield* coordinator.releaseConnection(11);
+      expect(yield* Fiber.join(pending)).toBeUndefined();
+      // A response after release is acknowledged as a no-op.
+      yield* coordinator.respondUi(11, sessionId, approve);
+    }),
+  );
+
   it.effect(
     "validates an interview answer before settling and rejects foreign or duplicate responses",
     () =>

@@ -59,6 +59,8 @@ import {
   durableSystemFingerprint,
 } from "./durable-context-policy";
 
+import { AntigravityReplyEntry, isAntigravityOriginal } from "./durable-antigravity-entries";
+
 const Boundary = Schema.Struct({
   input: Schema.Int,
   marker: Schema.Int,
@@ -409,8 +411,10 @@ export async function openDurableChatEngine(options: {
           let historyCursor;
           do {
             const page = await root.entries({ maxEntryId: cutoff }, 64, historyCursor, context);
-            hasHistory = page.items.some((entry) =>
-              ["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind),
+            hasHistory = page.items.some(
+              (entry) =>
+                ["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind) ||
+                isAntigravityOriginal(entry),
             );
             historyCursor = page.next;
           } while (!hasHistory && historyCursor !== undefined);
@@ -697,13 +701,14 @@ export async function openDurableChatEngine(options: {
           contextChanged = true;
         if (
           change.type === "entry" &&
-          ["pi.user", "pi.assistant", "pi.tool-result", DURABLE_SIDE_CHAT_IMPORT].includes(
-            change.value.kind,
-          )
+          (isAntigravityOriginal(change.value) ||
+            ["pi.user", "pi.assistant", "pi.tool-result", DURABLE_SIDE_CHAT_IMPORT].includes(
+              change.value.kind,
+            ))
         ) {
           const imported = durableSideChatImport(change.value);
           originals += imported?.messages.length ?? 1;
-          if (imported) pendingCutoff = change.value.id;
+          if (imported || AntigravityReplyEntry.is(change.value)) pendingCutoff = change.value.id;
           for (const message of change.value.model ?? [])
             if (message.role === "toolResult") reportSlowCakeToolExecution("durable", message);
           if (
@@ -766,6 +771,7 @@ export async function openDurableChatEngine(options: {
       root,
       memory,
       signal: closing.signal,
+      isCompacting: () => compacting,
       storage: options.storage,
       index,
       repairMemory,

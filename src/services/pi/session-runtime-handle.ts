@@ -18,6 +18,7 @@ import {
 import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { SessionModelSwitchStatus } from "../../contracts/conversations/session-model-switch";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
+import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
@@ -232,7 +233,7 @@ export function createSessionRuntimeHandle(input: {
     )
       return yield* new PiSessionError({
         operation: delivery,
-        message: "Antigravity requires an idle Project Session",
+        message: "Antigravity requires an idle conversation",
       });
     const coordination = antigravity ? undefined : parseCrossSessionMessage(text);
     const turnId =
@@ -411,7 +412,7 @@ export function createSessionRuntimeHandle(input: {
     const accept = Effect.uninterruptible(
       Effect.gen(function* () {
         // Reserve the external runtime while holding normal turn admission.
-        // This path saves directly to Pi and is never put in the auto-recovery inbox.
+        // This path saves to the canonical transcript, never the auto-recovery inbox.
         if (antigravity) {
           yield* Effect.try({
             try: () => {
@@ -647,10 +648,17 @@ export function createSessionRuntimeHandle(input: {
       markdown,
       permission,
     ) {
-      if (options.profile._tag !== "ProjectSession" || !shared.runtime.antigravity)
+      if (
+        !shared.runtime.antigravity ||
+        (options.profile._tag !== "ProjectSession" &&
+          !(
+            options.profile._tag === "CakeChatSession" &&
+            isProjectChatSessionId(shared.runtime.sessionId)
+          ))
+      )
         return yield* new PiSessionError({
           operation: "antigravity",
-          message: "Antigravity is available only in active Project Sessions",
+          message: "Antigravity is available only in active Project Sessions and Project Chat",
         });
       const record = yield* recoveryStorage
         .get(shared.runtime.sessionId)

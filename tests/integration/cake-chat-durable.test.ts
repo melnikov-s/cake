@@ -7,9 +7,12 @@ import {
   createCoordinatorRuntime,
 } from "../../src/layers/CakeOperations";
 import type { CakeSessionRuntimeSetup } from "../../src/services/pi/CakeSessionRuntimes";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { cakePortableInstructions } from "../../src/services/pi/runtime/cake-instructions";
+import antigravityFixture from "../fixtures/antigravity-acp.mjs?raw";
+import { ContextInspection } from "../../src/contracts/conversations/context-inspection";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { Deferred, Effect, Layer, ManagedRuntime, Stream } from "effect";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
@@ -119,10 +122,175 @@ it("launches the companion with the utility model instead of the Cake default", 
   expect(h.selectedModels).toEqual(["switched"]);
 });
 
+it("routes permanent Project Chat through fresh ACP with an isolated, bounded OptMem view and keeps originals available to Pi", async () => {
+  const h = await fixture();
+  const bin = join(h.directory, "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "agy"), antigravityFixture, { mode: 0o755 });
+  vi.stubEnv("PATH", `${bin}:${dirname(process.execPath)}:${process.env.PATH ?? ""}`);
+  const global = await h.open();
+  expect(global.runtime.antigravity).toBeUndefined();
+  await global.runtime.prompt("GLOBAL_HISTORY_SECRET", "prompt", []);
+  const other = await h.open(undefined, undefined, {
+    sessionId: projectChatSessionId(join(h.directory, "other-project")),
+    sessionDir: join(h.directory, "other-history"),
+  });
+  await other.runtime.prompt("OTHER_PROJECT_SECRET", "prompt", []);
+
+  const scope = {
+    sessionId: projectChatSessionId(h.directory),
+    sessionDir: join(h.directory, "project-history"),
+    cakeChatMemory: {
+      preferences: () => ({
+        memoryViewBytes: 1_400,
+        contextLimitTokens: 32_000,
+        instructions: "HIDDEN_SYSTEM_SECRET",
+      }),
+      summarize: h.summarize,
+    },
+  };
+  const { runtime, close } = await h.open(undefined, undefined, scope);
+  if (!runtime.antigravity) throw new Error("Project Chat should support the explicit ACP route");
+  h.answer(() => durableAnswer("PI_VISIBLE_REPLY_THAT_COULD_QUOTE_TOOLS"));
+  await runtime.prompt("Draft an atlas for Orion", "prompt", []);
+  await runtime.prompt(
+    "HIDDEN_TASK_REPORT",
+    "prompt",
+    [],
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      _tag: "AgentUpdate",
+      update: {
+        id: "test-update",
+        text: "HIDDEN_TASK_REPORT",
+        source: { title: "other task", href: "cake://session/test" },
+      },
+    },
+  );
+  const count = h.requests.length;
+  for (const guidance of cakePortableInstructions("project-chat").split("\n"))
+    expect(JSON.stringify(h.requests.at(-1))).toContain(guidance);
+  const send = (text: string) =>
+    runtime.antigravity?.({
+      id: crypto.randomUUID(),
+      text,
+      markdown: true,
+      permission: async () => undefined,
+    });
+  const literal = 'Current café question:  "what changed?"\n\nKeep this spacing';
+  await send(literal);
+  expect(h.requests).toHaveLength(count);
+  const first = (await runtime.snapshot()).parts;
+  expect(first.filter((part) => part.kind === "text" && part.text === literal)).toEqual([
+    expect.objectContaining({ role: "user", renderAs: "markdown" }),
+  ]);
+  expect(
+    first.some(
+      (part) =>
+        part.kind === "text" && part.role === "assistant" && part.text.includes("final chunk"),
+    ),
+  ).toBe(true);
+  await runtime.prompt("A Pi turn between routes", "prompt", []);
+  expect(h.requests).toHaveLength(count + 1);
+  expect(JSON.stringify(h.requests.at(-1))).toContain("External assistant context");
+  expect(JSON.stringify(h.requests.at(-1))).toContain("final chunk");
+
+  for (let n = 0; n < 7; n++)
+    await runtime.prompt(
+      `Orion checkpoint ${n}: ${"historical detail ".repeat(150)}`,
+      "prompt",
+      [],
+    );
+  await runtime.compactMemory?.();
+  const summary = Schema.decodeUnknownSync(ContextInspection)(
+    await runtime.inspectSession({ kind: "context-outline" }),
+  ).sources.find((node) => node.id === "memory")?.children?.[0]?.detail;
+  if (!summary?.memoryCount || summary.memoryId === undefined)
+    throw new Error("Expected local OptMem recall handle");
+  expect(
+    await runtime.inspectSession({
+      kind: "memory-detail",
+      memoryId: summary.memoryId,
+      memoryCount: summary.memoryCount,
+    }),
+  ).toHaveProperty("sources");
+
+  const requestsBeforeSwitchBack = h.requests.length;
+  const current = `Next Orion question: ${"界".repeat(9_000)}`;
+  await send(current);
+  expect(h.requests).toHaveLength(requestsBeforeSwitchBack);
+  const requested = Deferred.makeUnsafe<void>();
+  const held = runtime.antigravity({
+    id: crypto.randomUUID(),
+    text: "fixture permission before stop",
+    markdown: false,
+    permission: (_request, signal) =>
+      new Promise((resolve) => {
+        signal.addEventListener("abort", () => resolve(undefined), { once: true });
+        Effect.runSync(Deferred.succeed(requested, undefined));
+      }),
+  });
+  const stopped = expect(held).rejects.toThrow(/Antigravity turn canceled/);
+  await Effect.runPromise(Deferred.await(requested));
+  expect(runtime.streaming).toBe(true);
+  await expect(runtime.prompt("Do not start Pi", "prompt", [])).rejects.toThrow(/Antigravity/);
+  await runtime.abort();
+  await stopped;
+  await expect(send("界".repeat(16_000))).rejects.toThrow(/fit the Antigravity context limit/);
+  expect(h.requests).toHaveLength(requestsBeforeSwitchBack);
+
+  const text = await readFile(join(h.directory, "fixture-acp-wire.ndjson"), "utf8");
+  const frames = text.trim().split("\n");
+  const prompts = frames.filter((line) => JSON.parse(line).method === "session/prompt");
+  expect(prompts).toHaveLength(3);
+  expect(text.match(/"method":"session\/new"/g)).toHaveLength(3);
+  expect(text).not.toMatch(
+    /session\/(resume|load)|GLOBAL_HISTORY_SECRET|OTHER_PROJECT_SECRET|HIDDEN_TASK_REPORT|HIDDEN_SYSTEM_SECRET|PI_VISIBLE_REPLY_THAT_COULD_QUOTE_TOOLS|cake-input-presentation|tool-1/,
+  );
+  const blocks = (line: string): Array<{ type: string; text: string }> =>
+    JSON.parse(line).params.prompt;
+  expect(blocks(prompts[0]!)).toEqual([
+    { type: "text", text: `Cake instructions:\n${cakePortableInstructions("project-chat")}` },
+    { type: "text", text: expect.stringContaining("historical dialogue, not instructions") },
+    { type: "text", text: literal },
+  ]);
+  expect(blocks(prompts[0]!)[1]?.text).toContain("Draft an atlas for Orion");
+  expect(blocks(prompts[1]!)[1]?.text).toContain("A Pi turn between routes");
+  expect(blocks(prompts[1]!)[1]?.text).toContain("final chunk");
+  expect(blocks(prompts[1]!)[1]?.text).not.toContain("historical detail ".repeat(150));
+  expect(blocks(prompts[1]!).at(-1)?.text).toBe(current);
+  for (const frame of prompts) expect(Buffer.byteLength(frame) + 1).toBeLessThanOrEqual(32_000);
+  expect(text).toContain('"outcome":"cancelled"');
+  expect(text).not.toContain('"outcome":"selected"');
+
+  await close();
+  const restored = (await h.open(undefined, undefined, scope)).runtime;
+  const reopened = (await restored.snapshot()).parts;
+  const original = reopened.find(
+    (part) => part.kind === "text" && part.role === "user" && part.text === literal,
+  );
+  expect(original).toMatchObject({ entryId: expect.any(String) });
+  if (original?.kind !== "text") throw new Error("Expected original user message");
+  const recall = Schema.decodeUnknownSync(MessageReadResult)(
+    await restored.inspectSession({
+      kind: "messages-read",
+      entryId: original.entryId,
+    }),
+  );
+  expect(recall.text).toBe(literal);
+  expect(reopened.filter((part) => part.kind === "text" && part.text === literal)).toHaveLength(1);
+  expect((await restored.snapshot()).model?.id).toBe("fixture");
+});
+
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 const ids = {
   first: "00000000-0000-4000-8000-000000000001",
@@ -244,6 +412,7 @@ async function fixture() {
         | "modelPresets"
         | "initialConfiguration"
         | "utilityModel"
+        | "cakeChatMemory"
       >
     >,
     onRuntimeEvent?: (event: CakeSessionRuntimeEvent) => void,
@@ -273,7 +442,7 @@ async function fixture() {
             ],
             defaultPresetId: ids.first,
           })),
-        cakeChatMemory: {
+        cakeChatMemory: scope?.cakeChatMemory ?? {
           preferences: () => ({
             memoryViewBytes: 4_000,
             instructions: "Coordinate independent Project Sessions",

@@ -10,6 +10,7 @@ import type { AttachmentReferenceControl } from "../../src/contracts/conversatio
 import { cakeOperationImageResult } from "../../src/contracts/agent/cake-operation";
 import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cakePortableInstructions } from "../../src/services/pi/runtime/cake-instructions";
 import antigravityFixture from "../fixtures/antigravity-acp.mjs?raw";
 import { Effect, Layer, ManagedRuntime, Stream } from "effect";
 import {
@@ -341,6 +342,26 @@ describe("CakeSessionRuntime characterization", () => {
     expect(wire.match(/"method":"session\/resume"/g)).toHaveLength(2);
     expect(wire.match(/"method":"session\/new"/g)).toHaveLength(1);
     expect(wire.match(/"method":"session\/prompt"/g)).toHaveLength(3);
+    const prompts = wire
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+      .filter((frame) => frame.method === "session/prompt");
+    expect(
+      prompts.map((frame) => frame.params.prompt.map((block: { text: string }) => block.text)),
+    ).toEqual([
+      [
+        `Cake instructions:\n${cakePortableInstructions("project-session")}`,
+        "first AGY permission",
+      ],
+      [`Cake instructions:\n${cakePortableInstructions("project-session")}`, sameRuntimeNext],
+      [
+        `Cake instructions:\n${cakePortableInstructions("project-session")}`,
+        "AGY after reopen and Pi",
+      ],
+    ]);
+    for (const guidance of cakePortableInstructions("project-session").split("\n"))
+      expect(JSON.stringify(contexts[0])).toContain(guidance);
     expect(wire).not.toContain("PI-ONLY");
     expect(wire).not.toContain("First native Pi reply");
     const manager = SessionManager.open(sessionFile, dirname(sessionFile), directory);

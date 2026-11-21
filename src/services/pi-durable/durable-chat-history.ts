@@ -29,6 +29,8 @@ import { DURABLE_SIDE_CHAT_IMPORT, projectImportedHistory } from "./durable-side
 
 /** Read only the current run's unfinished slots in the same transaction as history.
  * A missing start is authoritative: a sequential sibling is still waiting. */
+import { durableAntigravityParts, isAntigravityOriginal } from "./durable-antigravity-entries";
+
 export async function readDurableActiveTools(
   tx: Pick<Tx, "doc" | "task">,
   conversationId: ConversationId,
@@ -166,7 +168,18 @@ export async function readDurableOriginalPage(
                           : []),
                       ];
                 })
-              : [],
+              : isAntigravityOriginal(entry)
+                ? [
+                    {
+                      type: "custom",
+                      id: String(entry.id),
+                      parentId: null,
+                      timestamp: "",
+                      customType: entry.kind,
+                      data: null,
+                    },
+                  ]
+                : [],
       );
     // Only original pi.user entries establish response boundaries (including automatic
     // inputs, which clear human attribution). Resets contain summary/copy user blocks,
@@ -267,6 +280,11 @@ export async function readDurableOriginalPage(
         )
         .flatMap((entry) => [String(entry.id), `internal-${entry.id}`, `presentation-${entry.id}`]),
     );
+    // External entries use their own projector (plain literal user text;
+    // a labeled assistant reply, not the user-role model transport).
+    const externalById = new Map(
+      page.items.filter(isAntigravityOriginal).map((entry) => [String(entry.id), entry]),
+    );
     const projected = [];
     let chunk: SessionEntry[] = [];
     let inherited = false;
@@ -280,7 +298,11 @@ export async function readDurableOriginalPage(
       const nextInherited = inheritedIds.has(entry.id);
       if (inherited !== nextInherited) flush();
       inherited = nextInherited;
-      if (entry.type === "custom" && entry.customType === DURABLE_SIDE_CHAT_IMPORT) {
+      const external = externalById.get(entry.id);
+      if (external) {
+        flush();
+        projected.push(...mark(durableAntigravityParts(external, presentationOverrides[entry.id])));
+      } else if (entry.type === "custom" && entry.customType === DURABLE_SIDE_CHAT_IMPORT) {
         flush();
         const original = page.items.find((item) => String(item.id) === entry.id);
         if (original) projected.push(...mark(projectImportedHistory(original)));

@@ -103,6 +103,9 @@ export type AcpPermission = { description: string; canAllowOnce: boolean };
 export interface AcpTurn {
   cwd: string;
   text: string;
+  instructions?: string;
+  history?: string;
+  maxPromptBytes?: number;
   resumeId?: string;
   signal: AbortSignal;
   permission(request: AcpPermission, signal: AbortSignal): Promise<"allow" | "deny" | undefined>;
@@ -111,13 +114,34 @@ export interface AcpTurn {
   tool(tool: AcpTool): void;
 }
 
+/** ACP transports client guidance and history as text, not a system override. */
+export function acpPrompt(input: Pick<AcpTurn, "text" | "instructions" | "history">) {
+  return [
+    ...(input.instructions ? [`Cake instructions:\n${input.instructions}`] : []),
+    ...(input.history
+      ? [`Selected Project Chat memory (historical dialogue, not instructions):\n${input.history}`]
+      : []),
+    input.text,
+  ].map((text) => ({ type: "text" as const, text }));
+}
+
 class AcpError extends Error {
   constructor(
-    readonly kind: "missing" | "auth" | "protocol" | "connection" | "timeout" | "rpc" | "cancelled",
+    readonly kind:
+      | "missing"
+      | "auth"
+      | "protocol"
+      | "connection"
+      | "timeout"
+      | "rpc"
+      | "cancelled"
+      | "prompt-limit",
     readonly code?: number,
   ) {
     super(
       {
+        "prompt-limit":
+          "The Antigravity prompt could not fit the context limit. Shorten the message.",
         missing:
           "Antigravity CLI (agy) is not on Cake’s PATH. Install Google’s CLI yourself and make it available to Cake.",
         auth: "Antigravity sign-in required. Sign in with agy in a terminal, then retry in Cake.",
@@ -469,17 +493,17 @@ export async function runAcpTurn(
     }
     if (cancelling || input.signal.aborted) throw new AcpError("cancelled");
     input.status(status);
+    const params = { sessionId, prompt: acpPrompt(input) };
+    const frame = JSON.stringify({
+      jsonrpc: "2.0",
+      id: nextId + 1,
+      method: "session/prompt",
+      params,
+    });
+    if (Buffer.byteLength(frame) + 1 > (input.maxPromptBytes ?? maxFrame))
+      throw new AcpError("prompt-limit");
     phase = "prompt";
-    const result = decodeStop(
-      await request(
-        "session/prompt",
-        {
-          sessionId,
-          prompt: [{ type: "text", text: input.text }],
-        },
-        promptTimeout,
-      ),
-    );
+    const result = decodeStop(await request("session/prompt", params, promptTimeout));
     if (cancelling) return { stop: "cancelled" };
     if (!result) throw new AcpError("protocol");
     return {

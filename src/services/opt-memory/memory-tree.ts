@@ -100,6 +100,8 @@ export class MemoryRangeError extends Schema.TaggedError<MemoryRangeError>()("Me
 
 export interface MemoryTreeOptions {
   readonly compactionPolicy: string;
+  /** Local-only bounded excerpts for transport views that must not call a model. */
+  readonly extractive?: boolean;
   readonly onConsolidating?: () => void;
   readonly onExcerpt?: (line: { id: number; n: number } & SourceRange & MemoryDegradation) => void;
   readonly summarize: (input: {
@@ -204,6 +206,7 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
     work.signal.throwIfAborted();
     const text = sources.join("\n");
     if (memoryBytes(text) <= MEMORY_NODE_BYTES) return { text };
+    if (options.extractive) return { text: excerpt(sources) };
     const request =
       task.n === 1
         ? `Compaction: compress message ${task.id} into one line of at most 512 bytes\n(about 70 words), the length of this ruler:\n${"-".repeat(512)}`
@@ -310,7 +313,16 @@ export function createMemoryTree(adapter: MemoryTreeAdapter, options: MemoryTree
       current.shrinking = memoryBytes(render(visible)) > target;
     }
     const text = render(visible);
-    if (memoryBytes(text) <= budget || !visible.some(isDegradedMemoryNode)) return text;
+    if (memoryBytes(text) <= budget) return text;
+    // An aligned forest can have several disjoint ranges even when no legal
+    // merge remains. The transport view has no recall handles to preserve:
+    // fit extracts from its selected ranges, favoring recent ranges if needed.
+    if (options.extractive)
+      return excerpt(
+        visible.slice(-Math.max(1, Math.floor(budget / 16))).map((part) => part.text),
+        budget,
+      );
+    if (!visible.some(isDegradedMemoryNode)) return text;
     // Do not wedge a foreground send when even degraded leaves cannot fit. One
     // inclusive original range retains coverage; these are archive, not Zoom IDs.
     const first = visible[0]!;

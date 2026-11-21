@@ -9,6 +9,7 @@ import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import {
   cakeChatSideChatConversationId,
   isCakeChatSessionId,
+  isProjectChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import type { StoreEvent } from "../events/StoreEvent";
 import {
@@ -119,8 +120,9 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   private antigravitySelected = false;
 
   private get antigravity() {
-    if (!this.props.chat.antigravityAvailable?.()) return undefined;
+    if (!globalThis.window?.cake || !this.props.chat.antigravityAvailable?.()) return undefined;
     return {
+      projectChat: isProjectChatSessionId(this.sessionId),
       selected: this.antigravitySelected,
       select: (selected: boolean) => {
         this.antigravitySelected = selected;
@@ -424,7 +426,9 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
         input.attachments.length ||
         input.responseMode === "voice"
       )
-        throw new Error("Antigravity requires a text-only prompt in an active Project Session");
+        throw new Error(
+          "Antigravity requires a text-only prompt in an active Project Session or Project Chat",
+        );
       return this.withTranscript(async () => {
         const active = await this.activeSession();
         if (!active) return false;
