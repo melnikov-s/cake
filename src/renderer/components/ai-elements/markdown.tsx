@@ -324,6 +324,20 @@ function linkAnchor(
   delete props.node;
   const href = props.href;
   const artifactReference = href ? artifactReferenceFromHref(href) : undefined;
+  // An icon action keeps its label and toolbar styling; the prose chip would add a second glyph.
+  if (artifactReference && presentation === "icon" && actions?.openArtifact) {
+    const { openArtifact } = actions;
+    return (
+      <Link
+        {...props}
+        href={artifactReference}
+        onClick={(event) => {
+          event.preventDefault();
+          openArtifact(artifactReference);
+        }}
+      />
+    );
+  }
   if (artifactReference && actions?.renderArtifactReference)
     return actions.renderArtifactReference(
       artifactReference,

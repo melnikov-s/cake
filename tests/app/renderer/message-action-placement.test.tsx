@@ -11,6 +11,8 @@ import { ChatTextMessage } from "../../../src/renderer/components/chat-message";
 import { SessionMessage } from "../../../src/renderer/components/session-message";
 import { SkillMessage } from "../../../src/renderer/components/skill-message";
 import { IconButton } from "../../../src/renderer/components/ui/icon-button";
+import { Link } from "../../../src/renderer/components/ui/link";
+import type { ReactNode } from "react";
 
 const viewport = { top: 100, bottom: 600, left: 50, right: 850 };
 const row = { width: 92, height: 28 };
@@ -333,6 +335,42 @@ describe("shared message action bar", () => {
       ).toBe(String(open));
     },
   );
+
+  it("gives a widget-sent message one Open source action, not a bare artifact link", () => {
+    // Widget prompts (e.g. the Delta PRs Fix button) carry an artifact source. Its artifact
+    // chip once replaced the toolbar action, leaving two unlabeled link glyphs under the card.
+    const openArtifact = vi.fn();
+    const renderArtifactReference = vi.fn((reference: string, label?: ReactNode) => (
+      <Link showIcon href={reference}>
+        {label ?? reference}
+      </Link>
+    ));
+    render(
+      <MarkdownLinkProvider
+        actions={{
+          openSession: vi.fn(),
+          openExternalUrl: vi.fn(),
+          openArtifact,
+          renderArtifactReference,
+        }}
+      >
+        <SessionMessage
+          source={{ title: "Artifact delta-pr-tracker", href: "cake://artifact/delta-pr-tracker" }}
+          preview="Sergey clicked Fix in the Delta PRs widget.\n\nThe widget posted nothing to Delta."
+        />
+      </MarkdownLinkProvider>,
+    );
+    const card = screen.getByRole("region", { name: "Message from another session" });
+    const toolbar = card.querySelector<HTMLElement>('[data-slot="message-action-toolbar"]')!;
+    const controls = Array.from(toolbar.querySelectorAll("button, a"));
+    expect(controls.map((control) => control.getAttribute("aria-label"))).toEqual(["Open source"]);
+    const link = within(toolbar).getByRole("link", { name: "Open source" });
+    expect(link.querySelectorAll("svg")).toHaveLength(1);
+    expect(link.classList.contains("size-7")).toBe(true);
+    expect(renderArtifactReference).not.toHaveBeenCalled();
+    fireEvent.click(link);
+    expect(openArtifact).toHaveBeenCalledWith("cake://artifact/delta-pr-tracker");
+  });
 
   it("uses the shared bar for human and skill messages, aligned to their edge", () => {
     const { container } = render(

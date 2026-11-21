@@ -5135,6 +5135,53 @@ const resultTodoActionsScenario: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="session-message"]'),
 };
 
+const widgetSentMessageScenario: VisualCaptureScenario = {
+  name: "widget-sent-message",
+  description:
+    "A widget's Project Chat request (Delta PRs Fix) with its single Open source action on hover",
+  states: ["default", "hover"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const hash = createHash("sha256").update(paths.project).digest("hex");
+    const text =
+      "Sergey clicked Fix in the Delta PRs widget. Treat this as his request: please fix this PR in visual-capture-project.\n\n- #2500003 PR maintainer: skip unchanged PRs\n  https://delta.example.com/shop/world/pull/2500003\n  Binks comments: 1 unresolved review thread\n\nThe widget posted nothing to Delta.";
+    // Admitted exactly as an artifact's chat.prompt: an AgentUpdate whose source is the widget.
+    const admitted = durableInputText(
+      text,
+      [],
+      true,
+      false,
+      undefined,
+      { mode: "text", remind: false },
+      {
+        _tag: "AgentUpdate",
+        update: {
+          id: "090a3fd9-501b-48ea-b785-2a148d686553",
+          text,
+          source: { title: "Artifact delta-pr-tracker", href: "cake://artifact/delta-pr-tracker" },
+        },
+      },
+    );
+    await seedDurableChat(join(paths.cakeHome, "pi", "project-chats", hash), [
+      admitted,
+      "I started a Project Session to address the review thread on #2500003.",
+    ]);
+  },
+  async prepare(page, state) {
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    const card = page.locator('[data-slot="session-message"]');
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card.getByText("The widget posted nothing to Delta.")).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+    if (state === "hover") await card.locator('[data-slot="session-message-card"]').hover();
+  },
+  region: (page) => page.locator(".transcript").last(),
+};
+
 const reportHeaderTitle =
   "Read-only research: why would Cake sessions.list take over a minute? User screenshot investigation and findings";
 const reportHeaderCases = [
@@ -10227,6 +10274,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   screenCaptureOverlayScenario,
   inlineLinks,
   assistantWebUrls,
+  widgetSentMessageScenario,
   fileOpenFailureToast,
   sessionReferencePills,
   requestExplanationScenario,
