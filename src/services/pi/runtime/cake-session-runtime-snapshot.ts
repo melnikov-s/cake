@@ -36,6 +36,7 @@ export interface CakeSessionRuntimeSnapshotInput {
   readonly settingsManager: SettingsManager;
   readonly models: ModelOption[];
   readonly streamingParts: readonly UiPart[];
+  readonly externalStreaming?: boolean;
   readonly queuedParts: readonly UiPart[];
   readonly transientParts: readonly UiPart[];
   readonly fastMode: boolean;
@@ -54,7 +55,7 @@ export function projectCakeSessionRuntimeSnapshot(
 ): ConversationSnapshot {
   const { session, settingsManager } = input;
   const branchParts = projectConversationDisplay(session.sessionManager, {
-    live: session.isStreaming,
+    live: session.isStreaming || input.externalStreaming,
   });
   const tools = runtimeSystemTools(session);
   const parts = [
@@ -94,7 +95,7 @@ export function projectCakeSessionRuntimeSnapshot(
       }),
       reloadPending: input.reloadPending,
     } satisfies PiSettings,
-    streaming: session.isStreaming,
+    streaming: session.isStreaming || Boolean(input.externalStreaming),
     diagnostics: [...input.diagnostics],
     commands: input.auxiliary
       ? []

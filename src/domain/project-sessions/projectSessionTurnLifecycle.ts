@@ -82,9 +82,11 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
         )
       : Effect.void,
     admitTurn: (input, accept) => {
-      const message = parseCrossSessionMessage(input.text);
-      const userText =
-        input.internal === undefined
+      const external = input.runtime === "antigravity";
+      const message = external ? undefined : parseCrossSessionMessage(input.text);
+      const userText = external
+        ? undefined
+        : input.internal === undefined
           ? input.text
           : input.internal._tag === "UserWithReminders"
             ? input.internal.userText

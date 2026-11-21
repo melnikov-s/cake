@@ -12,6 +12,7 @@ import { UtilityModelContext } from "./context/UtilityModelContext";
 
 export interface ChatConfigurationStoreProps {
   session(): Conversation | undefined;
+  antigravity?(): { selected: boolean; select(selected: boolean): void } | undefined;
   operations: {
     start(owner?: string): string;
     finish(operationId: string): void;
@@ -44,6 +45,9 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
   get session() {
     return this.props.session();
+  }
+  get antigravity() {
+    return this.props.antigravity?.();
   }
   get fastMode() {
     return this.fastModeOverride ?? this.session?.fastMode ?? false;

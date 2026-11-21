@@ -129,6 +129,7 @@ import {
 } from "./cake-session-runtime-configuration";
 import { createCakeSessionRuntimeContinuations } from "./cake-session-runtime-continuations";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
+import { createAntigravityTranscript, type CakeAntigravityInput } from "./antigravity-transcript";
 import type { ReviewParentContext } from "./sidecar-runtime";
 
 export const piRuntimeVersion = "1.0.0" as const;
@@ -253,6 +254,8 @@ export interface CakeSessionRuntime {
   /** Returns Pi's live turn state without assembling a ConversationSnapshot. */
   readonly streaming: boolean;
   executingTurnIds?(): ReadonlyArray<string>;
+  readonly antigravityActive?: boolean;
+  antigravity?(input: CakeAntigravityInput): Promise<void>;
   recoverInput?(input: RuntimeRecoveryInput): Promise<void>;
   restoreInput?(input: RuntimeRecoveryInput): Promise<void>;
   hasConsumedInput?(turnId: string): boolean;
@@ -554,6 +557,33 @@ export async function createCakeSessionRuntime(
       : "Provider or tool cleanup is still pending. New input will wait.",
   });
 
+  let agyPublishedId: string | undefined;
+  const agy = createAntigravityTranscript({
+    session,
+    cwd: options.cwd,
+    onStarted: () => {
+      stoppedParts = undefined;
+    },
+    onChanged: () => {
+      const id = agy.activeId();
+      if (!id || agyPublishedId !== id) {
+        void emitSnapshot()
+          .then(() => {
+            if (agy.activeId() === id) agyPublishedId = id;
+          })
+          .catch(() => undefined);
+        return;
+      }
+      for (const part of agy.parts()) emitPart(part);
+    },
+  });
+  function native<Args extends unknown[], A>(fn: (...args: Args) => A) {
+    return (...args: Args) => {
+      agy.requireIdle();
+      return fn(...args);
+    };
+  }
+
   function captureSnapshot(
     models: ConversationSnapshot["models"],
     sessionListed: boolean,
@@ -568,7 +598,8 @@ export async function createCakeSessionRuntime(
       models: [...models],
       // SessionManager contains finalized entries; Pi owns the in-flight response.
       // Use its current message with the same part IDs as the streamed deltas.
-      streamingParts: projection.streamingParts(),
+      streamingParts: [...projection.streamingParts(), ...agy.parts()],
+      externalStreaming: Boolean(agy.activeId()),
       queuedParts: projection.queuedParts(),
       transientParts: [
         ...turnController.bashParts(),
@@ -774,13 +805,42 @@ export async function createCakeSessionRuntime(
     get sessionFile() {
       return session.sessionFile ?? "";
     },
+    get antigravityActive() {
+      return agy.activeId() !== undefined;
+    },
+    antigravity(request) {
+      if (
+        disposed ||
+        options.auxiliary ||
+        options.ephemeral ||
+        options.projectInvestigation ||
+        options.coordinator
+      )
+        throw new Error("Antigravity requires an active Project Session");
+      if (
+        session.isStreaming ||
+        session.isCompacting ||
+        turnController.idleCompactionActive() ||
+        turnController.toolPruningActive() ||
+        turnController.handoffActive() ||
+        turnController.cancellationPending() ||
+        turnController.pendingRecoveryInputs().length ||
+        session.pendingMessageCount ||
+        turnController.queuedParts().length
+      )
+        throw new Error(
+          "Wait for the Pi turn and its queued input to finish before using Antigravity",
+        );
+      return agy.start(request);
+    },
     get streaming() {
       return (
-        !stoppedParts &&
-        (session.isStreaming ||
-          session.isCompacting ||
-          turnController.idleCompactionActive() ||
-          turnController.toolPruningActive())
+        Boolean(agy.activeId()) ||
+        (!stoppedParts &&
+          (session.isStreaming ||
+            session.isCompacting ||
+            turnController.idleCompactionActive() ||
+            turnController.toolPruningActive()))
       );
     },
     getReviewParentContext() {
@@ -830,6 +890,7 @@ export async function createCakeSessionRuntime(
       return restartDecision(session.sessionManager.getEntries(), turnId).kind !== "pending";
     },
     async recoverInput(input) {
+      agy.requireIdle();
       const decision = restartDecision(session.sessionManager.getBranch(), input.turnId);
       if (decision.kind === "settled") {
         options.onTurnResult?.(input.turnId, decision.result);
@@ -858,10 +919,17 @@ export async function createCakeSessionRuntime(
       const settled = restartDecision(session.sessionManager.getBranch(), input.turnId);
       if (settled.kind === "settled") options.onTurnResult?.(input.turnId, settled.result);
     },
-    compact: turnController.compact,
-    compactIfIdle: turnController.compactIfIdle,
-    toolPruneIfIdle: () => turnController.toolPruneIfIdle(toolPruneLatest),
+    compact: native(turnController.compact),
+    compactIfIdle: (instructions) =>
+      agy.activeId()
+        ? Promise.resolve({ status: "busy" })
+        : turnController.compactIfIdle(instructions),
+    toolPruneIfIdle: () =>
+      agy.activeId()
+        ? Promise.resolve({ status: "busy" })
+        : turnController.toolPruneIfIdle(toolPruneLatest),
     async queueCommand(command, onSettled) {
+      agy.requireIdle();
       const name = command.slice(1).split(/\s/, 1)[0];
       if (
         name !== "compact" &&
@@ -937,7 +1005,10 @@ export async function createCakeSessionRuntime(
             : query,
       );
     },
-    executingTurnIds: turnController.executingTurnIds,
+    executingTurnIds: () => {
+      const id = agy.activeId();
+      return id ? [id] : turnController.executingTurnIds();
+    },
     async prompt(
       text,
       delivery,
@@ -949,6 +1020,7 @@ export async function createCakeSessionRuntime(
       responseMode,
       internal,
     ) {
+      agy.requireIdle();
       subscription.setAutomaticTitle(automaticTitle);
       // Manual Continue (including after an explicit stop) must inspect uncertain
       // effects too, without automatically resuming deliberately stopped work.
@@ -983,7 +1055,7 @@ export async function createCakeSessionRuntime(
     updateQueuedMessage: turnController.updateQueuedMessage,
     removeQueuedMessage: turnController.removeQueuedMessage,
     steerQueuedMessage: turnController.steerQueuedMessage,
-    sendQueuedMessageNow: turnController.sendQueuedMessageNow,
+    sendQueuedMessageNow: native(turnController.sendQueuedMessageNow),
     async setUserMessageMarkdown(entryId, renderAsMarkdown) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
       const target = session.sessionManager
@@ -1000,14 +1072,18 @@ export async function createCakeSessionRuntime(
       session.sessionManager.appendCustomEntry(userMessagePresentationEntryType, presentation);
       await emitSnapshot();
     },
-    editMessage: turnController.editMessage,
+    editMessage: native(turnController.editMessage),
     async abort(stop) {
+      if (agy.activeId()) {
+        await agy.abort();
+        return;
+      }
       pendingStop = stop;
       await shutdownDiagnostics.promise("pi.turn.abort", shutdownResource(cakeSessionId), () =>
         turnController.abort(),
       );
     },
-    waitForStop: turnController.waitForStop,
+    waitForStop: () => (agy.activeId() ? agy.wait() : turnController.waitForStop()),
     waitForToolReceipt(toolCallId, signal) {
       return new Promise<void>((resolve, reject) => {
         let unsubscribe: () => void = () => undefined;
@@ -1070,8 +1146,11 @@ export async function createCakeSessionRuntime(
       await continuations.rename(name, false, onlyIfUnnamed);
     },
     fork: continuations.fork,
-    toolPrune: (entryId) => turnController.withToolPruning(() => continuations.toolPrune(entryId)),
+    toolPrune: native((entryId) =>
+      turnController.withToolPruning(() => continuations.toolPrune(entryId)),
+    ),
     async navigate(entryId, options) {
+      agy.requireIdle();
       const result = await session.navigateTree(entryId, options);
       if (result.cancelled) throw new Error("Session tree navigation was cancelled");
       await emitSnapshot();
@@ -1090,6 +1169,7 @@ export async function createCakeSessionRuntime(
       });
       disposePromise = shutdownDiagnostics.promise("pi.dispose", resource, async () => {
         try {
+          await agy.abort();
           await shutdownDiagnostics.promise("pi.abort", resource, () => session.abort());
           // An already-running reload owns its own shutdown. Let it retire
           // before shutting down the final extension runtime.

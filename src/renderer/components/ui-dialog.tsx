@@ -36,7 +36,16 @@ export function UiDialog({
     <Confirmation role="alertdialog" aria-labelledby="ui-title" aria-describedby="ui-message">
       <form onSubmit={submit}>
         <ConfirmationTitle id="ui-title">{request.title}</ConfirmationTitle>
-        <ConfirmationDescription id="ui-message">{request.message}</ConfirmationDescription>
+        <ConfirmationDescription
+          id="ui-message"
+          className={
+            request.kind === "select"
+              ? "max-h-64 overflow-auto whitespace-pre-wrap break-words"
+              : undefined
+          }
+        >
+          {request.message}
+        </ConfirmationDescription>
         {authNotice?.type === "device_code" && authNotice.verificationUri && (
           <Callout variant="info" className="mt-3 break-all">
             <p>Open the verification page on this device and enter this code:</p>

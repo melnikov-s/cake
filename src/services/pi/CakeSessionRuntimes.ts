@@ -1,4 +1,5 @@
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
+import type { CakeAntigravityInput } from "./runtime/antigravity-transcript";
 import type { InternalInput } from "../../contracts/conversations/internal-input";
 import type { IdleCompactionResult } from "../../contracts/project-sessions/session-compaction";
 import { sessionDigestReceiptIds } from "../../contracts/cake-chats/session-digest-reminder";
@@ -141,6 +142,7 @@ export interface CakeSessionRuntimeAcquireOptions {
       readonly text: string;
       readonly delivery: "prompt" | "steer" | "follow-up";
       readonly internal?: InternalInput;
+      readonly runtime?: "antigravity";
     },
     accept: Effect.Effect<void, PiSessionError>,
   ) => Effect.Effect<void, unknown>;
@@ -192,6 +194,11 @@ export interface CakeSessionHandle {
     turnId: string,
   ) => Effect.Effect<"consumed" | "canceled" | "pending" | undefined, PiSessionError>;
   readonly profile: CakeSessionRuntimeAcquireOptions["profile"]["_tag"];
+  readonly antigravity?: (
+    text: string,
+    markdown: boolean,
+    permission: CakeAntigravityInput["permission"],
+  ) => Effect.Effect<string, PiSessionError>;
   readonly updates: Stream.Stream<PiSessionUpdate, PiSessionError>;
   readonly snapshot: () => Effect.Effect<ConversationSnapshot, PiSessionError>;
   readonly prompt: (

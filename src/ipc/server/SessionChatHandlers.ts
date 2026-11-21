@@ -39,6 +39,10 @@ const deliverFromRenderer = (
 export const sessionChatHandlers = SessionChatRpc.of({
   "sessionChats.prompt": (input) => deliverFromRenderer(input, "prompt"),
   "sessionChats.steer": (input) => deliverFromRenderer(input, "steer"),
+  "sessionChats.antigravity": (input) =>
+    Effect.flatMap(RendererConnection, ({ connectionId }) =>
+      sessionChats.antigravity(input, connectionId),
+    ),
   "sessionChats.followUp": (input) => deliverFromRenderer(input, "follow-up"),
   "sessionChats.abort": sessionChats.abort,
   "sessionChats.history": sessionChats.history,

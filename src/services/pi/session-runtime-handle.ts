@@ -38,6 +38,7 @@ import {
   type PiSessionUpdate,
 } from "./CakeSessionRuntimes";
 import type { CakeSessionRuntime } from "./runtime/cake-session-runtime";
+import type { CakeAntigravityInput } from "./runtime/antigravity-transcript";
 import { TurnCanceledError, TurnDetachedError } from "./runtime/RuntimeTurnCompletion";
 import type { SharedRuntime } from "./session-runtime-registry";
 import {
@@ -216,8 +217,24 @@ export function createSessionRuntimeHandle(input: {
     paused = false,
     admissionId?: string,
     internal = recovered?.internal,
+    antigravity?: CakeAntigravityInput["permission"],
   ) {
-    const coordination = parseCrossSessionMessage(text);
+    if (shared.runtime.antigravityActive)
+      return yield* new PiSessionError({
+        operation: delivery,
+        message: "Stop or finish the Antigravity turn before sending another message",
+      });
+    if (
+      antigravity &&
+      (!shared.runtime.antigravity ||
+        shared.runtime.streaming ||
+        (yield* Ref.get(shared.activeTurns)).size > 0)
+    )
+      return yield* new PiSessionError({
+        operation: delivery,
+        message: "Antigravity requires an idle Project Session",
+      });
+    const coordination = antigravity ? undefined : parseCrossSessionMessage(text);
     const turnId =
       recovered?.turnId ?? admissionId ?? coordination?.metadata.messageId ?? crypto.randomUUID();
     if ((yield* Ref.get(shared.activeTurns)).has(turnId) || shared.settledInputIds.has(turnId))
@@ -285,9 +302,10 @@ export function createSessionRuntimeHandle(input: {
         if (settledMessage !== undefined) Object.assign(event, { message: settledMessage });
         // Settle the authoritative journal before callbacks can wait on
         // report delivery while a newer turn runs and succeeds.
-        yield* removeRecoveryInput(retained.runtime.sessionId, turnId, settledOutcome).pipe(
-          Effect.orDie,
-        );
+        if (!antigravity)
+          yield* removeRecoveryInput(retained.runtime.sessionId, turnId, settledOutcome).pipe(
+            Effect.orDie,
+          );
         yield* PubSub.publish(retained.events, event);
         yield* options.onTurnActivityChanged ?? Effect.void;
         // Publish the outcome only after settlement hooks.
@@ -326,9 +344,11 @@ export function createSessionRuntimeHandle(input: {
     const finished = yield* Deferred.make<void, PiSessionError>();
     // Input the user withdrew (abort, removed queue row, cleared queue) is a
     // cancellation of accepted work, not a failure of the session.
+    let externalTurn: Promise<void> | undefined;
     const run = Effect.tryPromise({
-      try: () =>
-        paused && retained.runtime.restoreInput
+      try: () => {
+        if (externalTurn) return externalTurn;
+        return paused && retained.runtime.restoreInput
           ? retained.runtime.restoreInput(
               recovered ?? {
                 turnId,
@@ -350,7 +370,8 @@ export function createSessionRuntimeHandle(input: {
                 automaticTitle,
                 responseMode,
                 internal,
-              ),
+              );
+      },
       catch: (cause) => cause,
     }).pipe(
       Effect.matchEffect({
@@ -389,28 +410,47 @@ export function createSessionRuntimeHandle(input: {
     // input saved but never running. The caller's receipt check relies on this.
     const accept = Effect.uninterruptible(
       Effect.gen(function* () {
-        yield* persistInput(
-          retained,
-          {
-            turnId,
-            text,
-            delivery,
-            attachments: [...attachments],
-            markdown,
-            ...(internal === undefined ? null : { internal }),
-            ...(presentationMode === undefined ? null : { presentationMode }),
-            ...(responseMode === undefined ? null : { responseMode }),
-            ...(automaticTitle === undefined ? null : { automaticTitle }),
-          },
-          paused,
-        ).pipe(sessionError(delivery));
+        // Reserve the external runtime while holding normal turn admission.
+        // This path saves directly to Pi and is never put in the auto-recovery inbox.
+        if (antigravity) {
+          yield* Effect.try({
+            try: () => {
+              if (!retained.runtime.antigravity) throw new Error("Antigravity is unavailable");
+              externalTurn = retained.runtime.antigravity({
+                id: turnId,
+                text,
+                markdown,
+                permission: antigravity,
+              });
+              void externalTurn.catch(() => undefined);
+            },
+            catch: (cause) =>
+              new PiSessionError({ operation: "antigravity", message: messageOf(cause) }),
+          });
+        } else
+          yield* persistInput(
+            retained,
+            {
+              turnId,
+              text,
+              delivery,
+              attachments: [...attachments],
+              markdown,
+              ...(internal === undefined ? null : { internal }),
+              ...(presentationMode === undefined ? null : { presentationMode }),
+              ...(responseMode === undefined ? null : { responseMode }),
+              ...(automaticTitle === undefined ? null : { automaticTitle }),
+            },
+            paused,
+          ).pipe(sessionError(delivery));
         if (delivery !== "follow-up") {
           const alreadyWorking =
             retained.runtime.streaming ||
             [...(yield* Ref.get(retained.activeTurns))].some(
               ([id, kind]) => kind !== "follow-up" && !retained.settledInputIds.has(id),
             );
-          if (!alreadyWorking) retained.activityTiming.startedAt = clock.currentTimeMillisUnsafe();
+          if (antigravity || !alreadyWorking)
+            retained.activityTiming.startedAt = clock.currentTimeMillisUnsafe();
         }
         yield* Ref.update(retained.activeTurns, (turns) => new Map(turns).set(turnId, delivery));
         yield* PubSub.publish(retained.events, {
@@ -429,19 +469,26 @@ export function createSessionRuntimeHandle(input: {
     yield* (
       options.admitTurn
         ? options.admitTurn(
-            { turnId, text, delivery, ...(internal === undefined ? null : { internal }) },
+            {
+              turnId,
+              text,
+              delivery,
+              ...(antigravity ? { runtime: "antigravity" } : null),
+              ...(internal === undefined ? null : { internal }),
+            },
             accept,
           )
         : accept
     ).pipe(
       Effect.mapError(
-        (cause) => new PiSessionError({ operation: delivery, message: String(cause) }),
+        (cause) => new PiSessionError({ operation: delivery, message: messageOf(cause) }),
       ),
       Effect.onExit((exit) =>
         Exit.isFailure(exit) ? Scope.close(turnScope, Exit.void) : Effect.void,
       ),
     );
     if (
+      !antigravity &&
       (options.profile._tag === "ProjectSession" || options.profile._tag === "AutomationSession") &&
       options.runtime.newSession
     ) {
@@ -452,6 +499,7 @@ export function createSessionRuntimeHandle(input: {
         Effect.raceFirst(Deferred.await(finished)),
       );
     }
+    if (antigravity) return turnId;
     const persisted = yield* Effect.promise(() =>
       stat(retained.runtime.sessionFile).then(
         () => true,
@@ -594,6 +642,39 @@ export function createSessionRuntimeHandle(input: {
   }, shared.queueEdits.withPermit);
 
   return {
+    antigravity: Effect.fn("CakeSessionRuntimes.antigravity")(function* (
+      text,
+      markdown,
+      permission,
+    ) {
+      if (options.profile._tag !== "ProjectSession" || !shared.runtime.antigravity)
+        return yield* new PiSessionError({
+          operation: "antigravity",
+          message: "Antigravity is available only in active Project Sessions",
+        });
+      const record = yield* recoveryStorage
+        .get(shared.runtime.sessionId)
+        .pipe(sessionError("antigravity"));
+      if (record?.inputs.length || record?.state === "blocked")
+        return yield* new PiSessionError({
+          operation: "antigravity",
+          message: "Finish the pending Pi work before using Antigravity",
+        });
+      return yield* startTurnUnlocked(
+        "prompt",
+        text,
+        [],
+        markdown,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        permission,
+      );
+    }, shared.turnAdmissions.withPermit),
     modelSwitchStatus: () =>
       Effect.sync(() => (shared.modelSwitch ? { ...shared.modelSwitch } : undefined)),
     switchModel: Effect.fn("CakeSessionRuntimes.switchModel")(
@@ -949,6 +1030,9 @@ export function createSessionRuntimeHandle(input: {
         runtime.setUserMessageMarkdown(entryId, renderAsMarkdown),
       ),
     abort: Effect.fn("CakeSessionRuntimes.abort")(function* (stop?: TurnStop) {
+      // An ACP abort is settled by the ACP turn; it owns no Pi recovery input.
+      if (shared.runtime.antigravityActive)
+        return yield* call("antigravity.abort", (runtime) => runtime.abort(stop));
       const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
       // Cancellation must not queue behind recovery-file writes or turn admission.
       yield* call("abort", (runtime) => runtime.abort(stop));

@@ -17,6 +17,7 @@ export interface ConversationDeliveryInput {
   text: string;
   attachments: Attachment[];
   delivery: "prompt" | "steer";
+  runtime?: "antigravity";
   renderUserMessageAsMarkdown: boolean;
   presentationMode?: ProjectSessionPresentationMode;
   artifactPresentation?: ViewContext | null;
@@ -86,6 +87,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     delivery: "prompt" | "steer",
     restoreOnError: boolean,
     renderUserMessageAsMarkdown: boolean,
+    runtime?: "antigravity",
   ): Promise<boolean | { turnId: string }> {
     const sessionId = this.props.sessionId();
     if (!sessionId || (!text && attachments.length === 0)) return false;
@@ -118,6 +120,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
           artifactPresentation: ArtifactPresentationContext.consume(this)?.capture(sessionId),
           signal: controller.signal,
           clientId: operationId,
+          ...(runtime ? { runtime } : null),
           ...(presentationMode === undefined ? null : { presentationMode }),
         }),
         controller.signal,

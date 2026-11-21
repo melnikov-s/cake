@@ -89,6 +89,12 @@ export const ChatComposer = observer(function ChatComposer({
             onSubmit={onSubmit}
           >
             {children}
+            {!inline && configuration?.antigravity?.selected && (
+              <p className="px-2 py-1 text-xs text-muted-foreground">
+                Cake shares only this message. Antigravity can access the workspace and may remember
+                its own earlier turns. To share context, paste the text you want to send.
+              </p>
+            )}
             {inline && dictationNode}
             {input && (
               <div
@@ -112,7 +118,9 @@ export const ChatComposer = observer(function ChatComposer({
                 <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
                   {dictationNode}
                   {toolbarLeading}
-                  {configuration && <ChatConfigurationSelector configuration={configuration} />}
+                  {configuration && (
+                    <ChatConfigurationSelector configuration={configuration} inComposer />
+                  )}
                 </div>
               )}
               <div

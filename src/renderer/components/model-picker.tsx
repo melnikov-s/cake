@@ -43,6 +43,8 @@ export interface ModelPickerProps {
   groups(): readonly ModelGroup[];
   /** Current identity's display name, independent of the full availability catalog. */
   currentModelName?: string;
+  /** Separate turn runtime. Never enters the Pi model catalog or configuration. */
+  antigravity?: { selected: boolean; select(selected: boolean): void };
   onOpen?(): void;
   value?: ModelConfigurationValue;
   presets?: readonly ModelPreset[];
@@ -103,6 +105,7 @@ export const ModelPicker = observer(function ModelPicker({
   open: controlledOpen,
   onOpenChange,
   currentModelName,
+  antigravity,
   onOpen,
   value,
   presets = [],
@@ -216,13 +219,16 @@ export const ModelPicker = observer(function ModelPicker({
   );
 
   const activeName =
+    (antigravity?.selected ? "Gemini · via Antigravity" : undefined) ??
     activePreset?.name ??
     currentModelName ??
     selectedModel?.name ??
     (configuration?.modelId ? configuration.modelId : placeholder);
   const displayThinking = configuration?.thinkingLevel;
-  const displayFast = Boolean(configuration?.fastMode);
-  const hasValue = Boolean(configuration?.provider && configuration.modelId);
+  const displayFast = !antigravity?.selected && Boolean(configuration?.fastMode);
+  const hasValue =
+    !antigravity?.selected && Boolean(configuration?.provider && configuration.modelId);
+  const showAntigravity = antigravity && "gemini via antigravity".includes(normalizedQuery);
   const thinkingText =
     hasValue && displayThinking && displayThinking !== "off"
       ? reasoningLabel(displayThinking)
@@ -455,6 +461,29 @@ export const ModelPicker = observer(function ModelPicker({
                 />
               </div>
               <div className="max-h-60 space-y-3 overflow-y-auto pr-1 text-xs">
+                {showAntigravity && (
+                  <section aria-label="Turn runtime" className="space-y-1">
+                    <NavItem
+                      active={antigravity.selected}
+                      label="Gemini · via Antigravity"
+                      description="Google CLI · text only"
+                      onClick={() => {
+                        close();
+                        antigravity.select(true);
+                      }}
+                    />
+                    {antigravity.selected && (
+                      <NavItem
+                        label="Return to Pi"
+                        description={currentModelName ?? configuration?.modelId}
+                        onClick={() => {
+                          close();
+                          antigravity.select(false);
+                        }}
+                      />
+                    )}
+                  </section>
+                )}
                 {filteredPresets.length > 0 && (
                   <section aria-label="Model presets" className="space-y-1">
                     <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">Presets</h3>
@@ -536,11 +565,13 @@ export const ModelPicker = observer(function ModelPicker({
                     ))}
                   </section>
                 ))}
-                {filteredPresets.length === 0 && filteredGroups.length === 0 && (
-                  <p className="p-3 text-center text-xs text-muted-foreground">
-                    No matching models
-                  </p>
-                )}
+                {!showAntigravity &&
+                  filteredPresets.length === 0 &&
+                  filteredGroups.length === 0 && (
+                    <p className="p-3 text-center text-xs text-muted-foreground">
+                      No matching models
+                    </p>
+                  )}
               </div>
               {openPresetSettings && (
                 <div className="pt-2 border-t border-border">

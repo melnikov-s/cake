@@ -1,3 +1,4 @@
+import { antigravityParts, interruptedAntigravityParts } from "./antigravity-transcript";
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Option, Schema } from "effect";
 import {
@@ -264,6 +265,11 @@ export function projectSessionEntries(
       continue;
     }
     if (entry.type === "custom_message") {
+      const external = antigravityParts(entry);
+      if (external) {
+        for (const part of external) append(part);
+        continue;
+      }
       if (entry.customType === subagentCompletionType)
         projectSubagentCompletion(entry.id, entry.details);
       for (const part of partsFromMessage({ ...entry, role: "custom" }, `entry-${entry.id}`))
@@ -385,7 +391,10 @@ export function projectSessionEntries(
     for (const [index, part] of projected.entries())
       if (part.kind === "tool" && part.state === "running")
         projected[index] = { ...part, state: "interrupted" };
-  return projected.flatMap((part) => [part, ...(nestedPublications.get(part.id) ?? [])]);
+  return [
+    ...projected.flatMap((part) => [part, ...(nestedPublications.get(part.id) ?? [])]),
+    ...(options.live ? [] : interruptedAntigravityParts(entries)),
+  ];
 }
 
 function entryPreview(entry: SessionEntry) {

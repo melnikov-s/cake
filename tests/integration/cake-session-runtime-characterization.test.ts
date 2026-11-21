@@ -10,6 +10,7 @@ import type { AttachmentReferenceControl } from "../../src/contracts/conversatio
 import { cakeOperationImageResult } from "../../src/contracts/agent/cake-operation";
 import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import antigravityFixture from "../fixtures/antigravity-acp.mjs?raw";
 import { Effect, Layer, ManagedRuntime, Stream } from "effect";
 import {
   CakeSessionRuntimes,
@@ -219,6 +220,146 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("routes Pi → Antigravity → Pi on one transcript and retains only Antigravity's checkpoint across reopen", async () => {
+    const directory = await createTemporaryDirectory();
+    const bin = join(directory, "bin");
+    await mkdir(bin);
+    // The actual adapter uses PATH and spawns agy acp without a shell. Install
+    // only the deterministic fixture in this isolated test directory.
+    const agy = join(bin, "agy");
+    await writeFile(agy, antigravityFixture, { mode: 0o755 });
+    vi.stubEnv("PATH", `${bin}:${dirname(process.execPath)}:${process.env.PATH ?? ""}`);
+    const responses = ["First native Pi reply", "Second native Pi reply", "Native Pi after reopen"];
+    const contexts: Record<string, unknown>[] = [];
+    await registerFixtureProvider(
+      directory,
+      (index, response) => {
+        finishTextResponse(response, responses[index - 1] ?? "Unexpected extra Pi request");
+      },
+      (body) => contexts.push(body),
+    );
+    const events: CakeSessionRuntimeEvent[] = [];
+    const streamed = deferred();
+    const runtime = await createFixtureRuntime(directory, events, {
+      onEvent(event) {
+        const parts =
+          event.type === "snapshot"
+            ? event.snapshot.parts
+            : event.type === "part-updated"
+              ? [event.part]
+              : [];
+        if (
+          parts.some(
+            (part) =>
+              part.kind === "text" &&
+              part.text === "ACP first chunk · café" &&
+              part.status === "streaming",
+          )
+        )
+          streamed.resolve();
+      },
+    });
+    await runtime.prompt("PI-ONLY initial context", "prompt", []);
+    expect(runtime.antigravity).toBeTypeOf("function");
+    const requested = deferred();
+    const allow = deferred();
+    const external = runtime.antigravity?.({
+      id: crypto.randomUUID(),
+      text: "first AGY permission",
+      markdown: false,
+      permission: async () => {
+        requested.resolve();
+        await allow.promise;
+        return "allow";
+      },
+    });
+    try {
+      await requested.promise;
+      await streamed.promise;
+      expect(runtime.streaming).toBe(true);
+      expect(contexts).toHaveLength(1);
+      await expect(runtime.prompt("Must not interleave", "prompt", [])).rejects.toThrow(
+        "Antigravity turn",
+      );
+      const live = await runtime.snapshot();
+      expect(
+        live.parts.findIndex(
+          (part) => part.kind === "text" && part.text === "first AGY permission",
+        ),
+      ).toBeLessThan(
+        live.parts.findIndex(
+          (part) => part.kind === "text" && part.text === "ACP first chunk · café",
+        ),
+      );
+    } finally {
+      allow.resolve();
+    }
+    await external;
+    const sameRuntimeNext = "second AGY turn";
+    await runtime.antigravity?.({
+      id: crypto.randomUUID(),
+      text: sameRuntimeNext,
+      markdown: false,
+      permission: async () => undefined,
+    });
+    await runtime.prompt("PI-ONLY intervening context", "prompt", []);
+    expect(contexts).toHaveLength(2);
+    expect(JSON.stringify(contexts[1])).toContain("External assistant context");
+    expect(JSON.stringify(contexts[1])).toContain("Allowed fixture reply");
+    expect(JSON.stringify(contexts[1])).toContain("First native Pi reply");
+    expect(JSON.stringify(contexts[1])).not.toContain("tool-1");
+    const sessionFile = runtime.sessionFile;
+    await runtime.dispose();
+
+    const restored = await createFixtureRuntime(directory, [], { sessionFile });
+    const history = (await restored.snapshot()).parts;
+    expect(
+      history.filter((part) => part.kind === "text" && part.text === "Allowed fixture reply"),
+    ).toHaveLength(1);
+    expect(history).toContainEqual(
+      expect.objectContaining({
+        name: "Antigravity · Inspect fixture",
+        kind: "tool",
+        state: "success",
+      }),
+    );
+    expect(restored.sessionId).toBe(runtime.sessionId);
+    await restored.antigravity?.({
+      id: crypto.randomUUID(),
+      text: "AGY after reopen and Pi",
+      markdown: false,
+      permission: async () => undefined,
+    });
+    await restored.prompt("Continue natively", "prompt", []);
+    expect(contexts).toHaveLength(3);
+    const finalPi = JSON.stringify(contexts[2]);
+    expect(finalPi).toContain("Second native Pi reply");
+    expect(finalPi).toContain("AGY after reopen and Pi");
+    expect(finalPi).toContain("Allowed fixture reply");
+    expect(finalPi).not.toContain("DO NOT SHOW");
+    const wire = await readFile(join(directory, "fixture-acp-wire.ndjson"), "utf8");
+    expect(wire.match(/"method":"session\/resume"/g)).toHaveLength(2);
+    expect(wire.match(/"method":"session\/new"/g)).toHaveLength(1);
+    expect(wire.match(/"method":"session\/prompt"/g)).toHaveLength(3);
+    expect(wire).not.toContain("PI-ONLY");
+    expect(wire).not.toContain("First native Pi reply");
+    const manager = SessionManager.open(sessionFile, dirname(sessionFile), directory);
+    expect(
+      manager
+        .getBranch()
+        .filter((entry) => entry.type === "message" && entry.message.role === "assistant"),
+    ).toHaveLength(3);
+    expect(
+      manager
+        .getBranch()
+        .filter(
+          (entry) =>
+            entry.type === "custom_message" && entry.customType === "cake.antigravity.reply/v1",
+        ),
+    ).toHaveLength(3);
+    expect((await restored.snapshot()).model?.provider).toBe("fixture-provider");
+  });
+
   it("joins Pi cancellation before model handoff and continues once with queued input retained", async () => {
     const directory = await createTemporaryDirectory();
     const firstStarted = deferred();

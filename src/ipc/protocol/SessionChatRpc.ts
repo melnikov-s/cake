@@ -28,6 +28,15 @@ export const SessionChatRpc = RpcGroup.make(
     success: TurnId,
     error: SessionChatError,
   }),
+  Rpc.make("sessionChats.antigravity", {
+    payload: {
+      ...SessionChatTarget.fields,
+      text: Schema.NonEmptyString.check(Schema.isMaxLength(32_768)),
+      renderUserMessageAsMarkdown: Schema.Boolean,
+    },
+    success: TurnId,
+    error: SessionChatError,
+  }),
   Rpc.make("sessionChats.steer", {
     payload: SessionChatPromptInput,
     success: TurnId,

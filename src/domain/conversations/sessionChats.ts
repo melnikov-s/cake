@@ -32,6 +32,8 @@ import {
   type PiSessionError,
 } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
+import { ClientConnections } from "../../services/clients/ClientConnections";
+import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type { PiQueuedMessages } from "../../contracts/conversations/pending-message-data";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
@@ -163,6 +165,54 @@ export const bindRenderer = Effect.fn("SessionChats.bindRenderer")(function* (
   if (!target) return;
   const coordinator = yield* RendererRequestCoordinator;
   yield* coordinator.bind(target, connectionId).pipe(asError("bindRenderer"));
+});
+
+/** This explicit renderer-only path never enriches the draft with notices,
+ * attachments, metadata, transcript, or context from Cake's normal delivery. */
+export const antigravity = Effect.fn("SessionChats.antigravity")(function* (
+  input: { sessionId: string; text: string; renderUserMessageAsMarkdown: boolean },
+  connectionId: number,
+) {
+  const connections = yield* ClientConnections;
+  const handle = yield* acquire(input.sessionId);
+  if (
+    connections.kind(connectionId) !== "desktop" ||
+    handle.profile !== "ProjectSession" ||
+    !handle.antigravity
+  )
+    return yield* new SessionChatError({
+      operation: "antigravity",
+      message: "Antigravity is available only in active desktop Project Sessions",
+    });
+  const coordinator = yield* RendererRequestCoordinator;
+  yield* coordinator
+    .bind({ _tag: "ProjectSession", sessionId: input.sessionId }, connectionId)
+    .pipe(asError("antigravity"));
+  yield* coordinator
+    .requireDesktopConnection(input.sessionId, connectionId)
+    .pipe(asError("antigravity"));
+  const run = makePiCallbackExecutor(yield* Effect.context<RendererRequestCoordinator>());
+  const turnId = yield* handle
+    .antigravity(input.text, input.renderUserMessageAsMarkdown, async (request, signal) => {
+      if (connections.kind(connectionId) !== "desktop") return undefined;
+      const decision = await run(
+        coordinator.requestUiForConnection(connectionId, input.sessionId, {
+          kind: "select",
+          title: "Antigravity permission",
+          message: request.description,
+          options: [
+            { id: "deny", label: "Deny" },
+            ...(request.canAllowOnce ? [{ id: "allow", label: "Allow once" }] : []),
+          ],
+          signal,
+          timeout: 120_000,
+        }),
+        { signal },
+      );
+      return decision === "allow" || decision === "deny" ? decision : undefined;
+    })
+    .pipe(asError("antigravity"));
+  return TurnId.make(turnId);
 });
 
 export const deliver = Effect.fn("SessionChats.deliver")(function* (

@@ -55,7 +55,7 @@ const assertAdmission = Effect.fn("SessionFamilies.assertAdmission")(function* (
 export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* <E, R>(
   sessionId: string,
   location: SessionArchiveLocation,
-  input: { readonly turnId: string; readonly text: string },
+  input: { readonly turnId: string; readonly text: string; readonly runtime?: "antigravity" },
   accept: Effect.Effect<void, E, R>,
 ) {
   const storage = yield* SessionFamilyStorage;
@@ -64,7 +64,8 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* <E, R>
     Effect.gen(function* () {
       yield* assertAdmission(sessionId, location);
 
-      const request = parseCrossSessionMessage(input.text);
+      const request =
+        input.runtime === "antigravity" ? undefined : parseCrossSessionMessage(input.text);
       const senderSessionId = request?.metadata.sender.sessionId;
 
       // A reply obligation belongs to this one message, never to the session
