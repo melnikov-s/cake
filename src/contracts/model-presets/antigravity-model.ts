@@ -1,8 +1,8 @@
-/** Cake-owned identity for the CLI's model choice, not a remotely addressable model ID. */
+/** Identity for Antigravity’s default, not a concrete model ID. Keep the stored key for existing presets. */
 export const antigravityModel = {
   provider: "antigravity",
   modelId: "gemini",
-  name: "Gemini · via Antigravity",
+  name: "Antigravity default",
 } as const;
 
 export const isAntigravityModel = (selection?: { provider: string; modelId: string }) =>
@@ -10,7 +10,7 @@ export const isAntigravityModel = (selection?: { provider: string; modelId: stri
   selection.modelId === antigravityModel.modelId;
 
 export const antigravityDesktopOnly =
-  "Gemini via Antigravity requires an interactive desktop conversation. Choose another model for background work.";
+  "Antigravity requires an interactive desktop conversation. Choose another model for background work.";
 
 export const antigravityPromptError = (text: string) =>
   !text.trim() || text.length > 32_768 || /^[!/]/.test(text.trimStart())
@@ -18,7 +18,7 @@ export const antigravityPromptError = (text: string) =>
     : undefined;
 
 export const antigravitySettingsError =
-  "Antigravity chooses the Gemini model and thinking settings. Fast mode and preset prompts are not supported.";
+  "Antigravity chooses the model and thinking settings. Fast mode and preset prompts are not supported.";
 
 export function supportsAntigravitySettings(selection: {
   thinkingLevel: string;

@@ -264,8 +264,8 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
           </div>
           {isAntigravityModel(draft) ? (
             <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
-              Antigravity chooses the exact Gemini model and thinking settings. Preset prompts and
-              Fast mode aren’t supported.
+              Antigravity chooses the model and thinking settings. Preset prompts and Fast mode
+              aren’t supported.
             </p>
           ) : (
             <div className="grid gap-1.5 px-3.5 py-2.5">

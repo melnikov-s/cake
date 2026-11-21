@@ -1,6 +1,6 @@
 # Antigravity turns in Cake
 
-Choose **Gemini · via Antigravity** from the regular model picker in Settings → Models, a desktop Project Session (including an unsent or saved draft), Project Chat, or global Cake Chat. Save it as a named preset or make it the default for new conversations. Changing model uses the same picker; the choice is saved with the conversation. Google’s CLI chooses the concrete Gemini model and thinking settings; Cake doesn’t apply preset prompt files or Fast mode.
+Choose **Antigravity default** from the regular model picker in Settings → Models, a desktop Project Session (including an unsent or saved draft), Project Chat, or global Cake Chat. Save it as a named preset or make it the default for new conversations. Changing model uses the same picker; the choice is saved with the conversation. Google’s CLI chooses the model and thinking settings; this entry does not pin a specific Gemini or Claude model. Cake doesn’t apply preset prompt files or Fast mode. The CLI’s `agy models` command lists available models after sign-in, but Cake does not yet discover or apply those choices.
 
 Antigravity currently accepts one plain-text turn at a time. Attachments, voice replies, editing a message to regenerate it, queued/steered input, and Pi agent commands are not supported. Existing conversation controls and transcript are still available; use a different model to execute unsupported inputs or summarize Pi history.
 
