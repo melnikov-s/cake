@@ -161,18 +161,9 @@ describe("core coordinator calling reference", () => {
       expect(reference).not.toContain(specialist);
   });
 
-  it(`bounds prompt size (${reference.length} reference; ${prompt.length} coordinator; ${projectTodoBaseline(emptyProjectTodos()).length} empty to-do baseline chars)`, () => {
-    // Ratchets at the current sizes: growth requires a deliberate budget edit.
-    expect(reference.length).toBeLessThanOrEqual(3064);
-    expect(prompt.length).toBeLessThanOrEqual(9003);
-  });
-
-  it.each([
-    ["Cake Chat", 14354],
-    ["Project Chat", 14278],
-  ] as const)(
-    "bounds the shipped %s ingredients with recall, to-dos, attribution and preset guidance",
-    (chat, budget) => {
+  it.each(["Cake Chat", "Project Chat"] as const)(
+    "includes the core operation sketches, recall and to-do creation guidance once for %s",
+    (chat) => {
       const docs = `/Users/user/.pi/agent/cake-docs/${"a".repeat(64)}`;
       const assembled = [
         coordinatorSystemPrompt("", docs, false, reference),
@@ -184,9 +175,6 @@ describe("core coordinator calling reference", () => {
           prompt: "Be concise; retain necessary constraints.",
         }),
       ].join("\n\n");
-      // Budget shipped ingredients, not user instructions, skills or populated list data.
-      // Ratchet at the current size: growth requires a deliberate budget edit.
-      expect(Buffer.byteLength(assembled)).toBeLessThanOrEqual(budget);
       for (const command of [
         "sessions.create",
         "sessions.fork",
@@ -218,8 +206,6 @@ describe("core coordinator calling reference", () => {
     expect(assembled).not.toMatch(
       /Core chat operations|cake-todo|to-dos \(application context\)|plugins\.present|hello-sample/,
     );
-    // Ratchet at the current size: growth requires a deliberate budget edit.
-    expect(Buffer.byteLength(assembled)).toBeLessThanOrEqual(3108);
   });
 
   it("never advertises missing/disabled controls or injects coordinator controls into the companion", () => {

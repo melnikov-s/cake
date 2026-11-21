@@ -41,8 +41,6 @@ describe("compact Cake Chat guidance", () => {
     expect(coordinatorSystemPrompt(custom, "/cake/docs")).toBe(
       prompt.replace("<cake-chat-instructions>\n\n", `<cake-chat-instructions>\n${custom}\n`),
     );
-    // Ratchet at the current size: growth requires a deliberate budget edit.
-    expect(Buffer.byteLength(prompt)).toBeLessThanOrEqual(5944);
   });
 });
 

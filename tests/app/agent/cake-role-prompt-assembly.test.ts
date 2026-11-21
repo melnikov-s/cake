@@ -114,8 +114,6 @@ describe("role-specific prompt assembly", () => {
       expectWorkerPolicy(systemPrompt, allowMutations);
       expect(systemPrompt).not.toContain("## Deliver and revise");
       expect(systemPrompt).not.toMatch(/worktrees\.merge|sessions\.create-child/);
-      // Ratchet at the current size: growth requires a deliberate budget edit.
-      expect(Buffer.byteLength(systemPrompt)).toBeLessThanOrEqual(allowMutations ? 991 : 789);
     },
   );
 

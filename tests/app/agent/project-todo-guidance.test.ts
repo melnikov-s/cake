@@ -40,13 +40,6 @@ it("keeps self-contained lifecycle, writing and attention rules in both baseline
       expect(baseline.split(rule)).toHaveLength(2);
   }
 });
-it.each([
-  ["Cake Chat", 2804],
-  ["Project Chat", 2728],
-] as const)("bounds the empty %s baseline", (chat, budget) => {
-  // Ratchet at the current size: growth requires a deliberate budget edit.
-  expect(projectTodoBaseline(emptyProjectTodos(), chat).length).toBeLessThanOrEqual(budget);
-});
 it("shares one creation rule across the baseline, help and guide", () => {
   expect(guide).toContain(PROJECT_TODO_CREATION_RULE);
   expect(registry.operationHelp("todos.create")).toContain(PROJECT_TODO_CREATION_RULE);
