@@ -21,6 +21,9 @@ import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessag
 import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
 import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import * as projectSessionLocations from "./projectSessionLocations";
+import { ProjectCanvasStorage } from "../../services/storage/ProjectCanvasStorage";
+import { makeProjectCanvasControl } from "../project-canvas/project-canvas-operations";
+import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import * as projectChatInstructions from "../projects/projectChatInstructions";
 import { reuseRecent } from "../../utils/reuse-recent";
 import * as sessionReferences from "./sessionReferences";
@@ -158,6 +161,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const archive = yield* SessionArchiveStorage;
   const artifactStorage = yield* Effect.serviceOption(ArtifactStorage);
   const messageBoardStorage = yield* Effect.serviceOption(MessageBoardStorage);
+  const canvasStorage = yield* Effect.serviceOption(ProjectCanvasStorage);
   const recoveryStorage = yield* Effect.serviceOption(RuntimeRecoveryStorage);
   const savedDraftStorage = yield* Effect.serviceOption(SavedDraftStorage);
   const landingCoordinator = yield* Effect.serviceOption(WorktreeLandingCoordinator);
@@ -369,6 +373,15 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             signal,
           }),
       },
+      projectCanvas: Option.isSome(canvasStorage)
+        ? makeProjectCanvasControl(
+            projectChatSessionId(location.projectPath),
+            sessionId,
+            makePiCallbackExecutor(
+              Context.add(configuredContext, ProjectCanvasStorage, canvasStorage.value),
+            ),
+          )
+        : undefined,
       attachmentReferenceControl: makeAttachmentReferenceControl(sessionId, run),
       messageReferenceControl: {
         list: (input, signal) =>

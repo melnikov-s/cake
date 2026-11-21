@@ -1,4 +1,5 @@
 import { DateTime, Option, Schema } from "effect";
+import { parseCanvasLink } from "../project-canvas/canvas-link";
 import { SubagentReference, parseSubagentLink } from "../subagents/subagent-reference";
 import { AgentListInput } from "../agent/agent-list-data";
 import { MessageReference, parseSessionLink } from "../conversations/message-reference";
@@ -24,7 +25,7 @@ export const ProjectTodoSourceReference = Schema.String.check(
   Schema.isTrimmed(),
   Schema.makeFilter(
     (ref) => {
-      if (parseSessionLink(ref) || parseSubagentLink(ref)) return true;
+      if (parseSessionLink(ref) || parseSubagentLink(ref) || parseCanvasLink(ref)) return true;
       if (/^cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?$/.test(ref))
         return true;
       if (/^https?:\/\//i.test(ref)) {

@@ -7,6 +7,9 @@ The user has entered embedded VS Code. They may now be looking at the editor. Us
   enterBrowser: `<system-reminder>
 The user has entered Browser Mode. They may now be looking at the embedded browser. Use Cake's browser CDP operations when they would help.
 </system-reminder>`,
+  enterCanvas: `<system-reminder>
+The user has opened Project Canvas. Use canvas.search and canvas.read when asked about published cards; publish only deliberately for review.
+</system-reminder>`,
   returnToNormal: `<system-reminder>
 The user has returned to the normal conversation view and is no longer viewing embedded VS Code or Browser Mode.
 </system-reminder>`,
@@ -20,6 +23,7 @@ type Reminder = {
 const knownReminders: readonly Reminder[] = [
   { mode: "vscode", content: reminders.enterVscode },
   { mode: "browser", content: reminders.enterBrowser },
+  { mode: "canvas", content: reminders.enterCanvas },
   { mode: "normal", content: reminders.returnToNormal },
 ];
 
@@ -41,11 +45,7 @@ export function addPresentationModeReminder(
   currentMode: ProjectSessionPresentationMode,
 ): string {
   if (currentMode === previousMode) return text;
-  const reminder =
-    currentMode === "normal"
-      ? reminders.returnToNormal
-      : currentMode === "browser"
-        ? reminders.enterBrowser
-        : reminders.enterVscode;
+  const reminder = knownReminders.find(({ mode }) => mode === currentMode)?.content;
+  if (!reminder) return text;
   return `${reminder}${text ? `\n\n${text}` : ""}`;
 }

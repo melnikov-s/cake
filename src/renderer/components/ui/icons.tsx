@@ -578,6 +578,14 @@ export const WorkLogFullyExpandedIcon = () => (
     <path d="m7 7 5 5 5-5M7 13l5 5 5-5" />
   </Icon>
 );
+export const CanvasIcon = () => (
+  <Icon>
+    <rect x="3" y="3" width="12" height="7" rx="1.5" />
+    <rect x="17.5" y="3" width="3.5" height="7" rx="1" />
+    <rect x="3" y="13" width="8" height="8" rx="1.5" />
+  </Icon>
+);
+
 export const SearchIcon = ({ size = 14, className }: { size?: number; className?: string }) => (
   <Icon size={size} className={className}>
     <circle cx="11" cy="11" r="8" />

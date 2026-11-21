@@ -7,6 +7,7 @@ import { standardDecorators } from "./scripts/vite-standard-decorators.ts";
 
 export default defineConfig({
   root: resolve(import.meta.dirname, "src/renderer/browser"),
+  publicDir: resolve(import.meta.dirname, "src/renderer/public"),
   resolve: { alias: { "@": resolve(import.meta.dirname, "src/renderer") } },
   // Use Vite's esbuild CSS optimizer, which recognizes native ::highlight().
   server: { host: "127.0.0.1" },

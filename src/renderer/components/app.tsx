@@ -1,3 +1,5 @@
+import { CanvasWorkspace } from "./project-canvas/canvas-workspace";
+import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { WidgetTabHost } from "./widget-tab-host";
 import { useState } from "react";
 import { usePhoneLayout } from "../lib/phone-layout";
@@ -27,6 +29,13 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   const workbench = root.projectWorkbenchStore;
   const session = root.workspaceSession;
   const presentation = workbench.presentationStore;
+  const canvasSession =
+    session &&
+    root.appShellStore.activeConversation?.kind === "cake-chat" &&
+    isProjectChatSessionId(session.sessionId) &&
+    session.presentationMode === "canvas"
+      ? session
+      : undefined;
   const mode =
     !phone &&
     (root.appShellStore.surface === "workbench" || root.appShellStore.surface === "cake-chat") &&
@@ -49,11 +58,17 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     <WidgetTabHost>
       <AppShellLayout
         overlays={overlays}
-        workspaceMode={mode}
+        workspaceMode={canvasSession ? "canvas" : mode}
         commandPaneWidth={commandPaneWidth}
         onCommandPaneWidthChange={setCommandPaneWidth}
       >
-        {mode && session ? (
+        {canvasSession ? (
+          <CanvasWorkspace
+            key={canvasSession.sessionId}
+            projectChatId={canvasSession.sessionId}
+            browserMode={browserMode}
+          />
+        ) : mode && session ? (
           root.appShellStore.activeConversation?.kind === "cake-chat" ? (
             <CakeChatWorkspaceSurface
               session={root.cakeChatCollectionStore.registry.find(session.sessionId)!}

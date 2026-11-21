@@ -1,3 +1,4 @@
+import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { Store, child, createStore } from "r-state-tree";
 import { ClientContext } from "./context/ClientContext";
 import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
@@ -189,6 +190,13 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     this.reviews.clearActiveThread();
     this.browserStore.suspend();
     await this.embeddedEditorStore.show();
+  }
+
+  async openCanvas() {
+    const session = this.session;
+    if (!session || !isProjectChatSessionId(session.sessionId)) return;
+    await this.backToAgent();
+    if (session === this.session) session.showPresentation("canvas");
   }
 
   async openBrowser() {

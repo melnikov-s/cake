@@ -775,14 +775,15 @@ export class NavigationStore extends Store<{
       ? (this.props.registry.findSession(sessionId) ??
         this.props.cakeChat().registry.find(sessionId))
       : undefined;
-    this.props
-      .artifactMenu()
-      .open(
-        sessionId,
-        decodeArtifactLineageId(lineageId),
-        revision === undefined ? undefined : decodeArtifactRevisionNumber(revision),
-        session?.conversationSessionStore.sideChatStore,
-      );
+    this.props.artifactMenu().open(
+      sessionId,
+      decodeArtifactLineageId(lineageId),
+      revision === undefined ? undefined : decodeArtifactRevisionNumber(revision),
+      // Canvas replaces the conversation; the existing fullscreen host owns the preview.
+      session?.presentationMode === "canvas"
+        ? undefined
+        : session?.conversationSessionStore.sideChatStore,
+    );
   }
 
   showArtifactLibrary(sessionId?: string, lineageId?: string, revision?: number) {

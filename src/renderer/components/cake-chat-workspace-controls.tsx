@@ -1,3 +1,4 @@
+import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
@@ -14,7 +15,7 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
   browserMode,
 }: {
   session: CakeChatSessionStore;
-  mode: "browser" | "vscode";
+  mode: "browser" | "vscode" | "canvas";
   browserMode: boolean;
 }) {
   const root = useStore(RootStore);
@@ -42,6 +43,14 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
           onBackToAgent={() => void presentation.backToAgent()}
           onOpenBrowser={() => void presentation.openBrowser()}
           onOpenIde={() => void presentation.openIde()}
+          onOpenCanvas={
+            isProjectChatSessionId(session.sessionId)
+              ? () => {
+                  root.projectCanvasStore.closeReview();
+                  void presentation.openCanvas();
+                }
+              : undefined
+          }
           onToggleTerminal={() => void terminal.toggle()}
         />
         <WorkLogControls store={session.conversationSessionStore.chatStore} />

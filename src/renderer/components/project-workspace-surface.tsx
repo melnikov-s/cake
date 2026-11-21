@@ -15,7 +15,7 @@ export const ProjectWorkspaceSurface = observer(function ProjectWorkspaceSurface
   browserMode,
 }: {
   session: ProjectSessionStore;
-  mode: Exclude<ProjectSessionStore["presentationMode"], "normal">;
+  mode: "browser" | "vscode";
   browserMode: boolean;
 }) {
   const root = useStore(RootStore);

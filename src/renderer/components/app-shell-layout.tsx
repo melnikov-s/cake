@@ -28,7 +28,7 @@ export const AppShellLayout = observer(function AppShellLayout({
 }: {
   children: ReactNode;
   overlays: ReactNode;
-  workspaceMode?: "browser" | "vscode";
+  workspaceMode?: "browser" | "vscode" | "canvas";
   commandPaneWidth: number;
   onCommandPaneWidthChange(width: number): void;
 }) {

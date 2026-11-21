@@ -22,6 +22,7 @@ import { WidgetPackageRpc } from "./WidgetPackageRpc";
 import { PiSettingsRpc } from "./PiSettingsRpc";
 import { ProviderAuthRpc } from "./ProviderAuthRpc";
 import { ProjectSessionRpc } from "./ProjectSessionRpc";
+import { ProjectCanvasRpc } from "./ProjectCanvasRpc";
 import { ProjectTodoRpc } from "./ProjectTodoRpc";
 import { ProjectWorkflowRpc } from "./ProjectWorkflowRpc";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
@@ -57,6 +58,7 @@ export const BackendRpc = ApplicationRpc.merge(
   ProjectSessionRpc,
   ProjectWorkflowRpc,
   ProjectTodoRpc,
+  ProjectCanvasRpc,
   ScheduledMessageRpc,
   SavedDraftRpc,
   SessionChatRpc,

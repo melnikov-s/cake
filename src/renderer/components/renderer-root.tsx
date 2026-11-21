@@ -45,6 +45,7 @@ export const RendererRoot = observer(function RendererRoot({
       );
     return {
       openExternalUrl,
+      openCanvas: (target) => void rootStore.openCanvasLink(target),
       openArtifact: (reference) => {
         const { lineageId, revision } = parseArtifactRef(reference);
         openArtifact(lineageId, revision);

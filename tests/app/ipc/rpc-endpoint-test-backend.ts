@@ -52,6 +52,7 @@ import { fakePiModels } from "../../helpers/fakes/piModels";
 import { fakeRendererRequestCoordinator } from "../../helpers/fakes/rendererRequestCoordinator";
 import { fakeSessionArchiveStorage } from "../../helpers/fakes/sessionArchiveStorage";
 import { fakeSessionFamilyStorage } from "../../helpers/fakes/sessionFamilyStorage";
+import { ProjectCanvasStorage } from "../../../src/services/storage/ProjectCanvasStorage";
 import { fakeTaskInputStorage } from "../../helpers/fakes/taskInputStorage";
 
 const unexpectedCapability = (): never => {
@@ -70,6 +71,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(AgentAvailability, {}),
   fakeRendererRequestCoordinator(),
   Layer.mock(ArtifactStorage, {}),
+  Layer.mock(ProjectCanvasStorage, {}),
   Layer.mock(WidgetPackages, { directory: "/backend/widget-packages" }),
   Layer.mock(MessageBoardStorage, {}),
   Layer.mock(SavedDraftStorage, {}),

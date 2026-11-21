@@ -24,6 +24,8 @@ import { CakeChatOverlayStore } from "./CakeChatOverlayStore";
 import { createApplicationCommandRegistry } from "../commands/application-commands";
 import { NavigationStore } from "./NavigationStore";
 import type { Client } from "../client/Client";
+import type { CanvasTarget } from "../../contracts/project-canvas/canvas-link";
+import { ProjectCanvasStore } from "./ProjectCanvasStore";
 import { ClientContext } from "./context/ClientContext";
 import {
   ChatPresentationContext,
@@ -757,6 +759,30 @@ export class RootStore extends Store<{
         };
       },
     });
+  }
+
+  @child
+  get projectCanvasStore() {
+    return createStore(ProjectCanvasStore, { client: this.client.projectCanvas });
+  }
+
+  async openCanvasLink(target: CanvasTarget) {
+    const opened = await this.navigationStore.openCakeChat(target.projectChatId);
+    const session = this.workspaceSession;
+    if (opened === false || session?.sessionId !== target.projectChatId) return;
+    this.projectCanvasStore.reveal(target);
+    await this.projectWorkbenchStore.presentationStore.openCanvas();
+  }
+
+  async draftCanvasFeedback(sessionId: string, text: string) {
+    await this.navigationStore.openSessionLink(sessionId);
+    const session = this.workspaceSession;
+    if (session?.sessionId !== sessionId) return false;
+    await this.projectWorkbenchStore.presentationStore.backToAgent();
+    const draft = session.conversationSessionStore.composerStore.draftStore;
+    draft.setText(draft.text ? `${draft.text}\n\n${text}` : text);
+    draft.requestFocus();
+    return true;
   }
 
   get workspaceSession() {

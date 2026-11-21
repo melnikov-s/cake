@@ -39,6 +39,7 @@ import { createGlobalControlOperations } from "../domain/application/cake-global
 import { createAgentControlOperations } from "../domain/subagents/cake-subagent-operations";
 import { createCoordinatorOperations } from "../domain/cake-chats/cake-coordinator-operations";
 import { withChatContextLimit } from "../domain/cake-chats/cake-chat-context-limit-setting";
+import { createProjectCanvasOperations } from "../domain/project-canvas/project-canvas-operations";
 import { createProjectTodoOperations } from "../domain/projects/project-todo-operations";
 import { createProjectChatInstructionOperations } from "../domain/projects/project-chat-instruction-operations";
 import { createCakeChatInstructionOperations } from "../domain/cake-chats/cake-chat-instruction-operations";
@@ -79,6 +80,7 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
       setResolved: control?.canResolve?.() === false ? undefined : control?.setResolved,
     };
     const definitions = [
+      ...(options.projectCanvas ? createProjectCanvasOperations(options.projectCanvas) : []),
       ...(options.projectTodos ? createProjectTodoOperations(options.projectTodos) : []),
       ...(options.messageReferenceControl
         ? createMessageOperations(options.messageReferenceControl)
@@ -264,6 +266,7 @@ export function coordinatorCakeOperations(
         ? createProjectChatInstructionOperations(options.projectChatInstructions)
         : []),
       ...(options.projectTodos ? createProjectTodoOperations(options.projectTodos) : []),
+      ...(options.projectCanvas ? createProjectCanvasOperations(options.projectCanvas) : []),
       ...(options.cakeChatWorktrees
         ? createCakeChatWorktreeOperations(options.cakeChatWorktrees)
         : []),
@@ -298,6 +301,7 @@ export function configureCakeSessionRuntime(
   const {
     automationControl,
     projectTodos,
+    projectCanvas,
     messageReferenceControl,
     attachmentReferenceControl,
     allowedCakeOperations,
@@ -335,6 +339,7 @@ export function configureCakeSessionRuntime(
   const featureOptions: CakeOperationOptions = {
     automationControl,
     projectTodos,
+    projectCanvas,
     messageReferenceControl,
     attachmentReferenceControl,
     cwd: runtime.cwd,

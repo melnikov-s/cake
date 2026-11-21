@@ -32,6 +32,7 @@ import { widgetPackageHandlers } from "./WidgetPackageHandlers";
 import { piSettingsHandlers } from "./PiSettingsHandlers";
 import { providerAuthHandlers } from "./ProviderAuthHandlers";
 import { projectSessionHandlers } from "./ProjectSessionHandlers";
+import { projectCanvasHandlers } from "./ProjectCanvasHandlers";
 import { projectTodoHandlers } from "./ProjectTodoHandlers";
 import { projectWorkflowHandlers } from "./ProjectWorkflowHandlers";
 import { scheduledMessageHandlers } from "./ScheduledMessageHandlers";
@@ -73,6 +74,7 @@ export const makeBackendRpcHandlersLive = (
     ...projectSessionHandlers,
     ...projectWorkflowHandlers,
     ...projectTodoHandlers,
+    ...projectCanvasHandlers,
     ...scheduledMessageHandlers,
     ...savedDraftHandlers,
     ...sessionChatHandlers,

@@ -35,6 +35,8 @@ import { projectChatSessionId } from "./cakeChatLocations";
 import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
 import * as projects from "../projects/projects";
 import * as projectTodoAssociations from "../projects/projectTodoAssociations";
+import { ProjectCanvasStorage } from "../../services/storage/ProjectCanvasStorage";
+import { makeProjectCanvasControl } from "../project-canvas/project-canvas-operations";
 import * as projectTodos from "../projects/projectTodos";
 import {
   CAKE_CHAT_TODO_SCOPE,
@@ -237,6 +239,9 @@ const CAKE_CHAT_OPERATIONS = [
   "subagents.abort",
   "subagents.close",
   "notifications.send",
+  "canvas.publish",
+  "canvas.search",
+  "canvas.read",
 ] as const;
 
 export type CakeChatRuntimeServices =
@@ -296,6 +301,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   const landingCoordinator = yield* Effect.serviceOption(WorktreeLandingCoordinator);
   const landingAgent = yield* Effect.serviceOption(WorktreeLandingAgent);
   const landingCompletion = yield* Effect.serviceOption(WorktreeLandingCompletion);
+  const canvasStorage = yield* Effect.serviceOption(ProjectCanvasStorage);
   const drafts = yield* Effect.serviceOption(SavedDraftStorage);
   const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
   const todoReports = yield* Effect.serviceOption(ProjectTodoReports);
@@ -811,6 +817,16 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             update: (input, signal) => run(updateCakeChatInstructions(input), { signal }),
           },
       // Project Chat keeps its Project's list; global Cake Chat keeps its own separate list.
+      projectCanvas:
+        project && Option.isSome(canvasStorage)
+          ? makeProjectCanvasControl(
+              projectChatSessionId(project.path),
+              target.sessionId,
+              makePiCallbackExecutor(
+                Context.add(configuredContext, ProjectCanvasStorage, canvasStorage.value),
+              ),
+            )
+          : undefined,
       projectTodos: {
         select: (input, signal) =>
           run(

@@ -31,6 +31,11 @@ import { useEditorColorTheme } from "@/lib/resolved-color-theme";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../contracts/editor/source-location";
 import { parseSubagentLink, subagentLink } from "../../../contracts/subagents/subagent-reference";
+import {
+  canvasLink,
+  parseCanvasLink,
+  type CanvasTarget,
+} from "../../../contracts/project-canvas/canvas-link";
 import { parseSessionLink, sessionLink } from "../../../contracts/conversations/message-reference";
 import { parseSourceLocation } from "../../../utils/source-location";
 import { resolveSessionLinkReference } from "../../../contracts/project-sessions/session-reference";
@@ -51,6 +56,17 @@ import { MarkdownImage } from "../markdown-image";
 import { MarkdownCodeBlock, streamingCodeMarker } from "./markdown-code-block";
 
 /** Matches web-style hrefs that must never be treated as workspace file paths. */
+const canvasPathPrefix = "/__cake_canvas__/";
+const canvasTargetFromHref = (href: string) =>
+  parseCanvasLink(
+    href.startsWith(canvasPathPrefix)
+      ? `cake://canvas/${href.slice(canvasPathPrefix.length)}`
+      : href,
+  );
+const canvasHref = (ref: string) => canvasPathPrefix + ref.slice("cake://canvas/".length);
+const bareCanvasReference =
+  /(^|[\s(])(cake:\/\/canvas\/project-chat:[a-f0-9]{64}\/[a-f0-9-]{36}(?:@r[1-9][0-9]*)?)(?=$|[\s),.;!?])/g;
+
 const nonPathHref = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
 const workspacePathPrefix = "/__cake_workspace__/";
 const sessionPathPrefix = "/__cake_session__/";
@@ -62,7 +78,7 @@ const bareSourceReference =
   /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z](?:[a-z0-9._+-]*[a-z0-9_+-])?(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?(?:,L\d+(?:-L?\d+)?)*)?)(?=$|[\s),.;!?])/gi;
 // Cake operation names are prose, not workspace files. Explicit paths/links remain authored.
 const cakeOperationReference =
-  /^(?:app|projects|sessions|session|session-labels|context|models|settings|interview|artifacts|boards|widgets|plugins|vscode|browser|subagents|notifications|worktrees|messages|attachments|todos)\.(?:abort|add|append|authoring|cancel|cdp|clear|close|compact|completions|create|current|debug|delete|discard|enter|entry|events|follow|fork|get|help|history|info|link|list|merge|open|parallel|patch|pending|present|preview|project|prompt|proposeSquashMessage|queue|read|remove|rename|reorder|replace|reply|reports|resolve|restore|run|schedule|scheduled|script|search|select|selection|selections|send|session|set|settings|source|split|start|state|status|stop|thread|unlink|update|usage|user|wait|window)(?:[.-][a-z0-9-]+)*$/i;
+  /^(?:app|projects|sessions|session|session-labels|context|models|settings|interview|artifacts|boards|widgets|plugins|vscode|browser|subagents|notifications|worktrees|messages|attachments|todos|canvas)\.(?:abort|add|append|authoring|cancel|cdp|clear|close|compact|completions|create|current|debug|delete|discard|enter|entry|events|follow|fork|get|help|history|info|link|list|merge|open|parallel|patch|pending|present|preview|project|prompt|publish|proposeSquashMessage|queue|read|remove|rename|reorder|replace|reply|reports|resolve|restore|run|schedule|scheduled|script|search|select|selection|selections|send|session|set|settings|source|split|start|state|status|stop|thread|unlink|update|usage|user|wait|window)(?:[.-][a-z0-9-]+)*$/i;
 const bareArtifactReference =
   /(^|[\s(])(cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?)(?=$|[\s),.;!?])/g;
 
@@ -72,6 +88,7 @@ type ImageProps = ComponentProps<"img"> & { node?: unknown };
 type MarkdownLinkActions = {
   openExternalUrl(url: string): void;
   openArtifact?(reference: string): void;
+  openCanvas?(target: CanvasTarget): void;
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
   openSubagent?(parentSessionId: string, handleId: string, messageId?: string): void;
   sessionTitle?(sessionId: string): string | undefined;
@@ -188,6 +205,7 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean, workspaceI
           /\]\(([^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\)$/,
           (match, target: string) => {
             if (target.startsWith(modelReferencePathPrefix)) return match;
+            if (canvasTargetFromHref(target)) return `](${canvasHref(target)})`;
             const subagent = subagentTargetFromHref(target);
             if (subagent)
               return `](${subagentPathPrefix}${subagentLink(subagent.parentSessionId, subagent.handleId, subagent.messageId).slice("cake://subagent/".length)})`;
@@ -208,11 +226,17 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean, workspaceI
           },
         );
       }
-      const withArtifacts = segment.replace(
-        bareArtifactReference,
-        (_match, prefix: string, reference: string) =>
-          `${prefix}[${reference}](${artifactPathPrefix}${encodeURIComponent(reference)})`,
-      );
+      const withArtifacts = segment
+        .replace(bareCanvasReference, (match, prefix: string, reference: string) =>
+          parseCanvasLink(reference)
+            ? `${prefix}[Project Canvas](${canvasHref(reference)})`
+            : match,
+        )
+        .replace(
+          bareArtifactReference,
+          (_match, prefix: string, reference: string) =>
+            `${prefix}[${reference}](${artifactPathPrefix}${encodeURIComponent(reference)})`,
+        );
       if (!sourceLinks) return withArtifacts;
       return withArtifacts.replace(
         bareSourceReference,
@@ -323,6 +347,18 @@ function linkAnchor(
   };
   delete props.node;
   const href = props.href;
+  const canvasTarget = href ? canvasTargetFromHref(href) : undefined;
+  if (canvasTarget)
+    return (
+      <Link
+        {...props}
+        href={canvasLink(canvasTarget)}
+        onClick={(event) => {
+          event.preventDefault();
+          actions?.openCanvas?.(canvasTarget);
+        }}
+      />
+    );
   const artifactReference = href ? artifactReferenceFromHref(href) : undefined;
   // An icon action keeps its label and toolbar styling; the prose chip would add a second glyph.
   if (artifactReference && presentation === "icon" && actions?.openArtifact) {

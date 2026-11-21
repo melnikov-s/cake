@@ -1,7 +1,7 @@
 import { observer } from "r-state-tree/react";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import { IconButton } from "./ui/icon-button";
-import { BrowserIcon, ChatIcon, TerminalIcon, VsCodeIcon } from "./ui/icons";
+import { BrowserIcon, CanvasIcon, ChatIcon, TerminalIcon, VsCodeIcon } from "./ui/icons";
 import { WorkspaceModeSlot } from "./ui/workspace-header";
 
 const modeButtonClassName =
@@ -16,6 +16,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   onBackToAgent,
   onOpenBrowser,
   onOpenIde,
+  onOpenCanvas,
   onToggleTerminal,
 }: {
   mode: ProjectSessionPresentationMode;
@@ -26,6 +27,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   onBackToAgent(): void;
   onOpenBrowser(): void;
   onOpenIde(): void;
+  onOpenCanvas?(): void;
   onToggleTerminal(): void;
 }) {
   return (
@@ -68,6 +70,18 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
               onClick={onOpenBrowser}
             >
               <BrowserIcon />
+            </IconButton>
+          )}
+          {onOpenCanvas && (
+            <IconButton
+              tooltip="Project Canvas"
+              iconSize="navigation"
+              pressedAppearance="subtle"
+              aria-pressed={mode === "canvas"}
+              className={modeButtonClassName}
+              onClick={onOpenCanvas}
+            >
+              <CanvasIcon />
             </IconButton>
           )}
         </div>

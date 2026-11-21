@@ -7,6 +7,7 @@ import type {
 import type { LeftToolbarChange } from "../../utils/left-toolbar-preferences";
 import type { ProjectIconArtwork } from "../../contracts/projects/project-icon-generation";
 import type { CakeModelChoice } from "../../contracts/model-presets/cake-model-selection";
+import type { CanvasSnapshot } from "../../contracts/project-canvas/project-canvas";
 import type { ArtifactExecutionStatus } from "../../contracts/artifacts/global-artifact-control";
 import type { ArtifactViewingReport } from "../../contracts/artifacts/artifact-viewing";
 import type { DictationError } from "../../contracts/dictation/dictation-data";
@@ -730,6 +731,13 @@ export interface Client {
   readonly projectSessions: CommandGroup<CakeIpcClientService["projectSessions"]>;
   readonly projectWorkflow: CommandGroup<CakeIpcClientService["projectWorkflow"]>;
   readonly projectTodos: CommandGroup<CakeIpcClientService["projectTodos"]>;
+  readonly projectCanvas: CommandGroup<CakeIpcClientService["projectCanvas"]> & {
+    observe(
+      projectChatId: string,
+      consume: (snapshot: CanvasSnapshot) => void,
+      failure: (error: unknown) => void,
+    ): () => void;
+  };
   readonly savedDrafts: CommandGroup<CakeIpcClientService["savedDrafts"]>;
   readonly scheduledMessages: CommandGroup<CakeIpcClientService["scheduledMessages"]>;
   readonly automations: CommandGroup<CakeIpcClientService["automations"]>;

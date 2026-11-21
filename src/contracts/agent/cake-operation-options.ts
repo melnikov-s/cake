@@ -1,3 +1,4 @@
+import type { ProjectCanvasControl } from "../project-canvas/project-canvas";
 import type { ProjectSessionCreateInput } from "../project-sessions/agent-session-create";
 import type { ResultDelivery } from "../conversations/result-delivery";
 import type { ChildSessionAssignment } from "../project-sessions/child-session-assignment";
@@ -193,6 +194,7 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   cakeChatInstructions?: CakeChatInstructionsControl;
   projectChatInstructions?: ProjectChatInstructionsControl;
   projectTodos?: ProjectTodoControl;
+  projectCanvas?: ProjectCanvasControl;
   cakeChatWorktrees?: CakeChatWorktreeControl;
   cakeChatProjects?: CakeChatProjectControl;
   /** Parent Project Session gateway granted to an auxiliary runtime, not coordinator authority. */

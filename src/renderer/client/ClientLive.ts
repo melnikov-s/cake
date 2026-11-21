@@ -494,6 +494,16 @@ export function makeClient(
     },
     projectWorkflow: commands("projectWorkflow"),
     projectTodos: commands("projectTodos"),
+    projectCanvas: {
+      ...commands("projectCanvas"),
+      observe: (projectChatId, consume, failure) =>
+        observeStream(
+          runtime.execute,
+          (client) => client.projectCanvas.observe({ projectChatId }),
+          consume,
+          { reportFailure: failure },
+        ),
+    },
     projectSessions: {
       ...commands("projectSessions"),
       start: (input, options) =>

@@ -100,7 +100,7 @@ it("opens a parsed disjoint Markdown source link as two native-resolved selectio
   // production source callback opens VS Code, render its actual workspace surface
   // (which owns EditorSelectionPills), not test-wired pills or parent callbacks.
   const SourceSelectionSurface = observer(function SourceSelectionSurface() {
-    return session.presentationMode === "normal" ? (
+    return session.presentationMode !== "vscode" && session.presentationMode !== "browser" ? (
       <Chat
         store={session.conversationSessionStore.chatStore}
         compact

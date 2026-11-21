@@ -1,3 +1,4 @@
+import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { observer, useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
 import { CloseIcon, CameraIcon } from "@/components/ui/icons";
@@ -65,6 +66,14 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
             onBackToAgent={() => void root.projectWorkbenchStore.presentationStore.backToAgent()}
             onOpenBrowser={() => void root.projectWorkbenchStore.presentationStore.openBrowser()}
             onOpenIde={() => void root.projectWorkbenchStore.presentationStore.openIde()}
+            onOpenCanvas={
+              isProjectChatSessionId(paneSession.sessionId)
+                ? () => {
+                    root.projectCanvasStore.closeReview();
+                    void root.projectWorkbenchStore.presentationStore.openCanvas();
+                  }
+                : undefined
+            }
             onToggleTerminal={() => void terminal.toggle()}
           />
           <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />

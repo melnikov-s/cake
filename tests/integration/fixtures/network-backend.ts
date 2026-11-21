@@ -45,6 +45,7 @@ import { ProjectSessionConfiguration } from "../../../src/services/project-sessi
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { makeWorkspaceFilesLive } from "../../../src/services/filesystem/WorkspaceFilesLive";
 import { makeAttachmentUploadsLive } from "../../../src/services/filesystem/AttachmentUploadsLive";
+import { makeProjectCanvasStorageLive } from "../../../src/services/storage/ProjectCanvasStorage";
 import { makeTaskInputStorageLive } from "../../../src/services/storage/TaskInputStorageLive";
 import { tmpdir } from "node:os";
 import { rm } from "node:fs/promises";
@@ -334,6 +335,9 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     access,
     makeWorkspaceFilesLive("/agent", "/cake-chat").pipe(Layer.provide(access)),
     makeTaskInputStorageLive(join(tmpdir(), `cake-test-inputs-${randomUUID()}`)),
+    makeProjectCanvasStorageLive(savedDraftDirectory).pipe(
+      Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+    ),
     makeAttachmentUploadsLive(
       join(tmpdir(), `cake-test-uploads-${randomUUID()}`),
       join(tmpdir(), `cake-test-accepted-${randomUUID()}`),

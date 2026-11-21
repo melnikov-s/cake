@@ -31,6 +31,7 @@ import { ClientEventsLive } from "../services/clients/ClientEventsLive";
 import { ClientWorkspacesLive } from "../services/clients/ClientWorkspacesLive";
 import { makeWorkspaceFilesLive } from "../services/filesystem/WorkspaceFilesLive";
 import { makeAttachmentUploadsLive } from "../services/filesystem/AttachmentUploadsLive";
+import { makeProjectCanvasStorageLive } from "../services/storage/ProjectCanvasStorage";
 import { makeTaskInputStorageLive } from "../services/storage/TaskInputStorageLive";
 import { makeGitLive } from "../services/git/GitLive";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
@@ -131,6 +132,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
   const automationStorage = makeAutomationStorageLive(paths.state);
   const StorageLive = Layer.mergeAll(
     applicationStorage,
+    makeProjectCanvasStorageLive(paths.state),
     makeModelPresetPromptsLive(paths.prompts),
     makeLocalMcpSettingsLive(paths.state),
     LocalMcpServer.layer,
