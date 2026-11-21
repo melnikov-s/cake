@@ -377,7 +377,7 @@ describe("file location routing", () => {
         }).pipe(
           Effect.provide(
             makeWorkspaceFilesLive("/agent", join(root, "global-chat")).pipe(
-              Layer.provide(Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) })),
+              Layer.provide(fakeProjectAccess({ isAllowed: () => Effect.succeed(true) })),
             ),
           ),
         ),
