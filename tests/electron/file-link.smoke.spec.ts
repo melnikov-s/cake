@@ -5,7 +5,6 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import { emitRendererEvent } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
 import { openSessionById } from "./fixtures/workspace-navigation";
 
@@ -200,288 +199,86 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     // Session links render as named pills rather than underlined prose (5c284c46).
     expect(await sessionLink.evaluate(presentation)).toMatchObject({ decoration: "none" });
     const agentInput = page.getByRole("combobox", { name: "Message" });
-    const hasVsCodeTitleAction = (label: string) =>
-      application.evaluate(async ({ webContents }, actionLabel) => {
-        for (const contents of webContents.getAllWebContents()) {
-          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-          const visible = await contents.executeJavaScript(`Array.from(document.querySelectorAll(
-            '[aria-label*="${actionLabel}"], [title*="${actionLabel}"]',
-          )).some((candidate) => {
-            const bounds = candidate.getBoundingClientRect();
-            return bounds.width > 0 && bounds.height > 0;
-          })`);
-          if (visible) return true;
-        }
-        return false;
-      }, label);
-    const isVsCodePrimarySidebarVisible = () =>
-      application.evaluate(async ({ webContents }) => {
-        for (const contents of webContents.getAllWebContents()) {
-          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-          const visible = await contents.executeJavaScript(`(() => {
-            const sidebar = document.querySelector(".part.sidebar");
-            if (!(sidebar instanceof HTMLElement)) return false;
-            const bounds = sidebar.getBoundingClientRect();
-            return bounds.width > 0 && bounds.height > 0;
-          })()`);
-          if (visible) return true;
-        }
-        return false;
-      });
-    const isVsCodeTitleActionPinnedToNavigation = (label: string) =>
-      application.evaluate(async ({ webContents }, actionLabel) => {
-        for (const contents of webContents.getAllWebContents()) {
-          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-          const pinned = await contents.executeJavaScript(`(() => {
-            const action = document.querySelector(
-              '[aria-label*="${actionLabel}"], [title*="${actionLabel}"]',
-            )?.closest(".action-item");
-            const commandCenter = document.querySelector(".part.titlebar .command-center");
-            const navigationActions = commandCenter?.querySelector(
-              ":scope > .monaco-toolbar > .monaco-action-bar > .actions-container",
-            );
-            return action instanceof HTMLElement && navigationActions instanceof HTMLElement &&
-              navigationActions.firstElementChild === action &&
-              getComputedStyle(action).position !== "fixed";
-          })()`);
-          if (pinned) return true;
-        }
-        return false;
-      }, label);
-    const toggleIdeViaMenu = () =>
-      application.evaluate(({ Menu }) => {
-        const item = Menu.getApplicationMenu()
-          ?.items.flatMap((entry) => entry.submenu?.items ?? [])
-          .find((entry) => entry.label === "Toggle Agent / VS Code");
-        if (!item) throw new Error("Toggle Agent / VS Code menu item missing");
-        item.click({}, undefined);
-      });
-    const hasVsCodeText = (text: string) =>
-      application.evaluate(async ({ webContents }, expectedText) => {
-        for (const contents of webContents.getAllWebContents()) {
-          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-          if (
-            await contents.executeJavaScript(
-              `document.body.innerText.includes(${JSON.stringify(expectedText)})`,
-            )
-          )
-            return true;
-        }
-        return false;
-      }, text);
-    const clickVsCodeText = (text: string) =>
-      application.evaluate(async ({ webContents }, expectedText) => {
-        for (const contents of webContents.getAllWebContents()) {
-          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-          const point = await contents.executeJavaScript(`(() => {
-            const candidate = Array.from(document.querySelectorAll(
-              ".codelens-decoration a",
-            )).find((element) => element.textContent.includes(${JSON.stringify(expectedText)}));
-            if (!(candidate instanceof HTMLElement)) return undefined;
-            const bounds = candidate.getBoundingClientRect();
-            return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
-          })()`);
-          if (!point) continue;
-          contents.focus();
-          contents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...point });
-          contents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...point });
-          return true;
-        }
-        return false;
-      }, text);
-    const clickVsCodeTitleAction = (label: string) =>
-      application.evaluate(async ({ webContents }, actionLabel) => {
-        for (const contents of webContents.getAllWebContents()) {
-          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-          const clicked = await contents.executeJavaScript(`(() => {
-            const candidate = document.querySelector(
-              '[aria-label*="${actionLabel}"], [title*="${actionLabel}"]',
-            );
-            if (!(candidate instanceof HTMLElement)) return false;
-            candidate.click();
-            return true;
-          })()`);
-          if (clicked) return true;
-        }
-        return false;
-      }, label);
-
-    await agentInput.fill("Keep this IDE draft");
-    await link.click();
-    const vscodeWorkspace = page.getByRole("region", { name: "VS Code workspace" });
-    await expect(vscodeWorkspace).toBeVisible();
-    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
-    const projectSidebarResize = page.getByRole("separator", { name: "Resize Workspace" });
-    const workspaceWidth = await projectSidebarResize.getAttribute("aria-valuenow");
-    await projectSidebarResize.focus();
-    await projectSidebarResize.press("ArrowRight");
-    await expect(projectSidebarResize).not.toHaveAttribute("aria-valuenow", workspaceWidth!);
-    await expect
-      .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
-      .toBe(false);
-    await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(false);
-    // A healthy editor has no status/error placeholder; navigation lives in the shell.
-    await expect(page.locator(".embedded-editor-pane")).toBeEmpty();
-    await expect(page.getByRole("button", { name: "Main", exact: true })).toBeVisible();
-    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
-    await expect.poll(isVsCodePrimarySidebarVisible, { timeout: 20_000 }).toBe(false);
-    await expect(
-      page
-        .locator('[aria-label="Editor selections"]')
-        .getByRole("button", { name: /Remove src\/modelMeta\.ts/ }),
-    ).toHaveCount(1);
-    await expect.poll(() => hasVsCodeTitleAction("Toggle Secondary Side Bar")).toBe(false);
-    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
-    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
-    await expect
-      .poll(() => isVsCodeTitleActionPinnedToNavigation("Toggle Sessions Sidebar"))
-      .toBe(true);
-
-    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
-    await expect(vscodeWorkspace).toBeHidden();
-    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeHidden();
-    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
-
-    await link.click();
-    await expect(vscodeWorkspace).toBeVisible();
-    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
-    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
-    expect(await clickVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
-    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeVisible();
-    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
-    await expect.poll(() => hasVsCodeText("Build with Agent")).toBe(false);
-    await expect
-      .poll(() => clickVsCodeText("Cake: Open · 0 replies"), { timeout: 20_000 })
-      .toBe(true);
-    const selectionTitle = page.getByText("Chat about selection", { exact: true });
-    const selectionSidebar = page.getByRole("complementary").filter({ has: selectionTitle });
-    const selectionHeader = selectionSidebar.locator("header").first();
-    const expectSelectionHeader = async () => {
-      await expect(selectionTitle).toBeVisible();
-      await expect(
-        selectionHeader.getByText("src/modelMeta.ts · L1", { exact: true }),
-      ).toBeVisible();
-      for (const name of ["0 artifacts", "Browser", "Main", "Terminal", "Project chat"]) {
-        await expect(selectionHeader.getByRole("button", { name, exact: true })).toBeVisible();
-      }
-      await expect
-        .poll(() =>
-          selectionHeader.evaluate((element) => {
-            const header = element.getBoundingClientRect();
-            return Array.from(element.querySelectorAll("button")).every((button) => {
-              const bounds = button.getBoundingClientRect();
-              return (
-                bounds.left >= header.left &&
-                bounds.right <= header.right &&
-                bounds.top >= header.top &&
-                bounds.bottom <= header.bottom
-              );
-            });
-          }),
-        )
-        .toBe(true);
-      await expect(page.getByText("Why is this exported?", { exact: true })).toBeVisible();
-    };
-    await expectSelectionHeader();
-    await page.getByRole("button", { name: "Project chat", exact: true }).click();
-    await page.locator('[data-slot="shell-workspace-toggle"]').click();
-    await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(false);
-    await toggleIdeViaMenu();
-    await expect(vscodeWorkspace).toBeHidden();
-    await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
-    await expect(agentInput).toHaveValue("Keep this IDE draft");
-    await toggleIdeViaMenu();
-    await expect(vscodeWorkspace).toBeVisible();
-    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
-
-    await emitRendererEvent(application, {
-      type: "project-session-control-requested",
-      sessionId,
-      controlRequestId: "00000000-0000-4000-8000-000000000031",
-      invocation: { _tag: "InvokeAppControl", command: "vscode.enter", input: {} },
-    });
-    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
-
-    await link.click();
-
-    await expect(vscodeWorkspace).toBeVisible();
-    await expect
-      .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
-      .toBe(false);
-    const toggleChatSidebar = () =>
-      emitRendererEvent(application, {
-        type: "embedded-editor-toggle-chat",
-        workspacePath: project,
-      });
-    const vscodeIsVisible = () =>
-      application.evaluate(({ BrowserWindow }) => {
-        const view = BrowserWindow.getAllWindows()[0]?.contentView.children.find((child) =>
-          child.webContents.getURL().startsWith("http://127.0.0.1:"),
-        );
-        return view?.getVisible() ?? false;
-      });
-    const vscodeFillsWindow = () =>
+    // The embedded editor is a separate WebContentsView. Its own content is not part of
+    // the Cake page, so these checks read the view's geometry from the main process only.
+    const vscodeView = () =>
       application.evaluate(async ({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0];
         const view = window?.contentView.children.find((child) =>
           child.webContents.getURL().startsWith("http://127.0.0.1:"),
         );
-        if (!window || !view) return false;
-        const bounds = view.getBounds();
-        const contentBounds = window.getContentBounds();
-        const workbenchWidth = await view.webContents.executeJavaScript(
-          'document.querySelector(".monaco-workbench")?.getBoundingClientRect().width',
-        );
-        return (
-          bounds.x === 0 &&
-          bounds.y === 0 &&
-          bounds.width === contentBounds.width &&
-          bounds.height === contentBounds.height &&
-          workbenchWidth === bounds.width
-        );
+        if (!window || !view) return { visible: false, width: 0 };
+        return { visible: view.getVisible(), width: view.getBounds().width };
       });
-    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
-    await expect(page.locator('[data-slot="workspace-navigator"]')).toBeHidden();
-    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
+    const vscodeIsVisible = async () => (await vscodeView()).visible;
+
+    await agentInput.click();
+    await agentInput.pressSequentially("Keep this IDE draft");
+    await expect(agentInput).toHaveValue("Keep this IDE draft");
+    await link.click();
+    const vscodeWorkspace = page.getByRole("region", { name: "VS Code workspace" });
     await expect(vscodeWorkspace).toBeVisible();
-    await expect.poll(vscodeFillsWindow).toBe(true);
-    const originalContentSize = await application.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]!.getContentSize(),
+    await expect(page.getByRole("button", { name: "VS Code", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
-    await application.evaluate(({ BrowserWindow }, [width, height]) => {
-      BrowserWindow.getAllWindows()[0]!.setContentSize(width - 160, height - 80);
-    }, originalContentSize);
-    await expect.poll(vscodeFillsWindow).toBe(true);
-    await application.evaluate(({ BrowserWindow }, [width, height]) => {
-      BrowserWindow.getAllWindows()[0]!.setContentSize(width, height);
-    }, originalContentSize);
-    await expect.poll(vscodeFillsWindow).toBe(true);
-    await toggleChatSidebar();
-    await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(false);
+    await expect.poll(vscodeIsVisible, { timeout: 20_000 }).toBe(true);
+    // A healthy editor has no status/error placeholder.
+    await expect(page.locator(".embedded-editor-pane")).toBeEmpty();
+    // VS Code mode keeps the conversation in a companion beside the editor; the Workspace
+    // navigator was replaced by its Chat / Todos / Sessions tabs.
+    const companion = page.getByRole("complementary", {
+      name: "Current conversation companion",
+    });
+    await expect(companion).toBeVisible();
+    const companionTabs = companion.getByRole("group", { name: "Companion content" });
+    await expect(companionTabs.getByRole("button", { name: "Chat", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const drawerInput = companion.getByRole("combobox", { name: "Message" });
+    await expect(drawerInput).toHaveValue("Keep this IDE draft");
+    // The opened file is the editor selection the next message refers to.
+    await expect(
+      companion.getByRole("button", { name: "Reveal src/modelMeta.ts:1:1", exact: true }),
+    ).toBeVisible();
+    await expect(companion.getByText(/Phase 4 — Model references/)).toBeVisible();
 
+    // Closing the Workspace gives the editor the companion's width (inside the window's soft
+    // inset, c7c99e7f); opening it restores the companion and the in-progress draft.
+    const editorWithCompanion = (await vscodeView()).width!;
+    await page.getByRole("button", { name: "Close Workspace", exact: true }).click();
+    await expect(companion).toBeHidden();
+    await expect
+      .poll(async () => (await vscodeView()).width!)
+      .toBeGreaterThan(editorWithCompanion + 200);
+    await page.getByRole("button", { name: "Open Workspace", exact: true }).click();
+    await expect(companion).toBeVisible();
+    await expect(drawerInput).toHaveValue("Keep this IDE draft");
+    await expect.poll(async () => (await vscodeView()).width).toBe(editorWithCompanion);
+
+    // Main returns to the agent conversation with the same draft; the file link reopens VS Code.
+    await page.getByRole("button", { name: "Main", exact: true }).click();
+    await expect(vscodeWorkspace).toBeHidden();
+    await expect.poll(vscodeIsVisible).toBe(false);
     await expect(page.locator(".transcript").getByText(/Phase 4 — Model references/)).toBeVisible();
-
-    const composer = page.getByRole("combobox", { name: "Message", exact: true });
-    const composerAvatar = page.locator(
-      'aside [data-slot="composer-leading-accessory"] [data-slot="avatar"][data-animated="true"]',
-    );
-    // Compact composers retain the assistant inside the input's reserved gutter.
-    await expect(composerAvatar).toBeVisible();
-    await composer.fill("/toolprune");
-    await page.getByRole("button", { name: "Send" }).click();
-    await expect(composer).toHaveValue("");
+    await expect(agentInput).toHaveValue("Keep this IDE draft");
+    await page.getByRole("button", { name: "VS Code", exact: true }).click();
+    await expect(vscodeWorkspace).toBeVisible();
+    await expect(companion).toBeVisible();
     await expect.poll(vscodeIsVisible).toBe(true);
-    await composer.fill("Keep this IDE draft");
 
-    await page.getByRole("button", { name: "View response fullscreen" }).click({ force: true });
+    // Fullscreen message and image surfaces cover the native editor view while open.
+    const response = companion.locator("article").filter({ hasText: "Phase 4" }).last();
+    await response.hover();
+    await companion.getByRole("button", { name: "View response fullscreen" }).click();
     const messageDialog = page.getByRole("dialog", { name: "Cake" });
     await expect(messageDialog).toBeVisible();
     await expect.poll(vscodeIsVisible).toBe(false);
     await page.getByRole("button", { name: "Exit fullscreen Cake" }).click();
     await expect.poll(vscodeIsVisible).toBe(true);
 
-    const imagePreview = page.getByRole("button", { name: "View Image 1 enlarged" });
+    const imagePreview = companion.getByRole("button", { name: "View Image 1 enlarged" });
     await imagePreview.click();
     const imageDialog = page.getByRole("dialog", { name: "Image 1" });
     await expect(imageDialog).toBeVisible();
@@ -491,7 +288,16 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       imageDialog.locator("img").boundingBox(),
       page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })),
     ]);
-    expect(dialogBounds).toEqual({ x: 0, y: 0, ...viewport });
+    // Fullscreen presentations fill the shell beside the navigation rail (37b915559).
+    const rail = await page
+      .getByRole("navigation", { name: "Projects and global utilities" })
+      .boundingBox();
+    expect(dialogBounds).toEqual({
+      x: rail!.x + rail!.width,
+      y: 0,
+      width: viewport.width - rail!.x - rail!.width,
+      height: viewport.height,
+    });
     expect(imageBounds!.x).toBeGreaterThanOrEqual(dialogBounds!.x);
     expect(imageBounds!.x + imageBounds!.width).toBeLessThanOrEqual(
       dialogBounds!.x + dialogBounds!.width,
@@ -503,55 +309,57 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await page.getByRole("button", { name: "Exit fullscreen Image 1" }).click();
     await expect.poll(vscodeIsVisible).toBe(true);
 
+    // The companion resizes by pointer drag and by keyboard on its separator, keeping the
+    // assistant and the draft at every width while the editor takes the remaining space.
     const resizeHandle = page.getByRole("separator", { name: "Resize current session sidebar" });
-    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "420");
-    const resizeBounds = await resizeHandle.boundingBox();
-    expect(resizeBounds?.width).toBe(9);
-    await page.mouse.move(resizeBounds!.x + 7, resizeBounds!.y + resizeBounds!.height / 2);
+    const composerAvatar = companion.locator(
+      '[data-slot="composer-leading-accessory"] [data-slot="avatar"]',
+    );
+    await expect(composerAvatar).toBeVisible();
+    const startWidth = Number(await resizeHandle.getAttribute("aria-valuenow"));
+    const editorWidth = (await vscodeView()).width!;
+    const resizeBounds = (await resizeHandle.boundingBox())!;
+    await page.mouse.move(
+      resizeBounds.x + resizeBounds.width / 2,
+      resizeBounds.y + resizeBounds.height / 2,
+    );
     await page.mouse.down();
-    await page.mouse.move(resizeBounds!.x + 47, resizeBounds!.y + resizeBounds!.height / 2);
+    await page.mouse.move(
+      resizeBounds.x + resizeBounds.width / 2 + 40,
+      resizeBounds.y + resizeBounds.height / 2,
+      { steps: 4 },
+    );
     await page.mouse.up();
-    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "380");
-    await expect(page.locator("aside")).toHaveCSS("width", "380px");
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", String(startWidth - 40));
+    await expect.poll(async () => (await vscodeView()).width).toBe(editorWidth + 40);
     await expect(composerAvatar).toBeVisible();
-    await resizeHandle.focus();
+    // Keyboard users reach the separator just before the companion's first control.
+    const chatTab = companionTabs.getByRole("button", { name: "Chat", exact: true });
+    await chatTab.click();
+    await expect(chatTab).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(resizeHandle).toBeFocused();
     await resizeHandle.press("ArrowLeft");
-    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "396");
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", String(startWidth - 40 + 16));
     await expect(composerAvatar).toBeVisible();
-    await resizeHandle.press("ArrowLeft");
-    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "412");
+    await resizeHandle.press("Home");
+    const minimumWidth = Number(await resizeHandle.getAttribute("aria-valuenow"));
+    expect(minimumWidth).toBeLessThan(startWidth - 40);
     await expect(composerAvatar).toBeVisible();
-    // Resizing preserves the assistant and the in-progress input at every width.
-    for (const width of ["460", "508", "556"]) {
-      await resizeHandle.press("Shift+ArrowLeft");
-      await expect(resizeHandle).toHaveAttribute("aria-valuenow", width);
-    }
-    await expect(composerAvatar).toBeVisible();
-    await resizeHandle.press("Shift+ArrowLeft");
-    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "604");
-    await expect(composerAvatar).toBeVisible();
-    const drawerInput = page.getByRole("combobox", { name: "Message" });
     await expect(drawerInput).toHaveValue("Keep this IDE draft");
-    await drawerInput.focus();
+    await drawerInput.click();
     await expect(drawerInput).toBeFocused();
-    await drawerInput.fill("Chat from the IDE drawer");
+    await drawerInput.press("ControlOrMeta+A");
+    await drawerInput.pressSequentially("Chat from the IDE drawer");
     await expect(drawerInput).toHaveValue("Chat from the IDE drawer");
-    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+    await expect(companion.getByRole("button", { name: "Send" })).toBeEnabled();
 
-    await emitRendererEvent(application, {
-      type: "embedded-editor-selection",
-      workspacePath: project,
-      path: "src/modelMeta.ts",
-      startLine: 0,
-      endLine: 0,
-    });
-    await expect(page.getByText("src/modelMeta.ts:1", { exact: true })).toBeVisible();
-    const assistantTrigger = page.getByRole("button", { name: "Ask session assistant" });
+    const assistantTrigger = companion.getByRole("button", { name: "Ask session assistant" });
     await assistantTrigger.click();
     const quickAssistant = page.getByRole("dialog", { name: "Quick session assistant" });
     await expect(quickAssistant.getByLabel("Ask session assistant")).toBeFocused();
     const [drawerBounds, assistantBounds] = await Promise.all([
-      page.locator("aside").boundingBox(),
+      companion.boundingBox(),
       quickAssistant.boundingBox(),
     ]);
     expect(assistantBounds!.x).toBeGreaterThanOrEqual(drawerBounds!.x + 8);
@@ -560,28 +368,11 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     );
     await page.keyboard.press("Escape");
     await expect(quickAssistant).toHaveCount(0);
-    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
-    await link.click();
-    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
 
-    // The same contextual controls must wrap inside the minimum supported drawer,
-    // not consume the title's entire row or overflow the available width.
-    await expect
-      .poll(() => clickVsCodeText("Cake: Open · 0 replies"), { timeout: 20_000 })
-      .toBe(true);
-    await expect(selectionTitle).toBeVisible();
-    await resizeHandle.focus();
-    await resizeHandle.press("Home");
-    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "320");
-    await expectSelectionHeader();
-    await page.getByRole("button", { name: "Project chat", exact: true }).click();
-    await expect(drawerInput).toHaveValue("Chat from the IDE drawer");
-
-    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
+    await page.getByRole("button", { name: "Main", exact: true }).click();
+    await expect(vscodeWorkspace).toBeHidden();
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Message" })).toHaveValue(
-      "Chat from the IDE drawer",
-    );
+    await expect(agentInput).toHaveValue("Chat from the IDE drawer");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
