@@ -579,13 +579,25 @@ is a refactoring signal, not precedent.
   attention dismissal, hiding, snoozing or pill deletion never resolve sessions. Each open item may
   persist one explicit UTC `snoozedUntil` deadline, a `needsAttention` flag and a separate
   bounded, nonempty `attentionReason`, with optional stable `attentionRequestId` independent of display copy. Older saved items may omit attention fields (off);
-  no reason is invented. Four exclusive sections, in order: Needs attention (open, unsnoozed,
-  flagged), Active (open, unsnoozed, unflagged), Snoozed (open with a deadline), Done.
+  no reason is invented. Five exclusive sections, in order: Needs attention (open, unsnoozed,
+  flagged), Ready to Merge (structured linked-session readiness), Active, Snoozed, Done.
   Needs attention shows expanded only when its filtered list is nonempty; when empty, its
   heading, count and section spacing/divider are omitted. The other sections collapse independently. It presents the human action first, with quieter task identity and clickable
   work/source links, no attention bell. Row selection focuses the transcript view, never outgoing context.
   Explicit to-do mutations own human-request attention; background description refresh stays description-only.
-  Report arrival alone never flags attention. Notification-mode reports linked to an explicitly
+  Report arrival alone never flags attention. A separate backend projection surfaces outstanding
+  delegated completion on its linked to-do: validated readiness that will not land automatically,
+  a terminal landing failure (including merge without resolution), or the settled final result of
+  a launch or adopted assignment with no readiness. It does not infer completion from ordinary
+  replies, progress updates, idle turns or Workboard messages. Work that did not retain an assignment
+  handoff (e.g. `resultDelivery: ignore`) needs structured readiness to qualify. Eligible landing
+  and ordinary handoff do not flag attention; exhausted handoff retries or a 60-second wait do.
+  Existing human attention, snooze and completion take precedence. Projection doesn't wake chat or
+  consume any report, and a stable decision ID survives restart and dismissal. Legacy repair is
+  conservative: only unambiguous outstanding readiness is backfilled, not older prose or outcomes
+  with evidence of a prior decision. A continuation retires the previous result for reconciliation;
+  an already surfaced request remains dismissible, and confirmed session resolution clears it.
+  Notification-mode reports linked to an explicitly
   flagged open to-do in the recipient durable chat's own list wait in the existing report inbox
   under that request, preserving its reason. Other reports remain in the quiet inbox/digest;
   structured blocked outcomes retain immediate escalation. Composer pills sit beneath Activity,

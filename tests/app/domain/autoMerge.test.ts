@@ -2,6 +2,11 @@ import { sessionNotificationEntries } from "../../../src/contracts/cake-chats/se
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, FiberMap, Layer, Option, Stream, SubscriptionRef } from "effect";
 import { expect } from "vitest";
+import { TestClock } from "effect/testing";
+import * as reviews from "../../../src/domain/worktrees/delegatedCompletionReviews";
+import * as projectTodos from "../../../src/domain/projects/projectTodos";
+import * as attention from "../../../src/domain/projects/projectTodoAttention";
+import { classifyProjectTodos } from "../../../src/renderer/lib/classify-project-todos";
 import { applySnapshot, effect as reactiveEffect } from "r-state-tree";
 import { createRendererStoreFixture } from "../renderer/renderer-store-fixture";
 import { projectRecord, sessionSummary } from "../renderer/fixtures/catalog-fixtures";
@@ -44,6 +49,7 @@ import {
   defaultProjectSettings,
 } from "../../../src/contracts/application/application-data";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 import {
   WorktreeLandingAgent,
@@ -218,6 +224,7 @@ function fixture(
         }).pipe(Effect.tap(() => options.onLandedWait ?? Effect.void)),
     }),
     Layer.mock(SessionCatalogChanges, { publish: () => Effect.void }),
+    Layer.mock(TaskInputStorage, {}),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/cake",
       sessionDirectory: "/sessions",
@@ -750,6 +757,273 @@ it.effect(
 const requests = Effect.flatMap(SessionFamilyStorage, (storage) =>
   storage.state().pipe(Effect.map((state) => state.autoMergeRequests ?? [])),
 );
+const trackOwner = Effect.gen(function* () {
+  yield* projectTodos.ensureSession("/project", "owner", "Review changes", "");
+  return (yield* projectTodos.list("/project")).items[0]!;
+});
+const tracked = Effect.gen(function* () {
+  return (yield* projectTodos.list("/project")).items[0]!;
+});
+const taskAnswer = {
+  sessionId: "owner",
+  turnId: "turn",
+  outcome: "complete" as const,
+  result: {
+    stopReason: "stop" as const,
+    entryId: "final",
+    respondsToSessionId: projectChatSessionId("/project"),
+    text: "Completed the investigation and verified the startup findings.",
+  },
+};
+const launchTurn = {
+  sessionId: "owner",
+  senderSessionId: projectChatSessionId("/project"),
+  turnId: "turn",
+  requestMessageId: "owner",
+  threadId: "owner",
+  reported: false,
+  resultDelivery: "notification" as const,
+};
+
+it.effect(
+  "finishing while off projects into Needs attention, preserving manual readiness and quiet delivery",
+  () => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* trackOwner;
+      yield* (yield* SessionFamilyStorage).recordTurn(launchTurn);
+      yield* report(target, readiness);
+      test.setActive(["/tree"]);
+      yield* reviews.reconcile();
+      expect((yield* tracked).needsAttention).toBe(false);
+      test.setActive([]);
+      yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
+      yield* reviews.reconcile();
+      const todo = yield* tracked;
+      const [request] = yield* requests;
+      expect(request).toMatchObject({ state: "ready", readyToMerge: true });
+      const sections = classifyProjectTodos([todo], [], "", () => request?.readyToMerge === true);
+      expect(sections.attention).toEqual([todo]);
+      expect(sections.ready).toEqual([]);
+      expect(todo.attentionReason).toContain("merge manually");
+      expect(
+        yield* attention.hold(
+          {
+            id: "fixture-report",
+            recipientSessionId: launchTurn.senderSessionId,
+            text: "Final findings",
+          },
+          { sessionId: "owner" },
+        ),
+      ).toBe(false);
+      expect((yield* projectTodos.list("/project")).pending).toEqual([]);
+      expect(test.events).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect(
+  "eligible auto-merge stays quiet during handoff and landing, then confirms resolution",
+  () => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* trackOwner;
+      const storage = yield* SessionFamilyStorage;
+      yield* setEnabled("/project", true);
+      yield* storage.recordTurn(launchTurn);
+      yield* report(target, readiness);
+      yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
+      yield* runPass();
+      yield* reviews.reconcile();
+      expect((yield* tracked).needsAttention).toBe(false);
+      expect(test.events).toEqual([]);
+      const settled = (yield* storage.state()).turns[0]!;
+      yield* retainNotification(settled);
+      yield* runPass();
+      yield* reviews.reconcile();
+      expect((yield* tracked).needsAttention).toBe(false);
+      yield* terminal;
+      yield* runPass();
+      yield* reviews.reconcile();
+      expect((yield* requests)[0]?.outcome).toMatchObject({
+        merged: true,
+        resolutionSucceeded: true,
+        landedCommit: commit,
+      });
+      expect((yield* tracked).completionReviews).toBeUndefined();
+      expect(test.events).toEqual(["land", "intent:true", "resolve", "intent:false"]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect.each([
+  {
+    options: { requester: "global-coordinator" },
+    reason: "not directly delegated",
+    state: "ready",
+  },
+  { options: { failure: true }, reason: "Target dirty", state: "failed" },
+  { options: { resolveFailure: true }, reason: "already merged", state: "failed" },
+])(
+  "surfaces an actionable decision when landing does not finish: $reason",
+  ({ options, reason, state }) => {
+    const test = fixture(options);
+    return Effect.gen(function* () {
+      yield* trackOwner;
+      yield* setEnabled("/project", true);
+      yield* report(target, readiness);
+      yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
+      yield* runPass();
+      if (state === "failed") yield* terminal;
+      yield* runPass();
+      yield* reviews.reconcile();
+      expect((yield* requests)[0]?.state).toBe(state);
+      expect(yield* tracked).toMatchObject({
+        needsAttention: true,
+        attentionReason: expect.stringContaining(reason),
+      });
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect(
+  "flags a stalled handoff after the grace period, not during ordinary reply scheduling",
+  () => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* trackOwner;
+      yield* setEnabled("/project", true);
+      yield* (yield* SessionFamilyStorage).recordTurn({ ...launchTurn, resultDelivery: "reply" });
+      yield* report(target, readiness);
+      yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
+      yield* runPass();
+      yield* TestClock.adjust("59 seconds");
+      yield* reviews.reconcile();
+      expect((yield* tracked).needsAttention).toBe(false);
+      yield* TestClock.adjust("1 second");
+      yield* reviews.reconcile();
+      expect((yield* tracked).attentionReason).toContain("waiting for result handoff");
+      expect(test.events).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect(
+  "a successful non-mergeable assignment remains reviewable after its quiet report is consumed",
+  () => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* trackOwner;
+      yield* setEnabled("/project", true);
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.recordTurn(launchTurn);
+      yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
+      yield* retainNotification((yield* storage.state()).turns[0]!);
+      yield* storage.updateCompletion(launchTurn.senderSessionId, launchTurn.turnId, "handled");
+      yield* reviews.reconcile();
+      expect(yield* requests).toEqual([]);
+      expect(yield* tracked).toMatchObject({
+        needsAttention: true,
+        attentionReason: expect.stringContaining("Review the completed delegated result"),
+      });
+      expect((yield* storage.state()).completionInbox?.[0]?.state).toBe("handled");
+      expect(test.events).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect.each(["follow-up", "aborted", "reported", "superseded", "new input", "FYI"] as const)(
+  "does not surface a non-final or stale result (%s)",
+  (variant) => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* trackOwner;
+      const storage = yield* SessionFamilyStorage;
+      if (variant !== "FYI")
+        yield* storage.recordTurn({
+          ...launchTurn,
+          reported: variant === "reported",
+          requestMessageId: variant === "follow-up" ? "follow-up" : "owner",
+        });
+      if (variant === "superseded") yield* report(target, readiness);
+      yield* (yield* ownerTurnHooks()).onTurnSettled({
+        ...taskAnswer,
+        outcome: variant === "aborted" ? "aborted" : "complete",
+      });
+      if (variant === "superseded" || variant === "new input")
+        yield* storage.invalidateAutoMerge("/tree", undefined, undefined, "owner");
+      yield* reviews.reconcile();
+      expect((yield* tracked).needsAttention).toBe(false);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect(
+  "backfills outstanding legacy readiness on restart without reviving an acknowledged decision",
+  () => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* trackOwner;
+      const storage = yield* SessionFamilyStorage;
+      yield* report(target, readiness);
+      yield* storage.updateAutoMerge("turn", "ready");
+      const coordinator = yield* WorktreeLandingCoordinator;
+      yield* SubscriptionRef.update(coordinator.state, (state) => ({
+        ...state,
+        autoMergeRunId: "restarted",
+      }));
+      yield* runPass();
+      yield* reviews.reconcile();
+      const todo = yield* tracked;
+      expect(todo.attentionReason).toContain("authorization expired");
+      yield* projectTodos.mutateUser("/project", {
+        _tag: "SetAttention",
+        id: todo.id,
+        expectedRevision: todo.revision,
+        needsAttention: false,
+      });
+      const dismissed = yield* tracked;
+      yield* reviews.reconcile();
+      expect(yield* tracked).toEqual(dismissed);
+      expect(test.events).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
+it.effect(
+  "keeps explicit attention and never revives a dismissed completion after a later attention edit",
+  () => {
+    const test = fixture();
+    return Effect.gen(function* () {
+      yield* trackOwner;
+      const setAttention = Effect.fn(function* (needsAttention: boolean, reason?: string) {
+        const item = yield* tracked;
+        yield* projectTodos.mutateUser("/project", {
+          _tag: "SetAttention",
+          id: item.id,
+          expectedRevision: item.revision,
+          needsAttention,
+          ...(reason ? { attentionReason: reason } : null),
+        });
+      });
+      yield* setAttention(true, "Ask the user about scope first");
+      yield* report(target, readiness);
+      yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
+      yield* reviews.reconcile();
+      expect((yield* tracked).attentionReason).toBe("Ask the user about scope first");
+      yield* setAttention(false);
+      yield* reviews.reconcile();
+      expect((yield* tracked).attentionReason).toContain("Auto-merge is off");
+      yield* setAttention(false);
+      yield* setAttention(true, "Different question");
+      yield* setAttention(false);
+      const dismissed = yield* tracked;
+      yield* reviews.reconcile();
+      expect(yield* tracked).toEqual(dismissed);
+    }).pipe(Effect.provide(test.layer));
+  },
+);
+
 const ready = Effect.gen(function* () {
   yield* setEnabled("/project", true);
   expect(yield* report(target, readiness)).toEqual({ eligible: true });
@@ -2928,6 +3202,7 @@ it.effect.each([
     const options = { conflict: false, failure: attempt === 1, executingTurns: ["turn"] };
     const test = fixture(options);
     return Effect.gen(function* () {
+      if (action === "cancel") yield* trackOwner;
       yield* ready;
       if (attempt === 1) {
         yield* runPass();
@@ -2970,7 +3245,11 @@ it.effect.each([
         JSON.parse(test.files.get("state/session-families.json") ?? "{}").data.autoMergeRequests[0],
       ).toMatchObject({ id: "turn", readyToMerge: false });
       // A conflict repair has a new HEAD; retirement must revoke its linked declaration too.
-      if (action === "cancel") expect((yield* requests)[1]?.readyToMerge).toBe(false);
+      if (action === "cancel") {
+        expect((yield* requests)[1]?.readyToMerge).toBe(false);
+        yield* reviews.reconcile();
+        expect((yield* tracked).attentionReason).toContain("Automatic landing canceled");
+      }
       options.conflict = false;
       options.failure = false;
       yield* setEnabled("/project", false);

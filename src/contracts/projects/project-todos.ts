@@ -101,7 +101,7 @@ export const PROJECT_TODO_LINK_GUIDANCE =
 
 /** Only explicit human requests own actionable attention; routine reports use the inbox. */
 export const PROJECT_TODO_ATTENTION_GUIDANCE =
-  "Explicit human requests only: set needsAttention with an action-oriented attentionReason and a stable attentionRequestId (e.g. its exact result ref). Reuse the ID for retries/rewording; use a new ID only for a genuinely new request (reasons may repeat). Never revive/reword a dismissed request. Report arrival never flags attention: results wait behind existing attention, others stay in the quiet inbox. X clears attention without delivering held reports. Attention never approves merging or changes lifecycle. Completion clears it; reopening starts Active.";
+  "Explicit human requests only: set needsAttention with an action-oriented attentionReason and a stable attentionRequestId (e.g. its exact result ref). Reuse the ID for retries/rewording; use a new ID only for a genuinely new request (reasons may repeat). Never revive/reword a dismissed request. Cake surfaces verified delegated completion separately; routine reports do not flag attention. X clears attention without delivering held reports. Attention never approves merging or changes lifecycle. Completion clears it; reopening starts Active.";
 
 const ProjectTodoAttentionReason = Schema.String.check(
   Schema.isTrimmed(),
@@ -174,6 +174,10 @@ export const ProjectTodo = Schema.Struct({
   attentionReason: Schema.optionalKey(ProjectTodoAttentionReason),
   /** Stable explicit request/result identity, retained after opening or dismissal. */
   attentionRequestId: Schema.optionalKey(ProjectTodoAttentionRequestId),
+  /** Last application-owned completion surfaced for each linked session. Survives later human edits. */
+  completionReviews: Schema.optionalKey(
+    Schema.Record(Schema.String, ProjectTodoAttentionRequestId),
+  ),
   /** Main-owned FIFO occurrence order within this list; retained when cleared.
    * Older saved requests without a sequence keep storage order ahead of new arrivals. */
   attentionSequence: Schema.optionalKey(revision),

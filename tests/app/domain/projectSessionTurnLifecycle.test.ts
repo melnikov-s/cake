@@ -142,7 +142,11 @@ it.effect.each([
         expect(test.publish.mock.invocationCallOrder[0]).toBeLessThan(
           test.settle.mock.invocationCallOrder[0] ?? 0,
         );
-      expect(test.settle).toHaveBeenCalledWith("turn", scenario.outcome, undefined, undefined);
+      expect(test.settle).toHaveBeenCalledWith("turn", scenario.outcome, undefined, undefined, {
+        sessionId: "session",
+        workspacePath: "/project",
+        mergeReady: false,
+      });
       expect(test.coordinate).toHaveBeenCalledWith("turn", scenario.outcome);
     }).pipe(Effect.provide(test.dependencies));
   }),

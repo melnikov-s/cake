@@ -202,6 +202,10 @@ export const SessionRelationship = Schema.Struct({
   movedToUserAt: Schema.optionalKey(Schema.String),
   /** Explicit re-delegation supersedes spawn provenance for automatic landing. */
   delegatedBySessionId: Schema.optionalKey(Schema.NullOr(BoundedId)),
+  /** Latest successful assignment without structured merge readiness; not a report receipt. */
+  taskCompletion: Schema.optionalKey(
+    Schema.Struct({ turnId: BoundedId, workspacePath: BoundedPath, settledAt: Schema.String }),
+  ),
 });
 export interface SessionRelationship extends Schema.Schema.Type<typeof SessionRelationship> {}
 

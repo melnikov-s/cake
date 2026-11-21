@@ -55,6 +55,10 @@ export const AutoMergeRequest = Schema.Struct({
   runId: Schema.String,
   attempt: Schema.optionalKey(Schema.Int),
   commit: Schema.String,
+  /** Successful turn settlement. Null retains completion evidence from older journals. */
+  settledAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** Presentation only: new input or resolution retired the old task decision. */
+  reviewSuperseded: Schema.optionalKey(Schema.Boolean),
   /** Follow-up validation/repair sequence, not a retry budget; absent on an original declaration. */
   repairAttempt: Schema.optionalKey(Schema.Int),
   /** Exact predecessor declaration; counts alone do not prove repair lineage. */

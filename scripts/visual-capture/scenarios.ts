@@ -3568,6 +3568,48 @@ const projectChatTodos: VisualCaptureScenario = {
           : page.locator('[data-slot="side-chat-layout"]'),
 };
 
+const projectChatDelegatedCompletion: VisualCaptureScenario = {
+  name: "project-chat-delegated-completion",
+  description: "Backend recovery surfaces a delegated investigation on its linked to-do",
+  states: ["default"],
+  async seed(paths, theme) {
+    await projectChatTodos.seed(paths, theme);
+    const sessionId = "visual-assistant-markdown-code";
+    // Seed only the lifecycle outcome, not attention. The isolated backend must project it.
+    await writeFile(
+      join(paths.cakeHome, "state", "session-families.json"),
+      JSON.stringify({
+        version: 12,
+        data: {
+          families: [],
+          spawnedSessions: [],
+          turns: [],
+          sessionPurposes: [
+            {
+              sessionId,
+              projectPath: paths.project,
+              purpose: "delegated",
+              createdPurpose: "delegated",
+              taskCompletion: {
+                turnId: "startup-result",
+                workspacePath: paths.project,
+                settledAt: new Date(0).toISOString(),
+              },
+            },
+          ],
+        },
+      }),
+    );
+  },
+  async prepare(page) {
+    await projectChatTodos.prepare(page, "unselected");
+    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+    await expect(workspace.locator('[data-todo-section-header="attention"]')).toBeVisible();
+    await expect(workspace.getByText(/Review the completed delegated result/)).toBeVisible();
+  },
+  region: (page) => page.getByRole("complementary", { name: "Workspace", exact: true }),
+};
+
 const globalChatTodos: VisualCaptureScenario = {
   name: "global-chat-todos",
   description: "Global Cake Chat shows collapsible project to-do groups and a separate global list",
@@ -10447,6 +10489,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   scheduledPromptsScenario,
   taskInputAttachmentsScenario,
   projectChatTodos,
+  projectChatDelegatedCompletion,
   globalChatTodos,
   createTodoResolvedSessionScenario(projectChatTodos),
   createInterfaceIconsScenario(projectChatTodos, seedDurableChat),

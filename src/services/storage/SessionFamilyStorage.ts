@@ -107,6 +107,7 @@ export class SessionFamilyStorage extends Context.Service<
       workspacePath: string,
       id?: string,
       message?: string,
+      admittingSessionId?: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly advanceBoardDelivery: (
       familyId: string,
@@ -172,6 +173,7 @@ export class SessionFamilyStorage extends Context.Service<
       outcome: "complete" | "failed" | "aborted",
       report?: SessionCompletionReport,
       stop?: TurnStop,
+      projectTask?: ProjectTaskSettlement,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly pendingResponseRequest: (
       sessionId: string,
@@ -326,6 +328,40 @@ export class SessionFamilyStorage extends Context.Service<
     }) => Effect.Effect<SessionFamily, SessionFamilyStorageError>;
   }
 >()("cake/services/storage/SessionFamilyStorage") {}
+
+interface ProjectTaskSettlement {
+  readonly sessionId: string;
+  readonly workspacePath: string;
+  readonly mergeReady: boolean;
+}
+
+function retireTaskReviews(
+  document: SessionFamilyDocument,
+  matches: (sessionId: string) => boolean,
+  admitting = false,
+): SessionFamilyDocument {
+  const sessionPurposes = document.sessionPurposes?.map((item) =>
+    item.taskCompletion && matches(item.sessionId) ? Struct.omit(item, ["taskCompletion"]) : item,
+  );
+  const autoMergeRequests = document.autoMergeRequests?.map((item) =>
+    !item.reviewSuperseded &&
+    matches(item.sessionId) &&
+    // A disarmed landing still owns an in-flight repair outcome.
+    !(admitting && item.state === "landing" && !item.readyToMerge)
+      ? { ...item, reviewSuperseded: true }
+      : item,
+  );
+  if (
+    !sessionPurposes?.some((item, i) => item !== document.sessionPurposes?.[i]) &&
+    !autoMergeRequests?.some((item, i) => item !== document.autoMergeRequests?.[i])
+  )
+    return document;
+  return {
+    ...document,
+    ...(sessionPurposes ? { sessionPurposes } : null),
+    ...(autoMergeRequests ? { autoMergeRequests } : null),
+  };
+}
 
 export interface SessionPurposeTransition {
   readonly sessionId: string;
@@ -817,6 +853,11 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             ...Struct.omit(request, ["message"]),
             state,
             readyToMerge: readyToMerge ?? request.readyToMerge,
+            // Keep evidence when reconciling an older ready declaration into a terminal state.
+            ...(request.settledAt === undefined &&
+            (request.state === "ready" || request.state === "landing")
+              ? { settledAt: null }
+              : null),
           };
           if (message) Object.assign(changed, { message });
           if (outcome) Object.assign(changed, { outcome });
@@ -854,33 +895,40 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         return applied;
       });
       const invalidateAutoMerge = Effect.fn("SessionFamilyStorage.invalidateAutoMerge")(
-        (workspacePath: string, id?: string, message = "New input invalidated merge readiness") =>
-          update((document) =>
-            !(document.autoMergeRequests ?? []).some(
-              (item) =>
-                item.workspacePath === workspacePath &&
-                (!id || item.id === id) &&
-                item.readyToMerge &&
-                item.state !== "landed",
-            )
-              ? document
-              : {
-                  ...document,
-                  autoMergeRequests: document.autoMergeRequests?.map((item) =>
-                    item.workspacePath === workspacePath &&
-                    (!id || item.id === id) &&
-                    item.readyToMerge &&
-                    item.state !== "landed"
-                      ? {
-                          ...item,
-                          readyToMerge: false,
-                          state: "canceled" as const,
-                          message,
-                        }
-                      : item,
-                  ),
-                },
-          ),
+        (workspacePath: string, id?: string, message?: string, admittingSessionId?: string) =>
+          update((current) => {
+            const document = admittingSessionId
+              ? retireTaskReviews(current, (sessionId) => sessionId === admittingSessionId, true)
+              : current;
+            const requests = document.autoMergeRequests?.map((item) => {
+              if (item.workspacePath !== workspacePath || (id && item.id !== id)) return item;
+              if (item.readyToMerge && item.state !== "landed")
+                return {
+                  ...item,
+                  readyToMerge: false,
+                  state: "canceled" as const,
+                  message: message ?? "New input invalidated merge readiness",
+                  // A queued/parked legacy automatic landing had already settled.
+                  ...(item.settledAt === undefined &&
+                  (item.state === "ready" || item.state === "landing")
+                    ? { settledAt: null }
+                    : null),
+                };
+              // The repair predecessor already gave up Git permission. Retain a later
+              // explicit cancellation instead of leaving its temporary repair status behind.
+              return id &&
+                message &&
+                item.state === "canceled" &&
+                item.settledAt !== undefined &&
+                !item.outcome &&
+                item.message !== message
+                ? { ...item, message }
+                : item;
+            });
+            return requests?.some((item, i) => item !== document.autoMergeRequests?.[i])
+              ? { ...document, autoMergeRequests: requests }
+              : document;
+          }),
       );
       const recordCompletion = Effect.fn("SessionFamilyStorage.recordCompletion")(
         (item: CompletionInboxItem, digest?: CoordinatorDigestItem) =>
@@ -936,7 +984,10 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       );
       const closeResolvedCompletions = Effect.fn("SessionFamilyStorage.closeResolvedCompletions")(
         (sessionIds: ReadonlyArray<string>) =>
-          update((document) => {
+          update((current) => {
+            const document = retireTaskReviews(current, (sessionId) =>
+              sessionIds.includes(sessionId),
+            );
             const closed = new Set(
               (document.completionInbox ?? [])
                 .filter(
@@ -987,8 +1038,12 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           adoptedTurnIds: [],
           canceledAutoMergeIds: [],
         };
-        yield* update((document) => {
-          const previousPurpose = sessionPurpose(document, input.sessionId);
+        yield* update((current) => {
+          const previousPurpose = sessionPurpose(current, input.sessionId);
+          const document =
+            previousPurpose !== input.purpose
+              ? retireTaskReviews(current, (sessionId) => sessionId === input.sessionId)
+              : current;
           result = { ...result, previousPurpose };
           if (previousPurpose === input.purpose) return document;
           const existing = document.sessionPurposes?.find(
@@ -1161,15 +1216,91 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             ),
           })),
       );
-      const settleTurn = Effect.fn("SessionFamilyStorage.settleTurn")(
-        (
-          turnId: string,
-          outcome: "complete" | "failed" | "aborted",
-          report?: SessionCompletionReport,
-          stop?: TurnStop,
-        ) =>
-          update((document) => ({
+      const settleTurn = Effect.fn("SessionFamilyStorage.settleTurn")(function* (
+        turnId: string,
+        outcome: "complete" | "failed" | "aborted",
+        report?: SessionCompletionReport,
+        stop?: TurnStop,
+        projectTask?: ProjectTaskSettlement,
+      ) {
+        const settledAt = projectTask ? DateTime.formatIso(yield* DateTime.now) : undefined;
+        yield* update((document) => {
+          const turn = document.turns.find((item) => item.turnId === turnId);
+          const request =
+            projectTask &&
+            document.autoMergeRequests?.find(
+              (item) => item.id === turnId && item.state === "pending" && item.readyToMerge,
+            );
+          const ready =
+            projectTask?.mergeReady &&
+            outcome === "complete" &&
+            turn?.report?.outcome !== "failed" &&
+            turn?.report?.outcome !== "blocked";
+          const owner =
+            projectTask &&
+            document.sessionPurposes?.find(
+              (item) => item.sessionId === projectTask.sessionId && item.purpose === "delegated",
+            );
+          const spawn =
+            owner &&
+            document.spawnedSessions.find(
+              (item) =>
+                item.sessionId === owner.sessionId && item.projectPath === owner.projectPath,
+            );
+          // A response obligation isn't itself an assignment. Only the original launch or
+          // work explicitly adopted in flight owns implicit non-mergeable task completion.
+          const finalResult =
+            !turn?.report || turn.report.outcome === "result"
+              ? report?.outcome === "result"
+              : turn.report.outcome === "completed";
+          const taskCompletion =
+            (!request || !ready) &&
+            projectTask &&
+            settledAt &&
+            owner &&
+            spawn &&
+            turn &&
+            // An explicit final launch report can reach its owner before the turn settles.
+            // A withdrawn or retired obligation is not evidence of a completed handoff.
+            (!turn.reported ||
+              (turn.report?.outcome === "completed" &&
+                spawn.handoffSettled &&
+                spawn.reportDelivered)) &&
+            !turn.outcome &&
+            turn.sessionId === owner.sessionId &&
+            turn.senderSessionId === spawn.requester.sessionId &&
+            (owner.delegatedBySessionId === undefined ||
+              owner.delegatedBySessionId === turn.senderSessionId) &&
+            (turn.adopted || turn.requestMessageId === spawn.sessionId) &&
+            outcome === "complete" &&
+            finalResult
+              ? { turnId, settledAt, workspacePath: projectTask.workspacePath }
+              : undefined;
+          return {
             ...document,
+            ...(request && document.autoMergeRequests
+              ? {
+                  autoMergeRequests: document.autoMergeRequests.map((item) =>
+                    item !== request
+                      ? item
+                      : ready && settledAt
+                        ? { ...Struct.omit(item, ["message"]), state: "ready" as const, settledAt }
+                        : {
+                            ...item,
+                            state: "canceled" as const,
+                            readyToMerge: false,
+                            message: "Task turn did not complete successfully",
+                          },
+                  ),
+                }
+              : null),
+            ...(taskCompletion && document.sessionPurposes
+              ? {
+                  sessionPurposes: document.sessionPurposes.map((item) =>
+                    item === owner ? { ...item, taskCompletion } : item,
+                  ),
+                }
+              : null),
             turns: document.turns.flatMap((turn) =>
               turn.turnId !== turnId || turn.outcome !== undefined
                 ? [turn]
@@ -1198,8 +1329,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                       },
                     ],
             ),
-          })),
-      );
+          };
+        });
+      });
       const pendingResponseRequest = Effect.fn("SessionFamilyStorage.pendingResponseRequest")((
         sessionId: string,
         executingTurnIds: ReadonlyArray<string>,

@@ -63,6 +63,7 @@ function commit(
       | "needsAttention"
       | "attentionReason"
       | "attentionRequestId"
+      | "completionReviews"
     >
   >,
   by: ProjectTodoCompletion["by"],
@@ -454,8 +455,13 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           (input.state === "done" &&
             projectTodoSessionIds({ associations: input.associations ?? item.associations })
               .length > 0);
+        const humanTakesReview =
+          user &&
+          (input.needsAttention === true || input.attentionReason !== undefined) &&
+          isCompletionReview(item);
+        const { attentionRequestId: _requestId, ...withoutRequestId } = item;
         const updated = commit(
-          item,
+          humanTakesReview ? withoutRequestId : item,
           {
             title: input.title ?? item.title,
             description: input.description ?? item.description,
@@ -463,7 +469,7 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
             remainingWork,
             needsAttention,
             ...(attentionReason ? { attentionReason } : null),
-            ...(attentionRequestId ? { attentionRequestId } : null),
+            ...(!humanTakesReview && attentionRequestId ? { attentionRequestId } : null),
             state: input.state ?? (automatic && item.state === "open" ? "done" : item.state),
             associations: input.associations ?? item.associations,
           },
@@ -496,6 +502,72 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
     }),
   );
   return inputs.flatMap((input) => next.items.filter((item) => item.id === input.id));
+});
+
+export function isCompletionReview(item: ProjectTodo) {
+  return Boolean(
+    item.attentionRequestId &&
+    Object.values(item.completionReviews ?? {}).includes(item.attentionRequestId),
+  );
+}
+
+/** Project the decision, without enqueuing input or claiming/acknowledging the result report. */
+export const reviewDelegatedResult = Effect.fn("ProjectTodos.reviewDelegatedResult")(function* <
+  E,
+  R,
+>(
+  input: {
+    readonly sessionId: string;
+    readonly id: string;
+    readonly reason: string;
+    readonly settledAt: string | null;
+  },
+  isOutstanding: Effect.Effect<boolean, E, R>,
+) {
+  const application = yield* ApplicationState;
+  const { sessionId, id, settledAt } = input;
+  const reason = input.reason.trim().slice(0, 512).trimEnd();
+  const matches = (item: ProjectTodo) => {
+    if (item.state !== "open" || !projectTodoSessionIds(item).includes(sessionId)) return false;
+    const shown = item.completionReviews?.[sessionId] === id;
+    if (shown)
+      // Keep an open automatic decision truthful if landing later stops or partially succeeds.
+      return (
+        item.needsAttention === true &&
+        item.attentionRequestId === id &&
+        item.attentionReason !== reason
+      );
+    // A historical declaration has no reliable ordering relative to a prior human decision.
+    return (
+      !item.needsAttention &&
+      (settledAt ? !item.createdAt || item.createdAt <= settledAt : !item.attentionReason)
+    );
+  };
+  const ownership = (state: ApplicationStateValue) => {
+    const linked = owners(state, sessionId);
+    return linked.length === 1 ? linked[0] : undefined;
+  };
+  const owner = ownership(application.snapshot());
+  if (!owner || !matches(owner.item) || !(yield* isOutstanding)) return;
+  yield* change(owner.scope, (value, current) => {
+    const latest = ownership(current);
+    if (!latest || latest.scope !== owner.scope || !matches(latest.item))
+      return Effect.succeed(value);
+    const updated = commit(
+      latest.item,
+      {
+        needsAttention: true,
+        attentionReason: reason,
+        attentionRequestId: id,
+        completionReviews: { ...latest.item.completionReviews, [sessionId]: id },
+      },
+      "agent",
+    );
+    return Effect.succeed({
+      ...value,
+      items: value.items.map((item) => (item === latest.item ? updated : item)),
+    });
+  });
 });
 
 /** Persist automatic completion through the same authority/projection as explicit user edits.
@@ -824,13 +896,27 @@ export const recordSessionChange = Effect.fn("ProjectTodos.recordSessionChange")
 ) {
   yield* change(scope, (value) =>
     Effect.succeed(
-      enqueue(value, {
-        _tag: "SessionState",
-        sequence: value.sequence + 1,
-        sessionId,
-        title,
-        resolved,
-      }),
+      enqueue(
+        resolved
+          ? {
+              ...value,
+              items: value.items.map((item) =>
+                item.needsAttention &&
+                item.attentionRequestId &&
+                item.attentionRequestId === item.completionReviews?.[sessionId]
+                  ? commit(item, { needsAttention: false }, "sessions")
+                  : item,
+              ),
+            }
+          : value,
+        {
+          _tag: "SessionState",
+          sequence: value.sequence + 1,
+          sessionId,
+          title,
+          resolved,
+        },
+      ),
     ),
   );
 });

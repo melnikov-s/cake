@@ -209,7 +209,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
               ? operation.cleanupFailures?.length
                 ? `Auto-merged and resolved; cleanup needs attention: ${operation.cleanupFailures.map((failure) => failure.message).join("; ")}`
                 : "Auto-merged and resolved"
-              : "Merged, but session resolution was not confirmed",
+              : `Merged, but session resolution was not confirmed${operation.resolutionError ? `: ${operation.resolutionError}` : ""}`,
           );
         } else if (
           request.state === "landing" &&

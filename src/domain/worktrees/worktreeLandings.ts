@@ -975,15 +975,21 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
  * including an epoch/attempt change published before retirement finishes. */
 const revokeRetiredReadiness = Effect.fn("WorktreeLandings.revokeRetiredReadiness")(function* (
   operation: WorktreeLandingOperation,
+  canceled = operation.phase !== "failed",
 ) {
   if (!operation.automatic || !operation.autoMergeRequestId) return;
-  yield* revokeReadiness(operation.workspacePath, operation.autoMergeRequestId);
+  yield* revokeReadiness(
+    operation.workspacePath,
+    operation.autoMergeRequestId,
+    canceled ? "Automatic landing canceled; fresh task readiness required." : operation.error,
+  );
 });
 
 /** Revoke only this declaration and its explicitly linked repairs, never a newer task. */
 export const revokeReadiness = Effect.fn("WorktreeLandings.revokeReadiness")(function* (
   workspacePath: string,
   requestId: string,
+  message?: string,
 ) {
   const storage = yield* SessionFamilyStorage;
   const requests =
@@ -1004,7 +1010,7 @@ export const revokeReadiness = Effect.fn("WorktreeLandings.revokeReadiness")(fun
         ids.add(request.id);
   }
   for (const id of ids)
-    yield* storage.invalidateAutoMerge(workspacePath, id).pipe(asError("retireReadiness"));
+    yield* storage.invalidateAutoMerge(workspacePath, id, message).pipe(asError("retireReadiness"));
 });
 
 /** Reconcile cancellation before considering any readiness, including failed/canceled
@@ -1089,7 +1095,7 @@ export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
           .cancelLanding(workspacePath, current.operationId, true)
           .pipe(asError("cancel"));
       const retired = yield* Effect.gen(function* () {
-        yield* revokeRetiredReadiness(current);
+        yield* revokeRetiredReadiness(current, true);
         yield* FiberMap.remove(coordinator.fibers, workspacePath);
         // Retire durable intent only after preparation/worker finalizers have settled.
         if (current.kind === "landing")

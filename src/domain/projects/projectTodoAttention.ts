@@ -65,6 +65,7 @@ export const hold = Effect.fn("ProjectTodoAttention.hold")(function* (
     (item) =>
       item.state === "open" &&
       item.needsAttention &&
+      !todos.isCompletionReview(item) &&
       (origin.subagent
         ? item.associations.some((link) => {
             const worker =

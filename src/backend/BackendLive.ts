@@ -12,6 +12,7 @@ import { startupDiagnostics } from "../services/diagnostics/startup-diagnostics"
 import type { CakePaths } from "../config/CakePaths";
 import * as scheduledMessages from "../domain/scheduled-messages/scheduledMessages";
 import * as autoMerge from "../domain/worktrees/autoMerge";
+import * as delegatedCompletionReviews from "../domain/worktrees/delegatedCompletionReviews";
 import * as sessionFamilies from "../domain/session-families/sessionFamilies";
 import * as runtimeRecovery from "../domain/project-sessions/runtimeRecovery";
 import * as subagentRecovery from "../domain/subagents/subagentRecovery";
@@ -372,6 +373,11 @@ export const makeBackendLive = <HostServices, HostError>(
       yield* sessionFamilies.runWorker.pipe(Effect.forkScoped);
       yield* autoMerge.runPass().pipe(
         Effect.catch((error) => Effect.logError("Auto-merge pass failed", error)),
+        Effect.repeat(Schedule.spaced("1 second")),
+        Effect.forkScoped,
+      );
+      yield* delegatedCompletionReviews.reconcile().pipe(
+        Effect.catch((error) => Effect.logError("Delegated completion review pass failed", error)),
         Effect.repeat(Schedule.spaced("1 second")),
         Effect.forkScoped,
       );

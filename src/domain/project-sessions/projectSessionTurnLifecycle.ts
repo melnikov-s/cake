@@ -129,7 +129,7 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
               },
               input,
               families
-                .invalidateAutoMerge(location.workingDirectory)
+                .invalidateAutoMerge(location.workingDirectory, undefined, undefined, sessionId)
                 .pipe(Effect.andThen(admit), Effect.andThen(sourceEvent)),
             )
             .pipe(
@@ -214,25 +214,6 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
             : text
               ? { outcome: "result" as const, text }
               : undefined;
-        const mergeRequest = (yield* families.state()).autoMergeRequests?.find(
-          (item) => item.id === event.turnId && item.state === "pending",
-        );
-        if (mergeRequest) {
-          const ready =
-            outcome === "complete" &&
-            Boolean(substantiveTurnResult(event.result)) &&
-            familyTurn?.report?.outcome !== "blocked" &&
-            familyTurn?.report?.outcome !== "failed";
-          yield* families.updateAutoMerge(
-            mergeRequest.id,
-            ready ? "ready" : "canceled",
-            ready ? undefined : "Task turn did not complete successfully",
-            undefined,
-            // The toggle may rebind a pending declaration's epoch, but cannot settle the turn.
-            { state: "pending", readyToMerge: true },
-            ready,
-          );
-        }
         const resultMessageRef = event.result?.entryId
           ? messageReference(sessionId, event.result.entryId)
           : undefined;
@@ -242,6 +223,11 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
             outcome,
             report ? { ...report, ...(resultMessageRef ? { resultMessageRef } : null) } : undefined,
             event.stop,
+            {
+              sessionId,
+              workspacePath: location.workingDirectory,
+              mergeReady: Boolean(substantiveTurnResult(event.result)),
+            },
           )
           .pipe(
             Effect.tapError((error) =>
