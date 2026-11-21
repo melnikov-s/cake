@@ -235,6 +235,11 @@ export class SessionCatalogStore extends Store<{
     );
   }
 
+  /** Sessions the catalog lists from their saved transcripts, not live runtime signals. */
+  get listedSessionIds() {
+    return this.props.model.sessions.map((session) => session.sessionId);
+  }
+
   get authoritativeSessionIds() {
     return [
       ...new Set([

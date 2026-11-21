@@ -463,11 +463,20 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
       if (this.sessionsById[sessionId]?.phase === "unlisted") this.clearSummary(sessionId);
   }
 
+  /** A saved transcript now makes the catalog authoritative; stop recreating it locally. */
+  private forgetListedStartedSessions(sessionIds: readonly string[]) {
+    for (const sessionId of sessionIds) delete this.startedSessions[sessionId];
+  }
+
   constructor(props: ProjectPendingSessionsStore["props"]) {
     super(props);
     this.reaction(
       () => this.props.catalog?.authoritativeSessionIds ?? [],
       (sessionIds) => this.reconcileAuthoritativeSessions(sessionIds),
+    );
+    this.reaction(
+      () => this.props.catalog?.listedSessionIds ?? [],
+      (sessionIds) => this.forgetListedStartedSessions(sessionIds),
     );
   }
 }
