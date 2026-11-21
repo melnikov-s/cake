@@ -124,7 +124,9 @@ test("Sessions headers own independent Auto-merge switches in Electron and brows
       const bounds = (await row.boundingBox())!;
       const control = (await toggle.boundingBox())!;
       expect(control.x + control.width).toBeLessThanOrEqual(bounds.x + bounds.width);
-      expect(bounds.x + bounds.width - (control.x + control.width)).toBeLessThan(20);
+      const status = (await row.locator('[data-slot="own-activity"]').boundingBox())!;
+      expect(control.x + control.width).toBeLessThanOrEqual(status.x);
+      expect(status.x - (control.x + control.width)).toBeLessThan(20);
       expect(control.y + control.height / 2).toBeCloseTo(bounds.y + bounds.height / 2, 0);
       expect(
         await toggle.evaluate((el) => el.parentElement!.closest("button, [role=button]") === null),

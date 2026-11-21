@@ -33,7 +33,7 @@ export const AutoMergeToggle = observer(function AutoMergeToggle({
   return (
     <label
       className={cn(
-        "flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap px-1 text-xs font-medium text-muted-foreground",
+        "flex h-7 min-w-0 items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground",
         pending ? "cursor-wait" : "cursor-pointer",
       )}
       onMouseEnter={(event) => show(event.currentTarget)}
@@ -44,12 +44,12 @@ export const AutoMergeToggle = observer(function AutoMergeToggle({
       }}
       onBlur={hide}
     >
-      <span aria-hidden="true" className={cn("flex", enabled && "text-worktree-merged")}>
+      <span aria-hidden="true" className={cn("flex shrink-0", enabled && "text-worktree-merged")}>
         <IconSizeProvider size="inline">
           <MergeResolveIcon />
         </IconSizeProvider>
       </span>
-      <span role={pending ? "status" : undefined} aria-live="polite">
+      <span className="truncate" role={pending ? "status" : undefined} aria-live="polite">
         {pending ? pendingLabel : "Auto-merge"}
       </span>
       <Switch

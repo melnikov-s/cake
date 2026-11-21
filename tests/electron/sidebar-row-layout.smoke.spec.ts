@@ -45,8 +45,50 @@ for (const theme of ["light", "dark"] as const) {
       const child = workspace.locator(
         '[data-slot="conversation-navigator-row"][data-session-id="visual-navigation-keyboard"]',
       );
+      const header = workspace.locator(
+        '[data-slot="conversation-navigator-row"][data-relationship="home"]',
+      );
+      const toggle = header.getByRole("switch", { name: /^Auto-merge:/ });
+      const headerStatus = header.locator('[data-slot="own-activity"]');
+      const sessionStatus = parent.locator('[data-slot="own-activity"]');
+      const headerDot = headerStatus.getByRole("img", { name: "Running", exact: true });
+      const sessionDot = sessionStatus.getByRole("img", { name: "Running", exact: true });
       const resize = page.getByRole("separator", { name: "Resize Workspace", exact: true });
       const measurements = [];
+      const centerX = (box: { x: number; width: number }) => box.x + box.width / 2;
+      for (const width of ["normal", "narrow"] as const) {
+        if (width === "narrow") {
+          await resize.focus();
+          await page.keyboard.press("Home");
+          await resize.blur();
+        }
+        await expect(headerDot).toBeVisible();
+        await expect(sessionDot).toBeVisible();
+        const track = await bounds(headerStatus);
+        const nestedTrack = await bounds(sessionStatus);
+        const control = await bounds(toggle);
+        const label = await bounds(toggle.locator(".."));
+        const title = await bounds(header.getByRole("button", { name: "cake", exact: true }));
+        expect(title.width).toBeGreaterThanOrEqual(64);
+        expect(title.x + title.width).toBeLessThanOrEqual(label.x);
+        const headerCenter = centerX(await bounds(headerDot));
+        const sessionCenter = centerX(await bounds(sessionDot));
+        expect(track.width).toBe(24);
+        expect(nestedTrack.width).toBe(track.width);
+        expect(Math.abs(centerX(track) - headerCenter)).toBeLessThan(0.5);
+        expect(Math.abs(headerCenter - sessionCenter)).toBeLessThan(0.5);
+        expect(control.x + control.width).toBeLessThanOrEqual(track.x);
+        expect(track.x - (control.x + control.width)).toBeLessThanOrEqual(4);
+        measurements.push({ width: (await bounds(workspace)).width, headerCenter, sessionCenter });
+        if (theme === "light") {
+          await test.info().attach(`sessions-status-${width}`, {
+            body: await workspace.screenshot({ animations: "disabled" }),
+            contentType: "image/png",
+          });
+        }
+      }
+      expect(measurements[0]!.width).toBeGreaterThan(measurements[1]!.width);
+
       for (const key of ["Home", "End"]) {
         await resize.focus();
         await page.keyboard.press(key);

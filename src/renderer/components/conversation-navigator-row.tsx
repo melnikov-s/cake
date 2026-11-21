@@ -167,6 +167,10 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
           activateOnMouseDown
           className={cn(
             "min-w-0 flex-1 bg-transparent py-1.5 pl-0 text-sm hover:bg-transparent",
+            // Let the toggle label truncate before it runs into the project avatar and title.
+            node.relationship === "home" &&
+              rowProjectPath !== undefined &&
+              "grid-cols-[minmax(4rem,1fr)_minmax(0,max-content)]",
             hideRunningSubtitle ? "min-h-9" : "min-h-11",
           )}
           actionProps={{ "aria-label": node.title }}
@@ -208,17 +212,17 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
           }
           trailing={
             <div className="flex items-center">
+              {node.relationship === "home" && rowProjectPath !== undefined && (
+                <AutoMergeToggle projectPath={rowProjectPath} />
+              )}
               <span
-                className="flex size-6 items-center justify-center"
+                className="flex size-6 shrink-0 items-center justify-center"
                 data-slot="own-activity"
                 aria-label={activity ? undefined : "Idle"}
                 title={activity ? undefined : "Idle"}
               >
                 <SessionActivityIndicator activity={activity} />
               </span>
-              {node.relationship === "home" && rowProjectPath !== undefined && (
-                <AutoMergeToggle projectPath={rowProjectPath} />
-              )}
             </div>
           }
           onClick={() => void store.open(node)}
