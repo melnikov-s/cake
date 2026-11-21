@@ -55,8 +55,12 @@ export function queuePart(
 // The Pi queue engine has its own service integration tests. Here its typed
 // authority boundary publishes realistic records; no partial AgentSession or
 // second implementation of Pi's queue policy belongs in a renderer fixture.
-export function renderQueue(parts: QueuePart[], client: TestClientOverrides) {
-  const fixture = renderChatSurface({ parts, snapshot: { streaming: true }, client });
+export function renderQueue(
+  parts: QueuePart[],
+  client: TestClientOverrides,
+  options?: { composerFocusEnabled?: boolean },
+) {
+  const fixture = renderChatSurface({ parts, snapshot: { streaming: true }, client, ...options });
   return {
     user: fixture.user,
     models: fixture.models,

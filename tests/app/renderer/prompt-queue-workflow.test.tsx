@@ -1,11 +1,12 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { queuePart, queueSessionId, renderQueue } from "./prompt-queue-workflow-fixture";
 import { renderChatSurface } from "./chat-surface-workflow-fixture";
 import { ContextIcon } from "../../../src/renderer/components/ui/icons";
+import { applyScheduledMessageUpdate } from "../../../src/renderer/reducers/ScheduledMessageReducer";
 
 const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
 const commandOptions = expect.objectContaining({ signal: expect.any(AbortSignal) });
@@ -454,6 +455,164 @@ describe("Prompt queue workflow", () => {
       commandOptions,
     );
   });
+
+  it("keeps rapid Enter presses on the latest manual turn across admission and lane updates", async () => {
+    const olderTurnId = TurnId.make("10000000-0000-4000-8000-000000000002");
+    const older = queuePart(1, "Older manual message", { turnId: olderTurnId, lane: "steering" });
+    const latest = queuePart(2, "Latest manual message", { turnId });
+    // Pi's projected part ID changes on promotion; the admitted turn ID does not.
+    const promoted = { ...latest, id: "new-steering-part-id", deliveryState: "steering" as const };
+    const admission = Promise.withResolvers<TurnId>();
+    const prompt = vi
+      .fn<Client["sessionChats"]["prompt"]>()
+      .mockImplementationOnce(async () => {
+        fixture.publish([older]);
+        return olderTurnId;
+      })
+      .mockImplementationOnce(() => admission.promise);
+    const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () => ({
+      steering: [older.text, latest.text],
+      followUp: [],
+    }));
+    const sendNow = vi.fn<Client["sessionChats"]["sendQueuedMessageNow"]>(async () =>
+      fixture.publish([older]),
+    );
+    const cancel = vi.fn<Client["scheduledMessages"]["cancel"]>();
+    const schedule = vi.fn<Client["scheduledMessages"]["schedule"]>();
+    using fixture = renderQueue(
+      [],
+      {
+        sessionChats: { prompt, steerQueuedMessage: steer, sendQueuedMessageNow: sendNow },
+        scheduledMessages: { cancel, schedule },
+      },
+      { composerFocusEnabled: true },
+    );
+    const futureRepeat = {
+      id: "10000000-0000-4000-8000-000000000091",
+      targetSessionId: queueSessionId,
+      text: "Future repeat",
+      createdAt: new Date().toISOString(),
+      sendAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      repeatEverySeconds: 1800,
+    };
+    const catalog = fixture.models.scheduledMessageCatalog(queueSessionId);
+    act(() =>
+      applyScheduledMessageUpdate(catalog, {
+        _tag: "Snapshot",
+        revision: 1,
+        messages: [futureRepeat],
+      }),
+    );
+    const input = screen.getByRole("combobox");
+    await fixture.user.type(input, `${older.text}{Enter}`);
+    await fixture.user.type(input, `${latest.text}{Enter}`);
+    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+    await fixture.user.keyboard("{Enter}");
+    expect(steer).not.toHaveBeenCalled();
+    expect(sendNow).not.toHaveBeenCalled();
+    await act(async () => admission.resolve(turnId));
+    expect(steer).not.toHaveBeenCalled();
+
+    fixture.publish([latest, older]);
+    await waitFor(() =>
+      expect(steer).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: queueSessionId, partId: latest.id },
+        commandOptions,
+      ),
+    );
+    // The RPC acknowledged promotion, but the visible row is still queued.
+    fireEvent.keyDown(input, { key: "Enter", repeat: true });
+    expect(sendNow).not.toHaveBeenCalled();
+    await fixture.user.keyboard("{Enter}");
+    expect(steer).toHaveBeenCalledOnce();
+    expect(sendNow).not.toHaveBeenCalled();
+    fixture.publish([older, promoted]);
+    await waitFor(() =>
+      expect(sendNow).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: queueSessionId, partId: promoted.id },
+        commandOptions,
+      ),
+    );
+    await fixture.user.keyboard("{Enter}{Enter}");
+    expect(steer).toHaveBeenCalledOnce();
+    expect(sendNow).toHaveBeenCalledOnce();
+    expect(prompt).toHaveBeenCalledTimes(2);
+    expect(queuedTexts()).toEqual([older.text]);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(schedule).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /1 scheduled.*1 repeating/ })).toBeDefined();
+  });
+
+  it.each(["removed", "failed admission", "scheduled provenance"] as const)(
+    "does not substitute another row after %s for the latest composer submission",
+    async (scenario) => {
+      const olderTurnId = TurnId.make("10000000-0000-4000-8000-000000000002");
+      const older = queuePart(1, "Older manual message", { turnId: olderTurnId });
+      const latest = queuePart(2, "Latest manual message", { turnId });
+      const scheduled = {
+        ...latest,
+        scheduled: {
+          version: 1 as const,
+          id: "10000000-0000-4000-8000-000000000091",
+          createdAt: "2026-01-01T00:00:00Z",
+          sendAt: "2026-01-02T00:00:00Z",
+        },
+      };
+      const prompt = vi
+        .fn<Client["sessionChats"]["prompt"]>()
+        .mockImplementationOnce(async () => {
+          fixture.publish([older]);
+          return olderTurnId;
+        })
+        .mockImplementationOnce(async () => {
+          if (scenario === "failed admission") throw new Error("Admission refused");
+          fixture.publish([older, scenario === "scheduled provenance" ? scheduled : latest]);
+          return turnId;
+        });
+      const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () =>
+        fixture.publish([older]),
+      );
+      const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>();
+      const sendNow = vi.fn<Client["sessionChats"]["sendQueuedMessageNow"]>();
+      using fixture = renderQueue(
+        [],
+        {
+          sessionChats: {
+            prompt,
+            removeQueuedMessage: remove,
+            steerQueuedMessage: steer,
+            sendQueuedMessageNow: sendNow,
+          },
+        },
+        { composerFocusEnabled: true },
+      );
+      const input = screen.getByRole("combobox");
+      await fixture.user.type(input, older.text);
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      await fixture.user.type(input, `${latest.text}{Enter}`);
+      if (scenario === "removed") {
+        await fixture.user.click(
+          screen.getByRole("button", { name: `Cancel queued message: ${latest.text}` }),
+        );
+        expect(remove).toHaveBeenCalledExactlyOnceWith(
+          { sessionId: queueSessionId, partId: latest.id },
+          commandOptions,
+        );
+      } else if (scenario === "failed admission") {
+        await waitFor(() => expect(input).toHaveProperty("value", latest.text));
+        await fixture.user.clear(input);
+      } else {
+        // Even an exact turn match is insufficient if the projection is not manual.
+        await fixture.user.keyboard("{Enter}");
+        expect(steer).not.toHaveBeenCalled();
+      }
+      await fixture.user.click(input); // Exercise a fresh Enter, outside the original continuation.
+      await fixture.user.keyboard("{Enter}{Enter}");
+      expect(steer).not.toHaveBeenCalled();
+      expect(sendNow).not.toHaveBeenCalled();
+      expect(prompt).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("shows a queued worker report as a queue row the user can steer or cancel but not edit", async () => {
     const report = queuePart(3, "Background subagent complete: Audit", { report: true });

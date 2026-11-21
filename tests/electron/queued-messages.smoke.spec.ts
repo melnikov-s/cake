@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,7 +12,11 @@ import { openSettings, showSessions } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-async function queuedMessagesFixture(dictation = false, theme: "dark" | "light" = "dark") {
+async function queuedMessagesFixture(
+  dictation = false,
+  theme: "dark" | "light" = "dark",
+  withFutureRepeat = false,
+) {
   const root = await mkdtemp(join(tmpdir(), "cake-queued-messages-"));
   const userData = join(root, "user-data"),
     project = join(root, "project"),
@@ -65,6 +69,17 @@ async function queuedMessagesFixture(dictation = false, theme: "dark" | "light" 
   );
   await writeFile(join(userData, "window-state.json"), windowState({ project, sessionId, theme }));
   const timestamp = new Date(0).toISOString();
+  const schedulePath = join(cakeHome, "state", "scheduled-messages.json");
+  const futureRepeat = {
+    id: "10000000-0000-4000-8000-000000000091",
+    targetSessionId: sessionId,
+    text: "Future repeat: check the build",
+    createdAt: new Date().toISOString(),
+    sendAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    repeatEverySeconds: 1800,
+  };
+  const scheduleDocument = JSON.stringify({ version: 1, data: [futureRepeat] });
+  if (withFutureRepeat) await writeFile(schedulePath, scheduleDocument);
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({
@@ -174,6 +189,9 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     requests,
     sessionId,
     sourceId,
+    futureRepeat,
+    scheduleDocument,
+    readSchedule: () => readFile(schedulePath, "utf8"),
     async dispose() {
       await app.close();
       for (const response of responses) response.destroy();
@@ -808,6 +826,99 @@ for (const dictation of [false, true]) {
     }
   });
 }
+
+test("composer Enter targets the latest manual queue item with a future repeat waiting", async ({}, testInfo) => {
+  test.setTimeout(60_000);
+  const fixture = await queuedMessagesFixture(false, "dark", true);
+  try {
+    const { app, responses, requests, futureRepeat } = fixture;
+    const page = await app.firstWindow();
+    await expect(page.getByText("Ready for queue testing.")).toBeVisible({ timeout: 20_000 });
+    const input = page.getByRole("combobox", { name: "Message", exact: true });
+    const queue = page.getByRole("list", { name: "Queued prompts" });
+    const schedule = queue.getByRole("group", { name: "Scheduled" });
+    const summary = schedule.getByRole("button", { name: /1 scheduled.*1 repeating/ });
+    const submit = async (text: string) => {
+      await input.fill(text);
+      await input.press("Enter");
+      await expect(input).toHaveValue("");
+    };
+    const older = "Older manual message";
+    const middle = "Another manual message";
+    const latest = "Latest manual message";
+    const steer = (text: string) =>
+      queue.getByRole("button", { name: `Send now as steering: ${text}` });
+    const promoted = (text: string) =>
+      queue.getByRole("button", { name: `Stop and send now: ${text}` });
+
+    await submit("Hold the current response");
+    await expect.poll(() => responses.length).toBe(1);
+    await submit(older);
+    await expect(steer(older)).toBeEnabled();
+    // Native Enter on the scheduled summary should operate only that control.
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    await expect(summary).toHaveAttribute("aria-expanded", "true");
+    await expect(steer(older)).toBeEnabled();
+    await expect(schedule.getByRole("timer").last()).toHaveAttribute(
+      "datetime",
+      futureRepeat.sendAt,
+    );
+    await input.fill(middle);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(steer(middle)).toBeEnabled();
+    await submit(latest);
+    await expect(steer(latest)).toBeEnabled();
+    await queue.getByRole("button", { name: `Move up: ${latest}` }).click();
+    await expect(queue.getByRole("button", { name: /^View queued message:/ })).toHaveText([
+      older,
+      latest,
+      middle,
+    ]);
+    await page.keyboard.press("Tab");
+    await expect(input).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(promoted(latest)).toBeVisible();
+    await expect(steer(older)).toBeEnabled();
+    await queue.screenshot({ path: testInfo.outputPath("future-repeat-latest-promoted.png") });
+    await page.keyboard.press("Enter");
+    await expect.poll(() => responses.length).toBe(2);
+    await expect(queue.getByRole("button", { name: `View queued message: ${latest}` })).toHaveCount(
+      0,
+    );
+    expect(requests[1]).toContain(latest);
+    expect(requests[1]).not.toContain(older);
+    expect(requests[1]).not.toContain(middle);
+    expect(requests.join("\n")).not.toContain(futureRepeat.text);
+    await expect(steer(older)).toBeEnabled();
+    await expect(schedule.getByRole("timer").last()).toHaveAttribute(
+      "datetime",
+      futureRepeat.sendAt,
+    );
+    expect(await fixture.readSchedule()).toBe(fixture.scheduleDocument);
+
+    await page.keyboard.press("Enter");
+    await expect(steer(older)).toBeEnabled();
+    await expect(promoted(older)).toHaveCount(0);
+    expect(responses).toHaveLength(2);
+    expect(await fixture.readSchedule()).toBe(fixture.scheduleDocument);
+
+    const removed = "Remove this latest manual message";
+    await submit(removed);
+    await expect(steer(removed)).toBeEnabled();
+    await queue.getByRole("button", { name: `Cancel queued message: ${removed}` }).click();
+    await expect(
+      queue.getByRole("button", { name: `View queued message: ${removed}` }),
+    ).toHaveCount(0);
+    await input.focus();
+    await page.keyboard.press("Enter");
+    await expect(steer(older)).toBeEnabled();
+    await expect(promoted(older)).toHaveCount(0);
+    expect(await fixture.readSchedule()).toBe(fixture.scheduleDocument);
+  } finally {
+    await fixture.dispose();
+  }
+});
 
 test("consecutive Enter escalates only the just-sent message without restarting dictation", async () => {
   test.skip(process.platform !== "darwin" || process.arch !== "arm64", "Local dictation platform");

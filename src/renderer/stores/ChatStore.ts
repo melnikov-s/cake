@@ -132,7 +132,7 @@ export interface ChatStoreProps {
   estimatedContextUsage?: boolean;
   promptCacheModel?(): { provider: string; modelId: string } | undefined;
   queuedPrompts?(): readonly QueuedPrompt[];
-  steerQueuedPrompt?(id: string): void | Promise<void>;
+  steerQueuedPrompt?(id: string): void | boolean | Promise<void | boolean>;
   stopAndSendQueuedPrompt?(id: string): void | Promise<void>;
   reorderQueuedPrompt?(id: string, position: number): void | Promise<void>;
   editQueuedPrompt?(id: string, text: string): Promise<boolean>;
@@ -178,16 +178,20 @@ export class ChatStore extends Store<ChatStoreProps> {
   private advancingEnterContinuation = false;
   private enterContinuationError: string | undefined;
   /** Empty Enter escalates the user's own latest message, never whatever heads the queue. */
-  private lastSentTurnId: string | undefined;
+  private lastComposerTurnId: string | undefined;
 
   constructor(props: ChatStore["props"]) {
     super(props);
     this.effect(() => {
       const continuation = this.enterContinuation;
-      if (!continuation?.turnId || this.advancingEnterContinuation) return;
-      const queued = this.queuedPrompts.find(
-        (entry) => entry.turnId === continuation.turnId && !entry.pending,
-      );
+      if (
+        !continuation?.turnId ||
+        this.advancingEnterContinuation ||
+        this.submittingLocally ||
+        !this.canContinueSentMessage
+      )
+        return;
+      const queued = this.composerQueueTarget(continuation.turnId);
       // Admission and lane changes can precede their queue projection. Missing means
       // wait, never select another input. A consumed input therefore cannot be escalated.
       if (!queued) return;
@@ -201,6 +205,10 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   get hasEnterContinuation() {
     return this.enterContinuation !== undefined;
+  }
+
+  get canContinueSentMessage() {
+    return this.pendingImagePastes === 0 && (this.submittingLocally || this.composerIsEmpty());
   }
 
   beginEnterContinuation() {
@@ -229,27 +237,32 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.advancingEnterContinuation = true;
     try {
       if (continuation.completed === 0) {
-        if (!this.canSteerQueuedPrompt || queued.command) {
-          this.cancelEnterContinuation();
-          return;
+        if (queued.state === "queued") {
+          if (!this.canSteerQueuedPrompt || (await this.steerQueuedPrompt(queued.id)) === false) {
+            this.finishEnterContinuation(continuation);
+            return;
+          }
         }
-        if (queued.state === "queued") await this.steerQueuedPrompt(queued.id);
         const current = this.enterContinuation;
         if (current?.generation === continuation.generation)
           this.enterContinuation = { ...current, completed: 1 };
       } else {
+        this.finishEnterContinuation(continuation);
         if (this.canStopAndSendQueuedPrompt) await this.stopAndSendQueuedPrompt(queued.id);
-        if (this.enterContinuation?.generation === continuation.generation)
-          this.cancelEnterContinuation();
       }
     } catch (error) {
       this.enterContinuationError = error instanceof Error ? error.message : String(error);
-      if (this.enterContinuation?.generation === continuation.generation)
-        this.cancelEnterContinuation();
+      this.finishEnterContinuation(continuation);
     } finally {
       this.advancingEnterContinuation = false;
     }
   }
+  private finishEnterContinuation(continuation: EnterContinuation) {
+    if (this.lastComposerTurnId === continuation.turnId) this.lastComposerTurnId = undefined;
+    if (this.enterContinuation?.generation === continuation.generation)
+      this.cancelEnterContinuation();
+  }
+
   get history() {
     return this.props.history;
   }
@@ -739,6 +752,8 @@ export class ChatStore extends Store<ChatStoreProps> {
     options?: {
       renderUserMessageAsMarkdown?: boolean;
       enterContinuation?: number;
+      /** Only the composer owns this target; programmatic submits do not replace it. */
+      composer?: "enter" | "other";
       /** Only supplied by the composer's actual keyboard Enter-submit path. */
       composerEnter?: AbortSignal;
     },
@@ -752,16 +767,25 @@ export class ChatStore extends Store<ChatStoreProps> {
     }
     if (value !== this.draft) this.setDraft(value);
     const dictation = DictationContext.consume(this)?.();
-    const empty = !value.trim() && this.attachments.length === 0 && this.annotations.length === 0;
-    const own = empty ? this.ownQueuedPrompt() : undefined;
-    if (own?.state === "steering" && this.canStopAndSendQueuedPrompt) {
-      await this.stopAndSendQueuedPrompt(own.id);
+    const empty = this.composerIsEmpty(value);
+    if (empty) {
+      if (options?.composer !== "enter" || !this.lastComposerTurnId) return false;
+      // After focus has moved, a deliberate empty Enter in the input may resume
+      // the exact turn, but cannot choose a different row or wait for a missing one.
+      const own = this.composerQueueTarget(this.lastComposerTurnId);
+      if (!own) return false;
+      const completed = own.state === "steering" ? 1 : 0;
+      const generation = this.beginEnterContinuation();
+      this.enterContinuation = {
+        generation,
+        turnId: this.lastComposerTurnId,
+        requested: completed + 1,
+        completed,
+      };
       return true;
     }
-    if (own?.state === "queued" && !own.command) {
-      await this.steerQueuedPrompt(own.id);
-      return true;
-    }
+    const composerSubmission = options?.composer && !this.editingMessage && !this.submitsAsDraft;
+    if (composerSubmission) this.lastComposerTurnId = undefined;
     const conversationId = this.id;
     this.submittingLocally = true;
     let submission: DictationSubmission | undefined;
@@ -817,11 +841,14 @@ export class ChatStore extends Store<ChatStoreProps> {
       dictation?.completeSubmission(submission, accepted);
       if (submitted !== false && this.draft === value && this.draftRevision === submittedRevision)
         this.setDraft("");
-      if (submitted && submitted !== true) this.lastSentTurnId = submitted.turnId;
+      const turnId =
+        composerSubmission && !value.trimStart().startsWith("/") && submitted && submitted !== true
+          ? submitted.turnId
+          : undefined;
+      if (turnId) this.lastComposerTurnId = turnId;
       const continuation = this.enterContinuation;
       if (continuation && continuation.generation === options?.enterContinuation) {
-        if (submitted && submitted !== true)
-          this.enterContinuation = { ...continuation, turnId: submitted.turnId };
+        if (turnId) this.enterContinuation = { ...continuation, turnId };
         else this.cancelEnterContinuation();
       }
       // Other composer ports may only report acceptance through their result.
@@ -838,23 +865,20 @@ export class ChatStore extends Store<ChatStoreProps> {
     }
   }
 
-  /**
-   * The queued message empty Enter acts on: the one this user sent last, or else their first
-   * queued message. Rows from other sessions, schedules or Cake are never escalated.
-   */
-  private ownQueuedPrompt(): QueuedPrompt | undefined {
-    const latest = this.lastSentTurnId
-      ? this.queuedPrompts.find((entry) => entry.turnId === this.lastSentTurnId)
-      : undefined;
-    if (latest) return latest.pending ? undefined : latest;
-    // An admission still in flight is the user's latest message; wait for its row.
-    if (this.queuedPrompts.some((entry) => entry.pending)) return undefined;
+  private composerIsEmpty(value = this.draft) {
+    return !value.trim() && this.attachments.length === 0 && this.annotations.length === 0;
+  }
+
+  private composerQueueTarget(turnId: string): QueuedPrompt | undefined {
     return this.queuedPrompts.find(
       (entry) =>
+        entry.turnId === turnId &&
+        !entry.pending &&
+        !entry.command &&
         !entry.source &&
         !entry.scheduled &&
         !entry.automatic &&
-        (entry.state === "steering" || !entry.command),
+        !entry.provenance,
     );
   }
 

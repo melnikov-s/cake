@@ -25,6 +25,7 @@ export function renderChatSurface(
     parts?: UiPart[];
     snapshot?: Partial<ConversationSnapshot>;
     client?: TestClientOverrides;
+    composerFocusEnabled?: boolean;
   } = {},
 ) {
   const fixture = createRendererStoreFixture({
@@ -60,7 +61,7 @@ export function renderChatSurface(
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
         <>
           <ProjectPaneHeader session={session} browserMode={false} />
-          <Chat store={chat} compact composerFocusEnabled={false} />
+          <Chat store={chat} compact composerFocusEnabled={options.composerFocusEnabled ?? false} />
         </>
       </StoreProvider>
     </StoreProvider>,

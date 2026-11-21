@@ -24,8 +24,10 @@ export function useComposerEnterContinuation(
         event.ctrlKey ||
         event.metaKey ||
         event.isComposing ||
-        !focus.current?.shouldParkFocus() ||
-        (event.target !== anchor && event.target !== input.current)
+        event.keyCode === 229 ||
+        !store.canContinueSentMessage ||
+        (event.target !== input.current &&
+          (event.target !== anchor || !focus.current?.shouldParkFocus()))
       ) {
         cancel();
         return;

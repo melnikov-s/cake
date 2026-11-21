@@ -30,6 +30,8 @@ import type { ComposerInputElement } from "../lib/composer-input-element";
 
 type SlashCommand = ConversationSnapshot["commands"][number];
 
+export type ComposerSubmitOrigin = "composer-enter" | "modified-enter";
+
 export interface ComposerFocusHandle {
   /** Returns true only when the editable input was focused, rather than its Tab anchor. */
   requestFocus(): boolean;
@@ -54,7 +56,7 @@ interface SlashCommandComboboxProps extends Omit<
   inputHistoryRevision?: number;
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   onValueChange(value: string): void;
-  onSubmit(value?: string, origin?: "composer-enter"): void | Promise<void>;
+  onSubmit(value?: string, origin?: ComposerSubmitOrigin): void | Promise<void>;
   onEscape?(): void;
   inputRef?(input: ComposerInputElement | null): void;
   onContextMenu?(event: MouseEvent<HTMLElement>): void;
@@ -349,10 +351,10 @@ export function SlashCommandCombobox({
     completeCommand(command, true);
   };
 
-  const restoreFocusAfterSubmit = async (submittedValue?: string) => {
+  const restoreFocusAfterSubmit = async (submittedValue: string, origin: ComposerSubmitOrigin) => {
     const focusAtSubmit = document.activeElement;
     try {
-      await onSubmit(submittedValue, "composer-enter");
+      await onSubmit(submittedValue, origin);
     } finally {
       // A deferred dictation send must not take focus back after the user moves on.
       const movedOn =
@@ -453,7 +455,11 @@ export function SlashCommandCombobox({
       event.keyCode !== 229
     ) {
       event.preventDefault();
-      void restoreFocusAfterSubmit(inputValue);
+      if (!event.repeat)
+        void restoreFocusAfterSubmit(
+          inputValue,
+          event.altKey || event.ctrlKey || event.metaKey ? "modified-enter" : "composer-enter",
+        );
     }
   };
 

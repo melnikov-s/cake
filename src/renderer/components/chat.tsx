@@ -9,7 +9,7 @@ import { ContextInspector } from "./context-inspector";
 import { ContextUsageButton } from "./ui/context-usage-button";
 import { ChatComposer } from "@/components/chat-composer";
 import { ChatComposerInput } from "@/components/chat-composer-input";
-import type { ComposerFocusHandle } from "./slash-command-combobox";
+import type { ComposerFocusHandle, ComposerSubmitOrigin } from "./slash-command-combobox";
 import { useComposerEnterContinuation } from "../hooks/use-composer-enter-continuation";
 import { ChatSubmitAction } from "@/components/chat-submit-action";
 import { ImagePreview } from "@/components/image-preview";
@@ -224,18 +224,20 @@ export const Chat = observer(function Chat({
     composerLifetime.current = lifetime;
     return () => lifetime.abort();
   }, [store, store.id]);
-  const submitMessage = async (value?: string, origin?: "composer-enter") => {
+  const submitMessage = async (value?: string, origin?: ComposerSubmitOrigin) => {
     const canSend = store.canSubmitValue(value) && !store.editingMessage;
     const focusAtSubmit = document.activeElement;
+    const parkFocus = composerFocusRef.current?.shouldParkFocus();
+    const plainEnter = origin === "composer-enter";
     const continuation =
-      canSend && composerFocusRef.current?.shouldParkFocus()
-        ? store.beginEnterContinuation()
-        : undefined;
+      canSend && (plainEnter || parkFocus) ? store.beginEnterContinuation() : undefined;
     await store.submit(value, {
       enterContinuation: continuation,
-      composerEnter: origin === "composer-enter" ? composerLifetime.current?.signal : undefined,
+      composer: plainEnter ? "enter" : "other",
+      composerEnter: origin ? composerLifetime.current?.signal : undefined,
     });
     if (
+      parkFocus &&
       continuation !== undefined &&
       store.hasEnterContinuation &&
       document.activeElement === focusAtSubmit

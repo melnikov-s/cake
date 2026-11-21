@@ -14,6 +14,7 @@ import { observer } from "r-state-tree/react";
 import {
   SlashCommandCombobox,
   type ComposerFocusHandle,
+  type ComposerSubmitOrigin,
 } from "@/components/slash-command-combobox";
 import type { ChatStore } from "../stores/ChatStore";
 import { isLargePaste } from "../../contracts/conversations/task-input";
@@ -43,7 +44,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   parkFocusWhileDictating: boolean;
   onReword(selection: ComposerSelection): void;
   onPromptedReword(selection: ComposerSelection): void;
-  onSubmit(value: string, origin?: "composer-enter"): Promise<void>;
+  onSubmit(value: string, origin?: ComposerSubmitOrigin): Promise<void>;
 }) {
   const [reference, setReference] = useState<
     ComposerSelection & {

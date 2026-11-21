@@ -353,9 +353,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           pending: true,
         })),
       ],
-      steerQueuedPrompt: async (id) => {
-        await this.editRuntimeQueuedPrompt(id, "steer");
-      },
+      steerQueuedPrompt: (id) => this.editRuntimeQueuedPrompt(id, "steer"),
       stopAndSendQueuedPrompt: (id) => this.stopAndSendQueuedPrompt(id),
       reorderQueuedPrompt: (id, position) => this.reorderQueuedPrompt(id, position),
       editQueuedPrompt: (id, text) => this.editQueuedPrompt(id, text),
