@@ -175,6 +175,7 @@ export const bindRenderer = Effect.fn("SessionChats.bindRenderer")(function* (
 export const antigravity = Effect.fn("SessionChats.antigravity")(function* (
   input: { sessionId: string; text: string; renderUserMessageAsMarkdown: boolean },
   connectionId: number,
+  nativeDocument: AbortSignal | undefined,
 ) {
   const connections = yield* ClientConnections;
   if (connections.kind(connectionId) !== "desktop")
@@ -194,6 +195,20 @@ export const antigravity = Effect.fn("SessionChats.antigravity")(function* (
       operation: "antigravity",
       message: "Antigravity is available only in active desktop Project Sessions and Project Chat",
     });
+  // Remote desktop sockets are desktop-class but have no native document.
+  // A local Project Chat send cannot silently become a text-only send after loss.
+  const bridgeTurn =
+    targetKind === "CakeChatSession" &&
+    (nativeDocument !== undefined || connections.nativeId(connectionId) !== undefined);
+  const cakeBridgeOwnerSignal = bridgeTurn ? nativeDocument : undefined;
+  const unavailable = () =>
+    new SessionChatError({
+      operation: "antigravity",
+      message:
+        "The requesting Cake window lost its Project Chat bridge. Send a new turn after the window reloads.",
+    });
+  if (bridgeTurn && (!cakeBridgeOwnerSignal || cakeBridgeOwnerSignal.aborted))
+    return yield* unavailable();
   const coordinator = yield* RendererRequestCoordinator;
   yield* coordinator
     .bind({ _tag: targetKind, sessionId: input.sessionId }, connectionId)
@@ -202,22 +217,17 @@ export const antigravity = Effect.fn("SessionChats.antigravity")(function* (
     .requireDesktopConnection(input.sessionId, connectionId)
     .pipe(asError("antigravity"));
   const run = makePiCallbackExecutor(yield* Effect.context<RendererRequestCoordinator>());
-  // Socket clients can be classified as desktops for UI compatibility. Only native
-  // IPC supplies a WebContents identity; remote desktops keep the text-only route.
-  const hasNativeBridgeOwner = () =>
-    targetKind === "CakeChatSession" && connections.nativeId(connectionId) !== undefined;
+  if (cakeBridgeOwnerSignal?.aborted) return yield* unavailable();
   const turnId = yield* handle
     .antigravity(input.text, input.renderUserMessageAsMarkdown, {
-      ...(hasNativeBridgeOwner()
-        ? { cakeBridgeOwnerSignal: connections.signal(connectionId) }
-        : null),
+      cakeBridgeOwnerSignal,
       async permission(request, signal) {
         const bridgeConsent = request.kind === "cake-operation";
-        if (
-          connections.kind(connectionId) !== "desktop" ||
-          (bridgeConsent && !hasNativeBridgeOwner())
-        )
-          return undefined;
+        if (connections.kind(connectionId) !== "desktop") return undefined;
+        if (bridgeConsent) {
+          if (!cakeBridgeOwnerSignal || cakeBridgeOwnerSignal.aborted) return undefined;
+          signal = AbortSignal.any([signal, cakeBridgeOwnerSignal]);
+        }
         const consent = coordinator.requireDesktopConnection(input.sessionId, connectionId).pipe(
           Effect.andThen(
             coordinator.requestUiForConnection(
@@ -246,7 +256,7 @@ export const antigravity = Effect.fn("SessionChats.antigravity")(function* (
             : consent,
           { signal },
         );
-        if (bridgeConsent && !hasNativeBridgeOwner()) return undefined;
+        if (bridgeConsent && signal.aborted) return undefined;
         return decision === "allow" || decision === "deny" ? decision : undefined;
       },
     })

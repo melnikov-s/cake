@@ -61,7 +61,11 @@ async function discoverMcp() {
 }
 async function sendMcpResult(id, commands) {
   const findings = [];
-  for (const command of commands) findings.push(await cake(command));
+  for (const command of commands) {
+    const reply = await cake(command);
+    appendFileSync("fixture-mcp-replies.ndjson", JSON.stringify(reply) + "\n");
+    findings.push(reply);
+  }
   evidence({ findings });
   text(findings.map(({ result }) => result?.content[0]?.text).join("\n"));
   answer(id, { stopReason: "end_turn" });

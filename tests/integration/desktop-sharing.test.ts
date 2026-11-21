@@ -57,6 +57,8 @@ const native = vi.hoisted(() => ({
   sender: undefined as
     | (EventEmitter & {
         id: number;
+        mainFrame: { detached: boolean };
+        isCrashed(): boolean;
         isDestroyed(): boolean;
         send(channel: string, input: unknown): void;
       })
@@ -87,6 +89,7 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* (
     NodePath.layer,
   ),
   antigravity?: CakeSessionHandle["antigravity"],
+  beforeAcquire?: Effect.Effect<void>,
 ) {
   const assets = yield* Effect.acquireRelease(
     Effect.promise(() => mkdtemp(join(tmpdir(), "cake-sharing-assets-"))),
@@ -111,7 +114,7 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* (
           const runtimes = Context.get(originalBackend.context, CakeSessionRuntimes);
           return Context.add(originalBackend.context, CakeSessionRuntimes, {
             ...runtimes,
-            acquireSession: () => Effect.succeed(handle),
+            acquireSession: () => (beforeAcquire ?? Effect.void).pipe(Effect.as(handle)),
           });
         }),
       }
@@ -128,6 +131,8 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* (
   const responses = new EventEmitter();
   native.sender = Object.assign(new EventEmitter(), {
     id: 1,
+    mainFrame: { detached: false },
+    isCrashed: () => false,
     isDestroyed: () => false,
     send: (channel: string, input: unknown) => {
       responses.emit(channel, input);
@@ -141,7 +146,11 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* (
   const localProtocol = yield* Layer.build(
     makeElectronRpcClientProtocol({
       send: (input) => {
-        native.emitter?.emit(rpcRequestChannel, { sender: native.sender }, input);
+        native.emitter?.emit(
+          rpcRequestChannel,
+          { sender: native.sender, senderFrame: native.sender?.mainFrame },
+          input,
+        );
       },
       subscribe: (listener) => {
         responses.on(rpcResponseChannel, listener);
@@ -538,6 +547,110 @@ it.live("only native IPC grants Project Chat bridge registration and consent", (
       requestId: prompt.requestId,
       sessionId: prompt.sessionId,
     });
+  }).pipe(Effect.scoped),
+);
+
+it.live("native Project Chat approvals and queued turns cannot cross renderer generations", () =>
+  Effect.gen(function* () {
+    type Access = Parameters<NonNullable<CakeSessionHandle["antigravity"]>>[2];
+    const admitted = yield* Queue.unbounded<Access>();
+    const acquiring = yield* Deferred.make<void>();
+    const continueAcquiring = yield* Deferred.make<void>();
+    let holdAcquire = false;
+    const { local } = yield* setup(
+      undefined,
+      (_text, _markdown, access) =>
+        Queue.offer(admitted, access).pipe(Effect.as(crypto.randomUUID())),
+      Effect.suspend(() =>
+        holdAcquire
+          ? Deferred.succeed(acquiring, undefined).pipe(
+              Effect.andThen(Deferred.await(continueAcquiring)),
+            )
+          : Effect.void,
+      ),
+    );
+    const sender = native.sender;
+    assert.ok(sender);
+    const events = yield* Queue.unbounded<CakeEvent>();
+    yield* local["artifacts.observeEvents"]().pipe(
+      Stream.runForEach((event) => Queue.offer(events, event)),
+      Effect.forkScoped,
+    );
+    expect((yield* Queue.take(events)).type).toBe("renderer-events-ready");
+    const input = {
+      sessionId: cakeChatLocations.projectChatSessionId("/project"),
+      text: "Synthetic Project Chat turn",
+      renderUserMessageAsMarkdown: false,
+    };
+    const submit = local["sessionChats.antigravity"](input);
+    const consent = {
+      kind: "cake-operation" as const,
+      description: "Synthetic read",
+      canAllowOnce: true,
+    };
+    yield* submit;
+    const old = yield* Queue.take(admitted);
+    const decision = yield* Effect.promise((signal) => old.permission(consent, signal)).pipe(
+      Effect.forkScoped,
+    );
+    const prompt = yield* Queue.take(events);
+    assert.equal(prompt.type, "ui-request");
+
+    holdAcquire = true;
+    const queued = yield* submit.pipe(Effect.flip, Effect.forkScoped);
+    yield* Deferred.await(acquiring);
+    sender.emit("render-process-gone", {}, { reason: "crashed", exitCode: 1 });
+    expect(old.cakeBridgeOwnerSignal?.aborted).toBe(true);
+    expect(yield* Fiber.join(decision)).toBeUndefined();
+    expect(yield* Queue.take(events)).toMatchObject({
+      type: "ui-request-settled",
+      uiRequestId: prompt.uiRequestId,
+      requestId: prompt.requestId,
+    });
+
+    holdAcquire = false;
+    expect((yield* submit.pipe(Effect.flip)).message).toContain("lost its Project Chat bridge");
+    sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
+    sender.emit("did-navigate", {});
+    yield* Deferred.succeed(continueAcquiring, undefined);
+    expect((yield* Fiber.join(queued)).message).toContain("lost its Project Chat bridge");
+    // Settled response IDs remain idempotent no-ops, even in a replacement renderer.
+    yield* local["artifacts.respond-ui"]({
+      sessionId: prompt.sessionId,
+      uiRequestId: prompt.uiRequestId,
+      requestId: prompt.requestId,
+      value: "allow",
+      cancelled: false,
+    });
+    expect(yield* Effect.promise((signal) => old.permission(consent, signal))).toBeUndefined();
+
+    yield* submit;
+    const fresh = yield* Queue.take(admitted);
+    expect(fresh.cakeBridgeOwnerSignal?.aborted).toBe(false);
+    sender.emit("did-start-navigation", { isMainFrame: false, isSameDocument: false });
+    sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: true });
+    expect(fresh.cakeBridgeOwnerSignal?.aborted).toBe(false);
+    const freshDecision = yield* Effect.promise((signal) => fresh.permission(consent, signal)).pipe(
+      Effect.forkScoped,
+    );
+    const freshPrompt = yield* Queue.take(events);
+    assert.equal(freshPrompt.type, "ui-request");
+    expect(freshPrompt.uiRequestId).not.toBe(prompt.uiRequestId);
+    yield* local["artifacts.respond-ui"]({
+      sessionId: freshPrompt.sessionId,
+      uiRequestId: freshPrompt.uiRequestId,
+      requestId: freshPrompt.requestId,
+      value: "allow",
+      cancelled: false,
+    });
+    expect(yield* Fiber.join(freshDecision)).toBe("allow");
+    sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
+    expect(fresh.cakeBridgeOwnerSignal?.aborted).toBe(true);
+    expect((yield* submit.pipe(Effect.flip)).message).toContain("lost its Project Chat bridge");
+    sender.emit("did-navigate", {});
+    yield* submit;
+    expect((yield* Queue.take(admitted)).cakeBridgeOwnerSignal?.aborted).toBe(false);
+    expect(old.cakeBridgeOwnerSignal?.aborted).toBe(true);
   }).pipe(Effect.scoped),
 );
 

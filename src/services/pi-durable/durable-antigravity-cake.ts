@@ -48,6 +48,7 @@ export function projectChatAntigravityCake(
     onDataAccess: () => void,
   ): AcpCakeCall {
     return async (envelope, { signal, toolCallId }) => {
+      signal.throwIfAborted();
       const command = envelope.command ?? "help";
       const registered = operations
         .definitions()
@@ -83,7 +84,8 @@ export function projectChatAntigravityCake(
             mutations.has(command)
               ? "Run this Cake action and share its result with Google Antigravity?"
               : "Run this Cake read and share its result with Google Antigravity?",
-            `${command}\n${JSON.stringify(input, null, 2)}`,
+            `Project (registered workspace): ${JSON.stringify(scope.projectPath)}`,
+            `Cake operation: ${command}\nArguments from Antigravity:\n${JSON.stringify(envelope.input ?? {}, null, 2)}`,
             "Allow once authorizes both. The result may contain private project information and will be shared without another prompt.",
           ].join("\n\n");
           if (description.length > 4_000 || /[\u202a-\u202e\u2066-\u2069]/.test(description))
@@ -114,6 +116,7 @@ export function projectChatAntigravityCake(
             runtime: { sessionId: scope.sessionId },
           },
         );
+        bounded.throwIfAborted();
         return {
           text: result.text,
           isError: Schema.is(jsonObjectSchema)(result.json) && result.json.ok === false,

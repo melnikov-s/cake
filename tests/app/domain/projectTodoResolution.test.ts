@@ -996,6 +996,52 @@ it.effect(
   },
 );
 
+it("identifies the trusted project separately from otherwise identical Antigravity read inputs", async () => {
+  const unused = async () => {
+    throw Error("No operation should run without approval");
+  };
+  const registry = new CakeOperationRegistry(
+    createProjectTodoOperations({
+      select: unused,
+      create: unused,
+      update: unused,
+      updateMany: unused,
+      list: unused,
+      read: unused,
+    }),
+  );
+  const signal = new AbortController().signal;
+  const reads: { command: string; input: JsonObject }[] = [
+    { command: "todos.list", input: {} },
+    { command: "todos.read", input: { id: a } },
+  ];
+  for (const envelope of reads) {
+    const providerArguments = `Arguments from Antigravity:\n${JSON.stringify(envelope.input, null, 2)}`;
+    const descriptions: string[] = [];
+    for (const projectPath of ["/synthetic/team-a/Atlas", "/synthetic/team-b/Atlas"]) {
+      const call = projectChatAntigravityCake(registry, {
+        sessionId: projectChatSessionId(projectPath),
+        projectPath,
+        hasTodo: () => false,
+      }).forTurn(
+        async ({ description }) => {
+          descriptions.push(description);
+          return "deny";
+        },
+        () => undefined,
+      );
+      expect(await call(envelope, { signal, toolCallId: "synthetic-read" })).toMatchObject({
+        isError: true,
+        text: expect.stringContaining("did not approve"),
+      });
+      expect(descriptions.at(-1)).toContain(
+        `Project (registered workspace): ${JSON.stringify(projectPath)}\n\nCake operation: ${envelope.command}\n${providerArguments}`,
+      );
+    }
+    expect(descriptions[0]).not.toBe(descriptions[1]);
+  }
+});
+
 it.effect.each(["create", "edit", "done", "batch"] as const)(
   "%s returns a persisted receipt while unrelated linked-work reconciliation is suspended",
   (operation) => {

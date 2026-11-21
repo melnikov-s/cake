@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -22,6 +23,7 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
   const bin = join(root, "bin");
   const directory = cakeWorkspaceSessionDirectory(project, join(pi, "sessions"));
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
+  let crashed = false;
   try {
     await Promise.all(
       [userData, project, join(cakeHome, "state"), directory, bin].map((dir) =>
@@ -231,6 +233,10 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     );
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(exportPrompt).toContainText("share its result with Google Antigravity");
+    await expect(exportPrompt).toContainText(
+      `Project (registered workspace): ${JSON.stringify(project)}`,
+    );
+    await expect(exportPrompt).toContainText("Arguments from Antigravity:");
     await expect(exportPrompt).toContainText("Synthetic ACP to-do");
     await expect(exportPrompt).toContainText("without another prompt");
     expect(await readFile(join(project, "fixture-mcp-evidence.ndjson"), "utf8")).not.toContain(
@@ -276,11 +282,77 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
           ).data?.projects.find((item: { path: string }) => item.path === project)?.todos?.items,
       )
       .toEqual([expect.objectContaining({ title: "Synthetic ACP to-do", revision: 0 })]);
-    await picker.click();
-    await pickerDialog.getByRole("button", { name: /Return to Pi/ }).click();
-    await expect(picker).not.toContainText("Antigravity");
+    await projectChat.fill('fixture Cake [{"command":"todos.list","input":{}}]');
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(exportPrompt).toContainText(
+      `Project (registered workspace): ${JSON.stringify(project)}`,
+    );
+    await expect(exportPrompt).toContainText("Cake operation: todos.list");
+    await page.screenshot({
+      path: info.outputPath("project-chat-todo-list-export.png"),
+      animations: "disabled",
+    });
+
+    // Real loss of the isolated renderer process, with its WebContents still alive.
+    const window = await application.browserWindow(page);
+    crashed = true;
+    expect(
+      await window.evaluate(async ({ webContents }) => {
+        const gone = new Promise<void>((resolve) =>
+          webContents.once("render-process-gone", () => resolve()),
+        );
+        webContents.forcefullyCrashRenderer();
+        await gone;
+        return webContents.isDestroyed();
+      }),
+    ).toBe(false);
+    await expect
+      .poll(async () =>
+        (await readFile(join(project, "fixture-acp-wire.ndjson"), "utf8"))
+          .trim()
+          .split("\n")
+          .at(-1),
+      )
+      .toContain('"method":"session/cancel"');
+    const crashWire = (await readFile(join(project, "fixture-acp-wire.ndjson"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(crashWire.at(-1).method).toBe("session/cancel");
+    const crashBridge = crashWire.findLast((frame) => frame.method === "session/new").params
+      .mcpServers[0];
+    await expect
+      .poll(async () =>
+        fetch(crashBridge.url).then(
+          () => "open",
+          () => "closed",
+        ),
+      )
+      .toBe("closed");
+    const afterCrash = (await readFile(join(project, "fixture-mcp-evidence.ndjson"), "utf8"))
+      .trim()
+      .split("\n");
+    expect(JSON.parse(afterCrash.at(-1) ?? "").findings).toBeUndefined();
+
+    // The same WebContents can load a replacement document after the crash.
+    await window.evaluate(async ({ webContents }) => {
+      const loaded = new Promise<void>((resolve) => webContents.once("did-finish-load", resolve));
+      webContents.reload();
+      await loaded;
+    });
   } finally {
-    await application?.close();
+    if (application && crashed) {
+      // Playwright's graceful context close hangs after intentionally crashing this
+      // target, even after reload. Exit only this isolated test process via main.
+      const child = application.process();
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, "exit");
+        await application.evaluate(({ app }) => {
+          setImmediate(() => app.exit(0));
+        });
+        await exited;
+      }
+    } else await application?.close();
     await rm(root, { recursive: true, force: true });
   }
 });

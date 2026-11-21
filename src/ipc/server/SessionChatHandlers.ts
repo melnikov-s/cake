@@ -1,8 +1,11 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import * as sessionChats from "../../domain/conversations/sessionChats";
 import * as cakeChatTargets from "../../domain/cake-chats/cakeChatTargets";
 import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
-import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
+import {
+  AntigravityRendererDocument,
+  RendererConnection,
+} from "../protocol/RendererConnectionMiddleware";
 import { SessionChatRpc } from "../protocol/SessionChatRpc";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import { admitTurnAttachments } from "./AttachmentUploadHandlers";
@@ -40,9 +43,11 @@ export const sessionChatHandlers = SessionChatRpc.of({
   "sessionChats.prompt": (input) => deliverFromRenderer(input, "prompt"),
   "sessionChats.steer": (input) => deliverFromRenderer(input, "steer"),
   "sessionChats.antigravity": (input) =>
-    Effect.flatMap(RendererConnection, ({ connectionId }) =>
-      sessionChats.antigravity(input, connectionId),
-    ),
+    Effect.gen(function* () {
+      const { connectionId } = yield* RendererConnection;
+      const document = yield* Effect.serviceOption(AntigravityRendererDocument);
+      return yield* sessionChats.antigravity(input, connectionId, Option.getOrUndefined(document));
+    }),
   "sessionChats.followUp": (input) => deliverFromRenderer(input, "follow-up"),
   "sessionChats.abort": sessionChats.abort,
   "sessionChats.history": sessionChats.history,

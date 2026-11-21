@@ -533,6 +533,61 @@ it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatc
     (await app.runPromise(projectTodos.list(f.directory))).items.map(({ title }) => title),
   ).toEqual(["Read me", "Approved to-do"]);
 
+  // A read that ignores abort can finish after the bridge closes, but its
+  // result must not reach the ACP peer and the next operation must not start.
+  const workingOwner = new AbortController();
+  const readStarted = Deferred.makeUnsafe<AbortSignal>();
+  const finishRead = Deferred.makeUnsafe<void>();
+  const readFinished = Deferred.makeUnsafe<void>();
+  read.mockImplementationOnce(async (_id, operationSignal) => {
+    await Effect.runPromise(Deferred.succeed(readStarted, operationSignal));
+    await Effect.runPromise(Deferred.await(finishRead));
+    await Effect.runPromise(Deferred.succeed(readFinished, undefined));
+    return { ...existing, description: "LATE_READ_MUST_NOT_LEAVE_CAKE", sessions: [] };
+  });
+  const repliesBeforeWork = await readFile(join(f.directory, "fixture-mcp-replies.ndjson"), "utf8");
+  const sentWhileWorking = send(
+    [
+      { command: "todos.read", input: { id: existing.id } },
+      { command: "todos.create", input: { title: "Next operation", description: "Never admit" } },
+    ],
+    workingOwner.signal,
+    async () => "allow",
+  );
+  const stoppedWhileWorking = expect(sentWhileWorking).rejects.toThrow("Antigravity turn canceled");
+  const operationSignal = await Effect.runPromise(Deferred.await(readStarted));
+  const activeServer = (await readFile(join(f.directory, "fixture-acp-wire.ndjson"), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line))
+    .findLast((frame) => frame.method === "session/new").params.mcpServers[0];
+  workingOwner.abort();
+  try {
+    expect(operationSignal.aborted).toBe(true);
+    await stoppedWhileWorking;
+    // Try the original endpoint with the original turn's credential.
+    await expect(
+      fetch(activeServer.url, {
+        method: "POST",
+        headers: Object.fromEntries(
+          activeServer.headers.map(({ name, value }: { name: string; value: string }) => [
+            name,
+            value,
+          ]),
+        ),
+      }),
+    ).rejects.toThrow();
+  } finally {
+    await Effect.runPromise(Deferred.succeed(finishRead, undefined));
+  }
+  await Effect.runPromise(Deferred.await(readFinished));
+  const afterWork = await readFile(join(f.directory, "fixture-mcp-evidence.ndjson"), "utf8");
+  expect(afterWork).not.toContain("LATE_READ_MUST_NOT_LEAVE_CAKE");
+  expect(afterWork.trim().split("\n").at(-1)).not.toContain("findings");
+  expect(await readFile(join(f.directory, "fixture-mcp-replies.ndjson"), "utf8")).toBe(
+    repliesBeforeWork,
+  );
+
   // A verified Pi route still uses its original tool set and original transcript.
   await runtime.prompt("Back to Pi", "prompt", []);
   expect(f.requests).toHaveLength(1);
