@@ -107,8 +107,8 @@ awaits `session_shutdown` with reason `quit` before Pi invalidates contexts.
 Repeated disposal shares one Promise. Reload dispatches its own shutdown through
 Pi, without a duplicate Cake dispatch.
 
-Cake now pins the regular-Pi and Durable packages (including Chord and both
-pi-ai import surfaces) to the 1.4.0 cohort. Pi restores the recorded active tool
+Starting with the 1.4.0 cohort, Cake pins regular Pi and Durable together,
+including Chord and both pi-ai import surfaces. Pi restores the recorded active tool
 loadout on resume when Cake has not supplied an explicit selection. Newly
 registered extension tools retain Pi's default-active policy; opt-in tools remain
 inactive. Cake does not maintain a compensating tool-state cache. Nested script
@@ -142,6 +142,20 @@ command-only input in a new session, and Cake's staged-chat promotion currently
 releases that transient runtime, so a follow-up command in that draft can fail
 with "has not been assembled". This is a separate draft-lifecycle gap; MCP does
 not synthesize user or assistant entries to force persistence.
+
+## Pi and Durable 1.6 upgrade
+
+Cake pins the Pi and Chord cohort to 1.6.0. Existing TypeBox tool declarations
+import from `typebox` directly; Pi validates arguments through pi-schema. The
+Durable coordinator uses `observeCommits()` and keeps progress persistence
+immediate so commit-driven snapshots still show partial messages and tool
+output before a turn settles.
+
+Take a consistent backup of the coordinator databases before deploying. Both
+1.4 and 1.6 use SQLite schema version 2, but 1.6 writes newer `pi.live` document
+and generation/tool task versions. Do not downgrade in place after 1.6 has
+written to a database. Restore the pre-upgrade backup for rollback; turns and
+other changes made after that backup are not included.
 
 ## Native image presentation
 

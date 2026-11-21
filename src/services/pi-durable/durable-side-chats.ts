@@ -1,4 +1,4 @@
-import { copyJson } from "@earendil-works/chord";
+import { copyJson } from "@earendil-works/chord/json";
 import { shutdownDiagnostics, shutdownResource } from "../diagnostics/shutdown-diagnostics";
 import { TaskAttributionDoc } from "./durable-task-attribution";
 import { taskAttributionOperations } from "./durable-task-attribution-operations";
@@ -584,7 +584,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         disposed = true;
         interviews.delete(conversation.id);
         operations.delete(conversation.id);
-        unsubscribe();
+        commits.detach();
         await shutdownDiagnostics.promise(
           "durable.sideChat.publication",
           shutdownResource(sessionId),
@@ -661,9 +661,12 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           publishing = undefined;
         });
     };
-    const unsubscribe = harness.subscribeCommits((publication) => {
-      if (publication.changes.some((change) => changeConversation(change) === conversation.id))
-        queueMicrotask(publish);
+    const commits = harness.observeCommits({
+      advance({ changes }) {
+        if (changes.some((change) => changeConversation(change) === conversation.id))
+          queueMicrotask(publish);
+      },
+      end() {},
     });
     return runtime;
   };

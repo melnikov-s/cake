@@ -1,5 +1,5 @@
-import type { Context } from "@earendil-works/chord";
-import { copyJson } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord/context";
+import { copyJson } from "@earendil-works/chord/json";
 import type { EntryId, ToolExecutionApi, ToolExecutionResult } from "@earendil-works/pi-durable";
 import { Option, Schema } from "effect";
 import type { CakeOperationHost } from "../../contracts/agent/cake-operation-context";

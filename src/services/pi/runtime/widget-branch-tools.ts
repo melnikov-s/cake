@@ -2,7 +2,7 @@ import { realpath, readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Skill, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { Tool } from "@earendil-works/pi-ai";
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { TSchema } from "typebox";
 import { Schema } from "effect";
 import type { WidgetCandidate } from "../../../contracts/widgets/widget-candidate";
 import { jsonValueSchema } from "../../../contracts/serialization/json-contract";

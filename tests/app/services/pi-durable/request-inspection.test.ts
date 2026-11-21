@@ -13,7 +13,7 @@ import {
   defineTool,
   MemoryStorage,
 } from "@earendil-works/pi-durable";
-import { Type } from "@earendil-works/pi-durable-ai";
+import { Type } from "typebox";
 import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,

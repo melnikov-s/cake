@@ -18,6 +18,7 @@ import {
   SystemEntry,
   defineDoc,
   type CommitChange,
+  type CommitPublication,
   type Conversation,
   type ConversationId,
   type EntryId,
@@ -296,7 +297,7 @@ export async function openDurableChatEngine(options: {
         if (options.onInputConsumed)
           for (const id of live?.run?.inputs ?? []) {
             const submission = await options.storage.submission(id, context);
-            if (submission?.status !== "placed") continue;
+            if (submission?.type !== "input" || submission.status !== "placed") continue;
             const record = await options.storage.entry(root.id, submission.entry, context);
             for (const message of record?.entry.model ?? []) {
               if (message.role !== "user") continue;
@@ -345,7 +346,7 @@ export async function openDurableChatEngine(options: {
           if (input === undefined)
             throw new Error("Cannot recover context without a committed current input.");
           const submission = await options.storage.submission(input, context);
-          if (!submission || submission.status !== "placed")
+          if (submission?.type !== "input" || submission.status !== "placed")
             throw new Error("Cake Chat input has no committed entry");
           const entries: EntryRecord[] = [];
           let cursor;
@@ -627,6 +628,9 @@ export async function openDurableChatEngine(options: {
   const harnessSettings = new Proxy(settings, {
     get(target, key, receiver) {
       if (key === "compaction") return { ...target.compaction, enabled: false };
+      // Cake projects live edits from commit notifications. Keep those edits
+      // published immediately instead of delaying them until the next storage flush.
+      if (key === "progress") return { ...target.progress, persistWithinMs: 0 };
       return Reflect.get(target, key, receiver);
     },
   });
@@ -637,7 +641,7 @@ export async function openDurableChatEngine(options: {
       registry: options.registry,
       settings: harnessSettings,
       ...(options.env ? { env: options.env } : null),
-      onReport: options.onReport,
+      onReport: ({ error }) => options.onReport(error),
     },
     BACKGROUND_CONTEXT,
   );
@@ -674,7 +678,7 @@ export async function openDurableChatEngine(options: {
     await root.commit(async (tx) => {
       await tx.doc(ChatMetadataDoc, root.id);
     }, BACKGROUND_CONTEXT);
-    const unsubscribe = harness.subscribeCommits((publication) => {
+    const advance = (publication: CommitPublication) => {
       if (closing.signal.aborted) return;
       let visible = false;
       let originals = 0;
@@ -749,7 +753,8 @@ export async function openDurableChatEngine(options: {
         });
       if (visible) queueMicrotask(options.onChanged);
       if (originals > 0 || liveChanged) queueMicrotask(maintain);
-    });
+    };
+    const commits = harness.observeCommits({ advance, end() {} });
     const todoResponses = options.todoResponses
       ? observeTodoResponses({ ...options, ...options.todoResponses, root, harness })
       : undefined;
@@ -876,7 +881,7 @@ export async function openDurableChatEngine(options: {
         return durableContextInspection(context.messages, cwd, handoff);
       },
       async close() {
-        unsubscribe();
+        commits.detach();
         await todoResponses?.close();
         // Mark the Harness closing first: a cancelled preparation must preserve
         // its request checkpoint, not settle it as an ordinary model error.

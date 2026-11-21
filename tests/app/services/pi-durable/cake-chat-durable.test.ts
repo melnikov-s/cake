@@ -39,7 +39,8 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Type, createAssistantMessageEventStream } from "@earendil-works/pi-durable-ai";
+import { Type } from "typebox";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-durable-ai";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
 import { afterEach, expect, it, vi } from "vitest";
 import { Effect } from "effect";
@@ -518,19 +519,22 @@ it("records only the active bounded head for listing, and inspection never start
   const recorded = new Promise<void>((resolve) => {
     record = resolve;
   });
-  const unsubscribe = f.engine.harness.subscribeCommits((publication) => {
-    if (
-      publication.changes.some(
-        (change) => change.type === "document" && change.record.kind === "cake.chat-metadata",
+  const commits = f.engine.harness.observeCommits({
+    advance(publication) {
+      if (
+        publication.changes.some(
+          (change) => change.type === "document" && change.record.kind === "cake.chat-metadata",
+        )
       )
-    )
-      void f.engine.harness
-        .snapshot(ChatMetadataDoc, f.engine.root.id, BACKGROUND_CONTEXT)
-        .then((metadata) => {
-          if (metadata?.contextMetadata) {
-            if (metadata.contextMetadata.estimatedTokens < 100) record();
-          }
-        });
+        void f.engine.harness
+          .snapshot(ChatMetadataDoc, f.engine.root.id, BACKGROUND_CONTEXT)
+          .then((metadata) => {
+            if (metadata?.contextMetadata) {
+              if (metadata.contextMetadata.estimatedTokens < 100) record();
+            }
+          });
+    },
+    end() {},
   });
   try {
     await f.send("original ".repeat(20_000), "large-original");
@@ -559,7 +563,7 @@ it("records only the active bounded head for listing, and inspection never start
     expect(stored?.contextMetadata?.lastModelActivityAt).toBeDefined();
     expect(f.requests).toHaveLength(before);
   } finally {
-    unsubscribe();
+    commits.detach();
   }
 });
 

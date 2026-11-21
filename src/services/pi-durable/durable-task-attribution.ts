@@ -66,7 +66,7 @@ export async function prepareTaskAttribution(options: {
   const bound = new Map<string, { entry: EntryId; context?: DurableTaskContext }>();
   for (const id of live?.run?.inputs ?? []) {
     const submission = await storage.submission(id, BACKGROUND_CONTEXT);
-    if (submission?.status !== "placed") continue;
+    if (submission?.type !== "input" || submission.status !== "placed") continue;
     const entry = await storage.entry(conversation.id, submission.entry, BACKGROUND_CONTEXT);
     const user = entry?.entry.model?.find((message) => message.role === "user");
     if (!user || user.role !== "user") continue;

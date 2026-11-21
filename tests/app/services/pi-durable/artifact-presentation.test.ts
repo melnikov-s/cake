@@ -1,9 +1,9 @@
 import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
-import { copyJson } from "@earendil-works/chord";
+import { copyJson } from "@earendil-works/chord/json";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createRegistry, defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { Type } from "@earendil-works/pi-durable-ai";
+import { Type } from "typebox";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Effect, Layer, ManagedRuntime, Schema } from "effect";
 import { mkdtemp, readFile, rm } from "node:fs/promises";

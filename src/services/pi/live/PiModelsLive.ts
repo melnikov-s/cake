@@ -10,8 +10,8 @@ import type {
   Context as ModelContext,
   Message,
   SimpleStreamOptions,
-  TSchema,
 } from "@earendil-works/pi-ai";
+import type { TSchema } from "typebox";
 import { Cache, Clock, Duration, Effect, Exit, Layer, Option, Schema, Semaphore } from "effect";
 import { makePiModels, PiModels, type PiProviderAuthInteraction } from "../PiModels";
 import type { ProviderRequestObservation } from "../../../contracts/pi/request-observation";

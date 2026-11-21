@@ -18,13 +18,13 @@ import {
   type HarnessSettings,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { Type, type TSchema } from "@earendil-works/pi-durable-ai";
+import { Type } from "typebox";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
 import { Effect, Schema } from "effect";
 import { startupDiagnostics } from "../diagnostics/startup-diagnostics";
 import { durableAssistantEntryId } from "./durable-operation-context";
 import { randomUUID } from "node:crypto";
-import { copyJson } from "@earendil-works/chord";
+import { copyJson } from "@earendil-works/chord/json";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
@@ -303,12 +303,10 @@ export async function createDurableCakeChatRuntime(
     options.sessionReferences?.project,
   );
   const registry = createRegistry();
-  const parameters = toDraft07JsonSchema(cakeToolEnvelopeSchema);
   const cake = defineTool({
     name: "cake",
     description: cakeToolDescription,
-    // SAFETY: the standard JSON schema is the schema the operation registry validates.
-    parameters: parameters as TSchema,
+    parameters: toDraft07JsonSchema(cakeToolEnvelopeSchema),
     // Mutations (notably session spawning) must never be blindly replayed after a crash.
     replay: "unsafe",
     executionMode: "sequential",

@@ -9,8 +9,8 @@ import {
   type ProviderConfig,
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import {
-  Type,
   createAssistantMessageEventStream,
   createProvider,
   type Model,

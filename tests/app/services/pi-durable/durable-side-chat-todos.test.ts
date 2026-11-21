@@ -7,7 +7,7 @@ import {
   defineExtension,
   defineTool,
 } from "@earendil-works/pi-durable";
-import { Type } from "@earendil-works/pi-durable-ai";
+import { Type } from "typebox";
 import { Schema } from "effect";
 import { expect, it } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";

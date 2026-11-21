@@ -109,10 +109,13 @@ export function observeTodoResponses(options: {
       delete (await tx.doc(PendingTodoResponses)).generations[key];
     }, BACKGROUND_CONTEXT);
   };
-  const unsubscribe = harness.subscribeCommits(({ changes }) => {
-    for (const change of changes)
-      if (change.type === "task" && change.value.kind === GenerationTask.definition.name)
-        enqueue(() => reconcile(change.value));
+  const commits = harness.observeCommits({
+    advance({ changes }) {
+      for (const change of changes)
+        if (change.type === "task" && change.value.kind === GenerationTask.definition.name)
+          enqueue(() => reconcile(change.value));
+    },
+    end() {},
   });
   enqueue(async () => {
     const pending = await harness.snapshot(PendingTodoResponses, BACKGROUND_CONTEXT);
@@ -123,7 +126,7 @@ export function observeTodoResponses(options: {
   });
   return {
     async close() {
-      unsubscribe();
+      commits.detach();
       await work;
     },
   };

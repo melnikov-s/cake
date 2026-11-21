@@ -22,7 +22,7 @@ export async function assertTaskCreationAllowed(
   const live = await harness.snapshot(LiveDoc, conversation.id, BACKGROUND_CONTEXT);
   for (const id of (live?.run?.inputs ?? []).toReversed()) {
     const submission = await storage.submission(id, BACKGROUND_CONTEXT);
-    if (submission?.status !== "placed") continue;
+    if (submission?.type !== "input" || submission.status !== "placed") continue;
     const entry = await storage.entry(conversation.id, submission.entry, BACKGROUND_CONTEXT);
     for (const message of (entry?.entry.model ?? []).toReversed()) {
       if (message.role !== "user") continue;

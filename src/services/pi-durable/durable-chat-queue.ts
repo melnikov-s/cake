@@ -238,6 +238,7 @@ async function startDurableQueuedInput(
     tx.placeSubmission(id, entry.id);
     inbox.items.splice(index, 1);
     live.run = {
+      turns: 0,
       taskId: await tx.createTask(
         GenerationTask,
         {},

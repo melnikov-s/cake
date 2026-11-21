@@ -23,8 +23,8 @@ import {
 } from "../../src/services/storage/SessionFamilyStorage";
 import { CakeOperationRegistry } from "../../src/services/pi/runtime/cake-operation-registry";
 import { createMessageBoardOperations } from "../../src/domain/artifacts/cake-message-board-operations";
+import { Type } from "typebox";
 import {
-  Type,
   createAssistantMessageEventStream,
   type AssistantMessage,
   type Message,

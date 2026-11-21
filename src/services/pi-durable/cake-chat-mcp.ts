@@ -1,6 +1,6 @@
 import type { McpServerConfig, RegisteredMcpServer } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-durable";
-import { Type } from "@earendil-works/pi-durable-ai";
+import { Type } from "typebox";
 import {
   McpAuthRequiredError,
   McpClient,

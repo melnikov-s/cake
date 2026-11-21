@@ -367,7 +367,8 @@ describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
     const f = await fixture(kind);
     const queued = await f.submit("Keep queued", "pending");
     const submission = await f.storage.submission(f.active.id, context);
-    if (submission?.status !== "placed") throw new Error("Active input was not placed");
+    if (submission?.type !== "input" || submission.status !== "placed")
+      throw new Error("Active input was not placed");
     const original = await f.storage.entry(f.conversation.id, submission.entry, context);
     const pending = await f.queue.inbox();
     const live = await f.live();

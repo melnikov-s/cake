@@ -9,7 +9,7 @@ import {
   type SettingsManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { TSchema } from "typebox";
 import { existsSync } from "node:fs";
 import { Option, Schema } from "effect";
 import {

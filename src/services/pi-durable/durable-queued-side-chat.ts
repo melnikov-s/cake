@@ -89,6 +89,7 @@ export async function transferDurableQueuedToSideChat(options: {
       entry: entry.id,
     });
     live.run = {
+      turns: 0,
       taskId: await tx.createTask(
         GenerationTask,
         {},

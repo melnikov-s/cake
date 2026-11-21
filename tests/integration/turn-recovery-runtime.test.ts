@@ -12,7 +12,7 @@ import {
 } from "../../src/services/pi/runtime/cake-session-runtime";
 import { subagentCompletionInput } from "../../src/contracts/subagents/subagent-report";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { CakeSessionRuntimeOptions } from "../../src/services/pi/runtime/cake-session-runtime";
 import type { UiPart } from "../../src/contracts/conversations/session-contract";
 
@@ -943,7 +943,7 @@ describe("send-now handoff presentation", () => {
       part.kind === "notice" && part.title === "Model request failed" ? [part.detail] : [],
     );
 
-  /** Starts a turn whose bash tool is still running, the window where Pi's abort surfaces as an `error` stop. */
+  /** Starts a turn with an in-flight bash tool so send-now interrupts a real tool round. */
   async function runningTool(replacement: "answers" | "fails") {
     const directory = await createTemporaryDirectory();
     await registerFixtureProvider(directory, (index, response) => {
@@ -1010,10 +1010,10 @@ describe("send-now handoff presentation", () => {
     await active;
 
     const stored = SessionManager.open(runtime.sessionFile).getBranch();
-    // The abort reached Pi's next request and surfaced as an `error` stop, not `aborted`.
+    // Pi 1.6 records cancellation as an abort rather than a provider error.
     expect(stored).toContainEqual(
       expect.objectContaining({
-        message: expect.objectContaining({ role: "assistant", stopReason: "error" }),
+        message: expect.objectContaining({ role: "assistant", stopReason: "aborted" }),
       }),
     );
     const parts = (await runtime.snapshot()).parts;

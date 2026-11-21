@@ -10,10 +10,10 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import {
   createModels,
   createAssistantMessageEventStream,
-  Type,
   type AssistantMessage,
   type Model,
 } from "@earendil-works/pi-durable-ai";
+import { Type } from "typebox";
 import { expect, test } from "@playwright/test";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 

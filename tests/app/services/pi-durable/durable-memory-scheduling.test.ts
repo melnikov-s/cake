@@ -187,13 +187,16 @@ it("persists out-of-order progress through cancellation and SQLite reopen withou
   );
   await first.append("RAW_A ".repeat(100));
   await first.append("RAW_B ".repeat(100));
-  const unsubscribe = first.harness.subscribeCommits((publication) => {
-    if (
-      publication.changes.some(
-        (change) => change.type === "entry" && change.value.kind === "cake.chat-memory-node/v1",
+  const commits = first.harness.observeCommits({
+    advance(publication) {
+      if (
+        publication.changes.some(
+          (change) => change.type === "entry" && change.value.kind === "cake.chat-memory-node/v1",
+        )
       )
-    )
-      stored.resolve();
+        stored.resolve();
+    },
+    end() {},
   });
   const stop = new AbortController();
   const pending = first.memory.synchronize(stop.signal);
@@ -204,7 +207,7 @@ it("persists out-of-order progress through cancellation and SQLite reopen withou
   await failure;
   expect(providerSignal.aborted).toBe(true);
   expect(await first.nodes()).toHaveLength(1);
-  unsubscribe();
+  commits.detach();
   await first.harness.close(BACKGROUND_CONTEXT);
   cleanup.pop();
   const summarize = vi.fn<DurableMemoryOptions["summarize"]>(

@@ -1,6 +1,6 @@
-import { Type, type TSchema } from "@earendil-works/pi-durable-ai";
+import { Type } from "typebox";
 import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
 import { SideSessionDoc } from "./durable-side-session";
 import {
   createBashTool,
@@ -67,7 +67,7 @@ export function createCakeChatReadTool() {
 /** Native tools stay registered for human Side Chats; never enable them for Project Chat
  * or a legacy managed investigation fork, even if inherited/saved declarations name them. */
 export function createCakeChatMutationTools(sessionId: string) {
-  const guard = <T extends TSchema, D extends JsonValue>(tool: ToolRegistration<T, D>) => ({
+  const guard = <T extends object, D extends JsonValue>(tool: ToolRegistration<T, D>) => ({
     ...tool,
     replay: "unsafe" as const,
     description: `${tool.description} Global Cake Chat only: small, explicitly user-authorized non-project edits with exact target paths. Never modify project checkouts, Cake/Pi managed settings or credentials. Ordinary external user configuration is allowed when specifically requested. Paths target Cake's backend host, not necessarily the user's frontend machine; clarify ambiguous local-config requests before writing. For longer work, use a fresh project-free allowMutations: true subagent with exact task/targets; not a research fork. Shell and file tools are not sandboxes.`,

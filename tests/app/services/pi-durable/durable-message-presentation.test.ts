@@ -253,7 +253,7 @@ it("surfaces a genuine SDK storage write failure, keeps originals/preferences at
     "Formatting disk write failed",
   );
   // Storage errors close the SDK Harness; production recovery, like this test, must reopen it.
-  expect(await f.harness.closed).toMatchObject({ reason: "failed" });
+  expect(await f.harness.closed).toMatchObject({ kind: "failed" });
   const reopened = await fixture(f.database);
   expect((await reopened.history()).parts).toEqual(before.parts);
   expect(await reopened.root.entries({}, 200, undefined, context)).toEqual(originals);

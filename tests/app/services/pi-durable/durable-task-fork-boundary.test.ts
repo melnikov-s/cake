@@ -7,7 +7,7 @@ import {
   defineExtension,
   defineTool,
 } from "@earendil-works/pi-durable";
-import { Type } from "@earendil-works/pi-durable-ai";
+import { Type } from "typebox";
 import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import { expect, it } from "vitest";
 import { createDurableSideChats } from "../../../../src/services/pi-durable/durable-side-chats";

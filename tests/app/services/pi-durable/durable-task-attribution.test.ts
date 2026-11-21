@@ -22,8 +22,8 @@ import {
   ResetEntry,
   type ConversationId,
 } from "@earendil-works/pi-durable";
+import { Type } from "typebox";
 import {
-  Type,
   createAssistantMessageEventStream,
   type Context,
   type AssistantMessage,
@@ -518,15 +518,18 @@ it("publishes follow-up, switch, none and return associations from the live stre
     const request = await held.started;
     let unsubscribe = () => {};
     const settled = new Promise<void>((resolve) => {
-      unsubscribe = f.engine.harness.subscribeCommits((publication) => {
-        if (
-          publication.changes.some(
-            (change) =>
-              change.type === "document" && change.record.kind === "cake.task-attribution",
+      unsubscribe = f.engine.harness.observeCommits({
+        advance(publication) {
+          if (
+            publication.changes.some(
+              (change) =>
+                change.type === "document" && change.record.kind === "cake.task-attribution",
+            )
           )
-        )
-          resolve();
-      });
+            resolve();
+        },
+        end() {},
+      }).detach;
     });
     const text = metadata(turnIds(request).at(-1)!, decision);
     held.stream.push({
