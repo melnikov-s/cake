@@ -5,6 +5,7 @@ import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { chooseNextNativeMenuItem, chosenNativeMenuLabels } from "./fixtures/native-menu";
 import type { ComposerInputElement } from "../../src/renderer/lib/composer-input-element";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -153,7 +154,7 @@ test("shared model and session reference pickers preserve composer input and foc
     const openSession = async (title: string) => {
       await page.getByRole("button", { name: "Search sessions", exact: true }).click();
       const search = page.getByRole("dialog", { name: "Search sessions" });
-      await search.getByRole("combobox").fill(title);
+      await search.getByRole("combobox").pressSequentially(title);
       await search.getByRole("option", { name: new RegExp(title) }).click();
     };
     await openSession("Picker source");
@@ -162,25 +163,41 @@ test("shared model and session reference pickers preserve composer input and foc
     ).toBeVisible();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     const composerValue = () => composer.evaluate((element: ComposerInputElement) => element.value);
+    // Real keyboard input only: replace the draft by selecting all and typing, and select
+    // with Shift+Arrow before a real right-click opens the native menu.
+    const typeDraft = async (text: string) => {
+      // Click the composer's empty end, never a reference chip inside the draft.
+      const box = (await composer.boundingBox())!;
+      await composer.click({ position: { x: box.width - 12, y: box.height / 2 } });
+      await expect(composer).toBeFocused();
+      await page.keyboard.press("ControlOrMeta+A");
+      await page.keyboard.press("Backspace");
+      if (text) await page.keyboard.type(text);
+      await expect.poll(composerValue).toBe(text);
+    };
+    const selectInDraft = async (draft: string, start: number, end: number) => {
+      for (let index = draft.length; index > end; index -= 1)
+        await page.keyboard.press("ArrowLeft");
+      for (let index = end; index > start; index -= 1) await page.keyboard.press("Shift+ArrowLeft");
+    };
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await expect(composer).toBeFocused();
     // Shared slash completion must still restore a writable, correctly placed caret.
-    await composer.fill("/mod");
+    await composer.pressSequentially("/mod");
     await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
     await composer.press("Tab");
     await expect(composer).toHaveValue("/model ");
     await expect(composer).toBeFocused();
     await page.keyboard.type("fixture");
     await expect(composer).toHaveValue("/model fixture");
-    await composer.fill("");
+    await typeDraft("");
     // Verify a real draft survives every keyboard/mouse model-picker interaction.
     await composer.pressSequentially("Pending first prompt");
     await expect(composer).toHaveValue("Pending first prompt");
     await expect(composer).toBeFocused();
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     const configuration = page.getByRole("button", { name: "Model configuration" });
-    await configuration.focus();
-    await configuration.press("Enter");
+    await configuration.click();
     const dialog = page.getByRole("dialog", { name: "Model configuration" });
     await expect(dialog).toBeVisible();
     const search = page.getByLabel("Search presets and models");
@@ -199,12 +216,19 @@ test("shared model and session reference pickers preserve composer input and foc
     await search.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(configuration).toBeFocused();
+    // Closing returns focus to the button, which Enter reopens from the keyboard.
+    await page.keyboard.press("Enter");
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(configuration).toBeFocused();
 
     // A mouse reopen uses the current catalog; selecting and applying a
     // model does not cause another load or lose the deferred local choice.
     await configuration.click();
     if (await change.isVisible()) await change.click();
-    await search.fill("Fixture model");
+    await search.click();
+    await search.pressSequentially("Fixture model");
     await dialog.getByRole("button", { name: "Fixture model fixture-model", exact: true }).click();
     await dialog.getByRole("button", { name: "High", exact: true }).click();
     await dialog.getByRole("button", { name: "Apply", exact: true }).click();
@@ -212,8 +236,13 @@ test("shared model and session reference pickers preserve composer input and foc
     await expect(configuration).toContainText("Fixture model");
     await expect(configuration).toContainText("High");
 
-    await configuration.focus();
-    await configuration.press("Space");
+    // Applying moves focus on; reopen and close with the pointer so Space can reopen it.
+    await configuration.click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(configuration).toBeFocused();
+    await page.keyboard.press("Space");
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("button", { name: "High", exact: true })).toHaveAttribute(
       "aria-pressed",
@@ -234,29 +263,23 @@ test("shared model and session reference pickers preserve composer input and foc
     await expect(composer).toHaveValue("Pending first prompt retained");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 
-    // Exercise the native menu contract without showing an OS popup in a hidden test.
-    // The renderer still opens it through a real right-click and RPC round trip.
-    await application.evaluate(({ Menu }) => {
-      const build = Menu.buildFromTemplate.bind(Menu);
-      Menu.buildFromTemplate = (template) => {
-        const menu = build(template);
-        const labels = menu.items.map((item) => item.label);
-        Reflect.set(Menu, "referenceLabels", labels);
-        const insert = menu.items.find(
-          (item) =>
-            item.label === (Reflect.get(Menu, "referenceAction") ?? "Insert model reference"),
-        );
-        if (insert)
-          menu.popup = (options) => {
-            insert.click();
-            options?.callback?.();
-          };
-        return menu;
-      };
-    });
-    await application.evaluate(({ Menu }) =>
-      Reflect.set(Menu, "referenceAction", "Insert session reference"),
-    );
+    // A real right-click opens Cake's native composer menu; the shared chooser picks an item
+    // in place of the OS popup that hidden test windows cannot drive.
+    // The pointer goes where the caret or selection is painted, as a user right-clicks the
+    // place to insert; past the end of the text it lands in the composer's empty area.
+    const chooseFromComposerMenu = async (label: string) => {
+      await chooseNextNativeMenuItem(application, label);
+      const painted = await page.evaluate(() => {
+        const selection = getSelection();
+        if (!selection?.rangeCount) return undefined;
+        const range = selection.getRangeAt(0);
+        const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
+        if (!rect.height) return undefined;
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      });
+      if (painted) await page.mouse.click(painted.x, painted.y, { button: "right" });
+      else await composer.click({ button: "right" });
+    };
     const sessions = page.getByRole("dialog", { name: "Session reference" });
     let projectExpanded = false;
     // The first insertion swaps the textarea for the atomic-token editor. Type
@@ -267,15 +290,9 @@ test("shared model and session reference pickers preserve composer input and foc
       { draft: "Before after", start: 7, end: 7 },
       { draft: "Before replace after", start: 7, end: 14 },
     ]) {
-      await composer.fill(draft);
-      await composer.evaluate(
-        (element: ComposerInputElement, range) => {
-          element.focus();
-          element.setSelectionRange(range.start, range.end);
-          element.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-        },
-        { start, end },
-      );
+      await typeDraft(draft);
+      await selectInDraft(draft, start, end);
+      await chooseFromComposerMenu("Insert session reference");
       await expect(sessions).toBeVisible();
       if (!projectExpanded) {
         // No highlighted destination: projects start collapsed; the hand expansion is kept on reopen.
@@ -292,12 +309,10 @@ test("shared model and session reference pickers preserve composer input and foc
         .toBe(draft.slice(0, start) + token + " typed" + draft.slice(end).replace(/^ /, ""));
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     }
-    await composer.fill("Pending first prompt retained");
-    await composer.click({ button: "right" });
+    await typeDraft("Pending first prompt retained");
+    await chooseFromComposerMenu("Insert session reference");
     await expect(sessions).toBeVisible();
-    const labels = await application.evaluate(
-      ({ Menu }) => Reflect.get(Menu, "referenceLabels") as string[],
-    );
+    const labels = await chosenNativeMenuLabels(application);
     const modelEntry = labels.indexOf("Insert model reference");
     expect(modelEntry).toBeGreaterThan(-1);
     expect(labels[modelEntry + 1]).toBe("Insert session reference");
@@ -326,8 +341,8 @@ test("shared model and session reference pickers preserve composer input and foc
     await page.keyboard.press("Escape");
     await expect(sessions).toBeHidden();
     await expect.poll(composerValue).toBe(linked);
-    await sessionChip.focus();
-    await sessionChip.press("Enter");
+    await expect(sessionChip).toBeFocused();
+    await page.keyboard.press("Enter");
     await expect(sessions).toBeVisible();
     await sessions.locator(`[data-session-id="${sessionId}"]`).getByRole("button").click();
     await expect(
@@ -340,8 +355,13 @@ test("shared model and session reference pickers preserve composer input and foc
       name: "Edit session reference: Picker source",
       exact: true,
     });
-    await changedChip.focus();
-    await changedChip.press("Space");
+    // Dismissing a chip's picker returns focus to that chip.
+    await changedChip.click();
+    await expect(sessions).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sessions).toBeHidden();
+    await expect(changedChip).toBeFocused();
+    await page.keyboard.press("Space");
     await expect(sessions).toBeVisible();
     await sessions.locator(`[data-session-id="${moveDestination}"]`).getByRole("button").click();
     await expect(composer).toBeFocused();
@@ -357,29 +377,25 @@ test("shared model and session reference pickers preserve composer input and foc
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     const draftWithLink = await composerValue();
-    await composer.click({ button: "right" });
+    await chooseFromComposerMenu("Insert session reference");
     await expect(sessions).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(sessions).toBeHidden();
     await expect(composer).toBeFocused();
     await expect.poll(composerValue).toBe(draftWithLink);
-    await composer.click({ button: "right" });
+    await chooseFromComposerMenu("Insert session reference");
     await expect(sessions).toBeVisible();
     await configuration.click();
     await expect(sessions).toBeHidden();
     await expect(composer).not.toBeFocused();
     await page.keyboard.press("Escape");
     await expect.poll(composerValue).toBe(draftWithLink);
-    await composer.fill("Pending first prompt retained");
-    await application.evaluate(({ Menu }) => Reflect.deleteProperty(Menu, "referenceAction"));
+    await typeDraft("Pending first prompt retained");
 
     // The editor remains token-capable after clearing the earlier references.
     // Capture the intended selection before the picker moves DOM focus away.
-    await composer.evaluate((element: ComposerInputElement) => {
-      element.focus();
-      element.setSelectionRange(8, 13);
-      element.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-    });
+    await selectInDraft("Pending first prompt retained", 8, 13);
+    await chooseFromComposerMenu("Insert model reference");
     const reference = page.getByRole("dialog", { name: "Model reference" });
     await expect(reference).toBeVisible();
     const insertionPoint = 8;
@@ -395,8 +411,12 @@ test("shared model and session reference pickers preserve composer input and foc
     await richInput.pressSequentially(" inserted");
     await expect(richInput).toContainText(" inserted");
     await expect(configuration).toContainText("Fixture preset");
-    await chip.focus();
-    await chip.press("Enter");
+    await chip.click();
+    await expect(reference).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(reference).toBeHidden();
+    await expect(chip).toBeFocused();
+    await page.keyboard.press("Enter");
     await expect(reference).toBeVisible();
     await reference.getByRole("button", { name: "High", exact: true }).click();
     await expect(chip).toContainText("high");
@@ -416,7 +436,7 @@ test("shared model and session reference pickers preserve composer input and foc
 
     await richInput.click();
     await richInput.press("End");
-    await richInput.click({ button: "right" });
+    await chooseFromComposerMenu("Insert model reference");
     await expect(reference).toBeVisible();
     await reference
       .getByRole("button", { name: "Fixture model fixture-model", exact: true })
@@ -452,12 +472,8 @@ test("shared model and session reference pickers preserve composer input and foc
     // the shared destination popover. This must navigate without submitting.
     const movingInput = page.getByRole("combobox", { name: "Message", exact: true });
     // Start this independent routing phase with an explicit draft, not a restored one.
-    await movingInput.fill("");
-    await movingInput.pressSequentially("A draft to move, not send");
-    await application.evaluate(({ Menu }) =>
-      Reflect.set(Menu, "referenceAction", "Move draft to session…"),
-    );
-    await movingInput.click({ button: "right" });
+    await typeDraft("A draft to move, not send");
+    await chooseFromComposerMenu("Move draft to session…");
     const destinations = page.getByRole("dialog", { name: "Move draft to session" });
     await expect(destinations).toBeVisible();
     await destinations.getByRole("button", { name: "Expand project", exact: true }).click();

@@ -262,7 +262,8 @@ reply({ ready: true });
       const changeModel = page.getByRole("button", { name: /Change model/ });
       await expect(search.or(changeModel)).toBeVisible();
       if (await changeModel.isVisible()) await changeModel.click();
-      await search.fill("Fixture model");
+      await search.click();
+      await search.pressSequentially("Fixture model");
       await page
         .getByRole("button", { name: /Fixture model/ })
         .first()
@@ -294,7 +295,10 @@ reply({ ready: true });
       });
 
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
-      await composer.fill("Interview me");
+      await composer.click();
+      await expect(composer).toBeFocused();
+      await composer.pressSequentially("Interview me");
+      await expect(composer).toHaveValue("Interview me");
       await composer.press("Enter");
 
       const form = page.locator('[data-interview-id="call_interview"]');
@@ -304,15 +308,18 @@ reply({ ready: true });
         );
         // Scroll with the reader's wheel, not scripted scroll offsets.
         await transcript.hover();
-        // Prove virtualization actually unmounted the interview, not merely hid it.
         await expect(async () => {
           await page.mouse.wheel(0, -5_000);
-          await expect(form).toHaveCount(0, { timeout: 250 });
+          await expect(form).not.toBeInViewport({ timeout: 250 });
         }).toPass({ timeout: 15_000 });
+        // User decision (assignment #76): a pending interview stays loaded while the reader
+        // scrolls far away, so virtualization never discards its in-progress answers.
+        await expect(form).toHaveCount(1);
         await expect(async () => {
           await page.mouse.wheel(0, 5_000);
-          await expect(form).toBeVisible({ timeout: 250 });
+          await expect(form).toBeInViewport({ timeout: 250 });
         }).toPass({ timeout: 15_000 });
+        await expect(form).toBeVisible();
       };
       await expect(form).toBeVisible({ timeout: 30_000 });
       await expect(page.locator('.transcript [data-interview-id="call_interview"]')).toBeVisible();

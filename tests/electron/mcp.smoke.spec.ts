@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 import { startMcpServer } from "../fixtures/mcp-server";
 import { windowState } from "../fixtures/window-state";
 
-import { createSessionInProject } from "./fixtures/workspace-navigation";
+import { createSessionInProject, leaveRail } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -160,16 +160,21 @@ export default (pi) => {
         await page.getByRole("button", { name: "Apply", exact: true }).click();
         await expect(configuration).toContainText("Fixture");
       };
-      // Extension notices sit in the top-right corner over the Workspace tabs for 8s
-      // (228dfe8f6). Each new runtime reports the unauthenticated server; dismiss the
-      // notices by clicking them, as a user does, before using those tabs.
-      const dismissNotices = async (unauthenticated = true) => {
-        const attention = page.getByRole("button", {
-          name: /^Extension MCP servers need attention/,
-        });
-        if (unauthenticated) await expect(attention.first()).toBeVisible();
-        const notices = page.getByRole("button", { name: /^Extension / });
-        while ((await notices.count()) > 0) await notices.first().click();
+      // Corner extension notices (top right, 8s, 228dfe8f6) cover the Workspace tabs, and each
+      // new runtime reports the unauthenticated server at an unpredictable moment. Create
+      // Sessions from the rail, which notices never cover.
+      const newProjectSession = async () => {
+        const back = page.getByRole("button", { name: "Back to chat", exact: true });
+        if (await back.isVisible()) await back.click();
+        await page
+          .getByRole("navigation", { name: "Projects and global utilities" })
+          .getByRole("button", { name: "New session", exact: true })
+          .click();
+        await leaveRail(page);
+        await page
+          .getByRole("dialog", { name: "New session", exact: true })
+          .getByRole("option", { name: /^project(?: |$)/i })
+          .click();
       };
       await selectFixture();
       await composer.click();
@@ -191,8 +196,7 @@ export default (pi) => {
       const pane = page.locator('[data-slot="session-pane"]');
       const commandSessionId = await pane.getAttribute("data-session-id");
       expect(commandSessionId).toBeTruthy();
-      await dismissNotices();
-      await createSessionInProject(page, /^project(?: |$)/i);
+      await newProjectSession();
       await expect(composer).toHaveValue("");
       await expect(composer).toBeFocused();
       // Exceed the four-session idle observation budget. The command-only
@@ -207,8 +211,7 @@ export default (pi) => {
         await page.getByRole("button", { name: "Send", exact: true }).click();
         await expect(page.getByText("Fixture session ready", { exact: true })).toBeVisible();
         await expect(composer).toHaveValue("");
-        await dismissNotices();
-        await createSessionInProject(page, /^project(?: |$)/i);
+        await newProjectSession();
         await expect(composer).toBeFocused();
       }
       expect(
@@ -335,8 +338,7 @@ export default (pi) => {
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(page.getByText(/oauth: connected/).last()).toBeVisible();
       await expect(composer).toHaveValue("");
-      await dismissNotices(false);
-      await createSessionInProject(page, /^project(?: |$)/i);
+      await newProjectSession();
       await expect(composer).toBeFocused();
       await selectFixture();
       await composer.click();
