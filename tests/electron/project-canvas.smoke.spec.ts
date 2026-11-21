@@ -24,6 +24,7 @@ import {
 import { fakeApplicationState } from "../helpers/fakes/applicationState";
 import { fakeSessionFamilyStorage } from "../helpers/fakes/sessionFamilyStorage";
 import { showTodos } from "./fixtures/workspace-navigation";
+import { emitRendererEvent } from "./main-harness";
 import { restoreClipboardSnapshot, saveClipboardSnapshot } from "./clipboard-harness";
 
 const repo = resolve(import.meta.dirname, "../..");
@@ -210,7 +211,7 @@ test("Project Chat Canvas: published screenshots, exact link, pinned review, iso
   try {
     let page = await app.firstWindow();
     await page.setViewportSize({ width: 1500, height: 980 });
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     const select = (name: string) =>
       page.getByRole("button", { name: `Open Project Chat for ${name}`, exact: true }).click();
     await expect(page.getByRole("button", { name: label, exact: true })).toHaveCount(0);
@@ -225,6 +226,72 @@ test("Project Chat Canvas: published screenshots, exact link, pinned review, iso
     await expect(world.getByRole("img", { name: "After · guest checkout" })).toBeVisible();
     await expect(world.getByRole("img", { name: "Checkout prototype" })).toBeVisible();
     await page.screenshot({ path: info.outputPath("canvas-overview.png") });
+    await test.step("the same WebGL ground follows live Cake appearance and system changes", async () => {
+      const ground = board.locator(":scope > canvas");
+      const original = await ground.evaluateHandle((canvas: HTMLCanvasElement) => {
+        const gl = canvas.getContext("webgl2");
+        const program = gl?.getParameter(gl.CURRENT_PROGRAM) as WebGLProgram | null;
+        if (!gl || !program) throw new Error("The board ground did not initialize WebGL");
+        return { canvas, gl, program };
+      });
+      try {
+        const { x, y } = (await board.boundingBox())!;
+        // Sample bare ground, clear of the cards and board controls.
+        const clip = { x: x + 12, y: y + 12, width: 4, height: 4 };
+        const brightness = async () => {
+          const png = await page.screenshot({ clip });
+          return app.evaluate(({ nativeImage }, base64) => {
+            const bitmap = nativeImage.createFromBuffer(Buffer.from(base64, "base64")).toBitmap();
+            return Math.max(...bitmap.subarray(0, 3));
+          }, png.toString("base64"));
+        };
+        const expectGround = async (mode: "light" | "dark") => {
+          const pixels = expect.poll(brightness);
+          if (mode === "dark") await pixels.toBeLessThan(80);
+          else await pixels.toBeGreaterThan(190);
+          expect(
+            await ground.evaluate(
+              (canvas, { canvas: mounted, gl, program }) =>
+                canvas === mounted && gl.getParameter(gl.CURRENT_PROGRAM) === program,
+              original,
+            ),
+          ).toBe(true);
+        };
+        const appearance = async (theme: "light" | "dark" | "system") => {
+          await emitRendererEvent(app, {
+            type: "window-control-requested",
+            controlRequestId: crypto.randomUUID(),
+            invocation: {
+              name: "settings.window.update",
+              arguments: { section: "appearance", changes: { theme } },
+            },
+          });
+          await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        };
+
+        await expectGround("light");
+        // Reduced motion has no periodic redraw, so a theme change must invalidate it.
+        await appearance("dark");
+        await expectGround("dark");
+        await page.screenshot({ path: info.outputPath("canvas-dark.png") });
+
+        await page.emulateMedia({ colorScheme: "dark", reducedMotion: "no-preference" });
+        await appearance("light");
+        await expectGround("light");
+        await page.screenshot({ path: info.outputPath("canvas-light.png") });
+        await appearance("system");
+        await expectGround("dark");
+        for (const colorScheme of ["light", "dark"] as const) {
+          await page.emulateMedia({ colorScheme });
+          await expectGround(colorScheme);
+        }
+        await appearance("light");
+        await expectGround("light");
+      } finally {
+        await original.dispose();
+      }
+    });
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     const bounds = (await board.boundingBox())!;
     const point = { x: bounds.x + bounds.width * 0.7, y: bounds.y + 36 };
     const transform = () =>

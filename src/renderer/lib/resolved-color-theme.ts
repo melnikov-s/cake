@@ -28,7 +28,7 @@ export function currentEditorTheme(): EditorColorTheme {
 }
 
 export function useEditorColorTheme(): EditorColorTheme {
-  return useSyncExternalStore(subscribe, currentEditorTheme, () => "light");
+  return useSyncExternalStore(subscribeToThemeChanges, currentEditorTheme, () => "light");
 }
 
 type ResolvedColorTheme = "light" | "dark";
@@ -38,7 +38,7 @@ const listeners = new Set<() => void>();
 let themeObserver: MutationObserver | undefined;
 let colorSchemeQuery: MediaQueryList | undefined;
 
-function resolvedColorTheme(): ResolvedColorTheme {
+export function resolvedColorTheme(): ResolvedColorTheme {
   const preference = document.documentElement.dataset.theme;
   if (preference === "light" || preference === "dark") return preference;
   return systemColorTheme();
@@ -50,14 +50,14 @@ function systemColorTheme(): ResolvedColorTheme {
 
 /** Theme cards follow the OS independently of the current app selection. */
 export function useSystemColorTheme(): ResolvedColorTheme {
-  return useSyncExternalStore(subscribe, systemColorTheme, () => "light");
+  return useSyncExternalStore(subscribeToThemeChanges, systemColorTheme, () => "light");
 }
 
 function notifyThemeChanged() {
   for (const listener of listeners) listener();
 }
 
-function subscribe(listener: () => void) {
+export function subscribeToThemeChanges(listener: () => void) {
   listeners.add(listener);
   if (listeners.size === 1) {
     themeObserver = new MutationObserver(notifyThemeChanged);

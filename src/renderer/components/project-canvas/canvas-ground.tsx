@@ -5,6 +5,7 @@
 // honey toward evening, a lamp pool at night. Colour is mixed in OKLAB and dithered.
 import { useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
+import { resolvedColorTheme, subscribeToThemeChanges } from "../../lib/resolved-color-theme";
 import type { Cam } from "./camera";
 
 const VERT = `#version 300 es
@@ -154,7 +155,11 @@ export function CanvasGround({ cam }: { cam: MutableRefObject<Cam> }) {
       lastFrame = -Infinity,
       lastCam: Cam | undefined;
     let dirty = true,
-      dark: boolean | undefined;
+      drawnDark: boolean | undefined;
+    let isDark = resolvedColorTheme() === "dark";
+    const unsubscribeTheme = subscribeToThemeChanges(() => {
+      isDark = resolvedColorTheme() === "dark";
+    });
     const resize = new ResizeObserver(() => {
       dirty = true;
     });
@@ -165,10 +170,9 @@ export function CanvasGround({ cam }: { cam: MutableRefObject<Cam> }) {
         canvas.style.visibility = "hidden";
         return;
       }
-      const isDark = !!canvas.closest(".dark");
       if (
         !dirty &&
-        dark === isDark &&
+        drawnDark === isDark &&
         lastCam === cam.current &&
         (still.matches || now - lastFrame < 250)
       )
@@ -182,13 +186,13 @@ export function CanvasGround({ cam }: { cam: MutableRefObject<Cam> }) {
         gl.uniform2f(res, canvas.width, canvas.height);
         dirty = false;
       }
-      if (dark !== isDark) {
-        dark = isDark;
+      if (drawnDark !== isDark) {
+        drawnDark = isDark;
         // Mist daylight in light mode; the same paper and light on Cake's graphite surface in dark.
-        gl.uniform3fv(light, dark ? [0.21, 0.22, 0.25] : [0.975, 0.979, 0.983]);
-        gl.uniform3fv(shade, dark ? [0.12, 0.13, 0.15] : [0.895, 0.903, 0.912]);
-        gl.uniform3fv(gWarmLight, dark ? [0.22, 0.22, 0.25] : [0.98, 0.979, 0.976]);
-        gl.uniform3fv(gWarmShade, dark ? [0.13, 0.13, 0.15] : [0.9, 0.902, 0.903]);
+        gl.uniform3fv(light, isDark ? [0.21, 0.22, 0.25] : [0.975, 0.979, 0.983]);
+        gl.uniform3fv(shade, isDark ? [0.12, 0.13, 0.15] : [0.895, 0.903, 0.912]);
+        gl.uniform3fv(gWarmLight, isDark ? [0.22, 0.22, 0.25] : [0.98, 0.979, 0.976]);
+        gl.uniform3fv(gWarmShade, isDark ? [0.13, 0.13, 0.15] : [0.9, 0.902, 0.903]);
       }
       lastCam = cam.current;
       lastFrame = now;
@@ -199,6 +203,7 @@ export function CanvasGround({ cam }: { cam: MutableRefObject<Cam> }) {
     raf = requestAnimationFrame(frame);
     return () => {
       cancelAnimationFrame(raf);
+      unsubscribeTheme();
       resize.disconnect();
       dispose();
     };
