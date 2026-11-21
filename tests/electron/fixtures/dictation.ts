@@ -14,6 +14,7 @@ export async function dictationFixture(
     preventAutomaticRefocus?: boolean;
     modelReferences?: boolean;
     providerUrl?: string;
+    coldSession?: boolean;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "cake-dictation-smoke-"));
@@ -109,7 +110,11 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
   await writeFile(
     join(userData, "window-state.json"),
     windowStateDocument({
-      ...windowStateChildren({ project, sessionId, theme: "dark" }),
+      ...windowStateChildren({
+        project,
+        sessionId: options.coldSession ? undefined : sessionId,
+        theme: "dark",
+      }),
       ...(options.dictationEnabled
         ? {
             dictationStore: store({

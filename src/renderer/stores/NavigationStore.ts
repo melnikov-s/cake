@@ -175,7 +175,7 @@ export class NavigationStore extends Store<{
     else await this.openSession(target.sessionId);
   }
 
-  /** A Sessions-row activation is an explicit chat intent, including reselecting the current row. */
+  /** Sessions-row activation reveals Chat, including when reselecting the current row. */
   async openSessionFromNavigator(target: ConversationNavigationTarget) {
     const navigator = WorkspaceNavigatorContext.consume(this)!;
     navigator.showChat();
@@ -209,7 +209,9 @@ export class NavigationStore extends Store<{
     const draft = primary
       ? conversation.composerStore.draftStore
       : secondary?.chatStore?.props.composerDraft?.();
-    draft?.requestFocus({ explicit: true });
+    // Choosing a conversation is not choosing its writing field. Use the same
+    // dictation-aware autofocus policy as the destination's initial mount.
+    draft?.requestFocus();
   }
 
   showAutomations() {

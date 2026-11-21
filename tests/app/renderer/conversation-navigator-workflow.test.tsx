@@ -178,7 +178,7 @@ describe("Sessions navigator workflow", () => {
       expect(root.appShellStore.activeConversation).toEqual(target);
       expect(root.workspaceNavigatorStore.companionTab).toBe("chat");
       expect(draft.focusRequestRevision).toBeGreaterThan(revision);
-      expect(draft.focusRequestIsExplicit).toBe(true);
+      expect(draft.focusRequestIsExplicit).toBe(false);
     });
     expect(draft.text).toBe("Keep this draft");
     expect(session.presentationMode).toBe(mode);
@@ -206,10 +206,11 @@ describe("Sessions navigator workflow", () => {
       await waitFor(() => {
         expect(root.appShellStore.activeConversation?.sessionId).toBe("layout");
         expect(root.workspaceNavigatorStore.companionTab).toBe("chat");
-        expect(
+        const draft =
           root.sessionRegistry.findSession("layout")!.conversationSessionStore.composerStore
-            .draftStore.focusRequestIsExplicit,
-        ).toBe(true);
+            .draftStore;
+        expect(draft.focusRequestRevision).toBeGreaterThan(0);
+        expect(draft.focusRequestIsExplicit).toBe(false);
       });
     },
   );
