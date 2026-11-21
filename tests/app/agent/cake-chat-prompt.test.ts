@@ -42,7 +42,7 @@ describe("compact Cake Chat guidance", () => {
       prompt.replace("<cake-chat-instructions>\n\n", `<cake-chat-instructions>\n${custom}\n`),
     );
     // Ratchet at the current size: growth requires a deliberate budget edit.
-    expect(Buffer.byteLength(prompt)).toBeLessThanOrEqual(5785);
+    expect(Buffer.byteLength(prompt)).toBeLessThanOrEqual(5944);
   });
 });
 

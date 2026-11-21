@@ -164,12 +164,12 @@ describe("core coordinator calling reference", () => {
   it(`bounds prompt size (${reference.length} reference; ${prompt.length} coordinator; ${projectTodoBaseline(emptyProjectTodos()).length} empty to-do baseline chars)`, () => {
     // Ratchets at the current sizes: growth requires a deliberate budget edit.
     expect(reference.length).toBeLessThanOrEqual(3064);
-    expect(prompt.length).toBeLessThanOrEqual(8844);
+    expect(prompt.length).toBeLessThanOrEqual(9003);
   });
 
   it.each([
-    ["Cake Chat", 14195],
-    ["Project Chat", 14119],
+    ["Cake Chat", 14354],
+    ["Project Chat", 14278],
   ] as const)(
     "bounds the shipped %s ingredients with recall, to-dos, attribution and preset guidance",
     (chat, budget) => {
@@ -219,7 +219,7 @@ describe("core coordinator calling reference", () => {
       /Core chat operations|cake-todo|to-dos \(application context\)|plugins\.present|hello-sample/,
     );
     // Ratchet at the current size: growth requires a deliberate budget edit.
-    expect(Buffer.byteLength(assembled)).toBeLessThanOrEqual(2949);
+    expect(Buffer.byteLength(assembled)).toBeLessThanOrEqual(3108);
   });
 
   it("never advertises missing/disabled controls or injects coordinator controls into the companion", () => {

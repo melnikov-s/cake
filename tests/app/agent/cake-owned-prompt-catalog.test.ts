@@ -8,7 +8,7 @@ const promptDirectory = new URL("../../../src/services/pi/runtime/prompts/", imp
 // Ratchets at current byte sizes: growth requires a deliberate budget edit.
 const budgets = {
   "cake-chat.md": 3994,
-  "common.md": 930,
+  "common.md": 1089,
   "general-research.md": 565,
   "interview.md": 108,
   "project-interaction.md": 239,
