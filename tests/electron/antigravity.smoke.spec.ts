@@ -222,18 +222,52 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
 
     const exportPrompt = page.getByRole("alertdialog", { name: "Cake operation and export" });
     await projectChat.fill(
-      'fixture Cake [{"command":"todos.create","input":{"title":"Synthetic ACP to-do","description":"Disposable desktop smoke test"}}]',
+      `fixture Cake ${JSON.stringify(
+        ["Synthetic ACP to-do", "Denied ACP to-do", "Canceled ACP to-do"].map((title) => ({
+          command: "todos.create",
+          input: { title, description: "Disposable desktop smoke test" },
+        })),
+      )}`,
     );
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(exportPrompt).toContainText("share its result with Google Antigravity");
     await expect(exportPrompt).toContainText("Synthetic ACP to-do");
+    await expect(exportPrompt).toContainText("without another prompt");
+    expect(await readFile(join(project, "fixture-mcp-evidence.ndjson"), "utf8")).not.toContain(
+      '"committed"',
+    );
+    expect(await readFile(join(cakeHome, "state", "application.json"), "utf8")).not.toContain(
+      "Synthetic ACP to-do",
+    );
     await page.screenshot({
       path: info.outputPath("project-chat-cake-export.png"),
       animations: "disabled",
     });
     await exportPrompt.getByRole("combobox").selectOption({ label: "Allow once" });
     await exportPrompt.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(exportPrompt).toContainText("Denied ACP to-do");
+    await expect(exportPrompt.getByRole("combobox")).toHaveValue("");
+    await exportPrompt.getByRole("combobox").selectOption({ label: "Deny" });
+    await exportPrompt.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(exportPrompt).toContainText("Canceled ACP to-do");
+    await exportPrompt.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(exportPrompt).toHaveCount(0);
     await expect(page.locator(".transcript").getByText(/"committed": true/)).toBeVisible();
+    const evidence = (await readFile(join(project, "fixture-mcp-evidence.ndjson"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+      .at(-1);
+    expect(
+      evidence.findings.map(
+        ({ result }: { result: { isError: boolean; content: [{ text: string }] } }) =>
+          result.content[0].text,
+      ),
+    ).toEqual([
+      expect.stringContaining('"committed": true'),
+      expect.stringContaining("did not approve"),
+      expect.stringContaining("did not approve"),
+    ]);
     await expect
       .poll(
         async () =>

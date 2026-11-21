@@ -125,6 +125,7 @@ export function createProjectTodoOperations(
         control.list(
           await Schema.decodeUnknownPromise(ProjectTodoListInput)(input),
           context.signal,
+          context.todoReadMode,
         ),
     },
     {
@@ -144,7 +145,7 @@ export function createProjectTodoOperations(
         const { id } = await Schema.decodeUnknownPromise(
           Schema.Struct({ id: ProjectTodo.fields.id }),
         )(input);
-        return control.read(id, context.signal);
+        return control.read(id, context.signal, context.todoReadMode);
       },
     },
     {

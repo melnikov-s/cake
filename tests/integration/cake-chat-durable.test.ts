@@ -252,6 +252,11 @@ it("routes permanent Project Chat through fresh ACP with an isolated, bounded Op
 
   const text = await readFile(join(h.directory, "fixture-acp-wire.ndjson"), "utf8");
   const frames = text.trim().split("\n");
+  const setups = frames
+    .map((line) => JSON.parse(line))
+    .filter(({ method }) => method === "session/new");
+  expect(setups.map(({ params }) => params.mcpServers)).toEqual([[], [], []]);
+  expect(text).not.toContain("cake_project_chat");
   const prompts = frames.filter((line) => JSON.parse(line).method === "session/prompt");
   expect(prompts).toHaveLength(3);
   expect(text.match(/"method":"session\/new"/g)).toHaveLength(3);
@@ -325,10 +330,10 @@ it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatc
   const missing = () => Promise.reject(new Error("Not a test control"));
   const create: ProjectTodoControl["create"] = (input, signal) =>
     app.runPromise(projectTodos.create(f.directory, input), { signal });
-  const read: ProjectTodoControl["read"] = async (id, signal) => ({
+  const read = vi.fn<ProjectTodoControl["read"]>(async (id, signal) => ({
     ...(await app.runPromise(projectTodos.read(f.directory, id), { signal })),
     sessions: [],
-  });
+  }));
   const invoke = vi.fn<NonNullable<CakeSessionRuntimeSetup["globalControl"]>["invoke"]>(
     async ({ name }) =>
       name === "sessions.create"
@@ -363,9 +368,16 @@ it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatc
     new AbortController().signal,
   );
   type Permission = Parameters<NonNullable<typeof runtime.antigravity>>[0]["permission"];
-  const permission = vi.fn<Permission>(async ({ description }) =>
-    description.includes("Denied to-do") ? "deny" : "allow",
-  );
+  const waitingForRead = Deferred.makeUnsafe<void>();
+  const allowRead = Deferred.makeUnsafe<void>();
+  const permission = vi.fn<Permission>(async ({ description }) => {
+    if (description.includes("Denied to-do")) return "deny";
+    if (description.includes("todos.read")) {
+      await Effect.runPromise(Deferred.succeed(waitingForRead, undefined));
+      await Effect.runPromise(Deferred.await(allowRead));
+    }
+    return "allow";
+  });
   const assignment = {
     name: "Fixture worker",
     initialPrompt: "Build a synthetic example",
@@ -374,21 +386,41 @@ it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatc
   };
   const send = (
     calls: readonly unknown[],
-    ownerSignal?: AbortSignal,
+    cakeBridgeOwnerSignal = new AbortController().signal,
     approve: Permission = permission,
   ) =>
     runtime.antigravity!({
-      ...(ownerSignal ? { ownerSignal } : null),
+      cakeBridgeOwnerSignal,
       id: crypto.randomUUID(),
       markdown: false,
       text: `fixture Cake ${JSON.stringify(calls)}`,
       permission: approve,
     });
+  // Keep the approved reply short enough for inline Pi memory. The export
+  // exclusion must hold even though the text fits within the memory budget.
+  const first = send([{ command: "todos.read", input: { id: existing.id } }]);
+  try {
+    await Promise.race([
+      Effect.runPromise(Deferred.await(waitingForRead)),
+      first.then(() => {
+        throw new Error("Expected to reach the read approval before the turn completed");
+      }),
+    ]);
+    expect(read).not.toHaveBeenCalled();
+    const pendingEvidence = await readFile(
+      join(f.directory, "fixture-mcp-evidence.ndjson"),
+      "utf8",
+    );
+    expect(pendingEvidence).not.toContain("TOOL_RESULT_PRIVATE_MARKER");
+    expect(pendingEvidence).not.toContain("findings");
+  } finally {
+    await Effect.runPromise(Deferred.succeed(allowRead, undefined));
+  }
+  await first;
   await send([
     {},
     { command: "todos.create.help" },
     { command: "session.info.help" },
-    { command: "todos.read", input: { id: existing.id } },
     { command: "todos.create", input: { title: "Denied to-do", description: "No" } },
     { command: "todos.create", input: { title: "Invalid to-do" } },
     { command: "todos.create", input: { title: "Approved to-do", description: "Committed" } },
@@ -400,6 +432,7 @@ it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatc
   ]);
   expect(f.requests).toHaveLength(0);
   expect(permission).toHaveBeenCalledTimes(6);
+  expect(read).toHaveBeenCalledExactlyOnceWith(existing.id, expect.any(AbortSignal), "stored");
   for (const [request] of permission.mock.calls) expect(request.kind).toBe("cake-operation");
   const evidence = (await readFile(join(f.directory, "fixture-mcp-evidence.ndjson"), "utf8"))
     .trim()
@@ -411,15 +444,17 @@ it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatc
     unauthorized: { status: 403 },
     wrongSession: { status: 404 },
   });
+  expect(evidence[1].findings[0].result.content[0].text).toContain("TOOL_RESULT_PRIVATE_MARKER");
   expect(
-    evidence[1].findings.map(
-      ({ result }: { result: { content: [{ text: string }] } }) => result.content[0].text,
-    ),
+    evidence
+      .at(-1)
+      .findings.map(
+        ({ result }: { result: { content: [{ text: string }] } }) => result.content[0].text,
+      ),
   ).toEqual([
     expect.stringContaining("todos"),
     expect.stringContaining("Input schema"),
     expect.stringContaining("Unknown Cake command"),
-    expect.stringContaining("TOOL_RESULT_PRIVATE_MARKER"),
     expect.stringContaining("did not approve"),
     expect.stringContaining("Cake call failed"),
     expect.stringContaining('"committed": true'),
@@ -465,12 +500,12 @@ it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatc
     .split("\n");
   const prompt = frames.findLast((line) => JSON.parse(line).method === "session/prompt");
   expect(prompt).toContain("fixture Cake");
-  expect(prompt).not.toContain("TOOL_RESULT_PRIVATE_MARKER");
+  expect(frames.join("\n")).not.toContain("TOOL_RESULT_PRIVATE_MARKER");
   const oldServer = JSON.parse(frames.find((line) => JSON.parse(line).method === "session/new")!)
     .params.mcpServers[0];
   await expect(fetch(oldServer.url)).rejects.toThrow();
 
-  // Disconnect the requesting desktop while the separate Cake approval is open.
+  // Disconnect the requesting native renderer while the combined approval is open.
   const owner = new AbortController();
   let resolveLate: ((decision: "allow") => void) | undefined;
   let approvalSignal: AbortSignal | undefined;
@@ -491,6 +526,9 @@ it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatc
   await canceled;
   expect(approvalSignal?.aborted).toBe(true);
   resolveLate?.("allow");
+  const afterCancel = await readFile(join(f.directory, "fixture-mcp-evidence.ndjson"), "utf8");
+  expect(afterCancel).not.toContain("Late approval");
+  expect(afterCancel.trim().split("\n").slice(-1)[0]).not.toContain("findings");
   expect(
     (await app.runPromise(projectTodos.list(f.directory))).items.map(({ title }) => title),
   ).toEqual(["Read me", "Approved to-do"]);
@@ -503,6 +541,24 @@ it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatc
   );
   expect(piTools).toEqual(expect.arrayContaining(["cake", "zoom", "archive_search"]));
   expect(JSON.stringify(f.requests[0])).toContain("TOOL_RESULT_PRIVATE_MARKER");
+
+  await send(
+    [{ command: "todos.create", input: { title: "Unavailable to-do", description: "No" } }],
+    undefined,
+    async () => undefined,
+  );
+  const unavailable = (await readFile(join(f.directory, "fixture-mcp-evidence.ndjson"), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line))
+    .at(-1);
+  expect(unavailable.findings[0].result).toMatchObject({
+    isError: true,
+    content: [{ text: expect.stringContaining("did not approve") }],
+  });
+  expect(
+    (await app.runPromise(projectTodos.list(f.directory))).items.map(({ title }) => title),
+  ).toEqual(["Read me", "Approved to-do"]);
 });
 
 const cleanup: Array<() => Promise<void>> = [];

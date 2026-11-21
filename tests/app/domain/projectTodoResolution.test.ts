@@ -36,6 +36,10 @@ import { splitProjectTodoReminder } from "../../../src/contracts/projects/projec
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import { projectChatAntigravityCake } from "../../../src/services/pi-durable/durable-antigravity-cake";
+import { makePiCallbackExecutor } from "../../../src/services/pi/PiCallbackAdapter";
+import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import {
   CAKE_CHAT_TODO_SCOPE,
   ProjectTodoList,
@@ -920,6 +924,74 @@ it.effect(
         sessions: [{ sessionId: a, resolved: true }],
       });
       expect((yield* todos.read(project, other.id)).state).toBe("open");
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
+  "Antigravity to-do reads export stored state without committing linked-work repair",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const item = yield* todos.create(project, {
+        title: "Open in storage",
+        description: "Work resolved while Cake was closed.",
+        associations: [link(a)],
+      });
+      yield* todos.mutateUser(project, { _tag: "Select", selectedId: item.id });
+      f.resolved.add(a);
+      const before = yield* todos.list(project);
+      const writes = f.reads.writes;
+      const run = makePiCallbackExecutor(yield* Effect.context<Layer.Success<typeof f.layer>>());
+      const unused = async () => {
+        throw Error("Only reads should be called");
+      };
+      const registry = new CakeOperationRegistry(
+        createProjectTodoOperations({
+          select: unused,
+          create: unused,
+          update: unused,
+          updateMany: unused,
+          list: (input, signal, mode) => run(controls.list(project, input, mode), { signal }),
+          read: (id, signal, mode) => run(controls.read(project, id, mode), { signal }),
+        }),
+      );
+      const scope = {
+        sessionId: projectChatSessionId(project),
+        projectPath: project,
+        hasTodo: (id: string) => id === item.id,
+      };
+      const bridge = projectChatAntigravityCake(registry, scope).forTurn(
+        async () => "allow",
+        () => undefined,
+      );
+      const signal = new AbortController().signal;
+      for (const command of ["todos.list", "todos.read"] as const) {
+        const input: JsonObject =
+          command === "todos.list" ? { view: "reconciliation", state: "open" } : { id: item.id };
+        const response = yield* Effect.promise(() =>
+          bridge({ command, input }, { signal, toolCallId: command }),
+        );
+        expect(response.isError).toBe(false);
+        expect(response.text).toContain('"state": "open"');
+        expect(response.text).toContain('"revision": 0');
+        expect(response.text).toContain('"resolved": true');
+        expect(yield* todos.list(project)).toEqual(before);
+        expect(f.reads.writes).toBe(writes);
+        expect(f.resolved).toEqual(new Set([a]));
+      }
+
+      // The same registry definitions still reconcile when invoked as Pi operations.
+      const pi = yield* Effect.promise(() =>
+        registry.invoke(
+          { command: "todos.read", input: { id: item.id } },
+          { signal, toolCallId: "pi-read", runtime: { sessionId: scope.sessionId } },
+        ),
+      );
+      expect(pi.json).toMatchObject({ state: "done", revision: 1, completion: { by: "sessions" } });
+      expect((yield* todos.list(project)).selectedId).toBeNull();
+      expect(f.reads.writes).toBe(writes + 1);
     }).pipe(Effect.provide(f.layer));
   },
 );

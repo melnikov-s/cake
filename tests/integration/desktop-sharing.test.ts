@@ -43,6 +43,14 @@ import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocation
 import { connectClient, rawClient } from "./fixtures/network-client";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { cakeBuildId } from "../../src/ipc/protocol/BackendConnectionRpc";
+import {
+  CakeSessionRuntimes,
+  type CakeSessionHandle,
+} from "../../src/services/pi/CakeSessionRuntimes";
+
+class TestAntigravityHandle extends Context.Service<TestAntigravityHandle, CakeSessionHandle>()(
+  "test/AntigravityHandle",
+) {}
 
 const native = vi.hoisted(() => ({
   emitter: undefined as EventEmitter | undefined,
@@ -78,6 +86,7 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* (
     NodeFileSystem.layer,
     NodePath.layer,
   ),
+  antigravity?: CakeSessionHandle["antigravity"],
 ) {
   const assets = yield* Effect.acquireRelease(
     Effect.promise(() => mkdtemp(join(tmpdir(), "cake-sharing-assets-"))),
@@ -87,7 +96,26 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* (
   yield* Effect.promise(() =>
     writeFile(join(assets, "index.html"), "<!doctype html><title>Cake</title>"),
   );
-  const backend = yield* makeNetworkTestBackend();
+  const originalBackend = yield* makeNetworkTestBackend();
+  const backend = antigravity
+    ? {
+        ...originalBackend,
+        context: yield* Effect.gen(function* () {
+          const stub = yield* Layer.build(
+            Layer.mock(TestAntigravityHandle, {
+              profile: "CakeChatSession",
+              antigravity,
+            }),
+          );
+          const handle = Context.get(stub, TestAntigravityHandle);
+          const runtimes = Context.get(originalBackend.context, CakeSessionRuntimes);
+          return Context.add(originalBackend.context, CakeSessionRuntimes, {
+            ...runtimes,
+            acquireSession: () => Effect.succeed(handle),
+          });
+        }),
+      }
+    : originalBackend;
   const hostScope = yield* Scope.fork(yield* Effect.scope);
   const host = yield* Layer.buildWithScope(
     makeDesktopSharingLive(configuration, assets, join(assets, "user-data")).pipe(
@@ -441,6 +469,76 @@ it.live(
       });
       expect(backend.stats.aborted).toBe(0);
     }).pipe(Effect.scoped),
+);
+
+it.live("only native IPC grants Project Chat bridge registration and consent", () =>
+  Effect.gen(function* () {
+    const admitted =
+      yield* Queue.unbounded<Parameters<NonNullable<CakeSessionHandle["antigravity"]>>[2]>();
+    const { remote, local } = yield* setup(undefined, (_text, _markdown, access) =>
+      Queue.offer(admitted, access).pipe(Effect.as(crypto.randomUUID())),
+    );
+    const input = {
+      sessionId: cakeChatLocations.projectChatSessionId("/project"),
+      text: "Synthetic Project Chat turn",
+      renderUserMessageAsMarkdown: false,
+    };
+    const request = {
+      kind: "cake-operation" as const,
+      description: "Run a synthetic read and share its result?",
+      canAllowOnce: true,
+    };
+    const socket = yield* remote();
+    const browser = yield* socket.client["sessionChats.antigravity"](input).pipe(Effect.flip);
+    expect(browser.message).toContain("requires the requesting desktop");
+    yield* socket.client["backendConnection.connect"]({ buildId: cakeBuildId });
+    // A compatible remote desktop retains its text route, not bridge authority.
+    yield* socket.client["sessionChats.antigravity"](input);
+    const nonnative = yield* Queue.take(admitted);
+    expect(nonnative.cakeBridgeOwnerSignal).toBeUndefined();
+    expect(
+      yield* Effect.promise(() => nonnative.permission(request, new AbortController().signal)),
+    ).toBeUndefined();
+
+    yield* local["sessionChats.antigravity"](input);
+    const native = yield* Queue.take(admitted);
+    expect(native.cakeBridgeOwnerSignal?.aborted).toBe(false);
+    expect(
+      yield* Effect.promise(() => native.permission(request, new AbortController().signal)),
+    ).toBeUndefined(); // No event subscription, so nobody saw a prompt.
+    const nativeEvents = yield* Queue.unbounded<CakeEvent>();
+    yield* local["artifacts.observeEvents"]().pipe(
+      Stream.runForEach((event) => Queue.offer(nativeEvents, event)),
+      Effect.forkScoped,
+    );
+    expect((yield* Queue.take(nativeEvents)).type).toBe("renderer-events-ready");
+    const decision = yield* Effect.promise((signal) => native.permission(request, signal)).pipe(
+      Effect.forkScoped,
+    );
+    const prompt = yield* Queue.take(nativeEvents);
+    assert.equal(prompt.type, "ui-request");
+    expect(prompt).toMatchObject({
+      sessionId: input.sessionId,
+      title: "Cake operation and export",
+    });
+    const response = {
+      sessionId: prompt.sessionId,
+      uiRequestId: prompt.uiRequestId,
+      requestId: prompt.requestId,
+      value: "allow",
+      cancelled: false,
+    };
+    const nonOwner = yield* socket.client["artifacts.respond-ui"](response).pipe(Effect.flip);
+    expect(nonOwner.message).toContain("wrong renderer connection");
+    yield* local["artifacts.respond-ui"](response);
+    expect(yield* Fiber.join(decision)).toBe("allow");
+    expect(yield* Queue.take(nativeEvents)).toMatchObject({
+      type: "ui-request-settled",
+      uiRequestId: prompt.uiRequestId,
+      requestId: prompt.requestId,
+      sessionId: prompt.sessionId,
+    });
+  }).pipe(Effect.scoped),
 );
 
 it.live("passive Cake Chat control observation does not designate another desktop", () =>

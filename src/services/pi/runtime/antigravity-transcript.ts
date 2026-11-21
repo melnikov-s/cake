@@ -171,7 +171,8 @@ export interface CakeAntigravityInput {
   id: string;
   text: string;
   markdown: boolean;
-  ownerSignal?: AbortSignal;
+  /** Granted only for Project Chat turns admitted by native renderer IPC. */
+  cakeBridgeOwnerSignal?: AbortSignal;
   permission(request: AcpPermission, signal: AbortSignal): Promise<"allow" | "deny" | undefined>;
 }
 
@@ -241,8 +242,8 @@ export function createAntigravityTurnController(input: {
       );
     const resumeId = input.resume?.();
     const controller = new AbortController();
-    const signal = request.ownerSignal
-      ? AbortSignal.any([request.ownerSignal, controller.signal])
+    const signal = request.cakeBridgeOwnerSignal
+      ? AbortSignal.any([request.cakeBridgeOwnerSignal, controller.signal])
       : controller.signal;
     signal.throwIfAborted();
     const details: Details = {

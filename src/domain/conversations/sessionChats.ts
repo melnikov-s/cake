@@ -202,40 +202,51 @@ export const antigravity = Effect.fn("SessionChats.antigravity")(function* (
     .requireDesktopConnection(input.sessionId, connectionId)
     .pipe(asError("antigravity"));
   const run = makePiCallbackExecutor(yield* Effect.context<RendererRequestCoordinator>());
+  // Socket clients can be classified as desktops for UI compatibility. Only native
+  // IPC supplies a WebContents identity; remote desktops keep the text-only route.
+  const hasNativeBridgeOwner = () =>
+    targetKind === "CakeChatSession" && connections.nativeId(connectionId) !== undefined;
   const turnId = yield* handle
     .antigravity(input.text, input.renderUserMessageAsMarkdown, {
-      // Only the new bridge needs ongoing authority from the requesting desktop.
-      ...(targetKind === "CakeChatSession"
-        ? { ownerSignal: connections.signal(connectionId) }
+      ...(hasNativeBridgeOwner()
+        ? { cakeBridgeOwnerSignal: connections.signal(connectionId) }
         : null),
       async permission(request, signal) {
-        if (connections.kind(connectionId) !== "desktop") return undefined;
-        const decision = await run(
-          coordinator.requireDesktopConnection(input.sessionId, connectionId).pipe(
-            Effect.andThen(
-              coordinator.requestUiForConnection(
-                connectionId,
-                input.sessionId,
-                {
-                  kind: "select",
-                  title:
-                    request.kind === "cake-operation"
-                      ? "Cake operation and export"
-                      : "Antigravity permission",
-                  message: request.description,
-                  options: [
-                    { id: "deny", label: "Deny" },
-                    ...(request.canAllowOnce ? [{ id: "allow", label: "Allow once" }] : []),
-                  ],
-                  signal,
-                  timeout: 120_000,
-                },
-                targetKind,
-              ),
+        const bridgeConsent = request.kind === "cake-operation";
+        if (
+          connections.kind(connectionId) !== "desktop" ||
+          (bridgeConsent && !hasNativeBridgeOwner())
+        )
+          return undefined;
+        const consent = coordinator.requireDesktopConnection(input.sessionId, connectionId).pipe(
+          Effect.andThen(
+            coordinator.requestUiForConnection(
+              connectionId,
+              input.sessionId,
+              {
+                kind: "select",
+                title: bridgeConsent ? "Cake operation and export" : "Antigravity permission",
+                message: request.description,
+                options: [
+                  { id: "deny", label: "Deny" },
+                  ...(request.canAllowOnce ? [{ id: "allow", label: "Allow once" }] : []),
+                ],
+                signal,
+                timeout: 120_000,
+              },
+              targetKind,
             ),
           ),
+        );
+        const decision = await run(
+          bridgeConsent
+            ? consent.pipe(
+                Effect.catchTag("RendererRequestCoordinatorError", () => Effect.succeed(undefined)),
+              )
+            : consent,
           { signal },
         );
+        if (bridgeConsent && !hasNativeBridgeOwner()) return undefined;
         return decision === "allow" || decision === "deny" ? decision : undefined;
       },
     })

@@ -837,8 +837,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               .pipe(Effect.map(({ selectedId }) => ({ selectedId }))),
             { signal },
           ),
-        list: (input, signal) => run(projectTodoAssociations.list(todoScope, input), { signal }),
-        read: (id, signal) => run(projectTodoAssociations.read(todoScope, id), { signal }),
+        list: (input, signal, mode) =>
+          run(projectTodoAssociations.list(todoScope, input, mode), { signal }),
+        read: (id, signal, mode) =>
+          run(projectTodoAssociations.read(todoScope, id, mode), { signal }),
         create: (input, signal) =>
           run(projectTodoAssociations.create(todoScope, input), { signal }),
         update: (input, signal) =>

@@ -113,12 +113,13 @@ const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
 export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
   scope: string,
   request: ProjectTodoListInput,
+  mode?: "stored",
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoListInput)(request).pipe(asError);
   const query = input.query?.toLowerCase();
   // Repair only the requested list, before filtering/paging so newly completed items
   // appear in Done rather than leaking stale Open rows after an interrupted commit.
-  yield* completeLinked(scope);
+  if (mode !== "stored") yield* completeLinked(scope);
   const value = yield* todos.list(scope);
   const page = agentListPage(
     value.items.filter(
@@ -151,9 +152,15 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
   };
 });
 
-export const read = Effect.fn("ProjectTodos.readForAgent")(function* (scope: string, id: string) {
-  yield* todos.read(scope, id);
-  yield* completeLinked(scope, new Set([id]));
+export const read = Effect.fn("ProjectTodos.readForAgent")(function* (
+  scope: string,
+  id: string,
+  mode?: "stored",
+) {
+  if (mode !== "stored") {
+    yield* todos.read(scope, id);
+    yield* completeLinked(scope, new Set([id]));
+  }
   const item = yield* todos.read(scope, id);
   const [joined] = yield* join(scope, [item]);
   return { ...item, sessions: joined?.sessions ?? [] };

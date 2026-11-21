@@ -168,6 +168,7 @@ const cakeEventSchemas = {
   }),
   "ui-request-settled": Schema.Struct({
     type: Schema.Literal("ui-request-settled"),
+    requestId: uuid,
     uiRequestId: uuid,
     sessionId: stringMax(256),
   }),

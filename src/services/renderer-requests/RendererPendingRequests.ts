@@ -122,6 +122,7 @@ export const makeRendererPendingRequests = Effect.fn(
       if (request._tag === "Ui")
         clientEvents.sendTo(request.connectionId, {
           type: "ui-request-settled",
+          requestId: request.operationId,
           uiRequestId: requestId,
           sessionId: request.sessionId,
         });

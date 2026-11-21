@@ -6,14 +6,15 @@ import { RootStore } from "../stores/RootStore";
 export const ExtensionRequestDialog = observer(function ExtensionRequestDialog() {
   const root = useStore(RootStore);
   const extensionUi = root.extensionUiStore;
-  if (!extensionUi.request) return null;
+  const request = extensionUi.request;
+  if (!request) return null;
   return (
     <DialogBackdrop>
       <UiDialog
-        key={extensionUi.request.uiRequestId}
-        request={extensionUi.request}
+        key={`${request.sessionId}:${request.operationId}:${request.uiRequestId}`}
+        request={request}
         extensionUi={extensionUi}
-        authNotice={root.settingsStore.providers.authNoticeForRequest(extensionUi.request)}
+        authNotice={root.settingsStore.providers.authNoticeForRequest(request)}
         openAuthUrl={(url) => void root.settingsStore.providers.openAuthUrl(url)}
       />
     </DialogBackdrop>

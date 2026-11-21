@@ -218,7 +218,7 @@ export function createSessionRuntimeHandle(input: {
     paused = false,
     admissionId?: string,
     internal = recovered?.internal,
-    antigravity?: Pick<CakeAntigravityInput, "permission" | "ownerSignal">,
+    antigravity?: Pick<CakeAntigravityInput, "permission" | "cakeBridgeOwnerSignal">,
   ) {
     if (shared.runtime.antigravityActive)
       return yield* new PiSessionError({

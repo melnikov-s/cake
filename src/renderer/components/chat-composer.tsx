@@ -92,7 +92,7 @@ export const ChatComposer = observer(function ChatComposer({
             {!inline && configuration?.antigravity?.selected && (
               <p className="px-2 py-1 text-xs text-muted-foreground">
                 {configuration.antigravity.projectChat
-                  ? "Each turn starts fresh. Google Antigravity receives your message, Cake instructions, and selected chat excerpts, not Pi replies, attachments, or tool logs. It can access the workspace. Cake asks before running a Cake operation and sharing its result with Google."
+                  ? "Each turn starts fresh. Google Antigravity receives your message, Cake instructions, and selected chat excerpts, not Pi replies, attachments, or tool logs. It can access the workspace. Only a local Cake window can allow Cake operations. One approval covers the operation and sharing its result with Google."
                   : "Cake sends its instructions and this message, not Pi history. Antigravity can access the workspace and may remember its own earlier turns."}
               </p>
             )}

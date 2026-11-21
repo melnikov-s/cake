@@ -396,8 +396,8 @@ export const ProjectTodoReceipt = Schema.Struct({
 
 export interface ProjectTodoControl {
   select(input: ProjectTodoSelection, signal: AbortSignal): Promise<ProjectTodoSelection>;
-  list(input: ProjectTodoListInput, signal: AbortSignal): Promise<ProjectTodoList>;
-  read(id: string, signal: AbortSignal): Promise<ProjectTodoDetail>;
+  list(input: ProjectTodoListInput, signal: AbortSignal, mode?: "stored"): Promise<ProjectTodoList>;
+  read(id: string, signal: AbortSignal, mode?: "stored"): Promise<ProjectTodoDetail>;
   create(input: ProjectTodoCreate, signal: AbortSignal): Promise<ProjectTodo>;
   update(input: ProjectTodoUpdate, signal: AbortSignal): Promise<ProjectTodo>;
   updateMany(

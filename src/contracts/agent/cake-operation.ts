@@ -26,6 +26,8 @@ export interface CakeOperationExecutionContext {
   toolCallId: string;
   onUpdate?(value: JsonValue): void;
   runtime: CakeOperationRuntime;
+  /** Internal dispatch policy, not a model input. External reads skip to-do repair. */
+  todoReadMode?: "stored";
 }
 
 export interface CakeOperationExample {

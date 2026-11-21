@@ -90,9 +90,7 @@ export function createDurableAntigravity(options: {
   );
   let before: EntryId | undefined;
   let cakeDataAccessed = false;
-  const instructions = [cakePortableInstructions("project-chat"), options.cake.instructions].join(
-    "\n\n",
-  );
+  const portableInstructions = cakePortableInstructions("project-chat");
   return createAntigravityTurnController({
     cwd,
     sessionId: () => sessionId,
@@ -117,10 +115,15 @@ export function createDurableAntigravity(options: {
         });
       }, BACKGROUND_CONTEXT);
     },
-    async prepare({ text, permission }, signal) {
-      const cakeCall = options.cake.forTurn(permission, () => {
-        cakeDataAccessed = true;
-      });
+    async prepare({ text, permission, cakeBridgeOwnerSignal }, signal) {
+      const cakeCall = cakeBridgeOwnerSignal
+        ? options.cake.forTurn(permission, () => {
+            cakeDataAccessed = true;
+          })
+        : undefined;
+      const instructions = cakeCall
+        ? [portableInstructions, options.cake.instructions].join("\n\n")
+        : portableInstructions;
       // UTF-8 frame bytes are conservatively counted against the configured
       // token cap. The adapter checks the exact serialized frame with its real
       // ACP session id. Fit the history after reserving the complete user text,

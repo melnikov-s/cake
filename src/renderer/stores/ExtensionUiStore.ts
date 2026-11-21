@@ -20,6 +20,17 @@ export interface UiRequestState {
   options?: ReadonlyArray<{ id: string; label: string }>;
 }
 
+type UiRequestIdentity = Pick<UiRequestState, "operationId" | "sessionId" | "uiRequestId">;
+
+function sameRequest(request: UiRequestIdentity | undefined, identity: UiRequestIdentity) {
+  return (
+    request !== undefined &&
+    request.operationId === identity.operationId &&
+    request.sessionId === identity.sessionId &&
+    request.uiRequestId === identity.uiRequestId
+  );
+}
+
 export interface ExtensionNotification {
   id: string;
   message: string;
@@ -44,7 +55,11 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     return this.client.artifacts;
   }
 
-  request: UiRequestState | undefined;
+  private readonly requests = observable<UiRequestState[]>([]);
+
+  get request() {
+    return this.requests[0];
+  }
   readonly notifications: ExtensionNotification[] = observable([]);
   private readonly notificationExpiry = new ToastExpiry();
   error: string | undefined;
@@ -67,13 +82,14 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     return this.props.activeSessionModel()?.extensionUi.compatibilityDiagnostics ?? [];
   }
 
-  async respond(value?: string, cancelled = false) {
-    const request = this.request;
-    if (!request) return;
+  async respond(request: UiRequestIdentity, value?: string, cancelled = false) {
+    // A callback can outlive the dialog that rendered it. Never apply its
+    // value (including Cancel) to a different request, even in the same chat.
+    if (this.signal.aborted || !sameRequest(this.request, request)) return;
     this.error = undefined;
     this.errorDetails = undefined;
-    this.request = undefined;
-    this.props.requestComposerFocus();
+    this.requests.shift();
+    if (!this.request) this.props.requestComposerFocus();
     try {
       await this.artifacts.respondToUi({
         operationId: request.operationId,
@@ -115,7 +131,7 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   }
 
   clear() {
-    this.request = undefined;
+    this.requests.splice(0);
     this.notificationExpiry.clear();
     this.notifications.splice(0);
   }
@@ -142,20 +158,25 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
       return;
     }
     if (event.type === "ui-request-settled") {
-      if (
-        this.request?.uiRequestId === event.uiRequestId &&
-        this.request.sessionId === event.sessionId
-      ) {
-        this.request = undefined;
-        this.props.requestComposerFocus();
+      const index = this.requests.findIndex((request) =>
+        sameRequest(request, {
+          operationId: event.requestId,
+          uiRequestId: event.uiRequestId,
+          sessionId: event.sessionId,
+        }),
+      );
+      if (index >= 0) {
+        this.requests.splice(index, 1);
+        if (!this.request) this.props.requestComposerFocus();
       }
       return;
     }
     if (event.type === "ui-requested") {
-      this.request = event;
+      // Keep the open dialog stable while other requests arrive.
+      if (!this.requests.some((request) => sameRequest(request, event))) this.requests.push(event);
       return;
     }
     if (event.type === "agent-availability-changed" && event.availability.state === "unavailable")
-      this.request = undefined;
+      this.requests.splice(0);
   }
 }

@@ -197,7 +197,7 @@ export interface CakeSessionHandle {
   readonly antigravity?: (
     text: string,
     markdown: boolean,
-    access: Pick<CakeAntigravityInput, "permission" | "ownerSignal">,
+    access: Pick<CakeAntigravityInput, "permission" | "cakeBridgeOwnerSignal">,
   ) => Effect.Effect<string, PiSessionError>;
   readonly updates: Stream.Stream<PiSessionUpdate, PiSessionError>;
   readonly snapshot: () => Effect.Effect<ConversationSnapshot, PiSessionError>;

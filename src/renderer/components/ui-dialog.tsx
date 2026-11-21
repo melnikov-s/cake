@@ -30,7 +30,7 @@ export function UiDialog({
   );
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    void extensionUi.respond(value);
+    void extensionUi.respond(request, value);
   };
   return (
     <Confirmation role="alertdialog" aria-labelledby="ui-title" aria-describedby="ui-message">
@@ -126,12 +126,15 @@ export function UiDialog({
         <ConfirmationActions>
           <ConfirmationAction
             variant="outline"
-            onClick={() => void extensionUi.respond(undefined, true)}
+            onClick={() => void extensionUi.respond(request, undefined, true)}
           >
             Cancel
           </ConfirmationAction>
           {request.kind === "confirm" && (
-            <ConfirmationAction variant="outline" onClick={() => void extensionUi.respond("false")}>
+            <ConfirmationAction
+              variant="outline"
+              onClick={() => void extensionUi.respond(request, "false")}
+            >
               Decline
             </ConfirmationAction>
           )}
