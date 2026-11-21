@@ -69,9 +69,11 @@ export const observe = (): Stream.Stream<
       // Existing activity notifications cover turn start/settlement (including abort).
       // Refresh the source and worktrees landing there: target advancement changes outstanding
       // stats even when a child's HEAD is unchanged. Title/read changes do no Git work.
+      // A resync means activity notices were missed, so every worktree's stats may be stale.
       const refreshes = changes.initialThenChanges(Stream.empty).pipe(
         Stream.filter(
           (change) =>
+            change._tag === "Resync" ||
             change._tag === "ProjectSessionActivityChanged" ||
             change._tag === "ProjectSessionChanged",
         ),
@@ -81,10 +83,11 @@ export const observe = (): Stream.Stream<
               records
                 .filter(
                   (record) =>
-                    record.projectPath === change.projectPath &&
-                    (record.worktreePath === change.workingDirectory ||
-                      (record.parentWorktreePath ?? record.projectPath) ===
-                        change.workingDirectory),
+                    change._tag === "Resync" ||
+                    (record.projectPath === change.projectPath &&
+                      (record.worktreePath === change.workingDirectory ||
+                        (record.parentWorktreePath ?? record.projectPath) ===
+                          change.workingDirectory)),
                 )
                 .map((worktree): ManagedWorktreeCatalogUpdate => ({
                   _tag: "Event",

@@ -390,7 +390,8 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
       Stream.mapEffect((item) =>
         item._tag === "InitialResolved"
           ? Effect.succeed(item.resolved)
-          : (item._tag === "ProjectSessionStatusChanged" &&
+          : item._tag === "Resync" ||
+              (item._tag === "ProjectSessionStatusChanged" &&
                 item.sessionId === authoritySessionId) ||
               (item._tag === "ProjectSessionsTransitioned" &&
                 item.sessions.some(({ sessionId }) => sessionId === authoritySessionId))

@@ -4,6 +4,7 @@ import { expect } from "vitest";
 import { events } from "../../../src/domain/widgets/widgetUpdates";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
+import { changeFeedResync } from "../../../src/services/change-feeds/ChangeFeed";
 import type { WidgetEvent } from "../../../src/contracts/widgets/widget-updates";
 import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 
@@ -79,6 +80,28 @@ it.effect("exposes typed execution invalidations and a reconnect-ready signal", 
               },
             ),
         }),
+      ),
+    ),
+  ),
+);
+
+it.effect("asks widgets to re-read current data after the catalog dropped their changes", () =>
+  Effect.gen(function* () {
+    const result = yield* events({ topic: "session.changed", filter: {} }, 7).pipe(
+      Stream.runCollect,
+    );
+    expect(result).toEqual([
+      { kind: "ready", topic: "session.changed" },
+      { kind: "ready", topic: "session.changed" },
+    ]);
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        Layer.mock(SessionCatalogChanges, {
+          initialThenChanges: (initial) =>
+            initial.pipe(Stream.concat(Stream.make(changeFeedResync))),
+        }),
+        Layer.mock(ClientEvents, { sendTo: () => false, broadcast: () => {} }),
       ),
     ),
   ),

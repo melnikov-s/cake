@@ -4575,13 +4575,16 @@ describe("Project Sessions domain", () => {
         entryId: "assistant-entry",
         prompt: "Continue",
       });
-
-      assert.equal(
+      const announced = () =>
         changes.filter(
           (change) => change._tag === "ProjectSessionChanged" && change.sessionId === "session-1",
-        ).length,
-        2,
-      );
+        ).length;
+      // The delivered prompt is announced after admission, off the send path; wait for it,
+      // then make sure nothing announces it again.
+      for (let turn = 0; turn < 200 && announced() < 2; turn++) yield* Effect.yieldNow;
+      for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
+
+      assert.equal(announced(), 2);
     }).pipe(
       Effect.provide(
         makeLayer(defaultApplicationState(), {

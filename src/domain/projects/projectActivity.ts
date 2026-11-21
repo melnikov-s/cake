@@ -18,7 +18,10 @@ export const observeProjectActivity = Effect.fn("Projects.observeActivity")(func
     [
       changes.initialThenChanges(Stream.empty).pipe(
         Stream.filter(
-          (event) => event._tag.endsWith("ActivityChanged") || event._tag.startsWith("CakeChat"),
+          (event) =>
+            event._tag === "Resync" ||
+            event._tag.endsWith("ActivityChanged") ||
+            event._tag.startsWith("CakeChat"),
         ),
         Stream.map(() => undefined),
       ),

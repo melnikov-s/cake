@@ -8,13 +8,13 @@ import { resumeAfterUserInput } from "../session-families/workboardDeliveries";
 import { takePassiveNotices } from "../session-families/updateBatches";
 import * as messageReferences from "./messageReferences";
 import * as projectTodoAttention from "../projects/projectTodoAttention";
-import { withDeliveryDeadline } from "./deliveryDeadlines";
+import { DELIVERY_RUNTIME_TIMEOUT } from "./deliveryDeadlines";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { toJsonValue } from "../../utils/to-json-value";
 import type { AttachmentReadInput } from "../../contracts/conversations/attachment-reference-control";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
-import { Effect, Option } from "effect";
+import { Cause, Duration, Effect, Option } from "effect";
 import * as cakeChatDigest from "../cake-chats/cakeChatDigest";
 import {
   inheritTaskInputProtection,
@@ -62,14 +62,50 @@ import {
   use as useConversation,
 } from "./conversations";
 
-/** A stuck Pi admission fails this one send visibly instead of holding the chat's delivery lock. */
-const deliveryDeadline = withDeliveryDeadline(
-  () =>
-    new SessionChatError({
-      operation: "deliver",
-      message: "Cake could not hand this message to the agent. Try sending it again.",
-    }),
-);
+/**
+ * A stuck Pi admission fails this one send visibly instead of holding the chat's delivery lock.
+ * Pi saves an input and starts its run together, so a saved input past the deadline is running:
+ * that send succeeded. Only an unsaved input fails, and the composer keeps its draft.
+ */
+const admitWithinDeadline = Effect.fn("SessionChats.admitWithinDeadline")(function* (
+  handle: CakeSessionHandle,
+  target: { readonly sessionId: string; readonly turnId: string | undefined },
+  admit: Effect.Effect<string, PiSessionError>,
+) {
+  const admitted = yield* admit.pipe(Effect.timeoutOption(DELIVERY_RUNTIME_TIMEOUT));
+  if (Option.isSome(admitted)) return admitted.value;
+  const { sessionId, turnId } = target;
+  const receipt =
+    turnId && handle.inputReceipt
+      ? yield* handle.inputReceipt(turnId).pipe(
+          Effect.timeoutOption(DELIVERY_RUNTIME_TIMEOUT),
+          Effect.map(Option.getOrUndefined),
+          Effect.catchTag("PiSessionError", () => Effect.succeed(undefined)),
+        )
+      : undefined;
+  const seconds = Duration.toSeconds(DELIVERY_RUNTIME_TIMEOUT);
+  if (turnId && (receipt === "pending" || receipt === "consumed")) {
+    yield* Effect.logWarning("Pi admission passed the delivery deadline after saving the input", {
+      step: "admission",
+      sessionId,
+      turnId,
+      receipt,
+      seconds,
+    });
+    return turnId;
+  }
+  yield* Effect.logError("Delivery timed out", {
+    step: "admission",
+    sessionId,
+    turnId,
+    receipt,
+    seconds,
+  });
+  return yield* new SessionChatError({
+    operation: "deliver",
+    message: `Cake could not hand this message to the agent: Pi admission did not answer within ${seconds} seconds (session ${sessionId}${turnId ? `, turn ${turnId}` : ""}). Try sending it again.`,
+  });
+});
 
 const asError =
   (operation: string) =>
@@ -250,7 +286,13 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
           admissionId,
         );
       const turnId = TurnId.make(
-        yield* (
+        yield* admitWithinDeadline(
+          handle,
+          {
+            sessionId: input.sessionId,
+            // Pi names the input by this id, or by the cross-session message id it carries.
+            turnId: admissionId ?? message.crossSession?.messageId,
+          },
           admissionId
             ? handle.submit({
                 turnId: admissionId,
@@ -277,8 +319,8 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
                 input.renderUserMessageAsMarkdown,
                 input.presentationMode,
                 input.responseMode,
-              )
-        ).pipe(deliveryDeadline, asError("deliver")),
+              ),
+        ).pipe(asError("deliver")),
       );
       if (storage && admissionId && passive.length)
         yield* storage.markPassiveNoticeAdmission(
@@ -298,7 +340,19 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       // The user's message carried the pending batch, so its timer is cancelled.
       if (storage && carriesUpdates)
         yield* storage.closeUpdateBatch(input.sessionId).pipe(asError("deliver"));
-      yield* handle.publishSessionChanged().pipe(deliveryDeadline, asError("deliver"));
+      // A change notice, not admission: the input is already saved and running.
+      yield* handle.publishSessionChanged().pipe(
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Effect.void
+            : Effect.logWarning("Could not announce a delivered message", {
+                sessionId: input.sessionId,
+                turnId,
+                cause: Cause.pretty(cause),
+              }),
+        ),
+        Effect.forkDetach,
+      );
       return turnId;
     });
   if (!storage) return yield* admission(true).pipe(asError("deliver"));

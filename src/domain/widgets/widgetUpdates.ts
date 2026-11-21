@@ -38,6 +38,9 @@ const eventSource = Effect.fn("WidgetUpdates.eventSource")(function* (
     .pipe(
       Stream.flatMap((change): Stream.Stream<WidgetEvent> => {
         if ("kind" in change) return Stream.make(change);
+        // Missed changes: widgets re-read current data on "ready", as after a reconnection.
+        if (change._tag === "Resync")
+          return Stream.make({ kind: "ready", topic } satisfies WidgetEvent);
         const removed =
           change._tag === "ProjectSessionRemoved" || change._tag === "CakeChatSessionRemoved";
         if ((input.topic === "session.removed") !== removed) return Stream.empty;

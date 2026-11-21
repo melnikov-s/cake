@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
-import { Effect, Layer } from "effect";
+import { Deferred, Effect, Layer, Queue, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   SavedDraftStorage,
@@ -130,6 +130,37 @@ describe("Saved Draft authority", () => {
       expect(saved?.revision).toBe(3);
       const persisted = JSON.parse(await readFile(join(directory, "saved-drafts.json"), "utf8"));
       expect(persisted.records).toHaveLength(1);
+    });
+  });
+
+  it("writes never wait for an observer that stopped reading; it re-reads when resumed", async () => {
+    await withStorage(async (directory) => {
+      await run(
+        directory,
+        Effect.gen(function* () {
+          const storage = yield* SavedDraftStorage;
+          yield* storage.create(record);
+          const subscribed = yield* Deferred.make<void>();
+          const resume = yield* Deferred.make<void>();
+          const observed = yield* Queue.unbounded<ReadonlyArray<SavedDraft>>();
+          yield* storage.observe().pipe(
+            Stream.tap(() =>
+              Deferred.succeed(subscribed, undefined).pipe(Effect.andThen(Deferred.await(resume))),
+            ),
+            Stream.runForEach((records) => Queue.offer(observed, records)),
+            Effect.forkScoped,
+          );
+          yield* Deferred.await(subscribed);
+          let latest = record;
+          // Each write publishes while holding the file lock; a full buffer used to stall here.
+          for (let edit = 1; edit <= 1_100; edit++)
+            latest = yield* storage.update({ ...latest, text: `Edit ${edit}` }, latest.revision);
+          yield* Deferred.succeed(resume, undefined);
+          expect(yield* Queue.take(observed)).toEqual([record]);
+          expect(yield* Queue.take(observed)).toEqual([latest]);
+          expect(latest.text).toBe("Edit 1100");
+        }).pipe(Effect.scoped),
+      );
     });
   });
 });

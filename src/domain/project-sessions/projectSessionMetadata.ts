@@ -1046,32 +1046,26 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
       }),
     )
     .pipe(
-      Stream.mapAccum<
-        { revision: number; initialized: boolean },
-        CatalogStreamItem,
-        SessionCatalogUpdate
-      >(
-        () => ({ revision: 0, initialized: false }),
-        (state, item) => {
-          const revision = state.revision + 1;
-          if (item._tag === "InitialBatch") {
-            const update: SessionCatalogUpdate =
-              state.initialized && !query.resolved
-                ? {
-                    _tag: "Event",
-                    revision,
-                    event: { _tag: "UpsertedBatch", sessions: item.sessions },
-                  }
-                : {
-                    _tag: "Snapshot",
-                    revision,
-                    sessions: item.sessions,
-                    ...(item.hasMore === undefined ? null : { hasMore: item.hasMore }),
-                    ...(item.total === undefined ? null : { total: item.total }),
-                  };
-            return [{ revision, initialized: true }, [update]];
-          }
-          return [{ revision, initialized: true }, [{ _tag: "Event", revision, event: item }]];
+      // Every initial scan is authoritative for the group, including the rescan after a
+      // resync, so it replaces the page rather than leaving sessions removed meanwhile.
+      Stream.mapAccum<number, CatalogStreamItem, SessionCatalogUpdate>(
+        () => 0,
+        (previous, item) => {
+          const revision = previous + 1;
+          if (item._tag === "InitialBatch")
+            return [
+              revision,
+              [
+                {
+                  _tag: "Snapshot",
+                  revision,
+                  sessions: item.sessions,
+                  ...(item.hasMore === undefined ? null : { hasMore: item.hasMore }),
+                  ...(item.total === undefined ? null : { total: item.total }),
+                },
+              ],
+            ];
+          return [revision, [{ _tag: "Event", revision, event: item }]];
         },
       ),
     );

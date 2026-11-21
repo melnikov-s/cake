@@ -237,4 +237,114 @@ describe("SessionCatalogChanges", () => {
       assert.deepEqual(observed, ["initial metadata", change]);
     }).pipe(Effect.provide(SessionCatalogChanges.layer)),
   );
+  const changed = (index: number): SessionCatalogChange => ({
+    _tag: "CakeChatSessionChanged",
+    sessionId: `session-${index}`,
+    resolved: false,
+  });
+
+  /** One subscriber whose initial scan waits on `resume`, so it reads none of its changes. */
+  const stalledSubscriber = Effect.fn("SessionCatalogChangesTest.stalledSubscriber")(function* <A>(
+    subscribe: (initial: Stream.Stream<number>) => Stream.Stream<A, unknown>,
+  ) {
+    const subscribed = yield* Deferred.make<void>();
+    const resume = yield* Deferred.make<void>();
+    const received = yield* Queue.unbounded<A>();
+    let scans = 0;
+    const initial = Stream.fromEffect(
+      Effect.gen(function* () {
+        scans++;
+        if (scans === 1) {
+          yield* Deferred.succeed(subscribed, undefined);
+          yield* Deferred.await(resume);
+        }
+        return scans;
+      }),
+    );
+    yield* subscribe(initial).pipe(
+      Stream.runForEach((item) => Queue.offer(received, item)),
+      Effect.forkScoped,
+    );
+    yield* Deferred.await(subscribed);
+    return { resume: Deferred.succeed(resume, undefined), received };
+  });
+
+  const publishAll = Effect.fn("SessionCatalogChangesTest.publishAll")(function* (count: number) {
+    const catalogs = yield* SessionCatalogChanges;
+    let published = 0;
+    const publishing = yield* Effect.forEach(
+      Array.from({ length: count }, (_, index) => index),
+      (index) =>
+        catalogs.publish(changed(index)).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              published++;
+            }),
+          ),
+        ),
+      { discard: true },
+    ).pipe(Effect.forkChild);
+    // A publish that waits on a subscriber never completes; one that cannot finishes promptly.
+    for (let turn = 0; turn < 10_000 && !publishing.pollUnsafe(); turn++) yield* Effect.yieldNow;
+    assert.ok(
+      publishing.pollUnsafe(),
+      `publish ${published + 1} of ${count} waited for a subscriber that stopped reading`,
+    );
+    assert.equal(published, count);
+  });
+
+  it.effect("a subscriber that stops reading never blocks publishing and resyncs later", () =>
+    Effect.gen(function* () {
+      const catalogs = yield* SessionCatalogChanges;
+      const stalled = yield* stalledSubscriber((initial) => catalogs.initialThenChanges(initial));
+      yield* publishAll(1_100);
+      yield* stalled.resume;
+      assert.equal(yield* Queue.take(stalled.received), 1);
+      // The notices it missed are replaced by one resync, then it follows new changes again.
+      assert.deepEqual(yield* Queue.take(stalled.received), { _tag: "Resync" });
+      yield* catalogs.publish(changed(1_100));
+      assert.deepEqual(yield* Queue.take(stalled.received), changed(1_100));
+    }).pipe(Effect.scoped, Effect.provide(SessionCatalogChanges.layer)),
+  );
+
+  it.effect("a projected subscriber that fell behind rereads its initial state", () =>
+    Effect.gen(function* () {
+      const catalogs = yield* SessionCatalogChanges;
+      const stalled = yield* stalledSubscriber((initial) =>
+        catalogs.initialThenProjectChanges(
+          initial.pipe(
+            Stream.map((scan): ProjectCatalogItem => ({
+              _tag: "InitialBatch",
+              sessions: [],
+              total: scan,
+            })),
+          ),
+          "same",
+          (change) =>
+            Effect.succeed(
+              "sessionId" in change
+                ? [{ _tag: "Removed" as const, sessionId: change.sessionId }]
+                : [],
+            ),
+        ),
+      );
+      yield* publishAll(1_100);
+      yield* stalled.resume;
+      assert.deepEqual(yield* Queue.take(stalled.received), {
+        _tag: "InitialBatch",
+        sessions: [],
+        total: 1,
+      });
+      assert.deepEqual(yield* Queue.take(stalled.received), {
+        _tag: "InitialBatch",
+        sessions: [],
+        total: 2,
+      });
+      yield* catalogs.publish(changed(1_100));
+      assert.deepEqual(yield* Queue.take(stalled.received), {
+        _tag: "Removed",
+        sessionId: "session-1100",
+      });
+    }).pipe(Effect.scoped, Effect.provide(SessionCatalogChanges.layer)),
+  );
 });

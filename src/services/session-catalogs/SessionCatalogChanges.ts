@@ -1,4 +1,9 @@
-import { Cache, Context, Effect, Equal, Hash, Layer, PubSub, Ref, Stream } from "effect";
+import { Cache, Context, Effect, Equal, Hash, Layer, Ref, Stream } from "effect";
+import {
+  isChangeFeedResync,
+  makeChangeFeed,
+  type ChangeFeedResync,
+} from "../change-feeds/ChangeFeed";
 import type { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
 import type {
   ProjectSessionError,
@@ -90,15 +95,25 @@ export type SessionCatalogChange =
     }
   | { readonly _tag: "CakeChatSessionRemoved"; readonly sessionId: string };
 
+/** This subscriber missed changes while it was not reading; re-read authoritative state. */
+export type SessionCatalogResync = ChangeFeedResync;
+
 export class SessionCatalogChanges extends Context.Service<
   SessionCatalogChanges,
   {
+    /** Never waits for subscribers, so it is safe while holding turn admission. */
     readonly publish: (change: SessionCatalogChange) => Effect.Effect<void>;
-    /** Subscribes before consuming the finite initial scan, so mutations cannot fall in a gap. */
+    /**
+     * Subscribes before consuming the finite initial scan, so mutations cannot fall in a gap.
+     * A subscriber that fell behind gets one `Resync` in place of the changes it missed.
+     */
     readonly initialThenChanges: <A, E, R>(
       initial: Stream.Stream<A, E, R>,
-    ) => Stream.Stream<A | SessionCatalogChange, E, R>;
-    /** Per-publication, bounded memoization, never a cross-change status cache. */
+    ) => Stream.Stream<A | SessionCatalogChange | SessionCatalogResync, E, R>;
+    /**
+     * Per-publication, bounded memoization, never a cross-change status cache. After falling
+     * behind, the subscriber runs `initial` again instead of projecting the changes it missed.
+     */
     readonly initialThenProjectChanges: <R>(
       initial: Stream.Stream<ProjectCatalogItem, ProjectSessionError, R>,
       key: string,
@@ -112,7 +127,7 @@ export class SessionCatalogChanges extends Context.Service<
     SessionCatalogChanges,
     Effect.gen(function* () {
       const revision = yield* Ref.make(0);
-      const changes = yield* PubSub.bounded<{
+      const changes = yield* makeChangeFeed<{
         readonly revision: number;
         readonly change: SessionCatalogChange;
         readonly projections: Cache.Cache<
@@ -120,8 +135,7 @@ export class SessionCatalogChanges extends Context.Service<
           ReadonlyArray<ProjectCatalogItem>,
           ProjectSessionError
         >;
-      }>({ capacity: 1_024 });
-      yield* Effect.addFinalizer(() => PubSub.shutdown(changes));
+      }>({ name: "session-catalog", capacity: 1_024 });
       return SessionCatalogChanges.of({
         publish: Effect.fn("SessionCatalogChanges.publish")(function* (change) {
           // An envelope lives only as long as its subscribers' pending change.
@@ -131,27 +145,31 @@ export class SessionCatalogChanges extends Context.Service<
             lookup: (request: ProjectionRequest) => request.compute,
           });
           const nextRevision = yield* Ref.updateAndGet(revision, (value) => value + 1);
-          yield* PubSub.publish(changes, { revision: nextRevision, change, projections });
+          yield* changes.publish({ revision: nextRevision, change, projections });
         }),
         initialThenChanges: (initial) =>
           Stream.unwrap(
-            PubSub.subscribe(changes).pipe(
-              Effect.map((subscription) =>
-                initial.pipe(
-                  Stream.concat(
-                    Stream.fromSubscription(subscription).pipe(Stream.map(({ change }) => change)),
+            changes
+              .subscribe()
+              .pipe(
+                Effect.map((subscription) =>
+                  initial.pipe(
+                    Stream.concat(
+                      subscription.pipe(
+                        Stream.map((item) => (isChangeFeedResync(item) ? item : item.change)),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
           ),
         initialThenProjectChanges: (initial, key, project) =>
           Stream.unwrap(
             Effect.gen(function* () {
               const services = yield* Effect.context<Effect.Services<ReturnType<typeof project>>>();
-              const subscription = yield* PubSub.subscribe(changes);
+              const subscription = yield* changes.subscribe();
               let initialRevision = 0;
-              return initial.pipe(
+              const scan = initial.pipe(
                 Stream.tap(() =>
                   Ref.get(revision).pipe(
                     Effect.map((value) => {
@@ -159,19 +177,24 @@ export class SessionCatalogChanges extends Context.Service<
                     }),
                   ),
                 ),
+              );
+              return scan.pipe(
                 Stream.concat(
-                  Stream.fromSubscription(subscription).pipe(
-                    Stream.mapEffect(({ revision: changeRevision, change, projections }) => {
+                  subscription.pipe(
+                    Stream.flatMap((item) => {
+                      if (isChangeFeedResync(item)) return scan;
+                      const { revision: changeRevision, change, projections } = item;
                       const compute = project(change).pipe(Effect.provideContext(services));
                       // Another subscriber may have cached this change before our
                       // initial scan finished. Catch up freshly rather than replay an
                       // older projection over a newer initial snapshot. Never drop it:
                       // the initial scan may itself have read a row before that change.
-                      return changeRevision <= initialRevision
-                        ? compute
-                        : Cache.get(projections, new ProjectionRequest(key, compute));
+                      return Stream.fromEffect(
+                        changeRevision <= initialRevision
+                          ? compute
+                          : Cache.get(projections, new ProjectionRequest(key, compute)),
+                      ).pipe(Stream.flatMap(Stream.fromIterable));
                     }),
-                    Stream.flatMap(Stream.fromIterable),
                   ),
                 ),
               );

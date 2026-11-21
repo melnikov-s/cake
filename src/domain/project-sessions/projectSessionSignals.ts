@@ -16,6 +16,7 @@ import { ProjectSessionConfiguration } from "../../services/project-sessions/Pro
 import {
   SessionCatalogChanges,
   type SessionCatalogChange,
+  type SessionCatalogResync,
 } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
@@ -144,14 +145,18 @@ export const observeSignals = Effect.fn("ProjectSessions.observeSignals")(functi
   // Subscribe before the current-first registration stream starts the filename scan.
   return changes.initialThenChanges(Stream.succeed({ _tag: "ObserveProjects" as const })).pipe(
     Stream.flatMap(
-      (change): Stream.Stream<SessionCatalogChange | { readonly _tag: "RefreshSignals" }> =>
-        change._tag === "ObserveProjects" ? projects : Stream.succeed(change),
+      (
+        change,
+      ): Stream.Stream<
+        SessionCatalogChange | SessionCatalogResync | { readonly _tag: "RefreshSignals" }
+      > => (change._tag === "ObserveProjects" ? projects : Stream.succeed(change)),
       { concurrency: 2 },
     ),
     Stream.mapEffect((change) =>
       Effect.gen(function* () {
         if (
           change._tag === "RefreshSignals" ||
+          change._tag === "Resync" ||
           change._tag === "ProjectSessionChanged" ||
           change._tag === "ProjectSessionsTransitioned"
         )

@@ -7,6 +7,7 @@ import { observe } from "../../../src/domain/worktrees/worktreeCatalog";
 import { Git, GitError } from "../../../src/services/git/Git";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
+import { changeFeedResync } from "../../../src/services/change-feeds/ChangeFeed";
 
 it.effect(
   "reads the local default once per Project per update and preserves ordered lifecycle facts",
@@ -227,4 +228,60 @@ it.effect(
         unavailableReason: "Missing branch",
       });
     }).pipe(Effect.provide(SessionCatalogChanges.layer)),
+);
+
+it.effect("refreshes every worktree after the catalog dropped activity changes", () =>
+  Effect.gen(function* () {
+    const records: WorktreeRecord[] = [
+      {
+        projectPath: "/project",
+        worktreePath: "/worktree",
+        branch: "agent/change",
+        baseBranch: "main",
+        createdAt: "",
+      },
+      {
+        projectPath: "/other",
+        worktreePath: "/other-worktree",
+        branch: "agent/other",
+        baseBranch: "main",
+        createdAt: "",
+      },
+    ];
+    const updates = yield* observe().pipe(
+      Stream.take(3),
+      Stream.runCollect,
+      Effect.provide(
+        Layer.mergeAll(
+          // The missed notices could have named any worktree, so none may keep stale stats.
+          Layer.mock(SessionCatalogChanges, {
+            initialThenChanges: () => Stream.make(changeFeedResync),
+          }),
+          Layer.mock(ManagedWorktrees, {
+            records: () => Effect.succeed(records),
+            observe: () =>
+              Stream.make({ _tag: "Snapshot" as const, worktrees: records }).pipe(
+                Stream.concat(Stream.never),
+              ),
+          }),
+          Layer.succeed(
+            Git,
+            Git.of({
+              run: (cwd) =>
+                Effect.fail(
+                  new GitError({ operation: "read", workingDirectory: cwd, message: "No refs" }),
+                ),
+            }),
+          ),
+        ),
+      ),
+    );
+    expect(
+      Array.from(updates)
+        .map((update) =>
+          update._tag === "Snapshot" ? "snapshot" : update.event.worktree.worktreePath,
+        )
+        .toSorted(),
+    ).toEqual(["/other-worktree", "/worktree", "snapshot"]);
+  }),
 );

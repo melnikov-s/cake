@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import type { Clock, Semaphore } from "effect";
 import {
+  Cause,
   Deferred,
   Effect,
   Option,
@@ -371,43 +372,60 @@ export function createSessionRuntimeHandle(input: {
       }),
       Effect.ensuring(Scope.close(turnScope, Exit.void)),
     );
-    const accept = Effect.gen(function* () {
-      yield* persistInput(
-        retained,
-        {
+    // Catalog/activity listeners must not hold admission: a slow one would stall every send.
+    const announceActivity = (options.onTurnActivityChanged ?? Effect.void).pipe(
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.void
+          : Effect.logWarning("Could not announce accepted turn activity", {
+              sessionId: retained.runtime.sessionId,
+              turnId,
+              cause: Cause.pretty(cause),
+            }),
+      ),
+      Effect.forkIn(layerScope),
+    );
+    // Saving the input and starting its run are one step: a send deadline must not leave an
+    // input saved but never running. The caller's receipt check relies on this.
+    const accept = Effect.uninterruptible(
+      Effect.gen(function* () {
+        yield* persistInput(
+          retained,
+          {
+            turnId,
+            text,
+            delivery,
+            attachments: [...attachments],
+            markdown,
+            ...(internal === undefined ? null : { internal }),
+            ...(presentationMode === undefined ? null : { presentationMode }),
+            ...(responseMode === undefined ? null : { responseMode }),
+            ...(automaticTitle === undefined ? null : { automaticTitle }),
+          },
+          paused,
+        ).pipe(sessionError(delivery));
+        if (delivery !== "follow-up") {
+          const alreadyWorking =
+            retained.runtime.streaming ||
+            [...(yield* Ref.get(retained.activeTurns))].some(
+              ([id, kind]) => kind !== "follow-up" && !retained.settledInputIds.has(id),
+            );
+          if (!alreadyWorking) retained.activityTiming.startedAt = clock.currentTimeMillisUnsafe();
+        }
+        yield* Ref.update(retained.activeTurns, (turns) => new Map(turns).set(turnId, delivery));
+        yield* PubSub.publish(retained.events, {
+          type: "turn-accepted",
+          sessionId: retained.runtime.sessionId,
           turnId,
-          text,
           delivery,
-          attachments: [...attachments],
-          markdown,
-          ...(internal === undefined ? null : { internal }),
-          ...(presentationMode === undefined ? null : { presentationMode }),
-          ...(responseMode === undefined ? null : { responseMode }),
-          ...(automaticTitle === undefined ? null : { automaticTitle }),
-        },
-        paused,
-      ).pipe(sessionError(delivery));
-      if (delivery !== "follow-up") {
-        const alreadyWorking =
-          retained.runtime.streaming ||
-          [...(yield* Ref.get(retained.activeTurns))].some(
-            ([id, kind]) => kind !== "follow-up" && !retained.settledInputIds.has(id),
-          );
-        if (!alreadyWorking) retained.activityTiming.startedAt = clock.currentTimeMillisUnsafe();
-      }
-      yield* Ref.update(retained.activeTurns, (turns) => new Map(turns).set(turnId, delivery));
-      yield* PubSub.publish(retained.events, {
-        type: "turn-accepted",
-        sessionId: retained.runtime.sessionId,
-        turnId,
-        delivery,
-      });
-      yield* options.onTurnActivityChanged ?? Effect.void;
-      yield* run.pipe(
-        Effect.ensuring(Deferred.succeed(finished, undefined)),
-        Effect.forkIn(layerScope),
-      );
-    });
+        });
+        yield* run.pipe(
+          Effect.ensuring(Deferred.succeed(finished, undefined)),
+          Effect.forkIn(layerScope),
+        );
+        yield* announceActivity;
+      }),
+    );
     yield* (
       options.admitTurn
         ? options.admitTurn(

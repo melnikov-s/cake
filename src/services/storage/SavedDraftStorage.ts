@@ -1,17 +1,8 @@
-import {
-  Context,
-  Effect,
-  FileSystem,
-  Layer,
-  Path,
-  PubSub,
-  Schema,
-  Semaphore,
-  Stream,
-} from "effect";
+import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore, Stream } from "effect";
 import { SavedDraft } from "../../contracts/project-sessions/saved-draft-data";
 import { atomicWriteFile } from "./internal/atomicFile";
 import { SavedDraftError } from "../../contracts/storage/saved-draft-storage-errors";
+import { isChangeFeedResync, makeChangeFeed } from "../change-feeds/ChangeFeed";
 
 const Document = Schema.Struct({ version: Schema.Literal(1), records: Schema.Array(SavedDraft) });
 const failure = (operation: string, cause: unknown) =>
@@ -64,7 +55,11 @@ export const makeSavedDraftStorageLive = (stateDirectory: string) =>
       const path = yield* Path.Path;
       const file = path.join(stateDirectory, "saved-drafts.json");
       const lock = yield* Semaphore.make(1);
-      const changes = yield* PubSub.bounded<ReadonlyArray<SavedDraft>>({ capacity: 1_024 });
+      // Never waits on a stalled observer: writes publish while holding the file lock.
+      const changes = yield* makeChangeFeed<ReadonlyArray<SavedDraft>>({
+        name: "saved-drafts",
+        capacity: 1_024,
+      });
       const read = Effect.fn("SavedDraftStorage.read")(function* () {
         if (!(yield* fs.exists(file).pipe(Effect.mapError((cause) => failure("read", cause)))))
           return [];
@@ -93,14 +88,25 @@ export const makeSavedDraftStorageLive = (stateDirectory: string) =>
           `${JSON.stringify(document, null, 2)}\n`,
           (stage, cause) => failure(stage, cause),
         );
-        yield* PubSub.publish(changes, [...records]);
+        yield* changes.publish([...records]);
       });
       const list = Effect.fn("SavedDraftStorage.list")(() => lock.withPermits(1)(read()));
       const observe = () =>
         Stream.unwrap(
-          PubSub.subscribe(changes).pipe(
+          changes.subscribe().pipe(
             Effect.map((subscription) =>
-              Stream.fromEffect(list()).pipe(Stream.concat(Stream.fromSubscription(subscription))),
+              Stream.fromEffect(list()).pipe(
+                Stream.concat(
+                  subscription.pipe(
+                    // An observer that fell behind re-reads the current records.
+                    Stream.flatMap((records) =>
+                      isChangeFeedResync(records)
+                        ? Stream.fromEffect(list())
+                        : Stream.succeed(records),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         );

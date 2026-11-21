@@ -408,8 +408,9 @@ export const observeMetadata = Effect.fn("DiscussionSessions.observeMetadata")(f
         .pipe(
           Stream.filter(
             (change) =>
-              change._tag === "DiscussionSessionActivityChanged" &&
-              change.parentSessionId === input.parentSessionId,
+              change._tag === "Resync" ||
+              (change._tag === "DiscussionSessionActivityChanged" &&
+                change.parentSessionId === input.parentSessionId),
           ),
         ),
     ),

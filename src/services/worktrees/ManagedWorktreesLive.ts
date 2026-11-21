@@ -1,15 +1,4 @@
-import {
-  Deferred,
-  Effect,
-  FileSystem,
-  Layer,
-  Path,
-  PubSub,
-  Ref,
-  Schema,
-  Semaphore,
-  Stream,
-} from "effect";
+import { Deferred, Effect, FileSystem, Layer, Path, Ref, Schema, Semaphore, Stream } from "effect";
 import type {
   ManagedWorktreeCatalogUpdate,
   WorktreeRecord,
@@ -36,6 +25,7 @@ import { makeWorktreeLanding } from "./WorktreeLanding";
 import { makeContributionRepository, retainContribution } from "./WorktreeContribution";
 import { makeWorktreeLandingQueue } from "./WorktreeLandingQueue";
 import { measureLanding } from "../diagnostics/responsiveness-diagnostics";
+import { isChangeFeedResync, makeChangeFeed } from "../change-feeds/ChangeFeed";
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 const internalError = (message: string) => Effect.fail(new Error(message));
@@ -78,7 +68,11 @@ export const ManagedWorktreesLive: Layer.Layer<
     const deferredSetups = yield* Ref.make(
       new Map<string, Deferred.Deferred<void, ManagedWorktreeError>>(),
     );
-    const changes = yield* PubSub.bounded<ManagedWorktreeCatalogUpdate>({ capacity: 1_024 });
+    // Never waits on a stalled catalog observer: publishing happens inside record mutations.
+    const changes = yield* makeChangeFeed<ManagedWorktreeCatalogUpdate>({
+      name: "managed-worktrees",
+      capacity: 1_024,
+    });
 
     const mapError = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
@@ -151,7 +145,7 @@ export const ManagedWorktreesLive: Layer.Layer<
         (item) => item.worktreePath === worktreePath,
       );
       if (record)
-        yield* PubSub.publish(changes, {
+        yield* changes.publish({
           _tag: "Event",
           event: { _tag: "Upserted", worktree: record },
         });
@@ -364,14 +358,27 @@ export const ManagedWorktreesLive: Layer.Layer<
       records,
       observe: () =>
         Stream.unwrap(
-          PubSub.subscribe(changes).pipe(
-            Effect.map((subscription) =>
-              Stream.fromEffect(
+          changes.subscribe().pipe(
+            Effect.map((subscription) => {
+              const snapshot = Stream.fromEffect(
                 records().pipe(
-                  Effect.map((worktrees) => ({ _tag: "Snapshot" as const, worktrees })),
+                  Effect.map((worktrees): ManagedWorktreeCatalogUpdate => ({
+                    _tag: "Snapshot",
+                    worktrees,
+                  })),
                 ),
-              ).pipe(Stream.concat(Stream.fromSubscription(subscription))),
-            ),
+              );
+              // An observer that fell behind replaces its missed events with a fresh snapshot.
+              return snapshot.pipe(
+                Stream.concat(
+                  subscription.pipe(
+                    Stream.flatMap((update) =>
+                      isChangeFeedResync(update) ? snapshot : Stream.succeed(update),
+                    ),
+                  ),
+                ),
+              );
+            }),
           ),
         ),
       createCheckout: Effect.fn("ManagedWorktrees.createCheckout")(function* (

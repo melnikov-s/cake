@@ -139,7 +139,12 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   // Its first value is the sole initial scan. Both sources stay subscribed during reads,
   // so project/catalog mutations in flight enqueue a subsequent authoritative snapshot.
   return changes.initialThenChanges(Stream.succeed({ _tag: "ObserveProjects" as const })).pipe(
-    Stream.filter((item) => item._tag === "ObserveProjects" || item._tag.startsWith("CakeChat")),
+    Stream.filter(
+      (item) =>
+        item._tag === "ObserveProjects" ||
+        item._tag === "Resync" ||
+        item._tag.startsWith("CakeChat"),
+    ),
     Stream.flatMap(
       (item): Stream.Stream<void> =>
         item._tag === "ObserveProjects"
