@@ -31,6 +31,41 @@ export function transcriptItemParts(item: TranscriptItem): UiPart[] {
   return parts.flatMap((part: TranscriptContentPart) => [part, ...(part.userContent ?? [])]);
 }
 
+/**
+ * Whether a re-render rebuilt the same item: groups and user turns are new wrapper
+ * objects around the same Pi parts each render; the parts themselves keep identity.
+ */
+export function sameTranscriptItem(previous: TranscriptItem, next: TranscriptItem): boolean {
+  if (previous === next) return true;
+  if (previous.kind !== next.kind || previous.id !== next.id) return false;
+  if (previous.kind === "history-divider" || previous.kind === "loading-state") return true;
+  if ("parts" in previous && "parts" in next) {
+    if (previous.kind === "side-chat-import" && next.kind === "side-chat-import")
+      if (previous.source !== next.source) return false;
+    return (
+      previous.parts.length === next.parts.length &&
+      previous.parts.every((part, index) => sameContentPart(part, next.parts[index]!))
+    );
+  }
+  return !("parts" in previous) && !("parts" in next) && sameContentPart(previous, next);
+}
+
+function sameContentPart(previous: TranscriptContentPart, next: TranscriptContentPart) {
+  if (previous === next) return true;
+  const { userContent: previousContent, ...previousPart } = previous;
+  const { userContent: nextContent, ...nextPart } = next;
+  // Only a user turn carrying attachments or annotations is rebuilt around its part.
+  if (!previousContent || !nextContent || previousContent.length !== nextContent.length)
+    return false;
+  const nextFields = new Map(Object.entries(nextPart));
+  const previousFields = Object.entries(previousPart);
+  return (
+    previousContent.every((part, index) => part === nextContent[index]) &&
+    previousFields.length === nextFields.size &&
+    previousFields.every(([key, value]) => nextFields.has(key) && nextFields.get(key) === value)
+  );
+}
+
 export function errorNoticeFollowsUser(items: TranscriptItem[], index: number) {
   const item = items[index];
   const previous = items[index - 1];

@@ -41,7 +41,7 @@ import {
 } from "./chat-transcript-parts";
 import { transcriptItemParts, type TranscriptContentPart } from "./chat-transcript-items";
 import { ChatTranscriptItem, transcriptAnchorId } from "./chat-transcript-item";
-import { transcriptItemKeys } from "./chat-transcript-items";
+import { sameTranscriptItem, transcriptItemKeys } from "./chat-transcript-items";
 import { transcriptTaskSections } from "../lib/transcript-task-sections";
 import { revealTranscriptSelection } from "../lib/transcript-selection-reveal";
 import {
@@ -94,6 +94,7 @@ const scrollerClassName =
   "transcript isolate @container/transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [overflow-anchor:none] [&_:has(>[data-slot=task-section-header])]:[contain:layout_style]!";
 
 type TranscriptRow = TranscriptPresentationRow<TranscriptItem>;
+const transcriptRowsMatch = transcriptRowsEqual(sameTranscriptItem);
 
 /** Records where the reader is, for reopening this conversation; never moves anything. */
 function captureScrollPosition(
@@ -797,7 +798,7 @@ export const ChatTranscript = observer(function ChatTranscript({
           // Row inputs beyond the item (selection, behaviors, sections) change per render.
           extraData={renderItem}
           keyExtractor={(row) => row.key}
-          itemsAreEqual={transcriptRowsEqual}
+          itemsAreEqual={transcriptRowsMatch}
           getItemType={(row) =>
             row.kind === "message"
               ? row.item.kind === "text"

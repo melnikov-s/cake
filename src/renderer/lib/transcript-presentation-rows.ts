@@ -51,36 +51,26 @@ export function transcriptPresentationRows<T>(
  * outlives an explicit scroll. A linked jump to a far, estimated message then
  * landed and was pulled back by the old anchor's growth (thousands of pixels).
  */
-export function transcriptRowsEqual<T>(
-  previous: TranscriptPresentationRow<T>,
-  next: TranscriptPresentationRow<T>,
-) {
-  return (
+export function transcriptRowsEqual<T>(sameItem: (previous: T, next: T) => boolean) {
+  return (previous: TranscriptPresentationRow<T>, next: TranscriptPresentationRow<T>) =>
     previous.key === next.key &&
     previous.kind === next.kind &&
     previous.index === next.index &&
-    sameComposition(previous.section, next.section, 1) &&
-    sameComposition(previous.item, next.item, 0)
-  );
+    sameSection(previous.section, next.section) &&
+    sameItem(previous.item, next.item);
 }
 
-/** Renderer composition only spreads and wraps parts: compare wrappers, not part contents. */
-function sameComposition(previous: unknown, next: unknown, depth: number): boolean {
-  if (previous === next) return true;
-  if (depth > 3 || typeof previous !== "object" || typeof next !== "object") return false;
-  if (!previous || !next || Array.isArray(previous) !== Array.isArray(next)) return false;
-  if (Array.isArray(previous) && Array.isArray(next))
-    return (
-      previous.length === next.length &&
-      previous.every((value, index) => sameComposition(value, next[index], depth + 1))
-    );
-  const previousEntries = Object.entries(previous);
+function sameSection(
+  previous: TranscriptSectionView | undefined,
+  next: TranscriptSectionView | undefined,
+) {
   return (
-    previousEntries.length === Object.keys(next).length &&
-    previousEntries.every(
-      ([key, value]) =>
-        Object.hasOwn(next, key) &&
-        sameComposition(value, (next as Record<string, unknown>)[key], depth + 1),
-    )
+    previous === next ||
+    (previous !== undefined &&
+      next !== undefined &&
+      previous.key === next.key &&
+      previous.todoId === next.todoId &&
+      previous.start === next.start &&
+      previous.expanded === next.expanded)
   );
 }

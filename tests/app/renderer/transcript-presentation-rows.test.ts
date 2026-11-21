@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import {
   groupTranscriptParts,
+  sameTranscriptItem,
   transcriptItemKeys,
 } from "../../../src/renderer/components/chat-transcript-items";
 import {
@@ -96,18 +97,19 @@ it("treats rows rebuilt around the same parts as unchanged, and real changes as 
       items.map((_, index) => section("task", index === 0, expanded)),
     ).rows;
   };
+  const rowsEqual = transcriptRowsEqual(sameTranscriptItem);
   const before = present(parts);
   const after = present(parts);
   // The user turn wraps its attachment and the Work log groups its reasoning anew.
   expect(after.filter((row, index) => row.item !== before[index]!.item).length).toBeGreaterThan(0);
-  expect(after.every((row, index) => transcriptRowsEqual(before[index]!, row))).toBe(true);
+  expect(after.every((row, index) => rowsEqual(before[index]!, row))).toBe(true);
 
   const edited = present(
     parts.map((part) => (part.id === "answer" ? { ...part, text: "New" } : part)),
   );
-  expect(edited.map((row, index) => transcriptRowsEqual(before[index]!, row))).toEqual(
+  expect(edited.map((row, index) => rowsEqual(before[index]!, row))).toEqual(
     before.map((row) => row.item !== parts[3]),
   );
   const folded = present(parts, false);
-  expect(folded.some((row, index) => !transcriptRowsEqual(before[index]!, row))).toBe(true);
+  expect(folded.some((row, index) => !rowsEqual(before[index]!, row))).toBe(true);
 });
