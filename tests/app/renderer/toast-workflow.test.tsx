@@ -3,7 +3,7 @@
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createStore, mount } from "r-state-tree";
+import { applySnapshot, createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastHost } from "../../../src/renderer/components/toast-host";
 import { applyCakeChatLookup } from "../../../src/renderer/reducers/CatalogReducer";
@@ -119,6 +119,8 @@ describe("Toast workflow", () => {
     using _view = { [Symbol.dispose]: () => view.unmount() };
 
     const open = () => act(() => root.navigationStore.openProjectChat(projectPath));
+    // A loaded catalog without this Project Chat fails the open.
+    act(() => applySnapshot(fixture.models.cakeChatCatalog, { loaded: true, sessions: [] }));
     await open();
     expect(screen.getByText("Could not open Project Chat")).toBeDefined();
     act(() => vi.advanceTimersByTime(20_000));
@@ -141,6 +143,44 @@ describe("Toast workflow", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await act(() => vi.advanceTimersByTimeAsync(100));
+    expect(root.appShellStore.activeConversation?.sessionId).toBe(sessionId);
+    expect(screen.queryByText("Could not open Project Chat")).toBeNull();
+  });
+
+  // The rail lists projects from their own projection, which can arrive before the
+  // chat catalog's first snapshot; a click in between showed "Could not open Project Chat".
+  it("opens a Project Chat requested before the chat catalog's first snapshot", async () => {
+    const projectPath = "/project";
+    const sessionId = `project-chat:${"a".repeat(64)}`;
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: projectPath })],
+    });
+    const { root } = fixture;
+    const view = render(<ToastHost store={root.toastStore} />);
+    using _view = { [Symbol.dispose]: () => view.unmount() };
+
+    let opened: Promise<boolean> | undefined;
+    act(() => {
+      opened = root.navigationStore.openProjectChat(projectPath);
+    });
+    await act(async () => {
+      applySnapshot(fixture.models.cakeChatCatalog, {
+        loaded: true,
+        sessions: [
+          {
+            sessionId,
+            projectPath,
+            title: "Project Chat",
+            createdAt: fixtureTimestamp,
+            modifiedAt: fixtureTimestamp,
+            messageCount: 0,
+            resolved: false,
+            unread: false,
+          },
+        ],
+      });
+      expect(await opened).toBe(true);
+    });
     expect(root.appShellStore.activeConversation?.sessionId).toBe(sessionId);
     expect(screen.queryByText("Could not open Project Chat")).toBeNull();
   });

@@ -451,7 +451,9 @@ export class NavigationStore extends Store<{
     try {
       this.props.discussionNavigation().cancelOpening();
       const collection = this.props.cakeChat();
-      const chat = collection.projectChat(projectPath);
+      // Stay synchronous when the catalog already has it; callers order history around this.
+      const chat =
+        collection.projectChat(projectPath) ?? (await collection.loadedProjectChat(projectPath));
       if (!chat)
         throw new Error(
           "Project Chat is unavailable in the current catalog. Retry after the project list has loaded.",

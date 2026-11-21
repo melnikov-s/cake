@@ -13,6 +13,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { windowState } from "../fixtures/window-state";
 import { openProjectChat, openSession } from "./fixtures/workspace-navigation";
 import { pointAt } from "./fixtures/pointer";
+import { writeFixtureModels } from "./fixtures/fixture-model";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const usage = {
@@ -36,6 +37,7 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
     const linkedAnswerLabel = coordinator ? "Linked answer" : "f80c961e";
     // A Session link's purpose glyph names the link (b6cd0f2d).
     const linkedAnswerName = coordinator ? "Linked answer" : "User Session f80c961e";
+    const linkedRequestName = coordinator ? "Linked request" : "User Session Linked request";
     const sessionId =
       surface === "Project Chat"
         ? `project-chat:${createHash("sha256").update(project).digest("hex")}`
@@ -131,6 +133,13 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
       await harness.close(BACKGROUND_CONTEXT);
       await storage.close(BACKGROUND_CONTEXT);
     }
+    // The saved model must resolve: the unavailable-model notice under the transcript
+    // would otherwise grow it (and move the followed end) while the reader navigates.
+    await writeFixtureModels(cakeHome, {
+      baseUrl: "http://127.0.0.1:9/v1",
+      provider: "anthropic",
+      modelId: "fixture",
+    });
     await writeFile(
       join(directory, `1970-01-01T00-00-00-000Z_${projectId}.jsonl`),
       `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
@@ -184,7 +193,7 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
           else scrollTo(options);
         };
       });
-      await composer.press("ArrowUp");
+      await page.keyboard.press("ArrowUp");
       await expect(selected).toContainText("Answer 12.");
       await expectRevealed(transcript, selected);
       // Inspect completed rendering updates, not only eventual alignment. Once
@@ -236,51 +245,50 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
       );
       expect(linkedOffsets.length).toBeGreaterThan(0);
       expect(linkedOffsets.every((offset) => Math.abs(offset - 16) <= 1)).toBe(true);
-      // Focus, not a pointer click: clicking the composer intentionally clears selection.
-      await composer.focus();
-      await composer.press("ArrowUp");
+      // The reader keeps using the keyboard where the link click left focus; clicking
+      // the composer would intentionally clear the selection.
+      await page.keyboard.press("ArrowUp");
       await expect(selected).toContainText("Question 6");
       await expectRevealed(transcript, selected);
-      await composer.press("ArrowDown");
+      await page.keyboard.press("ArrowDown");
       await expect(selected).toContainText("Answer 6.");
       // Rapid navigation crosses unmounted, variable-height rows, then reverses.
-      for (let index = 0; index < 15; index++) await composer.press("ArrowUp");
+      for (let index = 0; index < 15; index++) await page.keyboard.press("ArrowUp");
       await expect(selected).toContainText("Question 1");
-      for (let index = 0; index < 23; index++) await composer.press("ArrowDown");
+      for (let index = 0; index < 23; index++) await page.keyboard.press("ArrowDown");
       await expect(selected).toContainText("Answer 12.");
       await expectRevealed(transcript, selected);
-      await selected.getByRole("link", { name: "Linked request", exact: true }).click();
+      await selected.getByRole("link", { name: linkedRequestName, exact: true }).click();
       await expect(selected).toContainText("Question 6");
-      await composer.focus();
-      await composer.press("ArrowDown");
+      await page.keyboard.press("ArrowDown");
       await expect(selected).toContainText("Answer 6.");
       await expectRevealed(transcript, selected);
       // Clearing past newest returns focus to writing without scrolling, and
       // supersedes any virtualizer retry for an earlier target.
-      for (let index = 0; index < 13; index++) await composer.press("ArrowDown");
+      for (let index = 0; index < 13; index++) await page.keyboard.press("ArrowDown");
       await expect(selected).toHaveCount(0);
       await expect(composer).toBeFocused();
       // Let the list's measurement frames run; an obsolete target must not
       // move the transcript after the selection ends.
       const tops = await transcript.evaluate(async (element) => {
-        const tops: number[] = [];
+        const tops: string[] = [];
         for (let frame = 0; frame < 20; frame++) {
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-          tops.push(element.scrollTop);
+          tops.push(`${element.scrollTop}/${element.scrollHeight}/${element.clientHeight}`);
         }
         return tops;
       });
-      expect(new Set(tops).size).toBe(1);
+      expect(new Set(tops).size, tops.join(" ")).toBe(1);
       const behaviors = await page.evaluate(
         () => Reflect.get(window, "messageNavigationBehaviors") as string[],
       );
       expect(behaviors.length).toBeGreaterThan(0);
       expect(behaviors).not.toContain("smooth");
-      await composer.press("ArrowUp");
+      await page.keyboard.press("ArrowUp");
       await expect(selected).toContainText("Answer 12.");
-      await composer.press("Escape");
-      await composer.press("x");
-      await composer.press("ArrowUp");
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("x");
+      await page.keyboard.press("ArrowUp");
       await expect(selected).toHaveCount(0);
       await expect(composer).toHaveValue("x");
       await expect(pane.getByRole("button", { name: "Send", exact: true })).toBeEnabled();

@@ -1,7 +1,7 @@
 import type { Project } from "../models/Project";
 import { applyCakeChatLookup } from "../reducers/CatalogReducer";
 import type { CakeChatTodoList } from "../models/CakeChatTodoList";
-import { Store, child, createStore, observable } from "r-state-tree";
+import { Store, child, createStore, effect as reactiveEffect, observable } from "r-state-tree";
 import { settledSessionActivity, type SessionActivity } from "../lib/session-activity";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -340,6 +340,28 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   projectChat(projectPath: string) {
     return this.summaries.find((item) => item.projectPath === projectPath);
+  }
+
+  /**
+   * The project's Chat once the catalog's first snapshot has arrived. The rail lists
+   * projects from their own projection, which can arrive first after launch.
+   */
+  async loadedProjectChat(projectPath: string) {
+    const catalog = this.props.catalog;
+    if (!catalog.loaded)
+      await new Promise<void>((resolve, reject) => {
+        const finish = () => {
+          this.signal.removeEventListener("abort", finish);
+          queueMicrotask(() => dispose());
+          if (this.signal.aborted) reject(this.signal.reason);
+          else resolve();
+        };
+        this.signal.addEventListener("abort", finish, { once: true });
+        const dispose = reactiveEffect(() => {
+          if (catalog.loaded) finish();
+        });
+      });
+    return this.projectChat(projectPath);
   }
 
   private prepareNewSession(sessionId: string = CAKE_CHAT_SESSION_ID, name = "Cake Chat") {

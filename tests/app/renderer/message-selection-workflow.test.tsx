@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
+import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -45,6 +46,11 @@ const conversation: UiPart[] = [
 
 /** Two real Project Session Chats side by side, like a split workbench. */
 function renderSplitPanes(parts: UiPart[] = conversation) {
+  // Following a message link inside the shown Session selects it, as NavigationStore does.
+  const openSession = (sessionId: string, messageId?: string) => {
+    const chat = chats.find((candidate) => candidate.id === sessionId);
+    if (chat && messageId) chat.transcriptInteraction.navigateToMessage(messageId);
+  };
   const ids = ["left-session", "right-session"] as const;
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -73,13 +79,13 @@ function renderSplitPanes(parts: UiPart[] = conversation) {
     return session.conversationSessionStore.chatStore;
   });
   const view = render(
-    <>
+    <MarkdownLinkProvider actions={{ openExternalUrl: () => undefined, openSession }}>
       {chats.map((chat) => (
         <section key={chat.id} aria-label={chat.id}>
           <Chat store={chat} compact composerFocusEnabled={false} />
         </section>
       ))}
-    </>,
+    </MarkdownLinkProvider>,
   );
   const pane = (sessionId: (typeof ids)[number]) => {
     const element = within(screen.getByRole("region", { name: sessionId }));
@@ -224,6 +230,27 @@ describe("Transcript message keyboard selection", () => {
     expect(left.selected()).toBeUndefined();
     act(() => leftChat.transcriptInteraction.navigateToMessage("user-2"));
     left.composer.focus();
+    await user.keyboard("{ArrowUp}");
+    expect(left.selected()).toBe("assistant-1");
+  });
+
+  it("keeps keyboard selection in the pane after following a link whose row can virtualize away", async () => {
+    using fixture = renderSplitPanes([
+      ...conversation,
+      {
+        ...text("linking", "assistant"),
+        text: "See [Linked request](cake://session/left-session?message=user-2)",
+      },
+    ]);
+    const { user, left } = fixture;
+    const transcript = screen
+      .getByRole("region", { name: "left-session" })
+      .querySelector<HTMLElement>(".transcript")!;
+    await user.click(within(transcript).getByRole("link", { name: /Linked request/ }));
+    expect(left.selected()).toBe("user-2");
+    // The clicked link's row is far from its target, so the jump unmounts it. Focus
+    // left on it would fall to the document, where arrows no longer reach this pane.
+    expect(document.activeElement).toBe(transcript);
     await user.keyboard("{ArrowUp}");
     expect(left.selected()).toBe("assistant-1");
   });

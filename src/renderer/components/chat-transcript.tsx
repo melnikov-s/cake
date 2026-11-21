@@ -46,6 +46,7 @@ import { transcriptTaskSections } from "../lib/transcript-task-sections";
 import { revealTranscriptSelection } from "../lib/transcript-selection-reveal";
 import {
   transcriptPresentationRows,
+  transcriptRowsEqual,
   type TranscriptPresentationRow,
 } from "../lib/transcript-presentation-rows";
 import { TaskSectionRail } from "./task-section-rail";
@@ -538,6 +539,15 @@ export const ChatTranscript = observer(function ChatTranscript({
     stopFollowing();
     const index = list.getState().indexByKey(selectedItemKey);
     if (index === undefined) return;
+    // A followed link's row can virtualize away with the jump, dropping focus to the
+    // document and out of this pane's keyboard selection. Keep it on the transcript.
+    const focused = document.activeElement;
+    if (
+      messageSelection.origin === "navigation" &&
+      focused !== scroller &&
+      scroller.contains(focused)
+    )
+      scroller.focus({ preventScroll: true });
     // The composer dock overlays the bottom of the transcript.
     const dock =
       Number.parseFloat(getComputedStyle(scroller).getPropertyValue("--composer-dock-height")) || 0;
@@ -787,6 +797,7 @@ export const ChatTranscript = observer(function ChatTranscript({
           // Row inputs beyond the item (selection, behaviors, sections) change per render.
           extraData={renderItem}
           keyExtractor={(row) => row.key}
+          itemsAreEqual={transcriptRowsEqual}
           getItemType={(row) =>
             row.kind === "message"
               ? row.item.kind === "text"
