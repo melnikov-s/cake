@@ -178,7 +178,7 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     ).toBeVisible();
     await expect(picker).not.toContainText("Antigravity");
     await chooseAntigravity();
-    await expect(page.getByText(/bounded excerpts of your Project Chat messages/)).toBeVisible();
+    await expect(page.getByText(/sharing its result with Google/)).toBeVisible();
     const projectChat = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
     const question = "fixture permission from Project Chat";
     await projectChat.fill(question);
@@ -206,11 +206,42 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
       .map((line) => JSON.parse(line))
       .findLast((frame) => frame.method === "session/prompt");
     expect(lastPrompt.params.prompt).toEqual([
-      { type: "text", text: `Cake instructions:\n${cakePortableInstructions("project-chat")}` },
+      {
+        type: "text",
+        text: expect.stringContaining(
+          `Cake instructions:\n${cakePortableInstructions("project-chat")}`,
+        ),
+      },
       { type: "text", text: expect.stringContaining("The Project Chat example is an atlas") },
       { type: "text", text: question },
     ]);
     expect(JSON.stringify(lastPrompt)).not.toContain("Pi transcript ready");
+    expect(lastPrompt.params.prompt[0].text).toContain(
+      "For authorized project work, use sessions.create",
+    );
+
+    const exportPrompt = page.getByRole("alertdialog", { name: "Cake operation and export" });
+    await projectChat.fill(
+      'fixture Cake [{"command":"todos.create","input":{"title":"Synthetic ACP to-do","description":"Disposable desktop smoke test"}}]',
+    );
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(exportPrompt).toContainText("share its result with Google Antigravity");
+    await expect(exportPrompt).toContainText("Synthetic ACP to-do");
+    await page.screenshot({
+      path: info.outputPath("project-chat-cake-export.png"),
+      animations: "disabled",
+    });
+    await exportPrompt.getByRole("combobox").selectOption({ label: "Allow once" });
+    await exportPrompt.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.locator(".transcript").getByText(/"committed": true/)).toBeVisible();
+    await expect
+      .poll(
+        async () =>
+          JSON.parse(
+            await readFile(join(cakeHome, "state", "application.json"), "utf8"),
+          ).data?.projects.find((item: { path: string }) => item.path === project)?.todos?.items,
+      )
+      .toEqual([expect.objectContaining({ title: "Synthetic ACP to-do", revision: 0 })]);
     await picker.click();
     await pickerDialog.getByRole("button", { name: /Return to Pi/ }).click();
     await expect(picker).not.toContainText("Antigravity");

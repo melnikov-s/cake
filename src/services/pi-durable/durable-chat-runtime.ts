@@ -102,6 +102,7 @@ import type { AssistantContext } from "../../contracts/cake-chats/assistant-cont
 import { AssistantContextDoc, transitionAssistantContext } from "./durable-assistant-context";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { createDurableAntigravity } from "./durable-antigravity";
+import { projectChatAntigravityCake } from "./durable-antigravity-cake";
 import {
   isCakeChatSessionId,
   isProjectChatSessionId,
@@ -587,6 +588,11 @@ export async function createDurableCakeChatRuntime(
         engine,
         sessionId,
         cwd: options.cwd,
+        cake: projectChatAntigravityCake(operations, {
+          sessionId,
+          projectPath: options.cwd,
+          hasTodo: (id) => options.cakeChatTodos?.().some((todo) => todo.id === id) ?? false,
+        }),
         budget: () => preferences.preferences().memoryViewBytes,
         contextLimit: () => preferences.preferences().contextLimitTokens,
         beforeInput: turnStop.beforeInput,

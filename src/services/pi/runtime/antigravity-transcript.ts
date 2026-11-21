@@ -3,6 +3,7 @@ import { Option, Schema } from "effect";
 import type { UiPart } from "../../../contracts/conversations/session-contract";
 import {
   runAcpTurn,
+  type AcpTurn,
   type AcpPermission,
   type AcpStatus,
   type AcpTool,
@@ -170,6 +171,7 @@ export interface CakeAntigravityInput {
   id: string;
   text: string;
   markdown: boolean;
+  ownerSignal?: AbortSignal;
   permission(request: AcpPermission, signal: AbortSignal): Promise<"allow" | "deny" | undefined>;
 }
 
@@ -217,7 +219,7 @@ export function createAntigravityTurnController(input: {
   prepare?(
     request: CakeAntigravityInput,
     signal: AbortSignal,
-  ): Promise<{ history?: string; maxPromptBytes: number }>;
+  ): Promise<Pick<AcpTurn, "history" | "maxPromptBytes" | "instructions" | "cakeCall">>;
   persist(details: Details, content: { type: "text"; text: string }[]): Promise<void>;
   onStarted?(): void;
   onChanged(): void;
@@ -239,6 +241,10 @@ export function createAntigravityTurnController(input: {
       );
     const resumeId = input.resume?.();
     const controller = new AbortController();
+    const signal = request.ownerSignal
+      ? AbortSignal.any([request.ownerSignal, controller.signal])
+      : controller.signal;
+    signal.throwIfAborted();
     const details: Details = {
       id: request.id,
       sessionId: input.sessionId(),
@@ -305,15 +311,16 @@ export function createAntigravityTurnController(input: {
       let truncated = false;
       let nextResume: string | undefined;
       try {
-        const prepared = await input.prepare?.(request, controller.signal);
-        controller.signal.throwIfAborted();
+        signal.throwIfAborted();
+        const prepared = await input.prepare?.(request, signal);
+        signal.throwIfAborted();
         const result = await runAcpTurn({
           ...prepared,
           cwd,
           text: request.text,
-          instructions: cakePortableInstructions(scope),
+          instructions: prepared?.instructions ?? cakePortableInstructions(scope),
           resumeId,
-          signal: controller.signal,
+          signal,
           permission: request.permission,
           status(status) {
             Object.assign(details, { status });
@@ -349,7 +356,7 @@ export function createAntigravityTurnController(input: {
           );
         else if (scope === "project-session") nextResume = result.resumeId;
       } catch (error) {
-        failure = controller.signal.aborted
+        failure = signal.aborted
           ? new TurnCanceledError("Antigravity turn canceled; the next turn starts fresh.")
           : error instanceof Error
             ? error

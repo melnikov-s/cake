@@ -203,32 +203,41 @@ export const antigravity = Effect.fn("SessionChats.antigravity")(function* (
     .pipe(asError("antigravity"));
   const run = makePiCallbackExecutor(yield* Effect.context<RendererRequestCoordinator>());
   const turnId = yield* handle
-    .antigravity(input.text, input.renderUserMessageAsMarkdown, async (request, signal) => {
-      if (connections.kind(connectionId) !== "desktop") return undefined;
-      const decision = await run(
-        coordinator.requireDesktopConnection(input.sessionId, connectionId).pipe(
-          Effect.andThen(
-            coordinator.requestUiForConnection(
-              connectionId,
-              input.sessionId,
-              {
-                kind: "select",
-                title: "Antigravity permission",
-                message: request.description,
-                options: [
-                  { id: "deny", label: "Deny" },
-                  ...(request.canAllowOnce ? [{ id: "allow", label: "Allow once" }] : []),
-                ],
-                signal,
-                timeout: 120_000,
-              },
-              targetKind,
+    .antigravity(input.text, input.renderUserMessageAsMarkdown, {
+      // Only the new bridge needs ongoing authority from the requesting desktop.
+      ...(targetKind === "CakeChatSession"
+        ? { ownerSignal: connections.signal(connectionId) }
+        : null),
+      async permission(request, signal) {
+        if (connections.kind(connectionId) !== "desktop") return undefined;
+        const decision = await run(
+          coordinator.requireDesktopConnection(input.sessionId, connectionId).pipe(
+            Effect.andThen(
+              coordinator.requestUiForConnection(
+                connectionId,
+                input.sessionId,
+                {
+                  kind: "select",
+                  title:
+                    request.kind === "cake-operation"
+                      ? "Cake operation and export"
+                      : "Antigravity permission",
+                  message: request.description,
+                  options: [
+                    { id: "deny", label: "Deny" },
+                    ...(request.canAllowOnce ? [{ id: "allow", label: "Allow once" }] : []),
+                  ],
+                  signal,
+                  timeout: 120_000,
+                },
+                targetKind,
+              ),
             ),
           ),
-        ),
-        { signal },
-      );
-      return decision === "allow" || decision === "deny" ? decision : undefined;
+          { signal },
+        );
+        return decision === "allow" || decision === "deny" ? decision : undefined;
+      },
     })
     .pipe(asError("antigravity"));
   return TurnId.make(turnId);

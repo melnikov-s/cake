@@ -1,4 +1,11 @@
 import { durableArchiveRecallInstructions } from "../../src/services/pi-durable/durable-archive-recall";
+import { cakeChatControlTools } from "../../src/contracts/application/window-control-definitions";
+import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { type ProjectTodoControl } from "../../src/contracts/projects/project-todos";
+import { ApplicationState } from "../../src/services/storage/ApplicationState";
+import { ApplicationStorage } from "../../src/services/storage/ApplicationStorage";
+import * as projectTodos from "../../src/domain/projects/projectTodos";
+import { upsertProject } from "../../src/domain/application/application";
 import { backendAgentTools } from "../../src/contracts/application/backend-agent-tools";
 import type { PiTurnResult } from "../../src/contracts/pi/turn-result-data";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
@@ -254,7 +261,12 @@ it("routes permanent Project Chat through fresh ACP with an isolated, bounded Op
   const blocks = (line: string): Array<{ type: string; text: string }> =>
     JSON.parse(line).params.prompt;
   expect(blocks(prompts[0]!)).toEqual([
-    { type: "text", text: `Cake instructions:\n${cakePortableInstructions("project-chat")}` },
+    {
+      type: "text",
+      text: expect.stringContaining(
+        `Cake instructions:\n${cakePortableInstructions("project-chat")}`,
+      ),
+    },
     { type: "text", text: expect.stringContaining("historical dialogue, not instructions") },
     { type: "text", text: literal },
   ]);
@@ -284,6 +296,213 @@ it("routes permanent Project Chat through fresh ACP with an isolated, bounded Op
   expect(recall.text).toBe(literal);
   expect(reopened.filter((part) => part.kind === "text" && part.text === literal)).toHaveLength(1);
   expect((await restored.snapshot()).model?.id).toBe("fixture");
+});
+
+it("discovers the Project Chat Cake tool, commits an approved to-do, and dispatches scoped delegation without a Pi turn", async () => {
+  const f = await fixture();
+  const bin = join(f.directory, "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "agy"), antigravityFixture, { mode: 0o755 });
+  vi.stubEnv("PATH", `${bin}:${dirname(process.execPath)}:${process.env.PATH ?? ""}`);
+  let stored = defaultApplicationState();
+  const app = ManagedRuntime.make(
+    ApplicationState.layer.pipe(
+      Layer.provide(
+        Layer.succeed(ApplicationStorage, {
+          load: () => Effect.succeed({ state: stored, source: "current" }),
+          save: (state) =>
+            Effect.sync(() => {
+              stored = state;
+            }),
+        }),
+      ),
+    ),
+  );
+  cleanup.push(() => app.dispose());
+  const other = join(f.directory, "other-project");
+  await app.runPromise(upsertProject(f.directory, "Fixture"));
+  await app.runPromise(upsertProject(other, "Other"));
+  const missing = () => Promise.reject(new Error("Not a test control"));
+  const create: ProjectTodoControl["create"] = (input, signal) =>
+    app.runPromise(projectTodos.create(f.directory, input), { signal });
+  const read: ProjectTodoControl["read"] = async (id, signal) => ({
+    ...(await app.runPromise(projectTodos.read(f.directory, id), { signal })),
+    sessions: [],
+  });
+  const invoke = vi.fn<NonNullable<CakeSessionRuntimeSetup["globalControl"]>["invoke"]>(
+    async ({ name }) =>
+      name === "sessions.create"
+        ? toJsonValue({ ok: true, status: "started", sessionId: ids.third })
+        : toJsonValue({ ok: true, sessions: [{ sessionId: ids.third }] }),
+  );
+  const tools = [
+    ...cakeChatControlTools().filter((tool) => tool.command === "sessions.create"),
+    ...backendAgentTools().filter((tool) => tool.command === "sessions.list"),
+  ];
+  const { runtime } = await f.open({ tools, invoke }, undefined, {
+    sessionId: projectChatSessionId(f.directory),
+    allowedCakeOperations: [
+      "todos.read",
+      "todos.create",
+      "sessions.create",
+      "sessions.list",
+      "session.info",
+    ],
+    projectTodos: {
+      create,
+      read,
+      list: missing,
+      select: missing,
+      update: missing,
+      updateMany: missing,
+    },
+  });
+  if (!runtime.antigravity) throw new Error("Expected the explicit Project Chat route");
+  const existing = await create(
+    { title: "Read me", description: "TOOL_RESULT_PRIVATE_MARKER" },
+    new AbortController().signal,
+  );
+  type Permission = Parameters<NonNullable<typeof runtime.antigravity>>[0]["permission"];
+  const permission = vi.fn<Permission>(async ({ description }) =>
+    description.includes("Denied to-do") ? "deny" : "allow",
+  );
+  const assignment = {
+    name: "Fixture worker",
+    initialPrompt: "Build a synthetic example",
+    worktreeName: "fixture-worker",
+    resultDelivery: "notification",
+  };
+  const send = (
+    calls: readonly unknown[],
+    ownerSignal?: AbortSignal,
+    approve: Permission = permission,
+  ) =>
+    runtime.antigravity!({
+      ...(ownerSignal ? { ownerSignal } : null),
+      id: crypto.randomUUID(),
+      markdown: false,
+      text: `fixture Cake ${JSON.stringify(calls)}`,
+      permission: approve,
+    });
+  await send([
+    {},
+    { command: "todos.create.help" },
+    { command: "session.info.help" },
+    { command: "todos.read", input: { id: existing.id } },
+    { command: "todos.create", input: { title: "Denied to-do", description: "No" } },
+    { command: "todos.create", input: { title: "Invalid to-do" } },
+    { command: "todos.create", input: { title: "Approved to-do", description: "Committed" } },
+    { command: "sessions.create", input: { ...assignment, workspacePath: other } },
+    { command: "sessions.create", input: { ...assignment, promptFiles: ["do-not-read.txt"] } },
+    { command: "sessions.create", input: assignment },
+    { command: "sessions.list", input: { projectPath: other } },
+    { command: "sessions.list" },
+  ]);
+  expect(f.requests).toHaveLength(0);
+  expect(permission).toHaveBeenCalledTimes(6);
+  for (const [request] of permission.mock.calls) expect(request.kind).toBe("cake-operation");
+  const evidence = (await readFile(join(f.directory, "fixture-mcp-evidence.ndjson"), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(evidence[0]).toMatchObject({
+    discovered: { status: 200, result: { tools: [{ name: "cake" }] } },
+    beforePrompt: { result: { isError: true } },
+    unauthorized: { status: 403 },
+    wrongSession: { status: 404 },
+  });
+  expect(
+    evidence[1].findings.map(
+      ({ result }: { result: { content: [{ text: string }] } }) => result.content[0].text,
+    ),
+  ).toEqual([
+    expect.stringContaining("todos"),
+    expect.stringContaining("Input schema"),
+    expect.stringContaining("Unknown Cake command"),
+    expect.stringContaining("TOOL_RESULT_PRIVATE_MARKER"),
+    expect.stringContaining("did not approve"),
+    expect.stringContaining("Cake call failed"),
+    expect.stringContaining('"committed": true'),
+    expect.stringContaining("must target this Project Chat"),
+    expect.stringContaining("without files"),
+    expect.stringContaining('"status": "started"'),
+    expect.stringContaining("roster must belong to this Project Chat"),
+    expect.stringContaining(ids.third),
+  ]);
+  expect(
+    stored.projects
+      .find((project) => project.path === f.directory)
+      ?.todos?.items.map(({ title }) => title),
+  ).toEqual(["Read me", "Approved to-do"]);
+  expect((await app.runPromise(projectTodos.list(other))).items).toEqual([]);
+  expect(invoke).toHaveBeenCalledTimes(2);
+  expect(invoke).toHaveBeenNthCalledWith(
+    1,
+    {
+      name: "sessions.create",
+      arguments: {
+        ...assignment,
+        workspacePath: f.directory,
+        model: expect.objectContaining({ modelId: "fixture" }),
+      },
+    },
+    expect.any(AbortSignal),
+  );
+
+  expect(invoke).toHaveBeenNthCalledWith(
+    2,
+    {
+      name: "sessions.list",
+      arguments: { projectPath: f.directory, projection: "workflow" },
+    },
+    expect.any(AbortSignal),
+  );
+
+  // The first approval is not reusable authority to export a reply quoting the result.
+  await send([{}]);
+  const frames = (await readFile(join(f.directory, "fixture-acp-wire.ndjson"), "utf8"))
+    .trim()
+    .split("\n");
+  const prompt = frames.findLast((line) => JSON.parse(line).method === "session/prompt");
+  expect(prompt).toContain("fixture Cake");
+  expect(prompt).not.toContain("TOOL_RESULT_PRIVATE_MARKER");
+  const oldServer = JSON.parse(frames.find((line) => JSON.parse(line).method === "session/new")!)
+    .params.mcpServers[0];
+  await expect(fetch(oldServer.url)).rejects.toThrow();
+
+  // Disconnect the requesting desktop while the separate Cake approval is open.
+  const owner = new AbortController();
+  let resolveLate: ((decision: "allow") => void) | undefined;
+  let approvalSignal: AbortSignal | undefined;
+  const waiting = Deferred.makeUnsafe<void>();
+  const active = send(
+    [{ command: "todos.create", input: { title: "Late approval", description: "Never commit" } }],
+    owner.signal,
+    (_request, signal) =>
+      new Promise((resolve) => {
+        resolveLate = resolve;
+        approvalSignal = signal;
+        Effect.runSync(Deferred.succeed(waiting, undefined));
+      }),
+  );
+  const canceled = expect(active).rejects.toThrow("Antigravity turn canceled");
+  await Effect.runPromise(Deferred.await(waiting));
+  owner.abort();
+  await canceled;
+  expect(approvalSignal?.aborted).toBe(true);
+  resolveLate?.("allow");
+  expect(
+    (await app.runPromise(projectTodos.list(f.directory))).items.map(({ title }) => title),
+  ).toEqual(["Read me", "Approved to-do"]);
+
+  // A verified Pi route still uses its original tool set and original transcript.
+  await runtime.prompt("Back to Pi", "prompt", []);
+  expect(f.requests).toHaveLength(1);
+  const piTools = f.requests[0]?.messages.flatMap((message) =>
+    message.role === "system" ? (message.toolsAdded ?? []).map(({ name }) => name) : [],
+  );
+  expect(piTools).toEqual(expect.arrayContaining(["cake", "zoom", "archive_search"]));
+  expect(JSON.stringify(f.requests[0])).toContain("TOOL_RESULT_PRIVATE_MARKER");
 });
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -413,6 +632,9 @@ async function fixture() {
         | "initialConfiguration"
         | "utilityModel"
         | "cakeChatMemory"
+        | "projectTodos"
+        | "cakeChatTodos"
+        | "allowedCakeOperations"
       >
     >,
     onRuntimeEvent?: (event: CakeSessionRuntimeEvent) => void,

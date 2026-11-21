@@ -133,6 +133,43 @@ it("dismisses a pending permission when the ACP process disconnects", async () =
   expect(await wire()).not.toContain('"outcome":"selected"');
 });
 
+it("does not send the prompt if the CLI ignores the provisioned Cake tool", async () => {
+  await writeFile(join(cwd, "fixture-ignore-mcp"), "");
+  const cakeCall = vi.fn(async () => ({ text: "Never called" }));
+  await expect(runAcpTurn(turn({ cakeCall }), launch)).rejects.toThrow("did not discover");
+  expect(cakeCall).not.toHaveBeenCalled();
+  expect(await wire()).not.toContain('"method":"session/prompt"');
+});
+
+it("interrupts an in-flight Cake call and revokes its endpoint on ACP disconnect", async () => {
+  let child: ReturnType<typeof launch> | undefined;
+  let interrupted = false;
+  const input = turn({
+    text: 'fixture Cake [{"command":"todos.list"}]',
+    cakeCall: async (_args, { signal }) =>
+      new Promise((resolve) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            interrupted = true;
+            resolve({ text: "Late result" });
+          },
+          { once: true },
+        );
+        child?.kill("SIGKILL");
+      }),
+  });
+  await expect(runAcpTurn(input, (cwd) => (child = launch(cwd)))).rejects.toThrow("disconnected");
+  expect(interrupted).toBe(true);
+  expect(input.chunk).not.toHaveBeenCalledWith("Late result");
+  const setup = (await wire())
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line))
+    .find((frame) => frame.method === "session/new");
+  await expect(fetch(setup.params.mcpServers[0].url)).rejects.toThrow();
+});
+
 it("reports connection failure and a subsequent new turn does not receive old events", async () => {
   await expect(runAcpTurn(turn({ text: "disconnect" }), launch)).rejects.toThrow("disconnected");
   const input = turn({ text: "again" });

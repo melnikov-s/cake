@@ -8,6 +8,8 @@ import {
   type JsonValue,
 } from "../../contracts/serialization/json-contract";
 
+import { openAcpCakeMcp, type AcpCakeCall } from "./turn-mcp";
+
 const rpcId = Schema.Union([Schema.String, Schema.Number]);
 const object = Schema.Record(Schema.String, Schema.Unknown);
 const envelope = Schema.Struct({
@@ -99,13 +101,18 @@ const promptTimeout = 15 * 60_000;
 export type AcpStatus = "connecting" | "new" | "resumed" | "no-resume" | "resume-unavailable";
 export type AcpTool = typeof toolCall.Type;
 type AcpStop = typeof promptResponse.Type.stopReason;
-export type AcpPermission = { description: string; canAllowOnce: boolean };
+export type AcpPermission = {
+  description: string;
+  canAllowOnce: boolean;
+  kind?: "cake-operation";
+};
 export interface AcpTurn {
   cwd: string;
   text: string;
   instructions?: string;
   history?: string;
   maxPromptBytes?: number;
+  cakeCall?: AcpCakeCall;
   resumeId?: string;
   signal: AbortSignal;
   permission(request: AcpPermission, signal: AbortSignal): Promise<"allow" | "deny" | undefined>;
@@ -135,13 +142,16 @@ class AcpError extends Error {
       | "timeout"
       | "rpc"
       | "cancelled"
-      | "prompt-limit",
+      | "prompt-limit"
+      | "cake-mcp",
     readonly code?: number,
   ) {
     super(
       {
         "prompt-limit":
           "The Antigravity prompt could not fit the context limit. Shorten the message.",
+        "cake-mcp":
+          "Antigravity did not discover Cake’s turn-scoped HTTP MCP tool. No prompt was sent. Check the installed agy ACP version.",
         missing:
           "Antigravity CLI (agy) is not on Cake’s PATH. Install Google’s CLI yourself and make it available to Cake.",
         auth: "Antigravity sign-in required. Sign in with agy in a terminal, then retry in Cake.",
@@ -252,8 +262,10 @@ export async function runAcpTurn(
   let pending:
     | { id: number; finish(value: JsonValue | undefined): void; fail(error: AcpError): void }
     | undefined;
+  let bridge: Awaited<ReturnType<typeof openAcpCakeMcp>> | undefined;
   const permissionAbort = new AbortController();
   let permissionId: RpcId | undefined;
+  let cakeCallPending = false;
   const tools = new Map<string, AcpTool>();
   const didClose = new Promise<void>((resolve) =>
     processHandle.once("close", () => {
@@ -264,6 +276,7 @@ export async function runAcpTurn(
 
   function fail(error: AcpError) {
     failure ??= error;
+    bridge?.close();
     pending?.fail(failure);
   }
   function send(value: JsonObject) {
@@ -311,6 +324,7 @@ export async function runAcpTurn(
   function requestCancel() {
     if (cancelling) return;
     cancelling = true;
+    bridge?.close();
     cancel();
   }
   function handlePermission(id: RpcId, ask: typeof permissionParams.Type | undefined) {
@@ -322,6 +336,7 @@ export async function runAcpTurn(
     // The existing desktop surface presents one modal. On concurrent permission
     // requests stop rather than obscuring a pending decision or granting it.
     if (
+      cakeCallPending ||
       permissionId !== undefined ||
       new Set(ask.options.map((option) => option.optionId)).size !== ask.options.length
     ) {
@@ -415,6 +430,7 @@ export async function runAcpTurn(
         return fail(new AcpError("protocol"));
       }
       phase = "closing";
+      bridge?.close();
     }
     if (message.error)
       pending.fail(
@@ -473,9 +489,32 @@ export async function runAcpTurn(
     )
       throw new AcpError("protocol");
     const canResume = negotiated.agentCapabilities?.sessionCapabilities?.resume !== undefined;
-    const scope = { cwd: input.cwd, mcpServers: [] };
+    const cakeCall = input.cakeCall;
+    if (cakeCall) {
+      try {
+        bridge = await openAcpCakeMcp(
+          async (request, context) => {
+            if (permissionId !== undefined || phase !== "prompt" || cancelling || failure)
+              return {
+                text: "Cake tools are not available during another permission decision or outside the active turn.",
+                isError: true,
+              };
+            cakeCallPending = true;
+            try {
+              return await cakeCall(request, context);
+            } finally {
+              cakeCallPending = false;
+            }
+          },
+          () => fail(new AcpError("connection")),
+        );
+      } catch {
+        throw new AcpError("cake-mcp");
+      }
+    }
+    const scope = { cwd: input.cwd, mcpServers: bridge ? [bridge.config] : [] };
     let status: AcpStatus = canResume ? "new" : "no-resume";
-    if (canResume && input.resumeId) {
+    if (!bridge && canResume && input.resumeId) {
       try {
         if (!decodeResume(await request("session/resume", { ...scope, sessionId: input.resumeId })))
           throw new AcpError("protocol");
@@ -502,19 +541,23 @@ export async function runAcpTurn(
     });
     if (Buffer.byteLength(frame) + 1 > (input.maxPromptBytes ?? maxFrame))
       throw new AcpError("prompt-limit");
+    if (bridge && !bridge.activate()) throw new AcpError("cake-mcp");
     phase = "prompt";
     const result = decodeStop(await request("session/prompt", params, promptTimeout));
     if (cancelling) return { stop: "cancelled" };
     if (!result) throw new AcpError("protocol");
     return {
       stop: result.stopReason,
-      ...(canResume && result.stopReason !== "cancelled" ? { resumeId: sessionId } : null),
+      ...(!bridge && canResume && result.stopReason !== "cancelled"
+        ? { resumeId: sessionId }
+        : null),
     };
   } catch (error) {
     if (cancelling) return { stop: "cancelled" };
     throw error instanceof AcpError ? error : new AcpError("connection");
   } finally {
     phase = "closing";
+    bridge?.close();
     permissionAbort.abort();
     clearTimeout(cancelTimer);
     input.signal.removeEventListener("abort", requestCancel);

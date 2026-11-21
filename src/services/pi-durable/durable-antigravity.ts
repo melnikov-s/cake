@@ -16,11 +16,15 @@ import {
 import type { openDurableChatEngine } from "./durable-chat-engine";
 import { createDurableChatMemory } from "./durable-chat-memory";
 import { durableInputPresentation } from "./durable-input-presentation";
+import type { projectChatAntigravityCake } from "./durable-antigravity-cake";
 
 // Existing Pi OptMem nodes may have already blended tools, session updates and
 // imported history into prose. Never export them or try to redact them afterward.
 // Select from a separate *derived* OptMem view of this root's vetted originals.
 function antigravityMemorySource(entry: EntryRecord) {
+  // An external reply may quote data from a one-time approved Cake call.
+  // An approval is not consent to re-export it as memory on another turn.
+  if (AntigravityReplyEntry.is(entry) && entry.data.cakeDataAccessed) return "";
   const external = durableAntigravityOriginal(entry);
   if (external)
     return external.text.trim() ? `${external.role} (Antigravity turn): ${external.text}` : "";
@@ -64,6 +68,7 @@ export function createDurableAntigravity(options: {
   engine: Awaited<ReturnType<typeof openDurableChatEngine>>;
   sessionId: string;
   cwd: string;
+  cake: ReturnType<typeof projectChatAntigravityCake>;
   budget(): number;
   contextLimit(): number | undefined;
   beforeInput(): Promise<() => void>;
@@ -84,12 +89,17 @@ export function createDurableAntigravity(options: {
     antigravityMemorySource,
   );
   let before: EntryId | undefined;
+  let cakeDataAccessed = false;
+  const instructions = [cakePortableInstructions("project-chat"), options.cake.instructions].join(
+    "\n\n",
+  );
   return createAntigravityTurnController({
     cwd,
     sessionId: () => sessionId,
     scope: "project-chat",
     onChanged: options.onChanged,
     async admit(request) {
+      cakeDataAccessed = false;
       const assertCurrent = await options.beforeInput();
       await root.commit(async (tx) => {
         const live = await tx.doc(LiveDoc, root.id);
@@ -107,7 +117,10 @@ export function createDurableAntigravity(options: {
         });
       }, BACKGROUND_CONTEXT);
     },
-    async prepare({ text }, signal) {
+    async prepare({ text, permission }, signal) {
+      const cakeCall = options.cake.forTurn(permission, () => {
+        cakeDataAccessed = true;
+      });
       // UTF-8 frame bytes are conservatively counted against the configured
       // token cap. The adapter checks the exact serialized frame with its real
       // ACP session id. Fit the history after reserving the complete user text,
@@ -117,7 +130,7 @@ export function createDurableAntigravity(options: {
         JSON.stringify(
           acpPrompt({
             text,
-            instructions: cakePortableInstructions("project-chat"),
+            instructions,
             history: " ",
           }),
         ),
@@ -127,16 +140,21 @@ export function createDurableAntigravity(options: {
         throw new Error(
           "The current message and Cake instructions cannot fit the Antigravity context limit. Shorten the message.",
         );
-      if (before === undefined || budget < 1024) return { maxPromptBytes };
+      const prepared = { maxPromptBytes, instructions, cakeCall };
+      if (before === undefined || budget < 1024) return prepared;
       const view = await memory.synchronize(signal, before, budget);
       if (!view.complete)
         throw new Error("Could not prepare bounded Project Chat memory for Antigravity.");
-      return { history: view.text || undefined, maxPromptBytes };
+      return { ...prepared, history: view.text || undefined };
     },
     async persist(details, content) {
       await root.commit(async (tx) => {
         await tx.appendEntry(AntigravityReplyEntry, root.id, {
-          data: { ...details, segments: [...details.segments] },
+          data: {
+            ...details,
+            segments: [...details.segments],
+            ...(cakeDataAccessed ? { cakeDataAccessed: true } : null),
+          },
           model: [{ role: "user", content, timestamp: Date.now() }],
         });
       }, BACKGROUND_CONTEXT);

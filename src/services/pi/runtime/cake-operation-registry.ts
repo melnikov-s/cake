@@ -234,6 +234,14 @@ export class CakeOperationRegistry {
     }
   }
 
+  /** Narrow discovery and dispatch together; share definitions and model result projection. */
+  restrict(include: (command: string) => boolean) {
+    return new CakeOperationRegistry(
+      [...this.operations.values()].filter(({ command }) => include(command)),
+      this.projectResult,
+    );
+  }
+
   definitions() {
     return [...this.operations.values()].filter((operation) => operation.available?.() !== false);
   }

@@ -218,7 +218,7 @@ export function createSessionRuntimeHandle(input: {
     paused = false,
     admissionId?: string,
     internal = recovered?.internal,
-    antigravity?: CakeAntigravityInput["permission"],
+    antigravity?: Pick<CakeAntigravityInput, "permission" | "ownerSignal">,
   ) {
     if (shared.runtime.antigravityActive)
       return yield* new PiSessionError({
@@ -421,7 +421,7 @@ export function createSessionRuntimeHandle(input: {
                 id: turnId,
                 text,
                 markdown,
-                permission: antigravity,
+                ...antigravity,
               });
               void externalTurn.catch(() => undefined);
             },
@@ -643,11 +643,7 @@ export function createSessionRuntimeHandle(input: {
   }, shared.queueEdits.withPermit);
 
   return {
-    antigravity: Effect.fn("CakeSessionRuntimes.antigravity")(function* (
-      text,
-      markdown,
-      permission,
-    ) {
+    antigravity: Effect.fn("CakeSessionRuntimes.antigravity")(function* (text, markdown, access) {
       if (
         !shared.runtime.antigravity ||
         (options.profile._tag !== "ProjectSession" &&
@@ -680,7 +676,7 @@ export function createSessionRuntimeHandle(input: {
         false,
         undefined,
         undefined,
-        permission,
+        access,
       );
     }, shared.turnAdmissions.withPermit),
     modelSwitchStatus: () =>

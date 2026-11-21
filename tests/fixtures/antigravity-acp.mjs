@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ACP v1 fixture. No model, network, auth, terminal, or tools are actually run.
+// ACP v1 fixture. Uses real loopback HTTP MCP when Cake provisions it; no model or external network.
 import { appendFileSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -9,6 +9,9 @@ const resume = !existsSync("fixture-no-resume");
 let sessionId;
 let promptId;
 let needsPermission = false;
+let mcp;
+let mcpSession;
+let mcpId = 0;
 const send = (body) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...body }) + "\n");
 const answer = (id, result) => send({ id, result });
 const update = (sessionUpdate, content, id = sessionId) =>
@@ -17,6 +20,52 @@ const update = (sessionUpdate, content, id = sessionId) =>
     params: { sessionId: id, update: { sessionUpdate, ...content } },
   });
 const text = (text, id) => update("agent_message_chunk", { content: { type: "text", text } }, id);
+async function mcpRequest(method, params, overrides = {}) {
+  const headers = Object.fromEntries(mcp.headers.map(({ name, value }) => [name, value]));
+  const id = method.startsWith("notifications/") ? {} : { id: ++mcpId };
+  const response = await fetch(mcp.url, {
+    method: "POST",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      ...(mcpSession ? { "Mcp-Session-Id": mcpSession } : {}),
+      ...overrides.headers,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", ...id, method, params }),
+    signal: overrides.signal,
+  });
+  if (method === "initialize") mcpSession = response.headers.get("Mcp-Session-Id");
+  const raw = await response.text();
+  let payload;
+  if (raw) payload = JSON.parse(raw);
+  return { status: response.status, result: payload?.result };
+}
+const cake = (args, overrides) =>
+  mcpRequest("tools/call", { name: "cake", arguments: args }, overrides);
+const evidence = (contents) =>
+  appendFileSync("fixture-mcp-evidence.ndjson", JSON.stringify(contents) + "\n");
+async function discoverMcp() {
+  await mcpRequest("server/discover", {});
+  await mcpRequest("initialize", {
+    protocolVersion: "2025-03-26",
+    capabilities: {},
+    clientInfo: { name: "fake-agy", version: "1" },
+  });
+  await mcpRequest("notifications/initialized");
+  const discovered = await mcpRequest("tools/list", {});
+  const beforePrompt = await cake({ command: "todos.create", input: { title: "not active" } });
+  const unauthorized = await cake({}, { headers: { Authorization: "Bearer not-the-turn-token" } });
+  const wrongSession = await cake({}, { headers: { "Mcp-Session-Id": "wrong-session" } });
+  evidence({ discovered, beforePrompt, unauthorized, wrongSession });
+}
+async function sendMcpResult(id, commands) {
+  const findings = [];
+  for (const command of commands) findings.push(await cake(command));
+  evidence({ findings });
+  text(findings.map(({ result }) => result?.content[0]?.text).join("\n"));
+  answer(id, { stopReason: "end_turn" });
+}
 for await (const line of createInterface({ input: process.stdin })) {
   const request = JSON.parse(line);
   appendFileSync("fixture-acp-wire.ndjson", line + "\n");
@@ -36,6 +85,8 @@ for await (const line of createInterface({ input: process.stdin })) {
         });
       else {
         sessionId = `fixture-session-${process.pid}`;
+        mcp = request.params.mcpServers[0];
+        if (mcp && !existsSync("fixture-ignore-mcp")) await discoverMcp();
         answer(request.id, { sessionId });
       }
       break;
@@ -55,7 +106,10 @@ for await (const line of createInterface({ input: process.stdin })) {
       text("ACP first chunk · café");
       if (first === "disconnect") process.exit(1);
       if (first === "hold before cancel") break;
-      if (first.includes("permission")) {
+      if (mcp && first.startsWith("fixture Cake ")) {
+        const commands = JSON.parse(first.slice("fixture Cake ".length));
+        void sendMcpResult(promptId, commands).catch(() => undefined);
+      } else if (first.includes("permission")) {
         needsPermission = true;
         update("tool_call", {
           toolCallId: "tool-1",

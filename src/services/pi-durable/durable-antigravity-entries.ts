@@ -11,6 +11,7 @@ import {
 export const AntigravityUserEntry = defineEntry<{ markdown: boolean }>("cake.antigravity.user/v1");
 export const AntigravityReplyEntry = defineEntry<
   Omit<AntigravityTurnDetails, "segments"> & {
+    cakeDataAccessed?: boolean;
     segments: AntigravityTurnDetails["segments"][number][];
   }
 >(antigravityResponseType);
