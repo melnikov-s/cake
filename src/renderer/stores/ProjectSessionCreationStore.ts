@@ -369,7 +369,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
         return false;
       }
       const latestName = this.pending.conversation(sessionId)?.name;
-      this.pending.materialize(sessionId, prepared.path);
+      this.pending.materialize(sessionId, prepared.path, prepared.configuration);
       void (async () => {
         // A manual name entered while start was in flight must reach Pi before the utility result.
         if (latestName && latestName !== startInput.name)

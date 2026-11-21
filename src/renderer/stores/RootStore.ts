@@ -897,8 +897,10 @@ export class RootStore extends Store<{
           session.sessionId,
         );
         // A new identity's runtime starts with the model the user chose for it (81eb383b).
+        // A released command-only identity has no transcript and is recreated with that model.
         const configuration = allowCreate
-          ? this.projectSessionCreationStore.request(session.sessionId)?.configuration
+          ? (this.projectSessionCreationStore.request(session.sessionId)?.configuration ??
+            this.sessionRegistry.pendingSessions.startedConfiguration(session.sessionId))
           : undefined;
         return {
           sessionId: session.sessionId,
@@ -1152,7 +1154,14 @@ export class RootStore extends Store<{
   get extensionUiStore(): ExtensionUiStore {
     return createStore(ExtensionUiStore, {
       activeSessionModel: () => this.projectWorkbenchStore.activeSession?.model,
-      sessionContext: () => this.projectWorkbenchStore.sessionContext(),
+      noticeSessionId: () => {
+        const context = this.projectWorkbenchStore.sessionContext();
+        if (context) return context.sessionId;
+        // Settings acts on its originating Project Session (native MCP sign-in) while
+        // that conversation is hidden; its notices carry the sign-in URL and outcome.
+        const origin = this.appShellStore.settingsConversation;
+        return origin?.kind === "project-session" ? origin.sessionId : undefined;
+      },
       setDraft: (value) => {
         const session = this.projectWorkbenchStore.activeSession;
         if (session)

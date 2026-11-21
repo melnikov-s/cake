@@ -28,7 +28,8 @@ export interface ExtensionNotification {
 
 export interface ExtensionUiStoreProps {
   activeSessionModel(): Conversation | undefined;
-  sessionContext(): { sessionId: string } | undefined;
+  /** The conversation whose extension notices this window presents. */
+  noticeSessionId(): string | undefined;
   setDraft(value: string | ((current: string) => string)): void;
   requestComposerFocus(): void;
 }
@@ -122,7 +123,7 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   receive(event: StoreEvent) {
     if (this.signal.aborted) return;
     if (event.type === "extension-ui-intent") {
-      if (event.sessionId !== this.props.sessionContext()?.sessionId) return;
+      if (event.sessionId !== this.props.noticeSessionId()) return;
       const intent = event.intent;
       if (intent.kind === "notify") {
         const index = this.notifications.findIndex((notification) => notification.id === intent.id);

@@ -9,6 +9,7 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import { applySessionSignalsUpdate } from "../../../src/renderer/reducers/SessionSignalsReducer";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -60,7 +61,7 @@ async function renderStaged(load: Client["workspaces"]["loadStagedSlashCommands"
         loadStagedSlashCommands: loadCommands,
         generateSessionTitle: async () => undefined,
       },
-      projectSessions: { start },
+      projectSessions: { start, open: async () => undefined },
       managedWorktrees: {
         create: async () => ({
           projectPath: "/project",
@@ -278,6 +279,52 @@ describe("Staged session command workflow", () => {
       expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty("value", ""),
     );
     expect(screen.queryByText("/mcp", { exact: true })).toBeNull();
+  });
+
+  it("reopens a command-only session after its runtime is released, recreating it with the chosen model", async () => {
+    using staged = await renderStaged(async () => [mcp()]);
+    const { root, models } = staged.fixture;
+    const sessionId = staged.session.sessionId;
+    const fixtureModel = {
+      provider: "mcp-fixture",
+      modelId: "fixture",
+      thinkingLevel: "off",
+      fastMode: false,
+    } as const;
+    await act(() => root.sessionRegistry.pendingSessions.setConfiguration(sessionId, fixtureModel));
+    await staged.user.type(screen.getByRole("combobox", { name: "Message" }), "/mcp");
+    await staged.user.keyboard("{Escape}");
+    await staged.user.click(screen.getByRole("button", { name: "Send" }));
+    staged.observeRuntime();
+    await waitFor(() => expect(staged.start).toHaveBeenCalled());
+    // The live runtime is reported in background signals while it runs; no transcript exists.
+    const signal = {
+      sessionId,
+      projectPath: "/project",
+      workingDirectory: "/project",
+      running: false,
+      unread: false,
+    };
+    act(() =>
+      applySessionSignalsUpdate(models.sessionCatalog, { _tag: "Upserted", session: signal }),
+    );
+    await staged.materialize("/project");
+
+    // The user moves on; the idle runtime is released and its signal disappears.
+    await act(() => root.projectWorkbenchStore.startNewSession("/project"));
+    expect(root.projectWorkbenchStore.activeSessionId).not.toBe(sessionId);
+    act(() => applySessionSignalsUpdate(models.sessionCatalog, { _tag: "Removed", sessionId }));
+
+    // Going back must reopen it, not ask the disk catalog for a transcript that never existed.
+    await act(() => root.projectWorkbenchStore.openSession(sessionId));
+    expect(root.projectWorkbenchStore.error).toBeUndefined();
+    expect(root.projectWorkbenchStore.activeSessionId).toBe(sessionId);
+    expect(root.projectSessionObservationTargets).toContainEqual({
+      sessionId,
+      workingDirectory: "/project",
+      allowCreate: true,
+      configuration: fixtureModel,
+    });
   });
 
   it("releases prepared observation after failed command start and retains the unsent draft for retry", async () => {

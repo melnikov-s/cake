@@ -70,6 +70,9 @@ function renderExtensionUi(respondToUi: Client["artifacts"]["respondToUi"], with
   return {
     user: userEvent.setup(),
     publish,
+    openSettings() {
+      act(() => fixture.root.navigationStore.showSettings());
+    },
     navigateToSession(sessionId: string) {
       act(() => {
         fixture.root.sessionRegistry.load(sessionId, "/project");
@@ -236,6 +239,25 @@ describe("Extension UI workflow", () => {
     });
     await fixture.user.click(screen.getByRole("button", { name: "Extension Connected" }));
     expect(screen.queryByText("Connected")).toBeNull();
+  });
+
+  it("shows notices from the Project Session that Settings acts on while Settings covers it", async () => {
+    using fixture = renderExtensionUi(async () => undefined, true);
+    fixture.openSettings();
+    // Settings > MCP servers > Sign in runs Pi's native command in this session; its
+    // notice carries the browser sign-in URL.
+    await fixture.publish({
+      type: "extension-ui-intent",
+      sessionId: "session-1",
+      intent: { kind: "notify", id: "sign-in", message: "Sign in to MCP", tone: "info" },
+    });
+    await fixture.publish({
+      type: "extension-ui-intent",
+      sessionId: "session-2",
+      intent: { kind: "notify", id: "other", message: "Other session", tone: "info" },
+    });
+    expect(screen.getByRole("button", { name: "Extension Sign in to MCP" })).toBeDefined();
+    expect(screen.queryByText("Other session")).toBeNull();
   });
 
   it("expires extension notices, restarts matching notices, and clears them on session navigation", async () => {

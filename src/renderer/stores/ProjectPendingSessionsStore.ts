@@ -51,6 +51,13 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     ProjectPendingSummaryMetadata
   > = observable({});
   private readonly savedRecords: Record<string, SavedDraft> = observable({});
+  /**
+   * Identities this window started, with the configuration their first runtime used. A
+   * command-only first turn writes no transcript, and its live runtime makes the catalog
+   * authoritative only until that runtime is released.
+   */
+  private readonly startedSessions: Record<string, { configuration?: ChatConfiguration }> =
+    observable({});
   private loadRevision = 0;
 
   private get conversationIds() {
@@ -188,13 +195,17 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     else if (!this.savedRecords[sessionId]) this.conversation(sessionId)?.setName(title);
   }
 
-  materialize(sessionId: string, workingDirectory: string) {
+  materialize(sessionId: string, workingDirectory: string, configuration?: ChatConfiguration) {
     if (!this.isTemporary(sessionId))
       throw new Error("Only a successfully started renderer draft can be materialized.");
     return batch(() => {
       this.props.session(sessionId)?.stagedCommandStore.invalidate();
       const session = this.props.materializeIdentity(sessionId, workingDirectory);
       const facts = this.conversation(sessionId) ?? this.savedRecords[sessionId]!;
+      const startedConfiguration = configuration ?? facts.configuration;
+      this.startedSessions[sessionId] = startedConfiguration
+        ? { configuration: startedConfiguration }
+        : {};
       // Once started, this is only a temporary Pi catalog summary, never pending
       // conversation data or a second writable representation of a saved Draft.
       this.sessionsById[sessionId] = {
@@ -233,9 +244,19 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     return this.sessionsById[sessionId]?.phase === "staged";
   }
 
-  /** A renderer-known identity whose transcript may not exist yet. */
+  /** A renderer-known identity whose transcript may not exist yet. Observation still
+   * prefers Pi's persisted transcript when one exists. */
   canCreateRuntime(sessionId: string) {
-    return this.isTemporary(sessionId) || this.sessionsById[sessionId]?.phase === "unlisted";
+    return (
+      this.isTemporary(sessionId) ||
+      this.sessionsById[sessionId]?.phase === "unlisted" ||
+      this.startedSessions[sessionId] !== undefined
+    );
+  }
+
+  /** The configuration a released, transcript-less started identity is recreated with. */
+  startedConfiguration(sessionId: string) {
+    return this.startedSessions[sessionId]?.configuration;
   }
 
   isTemporary(sessionId: string) {
@@ -428,6 +449,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
 
   remove(sessionId: string) {
     delete this.sessionsById[sessionId];
+    delete this.startedSessions[sessionId];
     delete this.summaryMetadataBySession[sessionId];
   }
 

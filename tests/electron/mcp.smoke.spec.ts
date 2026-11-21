@@ -160,6 +160,17 @@ export default (pi) => {
         await page.getByRole("button", { name: "Apply", exact: true }).click();
         await expect(configuration).toContainText("Fixture");
       };
+      // Extension notices sit in the top-right corner over the Workspace tabs for 8s
+      // (228dfe8f6). Each new runtime reports the unauthenticated server; dismiss the
+      // notices by clicking them, as a user does, before using those tabs.
+      const dismissNotices = async (unauthenticated = true) => {
+        const attention = page.getByRole("button", {
+          name: /^Extension MCP servers need attention/,
+        });
+        if (unauthenticated) await expect(attention.first()).toBeVisible();
+        const notices = page.getByRole("button", { name: /^Extension / });
+        while ((await notices.count()) > 0) await notices.first().click();
+      };
       await selectFixture();
       await composer.click();
       await expect(composer).toBeFocused();
@@ -180,6 +191,7 @@ export default (pi) => {
       const pane = page.locator('[data-slot="session-pane"]');
       const commandSessionId = await pane.getAttribute("data-session-id");
       expect(commandSessionId).toBeTruthy();
+      await dismissNotices();
       await createSessionInProject(page, /^project(?: |$)/i);
       await expect(composer).toHaveValue("");
       await expect(composer).toBeFocused();
@@ -195,6 +207,7 @@ export default (pi) => {
         await page.getByRole("button", { name: "Send", exact: true }).click();
         await expect(page.getByText("Fixture session ready", { exact: true })).toBeVisible();
         await expect(composer).toHaveValue("");
+        await dismissNotices();
         await createSessionInProject(page, /^project(?: |$)/i);
         await expect(composer).toBeFocused();
       }
@@ -204,12 +217,13 @@ export default (pi) => {
         ),
       ).toBe(false);
       const back = page.getByRole("button", { name: "Go back in session history", exact: true });
-      for (
-        let step = 0;
-        step < 12 && (await pane.getAttribute("data-session-id")) !== commandSessionId;
-        step += 1
-      )
+      // Step back one visit at a time, as a reader does, until the command-only Session.
+      for (let step = 0; step < 12; step += 1) {
+        const current = await pane.getAttribute("data-session-id");
+        if (current === commandSessionId) break;
         await back.click();
+        await expect(pane).not.toHaveAttribute("data-session-id", current!);
+      }
       await expect(pane).toHaveAttribute("data-session-id", commandSessionId!);
       await composer.click();
       await expect(composer).toBeFocused();
@@ -281,8 +295,7 @@ export default (pi) => {
         exact: true,
       });
       await expect(signedIn).toBeVisible();
-      // Extension notifications remain until the user dismisses them. Clear the
-      // completed sign-in before returning to the compact remote composer.
+      // Clear the completed sign-in notice before returning to the compact remote composer.
       await signedIn.click();
       await expect(signedIn).toHaveCount(0);
       expect(await readFile(join(agentDir, "mcp-auth.json"), "utf8")).toContain("fixture-token");
@@ -314,10 +327,15 @@ export default (pi) => {
 
       // Commands in an established conversation and ordinary first-message
       // promotion retain their existing paths.
-      await composer.fill("/mcp");
+      await composer.click();
+      await expect(composer).toBeFocused();
+      await composer.pressSequentially("/mcp");
+      await expect(composer).toHaveValue("/mcp");
+      await composer.press("Escape");
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(page.getByText(/oauth: connected/).last()).toBeVisible();
       await expect(composer).toHaveValue("");
+      await dismissNotices(false);
       await createSessionInProject(page, /^project(?: |$)/i);
       await expect(composer).toBeFocused();
       await selectFixture();
