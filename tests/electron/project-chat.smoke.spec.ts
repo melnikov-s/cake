@@ -13,6 +13,8 @@ import { showSessions } from "./fixtures/workspace-navigation";
 const repository = resolve(import.meta.dirname, "../..");
 const codeServerPath = "/opt/homebrew/bin/code-server";
 
+const SIDE_CHAT_TITLE = "Merge check";
+
 test("Project Chat isolates history and restores its root workspace, while global Cake Chat has Browser", async () => {
   test.setTimeout(90_000);
   const directory = await mkdtemp(join(tmpdir(), "cake-project-chat-"));
@@ -31,13 +33,18 @@ test("Project Chat isolates history and restores its root workspace, while globa
     for await (const chunk of request) body += chunk;
     const latest = JSON.stringify(JSON.parse(body).messages.at(-1)?.content);
     const summary = /Compaction: (?:compress message|merge lines)/.test(latest);
-    if (!summary) requests.push(body);
+    // A side chat is named from its first input by a background utility request
+    // (discussionTitles); it is not a chat turn and races the side chat's reply.
+    const sideChatTitle = body.includes("Title this side chat");
+    if (!summary && !sideChatTitle) requests.push(body);
     const turnId = [...latest.matchAll(/<cake-turn id=\\"([^\\"]+)\\"\/>/g)].at(-1)?.[1];
-    if (!summary && turnId) attributions.push(turnId);
+    if (!summary && !sideChatTitle && turnId) attributions.push(turnId);
     const content = summary
       ? "talk: project guidance discussed"
-      : (turnId ? `<cake-todo>${JSON.stringify({ turnId, todoId: null })}</cake-todo>` : "") +
-        `Reply ${requests.length}`;
+      : sideChatTitle
+        ? SIDE_CHAT_TITLE
+        : (turnId ? `<cake-todo>${JSON.stringify({ turnId, todoId: null })}</cake-todo>` : "") +
+          `Reply ${requests.length}`;
     const chunk = (delta: object, finish_reason: string | null) =>
       `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
     response.writeHead(200, { "content-type": "text/event-stream" });
@@ -608,17 +615,24 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(sideInput).toBeFocused();
     const sidePrompt = "SIDE_MERGE_EXACT: keep this original dialogue";
     const beforeSide = requests.length;
+    // The side chat keeps the earlier unsent "Draft a follow-up"; replace it.
+    await sideInput.press("ControlOrMeta+A");
+    await sideInput.press("Backspace");
+    await expect(sideInput).toHaveValue("");
     await sideInput.pressSequentially(sidePrompt);
+    await expect(sideInput).toHaveValue(sidePrompt);
     await sideInput.press("Enter");
-    await expect(sideChat.getByText(`Reply ${beforeSide + 1}`, { exact: true })).toBeVisible();
-    const merge = sideChat.getByRole("button", { name: "Merge into main chat", exact: true });
+    // The side chat panel is named by its generated title once naming completes.
+    const titledSideChat = page.getByRole("complementary", { name: SIDE_CHAT_TITLE, exact: true });
+    await expect(
+      titledSideChat.getByText(`Reply ${beforeSide + 1}`, { exact: true }),
+    ).toBeVisible();
+    const merge = titledSideChat.getByRole("button", { name: "Merge into main chat", exact: true });
     await expect(merge).toBeEnabled();
     await merge.click();
-    expect(requests).toHaveLength(beforeSide + 1);
-    await merge.click();
-    await expect(
-      sideChat.getByRole("button", { name: "Already merged", exact: true }),
-    ).toBeVisible();
+    // A successful merge resolves and closes the side chat (e8b9680b2), so there is no
+    // second merge to offer; the import below must still be single and request-free.
+    await expect(titledSideChat).toHaveCount(0);
     expect(requests).toHaveLength(beforeSide + 1);
     await page
       .getByRole("navigation", { name: "Conversation breadcrumb" })

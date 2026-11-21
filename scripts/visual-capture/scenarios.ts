@@ -6079,6 +6079,16 @@ const projectChatSourceCards: VisualCaptureScenario = {
         "aria-expanded",
         "false",
       );
+      // An expanded card's actions sit below its body and stay hidden while that footer is
+      // out of view (message-action-placement). Whether expansion keeps the transcript at the
+      // bottom varies with timing, so scroll to the end with the wheel, as a reader does.
+      const transcriptBox = await transcript.boundingBox();
+      if (!transcriptBox) throw new Error("The Project Chat transcript is not painted");
+      await page.mouse.move(
+        transcriptBox.x + transcriptBox.width / 2,
+        transcriptBox.y + transcriptBox.height / 2,
+      );
+      await page.mouse.wheel(0, 5_000);
       await expect(
         pairRow.getByRole("link", { name: "Open source", exact: true }).first(),
       ).toHaveAttribute("href", /\?message=user-1$/);
