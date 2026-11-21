@@ -39,6 +39,12 @@ export function createCakeSessionRuntimeSubscription(input: {
   const cakeSessionId = session.sessionManager.getSessionId();
   let initialTranscriptPublished = !options.newSession;
   let automaticTitleForNextMessage = true;
+  const publishInitialTranscript = () => {
+    if (input.isDisposed() || initialTranscriptPublished || !session.sessionFile) return;
+    if (!existsSync(session.sessionFile)) return;
+    initialTranscriptPublished = true;
+    options.onInitialTranscriptPersisted?.();
+  };
   const captureTurnResult = createTurnResultCapture(
     () => turnController.executingTurnIds(),
     (turnId, result) => options.onTurnResult?.(turnId, result),
@@ -87,12 +93,7 @@ export function createCakeSessionRuntimeSubscription(input: {
     ) {
       // Pi notifies public listeners before synchronously appending the message.
       // Do not release catalog publication from inside that pre-persistence event.
-      queueMicrotask(() => {
-        if (input.isDisposed() || initialTranscriptPublished || !session.sessionFile) return;
-        if (!existsSync(session.sessionFile)) return;
-        initialTranscriptPublished = true;
-        options.onInitialTranscriptPersisted?.();
-      });
+      queueMicrotask(publishInitialTranscript);
     }
     if (event.type === "message_end" && event.message.role === "user") {
       const content = textFromContent(event.message.content);
@@ -139,6 +140,7 @@ export function createCakeSessionRuntimeSubscription(input: {
   });
 
   return {
+    publishInitialTranscript,
     setAutomaticTitle(enabled: boolean) {
       automaticTitleForNextMessage = enabled;
     },

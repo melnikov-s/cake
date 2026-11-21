@@ -12,6 +12,7 @@ import { CakeChatComposerPresence } from "../../services/session-catalogs/CakeCh
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
+import { interactiveModelSubmit } from "./InteractiveModelSubmit";
 import { admitTurnAttachments } from "./AttachmentUploadHandlers";
 
 const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Effect<A, E, R>) =>
@@ -66,7 +67,11 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
               Effect.mapError(
                 (error) => new CakeChatError({ operation: "start", message: error.message }),
               ),
-              Effect.flatMap((admitted) => cakeChatOperations.start(admitted, configuration)),
+              Effect.flatMap((admitted) =>
+                Effect.flatMap(interactiveModelSubmit(connectionId), (submit) =>
+                  cakeChatOperations.start(admitted, configuration, submit),
+                ),
+              ),
             ),
           ),
         ),

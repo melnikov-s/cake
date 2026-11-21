@@ -10,11 +10,13 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { cakePortableInstructions } from "../../src/services/pi/runtime/cake-instructions";
 import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation";
 import { seedPermanentChatHistory } from "./durable-chat-fixture";
+import { createSessionInProject } from "./fixtures/workspace-navigation";
 import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 test("desktop Project Session and Project Chat route through the Antigravity picker and permissions", async ({}, info) => {
+  test.setTimeout(90_000);
   const root = await mkdtemp(join(tmpdir(), "cake-antigravity-smoke-"));
   const userData = join(root, "user-data");
   const project = join(root, "project");
@@ -103,6 +105,78 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
       },
     });
     const page = await application.firstWindow();
+    await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const presets = page.getByRole("region", { name: "Model Presets" });
+    const editor = page.getByRole("dialog", { name: "Preset model" });
+    await presets.getByRole("button", { name: "New preset", exact: true }).click();
+    await presets.getByRole("textbox", { name: "Name", exact: true }).fill("Gemini for chat");
+    await presets.getByRole("button", { name: "Preset model" }).click();
+    await editor.getByRole("textbox", { name: "Search presets and models" }).fill("antigravity");
+    await editor.getByRole("button", { name: /Gemini · via Antigravity/ }).click();
+    await editor.getByRole("button", { name: "Apply", exact: true }).click();
+    await presets.screenshot({
+      path: info.outputPath("antigravity-preset-editor.png"),
+      animations: "disabled",
+    });
+    await presets.getByRole("button", { name: "Save preset", exact: true }).click();
+    const preset = presets.locator("article").filter({ hasText: "Gemini for chat" });
+    await expect(preset.getByText("Gemini · via Antigravity")).toBeVisible();
+    await preset.getByRole("button", { name: "Edit", exact: true }).click();
+    await presets.getByRole("textbox", { name: "Name", exact: true }).fill("Gemini saved");
+    await presets.getByRole("button", { name: "Save preset", exact: true }).click();
+    await presets
+      .locator("article")
+      .filter({ hasText: "Gemini saved" })
+      .getByRole("button", { name: "Set default", exact: true })
+      .click();
+    await expect
+      .poll(async () => {
+        const data = JSON.parse(
+          await readFile(join(cakeHome, "state", "application.json"), "utf8"),
+        ).data;
+        return data?.modelPresets.find(
+          (item: { id: string }) => item.id === data.defaultModelPresetId,
+        );
+      })
+      .toMatchObject({
+        name: "Gemini saved",
+        provider: "antigravity",
+        modelId: "gemini",
+        thinkingLevel: "off",
+        fastMode: false,
+      });
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+
+    const picker = page.getByRole("button", { name: "Model configuration" });
+    const pickerDialog = page.getByRole("dialog", { name: "Model configuration" });
+    await picker.click();
+    await pickerDialog.getByRole("button", { name: /Change model/ }).click();
+    await pickerDialog.getByRole("button", { name: /Gemini saved/ }).click();
+    await expect(picker).toContainText("Gemini saved");
+    await page.getByLabel("Message Cake Chat").fill("First global fixture turn");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(
+      page.getByText("ACP first chunk · café + final chunk", { exact: true }),
+    ).toBeVisible();
+
+    await createSessionInProject(page, /^project(?: |$)/i);
+    await expect(picker).toContainText("Gemini saved");
+    await page
+      .getByRole("combobox", { name: "Message", exact: true })
+      .fill("First draft fixture turn");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(
+      page.getByText("ACP first chunk · café + final chunk", { exact: true }),
+    ).toBeVisible();
+    expect(await readFile(join(project, "fixture-acp-wire.ndjson"), "utf8")).toContain(
+      "First draft fixture turn",
+    );
+    await page.screenshot({
+      path: info.outputPath("antigravity-first-draft-turn.png"),
+      animations: "disabled",
+    });
+
     await page.getByRole("button", { name: "Search sessions", exact: true }).click();
     const search = page.getByRole("dialog", { name: "Search sessions" });
     await search.getByRole("combobox").pressSequentially("Antigravity fixture");
@@ -110,25 +184,22 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     await expect(
       page.locator(".transcript").getByText("Pi transcript ready", { exact: true }),
     ).toBeVisible();
-    const picker = page.getByRole("button", { name: "Model configuration" });
-    const pickerDialog = page.getByRole("dialog", { name: "Model configuration" });
     const chooseAntigravity = async () => {
       await picker.click();
       const change = pickerDialog.getByRole("button", { name: /Change model/ });
       await expect(
-        change.or(pickerDialog.getByRole("button", { name: /Gemini · via Antigravity/ })),
+        change.or(pickerDialog.getByRole("button", { name: /^Gemini · via Antigravity/ })),
       ).toBeVisible();
       if (await change.isVisible()) await change.click();
       await expect(
-        pickerDialog.getByRole("button", { name: /Gemini · via Antigravity/ }),
+        pickerDialog.getByRole("button", { name: /^Gemini · via Antigravity/ }),
       ).toBeVisible();
       await pickerDialog.screenshot({ path: info.outputPath("antigravity-picker.png") });
-      await pickerDialog.getByRole("button", { name: /Gemini · via Antigravity/ }).click();
+      await pickerDialog.getByRole("button", { name: /^Gemini · via Antigravity/ }).click();
+      await pickerDialog.getByRole("button", { name: "Apply", exact: true }).click();
     };
     await chooseAntigravity();
-    await expect(
-      page.getByText(/Cake sends its instructions and this message, not Pi history/),
-    ).toBeVisible();
+    await expect(picker).toContainText("Gemini · via Antigravity");
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     const send = async (text: string) => {
       await composer.fill(text);
@@ -167,7 +238,8 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     await send("show missing CLI");
     await expect(page.getByText(/not on Cake’s PATH/)).toBeVisible();
     await picker.click();
-    await pickerDialog.getByRole("button", { name: /Return to Pi/ }).click();
+    await pickerDialog.getByRole("button", { name: /Change model/ }).click();
+    await pickerDialog.getByRole("button", { name: /Fixture preset/ }).click();
     await expect(picker).not.toContainText("Antigravity");
 
     // Restore the fixture after the missing-CLI assertion.
@@ -178,9 +250,8 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     await expect(
       page.getByText("The Project Chat example is an atlas", { exact: true }),
     ).toBeVisible();
-    await expect(picker).not.toContainText("Antigravity");
     await chooseAntigravity();
-    await expect(page.getByText(/sharing its result with Google/)).toBeVisible();
+    await expect(picker).toContainText("Gemini · via Antigravity");
     const projectChat = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
     const question = "fixture permission from Project Chat";
     await projectChat.fill(question);
@@ -194,9 +265,6 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     await prompt.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByText("Allowed fixture reply", { exact: true })).toBeVisible();
     await expect(page.getByText(question, { exact: true })).toHaveCount(1);
-    await expect(
-      page.getByText(/Fresh Antigravity session using Cake’s instructions/),
-    ).toBeVisible();
     await page.screenshot({
       path: info.outputPath("project-chat-antigravity-turn.png"),
       animations: "disabled",
@@ -281,7 +349,10 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
             await readFile(join(cakeHome, "state", "application.json"), "utf8"),
           ).data?.projects.find((item: { path: string }) => item.path === project)?.todos?.items,
       )
-      .toEqual([expect.objectContaining({ title: "Synthetic ACP to-do", revision: 0 })]);
+      .toEqual([
+        expect.objectContaining({ title: "First draft fixture turn", revision: 0 }),
+        expect.objectContaining({ title: "Synthetic ACP to-do", revision: 0 }),
+      ]);
     await projectChat.fill('fixture Cake [{"command":"todos.list","input":{}}]');
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(exportPrompt).toContainText(

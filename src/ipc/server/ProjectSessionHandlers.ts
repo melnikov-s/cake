@@ -13,6 +13,7 @@ import * as projectSessionLifecycle from "../../domain/project-sessions/projectS
 import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
+import { interactiveModelSubmit } from "./InteractiveModelSubmit";
 import { admitTurnAttachments } from "./AttachmentUploadHandlers";
 
 const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Effect<A, E, R>) =>
@@ -76,7 +77,11 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
             Effect.mapError(
               (error) => new ProjectSessionError({ operation: "start", message: error.message }),
             ),
-            Effect.flatMap(projectSessionOperations.start),
+            Effect.flatMap((admitted) =>
+              Effect.flatMap(interactiveModelSubmit(connectionId), (submit) =>
+                projectSessionOperations.start(admitted, undefined, submit),
+              ),
+            ),
           ),
         ),
       ),

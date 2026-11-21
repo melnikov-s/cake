@@ -1,12 +1,17 @@
 import { Effect, Schema } from "effect";
 import {
+  antigravitySettingsError,
+  isAntigravityModel,
+  supportsAntigravitySettings,
+} from "../../contracts/model-presets/antigravity-model";
+import { modelPresetConfiguration } from "../../contracts/model-presets/cake-model-selection";
+import {
   ModelPreset,
   type ApplicationState,
   type ModelPreset as ModelPresetValue,
 } from "../../contracts/application/application-data";
 import { PiModels } from "../../services/pi/PiModels";
 import { ModelPresetPrompts } from "../../services/storage/ModelPresetPrompts";
-import type { ModelSelection } from "../../contracts/pi/model-data";
 import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
 import type {
   ModelPresetCreateInput,
@@ -51,10 +56,13 @@ const ensureIntegrity = Effect.fn("ModelPresets.ensureIntegrity")(function* (
   return state;
 });
 
-const decodePreset = Effect.fn("ModelPresets.decodePreset")((value: ModelPresetValue) =>
-  Schema.decodeUnknownEffect(ModelPreset)(value).pipe(
-    Effect.mapError((cause) => new ModelPresetValidationError({ message: cause.message })),
-  ),
+const decodePreset = Effect.fn("ModelPresets.decodePreset")(
+  (value: ModelPresetValue & { prompt?: string }) =>
+    isAntigravityModel(value) && !supportsAntigravitySettings(value)
+      ? Effect.fail(new ModelPresetValidationError({ message: antigravitySettingsError }))
+      : Schema.decodeUnknownEffect(ModelPreset)(value).pipe(
+          Effect.mapError((cause) => new ModelPresetValidationError({ message: cause.message })),
+        ),
 );
 
 const transact = Effect.fn("ModelPresets.transact")(function* (
@@ -102,7 +110,13 @@ export const update = Effect.fn("ModelPresets.update")(function* (input: ModelPr
     Effect.fn("ModelPresets.updateTransition")(function* (current: ApplicationState) {
       const previous = current.modelPresets.find((preset) => preset.id === input.id);
       if (!previous) return yield* new ModelPresetNotFoundError({ id: input.id });
-      let preset = yield* decodePreset({ ...previous, ...input, name: input.name.trim() });
+      // The update carries the complete configuration. A switch to Antigravity
+      // must not keep the prior model's prompt file attached.
+      let preset = yield* decodePreset({
+        ...(isAntigravityModel(input) ? undefined : previous),
+        ...input,
+        name: input.name.trim(),
+      });
       if (input.prompt !== undefined) {
         const promptFile = yield* prompts.write(input.prompt, preset.promptFile);
         preset = { ...preset, promptFile };
@@ -186,15 +200,8 @@ export const resolve = Effect.fn("ModelPresets.resolve")(function* (id: string) 
   const state = yield* list();
   const preset = state.presets.find((candidate) => candidate.id === id);
   if (!preset) return yield* new ModelPresetNotFoundError({ id });
+  const selection = modelPresetConfiguration(preset);
+  if (isAntigravityModel(selection)) return selection;
   const models = yield* PiModels;
-  return yield* models.resolve({
-    provider: preset.provider,
-    modelId: preset.modelId,
-    thinkingLevel: preset.thinkingLevel,
-    fastMode: preset.fastMode,
-    preset: {
-      id: preset.id,
-      ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
-    },
-  } satisfies ModelSelection);
+  return yield* models.resolve(selection);
 });

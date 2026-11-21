@@ -1,3 +1,7 @@
+import {
+  antigravityDesktopOnly,
+  isAntigravityModel,
+} from "../../contracts/model-presets/antigravity-model";
 import { Context, Effect, Layer, Schema } from "effect";
 import {
   BoundedCompletionInput,
@@ -206,6 +210,11 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
           new PiModelCompletionError({ message: cause.message, category: "configuration" }),
       ),
     );
+    if (isAntigravityModel(decoded.selection))
+      return yield* new PiModelCompletionError({
+        message: antigravityDesktopOnly,
+        category: "configuration",
+      });
     yield* resolve(decoded.selection);
     const completion = adapter.complete(decoded, observeRequest).pipe(
       Effect.mapError((cause) =>

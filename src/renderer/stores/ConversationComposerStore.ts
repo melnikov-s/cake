@@ -23,8 +23,6 @@ export interface ConversationComposerStoreProps {
   canonicalParts(): UiPart[];
   canSubmit(): boolean;
   isStreaming(): boolean;
-  antigravitySelected?(): boolean;
-  antigravityBusy?(): boolean;
   openCommandPane?(pane: "changelog" | "tree" | "resources"): Promise<void>;
   createSideChat?(prompt: string): Promise<boolean>;
   selectModel(value: string): Promise<boolean | void>;
@@ -133,35 +131,6 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     this.clearError();
     const text = this.draftStore.text.trim();
     const attachments = this.draftStore.submissionAttachments;
-
-    if (this.props.antigravitySelected?.()) {
-      if (
-        this.props.antigravityBusy?.() ||
-        deliveryOverride ||
-        this.editingMessage ||
-        attachments.length ||
-        !text ||
-        /^[!/]/.test(text)
-      ) {
-        this.reportError(
-          new Error(
-            "Antigravity accepts one plain-text message at a time. Remove attachments or choose Pi for commands, editing, or queued input.",
-          ),
-        );
-        return false;
-      }
-      this.draftStore.clearForSubmit();
-      const delivery = this.deliveryStore.send(
-        text,
-        [],
-        "prompt",
-        true,
-        renderUserMessageAsMarkdown,
-        "antigravity",
-      );
-      onSubmitted?.();
-      return delivery;
-    }
 
     // Side-chat commands must never become a saved draft or an assistant prompt,
     // including in staged or unsupported conversations.

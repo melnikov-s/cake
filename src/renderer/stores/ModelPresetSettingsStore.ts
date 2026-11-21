@@ -1,3 +1,7 @@
+import {
+  isAntigravityModel,
+  supportsAntigravitySettings,
+} from "../../contracts/model-presets/antigravity-model";
 import { Store, batch, observable, snapshot } from "r-state-tree";
 import type {
   ApplicationState,
@@ -91,6 +95,8 @@ export class ModelPresetSettingsStore extends Store {
   }
 
   resolutionStatus(preset: ModelPreset): ModelPresetResolutionStatus {
+    if (isAntigravityModel(preset))
+      return supportsAntigravitySettings(preset) ? "available" : "unavailable";
     const model = this.catalog.models.find(
       (candidate) => candidate.provider === preset.provider && candidate.id === preset.modelId,
     );

@@ -1,3 +1,7 @@
+import {
+  antigravityDesktopOnly,
+  isAntigravityModel,
+} from "../../contracts/model-presets/antigravity-model";
 import { DateTime, Effect, Schema } from "effect";
 import {
   changeLeftToolbarPreferences,
@@ -469,6 +473,8 @@ export const setDictationCleanupMinimumCharacters = Effect.fn(
 export const setUtilityModel = Effect.fn("Application.setUtilityModel")(function* (
   model: UtilityModel | undefined,
 ) {
+  if (isAntigravityModel(model))
+    return yield* new ApplicationPolicyError({ message: antigravityDesktopOnly });
   return yield* update((current) => {
     const withoutUtilityModel = { ...current };
     Reflect.deleteProperty(withoutUtilityModel, "utilityModel");

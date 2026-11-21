@@ -194,10 +194,14 @@ export interface CakeSessionHandle {
     turnId: string,
   ) => Effect.Effect<"consumed" | "canceled" | "pending" | undefined, PiSessionError>;
   readonly profile: CakeSessionRuntimeAcquireOptions["profile"]["_tag"];
+  readonly antigravitySelected?: () => boolean;
   readonly antigravity?: (
     text: string,
     markdown: boolean,
-    access: Pick<CakeAntigravityInput, "permission" | "cakeBridgeOwnerSignal">,
+    access: Pick<
+      CakeAntigravityInput,
+      "permission" | "cakeBridgeOwnerSignal" | "automaticTitle"
+    > & { admissionId?: string },
   ) => Effect.Effect<string, PiSessionError>;
   readonly updates: Stream.Stream<PiSessionUpdate, PiSessionError>;
   readonly snapshot: () => Effect.Effect<ConversationSnapshot, PiSessionError>;

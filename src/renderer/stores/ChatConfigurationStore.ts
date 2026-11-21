@@ -1,3 +1,4 @@
+import { isAntigravityModel } from "../../contracts/model-presets/antigravity-model";
 import { Store, computed } from "r-state-tree";
 import type {
   ChatConfiguration,
@@ -12,9 +13,7 @@ import { UtilityModelContext } from "./context/UtilityModelContext";
 
 export interface ChatConfigurationStoreProps {
   session(): Conversation | undefined;
-  antigravity?():
-    | { projectChat: boolean; selected: boolean; select(selected: boolean): void }
-    | undefined;
+  antigravityAvailable?(): boolean;
   operations: {
     start(owner?: string): string;
     finish(operationId: string): void;
@@ -48,8 +47,8 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   get session() {
     return this.props.session();
   }
-  get antigravity() {
-    return this.props.antigravity?.();
+  get antigravityAvailable() {
+    return this.props.antigravityAvailable?.() ?? false;
   }
   get fastMode() {
     return this.fastModeOverride ?? this.session?.fastMode ?? false;
@@ -125,6 +124,10 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     if (separator < 1) return;
     const provider = value.slice(0, separator);
     const modelId = value.slice(separator + 1);
+    if (isAntigravityModel({ provider, modelId })) {
+      await this.selectConfiguration({ provider, modelId, thinkingLevel: "off", fastMode: false });
+      return;
+    }
     // Deferred chats have no runtime. The owner persists saved Draft choices or
     // keeps unsaved choices locally for the first prompt.
     if (this.deferred) {

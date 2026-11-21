@@ -1,3 +1,7 @@
+import {
+  antigravityDesktopOnly,
+  isAntigravityModel,
+} from "../../contracts/model-presets/antigravity-model";
 import { Cron, DateTime, Effect, FileSystem, Option, Result, Struct } from "effect";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import {
@@ -91,6 +95,8 @@ export const nextScheduledAt = Effect.fn("Automations.nextScheduledAt")(function
 const validate = Effect.fn("Automations.validateDefinition")(function* (
   definition: AutomationDefinition,
 ) {
+  if (isAntigravityModel(definition.task.configuration))
+    return yield* automationError("validate", antigravityDesktopOnly);
   yield* resolveContext(definition.context);
   if (definition.trigger._tag === "Event") {
     const filter = definition.trigger.filter;

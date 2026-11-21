@@ -107,6 +107,7 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* (
           const stub = yield* Layer.build(
             Layer.mock(TestAntigravityHandle, {
               profile: "CakeChatSession",
+              antigravitySelected: () => true,
               antigravity,
             }),
           );
@@ -490,6 +491,7 @@ it.live("only native IPC grants Project Chat bridge registration and consent", (
     const input = {
       sessionId: cakeChatLocations.projectChatSessionId("/project"),
       text: "Synthetic Project Chat turn",
+      attachments: [],
       renderUserMessageAsMarkdown: false,
     };
     const request = {
@@ -498,18 +500,24 @@ it.live("only native IPC grants Project Chat bridge registration and consent", (
       canAllowOnce: true,
     };
     const socket = yield* remote();
-    const browser = yield* socket.client["sessionChats.antigravity"](input).pipe(Effect.flip);
-    expect(browser.message).toContain("requires the requesting desktop");
+    const browser = yield* socket.client["sessionChats.prompt"](input).pipe(Effect.flip);
+    expect(browser.message).toContain("requires an interactive desktop conversation");
     yield* socket.client["backendConnection.connect"]({ buildId: cakeBuildId });
+    const voice = yield* socket.client["sessionChats.prompt"]({
+      ...input,
+      responseMode: "voice",
+    }).pipe(Effect.flip);
+    expect(voice.message).toContain("plain-text messages only");
+    expect(yield* Queue.size(admitted)).toBe(0);
     // A compatible remote desktop retains its text route, not bridge authority.
-    yield* socket.client["sessionChats.antigravity"](input);
+    yield* socket.client["sessionChats.prompt"](input);
     const nonnative = yield* Queue.take(admitted);
     expect(nonnative.cakeBridgeOwnerSignal).toBeUndefined();
     expect(
       yield* Effect.promise(() => nonnative.permission(request, new AbortController().signal)),
     ).toBeUndefined();
 
-    yield* local["sessionChats.antigravity"](input);
+    yield* local["sessionChats.prompt"](input);
     const native = yield* Queue.take(admitted);
     expect(native.cakeBridgeOwnerSignal?.aborted).toBe(false);
     expect(
@@ -580,9 +588,10 @@ it.live("native Project Chat approvals and queued turns cannot cross renderer ge
     const input = {
       sessionId: cakeChatLocations.projectChatSessionId("/project"),
       text: "Synthetic Project Chat turn",
+      attachments: [],
       renderUserMessageAsMarkdown: false,
     };
-    const submit = local["sessionChats.antigravity"](input);
+    const submit = local["sessionChats.prompt"](input);
     const consent = {
       kind: "cake-operation" as const,
       description: "Synthetic read",

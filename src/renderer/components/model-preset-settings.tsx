@@ -1,3 +1,7 @@
+import {
+  antigravityModel,
+  isAntigravityModel,
+} from "../../contracts/model-presets/antigravity-model";
 import { useEffect, useState, type FormEvent } from "react";
 import { observer } from "r-state-tree/react";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
@@ -64,6 +68,10 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
     event.preventDefault();
     if (!draft.name.trim() || !draft.provider || !draft.modelId) return;
     const value = { ...draft, name: draft.name.trim() };
+    if (isAntigravityModel(draft)) {
+      delete value.prompt;
+      delete value.promptFile;
+    }
     if (editingId === "new") void settings.createPreset(value);
     else if (editingId) void settings.updatePreset({ ...value, id: editingId });
     setEditingId(undefined);
@@ -153,8 +161,9 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
                     {preset.name}
                   </strong>
                   <small className="block truncate font-mono text-xs text-muted-foreground">
-                    {preset.provider}/{preset.modelId} · {reasoningLabel(preset.thinkingLevel)}
-                    {preset.fastMode ? " · Fast" : ""}
+                    {isAntigravityModel(preset)
+                      ? antigravityModel.name
+                      : `${preset.provider}/${preset.modelId} · ${reasoningLabel(preset.thinkingLevel)}${preset.fastMode ? " · Fast" : ""}`}
                   </small>
                   {unavailable && (
                     <Badge variant="destructive" size="xs" className="mt-1">
@@ -223,6 +232,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             <span className="text-xs font-medium text-foreground">Model & thinking</span>
             <ModelPicker
               ariaLabel="Preset model"
+              includeAntigravity
               placeholder="Choose model & thinking"
               groups={() => groups}
               currentModelName={
@@ -252,22 +262,29 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
               }}
             />
           </div>
-          <div className="grid gap-1.5 px-3.5 py-2.5">
-            {draft.promptFile && (
-              <p className="break-all font-mono text-xs text-muted-foreground">
-                {draft.promptFile}
-              </p>
-            )}
-            <label htmlFor="model-preset-prompt" className="text-xs font-medium">
-              Prompt (optional; shared/project instructions take precedence)
-            </label>
-            <Textarea
-              id="model-preset-prompt"
-              value={draft.prompt ?? ""}
-              onChange={(event) => setDraft({ ...draft, prompt: event.target.value })}
-              rows={4}
-            />
-          </div>
+          {isAntigravityModel(draft) ? (
+            <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
+              Antigravity chooses the exact Gemini model and thinking settings. Preset prompts and
+              Fast mode aren’t supported.
+            </p>
+          ) : (
+            <div className="grid gap-1.5 px-3.5 py-2.5">
+              {draft.promptFile && (
+                <p className="break-all font-mono text-xs text-muted-foreground">
+                  {draft.promptFile}
+                </p>
+              )}
+              <label htmlFor="model-preset-prompt" className="text-xs font-medium">
+                Prompt (optional; shared/project instructions take precedence)
+              </label>
+              <Textarea
+                id="model-preset-prompt"
+                value={draft.prompt ?? ""}
+                onChange={(event) => setDraft({ ...draft, prompt: event.target.value })}
+                rows={4}
+              />
+            </div>
+          )}
           <div className="flex justify-end gap-2 px-3.5 py-2.5">
             <Button
               variant="ghost"

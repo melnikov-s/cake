@@ -1,3 +1,4 @@
+import type { InteractiveModelSubmit } from "../conversations/interactiveModelPrompt";
 import { Effect, Stream, type Schema } from "effect";
 import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { JsonObject } from "../../contracts/serialization/json-contract";
@@ -128,6 +129,7 @@ export const observeControls = Effect.fn("CakeChats.observeControls")(function* 
 export const start = Effect.fn("CakeChats.start")(function* (
   input: CakeChatStartInput,
   configuration: CakeChatRuntimeConfiguration,
+  interactive?: InteractiveModelSubmit,
 ) {
   const target: CakeChatTarget = { sessionId: input.sessionId, tools: input.tools };
   const exists = yield* sessionNamespace(
@@ -142,6 +144,11 @@ export const start = Effect.fn("CakeChats.start")(function* (
   );
   if (input.newSession.configuration)
     yield* handle.applyConfiguration(input.newSession.configuration).pipe(asError("start"));
+  const external = interactive && (yield* interactive(handle, input).pipe(asError("start")));
+  if (external) {
+    yield* publishCatalogChange(input.sessionId, false);
+    return external;
+  }
   const prepared = yield* prepareForChat(input.sessionId, input.text).pipe(asError("start"));
   const turnId = TurnId.make(
     yield* deliverWhenAvailable(

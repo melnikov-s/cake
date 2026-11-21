@@ -109,7 +109,11 @@ export const ElectronRpcServerProtocolLive = Layer.effect(
       Queue.offerUnsafe(incoming, {
         connectionId,
         message: withTrustedMetadata(connectionId, message),
-        ...(message._tag === "Request" && message.tag === "sessionChats.antigravity"
+        ...(message._tag === "Request" &&
+        (message.tag === "sessionChats.prompt" ||
+          message.tag === "projectSessions.start" ||
+          message.tag === "cakeChats.start" ||
+          message.tag === "savedDrafts.activate")
           ? { antigravityDocument: watched.capture(event) }
           : null),
       });

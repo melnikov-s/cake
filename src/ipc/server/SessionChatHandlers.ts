@@ -1,18 +1,16 @@
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import * as sessionChats from "../../domain/conversations/sessionChats";
 import * as cakeChatTargets from "../../domain/cake-chats/cakeChatTargets";
 import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
-import {
-  AntigravityRendererDocument,
-  RendererConnection,
-} from "../protocol/RendererConnectionMiddleware";
+import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
+import { interactiveModelSubmit } from "./InteractiveModelSubmit";
 import { SessionChatRpc } from "../protocol/SessionChatRpc";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import { admitTurnAttachments } from "./AttachmentUploadHandlers";
 
 const deliverFromRenderer = (
   input: Parameters<typeof sessionChats.deliver>[0],
-  delivery: Parameters<typeof sessionChats.deliver>[1],
+  delivery: "prompt" | "steer" | "follow-up",
 ) =>
   Effect.flatMap(RendererConnection, ({ connectionId }) =>
     // A saved Project Chat preview can accept input while its observer is still
@@ -25,16 +23,21 @@ const deliverFromRenderer = (
               (error) => new SessionChatError({ operation: "deliver", message: error.message }),
             ),
           )
-      : Effect.void
+      : sessionChats.acquire(input.sessionId)
     ).pipe(
-      Effect.andThen(sessionChats.bindRenderer(input.sessionId, connectionId)),
-      Effect.andThen(
-        admitTurnAttachments(input).pipe(
-          Effect.mapError(
-            (error) => new SessionChatError({ operation: "deliver", message: error.message }),
-          ),
-          Effect.flatMap((admitted) => sessionChats.deliver(admitted, delivery)),
-        ),
+      Effect.flatMap((handle) =>
+        Effect.gen(function* () {
+          const submit = yield* interactiveModelSubmit(connectionId);
+          const externalTurn = yield* submit(handle, input, delivery);
+          if (externalTurn) return externalTurn;
+          yield* sessionChats.bindRenderer(input.sessionId, connectionId);
+          const admitted = yield* admitTurnAttachments(input).pipe(
+            Effect.mapError(
+              (error) => new SessionChatError({ operation: "deliver", message: error.message }),
+            ),
+          );
+          return yield* sessionChats.deliver(admitted, delivery);
+        }),
       ),
     ),
   );
@@ -42,12 +45,6 @@ const deliverFromRenderer = (
 export const sessionChatHandlers = SessionChatRpc.of({
   "sessionChats.prompt": (input) => deliverFromRenderer(input, "prompt"),
   "sessionChats.steer": (input) => deliverFromRenderer(input, "steer"),
-  "sessionChats.antigravity": (input) =>
-    Effect.gen(function* () {
-      const { connectionId } = yield* RendererConnection;
-      const document = yield* Effect.serviceOption(AntigravityRendererDocument);
-      return yield* sessionChats.antigravity(input, connectionId, Option.getOrUndefined(document));
-    }),
   "sessionChats.followUp": (input) => deliverFromRenderer(input, "follow-up"),
   "sessionChats.abort": sessionChats.abort,
   "sessionChats.history": sessionChats.history,

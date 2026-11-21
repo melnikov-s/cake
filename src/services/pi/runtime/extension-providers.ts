@@ -1,4 +1,8 @@
 import {
+  antigravityDesktopOnly,
+  isAntigravityModel,
+} from "../../../contracts/model-presets/antigravity-model";
+import {
   DefaultResourceLoader,
   SettingsManager,
   type ModelRuntime,
@@ -108,6 +112,7 @@ export function requireRegisteredModel(
   runtime: Pick<ModelRuntime, "getModel">,
   selection: { provider: string; modelId: string },
 ) {
+  if (isAntigravityModel(selection)) throw new Error(antigravityDesktopOnly);
   const model = runtime.getModel(selection.provider, selection.modelId);
   if (!model)
     throw new Error(

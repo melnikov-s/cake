@@ -5,6 +5,11 @@ import {
   type SettingsManager,
   type SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import {
+  antigravityDesktopOnly,
+  isAntigravityModel,
+} from "../../../contracts/model-presets/antigravity-model";
+import { antigravitySessionModel, assertAntigravitySettings } from "./antigravity-model";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import { Option, Schema } from "effect";
 import { PresetContext, presetGuidance } from "../../../contracts/model-presets/preset-context";
@@ -130,6 +135,7 @@ export function createCakeSessionRuntimeConfiguration(input: {
   settingsManager: SettingsManager;
   session: AgentSession;
   state: CakeSessionRuntimeConfigurationState;
+  supportsAntigravity: boolean;
   emitSnapshot(): Promise<void>;
   cancelResponseRetries(): void;
   reportAgentAction(action: "set-model", detail: string): Promise<void>;
@@ -189,6 +195,7 @@ export function createCakeSessionRuntimeConfiguration(input: {
 
   const setOperationModel = async (selection: CakeModelSelection) => {
     const configuration = resolveModelSelection(selection);
+    if (isAntigravityModel(configuration)) throw new Error(antigravityDesktopOnly);
     const model = modelRuntime.getModel(configuration.provider, configuration.modelId);
     if (!model) throw new Error(`Unknown model ${configuration.provider}/${configuration.modelId}`);
     const supportedThinkingLevels = getSupportedThinkingLevels(model);
@@ -225,10 +232,25 @@ export function createCakeSessionRuntimeConfiguration(input: {
     resolveModelSelection,
     setModel,
     async setThinkingLevel(level) {
+      if (session.model?.api === antigravitySessionModel.api)
+        assertAntigravitySettings({ thinkingLevel: level, fastMode: false });
       session.setThinkingLevel(level);
       await emitSnapshot();
     },
     async applyConfiguration(configuration) {
+      if (isAntigravityModel(configuration)) {
+        if (!input.supportsAntigravity) throw new Error(antigravityDesktopOnly);
+        assertAntigravitySettings(configuration);
+        // This selection does not use Pi authentication or stream dispatch.
+        session.agent.state.model = antigravitySessionModel;
+        session.sessionManager.appendModelChange(configuration.provider, configuration.modelId);
+        state.setPreset(configuration.preset);
+        updateModel();
+        session.setThinkingLevel("off");
+        await setFastModeValue(false);
+        await emitSnapshot();
+        return;
+      }
       const model = modelRuntime.getModel(configuration.provider, configuration.modelId);
       if (!model)
         throw new Error(`Unknown model ${configuration.provider}/${configuration.modelId}`);

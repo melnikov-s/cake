@@ -18,7 +18,11 @@ import {
 import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { SessionModelSwitchStatus } from "../../contracts/conversations/session-model-switch";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
-import { isProjectChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isProjectChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
+import { antigravityDesktopOnly } from "../../contracts/model-presets/antigravity-model";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
@@ -218,8 +222,13 @@ export function createSessionRuntimeHandle(input: {
     paused = false,
     admissionId?: string,
     internal = recovered?.internal,
-    antigravity?: Pick<CakeAntigravityInput, "permission" | "cakeBridgeOwnerSignal">,
+    antigravity?: Pick<
+      CakeAntigravityInput,
+      "permission" | "cakeBridgeOwnerSignal" | "automaticTitle"
+    >,
   ) {
+    if (!antigravity && shared.runtime.antigravitySelected)
+      return yield* new PiSessionError({ operation: delivery, message: antigravityDesktopOnly });
     if (shared.runtime.antigravityActive)
       return yield* new PiSessionError({
         operation: delivery,
@@ -489,7 +498,6 @@ export function createSessionRuntimeHandle(input: {
       ),
     );
     if (
-      !antigravity &&
       (options.profile._tag === "ProjectSession" || options.profile._tag === "AutomationSession") &&
       options.runtime.newSession
     ) {
@@ -643,18 +651,25 @@ export function createSessionRuntimeHandle(input: {
   }, shared.queueEdits.withPermit);
 
   return {
-    antigravity: Effect.fn("CakeSessionRuntimes.antigravity")(function* (text, markdown, access) {
+    antigravitySelected: () => Boolean(shared.runtime.antigravitySelected),
+    antigravity: Effect.fn("CakeSessionRuntimes.antigravity")(function* (
+      text,
+      markdown,
+      { admissionId, ...access },
+    ) {
       if (
+        !shared.runtime.antigravitySelected ||
         !shared.runtime.antigravity ||
         (options.profile._tag !== "ProjectSession" &&
           !(
             options.profile._tag === "CakeChatSession" &&
-            isProjectChatSessionId(shared.runtime.sessionId)
+            (shared.runtime.sessionId === CAKE_CHAT_SESSION_ID ||
+              isProjectChatSessionId(shared.runtime.sessionId))
           ))
       )
         return yield* new PiSessionError({
           operation: "antigravity",
-          message: "Antigravity is available only in active Project Sessions and Project Chat",
+          message: "The selected model changed or cannot run here. Choose a model and send again.",
         });
       const record = yield* recoveryStorage
         .get(shared.runtime.sessionId)
@@ -670,11 +685,11 @@ export function createSessionRuntimeHandle(input: {
         [],
         markdown,
         undefined,
-        false,
+        access.automaticTitle,
         undefined,
         undefined,
         false,
-        undefined,
+        admissionId,
         undefined,
         access,
       );

@@ -1,11 +1,14 @@
 # Antigravity turns in Cake
 
-In an open desktop Project Session or an existing permanent Project Chat, choose **Change model → Gemini · via Antigravity**. The installed Google CLI chooses the concrete model. The choice applies only to that composer; **Return to Pi** restores the unchanged Pi configuration. This route accepts one plain-text turn at a time. It isn't available for drafts, global Cake Chat, the companion, side chats, basic browser chat, workers, schedules, or automations.
+Choose **Gemini · via Antigravity** from the regular model picker in Settings → Models, a desktop Project Session (including an unsent or saved draft), Project Chat, or global Cake Chat. Save it as a named preset or make it the default for new conversations. Changing model uses the same picker; the choice is saved with the conversation. Google’s CLI chooses the concrete Gemini model and thinking settings; Cake doesn’t apply preset prompt files or Fast mode.
+
+Antigravity currently accepts one plain-text turn at a time. Attachments, voice replies, editing a message to regenerate it, queued/steered input, and Pi agent commands are not supported. Existing conversation controls and transcript are still available; use a different model to execute unsupported inputs or summarize Pi history.
 
 ## What Cake sends
 
 Cake prepends portable Cake guidance as a separate text block before the exact current user message. Antigravity keeps its own system prompt and CLI controls. Cake doesn't send the Pi system prompt, configured MCP servers, settings, attachments, or generated reminders. Selecting Antigravity gives its CLI the conversation's working directory and its normal workspace access; ACP setup is not a filesystem sandbox. The CLI may also apply its own configuration. Cake doesn't change it.
 
+- **Global Cake Chat:** Cake sends portable instructions and the current message, not the chat’s prior transcript or selected excerpts. The CLI starts in Cake Chat’s scratch directory, not a registered project. It receives no Cake tool, configured MCP server, or project path. Cake can resume the CLI’s own checkpoint from the previous global Antigravity reply if the CLI supports resume. It does not replay Cake history.
 - **Project Session:** Cake sends its instructions and the current message, not Pi history, and doesn't provide any Cake tools. If the CLI advertises resume and the saved checkpoint still belongs to the current branch, Cake resumes Antigravity's own state without replaying a transcript. Otherwise it starts fresh. Cake never reads Antigravity's local history.
 - **Project Chat:** Each turn starts a fresh ACP session, even if resume is advertised. Cake sends bounded operation recipes and may send extracts from your earlier Project Chat messages and eligible Antigravity replies in that chat, marked as historical data, not instructions or authorization. Cake does not copy the Pi memory summary. The Antigravity view runs OptMem selection and consolidation locally on eligible text from this chat's own Durable originals. Pi replies, tool records, imported side-chat history, reports, schedules, attachments, and internal context are excluded. Replies from turns that accessed Cake project data are also excluded from later Antigravity memory: an earlier approval doesn't authorize another export. The derived view has no recall handles and is not a second transcript. The configured memory budget and context cap bound this view. Cake counts serialized frame bytes, including the instructions and wrappers. A current message that can't fit is rejected rather than truncated. Don't put secrets in dialogue you intend to share.
 
@@ -23,7 +26,9 @@ Cake binds MCP to loopback with a fresh turn credential and MCP session. Operati
 
 ## What remains on Pi
 
-This bridge does not provide full Pi runtime or Cake catalog parity:
+Antigravity is not available to the companion, side chats, or basic browser chat. Workers, schedules, automations, summarization, utility, and bounded text completions such as icon generation have no approved headless Antigravity execution and export contract. Choose an explicitly supported model on those surfaces if the interactive default is Antigravity. Cake never substitutes another model for a selected Antigravity preset. Image generation and classifiers are separate non-chat capabilities.
+
+The Project Chat bridge does not provide full Cake catalog parity:
 
 - Native `zoom`, `date`, `archive_search`, `archive_read`, and `memory_repair` operate on local Durable history and OptMem, which can include private inputs, tool records, or other conversations. No raw history/export path, attachment reads, or context-inheriting forks is exposed. Use Cake's history or Context inspector to select and paste only text you intend to share. Pi's original-message access, memory summaries, and manual compaction remain local and unchanged.
 - Existing Pi operations outside the bridge include session messaging, reports/completion management, stop/resolve/merge, model/context maintenance, artifacts/widgets, browser/VS Code/canvas, settings and app/project controls, and scheduling/automation. They are not an ACP transport limitation. They need separate checks for cross-project targets, history or renderer export, session provenance, or action approval before becoming external capabilities.
@@ -35,6 +40,6 @@ Project Chat retains one Durable history. User content is saved separately from 
 
 Use a disposable empty Project and synthetic text only. From the environment that launches Cake, check `command -v agy` and `agy acp --help`. Cake does not install the executable or perform sign-in. See [Google's ACP setup](https://antigravity.google/docs/ide/extensions/acp/#other-clients) and the [ACP v1 protocol](https://agentclientprotocol.com/protocol/v1/session-setup).
 
-1. In a Project Session, send a Pi message, select Antigravity, and ask it to reply `agy-one` with no tools. Return to Pi and confirm the two routes share one transcript. With Antigravity selected, verify that a subsequent turn resumes only Antigravity's own state if supported.
+1. In a Project Session, send a Pi message, select Antigravity, and ask it to reply `agy-one` with no tools. Select the original model and confirm the two routes share one transcript. With Antigravity selected, verify that a subsequent turn resumes only Antigravity's own state if supported.
 2. Open the permanent Project Chat and opt in separately. Ask Antigravity to discover the Cake tool and create a synthetic to-do. Allow only that call and export; check the receipt and the project's to-do list. Repeat with a second to-do and deny the export. The second to-do should not exist.
-3. Return to Pi and verify the chat originals and local recall are still available. Re-select Antigravity and check that it starts a fresh session, not a replay of Pi or a resumption of the last tool turn.
+3. Select the original model and verify the chat originals and local recall are still available. Re-select Antigravity and check that it starts a fresh session, not a replay of Pi or a resumption of the last tool turn.

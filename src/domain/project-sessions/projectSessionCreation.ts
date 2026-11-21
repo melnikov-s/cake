@@ -25,6 +25,10 @@ import {
   type Attachment,
   type ChatConfiguration,
 } from "../../contracts/conversations/session-contract";
+import {
+  antigravityDesktopOnly,
+  isAntigravityModel,
+} from "../../contracts/model-presets/antigravity-model";
 import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as projectSessionLocations from "./projectSessionLocations";
@@ -51,6 +55,11 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
   readonly resultDelivery?: ResultDelivery;
   readonly markdown?: boolean;
 }) {
+  if (isAntigravityModel(input.model))
+    return yield* new ProjectSessionError({
+      operation: "createPrompted",
+      message: antigravityDesktopOnly,
+    });
   const locations = yield* projectSessionLocations.locations();
   if (
     !locations.some(

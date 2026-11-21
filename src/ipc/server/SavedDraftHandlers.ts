@@ -1,6 +1,8 @@
-import { Effect, Stream } from "effect";
+import { Effect, Option, Stream } from "effect";
+import { ClientConnections } from "../../services/clients/ClientConnections";
 import * as savedDrafts from "../../domain/project-sessions/savedDrafts";
 import { SavedDraftRpc } from "../protocol/SavedDraftRpc";
+import { interactiveModelSubmit } from "./InteractiveModelSubmit";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
 export const savedDraftHandlers = SavedDraftRpc.of({
@@ -17,5 +19,15 @@ export const savedDraftHandlers = SavedDraftRpc.of({
       savedDrafts.recoverUncertain(sessionId, expectedRevision),
     ),
   "savedDrafts.activate": (input) =>
-    Effect.flatMap(RendererConnection, () => Effect.scoped(savedDrafts.activate(input))),
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { connectionId } = yield* RendererConnection;
+        const connections = Option.getOrUndefined(yield* Effect.serviceOption(ClientConnections));
+        const submit =
+          connections?.kind(connectionId) === "desktop"
+            ? yield* interactiveModelSubmit(connectionId)
+            : undefined;
+        return yield* savedDrafts.activate(input, submit);
+      }),
+    ),
 });

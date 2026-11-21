@@ -4,6 +4,7 @@ import {
   cakeChatModelSettingDefaults,
   type CakeChatModelSetting,
 } from "../../contracts/cake-chats/cake-chat-preferences";
+import { isAntigravityModel } from "../../contracts/model-presets/antigravity-model";
 import type { CakeModelChoice } from "../../contracts/model-presets/cake-model-selection";
 import type { SettingsStore } from "../stores/SettingsStore";
 import { ModelPicker } from "./model-picker";
@@ -80,8 +81,14 @@ export const SettingsModelChoiceField = observer(function SettingsModelChoiceFie
           onChange={(event) => choose(event.target.value)}
         >
           <option value="inherit">{optionLabel("Inherit chat model", "inherit")}</option>
-          <option value="default">
-            {optionLabel("Default preset", "default", defaultPreset?.name)}
+          <option value="default" disabled={isAntigravityModel(defaultPreset)}>
+            {optionLabel(
+              "Default preset",
+              "default",
+              isAntigravityModel(defaultPreset)
+                ? "desktop conversations only"
+                : defaultPreset?.name,
+            )}
           </option>
           <option value="utility" disabled={!utility && stored.source !== "utility"}>
             {optionLabel("Utility model", "utility", utility?.modelId ?? "not configured")}
@@ -89,8 +96,13 @@ export const SettingsModelChoiceField = observer(function SettingsModelChoiceFie
           {presets.length > 0 && (
             <optgroup label="Presets">
               {presets.map((preset) => (
-                <option key={preset.id} value={`${PRESET_PREFIX}${preset.id}`}>
+                <option
+                  key={preset.id}
+                  value={`${PRESET_PREFIX}${preset.id}`}
+                  disabled={isAntigravityModel(preset)}
+                >
                   {preset.name}
+                  {isAntigravityModel(preset) ? " (desktop conversations only)" : ""}
                 </option>
               ))}
             </optgroup>

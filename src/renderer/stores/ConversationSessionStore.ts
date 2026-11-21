@@ -9,7 +9,6 @@ import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import {
   cakeChatSideChatConversationId,
   isCakeChatSessionId,
-  isProjectChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import type { StoreEvent } from "../events/StoreEvent";
 import {
@@ -117,19 +116,6 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   }
 
   private stopBeforeAdmission = false;
-  private antigravitySelected = false;
-
-  private get antigravity() {
-    if (!globalThis.window?.cake || !this.props.chat.antigravityAvailable?.()) return undefined;
-    return {
-      projectChat: isProjectChatSessionId(this.sessionId),
-      selected: this.antigravitySelected,
-      select: (selected: boolean) => {
-        this.antigravitySelected = selected;
-      },
-    };
-  }
-
   get client() {
     return ClientContext.consume(this)!;
   }
@@ -181,8 +167,6 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
         }),
       canonicalParts: () => this.model.uiParts,
       canSubmit: () => this.canSubmit,
-      antigravitySelected: () => this.antigravitySelected,
-      antigravityBusy: () => this.streaming || this.model.activeTurnIds.length > 0,
       isStreaming: () => this.streaming,
       selectModel: async (value) => {
         await this.configurationStore.selectModel(value);
@@ -198,7 +182,8 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     return createStore(ChatConfigurationStore, {
       ...this.props.configuration,
       session: () => this.model,
-      antigravity: () => this.antigravity,
+      antigravityAvailable: () =>
+        Boolean(globalThis.window?.cake && this.props.chat.antigravityAvailable?.()),
       setConfiguration: (configuration) =>
         this.configureActiveSession(() =>
           this.client.sessionChats.applyConfiguration(
@@ -417,30 +402,6 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   }
 
   private async deliver(input: ComposerDeliveryInput) {
-    if (input.runtime === "antigravity") {
-      if (
-        !this.antigravity?.selected ||
-        input.delivery !== "prompt" ||
-        input.attachments.length ||
-        input.responseMode === "voice"
-      )
-        throw new Error(
-          "Antigravity requires a text-only prompt in an active Project Session or Project Chat",
-        );
-      return this.withTranscript(async () => {
-        const active = await this.activeSession();
-        if (!active) return false;
-        const turnId = await this.client.sessionChats.antigravity(
-          {
-            sessionId: input.sessionId,
-            text: input.text,
-            renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-          },
-          { signal: input.signal ? AbortSignal.any([this.signal, input.signal]) : this.signal },
-        );
-        return { turnId };
-      });
-    }
     if (this.props.configuration.deferredNewSession?.() && this.props.startSession)
       return this.props.startSession(input);
     return this.withTranscript(async () => {

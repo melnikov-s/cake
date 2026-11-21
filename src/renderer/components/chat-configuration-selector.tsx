@@ -5,11 +5,9 @@ import { ModelPicker } from "./model-picker";
 export const ChatConfigurationSelector = observer(function ChatConfigurationSelector({
   configuration,
   className,
-  inComposer,
 }: {
   configuration: ChatConfigurationStore;
   className?: string;
-  inComposer?: boolean;
 }) {
   const session = configuration.session;
   const selectedModel = session?.model;
@@ -26,11 +24,10 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
     ? (configuration.effectiveConfiguration ?? sessionConfiguration)
     : sessionConfiguration;
 
-  const antigravity = inComposer ? configuration.antigravity : undefined;
   return (
     <ModelPicker
       className={className}
-      antigravity={antigravity}
+      includeAntigravity={configuration.antigravityAvailable}
       groups={() => configuration.connectedModelsByProvider}
       currentModelName={
         effectiveConfiguration?.provider === selectedModel?.provider &&
@@ -53,12 +50,6 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
         configuration.canOpenPresetSettings ? () => configuration.openPresetSettings() : undefined
       }
       onSelect={(next) => {
-        if (antigravity?.selected) {
-          void configuration.selectConfiguration(next).then(() => {
-            if (!configuration.error) antigravity.select(false);
-          });
-          return;
-        }
         if (
           selectedModel &&
           next.provider === selectedModel.provider &&
@@ -81,11 +72,7 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
           void configuration.selectConfiguration(next);
         }
       }}
-      onSelectPreset={(preset) =>
-        void configuration.selectPreset(preset).then(() => {
-          if (!configuration.error) antigravity?.select(false);
-        })
-      }
+      onSelectPreset={(preset) => void configuration.selectPreset(preset)}
     />
   );
 });

@@ -1,3 +1,5 @@
+import { antigravityDesktopOnly } from "../../contracts/model-presets/antigravity-model";
+import type { InteractiveModelSubmit } from "../conversations/interactiveModelPrompt";
 import { Effect, Exit, Schedule, Stream } from "effect";
 import type { SessionPurpose } from "../../contracts/project-sessions/session-purpose";
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
@@ -237,6 +239,7 @@ export const setPurpose = Effect.fn("ProjectSessions.setPurpose")(function* (
 export const start = Effect.fn("ProjectSessions.start")(function* (
   input: ProjectSessionStartInput,
   onAccepted?: () => void,
+  interactive?: InteractiveModelSubmit,
 ) {
   const locations = yield* projectSessionLocations.locations().pipe(asError("start"));
   const location = locations.find(
@@ -276,6 +279,11 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
       })
       .pipe(asError("start"));
     const handle = yield* acquireTarget(location, input.sessionId, true, input.configuration);
+    if ((purpose !== "user" || !interactive) && handle.antigravitySelected?.())
+      return yield* new ProjectSessionError({
+        operation: "start",
+        message: antigravityDesktopOnly,
+      });
     if (input.labelIds?.length)
       yield* setProjectSessionLabels(location.projectPath, input.sessionId, input.labelIds).pipe(
         asError("start"),
@@ -287,13 +295,20 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
     const turnId = yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
         const acceptedTurn = yield* restore(
-          handle.prompt(
-            input.text,
-            projectAttachments(attachments),
-            input.renderUserMessageAsMarkdown,
-            input.presentationMode,
-            input.automaticTitle,
-          ),
+          Effect.gen(function* () {
+            const external =
+              interactive && (yield* interactive(handle, input).pipe(asError("start")));
+            if (external) return external;
+            return yield* handle
+              .prompt(
+                input.text,
+                projectAttachments(attachments),
+                input.renderUserMessageAsMarkdown,
+                input.presentationMode,
+                input.automaticTitle,
+              )
+              .pipe(asError("start"));
+          }),
         ).pipe(asError("start"));
         accepted = true;
         onAccepted?.();

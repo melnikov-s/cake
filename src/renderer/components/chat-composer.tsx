@@ -89,13 +89,6 @@ export const ChatComposer = observer(function ChatComposer({
             onSubmit={onSubmit}
           >
             {children}
-            {!inline && configuration?.antigravity?.selected && (
-              <p className="px-2 py-1 text-xs text-muted-foreground">
-                {configuration.antigravity.projectChat
-                  ? "Each turn starts fresh. Google Antigravity receives your message, Cake instructions, and selected chat excerpts, not Pi replies, attachments, or tool logs. It can access the workspace. Only a local Cake window can allow Cake operations. One approval covers the operation and sharing its result with Google."
-                  : "Cake sends its instructions and this message, not Pi history. Antigravity can access the workspace and may remember its own earlier turns."}
-              </p>
-            )}
             {inline && dictationNode}
             {input && (
               <div
@@ -119,9 +112,7 @@ export const ChatComposer = observer(function ChatComposer({
                 <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
                   {dictationNode}
                   {toolbarLeading}
-                  {configuration && (
-                    <ChatConfigurationSelector configuration={configuration} inComposer />
-                  )}
+                  {configuration && <ChatConfigurationSelector configuration={configuration} />}
                 </div>
               )}
               <div

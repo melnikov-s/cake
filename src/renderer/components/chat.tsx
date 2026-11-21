@@ -389,17 +389,15 @@ export const Chat = observer(function Chat({
           toolbarLeading={
             !activatingDraft && (
               <>
-                {store.conversationMode && !composerConfiguration?.antigravity?.selected && (
+                {store.conversationMode && (
                   <ChatConversationControls
                     conversation={store.conversationMode.workflow}
                     target={store.conversationMode.target}
                   />
                 )}
-                {store.conversationMode?.workflow.enabled &&
-                  composerConfiguration &&
-                  !composerConfiguration.antigravity?.selected && (
-                    <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
-                  )}
+                {store.conversationMode?.workflow.enabled && composerConfiguration && (
+                  <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
+                )}
               </>
             )
           }
@@ -407,7 +405,6 @@ export const Chat = observer(function Chat({
             <>
               {showContextUsage &&
                 !activatingDraft &&
-                !composerConfiguration?.antigravity?.selected &&
                 (store.contextInspector ? (
                   <ContextInspector store={store.contextInspector} usage />
                 ) : (

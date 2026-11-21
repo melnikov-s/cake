@@ -10,6 +10,11 @@ import {
   cakeDefaultModelConfiguration,
   missingCakeDefaultModel,
 } from "../../../contracts/model-presets/cake-model-selection";
+import {
+  antigravityDesktopOnly,
+  isAntigravityModel,
+} from "../../../contracts/model-presets/antigravity-model";
+import { antigravitySessionModel, assertAntigravitySettings } from "./antigravity-model";
 import { savedSessionModel } from "./saved-session-model";
 import { createCakeSessionRuntimeSubscription } from "./cake-session-runtime-subscription";
 import { shutdownDiagnostics, shutdownResource } from "../../diagnostics/shutdown-diagnostics";
@@ -255,6 +260,7 @@ export interface CakeSessionRuntime {
   readonly streaming: boolean;
   executingTurnIds?(): ReadonlyArray<string>;
   readonly antigravityActive?: boolean;
+  readonly antigravitySelected?: boolean;
   antigravity?(input: CakeAntigravityInput): Promise<void>;
   recoverInput?(input: RuntimeRecoveryInput): Promise<void>;
   restoreInput?(input: RuntimeRecoveryInput): Promise<void>;
@@ -442,7 +448,17 @@ export async function createCakeSessionRuntime(
   if (!selection) throw new Error(missingCakeDefaultModel);
   // The SDK falls back to Pi defaults (including auth-dependent restoration)
   // if either option is omitted. Cake supplies both, even for imported sessions.
-  const model = requireRegisteredModel(modelRuntime, selection);
+  const supportsAntigravity =
+    !options.auxiliary && !options.ephemeral && !options.projectInvestigation;
+  if (isAntigravityModel(selection)) {
+    if (!supportsAntigravity) throw new Error(antigravityDesktopOnly);
+    assertAntigravitySettings(
+      launch ?? { thinkingLevel: selection.thinkingLevel, fastMode: false },
+    );
+  }
+  const model = isAntigravityModel(selection)
+    ? antigravitySessionModel
+    : requireRegisteredModel(modelRuntime, selection);
   const agentSessionOptions = {
     model,
     thinkingLevel: selection.thinkingLevel,
@@ -543,6 +559,7 @@ export async function createCakeSessionRuntime(
     emitSnapshot: () => emitSnapshot(),
     cancelResponseRetries: recovery.cancelResponseRetries,
     reportAgentAction: capabilities.reportAgentAction,
+    supportsAntigravity,
   });
 
   let stoppedParts: UiPart[] | undefined;
@@ -561,8 +578,10 @@ export async function createCakeSessionRuntime(
   const agy = createAntigravityTranscript({
     session,
     cwd: options.cwd,
-    onStarted: () => {
+    onStarted: (request) => {
       stoppedParts = undefined;
+      subscription.publishInitialTranscript();
+      void continuations.initializeSessionFromFirstMessage(request.text, request.automaticTitle);
     },
     onChanged: () => {
       const id = agy.activeId();
@@ -577,9 +596,15 @@ export async function createCakeSessionRuntime(
       for (const part of agy.parts()) emitPart(part);
     },
   });
+  const antigravitySelected = () => session.model?.api === antigravitySessionModel.api;
+  function requireNativeModel() {
+    agy.requireIdle();
+    if (antigravitySelected()) throw new Error(antigravityDesktopOnly);
+  }
+
   function native<Args extends unknown[], A>(fn: (...args: Args) => A) {
     return (...args: Args) => {
-      agy.requireIdle();
+      requireNativeModel();
       return fn(...args);
     };
   }
@@ -805,6 +830,9 @@ export async function createCakeSessionRuntime(
     get sessionFile() {
       return session.sessionFile ?? "";
     },
+    get antigravitySelected() {
+      return antigravitySelected();
+    },
     get antigravityActive() {
       return agy.activeId() !== undefined;
     },
@@ -878,8 +906,9 @@ export async function createCakeSessionRuntime(
       return exportRegularSideChatHistory(cakeSessionId, session.sessionManager.getBranch());
     },
     snapshot: () => makeSnapshot(),
-    restoreInput: (input) =>
+    restoreInput: native((input: RuntimeRecoveryInput) =>
       turnController.restorePending({ ...input, attachments: [...input.attachments] }),
+    ),
     pendingRecoveryInputs: turnController.pendingRecoveryInputs,
     cancelScheduledInput: (turnId) => turnController.cancelScheduledInput(turnId),
     async scheduledInputReceipt(turnId) {
@@ -890,7 +919,7 @@ export async function createCakeSessionRuntime(
       return restartDecision(session.sessionManager.getEntries(), turnId).kind !== "pending";
     },
     async recoverInput(input) {
-      agy.requireIdle();
+      requireNativeModel();
       const decision = restartDecision(session.sessionManager.getBranch(), input.turnId);
       if (decision.kind === "settled") {
         options.onTurnResult?.(input.turnId, decision.result);
@@ -921,15 +950,15 @@ export async function createCakeSessionRuntime(
     },
     compact: native(turnController.compact),
     compactIfIdle: (instructions) =>
-      agy.activeId()
+      agy.activeId() || antigravitySelected()
         ? Promise.resolve({ status: "busy" })
         : turnController.compactIfIdle(instructions),
     toolPruneIfIdle: () =>
-      agy.activeId()
+      agy.activeId() || antigravitySelected()
         ? Promise.resolve({ status: "busy" })
         : turnController.toolPruneIfIdle(toolPruneLatest),
     async queueCommand(command, onSettled) {
-      agy.requireIdle();
+      requireNativeModel();
       const name = command.slice(1).split(/\s/, 1)[0];
       if (
         name !== "compact" &&
@@ -1020,7 +1049,7 @@ export async function createCakeSessionRuntime(
       responseMode,
       internal,
     ) {
-      agy.requireIdle();
+      requireNativeModel();
       subscription.setAutomaticTitle(automaticTitle);
       // Manual Continue (including after an explicit stop) must inspect uncertain
       // effects too, without automatically resuming deliberately stopped work.
@@ -1131,7 +1160,25 @@ export async function createCakeSessionRuntime(
     },
     setModel: configuration.setModel,
     setThinkingLevel: configuration.setThinkingLevel,
-    applyConfiguration: configuration.applyConfiguration,
+    async applyConfiguration(next) {
+      agy.requireIdle();
+      if (
+        isAntigravityModel(next) &&
+        (session.isStreaming ||
+          session.isCompacting ||
+          turnController.idleCompactionActive() ||
+          turnController.toolPruningActive() ||
+          turnController.handoffActive() ||
+          turnController.cancellationPending() ||
+          session.pendingMessageCount ||
+          turnController.pendingRecoveryInputs().length ||
+          turnController.queuedParts().length)
+      )
+        throw new Error(
+          "Finish or stop the current work and clear queued messages before changing model.",
+        );
+      await configuration.applyConfiguration(next);
+    },
     setFastMode: configuration.setFastMode,
     syncFastMode: configuration.syncFastMode,
     setPiSetting: configuration.setPiSetting,
@@ -1151,6 +1198,7 @@ export async function createCakeSessionRuntime(
     ),
     async navigate(entryId, options) {
       agy.requireIdle();
+      if (options.summarize) requireNativeModel();
       const result = await session.navigateTree(entryId, options);
       if (result.cancelled) throw new Error("Session tree navigation was cancelled");
       await emitSnapshot();

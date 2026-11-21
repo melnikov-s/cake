@@ -434,9 +434,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       },
       chat: {
         antigravityAvailable: () =>
-          isProjectChatSessionId(this.sessionId) &&
-          !this.props.pendingSessions.isPending(this.sessionId) &&
-          this.model.observedSnapshotRevision > 0,
+          this.sessionId === CAKE_CHAT_SESSION_ID || isProjectChatSessionId(this.sessionId),
         sendQueuedToSideChat: (sessionId, partId) => this.sendQueuedToSideChat(sessionId, partId),
         contextUsage: true,
         history: this.history,

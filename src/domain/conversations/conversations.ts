@@ -111,7 +111,7 @@ const projectEvent = (event: PiSessionEvent): ConversationEvent => {
     case "streaming":
       return { _tag: "StreamingChanged", sessionId: event.sessionId, streaming: event.streaming };
     case "usage-updated":
-      return { _tag: "UsageUpdated", sessionId: event.sessionId, usage: event.usage };
+      return { _tag: "UsageUpdated", sessionId: event.sessionId, usage: toJsonValue(event.usage) };
     case "extension-ui":
       return { _tag: "ExtensionUi", sessionId: event.sessionId, event: toJsonValue(event.event) };
     case "turn-accepted":

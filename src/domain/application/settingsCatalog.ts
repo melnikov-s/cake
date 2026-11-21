@@ -1,3 +1,7 @@
+import {
+  antigravityDesktopOnly,
+  isAntigravityModel,
+} from "../../contracts/model-presets/antigravity-model";
 import { Effect, Schema } from "effect";
 import {
   normalizeLeftToolbarPreferences,
@@ -340,12 +344,22 @@ const write = Effect.fn("SettingsCatalog.write")(function* (key: string, value: 
       const setting =
         key === "cakeChat.summarizationModel" ? "summarizationModel" : "subagentDefaultModel";
       const choice = yield* typed(CakeModelChoice, key, value);
-      if (
-        choice.source === "preset" &&
-        !(yield* ApplicationState)
-          .snapshot()
-          .modelPresets.some((preset) => preset.id === choice.presetId)
-      )
+      const state = (yield* ApplicationState).snapshot();
+      const chosen =
+        choice.source === "model"
+          ? choice.model
+          : state.modelPresets.find(
+              (preset) =>
+                preset.id ===
+                (choice.source === "preset"
+                  ? choice.presetId
+                  : choice.source === "default"
+                    ? state.defaultModelPresetId
+                    : undefined),
+            );
+      if (isAntigravityModel(chosen))
+        return yield* new SettingsCatalogError({ message: antigravityDesktopOnly });
+      if (choice.source === "preset" && !chosen)
         return yield* new SettingsCatalogError({
           message: `Unknown preset ${choice.presetId}; use an ID from settings.models.get.`,
         });

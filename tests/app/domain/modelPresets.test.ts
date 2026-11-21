@@ -17,7 +17,10 @@ import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/contracts/application/application-data";
-import { makePiModelsLayer, type PiModels } from "../../../src/services/pi/PiModels";
+import { antigravityModel } from "../../../src/contracts/model-presets/antigravity-model";
+import { cakeDefaultModelConfiguration } from "../../../src/contracts/model-presets/cake-model-selection";
+import { cakeModelCatalog } from "../../../src/domain/model-presets/cake-model-selection";
+import { makePiModelsLayer, PiModels } from "../../../src/services/pi/PiModels";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import type { ModelPresetPrompts } from "../../../src/services/storage/ModelPresetPrompts";
@@ -124,6 +127,62 @@ const createOne = Effect.gen(function* () {
 });
 
 describe("Model Presets domain", () => {
+  it.effect("persists and reloads a CLI-owned preset without reinterpreting it as a Pi model", () =>
+    Effect.gen(function* () {
+      const selection = {
+        provider: antigravityModel.provider,
+        modelId: antigravityModel.modelId,
+        thinkingLevel: "off" as const,
+        fastMode: false,
+      };
+      const { test, effect } = run(
+        Effect.gen(function* () {
+          const pi = (yield* create({ ...input(), prompt: "Keep local to Pi" })).presets[0]!;
+          const first = (yield* create({ ...selection, name: "Gemini" })).presets[1]!;
+          yield* update({ ...first, name: "Gemini named" });
+          yield* setDefault(first.id);
+          for (const invalid of [
+            { fastMode: true },
+            { thinkingLevel: "high" as const },
+            { prompt: "Do not export" },
+            { promptFile: "private.md" },
+          ]) {
+            assert.equal(
+              (yield* Effect.flip(create({ ...selection, name: "Invalid", ...invalid })))._tag,
+              "ModelPresetValidationError",
+            );
+          }
+          assert.equal((yield* readPrompt(pi.id)).prompt, "Keep local to Pi");
+          return { pi, id: first.id };
+        }),
+      );
+      const { pi, id } = yield* effect;
+      yield* run(
+        Effect.gen(function* () {
+          const reloaded = yield* list();
+          assert.equal(reloaded.defaultPresetId, id);
+          assert.deepEqual(reloaded.presets[0], pi);
+          assert.deepEqual(reloaded.presets[1], { ...selection, id, name: "Gemini named" });
+          const resolved = { ...selection, preset: { id } };
+          assert.deepEqual(yield* resolve(id), resolved);
+          assert.deepEqual(
+            cakeDefaultModelConfiguration(cakeModelCatalog(test.persisted())),
+            resolved,
+          );
+          const completion = yield* Effect.flip(
+            (yield* PiModels).complete({
+              selection: resolved,
+              instructions: "Synthetic",
+              context: "Synthetic",
+              maximumOutputCharacters: 10,
+            }),
+          );
+          assert.match(completion.message, /interactive desktop/);
+        }),
+        { initial: test.persisted() },
+      ).effect;
+    }),
+  );
   it.effect("preserves prompts through unrelated updates and supports explicit clearing", () => {
     const { test, effect } = run(
       Effect.gen(function* () {

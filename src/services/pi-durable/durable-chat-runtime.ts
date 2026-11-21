@@ -101,6 +101,12 @@ import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./ca
 import type { AssistantContext } from "../../contracts/cake-chats/assistant-context";
 import { AssistantContextDoc, transitionAssistantContext } from "./durable-assistant-context";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  antigravityDesktopOnly,
+  antigravityModel,
+  isAntigravityModel,
+} from "../../contracts/model-presets/antigravity-model";
+import { assertAntigravitySettings } from "../pi/runtime/antigravity-model";
 import { createDurableAntigravity } from "./durable-antigravity";
 import { projectChatAntigravityCake } from "./durable-antigravity-cake";
 import {
@@ -216,6 +222,7 @@ export async function createDurableCakeChatRuntime(
     ref && catalogRuntime.getModel(ref.provider, ref.modelId);
   const requireSelection = () => {
     if (!selection) throw new Error(missingSelection);
+    if (isAntigravityModel(selection)) throw new Error(antigravityDesktopOnly);
     return requireRegisteredModel(catalogRuntime, selection);
   };
   const operationModel = () => selection && { provider: selection.provider, id: selection.modelId };
@@ -583,19 +590,33 @@ export async function createDurableCakeChatRuntime(
     publish,
     isDisposed: () => disposed,
   });
-  const agy = isProjectChatSessionId(sessionId)
+  const projectChat = isProjectChatSessionId(sessionId);
+  const antigravityDirectory = projectChat
+    ? options.cwd
+    : join(options.sessionDir, "antigravity-scratch");
+  if (!companion && !projectChat) await mkdir(antigravityDirectory, { recursive: true });
+  const agy = !companion
     ? createDurableAntigravity({
         engine,
         sessionId,
-        cwd: options.cwd,
-        cake: projectChatAntigravityCake(operations, {
-          sessionId,
-          projectPath: options.cwd,
-          hasTodo: (id) => options.cakeChatTodos?.().some((todo) => todo.id === id) ?? false,
-        }),
+        cwd: antigravityDirectory,
+        cake: projectChat
+          ? projectChatAntigravityCake(operations, {
+              sessionId,
+              projectPath: options.cwd,
+              hasTodo: (id) => options.cakeChatTodos?.().some((todo) => todo.id === id) ?? false,
+            })
+          : undefined,
         budget: () => preferences.preferences().memoryViewBytes,
         contextLimit: () => preferences.preferences().contextLimitTokens,
-        beforeInput: turnStop.beforeInput,
+        async beforeInput() {
+          const assertCurrent = await turnStop.beforeInput();
+          if (!selection && adoptDefaultConfiguration()) {
+            await options.fastMode?.set(fastMode);
+            await configureAgent();
+          }
+          return assertCurrent;
+        },
         onChanged: publish,
       })
     : undefined;
@@ -611,6 +632,7 @@ export async function createDurableCakeChatRuntime(
     executingTurnIds: () => activeTurnIds,
     beforeSendNow: async () => {
       agy?.requireIdle();
+      if (isAntigravityModel(selection)) throw new Error(antigravityDesktopOnly);
       const assertCurrent = await turnStop.beforeInput();
       return () => {
         agy?.requireIdle();
@@ -659,6 +681,16 @@ export async function createDurableCakeChatRuntime(
     thinkingLevel = next.thinkingLevel;
     activePreset = next.activePreset;
   };
+  const adoptDefaultConfiguration = () => {
+    const preset = defaultConfiguration();
+    if (!preset) return false;
+    if (isAntigravityModel(preset)) assertAntigravitySettings(preset);
+    selection = modelRef(preset);
+    thinkingLevel = preset.thinkingLevel;
+    activePreset = preset.preset;
+    fastMode = preset.fastMode;
+    return true;
+  };
   const canceledScheduledInputs = new Set<string>();
   const admit = async (
     text: string,
@@ -673,16 +705,9 @@ export async function createDurableCakeChatRuntime(
   ) => {
     agy?.requireIdle();
     const assertCurrent = await turnStop.beforeInput();
-    if (!companion && !selection) {
-      const preset = defaultConfiguration();
-      if (preset) {
-        selection = modelRef(preset);
-        thinkingLevel = preset.thinkingLevel;
-        activePreset = preset.preset;
-        fastMode = preset.fastMode;
-        await options.fastMode?.set(fastMode);
-      }
-    }
+    if (!companion && !selection && adoptDefaultConfiguration())
+      await options.fastMode?.set(fastMode);
+    if (isAntigravityModel(selection)) throw new Error(antigravityDesktopOnly);
     // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
     // Annotations quote Cake Chat's own transcript and stay inline.
     if (
@@ -792,6 +817,9 @@ export async function createDurableCakeChatRuntime(
     importSideChatHistory: (input) => sideChats.importHistory(input),
     get streaming() {
       return Boolean(agy?.activeId()) || (!turnStop.stopped() && streaming);
+    },
+    get antigravitySelected() {
+      return !companion && isAntigravityModel(selection ?? defaultConfiguration());
     },
     get antigravityActive() {
       return agy?.activeId() !== undefined;
@@ -918,13 +946,15 @@ export async function createDurableCakeChatRuntime(
           model: agent.model && {
             provider: agent.model.provider,
             id: agent.model.modelId,
-            name: selected?.name ?? agent.model.modelId,
+            name: isAntigravityModel(agent.model)
+              ? antigravityModel.name
+              : (selected?.name ?? agent.model.modelId),
           },
           models: modelOptions,
           thinkingLevel: agent.thinkingLevel ?? thinkingLevel,
           availableThinkingLevels: selected ? getSupportedThinkingLevels(selected) : ["off"],
           streaming,
-          fastMode,
+          fastMode: isAntigravityModel(selection) ? false : fastMode,
           preset: activePreset,
           fastModeAvailable: supportsFastMode(selected),
           piSettings: projectPiSettings(settings),
@@ -1060,6 +1090,8 @@ export async function createDurableCakeChatRuntime(
       publish();
     },
     async setThinkingLevel(level) {
+      if (isAntigravityModel(selection))
+        assertAntigravitySettings({ thinkingLevel: level, fastMode: false });
       thinkingLevel = level;
       await configureAgent();
       publish();
@@ -1068,8 +1100,16 @@ export async function createDurableCakeChatRuntime(
       if (companion)
         throw new Error("The companion follows the utility model configured in Settings");
       const { provider, modelId } = configuration;
-      if (!catalogRuntime.getModel(provider, modelId))
+      agy?.requireIdle();
+      if (isAntigravityModel(configuration)) {
+        assertAntigravitySettings(configuration);
+        if (streaming || (await inbox()).length || engine.isCompacting())
+          throw new Error(
+            "Finish or stop the current work and clear queued messages before changing model.",
+          );
+      } else if (!catalogRuntime.getModel(provider, modelId)) {
         throw new Error(`Unknown model ${provider}/${modelId}`);
+      }
       selection = modelRef(configuration);
       activePreset = configuration.preset;
       thinkingLevel = configuration.thinkingLevel;
@@ -1079,6 +1119,8 @@ export async function createDurableCakeChatRuntime(
       publish();
     },
     async setFastMode(enabled) {
+      if (isAntigravityModel(selection))
+        assertAntigravitySettings({ thinkingLevel, fastMode: enabled });
       fastMode = enabled;
       await options.fastMode?.set(enabled);
       publish();
@@ -1185,6 +1227,7 @@ export async function createDurableCakeChatRuntime(
         options.modelPresets?.().presets,
       );
   } else if (initial) {
+    if (isAntigravityModel(initial)) assertAntigravitySettings(initial);
     activePreset = initial.preset;
     fastMode = initial.fastMode;
     if (fastMode !== (options.fastMode?.get() ?? false)) await options.fastMode?.set(fastMode);

@@ -200,10 +200,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
       <SlashCommandCombobox
         dictation={!voiceOwnsInput && !referenceInteraction}
         dictationSubmit={
-          !configuration?.antigravity?.selected &&
-          !store.editingMessage &&
-          !store.submitsAsDraft &&
-          !store.isDraftSession
+          !store.editingMessage && !store.submitsAsDraft && !store.isDraftSession
             ? () => onSubmit(inputRef.current?.value ?? store.draft)
             : undefined
         }
@@ -219,7 +216,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
         inputRef={(input) => {
           inputRef.current = input;
         }}
-        commands={configuration?.antigravity?.selected ? [] : store.commands.slice()}
+        commands={store.commands.slice()}
         focusRequestRevision={store.focusRequestRevision}
         focusRequestIsExplicit={store.focusRequestIsExplicit}
         suggestFiles={store.canSuggestFiles ? (prefix) => store.suggestFiles(prefix) : undefined}

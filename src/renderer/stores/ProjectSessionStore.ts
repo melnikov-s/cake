@@ -581,10 +581,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       chat: {
         history: this.history,
         modelPickerVisible: () => !this.isForkPreview,
-        antigravityAvailable: () =>
-          this.canSubmit() &&
-          !pending.isTemporary(this.sessionId) &&
-          this.model.observedSnapshotRevision > 0,
+        antigravityAvailable: () => this.canSubmit(),
         conversationMode: ConversationModeContext.consume(this)
           ? { workflow: ConversationModeContext.consume(this)!, target: this.conversationTarget }
           : undefined,

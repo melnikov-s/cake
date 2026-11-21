@@ -1,5 +1,13 @@
 import { Effect, Stream } from "effect";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
+import {
+  antigravityDesktopOnly,
+  antigravityPromptError,
+  isAntigravityModel,
+} from "../../contracts/model-presets/antigravity-model";
+import { ApplicationState } from "../../services/storage/ApplicationState";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import type { InteractiveModelSubmit } from "../conversations/interactiveModelPrompt";
 import { SavedDraftError } from "../../contracts/storage/saved-draft-storage-errors";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
@@ -145,12 +153,15 @@ export const remove = Effect.fn("SavedDrafts.remove")(function* (
 });
 
 /** The durable claim precedes Pi work. Unknown acceptance remains claimed, never blindly replayed. */
-export const activate = Effect.fn("SavedDrafts.activate")(function* (input: {
-  readonly sessionId: string;
-  readonly expectedRevision: number;
-  readonly workingDirectory?: string;
-  readonly worktreeName?: string;
-}) {
+export const activate = Effect.fn("SavedDrafts.activate")(function* (
+  input: {
+    readonly sessionId: string;
+    readonly expectedRevision: number;
+    readonly workingDirectory?: string;
+    readonly worktreeName?: string;
+  },
+  interactive?: InteractiveModelSubmit,
+) {
   const storage = yield* SavedDraftStorage;
   const existing = (yield* storage.list()).find((record) => record.sessionId === input.sessionId);
   if (!existing)
@@ -175,6 +186,19 @@ export const activate = Effect.fn("SavedDrafts.activate")(function* (input: {
         message: "Working Directory does not belong to this Project",
       });
   }
+  const state = (yield* ApplicationState).snapshot();
+  const configuration =
+    existing.configuration ??
+    state.modelPresets.find((preset) => preset.id === state.defaultModelPresetId);
+  if (isAntigravityModel(configuration)) {
+    const invalidPrompt = !interactive
+      ? antigravityDesktopOnly
+      : existing.attachments.length || parseCrossSessionMessage(existing.text)
+        ? "Remove attachments or select another model before starting this draft."
+        : antigravityPromptError(existing.text);
+    if (invalidPrompt)
+      return yield* new SavedDraftError({ operation: "activate", message: invalidPrompt });
+  }
   const claimed = yield* storage.claim(
     input.sessionId,
     input.expectedRevision,
@@ -197,17 +221,21 @@ export const activate = Effect.fn("SavedDrafts.activate")(function* (input: {
       )
     : claimed;
   const workingDirectory = actual.workingDirectory;
-  yield* projectSessionOperations.start({
-    sessionId: claimed.sessionId,
-    projectPath: claimed.projectPath,
-    workingDirectory,
-    text: claimed.text,
-    attachments: claimed.attachments,
-    renderUserMessageAsMarkdown: true,
-    name: claimed.title,
-    ...(claimed.configuration ? { configuration: claimed.configuration } : null),
-    ...(claimed.labelIds.length ? { labelIds: claimed.labelIds } : null),
-  });
+  yield* projectSessionOperations.start(
+    {
+      sessionId: claimed.sessionId,
+      projectPath: claimed.projectPath,
+      workingDirectory,
+      text: claimed.text,
+      attachments: claimed.attachments,
+      renderUserMessageAsMarkdown: true,
+      name: claimed.title,
+      ...(claimed.configuration ? { configuration: claimed.configuration } : null),
+      ...(claimed.labelIds.length ? { labelIds: claimed.labelIds } : null),
+    },
+    undefined,
+    interactive,
+  );
   const completed = yield* storage.complete(actual.sessionId, actual.revision);
   return {
     record: completed,

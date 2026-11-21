@@ -12,6 +12,7 @@ import {
   AntigravityReplyEntry,
   AntigravityUserEntry,
   durableAntigravityOriginal,
+  isAntigravityOriginal,
 } from "./durable-antigravity-entries";
 import type { openDurableChatEngine } from "./durable-chat-engine";
 import { createDurableChatMemory } from "./durable-chat-memory";
@@ -68,7 +69,7 @@ export function createDurableAntigravity(options: {
   engine: Awaited<ReturnType<typeof openDurableChatEngine>>;
   sessionId: string;
   cwd: string;
-  cake: ReturnType<typeof projectChatAntigravityCake>;
+  cake?: ReturnType<typeof projectChatAntigravityCake>;
   budget(): number;
   contextLimit(): number | undefined;
   beforeInput(): Promise<() => void>;
@@ -89,12 +90,13 @@ export function createDurableAntigravity(options: {
     antigravityMemorySource,
   );
   let before: EntryId | undefined;
+  let resumeId: string | undefined;
   let cakeDataAccessed = false;
   const portableInstructions = cakePortableInstructions("project-chat");
   return createAntigravityTurnController({
     cwd,
     sessionId: () => sessionId,
-    scope: "project-chat",
+    scope: options.cake ? "project-chat" : "global-chat",
     onChanged: options.onChanged,
     async admit(request) {
       cakeDataAccessed = false;
@@ -106,8 +108,31 @@ export function createDurableAntigravity(options: {
           throw new Error(
             "Wait for the current work and queued messages to finish before using Antigravity.",
           );
-        before = (await tx.scanEntries({ conversationId: root.id, order: "descending" }, 1))
-          .items[0]?.id;
+        const tail = (
+          await tx.scanEntries(
+            { conversationId: root.id, order: "descending" },
+            options.cake ? 1 : 32,
+          )
+        ).items;
+        before = tail[0]?.id;
+        // Ignore Durable bookkeeping entries, but don't resume past an
+        // interrupted ACP prompt or a newer Pi turn. Never replay Cake history.
+        const previous = options.cake
+          ? undefined
+          : tail.find(
+              (entry) =>
+                isAntigravityOriginal(entry) ||
+                entry.kind === "pi.user" ||
+                entry.kind === "pi.assistant",
+            );
+        resumeId =
+          previous &&
+          AntigravityReplyEntry.is(previous) &&
+          previous.data.scope === "global-chat" &&
+          previous.data.sessionId === sessionId &&
+          previous.data.cwd === cwd
+            ? previous.data.resumeId
+            : undefined;
         assertCurrent();
         await tx.appendEntry(AntigravityUserEntry, root.id, {
           data: { markdown: request.markdown },
@@ -116,14 +141,22 @@ export function createDurableAntigravity(options: {
       }, BACKGROUND_CONTEXT);
     },
     async prepare({ text, permission, cakeBridgeOwnerSignal }, signal) {
-      const cakeCall = cakeBridgeOwnerSignal
-        ? options.cake.forTurn(permission, () => {
-            cakeDataAccessed = true;
-          })
-        : undefined;
-      const instructions = cakeCall
-        ? [portableInstructions, options.cake.instructions].join("\n\n")
-        : portableInstructions;
+      const cake = options.cake;
+      const cakeCall =
+        cakeBridgeOwnerSignal && cake
+          ? cake.forTurn(permission, () => {
+              cakeDataAccessed = true;
+            })
+          : undefined;
+      const instructions =
+        cakeCall && cake
+          ? [portableInstructions, cake.instructions].join("\n\n")
+          : cake
+            ? portableInstructions
+            : [
+                portableInstructions,
+                "You are in global Cake Chat, with no Cake tools or project workspace. Do not access local files or use local commands.",
+              ].join("\n\n");
       // UTF-8 frame bytes are conservatively counted against the configured
       // token cap. The adapter checks the exact serialized frame with its real
       // ACP session id. Fit the history after reserving the complete user text,
@@ -143,8 +176,8 @@ export function createDurableAntigravity(options: {
         throw new Error(
           "The current message and Cake instructions cannot fit the Antigravity context limit. Shorten the message.",
         );
-      const prepared = { maxPromptBytes, instructions, cakeCall };
-      if (before === undefined || budget < 1024) return prepared;
+      const prepared = { maxPromptBytes, instructions, cakeCall, resumeId };
+      if (!cake || before === undefined || budget < 1024) return prepared;
       const view = await memory.synchronize(signal, before, budget);
       if (!view.complete)
         throw new Error("Could not prepare bounded Project Chat memory for Antigravity.");

@@ -1,3 +1,4 @@
+import { isAntigravityModel } from "../../contracts/model-presets/antigravity-model";
 import { Schema } from "effect";
 import { compactDiscoveryGuidance } from "../../contracts/agent/discovery-result-text";
 import {
@@ -63,7 +64,11 @@ export function createCakeModelOperations(
         const { items, ...page } = agentListPage(presets, input);
         return {
           ...page,
-          presets: items.map(({ id, name }) => ({ name, default: id === state.defaultPresetId })),
+          presets: items.map((preset) => ({
+            name: preset.name,
+            default: preset.id === state.defaultPresetId,
+            ...(isAntigravityModel(preset) ? { desktopOnly: true } : null),
+          })),
         };
       },
     },
@@ -89,6 +94,7 @@ export function createCakeModelOperations(
           fastMode: preset.fastMode,
           ...(preset.promptFile === undefined ? null : { promptFile: preset.promptFile }),
           default: preset.id === state.defaultPresetId,
+          ...(isAntigravityModel(preset) ? { desktopOnly: true } : null),
         };
       },
     },

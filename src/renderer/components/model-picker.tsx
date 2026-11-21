@@ -1,3 +1,7 @@
+import {
+  antigravityModel,
+  isAntigravityModel,
+} from "../../contracts/model-presets/antigravity-model";
 import type { PresetContext } from "../../contracts/model-presets/preset-context";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { observer } from "r-state-tree/react";
@@ -43,8 +47,8 @@ export interface ModelPickerProps {
   groups(): readonly ModelGroup[];
   /** Current identity's display name, independent of the full availability catalog. */
   currentModelName?: string;
-  /** Separate turn runtime. Never enters the Pi model catalog or configuration. */
-  antigravity?: { projectChat: boolean; selected: boolean; select(selected: boolean): void };
+  /** This surface can apply the CLI-owned model. */
+  includeAntigravity?: boolean;
   onOpen?(): void;
   value?: ModelConfigurationValue;
   presets?: readonly ModelPreset[];
@@ -98,6 +102,28 @@ function modelKey(provider: string, modelId: string) {
 }
 
 const emptyGroups: readonly ModelGroup[] = [];
+const antigravityGroup: ModelGroup = {
+  id: antigravityModel.provider,
+  name: "Antigravity",
+  models: [
+    {
+      provider: antigravityModel.provider,
+      providerName: "Antigravity",
+      id: antigravityModel.modelId,
+      name: antigravityModel.name,
+      reasoning: false,
+      availableThinkingLevels: [],
+      input: ["text"],
+      authenticated: false,
+      authTypes: [],
+    },
+  ],
+};
+const modelDescription = (
+  provider: string,
+  modelId: string,
+  fallback = modelKey(provider, modelId),
+) => (isAntigravityModel({ provider, modelId }) ? "Model chosen by Antigravity" : fallback);
 
 export const ModelPicker = observer(function ModelPicker({
   groups,
@@ -105,7 +131,7 @@ export const ModelPicker = observer(function ModelPicker({
   open: controlledOpen,
   onOpenChange,
   currentModelName,
-  antigravity,
+  includeAntigravity = false,
   onOpen,
   value,
   presets = [],
@@ -137,7 +163,11 @@ export const ModelPicker = observer(function ModelPicker({
   const searchRef = useRef<HTMLInputElement>(null);
   const configureBackRef = useRef<HTMLButtonElement>(null);
 
-  const visibleGroups = open ? groups() : emptyGroups;
+  const catalogGroups = open ? groups() : emptyGroups;
+  const visibleGroups = useMemo(() => {
+    if (!open || !includeAntigravity) return catalogGroups;
+    return [antigravityGroup, ...catalogGroups.filter((group) => group.id !== antigravityGroup.id)];
+  }, [open, includeAntigravity, catalogGroups]);
   const configuration: ModelConfigurationValue | undefined =
     value ??
     (activePreset
@@ -219,16 +249,14 @@ export const ModelPicker = observer(function ModelPicker({
   );
 
   const activeName =
-    (antigravity?.selected ? "Gemini · via Antigravity" : undefined) ??
     activePreset?.name ??
+    (isAntigravityModel(configuration) ? antigravityModel.name : undefined) ??
     currentModelName ??
     selectedModel?.name ??
     (configuration?.modelId ? configuration.modelId : placeholder);
   const displayThinking = configuration?.thinkingLevel;
-  const displayFast = !antigravity?.selected && Boolean(configuration?.fastMode);
-  const hasValue =
-    !antigravity?.selected && Boolean(configuration?.provider && configuration.modelId);
-  const showAntigravity = antigravity && "gemini via antigravity".includes(normalizedQuery);
+  const displayFast = Boolean(configuration?.fastMode);
+  const hasValue = Boolean(configuration?.provider && configuration.modelId);
   const thinkingText =
     hasValue && displayThinking && displayThinking !== "off"
       ? reasoningLabel(displayThinking)
@@ -344,10 +372,12 @@ export const ModelPicker = observer(function ModelPicker({
               <header className="mb-3 flex items-start justify-between gap-2">
                 <span className="min-w-0 flex-1">
                   <strong className="block truncate text-sm font-semibold text-foreground">
-                    {selectedModel?.name ?? configuration?.modelId}
+                    {selectedModel?.name ?? currentModelName ?? configuration?.modelId}
                   </strong>
                   <small className="block truncate font-mono text-xs text-muted-foreground">
-                    {configuration ? modelKey(configuration.provider, configuration.modelId) : ""}
+                    {configuration
+                      ? modelDescription(configuration.provider, configuration.modelId)
+                      : ""}
                   </small>
                 </span>
                 <Button
@@ -461,33 +491,6 @@ export const ModelPicker = observer(function ModelPicker({
                 />
               </div>
               <div className="max-h-60 space-y-3 overflow-y-auto pr-1 text-xs">
-                {showAntigravity && (
-                  <section aria-label="Turn runtime" className="space-y-1">
-                    <NavItem
-                      active={antigravity.selected}
-                      label="Gemini · via Antigravity"
-                      description={
-                        antigravity.projectChat
-                          ? "Google CLI · shares selected Project Chat memory"
-                          : "Google CLI · no Pi history"
-                      }
-                      onClick={() => {
-                        close();
-                        antigravity.select(true);
-                      }}
-                    />
-                    {antigravity.selected && (
-                      <NavItem
-                        label="Return to Pi"
-                        description={currentModelName ?? configuration?.modelId}
-                        onClick={() => {
-                          close();
-                          antigravity.select(false);
-                        }}
-                      />
-                    )}
-                  </section>
-                )}
                 {filteredPresets.length > 0 && (
                   <section aria-label="Model presets" className="space-y-1">
                     <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">Presets</h3>
@@ -495,6 +498,7 @@ export const ModelPicker = observer(function ModelPicker({
                       <NavItem
                         key={entry.key}
                         active={entry.active}
+                        disabled={!includeAntigravity && isAntigravityModel(entry)}
                         label={
                           <span className="flex items-center gap-1.5 font-semibold">
                             {entry.active && (
@@ -506,7 +510,13 @@ export const ModelPicker = observer(function ModelPicker({
                             {entry.name}
                           </span>
                         }
-                        description={`${entry.provider}/${entry.modelId}`}
+                        description={
+                          isAntigravityModel(entry)
+                            ? includeAntigravity
+                              ? antigravityModel.name
+                              : "Desktop conversations only"
+                            : modelKey(entry.provider, entry.modelId)
+                        }
                         onClick={() => {
                           close();
                           const preset = entry.preset;
@@ -530,16 +540,18 @@ export const ModelPicker = observer(function ModelPicker({
                             });
                         }}
                         trailing={
-                          <div className="flex shrink-0 items-center gap-1 font-mono text-xs">
-                            <Badge variant="outline" className="text-xs font-medium">
-                              {reasoningLabel(entry.thinkingLevel)}
-                            </Badge>
-                            {entry.fastMode && (
-                              <Badge variant="accent" className="text-xs font-semibold">
-                                Fast
+                          !isAntigravityModel(entry) && (
+                            <div className="flex shrink-0 items-center gap-1 font-mono text-xs">
+                              <Badge variant="outline" className="text-xs font-medium">
+                                {reasoningLabel(entry.thinkingLevel)}
                               </Badge>
-                            )}
-                          </div>
+                              {entry.fastMode && (
+                                <Badge variant="accent" className="text-xs font-semibold">
+                                  Fast
+                                </Badge>
+                              )}
+                            </div>
+                          )
                         }
                       />
                     ))}
@@ -558,7 +570,7 @@ export const ModelPicker = observer(function ModelPicker({
                       <NavItem
                         key={modelKey(model.provider, model.id)}
                         label={model.name}
-                        description={model.id}
+                        description={modelDescription(model.provider, model.id, model.id)}
                         onClick={() => configureModel(model)}
                         trailing={
                           <span aria-hidden="true" className="text-muted-foreground">
@@ -569,13 +581,11 @@ export const ModelPicker = observer(function ModelPicker({
                     ))}
                   </section>
                 ))}
-                {!showAntigravity &&
-                  filteredPresets.length === 0 &&
-                  filteredGroups.length === 0 && (
-                    <p className="p-3 text-center text-xs text-muted-foreground">
-                      No matching models
-                    </p>
-                  )}
+                {filteredPresets.length === 0 && filteredGroups.length === 0 && (
+                  <p className="p-3 text-center text-xs text-muted-foreground">
+                    No matching models
+                  </p>
+                )}
               </div>
               {openPresetSettings && (
                 <div className="pt-2 border-t border-border">
@@ -627,7 +637,7 @@ export const ModelPicker = observer(function ModelPicker({
                     {draftModel.name}
                   </strong>
                   <small className="block truncate font-mono text-xs text-muted-foreground">
-                    {draftModel.id}
+                    {modelDescription(draftModel.provider, draftModel.id, draftModel.id)}
                   </small>
                 </span>
               </header>

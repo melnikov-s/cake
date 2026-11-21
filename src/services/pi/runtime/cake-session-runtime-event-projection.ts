@@ -17,6 +17,7 @@ import {
   toolResultDiff,
   toolResultOutputContent,
 } from "./tool-projection";
+import { antigravityResponseType } from "./antigravity-transcript";
 import { createLiveMessageProjector, type AbortPresentation } from "./message-projection";
 import { projectQueuedMessages } from "./queued-message-projection";
 import type { ResponseRetryNotice } from "./response-retry";
@@ -238,6 +239,14 @@ export function createCakeSessionRuntimeEventProjection(input: {
     // Cleanup events from the stopped run must not overwrite the frozen view.
     // Publication reopens only at the controller's next admitted input boundary.
     if (stopped) return;
+    // The ACP controller projects its own reply. A Pi custom message event is
+    // only its durable storage mechanism, not a second transcript row.
+    if (
+      (event.type === "message_start" || event.type === "message_end") &&
+      event.message.role === "custom" &&
+      event.message.customType === antigravityResponseType
+    )
+      return;
     if (event.type === "agent_start") {
       emit({ type: "streaming", sessionId, streaming: true });
       // before_agent_start extensions may have changed the effective prompt for this run.
