@@ -39,6 +39,7 @@ export function sameTranscriptItem(previous: TranscriptItem, next: TranscriptIte
   if (previous === next) return true;
   if (previous.kind !== next.kind || previous.id !== next.id) return false;
   if (previous.kind === "history-divider" || previous.kind === "loading-state") return true;
+  if (next.kind === "history-divider" || next.kind === "loading-state") return false;
   if ("parts" in previous && "parts" in next) {
     if (previous.kind === "side-chat-import" && next.kind === "side-chat-import")
       if (previous.source !== next.source) return false;
