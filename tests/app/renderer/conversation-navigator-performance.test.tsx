@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
 import { Profiler, StrictMode } from "react";
 import { flushSync } from "react-dom";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { batch, effect } from "r-state-tree";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { applySnapshot, batch, effect } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ConversationNavigatorRow } from "../../../src/renderer/components/conversation-navigator-row";
@@ -12,7 +12,7 @@ import { ConversationBreadcrumb } from "../../../src/renderer/components/convers
 import { conversationNavigationLineage } from "../../../src/renderer/lib/conversation-navigation-tree";
 import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
 import { createRendererStoreFixture, unmountOnDispose } from "./renderer-store-fixture";
-import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import { fixtureTimestamp, projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import {
   navigatorProjectPath,
   navigatorHomeId,
@@ -316,4 +316,74 @@ it("renders and updates a session row without flattening its project's session r
   } finally {
     view.unmount();
   }
+});
+
+// Regression: a Project Chat heading's recursive working dot rescanned every Session's
+// ownership catalogs on each render, so on a long list each Show more took seconds.
+it("pages a long Project Chat list and propagates one Session's work without rescanning every Session", () => {
+  const projectPath = "/project";
+  const sessions = Array.from({ length: 828 }, (_, index) =>
+    sessionSummary({ sessionId: `session-${index}`, projectPath }),
+  );
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: projectPath })],
+    sessions,
+  });
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [
+      {
+        sessionId: "project-chat",
+        projectPath,
+        title: "Project Chat",
+        createdAt: fixtureTimestamp,
+        modifiedAt: fixtureTimestamp,
+        messageCount: 1,
+        resolved: false,
+        unread: false,
+      },
+    ],
+  });
+  // Retained sessions each own a conversation and side-chat/worker catalogs.
+  batch(() => {
+    for (const { sessionId } of sessions) {
+      fixture.models.projectConversation(sessionId, projectPath);
+      fixture.models.discussionCatalog(sessionId);
+      fixture.models.subagentCatalog(sessionId);
+    }
+  });
+  const ownership = vi.spyOn(fixture.root.conversationNavigatorStore, "ownedConversations");
+  using _view = unmountOnDispose(
+    render(
+      <StoreProvider store={fixture.root}>
+        <ConversationNavigator projectPath={projectPath} />
+      </StoreProvider>,
+    ),
+  );
+  const active = within(screen.getByRole("region", { name: "Active sessions" }));
+  const rows = () => document.querySelectorAll('[data-relationship="grouped"]');
+  const heading = () =>
+    document.querySelector<HTMLElement>('[data-conversation-key="session:project-chat"]')!;
+  expect(rows()).toHaveLength(10);
+  for (let page = 2; page <= 4; page++) {
+    ownership.mockClear();
+    fireEvent.click(active.getByRole("button", { name: "Show more" }));
+    expect(rows()).toHaveLength(page * 10);
+    // Revealing a page reuses each Session's derived working state.
+    expect(ownership.mock.calls.length).toBeLessThanOrEqual(10);
+  }
+  const conversation = fixture.models.projectConversation("session-700", projectPath);
+  ownership.mockClear();
+  act(() => {
+    conversation.streaming = true;
+  });
+  expect(heading().dataset.working).toBe("true");
+  // One Session's update rederives at most its own and its heading's ownership, not all 828.
+  expect(ownership.mock.calls.length).toBeLessThanOrEqual(2);
+  ownership.mockClear();
+  act(() => {
+    conversation.streaming = false;
+  });
+  expect(heading().dataset.working).toBe("false");
+  expect(ownership.mock.calls.length).toBeLessThanOrEqual(2);
 });

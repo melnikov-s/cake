@@ -17,11 +17,11 @@ export function conversationOwnedNavigation(
   sessionId: string,
   discussions: DiscussionCatalog | undefined,
   subagents: SubagentCatalog | undefined,
-  conversations: readonly Conversation[],
+  conversationFor: (sessionId: string) => Conversation | undefined,
 ): readonly OwnedConversationNavigationNode[] {
   const nodes: OwnedConversationNavigationNode[] = [];
   const ownRunning = (id: string) => {
-    const conversation = conversations.find((conversation) => conversation.sessionId === id);
+    const conversation = conversationFor(id);
     return Boolean(conversation?.streaming || conversation?.activeTurnIds.length);
   };
   const threads = discussions?.metadataLoaded ? discussions.metadata : (discussions?.threads ?? []);

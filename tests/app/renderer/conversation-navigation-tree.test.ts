@@ -36,7 +36,7 @@ function treeFixture(projectPath: string | undefined) {
         sessionId,
         models.discussionCatalog(sessionId),
         models.subagentCatalog(sessionId),
-        models.discussionConversations,
+        (id) => models.findDiscussionConversation(id),
       );
     },
     [Symbol.dispose]() {

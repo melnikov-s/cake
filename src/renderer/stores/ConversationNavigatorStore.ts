@@ -16,6 +16,7 @@ import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SidebarSessionListStore } from "./SidebarSessionListStore";
 import { sessionKinds, type SessionKind } from "../lib/session-kind";
 import type { ReviewThread } from "../models/ReviewThread";
+import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { DiscussionThreadMetadata } from "../../contracts/discussion-sessions/discussion-session-data";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import {
@@ -52,6 +53,13 @@ export class ConversationNavigatorStore extends Store<{
   private readonly metadataScopes = observable(
     new Map<string, ReadonlySignal<readonly ConversationNavigationMetadataTarget[]>>(),
   );
+  /** Per node/owner working state, so a heading re-reads cached descendants instead of rescanning them. */
+  readonly #workingNodes = new WeakMap<ConversationNavigationNode, ReadonlySignal<boolean>>();
+  readonly #ownedWorking = new Map<string, ReadonlySignal<boolean>>();
+  readonly #sidecarTargets = new WeakMap<
+    DiscussionCatalog,
+    Map<boolean, ReadonlySignal<readonly ConversationNavigationMetadataTarget[]>>
+  >();
   error: string | undefined;
 
   constructor(props: ConversationNavigatorStore["props"]) {
@@ -111,23 +119,45 @@ export class ConversationNavigatorStore extends Store<{
 
   /** The header menu reads only this conversation's direct ownership catalogs. */
   ownedConversations(sessionId: string) {
-    const model = this.props.projection;
     return conversationOwnedNavigation(
       sessionId,
-      model.discussionCatalogs.find((catalog) => catalog.sessionId === sessionId),
-      model.subagentCatalogs.find((catalog) => catalog.sessionId === sessionId),
-      model.discussionConversations,
+      this.discussionCatalogsBySession.get(sessionId),
+      this.subagentsByOwner.get(sessionId),
+      (id) => this.props.projection.findDiscussionConversation(id),
     );
   }
 
-  /** Work is recursive and independent of disclosure; unread and outcomes stay with their owner. */
+  /**
+   * Work is recursive and independent of disclosure; unread and outcomes stay with their owner.
+   * Cached per node: a Project Chat heading over every Session must not rescan them all per render.
+   */
   effectiveWorking(node: ConversationNavigationNode): boolean {
-    if (node.running || isActiveSessionActivity(node.activity)) return true;
-    if (node.children.some((child) => this.effectiveWorking(child))) return true;
-    if (node.target.kind === "subagent") return false;
-    return this.ownedConversations(node.target.sessionId).some((child) =>
-      this.effectiveWorking(child),
-    );
+    let working = this.#workingNodes.get(node);
+    if (!working) {
+      working = computed(() => {
+        // Read every child: short-circuiting would release later children's caches.
+        const children = node.children.map((child) => this.effectiveWorking(child));
+        return (
+          node.running ||
+          isActiveSessionActivity(node.activity) ||
+          children.includes(true) ||
+          (node.target.kind !== "subagent" && this.ownedWorking(node.target.sessionId))
+        );
+      });
+      this.#workingNodes.set(node, working);
+    }
+    return working.value;
+  }
+
+  private ownedWorking(sessionId: string): boolean {
+    let working = this.#ownedWorking.get(sessionId);
+    if (!working) {
+      working = computed(() =>
+        this.ownedConversations(sessionId).some((child) => this.effectiveWorking(child)),
+      );
+      this.#ownedWorking.set(sessionId, working);
+    }
+    return working.value;
   }
 
   /** Metadata demand follows the selected scope and discovered public sidecar owners, never transcript demand. */
@@ -187,23 +217,53 @@ export class ConversationNavigatorStore extends Store<{
       discovered = false;
       for (const catalog of projection.discussionCatalogs) {
         if (!targets.has(catalog.sessionId)) continue;
-        for (const thread of catalog.metadataLoaded ? catalog.metadata : catalog.threads) {
-          if (
-            (!includeClosed && thread.status !== "open") ||
-            !thread.sidecarSessionId ||
-            targets.has(thread.sidecarSessionId)
-          )
-            continue;
-          targets.set(thread.sidecarSessionId, {
-            sessionId: thread.sidecarSessionId,
-            workingDirectory: thread.workingDirectory,
-            kind: "side-chat",
-          });
+        for (const sidecar of this.sidecarTargets(catalog, includeClosed)) {
+          if (targets.has(sidecar.sessionId)) continue;
+          targets.set(sidecar.sessionId, sidecar);
           discovered = true;
         }
       }
     }
     return [...targets.values()];
+  }
+
+  /**
+   * One catalog's sidecar owners. Each Session's metadata arrival rederives only its own
+   * catalog; the scope's targets rebuild only when an actual sidecar appears or disappears.
+   */
+  private sidecarTargets(
+    catalog: DiscussionCatalog,
+    includeClosed: boolean,
+  ): readonly ConversationNavigationMetadataTarget[] {
+    let scopes = this.#sidecarTargets.get(catalog);
+    if (!scopes) {
+      scopes = new Map();
+      this.#sidecarTargets.set(catalog, scopes);
+    }
+    let targets = scopes.get(includeClosed);
+    if (!targets) {
+      const signature = computed(() =>
+        JSON.stringify(
+          (catalog.metadataLoaded ? catalog.metadata : catalog.threads).flatMap((thread) =>
+            (includeClosed || thread.status === "open") && thread.sidecarSessionId
+              ? [
+                  {
+                    sessionId: thread.sidecarSessionId,
+                    workingDirectory: thread.workingDirectory,
+                    kind: "side-chat",
+                  },
+                ]
+              : [],
+          ),
+        ),
+      );
+      targets = computed(() => {
+        // SAFETY: the signature serializes only the typed sidecar targets built above.
+        return JSON.parse(signature.value) as readonly ConversationNavigationMetadataTarget[];
+      });
+      scopes.set(includeClosed, targets);
+    }
+    return targets.value;
   }
 
   projectRunning(projectPath: string) {
@@ -303,6 +363,13 @@ export class ConversationNavigatorStore extends Store<{
         if (thread.status === "open" && thread.sidecarSessionId)
           records.set(thread.sidecarSessionId, thread);
     return records;
+  }
+
+  @computed
+  private get discussionCatalogsBySession() {
+    return new Map(
+      this.props.projection.discussionCatalogs.map((catalog) => [catalog.sessionId, catalog]),
+    );
   }
 
   @computed
