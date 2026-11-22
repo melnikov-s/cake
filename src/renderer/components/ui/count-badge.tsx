@@ -18,7 +18,7 @@ export function CountBadge({
     <span
       {...props}
       className={cn(
-        "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums",
+        "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-xs leading-none font-semibold tabular-nums",
         tones[tone],
         className,
       )}

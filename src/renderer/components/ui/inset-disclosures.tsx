@@ -67,7 +67,7 @@ export function InsetDisclosures({ sections }: { sections: readonly InsetDisclos
         return (
           <section key={section.id}>
             <div className="@container/inset-header flex min-w-0 flex-wrap items-center gap-x-1 pr-1.5">
-              <h2 className="m-0 min-w-0 flex-1 text-xs font-medium">
+              <h2 className="m-0 min-w-0 flex-auto text-xs font-medium">
                 <Button
                   id={headerId}
                   data-slot="inset-disclosure-trigger"
@@ -88,16 +88,13 @@ export function InsetDisclosures({ sections }: { sections: readonly InsetDisclos
                   <span aria-hidden="true" className="flex shrink-0 text-muted-foreground">
                     {section.icon}
                   </span>
-                  <span>{section.label}</span>
+                  <span className="min-w-0 truncate">{section.label}</span>
                   <span className="min-w-[1.125rem] shrink-0 rounded-sm bg-muted px-1 text-center font-normal tabular-nums text-muted-foreground">
                     {section.count}
                   </span>
                   <span
                     aria-hidden="true"
-                    className={cn(
-                      "ml-auto flex shrink-0 items-center gap-2 font-normal tabular-nums text-muted-foreground",
-                      section.actions && "@max-[360px]/inset-header:hidden",
-                    )}
+                    className="ml-auto flex shrink-0 items-center gap-2 font-normal tabular-nums text-muted-foreground @max-[360px]/inset-header:hidden"
                   >
                     {section.summary}
                   </span>
