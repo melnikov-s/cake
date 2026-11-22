@@ -1,10 +1,15 @@
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
+import type { Project } from "../models/Project";
 import { cn } from "@/lib/utils";
 import { Switch } from "./ui/switch";
 import { IconSizeProvider } from "./ui/icon-size";
 import { TooltipBubble, useTooltip } from "./ui/tooltip";
 import { MergeResolveIcon } from "./ui/icons";
+
+export function canShowAutoMerge(project: Project | undefined) {
+  return project !== undefined && project.settings.worktreeLanding !== "pull-request";
+}
 
 /** Explicit project ownership only; never infer scope from window selection. */
 export const AutoMergeToggle = observer(function AutoMergeToggle({
@@ -14,12 +19,7 @@ export const AutoMergeToggle = observer(function AutoMergeToggle({
 }) {
   const root = useStore(RootStore);
   const { anchor, show, hide } = useTooltip();
-  if (
-    !projectPath ||
-    !root.projectCatalogStore.projects.some((project) => project.path === projectPath) ||
-    root.projectCatalogStore.find(projectPath)?.settings.worktreeLanding === "pull-request"
-  )
-    return null;
+  if (!projectPath || !canShowAutoMerge(root.projectCatalogStore.find(projectPath))) return null;
   const store = root.autoMergeStore;
   const project = store.forProject(projectPath);
   const pendingTarget = store.pendingTarget(projectPath);

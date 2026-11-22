@@ -7735,7 +7735,14 @@ const activityWorktreeScenario: VisualCaptureScenario = {
     const activity = cap.getByRole("button", { name: "Activity · 1 running" });
     await expect(activity).toBeVisible();
     await expect(activity).toHaveAttribute("aria-expanded", "false");
-    await expect(cap.getByRole("switch", { name: /^Auto-merge:/ })).toHaveCount(0);
+    const toggle = cap.getByRole("switch", { name: /^Auto-merge:/ });
+    await expect(toggle).not.toBeChecked();
+    await toggle.click();
+    await expect(toggle).toBeChecked();
+    await expect(activity).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
+    await expect(toggle).not.toBeChecked();
+    await expect(activity).toHaveAttribute("aria-expanded", "false");
     if (state === "open") {
       await activity.click();
       await expect(page.getByRole("region", { name: "Conversation activity" })).toBeVisible();

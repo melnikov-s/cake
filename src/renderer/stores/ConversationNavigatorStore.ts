@@ -71,50 +71,64 @@ export class ConversationNavigatorStore extends Store<{
   }
 
   tree(projectPath: string | undefined, resolved = false): ConversationNavigationTree {
-    const key = `${resolved ? "resolved" : "active"}:${this.scopeKey(projectPath)}`;
+    if (projectPath !== undefined) return this.scopeTree(projectPath, resolved);
+    return this.cachedTree(`all:${resolved}`, () => {
+      const trees = [
+        this.scopeTree(undefined, resolved),
+        ...this.projectPaths.map((path) => this.scopeTree(path, resolved)),
+      ];
+      return {
+        roots: trees.flatMap((tree) => tree.roots),
+        byKey: new Map(trees.flatMap((tree) => [...tree.byKey])),
+        total: trees.reduce((sum, tree) => sum + tree.total, 0),
+        running: trees.reduce((sum, tree) => sum + tree.running, 0),
+        unread: trees.reduce((sum, tree) => sum + tree.unread, 0),
+      };
+    });
+  }
+
+  private cachedTree(key: string, build: () => ConversationNavigationTree) {
     let tree = untracked(() => this.trees.get(key));
     if (!tree) {
-      tree = computed(() => this.buildTree(projectPath, resolved));
+      tree = computed(build);
       this.trees.set(key, tree);
     }
     return tree.value;
   }
 
-  private projectPaths(projectPath: string | undefined): readonly string[] {
-    return projectPath === undefined
-      ? ProjectCatalogContext.consume(this)!.orderedProjectPaths
-      : [projectPath];
+  @computed
+  private get projectPaths() {
+    return ProjectCatalogContext.consume(this)!.orderedProjectPaths;
   }
 
-  private buildTree(
+  /** Project context changes presentation order, never catalog scope. */
+  private viewScopes(projectPath: string | undefined): readonly (string | undefined)[] {
+    return projectPath !== undefined && this.projectPaths.includes(projectPath)
+      ? [projectPath, undefined, ...this.projectPaths.filter((path) => path !== projectPath)]
+      : [undefined, ...this.projectPaths];
+  }
+
+  private scopeTree(
     projectPath: string | undefined,
     resolved: boolean,
   ): ConversationNavigationTree {
-    const model = this.props.projection;
-    const tree = buildConversationNavigationTree({
-      projectPath,
-      projectName: projectPath ? this.projectName(projectPath) : undefined,
-      sessions: projectPath
-        ? this.props.sessionList.projectSessions(projectPath, resolved, true)
-        : [],
-      resolved,
-      cakeChats: model.cakeChatCatalog.sessions,
-      conversations: [
-        ...model.projectConversations,
-        ...model.cakeChatConversations,
-        ...model.discussionConversations,
-      ],
+    return this.cachedTree(`${resolved}:${this.scopeKey(projectPath)}`, () => {
+      const model = this.props.projection;
+      return buildConversationNavigationTree({
+        projectPath,
+        projectName: projectPath ? this.projectName(projectPath) : undefined,
+        sessions: projectPath
+          ? this.props.sessionList.projectSessions(projectPath, resolved, true)
+          : [],
+        resolved,
+        cakeChats: model.cakeChatCatalog.sessions,
+        conversations: [
+          ...model.projectConversations,
+          ...model.cakeChatConversations,
+          ...model.discussionConversations,
+        ],
+      });
     });
-    if (projectPath !== undefined) return tree;
-    // Global Cake owns the all-project view; each Project keeps its existing tree and order.
-    const trees = [tree, ...this.projectPaths(undefined).map((path) => this.tree(path, resolved))];
-    return {
-      roots: trees.flatMap((tree) => tree.roots),
-      byKey: new Map(trees.flatMap((tree) => [...tree.byKey])),
-      total: trees.reduce((sum, tree) => sum + tree.total, 0),
-      running: trees.reduce((sum, tree) => sum + tree.running, 0),
-      unread: trees.reduce((sum, tree) => sum + tree.unread, 0),
-    };
   }
 
   /** The header menu reads only this conversation's direct ownership catalogs. */
@@ -160,17 +174,12 @@ export class ConversationNavigatorStore extends Store<{
     return working.value;
   }
 
-  /** Metadata demand follows the selected scope and discovered public sidecar owners, never transcript demand. */
-  metadataTargets(
-    projectPath: string | undefined,
-    includeClosed = false,
-  ): readonly ConversationNavigationMetadataTarget[] {
-    const key = `${includeClosed}:${this.scopeKey(projectPath)}`;
+  /** Metadata demand follows the all-project view and discovered sidecars, never transcript demand. */
+  metadataTargets(includeClosed = false): readonly ConversationNavigationMetadataTarget[] {
+    const key = String(includeClosed);
     let scope = untracked(() => this.metadataScopes.get(key));
     if (!scope) {
-      const signature = computed(() =>
-        JSON.stringify(this.buildMetadataTargets(projectPath, includeClosed)),
-      );
+      const signature = computed(() => JSON.stringify(this.buildMetadataTargets(includeClosed)));
       scope = computed(() => {
         // SAFETY: the signature serializes only the typed metadata targets built above.
         return JSON.parse(signature.value) as readonly ConversationNavigationMetadataTarget[];
@@ -180,16 +189,15 @@ export class ConversationNavigatorStore extends Store<{
     return scope.value;
   }
 
-  private buildMetadataTargets(projectPath: string | undefined, includeClosed: boolean) {
+  private buildMetadataTargets(includeClosed: boolean) {
     const projection = this.props.projection;
     const targets = new Map<string, ConversationNavigationMetadataTarget>();
-    if (projectPath === undefined)
-      targets.set(CAKE_CHAT_SESSION_ID, {
-        sessionId: CAKE_CHAT_SESSION_ID,
-        workingDirectory: "",
-        kind: "cake-chat",
-      });
-    for (const path of this.projectPaths(projectPath)) {
+    targets.set(CAKE_CHAT_SESSION_ID, {
+      sessionId: CAKE_CHAT_SESSION_ID,
+      workingDirectory: "",
+      kind: "cake-chat",
+    });
+    for (const path of this.projectPaths) {
       const homeId = projection.cakeChatCatalog.sessions.find(
         (session) => session.projectPath === path,
       )?.sessionId;
@@ -200,11 +208,7 @@ export class ConversationNavigatorStore extends Store<{
           kind: "cake-chat",
         });
       for (const session of this.props.catalog.projectSessions(path)) {
-        if (
-          includeClosed ||
-          !session.resolved ||
-          this.props.sessionList.isResolvedGroupExpanded(this.scopeKey(projectPath))
-        )
+        if (includeClosed || !session.resolved || this.props.sessionList.resolvedGroupExpanded)
           targets.set(session.sessionId, {
             sessionId: session.sessionId,
             workingDirectory: session.workingDirectory,
@@ -287,14 +291,18 @@ export class ConversationNavigatorStore extends Store<{
   }
 
   /** Tab/rail summaries do not demand the Sessions tree or list details. */
-  summaryCounts(projectPath?: string) {
-    if (!this.props.catalog.backgroundSignalsLoaded) return this.tree(projectPath);
+  summaryCounts() {
+    if (!this.props.catalog.backgroundSignalsLoaded) return this.tree(undefined);
     const model = this.props.projection;
-    const sessions = this.props.catalog.backgroundSessions.filter(
-      (session) => projectPath === undefined || session.projectPath === projectPath,
+    const projects = new Set(this.projectPaths);
+    const sessions = this.props.catalog.backgroundSessions.filter((session) =>
+      projects.has(session.projectPath),
     );
     const chats = model.cakeChatCatalog.sessions.filter(
-      (chat) => !chat.resolved && (projectPath === undefined || chat.projectPath === projectPath),
+      (chat) =>
+        !chat.resolved &&
+        (chat.sessionId === CAKE_CHAT_SESSION_ID ||
+          (chat.projectPath !== undefined && projects.has(chat.projectPath))),
     );
     const live = new Map(
       [...model.projectConversations, ...model.cakeChatConversations].map((conversation) => [
@@ -306,10 +314,7 @@ export class ConversationNavigatorStore extends Store<{
       total:
         sessions.length +
         chats.length +
-        Number(
-          projectPath === undefined &&
-            !chats.some((chat) => chat.sessionId === CAKE_CHAT_SESSION_ID),
-        ),
+        Number(!chats.some((chat) => chat.sessionId === CAKE_CHAT_SESSION_ID)),
       running: sessions.filter((session) => session.running || live.get(session.sessionId)).length,
       unread:
         sessions.filter(
@@ -318,10 +323,6 @@ export class ConversationNavigatorStore extends Store<{
             (!session.familyParentSessionId || session.familyParentSessionId === session.sessionId),
         ).length + chats.filter((chat) => chat.unread).length,
     };
-  }
-
-  countFor(projectPath?: string) {
-    return this.summaryCounts(projectPath).total;
   }
 
   get selectedKey(): string | undefined {
@@ -534,23 +535,42 @@ export class ConversationNavigatorStore extends Store<{
     for (const key of Object.keys(this.searchCollapsed)) delete this.searchCollapsed[key];
   }
 
+  @computed
+  private get projectHomeKeys() {
+    return new Map(
+      this.props.projection.cakeChatCatalog.sessions.flatMap(({ projectPath, sessionId }) =>
+        projectPath === undefined
+          ? []
+          : [[projectPath, conversationNavigationKey(sessionId)] as const],
+      ),
+    );
+  }
+
+  isPinnedOpen(projectPath: string | undefined, key: string) {
+    return projectPath !== undefined && this.projectHomeKeys.get(projectPath) === key;
+  }
+
   isExpanded(projectPath: string | undefined, key: string) {
-    return !(this.query(projectPath).trim() ? this.searchCollapsed[key] : this.collapsed[key]);
+    return (
+      this.isPinnedOpen(projectPath, key) ||
+      !(this.query(projectPath).trim() ? this.searchCollapsed[key] : this.collapsed[key])
+    );
   }
 
   toggleExpanded(projectPath: string | undefined, key: string) {
+    if (this.isPinnedOpen(projectPath, key)) return;
     const collapsed = this.query(projectPath).trim() ? this.searchCollapsed : this.collapsed;
     collapsed[key] = !collapsed[key];
   }
 
   collapseAll(projectPath: string | undefined) {
-    const collapsed = this.query(projectPath).trim() ? this.searchCollapsed : this.collapsed;
-    for (const node of this.tree(projectPath).byKey.values())
-      if (node.children.length) collapsed[node.key] = true;
+    for (const node of this.tree(undefined).byKey.values())
+      if (node.children.length && this.isExpanded(projectPath, node.key))
+        this.toggleExpanded(projectPath, node.key);
   }
 
   hasMoreSessions(projectPath: string | undefined, resolved = false) {
-    return this.projectPaths(projectPath).some((path) => {
+    return this.projectPaths.some((path) => {
       const home = this.tree(path).roots.find((node) => node.relationship === "home");
       if (!resolved && home && !this.isExpanded(projectPath, home.key)) return false;
       return resolved
@@ -559,31 +579,31 @@ export class ConversationNavigatorStore extends Store<{
     });
   }
 
-  showMoreSessions(projectPath: string | undefined, resolved = false) {
-    for (const path of this.projectPaths(projectPath))
-      this.props.sessionList.showMoreSessions(path, resolved);
+  showMoreSessions(resolved = false) {
+    for (const path of this.projectPaths) this.props.sessionList.showMoreSessions(path, resolved);
   }
 
-  rows(
+  private scopeRows(
+    scope: string | undefined,
     projectPath: string | undefined,
-    resolved = false,
-  ): readonly { node: ConversationNavigationNode; depth: number }[] {
-    const tree = this.tree(projectPath, resolved);
+    resolved: boolean,
+  ): ConversationRow[] {
+    const tree = this.scopeTree(scope, resolved);
     const query = this.query(projectPath);
-    const matching = matchingConversationNavigationKeys(tree, query);
-    const visible = !query.trim()
-      ? new Set(
-          this.projectPaths(projectPath).flatMap((path) =>
+    const matching = query.trim() ? matchingConversationNavigationKeys(tree, query) : undefined;
+    const visible =
+      !matching && scope !== undefined
+        ? new Set(
             this.props.sessionList
-              .visibleProjectSessions(path, resolved)
-              .map((session) => conversationNavigationKey(session.sessionId)),
-          ),
-        )
-      : undefined;
-    const rows: { node: ConversationNavigationNode; depth: number }[] = [];
+              .visibleProjectSessions(scope, resolved)
+              .map(({ sessionId }) => sessionId),
+          )
+        : undefined;
+    const rows: ConversationRow[] = [];
     const visit = (node: ConversationNavigationNode, depth: number) => {
-      if (!matching.has(node.key)) return;
-      if (visible && node.relationship === "grouped" && !visible.has(node.key)) return;
+      if (matching && !matching.has(node.key)) return;
+      if (visible && node.target.kind === "project-session" && !visible.has(node.target.sessionId))
+        return;
       rows.push({ node, depth });
       if (this.isExpanded(projectPath, node.key))
         for (const child of node.children) visit(child, depth + 1);
@@ -592,70 +612,91 @@ export class ConversationNavigatorStore extends Store<{
     return rows;
   }
 
-  /**
-   * Presentation groups only; ownership, family edges and to-do order are unchanged.
-   * Active kind groups get a collapsible header only when both kinds are active in the Project.
-   */
-  rowGroups(projectPath: string | undefined): readonly ConversationRowGroup[] {
-    const rows = this.rows(projectPath);
-    const tree = this.tree(projectPath);
+  resolvedRows(projectPath: string | undefined): readonly ConversationRow[] {
+    return this.viewScopes(projectPath).flatMap((path) =>
+      path === undefined ? [] : this.scopeRows(path, projectPath, true),
+    );
+  }
+
+  toggleKind(projectPath: string | undefined, path: string, kind: SessionKind, expanded: boolean) {
+    if (this.query(projectPath).trim()) this.searchCollapsed[this.kindKey(path, kind)] = expanded;
+    else this.props.sessionList.setSessionKindGroupExpanded(path, kind, !expanded);
+  }
+
+  private kindKey(path: string, kind: SessionKind) {
+    return `active:${path}:${kind}`;
+  }
+
+  /** Presentation groups only; project and family ownership are unchanged. */
+  rowGroups(
+    projectPath: string | undefined,
+    canAutoMerge: (path: string) => boolean,
+  ): readonly ConversationRowGroup[] {
     const groups: ConversationRowGroup[] = [];
-    // Paging may leave an expanded kind with no rows yet; only search hides its header.
+    const list = this.props.sessionList;
     const searching = Boolean(this.query(projectPath).trim());
-    let segment: ConversationRow[] = [];
-    let segmentProject: string | undefined;
-    // Collapsed headers may stand alone, but never beneath a collapsed Project Chat.
-    let segmentOpen =
-      projectPath !== undefined && !tree.roots.some((node) => node.relationship === "home");
-    const kindOf = (node: ConversationNavigationNode): SessionKind => {
-      if (node.target.kind === "project-session")
-        return this.props.sessionList.sessionKindForDisplay(node.target.sessionId);
-      const parent = node.parentKey ? tree.byKey.get(node.parentKey) : undefined;
-      return parent ? kindOf(parent) : "user";
-    };
-    const flush = () => {
-      if (!segment.length && !segmentOpen) return;
-      const first = segment.find(({ node }) => node.target.kind === "project-session");
-      const path =
-        projectPath ??
-        segmentProject ??
-        (first && this.props.catalog.find(first.node.target.sessionId)?.projectPath);
-      const list = this.props.sessionList;
-      const headed = path !== undefined && list.showsSessionKindGroups(path) ? path : undefined;
-      const counts = headed !== undefined ? list.activeSessionKindCounts(headed) : undefined;
+    for (const path of this.viewScopes(projectPath)) {
+      const rows = this.scopeRows(path, projectPath, false);
+      const home = rows.find(({ node }) => node.relationship === "home");
+      const autoMerge = path !== undefined && canAutoMerge(path);
+      if (home)
+        groups.push({
+          key: home.node.key,
+          rows: [home],
+          showEmptyDelegatedGroup: autoMerge && !searching,
+        });
+      if (path === undefined || (home && !this.isExpanded(projectPath, home.node.key))) continue;
+      const counts = list.activeSessionKindCounts(path);
       for (const kind of sessionKinds) {
-        const expanded = headed === undefined || list.isSessionKindGroupExpanded(headed, kind);
-        const kindRows = expanded ? segment.filter(({ node }) => kindOf(node) === kind) : [];
-        const key = `active:${path ?? ""}:${kind}`;
-        if (headed !== undefined && (kindRows.length || !expanded || !searching)) {
-          groups.push({
-            key,
-            label: sessionKindLabels[kind],
-            rows: kindRows,
-            header: { projectPath: headed, kind, count: counts![kind], expanded },
-          });
-        } else if (kindRows.length) groups.push({ key, rows: kindRows });
+        const key = this.kindKey(path, kind);
+        const matches = rows.filter(
+          ({ node }) =>
+            node.target.kind === "project-session" &&
+            list.sessionKindForDisplay(node.target.sessionId) === kind,
+        );
+        if (searching && !matches.length) continue;
+        const headed =
+          kind === "delegated"
+            ? counts.delegated > 0 || autoMerge
+            : counts.user > 0 && counts.delegated > 0;
+        const expanded =
+          !headed ||
+          (searching ? !this.searchCollapsed[key] : list.isSessionKindGroupExpanded(path, kind));
+        if (!headed && !matches.length) continue;
+        const running =
+          kind === "delegated" && !expanded
+            ? [...this.tree(path).byKey.values()].filter(
+                ({ target, running }) =>
+                  target.kind === "project-session" &&
+                  (running || this.props.catalog.backgroundSession(target.sessionId)?.running) &&
+                  list.sessionKindForDisplay(target.sessionId) === "delegated",
+              ).length
+            : undefined;
+        groups.push({
+          key,
+          containingProjectPath: home ? path : undefined,
+          rows: expanded ? matches : [],
+          header: headed
+            ? {
+                projectPath: path,
+                kind,
+                label: sessionKindLabels[kind],
+                count: counts[kind],
+                expanded,
+                running,
+                autoMerge: kind === "delegated" && autoMerge,
+              }
+            : undefined,
+        });
       }
-      segment = [];
-    };
-    for (const row of rows) {
-      if (row.node.relationship === "home") {
-        flush();
-        segmentProject = this.props.projection.cakeChatCatalog.sessions.find(
-          (chat) => chat.sessionId === row.node.target.sessionId,
-        )?.projectPath;
-        segmentOpen = this.isExpanded(projectPath, row.node.key);
-        groups.push({ key: row.node.key, rows: [row] });
-      } else segment.push(row);
     }
-    flush();
     return groups;
   }
 
-  /** Every archived session in scope, including children; undefined until each archive is observed. */
-  resolvedCount(projectPath: string | undefined) {
+  /** Every archived session, including children; undefined until each archive is observed. */
+  resolvedCount() {
     let total = 0;
-    for (const path of this.projectPaths(projectPath)) {
+    for (const path of this.projectPaths) {
       const count = this.props.catalog.resolvedSessionTotal(path);
       if (count === undefined) return undefined;
       // A just-resolved row can arrive through the active lane before the archive page refreshes.
@@ -689,13 +730,16 @@ type ConversationRow = { node: ConversationNavigationNode; depth: number };
 export interface ConversationRowGroup {
   /** Stable across header appearance, so rows keep their React identity and focus. */
   readonly key: string;
-  readonly label?: string;
+  readonly containingProjectPath?: string;
+  readonly showEmptyDelegatedGroup?: boolean;
   readonly rows: readonly ConversationRow[];
-  /** Collapsible active kind group; absent when only one kind is active. */
   readonly header?: {
     readonly projectPath: string;
     readonly kind: SessionKind;
+    readonly label: string;
     readonly count: number;
     readonly expanded: boolean;
+    readonly running?: number;
+    readonly autoMerge: boolean;
   };
 }

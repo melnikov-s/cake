@@ -35,7 +35,7 @@ function renderNavigator() {
   fixture.models.sessionCatalog.resolvedHasMoreByProject[projectPath] = true;
   const view = render(
     <StoreProvider store={fixture.root}>
-      <ConversationNavigator projectPath={projectPath} />
+      <ConversationNavigator projectPath={undefined} />
     </StoreProvider>,
   );
   return {

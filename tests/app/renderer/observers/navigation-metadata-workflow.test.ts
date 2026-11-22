@@ -26,7 +26,7 @@ const thread = (parentSessionId: string, sidecarSessionId: string): DiscussionTh
 });
 const handleId = SubagentHandleId.make("10000000-0000-4000-8000-000000000001");
 
-it("discovers cold scoped owners and nested metadata without opening conversations, and cancels prior-scope demand", async () => {
+it("discovers all projects' cold owners and nested metadata without opening conversations, and releases demand when hidden", async () => {
   using fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/cake" }), projectRecord({ path: "/other" })],
     sessions: [
@@ -34,7 +34,7 @@ it("discovers cold scoped owners and nested metadata without opening conversatio
       sessionSummary({ sessionId: "other", projectPath: "/other" }),
     ],
   });
-  const scope = observable<{ projectPath: string | undefined }>({ projectPath: "/cake" });
+  const pane = observable({ visible: true });
   const stopped: string[] = [];
   const live = <A>(id: string, value: A) =>
     Stream.succeed(value).pipe(
@@ -104,7 +104,7 @@ it("discovers cold scoped owners and nested metadata without opening conversatio
   observer.observe({
     projection: fixture.models,
     navigationTargets: () =>
-      fixture.root.conversationNavigatorStore.metadataTargets(scope.projectPath),
+      pane.visible ? fixture.root.conversationNavigatorStore.metadataTargets() : [],
     loadedProjectSessions: () => [],
     loadedCakeChatIds: () => [],
     projectSessionCatalogQueries: () => [],
@@ -127,18 +127,17 @@ it("discovers cold scoped owners and nested metadata without opening conversatio
     expect(fullWorkers).not.toHaveBeenCalled();
     expect(fullDiscussions).not.toHaveBeenCalled();
     expect(discussions.mock.calls.map(([input]) => input.parentSessionId)).toEqual(
-      expect.arrayContaining(["cold", "sidecar", "nested-sidecar"]),
+      expect.arrayContaining(["cold", "other", "sidecar", "nested-sidecar"]),
     );
-    expect(discussions.mock.calls.map(([input]) => input.parentSessionId)).not.toContain("other");
-    scope.projectPath = "/other";
-    await vi.waitFor(() =>
-      expect(discussions.mock.calls.map(([input]) => input.parentSessionId)).toContain("other"),
-    );
+    expect(globalDiscussions).toHaveBeenCalledWith({ sessionId: CAKE_CHAT_SESSION_ID });
+    pane.visible = false;
     await vi.waitFor(() =>
       expect(stopped).toEqual(
         expect.arrayContaining([
           "discussion:cold",
           "worker:cold",
+          "discussion:other",
+          "global-discussions",
           "discussion:sidecar",
           "worker:sidecar",
           "discussion:nested-sidecar",
@@ -147,19 +146,6 @@ it("discovers cold scoped owners and nested metadata without opening conversatio
       ),
     );
     expect(fixture.models.projectConversations).toHaveLength(0);
-    scope.projectPath = undefined;
-    await vi.waitFor(() =>
-      expect(globalDiscussions).toHaveBeenCalledWith({ sessionId: CAKE_CHAT_SESSION_ID }),
-    );
-    await vi.waitFor(() =>
-      expect(
-        fixture.root.conversationNavigatorStore
-          .metadataTargets(undefined)
-          .map((target) => target.sessionId),
-      ).toEqual(expect.arrayContaining([CAKE_CHAT_SESSION_ID, "cold", "other"])),
-    );
-    expect(stopped).not.toContain("discussion:other");
-    expect(fixture.root.conversationNavigatorStore.tree(undefined).total).toBe(3);
   } finally {
     observer.stop();
   }
@@ -174,9 +160,7 @@ it("keeps metadata demand stable across activity snapshots and updates it when n
   catalog.metadataLoaded = true;
   catalog.metadata.push(thread("owner", "sidecar"));
   const demanded = vi.fn();
-  const stop = effect(() =>
-    demanded(fixture.root.conversationNavigatorStore.metadataTargets("/cake")),
-  );
+  const stop = effect(() => demanded(fixture.root.conversationNavigatorStore.metadataTargets()));
   try {
     expect(demanded).toHaveBeenCalledTimes(1);
     catalog.metadata.splice(0, 1, { ...thread("owner", "sidecar"), running: true });

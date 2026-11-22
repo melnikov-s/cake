@@ -12,7 +12,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
   const root = useStore(RootStore);
   const navigator = root.workspaceNavigatorStore;
   const todoCount = navigator.todos?.paneOpenCount ?? 0;
-  const sessions = root.conversationNavigatorStore.summaryCounts(navigator.projectPath);
+  const sessions = root.conversationNavigatorStore.summaryCounts();
   const commandVisible =
     Boolean(root.projectWorkbenchStore.commandPaneStore.pane) &&
     !root.appShellStore.applicationSurface;
@@ -63,7 +63,7 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
                 active: sessionsActive,
                 onSelect: () => navigator.show("sessions"),
                 ariaLabel: `Sessions · ${sessions.running} running · ${sessions.unread} unread`,
-                title: `${sessions.running} running · ${sessions.unread} unread · ${sessions.total} total in ${navigator.projectPath ? "this project" : "all projects"}`,
+                title: `${sessions.running} running · ${sessions.unread} unread · ${sessions.total} total in all projects`,
                 counts: (
                   <span className="inline-flex items-center gap-1">
                     <ActivityCount count={sessions.running} />

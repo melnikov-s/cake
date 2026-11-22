@@ -15,6 +15,8 @@ export function ConversationNavigatorGroupHeader({
   count,
   expanded,
   hiddenActivity,
+  collapsedSummary,
+  actions,
   onToggle,
 }: {
   label: string;
@@ -22,20 +24,25 @@ export function ConversationNavigatorGroupHeader({
   count?: number;
   expanded: boolean;
   hiddenActivity?: SessionActivity;
+  collapsedSummary?: string;
+  actions?: ReactNode;
   onToggle(): void;
 }) {
   const descriptionId = useId();
   const activity = expanded ? undefined : hiddenActivity;
+  const summary = expanded ? undefined : collapsedSummary;
   return (
     <div className="mt-2 flex items-center">
-      <h3 className="min-w-0 flex-1">
+      <h3 aria-label={label} className="min-w-0 flex-1">
         <Button
           variant="ghost"
           size="sm"
-          className="w-full min-w-0 justify-start gap-1 pr-0.5"
+          className={cn("w-full min-w-0 justify-start gap-1 pr-0.5", summary && "h-auto min-h-7")}
           iconSize="inline"
           aria-label={label}
-          aria-describedby={count === undefined && !activity ? undefined : descriptionId}
+          aria-describedby={
+            count === undefined && !activity && !summary ? undefined : descriptionId
+          }
           aria-expanded={expanded}
           onClick={onToggle}
         >
@@ -47,8 +54,18 @@ export function ConversationNavigatorGroupHeader({
               {icon}
             </span>
           )}
-          <span className="min-w-0 truncate">{label}</span>
-          {count !== undefined && (
+          {summary ? (
+            <span
+              id={descriptionId}
+              data-slot="group-count"
+              className="min-w-0 text-left text-balance whitespace-normal tabular-nums"
+            >
+              {summary}
+            </span>
+          ) : (
+            <span className="min-w-0 truncate">{label}</span>
+          )}
+          {!summary && count !== undefined && (
             <span
               data-slot="group-count"
               aria-hidden="true"
@@ -63,15 +80,18 @@ export function ConversationNavigatorGroupHeader({
             </span>
           )}
         </Button>
-        <span id={descriptionId} hidden>
-          {[
-            count === undefined ? undefined : `${count} ${count === 1 ? "session" : "sessions"}`,
-            activity && sessionActivityLabel(activity),
-          ]
-            .filter(Boolean)
-            .join(", ")}
-        </span>
+        {!summary && (
+          <span id={descriptionId} hidden>
+            {[
+              count === undefined ? undefined : `${count} ${count === 1 ? "session" : "sessions"}`,
+              activity && sessionActivityLabel(activity),
+            ]
+              .filter(Boolean)
+              .join(", ")}
+          </span>
+        )}
       </h3>
+      {actions && <div className="shrink-0">{actions}</div>}
     </div>
   );
 }

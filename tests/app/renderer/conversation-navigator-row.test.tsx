@@ -5,6 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { ConversationNavigatorRow } from "../../../src/renderer/components/conversation-navigator-row";
 import type { ConversationNavigationNode } from "../../../src/renderer/lib/conversation-navigation-tree";
+import { CakeChatSummary } from "../../../src/renderer/models/CakeChatSummary";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 afterEach(cleanup);
@@ -14,11 +15,20 @@ it.each([
   { scope: "project", activity: "descendant", hideSubtitle: true },
   { scope: "project", activity: "idle", hideSubtitle: false },
   { scope: "global", activity: "own", hideSubtitle: false },
+  { scope: "other project", activity: "own", hideSubtitle: false },
   { scope: "session", activity: "own", hideSubtitle: false },
 ] as const)(
   "only hides the running project subtitle: $scope / $activity",
   ({ scope, activity, hideSubtitle }) => {
     using fixture = createRendererStoreFixture();
+    if (scope !== "session")
+      fixture.models.cakeChatCatalog.sessions.push(
+        CakeChatSummary.create({
+          sessionId: "home",
+          projectPath: "/project",
+          title: "Project Chat",
+        }),
+      );
     const child: ConversationNavigationNode = {
       key: "session:child",
       title: "Child",
@@ -48,7 +58,9 @@ it.each([
         <ConversationNavigatorRow
           node={node}
           depth={0}
-          projectPath={scope === "global" ? undefined : "/project"}
+          projectPath={
+            scope === "global" ? undefined : scope === "other project" ? "/other" : "/project"
+          }
         />
       </StoreProvider>,
     );

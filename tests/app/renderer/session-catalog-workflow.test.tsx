@@ -56,7 +56,7 @@ async function renderCatalog(
     },
   });
   const { root } = fixture;
-  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(projectPath);
+  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
   await root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   const staged = root.sessionRegistry.pendingSessions.prepareStaged(projectPath, sessionId);
   root.navigationStore.selectProjectSession(sessionId);

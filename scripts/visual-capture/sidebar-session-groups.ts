@@ -52,10 +52,7 @@ function sessionDirectory(root: string, project: string) {
   );
 }
 
-/**
- * Real Sessions navigator groups: a single active kind lists directly under the Project,
- * mixed kinds get collapsible counted headers, and Resolved keeps its own counted header.
- */
+/** Actual Sessions groups, with persisted purpose metadata and on-demand archive rows. */
 function createScenario(
   variant: "delegated" | "user" | "mixed",
   states: readonly string[],
@@ -66,13 +63,13 @@ function createScenario(
       : variant === "user"
         ? userSessions
         : [...userSessions, ...delegatedSessions];
-  const selected = active.find((session) => !session.unread)!;
+  const selected = active.find((session) => session.kind === "user" && !session.unread);
   return {
     name: `sidebar-session-groups-${variant}`,
     description:
       variant === "mixed"
         ? "Sessions navigator with My sessions, Delegated and Resolved headers and counts"
-        : `Sessions navigator listing only ${variant} sessions directly, with a Resolved header`,
+        : `Sessions navigator with only ${variant} sessions and a Delegated header`,
     states,
     async seed(paths, theme) {
       const state = join(paths.cakeHome, "state");
@@ -94,7 +91,7 @@ function createScenario(
       await Promise.all([
         writeFile(
           join(paths.userData, "window-state.json"),
-          windowState({ project: paths.project, sessionId: selected.id, theme }),
+          windowState({ project: paths.project, sessionId: selected?.id, theme }),
         ),
         writeFile(
           join(state, "application.json"),
@@ -166,29 +163,23 @@ function createScenario(
         list.locator('[data-slot="conversation-navigator-row"][data-session-id]'),
       ).not.toHaveCount(0);
       const resolved = list.getByRole("button", { name: "Resolved sessions", exact: true });
-      await expect(resolved.locator('[data-slot="group-count"]')).toHaveText("3");
+      const group = list.getByRole("region", { name: "Delegated", exact: true });
+      const disclosure = group.getByRole("button", { name: "Delegated", exact: true });
+      await expect(group.getByRole("switch")).toBeVisible();
+      await expect(disclosure).toHaveText(`${variant === "user" ? 0 : 3} delegated · 0 running`);
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+      const mine = list.getByRole("region", { name: "My sessions", exact: true });
       if (variant === "mixed") {
-        await expect(list.getByRole("heading", { name: "My sessions" })).toBeVisible();
-        await expect(list.getByRole("heading", { name: "Delegated" })).toBeVisible();
-        const group = list.getByRole("region", { name: "Delegated", exact: true });
-        await expect(group.getByRole("switch")).toHaveCount(0);
-        await expect(group.getByText("Auto-merge", { exact: true })).toHaveCount(0);
-        await expect(
-          list.getByRole("region", { name: "My sessions", exact: true }).getByRole("switch"),
-        ).toHaveCount(0);
-      } else {
-        await expect(list.getByRole("switch")).toHaveCount(0);
-        await expect(list.getByRole("heading", { name: "My sessions" })).toHaveCount(0);
-        await expect(list.getByRole("heading", { name: "Delegated" })).toHaveCount(0);
-      }
-      if (state === "collapsed-unread") {
-        const delegated = list.getByRole("button", { name: "Delegated", exact: true });
-        await delegated.click();
-        await expect(delegated).toHaveAttribute("aria-expanded", "false");
-        await expect(delegated.getByRole("img", { name: "Ready, unread" })).toBeVisible();
+        await expect(mine).toBeVisible();
+        await expect(mine.getByRole("switch")).toHaveCount(0);
+      } else await expect(mine).toHaveCount(0);
+      if (state === "expanded") {
+        await disclosure.click();
+        await expect(group.getByText("Review catalog paging", { exact: true })).toBeVisible();
       }
       if (state === "resolved-expanded") {
         await resolved.click();
+        await expect(resolved.locator('[data-slot="group-count"]')).toHaveText("3");
         const history = page.getByRole("region", { name: "Resolved sessions" });
         const rows = history.locator('[data-slot="conversation-navigator-row"]');
         await expect(rows).toHaveCount(3);
@@ -207,5 +198,5 @@ function createScenario(
 export const sidebarSessionGroupsScenarios: VisualCaptureScenario[] = [
   createScenario("delegated", ["default"]),
   createScenario("user", ["default"]),
-  createScenario("mixed", ["default", "collapsed-unread", "resolved-expanded"]),
+  createScenario("mixed", ["default", "expanded", "resolved-expanded"]),
 ];

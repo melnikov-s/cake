@@ -25,6 +25,7 @@ export function ActivityDisclosure({
   status,
   items,
   onOpen,
+  actions,
   presentation = "pill",
   sessionCount = 0,
   subagentCount = 0,
@@ -34,6 +35,7 @@ export function ActivityDisclosure({
   status: StatusDotProps["status"];
   items: readonly ActivityDisclosureItem[];
   onOpen?(): void;
+  actions?: ReactNode;
   presentation?: "pill" | "inset";
   sessionCount?: number;
   subagentCount?: number;
@@ -111,6 +113,7 @@ export function ActivityDisclosure({
                     </>
                   ),
                   onOpen,
+                  actions,
                   renderContent: renderItems,
                 },
               ]
@@ -152,6 +155,7 @@ export function ActivityDisclosure({
           <span>{summary}</span>
           <ChevronIcon className={cn(open && "rotate-180")} />
         </Button>
+        {actions}
       </div>
       <div
         id={contentId}

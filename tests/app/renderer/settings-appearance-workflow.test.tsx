@@ -23,6 +23,7 @@ import { defaultProjectSettings } from "../../../src/contracts/application/appli
 import { SettingsAppearanceSection } from "../../../src/renderer/components/settings-appearance-section";
 import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
 import { ProjectRail } from "../../../src/renderer/components/project-rail";
+import { CakeChatSummary } from "../../../src/renderer/models/CakeChatSummary";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -44,7 +45,14 @@ function renderAppearanceSettings(snapshot?: StoreSnapshot, customIcon = false) 
     ],
     ...(snapshot ? { snapshot } : {}),
   });
-  const { root } = rootFixture;
+  const { root, models } = rootFixture;
+  models.cakeChatCatalog.sessions.push(
+    CakeChatSummary.create({
+      sessionId: `project-chat:${"c".repeat(64)}`,
+      projectPath,
+      title: "Cake",
+    }),
+  );
   const view = render(
     <StoreProvider store={root}>
       <DocumentTheme root={root} />
@@ -87,14 +95,14 @@ describe("Appearance settings workflow", () => {
             avatar.getAttribute("data-variant"),
           );
         expect(toggle.getAttribute("aria-checked")).toBe("false");
-        expect(variants()).toEqual(["artwork", "square"]);
+        expect(variants()).toEqual(["artwork", "artwork", "square"]);
         await fixture.user.click(toggle);
         expect(toggle.getAttribute("aria-checked")).toBe("true");
-        expect(variants()).toEqual(["artwork", "artwork"]);
+        expect(variants()).toEqual(["artwork", "artwork", "artwork"]);
         expect(projectImage.getAttribute("src")).toBe(projectImageSource);
         expect(fixture.container.querySelector('[data-slot="session-character"]')).not.toBeNull();
         await fixture.user.click(toggle);
-        expect(variants()).toEqual(["artwork", "square"]);
+        expect(variants()).toEqual(["artwork", "artwork", "square"]);
         expect(projectImage.getAttribute("src")).toBe(projectImageSource);
         await fixture.user.click(toggle);
         saved = fixture.savedSnapshot();
@@ -105,7 +113,7 @@ describe("Appearance settings workflow", () => {
           .getByRole("switch", { name: "Show session characters" })
           .getAttribute("aria-checked"),
       ).toBe("true");
-      expect(restored.container.querySelectorAll('[data-variant="artwork"]')).toHaveLength(2);
+      expect(restored.container.querySelectorAll('[data-variant="artwork"]')).toHaveLength(3);
       expect(
         restored.container.querySelector('[data-slot="project-rail"] img')?.getAttribute("src"),
       ).toBe(projectImageSource);

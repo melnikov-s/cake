@@ -19,11 +19,21 @@ import {
 
 afterEach(cleanup);
 
-function renderWorkspace({ global = false, large = false } = {}) {
+function renderWorkspace({
+  global = false,
+  large = false,
+  otherRunning = global,
+}: {
+  global?: boolean;
+  large?: boolean;
+  otherRunning?: boolean;
+} = {}) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: navigatorProjectPath }), projectRecord({ path: "/other" })],
     sessions: [
-      ...navigatorSessions,
+      ...navigatorSessions.map((session) =>
+        session.sessionId === "elsewhere" ? { ...session, running: otherRunning } : session,
+      ),
       sessionSummary({ sessionId: "resolved", projectPath: navigatorProjectPath, resolved: true }),
       ...(large
         ? Array.from({ length: 100 }, (_, index) =>
@@ -96,20 +106,19 @@ describe("Workspace Sessions running count", () => {
     },
   );
 
-  it("counts scoped work once, independently of search and disclosure, and keeps totals separate", async () => {
-    using fixture = renderWorkspace();
-    expectCount(0);
+  it("counts all-project work once, independently of search, and keeps totals separate", async () => {
+    using fixture = renderWorkspace({ otherRunning: true });
+    expectCount(1);
     const tree = fixture.root.conversationNavigatorStore.tree(navigatorProjectPath);
     expect(fixture.root.conversationNavigatorStore.effectiveWorking(tree.roots[0]!)).toBe(true);
     expect(sessionsTab().getAttribute("aria-pressed")).toBe("false");
-    expect(sessionsTab().getAttribute("title")).toContain("5 total in this project");
+    expect(sessionsTab().getAttribute("title")).toContain("7 total in all projects");
     await fixture.user.click(sessionsTab());
-    expect(screen.queryByText("5 total")).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    expectCount(0);
+    expect(screen.queryByText("7 total")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Collapse cake" })).toBeNull();
     await fixture.user.type(screen.getByRole("searchbox", { name: "Search sessions" }), "no match");
     expect(screen.getByText("No matching conversations")).toBeTruthy();
-    expectCount(0);
+    expectCount(1);
   });
 
   it("reacts to own activity, inherited worker activity, release and idle without counting parents twice", () => {
@@ -186,6 +195,6 @@ describe("Workspace Sessions running count", () => {
   it("caps large visible counts without losing the exact tooltip or accessible count", () => {
     using fixture = renderWorkspace({ large: true });
     expectCount(100, "99+");
-    expect(sessionsTab().getAttribute("title")).toContain("105 total in this project");
+    expect(sessionsTab().getAttribute("title")).toContain("107 total in all projects");
   });
 });

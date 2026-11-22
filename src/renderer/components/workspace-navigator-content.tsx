@@ -6,7 +6,7 @@ import { ProjectTodoFilterBar } from "./project-todo-filter-bar";
 import { ProjectTodosPanel } from "./project-todos-panel";
 import { SearchInput } from "./ui/search-input";
 
-/** The same project-scoped navigation content in chat and tool workspaces. */
+/** The same workspace navigation content in chat and tool workspaces. */
 export const WorkspaceNavigatorContent = observer(function WorkspaceNavigatorContent() {
   const navigator = useStore(RootStore).workspaceNavigatorStore;
   if (navigator.showingWidget) return <WidgetTabViewport />;

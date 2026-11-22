@@ -533,7 +533,7 @@ export class RootStore extends Store<{
   projectForSession(sessionId: string) {
     return (
       this.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === sessionId)
-        ?.projectPath ?? this.sessionCatalogStore.find(sessionId)?.projectPath
+        ?.projectPath ?? this.sessionCatalogStore.backgroundSession(sessionId)?.projectPath
     );
   }
   private worktreeOperation(workspacePath: string) {

@@ -186,7 +186,7 @@ test("My session descendants stay together and mixed to-do session links retain 
     await expect(conversations.getByRole("heading", { name: "My sessions" })).toBeVisible();
     await expect(conversations.getByRole("heading", { name: "Delegated" })).toBeVisible();
     const rows = conversations.locator('[data-slot="conversation-navigator-row"][data-session-id]');
-    await expect(rows).toHaveCount(5);
+    await expect(rows).toHaveCount(5); // two home chats and the three rows in My sessions
     const myGroup = conversations.getByRole("region", { name: "My sessions", exact: true });
     const delegatedGroup = conversations.getByRole("region", { name: "Delegated", exact: true });
     await expect(
@@ -195,6 +195,11 @@ test("My session descendants stay together and mixed to-do session links retain 
     await expect(
       myGroup.locator(`[data-slot="conversation-navigator-row"][data-session-id="${grandchild}"]`),
     ).toBeVisible();
+    const disclosure = delegatedGroup.getByRole("button", { name: "Delegated" });
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await expect(disclosure).toHaveText("1 delegated · 0 running");
+    await expect(delegatedGroup.getByRole("switch")).toBeVisible();
+    await disclosure.click();
     await expect(
       delegatedGroup.locator('[data-slot="conversation-navigator-row"][data-session-id]'),
     ).toHaveCount(1);
@@ -208,7 +213,7 @@ test("My session descendants stay together and mixed to-do session links retain 
         await rows.evaluateAll((elements) =>
           elements.map((element) => element.getAttribute("data-session-id")),
         )
-      ).slice(-4),
+      ).filter((id) => [mine, child, grandchild, delegated].includes(id ?? "")),
     ).toEqual([mine, child, grandchild, delegated]);
     await conversations
       .locator(`[data-session-id="${mine}"]`)

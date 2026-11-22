@@ -6,8 +6,9 @@ import { PlusIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { ConversationNavigatorSearch } from "./conversation-navigator-search";
 import { ConversationNavigatorGroupHeader } from "./conversation-navigator-group-header";
+import { AutoMergeToggle, canShowAutoMerge } from "./auto-merge-toggle";
 
-/** Scoped recursive Sessions source-list. Project utilities remain in the persistent rail. */
+/** All-project Sessions source list, prioritized by the focused project. */
 export const ConversationNavigator = observer(function ConversationNavigator({
   projectPath,
 }: {
@@ -17,26 +18,14 @@ export const ConversationNavigator = observer(function ConversationNavigator({
   const store = root.conversationNavigatorStore;
   const list = root.sidebarStore.sessionListStore;
   const query = store.query(projectPath);
-  const rows = store.rows(projectPath);
+  const groups = store.rowGroups(projectPath, (path) =>
+    canShowAutoMerge(root.projectCatalogStore.find(path)),
+  );
   const scope = projectPath ?? "cake-chat";
-  const resolvedExpanded = list.isResolvedGroupExpanded(scope);
-  // Flattened rows are parent-first. Only a visible project heading supplies identity
-  // to its descendants; ungrouped global rows (including resolved history) still need a badge.
-  const containingProjects = new Map<string, string>();
-  for (const { node } of rows) {
-    const path =
-      node.relationship === "home"
-        ? root.cakeChatCatalogModel.sessions.find(
-            (chat) => chat.sessionId === node.target.sessionId,
-          )?.projectPath
-        : node.parentKey
-          ? containingProjects.get(node.parentKey)
-          : undefined;
-    if (path !== undefined) containingProjects.set(node.key, path);
-  }
+  const resolvedExpanded = list.resolvedGroupExpanded;
   const activeHasMore = store.hasMoreSessions(projectPath);
   const resolvedHasMore = store.hasMoreSessions(projectPath, true);
-  const resolvedCount = store.resolvedCount(projectPath);
+  const resolvedCount = store.resolvedCount();
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Sessions">
       <div className="flex min-w-0 items-center gap-1.5 px-3.5 pt-3 pb-2">
@@ -58,39 +47,42 @@ export const ConversationNavigator = observer(function ConversationNavigator({
         aria-label="Session conversations"
       >
         <section aria-label="Active sessions">
-          {store.rowGroups(projectPath).map((group) => (
-            <section key={group.key} aria-label={group.label}>
-              {group.header && (
+          {groups.map(({ key, containingProjectPath, showEmptyDelegatedGroup, header, rows }) => (
+            <section key={key} aria-label={header?.label} data-project-path={header?.projectPath}>
+              {header && (
                 <ConversationNavigatorGroupHeader
-                  label={group.label!}
-                  count={group.header.count}
-                  expanded={group.header.expanded}
-                  hiddenActivity={
-                    group.header.expanded
+                  label={header.label}
+                  count={header.count}
+                  expanded={header.expanded}
+                  collapsedSummary={
+                    header.running === undefined
                       ? undefined
-                      : list.sessionKindGroupActivity(group.header.projectPath, group.header.kind)
+                      : `${header.count} delegated · ${header.running} running`
                   }
+                  hiddenActivity={
+                    header.kind === "user" && !header.expanded
+                      ? list.sessionKindGroupActivity(header.projectPath, header.kind)
+                      : undefined
+                  }
+                  actions={header.autoMerge && <AutoMergeToggle projectPath={header.projectPath} />}
                   onToggle={() =>
-                    list.toggleSessionKindGroupExpanded(
-                      group.header!.projectPath,
-                      group.header!.kind,
-                    )
+                    store.toggleKind(projectPath, header.projectPath, header.kind, header.expanded)
                   }
                 />
               )}
-              {group.rows.map(({ node, depth }) => (
+              {rows.map(({ node, depth }) => (
                 <ConversationNavigatorRow
                   key={node.key}
                   node={node}
                   depth={depth}
-                  underProjectHeading={containingProjects.has(node.key)}
-                  containingProjectPath={containingProjects.get(node.key)}
+                  containingProjectPath={containingProjectPath}
+                  hasGroupedContent={showEmptyDelegatedGroup}
                   projectPath={projectPath}
                 />
               ))}
             </section>
           ))}
-          {rows.length === 0 && (
+          {groups.length === 0 && (
             <p role="status" className="px-2 py-4 text-sm text-muted-foreground">
               {query.trim() ? "No matching conversations" : "No sessions"}
             </p>
@@ -100,23 +92,23 @@ export const ConversationNavigator = observer(function ConversationNavigator({
               variant="ghost"
               size="sm"
               className="w-full text-muted-foreground"
-              onClick={() => store.showMoreSessions(projectPath)}
+              onClick={() => store.showMoreSessions()}
             >
               Show more
             </Button>
           )}
         </section>
-        {resolvedCount !== 0 && (
+        {(resolvedExpanded || resolvedCount !== 0) && (
           <ConversationNavigatorGroupHeader
             label="Resolved sessions"
             count={resolvedCount}
             expanded={resolvedExpanded}
-            onToggle={() => list.toggleResolvedGroupExpanded(scope)}
+            onToggle={() => list.toggleResolvedGroupExpanded()}
           />
         )}
         {resolvedExpanded && resolvedCount !== 0 && (
           <section aria-label="Resolved sessions">
-            {store.rows(projectPath, true).map(({ node, depth }) => (
+            {store.resolvedRows(projectPath).map(({ node, depth }) => (
               <ConversationNavigatorRow
                 key={node.key}
                 node={node}
@@ -129,7 +121,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
                 variant="ghost"
                 size="sm"
                 className="w-full text-muted-foreground"
-                onClick={() => store.showMoreSessions(projectPath, true)}
+                onClick={() => store.showMoreSessions(true)}
               >
                 Show more
               </Button>

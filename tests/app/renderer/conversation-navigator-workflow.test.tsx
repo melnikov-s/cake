@@ -279,7 +279,7 @@ describe("Sessions navigator workflow", () => {
   );
 
   it("renders family connectors only below the Project Chat grouping level", async () => {
-    using fixture = renderNavigator();
+    using fixture = renderNavigator(null);
     expect(rowFor("Project Chat").querySelector('[data-slot="depth-rails"]')).toBeNull();
     const assertRails = () => {
       for (const [name, depth] of [
@@ -352,7 +352,7 @@ describe("Sessions navigator workflow", () => {
     ["grandchild", "deep-child"],
     ["all idle", undefined],
   ] as const)("derives %s working identically when expanded and collapsed", async (_, activeId) => {
-    using fixture = renderNavigator();
+    using fixture = renderNavigator(null);
     settleFixtureWorkers(fixture);
     if (activeId)
       act(() => {
@@ -448,7 +448,7 @@ describe("Sessions navigator workflow", () => {
   it.each([false, true])(
     "reads Project Chat independently of unread descendants (collapsed: %s)",
     async (collapsed) => {
-      using fixture = renderNavigator();
+      using fixture = renderNavigator(null);
       settleFixtureWorkers(fixture);
       await fixture.user.click(screen.getByRole("button", { name: /^Icon Placement Exploration/ }));
       const setUnread = vi

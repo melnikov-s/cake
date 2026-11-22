@@ -607,7 +607,7 @@ it("orders Ready to Merge between attention and Active, preserves collapse, and 
   expect(fixture.mutations).toEqual([]);
 });
 
-it("keeps Auto-merge out of the composer and Ready to Merge while Activity opens", async () => {
+it("shows Auto-merge only in Activity, not in Ready to Merge", async () => {
   using fixture = renderTodos(false, {
     todos: { ...emptyProjectTodos(), items: [todo(219, undefined, ["ready"])] },
     sessions: [
@@ -625,11 +625,13 @@ it("keeps Auto-merge out of the composer and Ready to Merge while Activity opens
     autoMergeRequests: [mergeRequest("ready")],
   });
   const activity = screen.getByRole("button", { name: "Activity · 1 running" });
-  expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
+  expect(screen.getAllByRole("switch", { name: /Auto-merge/ })).toHaveLength(1);
   expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
   await fixture.user.click(activity);
-  expect(screen.getByRole("region", { name: "Conversation activity" })).toBeTruthy();
-  expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
+  const details = screen.getByRole("region", { name: "Conversation activity" });
+  expect(within(details).queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
+  const panel = screen.getByRole("complementary", { name: "Workspace" });
+  expect(within(panel).queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
   expect(fixture.autoMergeChanges).toEqual([]);
   expect(todoSection("Ready to Merge to-dos")).toBeDefined();
   expect(fixture.mutations).toEqual([]);

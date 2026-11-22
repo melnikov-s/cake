@@ -309,12 +309,10 @@ test("background family children show running activity and only offer Mark as Un
     await expect(parentRow.locator("time")).toHaveText("Children are working");
     await expect(childRow.locator("time")).toHaveText(/^Working/);
 
-    // A collapsed Project uses the same hidden-child activity as a collapsed parent.
-    // Measure the existing status column in both themes and sidebar viewport sizes.
-    // The Project is the Sessions navigator's home row since 582d0fc7.
-    const projectHeader = page.locator(
-      '[data-slot="conversation-navigator-row"][data-relationship="home"]',
-    );
+    // The focused Project stays expanded and shows inherited status at both widths.
+    const projectHeader = page
+      .locator('[data-slot="conversation-navigator-row"][data-relationship="home"]')
+      .filter({ has: page.getByRole("button", { name: "project", exact: true }) });
     const projectStatus = projectHeader.locator('[data-slot="own-activity"]');
     const parentPane = page.locator('[data-slot="session-pane"]');
     for (const width of [1280, 900]) {
@@ -327,33 +325,17 @@ test("background family children show running activity and only offer Mark as Un
         const childStatusBox = (await childRow
           .locator('[data-slot="own-activity"]')
           .boundingBox())!;
-        // Navigator rows show inherited descendant work whether expanded or collapsed.
+        await expect(projectHeader.getByRole("button", { name: "Collapse project" })).toHaveCount(
+          0,
+        );
+        await expect(projectHeader.getByRole("switch")).toHaveCount(0);
         await expect(
           projectStatus.getByRole("img", { name: "Running", exact: true }),
         ).toBeVisible();
-        await projectHeader.getByRole("button", { name: "Collapse project", exact: true }).click();
-        await composer.click();
-        const dot = projectStatus.getByRole("img", { name: "Running", exact: true });
-        await expect(dot).toBeVisible();
         await expect(projectStatus).toHaveCSS("opacity", "1");
-        const bounds = await dot.boundingBox();
-        expect(bounds).not.toBeNull();
-        // The home row's status leads its Auto-merge switch (752e8b85); the status column itself
-        // shares the session rows' fixed width.
-        const autoMerge = (await projectHeader
-          .getByRole("switch", { name: /^Auto-merge:/ })
-          .boundingBox())!;
-        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(autoMerge.x);
         const statusBox = (await projectStatus.boundingBox())!;
         expect(statusBox.width).toBe(childStatusBox.width);
-        await expect(childRow).toHaveCount(0);
         await expect(parentPane).toHaveAttribute("data-session-id", parentId!);
-        await projectHeader.getByRole("button", { name: "Expand project", exact: true }).click();
-        await composer.click();
-        await expect(
-          projectStatus.getByRole("img", { name: "Running", exact: true }),
-        ).toBeVisible();
-        await expect(childRow.getByRole("img", { name: "Running" })).toBeVisible();
       }
     }
 

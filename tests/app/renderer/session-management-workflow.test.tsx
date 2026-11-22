@@ -74,7 +74,7 @@ async function renderManagement(
       },
     ],
   });
-  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(projectPath);
+  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
   await root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   const pending = options.pendingSessionId
     ? root.sessionRegistry.pendingSessions.prepare(projectPath, options.pendingSessionId)
@@ -164,6 +164,8 @@ describe("Session management workflow", () => {
         history: ["focused"],
       });
       const selection = fixture.root.appShellStore.activeConversation;
+      if (from === "delegated")
+        await fixture.user.click(region().getByRole("button", { name: "Delegated" }));
       await fixture.user.pointer({
         target: region().getByRole("button", { name: /^Assigned work/ }),
         keys: "[MouseRight]",

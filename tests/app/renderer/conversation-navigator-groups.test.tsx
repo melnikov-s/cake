@@ -5,6 +5,7 @@ import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
@@ -44,7 +45,13 @@ const myFamily = [
 
 function renderGroups(sessions: SessionSummaryFixture[], resolvedTotal?: number, global = false) {
   const fixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: projectPath }), projectRecord({ path: "/other" })],
+    projects: [
+      projectRecord({ path: projectPath }),
+      projectRecord({
+        path: "/other",
+        settings: { ...defaultProjectSettings(), worktreeLanding: "pull-request" },
+      }),
+    ],
     sessions,
     client: { projectSessions: { open: async () => undefined } },
   });
@@ -84,12 +91,18 @@ function renderGroups(sessions: SessionSummaryFixture[], resolvedTotal?: number,
       },
     );
   }
-  if (resolvedTotal !== undefined)
+  if (resolvedTotal !== undefined) {
+    applySessionCatalogGroupUpdate(
+      fixture.models.sessionCatalog,
+      { projectPath: "/other", resolved: true },
+      { _tag: "Snapshot", revision: 1, sessions: [], hasMore: false, total: 0 },
+    );
     applySessionCatalogGroupUpdate(
       fixture.models.sessionCatalog,
       { projectPath, resolved: true },
       { _tag: "Snapshot", revision: 1, sessions: [], hasMore: true, total: resolvedTotal },
     );
+  }
   const mount = () =>
     render(
       <StoreProvider store={fixture.root}>
@@ -162,6 +175,8 @@ describe("Conversation navigator session groups", () => {
             .querySelectorAll('[data-slot="conversation-navigator-row"][data-session-id]'),
         ].map((row) => row.getAttribute("data-session-id"));
       expect(ids("My sessions")).toEqual(["mine", "child", "grandchild"]);
+      expect(ids("Delegated")).toEqual([]);
+      await view.user.click(view.header("Delegated"));
       expect(ids("Delegated")).toEqual(["global-assignment", "lead", "helper"]);
       expect(view.count("My sessions")).toBe("3");
       expect(view.count("Delegated")).toBe("3");
@@ -204,11 +219,13 @@ describe("Conversation navigator session groups", () => {
     },
   );
 
-  it("does not invent a Delegated group for the delegated children of the only My family", () => {
-    using view = renderGroups(myFamily);
-    expect(view.active().queryByRole("heading", { name: "Delegated" })).toBeNull();
+  it("keeps a family with a user-owned member visible, including after a child moves to My sessions", () => {
+    using view = renderGroups(delegatedFamily);
+    expect(view.sessionIds()).toEqual([]);
+    view.publish({ ...delegatedFamily[1]!, purpose: "user" });
+    expect(view.sessionIds()).toEqual(["lead", "helper"]);
     expect(view.active().queryByRole("heading", { name: "My sessions" })).toBeNull();
-    expect(view.sessionIds()).toEqual(["mine", "child", "grandchild"]);
+    expect(view.count("Delegated")).toBe("0 delegated · 0 running");
   });
 
   it.each([
@@ -218,12 +235,14 @@ describe("Conversation navigator session groups", () => {
       "another project",
       [mine("mine", { projectPath: "/other", familyChildSessionIds: ["child"] })],
     ],
-  ])("uses a child's own purpose when its parent is %s in this list", (_, parents) => {
+  ])("uses a child's own purpose when its parent is %s in this list", async (_, parents) => {
     using view = renderGroups([
       mine("independent"),
       ...parents,
       delegated("child", { familyParentSessionId: "mine" }),
     ]);
+    expect(view.count("Delegated")).toBe("1 delegated · 0 running");
+    await view.user.click(view.header("Delegated"));
     expect(
       within(screen.getByRole("region", { name: "Delegated" })).getByText("child"),
     ).toBeDefined();
@@ -243,40 +262,54 @@ describe("Conversation navigator session groups", () => {
     });
     view.publish(myFamily[0]!);
     expect(view.count("My sessions")).toBe("3");
-    expect(view.count("Delegated")).toBe("2");
+    expect(view.count("Delegated")).toBe("2 delegated · 0 running");
   });
-  it("shows collapsible kind headers with quiet counts, including children, when both kinds are active", () => {
-    using view = renderGroups([mine("mine-a"), mine("mine-b"), ...delegatedFamily], 7);
+  it("counts only actually running delegated sessions, not their idle parents or a user's title", async () => {
+    using view = renderGroups(
+      [
+        mine("mine-a", { title: "Delegated worker", running: true }),
+        mine("mine-b"),
+        delegatedFamily[0]!,
+        { ...delegatedFamily[1]!, running: true },
+        delegated("other-worker", { running: true }),
+        delegated("settled-error", { latestTurnOutcome: "failed", unread: true }),
+        delegated("blocked", { recoveryIssue: "Interrupted" }),
+        delegated("archive", { resolved: true, running: true }),
+      ],
+      7,
+    );
     expect(view.active().getByRole("heading", { name: "My sessions" })).toBeDefined();
     expect(view.active().getByRole("heading", { name: "Delegated" })).toBeDefined();
     expect(view.count("My sessions")).toBe("2");
-    expect(view.count("Delegated")).toBe("2");
+    expect(view.count("Delegated")).toBe("5 delegated · 2 running");
     expect(view.count("Resolved sessions")).toBe("7");
-    expect(view.header("Delegated").getAttribute("aria-expanded")).toBe("true");
+    expect(view.header("Delegated").getAttribute("aria-expanded")).toBe("false");
     expect(view.header("My sessions").getAttribute("aria-expanded")).toBe("true");
     expect(view.header("Delegated").getAttribute("aria-describedby")).toBeTruthy();
+    expect(within(view.header("Delegated")).queryByRole("img", { hidden: true })).toBeNull();
+    expect(view.sessionIds()).toEqual(["mine-a", "mine-b"]);
+    view.publish(delegated("other-worker"));
+    expect(view.count("Delegated")).toBe("5 delegated · 1 running");
+    await view.user.click(view.header("Delegated"));
     expect(
       within(screen.getByRole("region", { name: "Delegated" })).getAllByRole("img", {
         name: "Delegated Session",
       }).length,
-    ).toBe(2);
+    ).toBe(5);
   });
 
-  it.each([
-    ["delegated", [delegated("only-a"), delegated("only-b")]],
-    ["user", [mine("only-a"), mine("only-b")]],
-  ])("lists a single active %s kind directly under the Project without a header", (_, sessions) => {
-    using view = renderGroups(sessions, 3);
-    expect(view.active().queryByRole("heading", { name: "Delegated" })).toBeNull();
-    expect(view.active().queryByRole("heading", { name: "My sessions" })).toBeNull();
-    expect(screen.queryByRole("region", { name: "Delegated" })).toBeNull();
-    expect(view.sessionIds()).toEqual(["only-a", "only-b"]);
-    // Resolved keeps its own header and count even as the only labelled group.
-    expect(view.header("Resolved sessions").getAttribute("aria-expanded")).toBe("false");
-    expect(view.count("Resolved sessions")).toBe("3");
+  it("finds collapsed delegated rows in search without changing their normal disclosure", async () => {
+    using view = renderGroups([delegated("only-a"), delegated("only-b")]);
+    expect(view.count("Delegated")).toBe("2 delegated · 0 running");
+    expect(view.sessionIds()).toEqual([]);
+    const search = screen.getByRole("searchbox", { name: "Search sessions" });
+    await view.user.type(search, "only-b");
+    expect(view.sessionIds()).toEqual(["only-b"]);
+    await view.user.clear(search);
+    expect(view.sessionIds()).toEqual([]);
   });
 
-  it("collapses Delegated and My sessions per Project, remembers it, and surfaces hidden unread state", async () => {
+  it("remembers disclosure but does not surface hidden delegated unread state", async () => {
     using view = renderGroups([
       mine("mine-a"),
       delegated("unread-work", { unread: true, latestTurnOutcome: "complete" }),
@@ -284,13 +317,12 @@ describe("Conversation navigator session groups", () => {
     ]);
     const list = view.fixture.root.sidebarStore.sessionListStore;
     await view.user.click(view.header("Delegated"));
+    await view.user.click(view.header("Delegated"));
     expect(view.header("Delegated").getAttribute("aria-expanded")).toBe("false");
     expect(view.sessionIds()).toEqual(["mine-a"]);
-    expect(view.count("Delegated")).toBe("2");
-    expect(
-      within(view.header("Delegated")).getByRole("img", { name: "Ready, unread", hidden: true }),
-    ).toBeDefined();
-    expect(list.isSessionKindGroupExpanded("/other", "delegated")).toBe(true);
+    expect(view.count("Delegated")).toBe("2 delegated · 0 running");
+    expect(within(view.header("Delegated")).queryByRole("img", { hidden: true })).toBeNull();
+    expect(list.isSessionKindGroupExpanded("/other", "delegated")).toBe(false);
 
     await view.user.click(view.header("My sessions"));
     expect(view.sessionIds()).toEqual([]);
@@ -314,8 +346,9 @@ describe("Conversation navigator session groups", () => {
       delegated("work-a"),
     ]);
     expect(view.sessionIds()).toHaveLength(10);
-    expect(view.count("Delegated")).toBe("1");
+    expect(view.count("Delegated")).toBe("1 delegated · 0 running");
     expect(view.active().getByRole("button", { name: "Show more" })).toBeDefined();
+    await view.user.click(view.header("Delegated"));
     await view.user.click(view.header("My sessions"));
     expect(view.sessionIds()).toEqual(["work-a"]);
     expect(view.active().queryByRole("button", { name: "Show more" })).toBeNull();
@@ -323,22 +356,21 @@ describe("Conversation navigator session groups", () => {
 
   it("brings labels back when the second kind appears, keeping the selection visible", async () => {
     using view = renderGroups([delegated("work-a"), delegated("work-b")]);
+    await view.user.click(view.header("Delegated"));
     await view.user.click(screen.getByRole("button", { name: /^work-b / }));
     await waitFor(() => expect(view.selected()).toBe("work-b"));
     const row = document.querySelector('[data-session-id="work-b"]');
-    // A Delegated collapse remembered from earlier must not hide the selected row.
-    act(() =>
-      view.fixture.root.sidebarStore.sessionListStore.toggleSessionKindGroupExpanded(
-        projectPath,
-        "delegated",
-      ),
-    );
     view.publish(mine("mine-new"));
     expect(view.active().getByRole("heading", { name: "My sessions" })).toBeDefined();
     expect(view.header("Delegated").getAttribute("aria-expanded")).toBe("true");
     expect(view.selected()).toBe("work-b");
     // Stable group keys keep the existing row mounted rather than rebuilding it.
     expect(document.querySelector('[data-session-id="work-b"]')).toBe(row);
+    await view.user.click(view.header("Delegated"));
+    expect(view.sessionIds()).toEqual(["mine-new"]);
+    act(() => view.fixture.root.navigationStore.selectProjectSession("work-a"));
+    expect(view.selected()).toBe("work-a");
+    expect(view.header("Delegated").getAttribute("aria-expanded")).toBe("true");
   });
 
   it.each([false, true])(
@@ -366,7 +398,6 @@ describe("Conversation navigator session groups", () => {
       const toggle = view.header("Resolved sessions");
       expect(toggle.getAttribute("aria-expanded")).toBe("false");
       expect(screen.queryByRole("region", { name: "Resolved sessions" })).toBeNull();
-      await view.user.click(view.header("Delegated"));
       await view.user.click(toggle);
 
       expect(view.header("Resolved sessions").getAttribute("aria-expanded")).toBe("true");

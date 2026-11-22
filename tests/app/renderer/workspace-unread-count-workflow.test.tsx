@@ -26,7 +26,9 @@ function renderWorkspace(large = false) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: navigatorProjectPath }), projectRecord({ path: "/other" })],
     sessions: [
-      ...navigatorSessions,
+      ...navigatorSessions.map((session) =>
+        session.sessionId === "elsewhere" ? { ...session, running: false } : session,
+      ),
       sessionSummary({
         sessionId: "resolved",
         projectPath: navigatorProjectPath,
@@ -128,9 +130,9 @@ describe("Workspace Sessions running count", () => {
         models.sessionCatalog.find("elsewhere")!.running = false;
         publishSignals();
       });
-      expectCounts(0, 0);
+      expectCounts(0, 2);
       expect(within(tab()).getByRole("img", { name: "0 running" }).textContent).toBe("0");
-      expect(tab().getAttribute("title")).toBe("0 running · 0 unread · 5 total in this project");
+      expect(tab().getAttribute("title")).toBe("0 running · 2 unread · 8 total in all projects");
       await userEvent.setup().click(tab());
       const homeRow = () =>
         document.querySelector<HTMLElement>(
@@ -147,19 +149,19 @@ describe("Workspace Sessions running count", () => {
         models.projectConversation("layout", navigatorProjectPath).streaming = true;
         publishSignals();
       });
-      expectCounts(1, 1);
+      expectCounts(1, 3);
       act(() => {
         setHomeRunning(false);
         home.unread = true;
       });
-      expectCounts(1, 2);
+      expectCounts(1, 4);
       expect(homeRow().dataset.working).toBe("true");
       expect(within(homeRow()).getByRole("img", { name: "Ready, unread" })).toBeTruthy();
       act(() => {
         for (const id of ["keyboard", "deep-child"]) models.sessionCatalog.find(id)!.running = true;
         publishSignals();
       });
-      expectCounts(3, 2);
+      expectCounts(3, 4);
 
       act(() => {
         setHomeRunning(true);
@@ -196,7 +198,7 @@ describe("Workspace Sessions unread count", () => {
     });
     expectCounts(Number(running), Number(unread));
     expect(tab().getAttribute("aria-pressed")).toBe("false");
-    expect(tab().getAttribute("title")).toContain("5 total in this project");
+    expect(tab().getAttribute("title")).toContain("7 total in all projects");
   });
 
   it("reacts to catalog read/new-message events without transcript reads or new session materialization", () => {
@@ -231,29 +233,30 @@ describe("Workspace Sessions unread count", () => {
     expect(fixture.models.projectConversations).toHaveLength(0);
   });
 
-  it("preserves own-unread semantics and scopes counts independently of filtering, collapse and pagination", () => {
+  it("keeps all-project counts independent of filtering, focus, collapse and pagination", () => {
     using fixture = renderWorkspace(true);
     const navigator = fixture.root.conversationNavigatorStore;
     act(() => {
       fixture.models.sessionCatalog.find("deep-child")!.unread = true;
       fixture.models.sessionCatalog.find("elsewhere")!.unread = true;
+      fixture.models.sessionCatalog.find("elsewhere")!.running = true;
       fixture.models.cakeChatCatalog.find(CAKE_CHAT_SESSION_ID)!.unread = true;
       navigator.setQuery(navigatorProjectPath, "no match");
       navigator.collapseAll(navigatorProjectPath);
     });
-    expect(navigator.rows(navigatorProjectPath)).toHaveLength(0);
-    expectCounts(100, 100);
+    expect(navigator.rowGroups(navigatorProjectPath, () => true)).toHaveLength(0);
+    expectCounts(101, 102);
     expect(fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread).toBe(false);
     expect(fixture.models.sessionCatalog.find("layout")!.unread).toBe(false);
     act(() => {
       fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread = true;
     });
-    expectCounts(100, 101);
+    expectCounts(101, 103);
     act(() => {
       fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread = false;
       fixture.root.sidebarStore.sessionListStore.showMoreSessions(navigatorProjectPath);
     });
-    expectCounts(100, 100);
+    expectCounts(101, 102);
     act(() => fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID));
     expectCounts(101, 102);
     expect(tab().getAttribute("title")).toContain("107 total in all projects");
@@ -278,19 +281,19 @@ describe("Workspace Sessions unread count", () => {
     expect(fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread).toBe(false);
   });
 
-  it("counts exactly the parents' own unread and excludes resolved and other-project rows", () => {
+  it("counts exactly the parents' own unread across projects and excludes resolved rows", () => {
     using fixture = renderWorkspace();
     act(() => {
       for (const id of ["layout", "icons", "keyboard", "deep-child", "resolved", "elsewhere"])
         fixture.models.sessionCatalog.find(id)!.unread = true;
     });
-    expectCounts(0, 2);
+    expectCounts(0, 3);
     act(() => {
       fixture.models.sessionCatalog.find("layout")!.unread = false;
       fixture.models.sessionCatalog.find("icons")!.resolved = true;
-      fixture.root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(navigatorProjectPath);
+      fixture.root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
     });
-    expectCounts(0, 0);
+    expectCounts(0, 1);
   });
 
   it("caps both large indicators but keeps exact accessible values", () => {

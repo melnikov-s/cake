@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
@@ -15,7 +15,7 @@ async function bounds(locator: Locator) {
 for (const theme of ["light", "dark"] as const) {
   test(`recursive Sessions rows keep compact geometry during hover, selection and disclosure (${theme})`, async () => {
     test.setTimeout(120_000);
-    const root = await mkdtemp(join(tmpdir(), "cake-sessions-row-layout-"));
+    const root = await realpath(await mkdtemp(join(tmpdir(), "cake-sessions-row-layout-")));
     const paths = {
       userData: join(root, "user-data"),
       cakeHome: join(root, "cake-home"),
@@ -45,10 +45,13 @@ for (const theme of ["light", "dark"] as const) {
       const child = workspace.locator(
         '[data-slot="conversation-navigator-row"][data-session-id="visual-navigation-keyboard"]',
       );
-      const header = workspace.locator(
-        '[data-slot="conversation-navigator-row"][data-relationship="home"]',
-      );
-      const toggle = header.getByRole("switch", { name: /^Auto-merge:/ });
+      const header = workspace
+        .locator('[data-slot="conversation-navigator-row"][data-relationship="home"]')
+        .filter({ has: page.getByRole("button", { name: "cake", exact: true }) });
+      const group = workspace
+        .getByRole("region", { name: "Delegated", exact: true })
+        .and(page.locator(`[data-project-path=${JSON.stringify(paths.project)}]`));
+      const toggle = group.getByRole("switch", { name: /^Auto-merge:/ });
       const headerStatus = header.locator('[data-slot="own-activity"]');
       const sessionStatus = parent.locator('[data-slot="own-activity"]');
       const headerDot = headerStatus.getByRole("img", { name: "Running", exact: true });
@@ -70,15 +73,16 @@ for (const theme of ["light", "dark"] as const) {
         const label = await bounds(toggle.locator(".."));
         const title = await bounds(header.getByRole("button", { name: "cake", exact: true }));
         expect(title.width).toBeGreaterThanOrEqual(64);
-        expect(title.x + title.width).toBeLessThanOrEqual(label.x);
+        const disclosure = await bounds(group.getByRole("button", { name: "Delegated" }));
+        expect(disclosure.x + disclosure.width).toBeLessThanOrEqual(label.x);
         const headerCenter = centerX(await bounds(headerDot));
         const sessionCenter = centerX(await bounds(sessionDot));
         expect(track.width).toBe(24);
         expect(nestedTrack.width).toBe(track.width);
         expect(Math.abs(centerX(track) - headerCenter)).toBeLessThan(0.5);
         expect(Math.abs(headerCenter - sessionCenter)).toBeLessThan(0.5);
-        expect(control.x + control.width).toBeLessThanOrEqual(track.x);
-        expect(track.x - (control.x + control.width)).toBeLessThanOrEqual(4);
+        const groupBox = await bounds(group);
+        expect(control.x + control.width).toBeLessThanOrEqual(groupBox.x + groupBox.width);
         measurements.push({ width: (await bounds(workspace)).width, headerCenter, sessionCenter });
         if (theme === "light") {
           await test.info().attach(`sessions-status-${width}`, {

@@ -7,7 +7,6 @@ import { formatRelativeSessionTime } from "../../utils/format-relative-session-t
 import { RootStore } from "../stores/RootStore";
 import { SidebarSessionItem } from "./sidebar-session-item";
 import { SessionActivityIndicator } from "./session-activity-indicator";
-import { AutoMergeToggle } from "./auto-merge-toggle";
 import { Avatar } from "./ui/avatar";
 import { DepthRails } from "./ui/depth-rails";
 import { IconButton } from "./ui/icon-button";
@@ -19,24 +18,23 @@ import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 export const ConversationNavigatorRow = observer(function ConversationNavigatorRow({
   node,
   depth,
-  underProjectHeading = false,
   projectPath,
-  containingProjectPath = projectPath,
+  containingProjectPath,
+  hasGroupedContent = false,
 }: {
   node: ConversationNavigationNode;
   depth: number;
-  /** The Project Chat heading adds indentation, not a Session Family connector. */
-  underProjectHeading?: boolean;
   projectPath: string | undefined;
-  /** Project identity already supplied by a containing heading or project-scoped layout. */
+  /** Project identity already supplied by a containing Project Chat heading. */
   containingProjectPath?: string;
+  hasGroupedContent?: boolean;
 }) {
   const root = useStore(RootStore);
   const store = root.conversationNavigatorStore;
   const selected = store.selectedKey === node.key;
   const expanded = store.isExpanded(projectPath, node.key);
   const avatarsEnabled = root.settingsStore.appearance.sessionAvatarsEnabled;
-  const headingIndent = underProjectHeading && depth > 0;
+  const headingIndent = containingProjectPath !== undefined && depth > 0;
   const railCount = depth - Number(headingIndent);
   const gutterStyle: CSSProperties & { "--ancestor-count": number } = {
     "--ancestor-count": railCount,
@@ -56,7 +54,6 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
       ? root.sessionCatalogStore.find(node.target.sessionId)
       : undefined;
   const rowProjectPath =
-    projectPath ??
     session?.projectPath ??
     (node.target.kind === "cake-chat"
       ? root.cakeChatCatalogModel.sessions.find((chat) => chat.sessionId === node.target.sessionId)
@@ -71,7 +68,11 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
         : node.activity;
   const working = store.effectiveWorking(node);
   const activity = sessionActivityWithInheritedWorking(ownActivity, working);
-  const hideRunningSubtitle = node.relationship === "home" && projectPath !== undefined && working;
+  const hideRunningSubtitle =
+    node.relationship === "home" &&
+    rowProjectPath !== undefined &&
+    rowProjectPath === projectPath &&
+    working;
   const time = working
     ? "Running"
     : node.modifiedAt
@@ -114,18 +115,19 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
         </span>
       )}
       <span className="flex w-5 shrink-0 items-center justify-center">
-        {node.children.length > 0 && (
-          <IconButton
-            iconSize="inline"
-            className={cn("size-5 text-muted-foreground", !expanded && "-rotate-90")}
-            tooltip={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
-            ariaLabel={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
-            aria-expanded={expanded}
-            onClick={() => store.toggleExpanded(projectPath, node.key)}
-          >
-            <ChevronIcon />
-          </IconButton>
-        )}
+        {(node.children.length > 0 || hasGroupedContent) &&
+          !store.isPinnedOpen(projectPath, node.key) && (
+            <IconButton
+              iconSize="inline"
+              className={cn("size-5 text-muted-foreground", !expanded && "-rotate-90")}
+              tooltip={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
+              ariaLabel={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
+              aria-expanded={expanded}
+              onClick={() => store.toggleExpanded(projectPath, node.key)}
+            >
+              <ChevronIcon />
+            </IconButton>
+          )}
       </span>
       {session ? (
         <div className="min-w-0 flex-1">
@@ -212,9 +214,6 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
           }
           trailing={
             <div className="flex items-center">
-              {node.relationship === "home" && rowProjectPath !== undefined && (
-                <AutoMergeToggle projectPath={rowProjectPath} />
-              )}
               <span
                 className="flex size-6 shrink-0 items-center justify-center"
                 data-slot="own-activity"

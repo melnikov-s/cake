@@ -4,6 +4,7 @@ import { RootStore } from "../stores/RootStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { ActivityDisclosure } from "./ui/activity-disclosure";
+import { AutoMergeToggle } from "./auto-merge-toggle";
 import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 import { ComposerCap } from "./ui/composer-cap";
 import { textPreview } from "../lib/text-preview";
@@ -43,6 +44,7 @@ export const ConversationActivity = observer(function ConversationActivity({
       summary={`${running} running`}
       status="running"
       onOpen={onOpen}
+      actions={<AutoMergeToggle projectPath={root.projectForSession(sessionId)} />}
       items={[
         ...sessions.map((session) => ({
           id: `session:${session.sessionId}`,

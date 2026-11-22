@@ -78,7 +78,7 @@ function familySessions(parentUnread = false): SessionSummaryFixture[] {
   ];
 }
 
-it("groups User Sessions before delegated work while retaining each lane's prior activity order", () => {
+it("groups User Sessions before delegated work while retaining each lane's prior activity order", async () => {
   using setup = renderOrdering([
     sessionSummary({
       sessionId: "delegate-new",
@@ -106,6 +106,8 @@ it("groups User Sessions before delegated work while retaining each lane's prior
       modifiedAt: "2026-03-01",
     }),
   ]);
+  expect(setup.order()).toEqual(["mine-new", "mine-old"]);
+  await setup.user.click(screen.getByRole("button", { name: "Delegated" }));
   expect(setup.order()).toEqual(["mine-new", "mine-old", "delegate-new", "delegate-old"]);
   expect(
     within(screen.getByRole("region", { name: "My sessions" })).getAllByRole("img", {
@@ -232,7 +234,7 @@ function renderOrdering(sessions: SessionSummaryFixture[] = initialSessions) {
     order: () =>
       [
         ...view.container.querySelectorAll(
-          '[data-slot="conversation-navigator-row"][data-session-id]',
+          '[data-slot="conversation-navigator-row"]:not([data-relationship="home"])',
         ),
       ].map((row) => row.getAttribute("data-session-id")),
     selected,

@@ -23,6 +23,7 @@ import {
   type SessionSummaryFixture,
 } from "./fixtures/catalog-fixtures";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
+import { CakeChatSummary } from "../../../src/renderer/models/CakeChatSummary";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { createTestClient, type TestClientOverrides } from "./test-client";
 import { migrateSavedDrafts } from "../../../src/renderer/persistence/migrate-saved-drafts";
@@ -81,6 +82,7 @@ async function renderDrafts(
     sessions: initialSessions,
     client: {
       ...client,
+      cakeChats: { open: async () => undefined, ...client.cakeChats },
       savedDrafts: { ...drafts.client, ...client.savedDrafts },
       workspaces: {
         loadStagedSlashCommands: async () => [],
@@ -90,6 +92,16 @@ async function renderDrafts(
       managedWorktrees: { landing: async () => ({}), ...client.managedWorktrees },
     },
   });
+  // The active Draft retires back to its real Project Chat before deletion.
+  fixture.models.cakeChatCatalog.sessions.push(
+    CakeChatSummary.create({
+      sessionId: `project-chat:${"a".repeat(64)}`,
+      projectPath,
+      title: "Project Chat",
+      createdAt: fixtureTimestamp,
+      modifiedAt: fixtureTimestamp,
+    }),
+  );
   await fixture.root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   if (!drafts.records.has(sessionId))
     fixture.root.sessionRegistry.pendingSessions.prepareStaged(projectPath, sessionId);
@@ -97,7 +109,7 @@ async function renderDrafts(
   fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   const { root } = fixture;
-  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(projectPath);
+  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
   root.sessionRegistry
     .findSession(sessionId)!
     .conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({

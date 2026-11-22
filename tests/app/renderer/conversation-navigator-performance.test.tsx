@@ -33,7 +33,7 @@ it("echoes Sessions search input before recursive filtering and only publishes t
     ),
   });
   const store = fixture.root.conversationNavigatorStore;
-  const rows = vi.spyOn(store, "rows");
+  const rows = vi.spyOn(store, "rowGroups");
   const publish = vi.spyOn(store, "setQuery");
   using _view = unmountOnDispose(
     render(
@@ -45,7 +45,9 @@ it("echoes Sessions search input before recursive filtering and only publishes t
     ),
   );
   const input = screen.getByRole<HTMLInputElement>("searchbox", { name: "Search sessions" });
-  const initialRows = store.rows("/project").map(({ node }) => node.key);
+  const initialRows = store
+    .rowGroups("/project", () => true)
+    .flatMap((group) => group.rows.map(({ node }) => node.key));
   rows.mockClear();
 
   act(() => {
@@ -73,7 +75,11 @@ it("echoes Sessions search input before recursive filtering and only publishes t
   });
   expect(publish.mock.calls).toEqual([["/project", ""]]);
   expect(store.query("/project")).toBe("");
-  expect(store.rows("/project").map(({ node }) => node.key)).toEqual(initialRows);
+  expect(
+    store
+      .rowGroups("/project", () => true)
+      .flatMap((group) => group.rows.map(({ node }) => node.key)),
+  ).toEqual(initialRows);
 });
 
 it("cancels an uncommitted search draft on scope change and restores each scope's applied query", () => {

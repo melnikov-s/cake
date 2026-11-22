@@ -299,7 +299,9 @@ it.each(["project", "cake-chat"] as const)(
     await view.user.click(trigger);
     const details = screen.getByRole("region", { name: "Conversation activity" });
     expect(details.id).toBe(detailsId);
-    expect(within(dock as HTMLElement).queryByRole("switch", { name: /^Auto-merge:/ })).toBeNull();
+    expect(
+      within(dock as HTMLElement).queryAllByRole("switch", { name: /^Auto-merge:/ }),
+    ).toHaveLength(kind === "project" ? 1 : 0);
     expect(dock.contains(details)).toBe(true);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     const input = within(dock as HTMLElement).getByRole("combobox");

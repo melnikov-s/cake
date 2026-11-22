@@ -352,10 +352,10 @@ describe("Project Session composition observer", () => {
       expect(signalStream).toHaveBeenCalledOnce();
       fixture.root.workspaceNavigatorStore.show("sessions");
       await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(6));
-      // The shown Project's archive page supplies the collapsed Resolved sessions count.
+      // The same all-project active lanes are observed when opened in a project.
       expect(catalogs.mock.calls.slice(4).map(([query]) => query)).toEqual([
         { projectPath: "/project", resolved: false },
-        { projectPath: "/project", resolved: true, limit: 10 },
+        { projectPath: "/other", resolved: false },
       ]);
       fixture.root.workspaceNavigatorStore.close();
       await vi.waitFor(() => expect(ended).toHaveLength(6));
@@ -418,14 +418,14 @@ describe("Project Session composition observer", () => {
     try {
       await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(1));
       expect(catalogs.mock.calls[0]?.[0].resolved).toBe(false);
-      list.toggleResolvedGroupExpanded("/project");
+      list.toggleResolvedGroupExpanded();
       await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(10));
       expect(list.hasMoreResolvedProjectSessions("/project")).toBe(true);
       list.showMoreSessions("/project", true);
       await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(12));
       expect(list.hasMoreResolvedProjectSessions("/project")).toBe(false);
       expect(ended).toContainEqual({ projectPath: "/project", resolved: true, limit: 10 });
-      list.toggleResolvedGroupExpanded("/project");
+      list.toggleResolvedGroupExpanded();
       await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(0));
       expect(ended).toContainEqual({ projectPath: "/project", resolved: true, limit: 20 });
       expect(catalogs.mock.calls.filter(([query]) => !query.resolved)).toHaveLength(1);

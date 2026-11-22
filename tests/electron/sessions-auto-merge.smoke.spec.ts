@@ -17,6 +17,10 @@ const header = (page: Page, name: string) =>
   sessions(page)
     .locator('[data-slot="conversation-navigator-row"][data-relationship="home"]')
     .filter({ has: page.getByRole("button", { name, exact: true }) });
+const delegated = (page: Page, path: string) =>
+  sessions(page)
+    .getByRole("region", { name: "Delegated", exact: true })
+    .and(page.locator(`[data-project-path=${JSON.stringify(path)}]`));
 const openSessions = async (page: Page) => {
   const open = page.getByRole("button", { name: "Open Workspace", exact: true });
   if (await open.isVisible()) await open.click();
@@ -32,7 +36,7 @@ const openTodos = async (page: Page) => {
   await expect(switches(page)).toHaveCount(0);
 };
 
-test("Sessions headers own independent Auto-merge switches in Electron and browser navigation", async ({}, testInfo) => {
+test("All-project Sessions keeps Auto-merge in independent Delegated headers on desktop and browser", async ({}, testInfo) => {
   test.setTimeout(90_000);
   const root = await realpath(await mkdtemp(join(tmpdir(), "cake-sessions-auto-merge-")));
   const home = join(root, "cake-home");
@@ -41,13 +45,33 @@ test("Sessions headers own independent Auto-merge switches in Electron and brows
   const other = join(root, "other");
   const timestamp = new Date(0).toISOString();
   const id = "00000000-0000-4000-8000-000000000001";
-  const title = "Move Auto-merge to Sessions headers";
-  const directory = cakeWorkspaceSessionDirectory(cake, join(home, "pi", "sessions"));
+  const workerId = "00000000-0000-4000-8000-000000000002";
+  const otherId = "00000000-0000-4000-8000-000000000003";
+  const title = "Review keyboard navigation";
+  const workerTitle = "Audit the sidebar layout";
+  const otherTitle = "Outline the next release";
+  const seedSession = async (id: string, title: string, cwd: string) => {
+    const directory = cakeWorkspaceSessionDirectory(cwd, join(home, "pi", "sessions"));
+    await mkdir(directory, { recursive: true });
+    const entries = [
+      { type: "session", version: 3, id, timestamp, cwd },
+      { type: "session_info", id: "title", parentId: null, timestamp, name: title },
+      {
+        type: "message",
+        id: "message",
+        parentId: "title",
+        timestamp,
+        message: { role: "user", content: [{ type: "text", text: title }], timestamp: 0 },
+      },
+    ];
+    await writeFile(
+      join(directory, `1970-01-01T00-00-00-000Z_${id}.jsonl`),
+      entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+    );
+  };
   try {
     await Promise.all(
-      [userData, other, directory, cake, join(home, "state")].map((path) =>
-        mkdir(path, { recursive: true }),
-      ),
+      [userData, other, cake, join(home, "state")].map((path) => mkdir(path, { recursive: true })),
     );
     // Isolated fixture only. No declaration or managed worktree exists, so clicking cannot land anything.
     await writeFile(
@@ -71,25 +95,29 @@ test("Sessions headers own independent Auto-merge switches in Electron and brows
       windowState({ project: cake, sessionId: id, projects: [cake, other], theme: "dark" }),
     );
     await writeFile(
-      join(directory, `1970-01-01T00-00-00-000Z_${id}.jsonl`),
-      [
-        { type: "session", version: 3, id, timestamp, cwd: cake },
-        { type: "session_info", id: "title", parentId: null, timestamp, name: title },
-        {
-          type: "message",
-          id: "message",
-          parentId: "title",
-          timestamp,
-          message: {
-            role: "user",
-            content: [{ type: "text", text: title }],
-            timestamp: 0,
-          },
+      join(home, "state", "session-families.json"),
+      JSON.stringify({
+        version: 12,
+        data: {
+          families: [],
+          turns: [],
+          spawnedSessions: [],
+          sessionPurposes: [
+            {
+              sessionId: workerId,
+              projectPath: cake,
+              purpose: "delegated",
+              createdPurpose: "delegated",
+            },
+          ],
         },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n") + "\n",
+      }),
     );
+    await Promise.all([
+      seedSession(id, title, cake),
+      seedSession(workerId, workerTitle, cake),
+      seedSession(otherId, otherTitle, other),
+    ]);
     const app = await electron.launch({
       args: [repository],
       cwd: repository,
@@ -108,10 +136,15 @@ test("Sessions headers own independent Auto-merge switches in Electron and brows
       await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
       await expect(page.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible();
       await openSessions(page);
-      const row = header(page, "cake");
-      const toggle = row.getByRole("switch");
-      const peer = header(page, "other").getByRole("switch");
-      const collapse = row.getByRole("button", { name: "Collapse cake" });
+      const group = delegated(page, cake);
+      const toggle = group.getByRole("switch");
+      const peer = delegated(page, other).getByRole("switch");
+      const disclosure = group.getByRole("button", { name: "Delegated", exact: true });
+      await expect(header(page, "cake").getByRole("switch")).toHaveCount(0);
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+      await expect(disclosure).toHaveText("1 delegated · 0 running");
+      await expect(delegated(page, other)).toContainText("0 delegated · 0 running");
+      await expect(group.getByText(workerTitle, { exact: true })).toHaveCount(0);
       await expect(switches(page)).toHaveCount(2);
       await expect(toggle).toBeChecked();
       await expect(peer).not.toBeChecked();
@@ -121,24 +154,23 @@ test("Sessions headers own independent Auto-merge switches in Electron and brows
       await expect(child.getByText(title, { exact: true })).toBeVisible();
       await expect(toggle.locator("..").locator("svg")).toHaveCSS("width", "12px");
       await expect(toggle).toHaveCSS("height", "20px");
-      const bounds = (await row.boundingBox())!;
+      const bounds = (await group.boundingBox())!;
       const control = (await toggle.boundingBox())!;
+      const button = (await disclosure.boundingBox())!;
       expect(control.x + control.width).toBeLessThanOrEqual(bounds.x + bounds.width);
-      const status = (await row.locator('[data-slot="own-activity"]').boundingBox())!;
-      expect(control.x + control.width).toBeLessThanOrEqual(status.x);
-      expect(status.x - (control.x + control.width)).toBeLessThan(20);
-      expect(control.y + control.height / 2).toBeCloseTo(bounds.y + bounds.height / 2, 0);
+      expect(button.x + button.width).toBeLessThan(control.x);
       expect(
         await toggle.evaluate((el) => el.parentElement!.closest("button, [role=button]") === null),
       ).toBe(true);
 
-      await row.getByText("Auto-merge", { exact: true }).click();
+      await group.getByText("Auto-merge", { exact: true }).click();
       await expect(toggle).not.toBeChecked();
-      await expect(collapse).toHaveAttribute("aria-expanded", "true");
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible();
       await expect(peer).not.toBeChecked();
       await toggle.focus();
       await toggle.press("Shift+Tab");
-      await expect(row.getByRole("button", { name: "cake", exact: true })).toBeFocused();
+      await expect(disclosure).toBeFocused();
       await app.evaluate(async () => Reflect.get(globalThis, "cakeSmokeHoldApplicationCommit")());
       try {
         await toggle.press("Space");
@@ -152,17 +184,44 @@ test("Sessions headers own independent Auto-merge switches in Electron and brows
       }
       await expect(toggle).toBeChecked();
       await expect(toggle).toBeEnabled();
-      await expect(collapse).toHaveAttribute("aria-expanded", "true");
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
       await expect(peer).not.toBeChecked();
       await expect(child.getByText(title, { exact: true })).toBeVisible();
+      await disclosure.click();
+      await expect(group.getByText(workerTitle, { exact: true })).toBeVisible();
+      await disclosure.click();
+      await expect(group.getByText(workerTitle, { exact: true })).toHaveCount(0);
       await page.mouse.move(1, 1);
       await page.waitForFunction(() => document.fonts.status === "loaded");
-      const screenshot = testInfo.outputPath("global-sessions-project-headers.png");
+      const screenshot = testInfo.outputPath("global-sessions-delegated-headers.png");
       await workspace(page).screenshot({ path: screenshot });
-      await testInfo.attach("Global Sessions project headers", {
+      await testInfo.attach("Global Sessions Delegated headers", {
         path: screenshot,
         contentType: "image/png",
       });
+      await header(page, "other").getByRole("button", { name: "Collapse other" }).click();
+      await expect(peer).toHaveCount(0);
+      await expect(sessions(page).getByText(otherTitle, { exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Open Project Chat for other", exact: true }).click();
+      await openSessions(page);
+      await expect(peer).toBeVisible();
+      await expect(sessions(page).getByText(otherTitle, { exact: true })).toBeVisible();
+      await expect(
+        header(page, "other").getByRole("button", { name: "Collapse other" }),
+      ).toHaveCount(0);
+      const homes = sessions(page).locator('[data-relationship="home"]');
+      await expect(homes.first().getByRole("button", { name: "other", exact: true })).toBeVisible();
+      const projectScreenshot = testInfo.outputPath("project-sessions-delegated-headers.png");
+      await page.mouse.move(1, 1);
+      await workspace(page).screenshot({ path: projectScreenshot });
+      await testInfo.attach("Project Sessions Delegated headers", {
+        path: projectScreenshot,
+        contentType: "image/png",
+      });
+      await child.getByText(title, { exact: true }).click();
+      await expect(
+        page.locator(`[data-slot="session-pane"][data-session-id="${id}"]`),
+      ).toBeVisible();
       await openTodos(page);
 
       // Use the real, isolated desktop backend from a Chromium browser, too.
@@ -181,16 +240,17 @@ test("Sessions headers own independent Auto-merge switches in Electron and brows
         await expect(remote.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible();
         await openSessions(remote);
         await expect(switches(remote)).toHaveCount(2);
-        await expect(header(remote, "cake").getByRole("switch")).toBeChecked();
-        await expect(header(remote, "other").getByRole("switch")).not.toBeChecked();
+        await expect(delegated(remote, cake).getByRole("switch")).toBeChecked();
+        await expect(delegated(remote, other).getByRole("switch")).not.toBeChecked();
         await openTodos(remote);
         await remote
           .getByRole("button", { name: "Open Project Chat for cake", exact: true })
           .click();
         await expect(remote.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
         await openSessions(remote);
-        await expect(switches(remote)).toHaveCount(1);
-        await expect(header(remote, "cake").getByRole("switch")).toBeChecked();
+        await expect(switches(remote)).toHaveCount(2);
+        await expect(delegated(remote, cake).getByRole("switch")).toBeChecked();
+        await expect(delegated(remote, other).getByRole("switch")).not.toBeChecked();
         await openTodos(remote);
         await remote.getByRole("button", { name: "Close Workspace", exact: true }).click();
         await expect(switches(remote)).toHaveCount(0);

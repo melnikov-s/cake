@@ -7,7 +7,8 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   const form = dock.locator("form");
   const collapsedInput = (await form.boundingBox())!;
   await expect(activity).toHaveAttribute("aria-expanded", "false");
-  await expect(dock.getByRole("switch", { name: /^Auto-merge:/ })).toHaveCount(0);
+  const autoMerge = dock.getByRole("switch", { name: /^Auto-merge:/ });
+  await expect(autoMerge).toBeVisible();
   await activity.click();
   await expect(activity).toHaveAttribute("aria-expanded", "true");
   await expect(details).toHaveAttribute("id", (await activity.getAttribute("aria-controls"))!);
@@ -20,12 +21,15 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   expect(expanded.height).toBeLessThanOrEqual(168);
   expect(expanded.y).toBeGreaterThan(0);
 
-  await expect(dock.getByRole("switch", { name: /^Auto-merge:/ })).toHaveCount(0);
+  await expect(autoMerge).toHaveCount(1);
+  await expect(details.getByRole("switch")).toHaveCount(0);
   const firstItem = details
     .getByRole("button", { name: /^(Open session|Inspect subagent):/ })
     .first();
   await firstItem.focus();
   await firstItem.press("Shift+Tab");
+  await expect(autoMerge).toBeFocused();
+  await autoMerge.press("Shift+Tab");
   await expect(activity).toBeFocused();
   await composer.click();
   await expect(composer).toBeFocused();

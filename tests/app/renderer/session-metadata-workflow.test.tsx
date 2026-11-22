@@ -83,7 +83,7 @@ async function renderMetadata(options: { pendingWorktree?: boolean; avatars?: bo
     conversation.labelIds = [globalLabel.id, deletedLabelId];
   }
   const { root } = fixture;
-  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded(projectPath);
+  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
   const view = render(
     <StoreProvider store={root}>
       <ConversationNavigator projectPath={projectPath} />
