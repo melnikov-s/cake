@@ -5,9 +5,11 @@ export const antigravityModel = {
   name: "Antigravity default",
 } as const;
 
-export const isAntigravityModel = (selection?: { provider: string; modelId: string }) =>
-  selection?.provider === antigravityModel.provider &&
-  selection.modelId === antigravityModel.modelId;
+export const isAntigravityModel = (selection?: { provider: string }) =>
+  selection?.provider === antigravityModel.provider;
+
+export const antigravityModelName = (modelId: string) =>
+  modelId === antigravityModel.modelId ? antigravityModel.name : modelId;
 
 export const antigravityDesktopOnly =
   "Antigravity requires an interactive desktop conversation. Choose another model for background work.";
@@ -18,7 +20,7 @@ export const antigravityPromptError = (text: string) =>
     : undefined;
 
 export const antigravitySettingsError =
-  "Antigravity chooses the model and thinking settings. Fast mode and preset prompts are not supported.";
+  "Choose an advertised Antigravity variant to set the model and effort. Cake thinking levels, Fast mode, and preset prompts are not supported.";
 
 export function supportsAntigravitySettings(selection: {
   thinkingLevel: string;

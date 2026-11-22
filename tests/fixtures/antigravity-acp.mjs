@@ -2,9 +2,30 @@
 // ACP v1 fixture. Uses real loopback HTTP MCP when Cake provisions it; no model or external network.
 import { appendFileSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { dirname, join } from "node:path";
 
 if (process.argv[2] !== "acp") process.exit(64);
-const auth = existsSync("fixture-auth-required");
+const discovery = process.argv.includes("--include-default-customizations=false");
+const bin = dirname(process.argv[1]);
+const wire =
+  discovery && existsSync(join(bin, "fixture-record-discovery"))
+    ? join(bin, "discovery.ndjson")
+    : (process.env.CAKE_FIXTURE_WIRE ?? "fixture-acp-wire.ndjson");
+const auth =
+  existsSync("fixture-auth-required") ||
+  (discovery && existsSync(join(bin, "fixture-discovery-auth-required")));
+const catalog = () => ({
+  models: {
+    currentModelId: "fixture-default",
+    availableModels: [
+      { modelId: "fixture-sonnet-medium", name: "Fixture Sonnet (Medium)" },
+      { modelId: "fixture-sonnet-high", name: "Fixture Sonnet (High)" },
+      ...(existsSync(join(bin, "fixture-new-discovery-model"))
+        ? [{ modelId: "fixture-flash", name: "Fixture Flash" }]
+        : []),
+    ],
+  },
+});
 const resume = !existsSync("fixture-no-resume");
 let sessionId;
 let promptId;
@@ -72,9 +93,13 @@ async function sendMcpResult(id, commands) {
 }
 for await (const line of createInterface({ input: process.stdin })) {
   const request = JSON.parse(line);
-  appendFileSync("fixture-acp-wire.ndjson", line + "\n");
+  appendFileSync(wire, line + "\n");
   switch (request.method) {
     case "initialize":
+      if (process.env.CAKE_FIXTURE_HOLD_INITIALIZE) {
+        process.stderr.write("holding initialize\n");
+        break;
+      }
       answer(request.id, {
         protocolVersion: existsSync("fixture-wrong-version") ? 9 : 1,
         agentInfo: { name: "agy", title: "Antigravity ACP Server", version: "0.0.0-fixture" },
@@ -91,7 +116,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         sessionId = `fixture-session-${process.pid}`;
         mcp = request.params.mcpServers[0];
         if (mcp && !existsSync("fixture-ignore-mcp")) await discoverMcp();
-        answer(request.id, { sessionId });
+        answer(request.id, { sessionId, ...catalog() });
       }
       break;
     case "session/resume":
@@ -101,8 +126,35 @@ for await (const line of createInterface({ input: process.stdin })) {
       }
       sessionId = request.params.sessionId;
       text("DO NOT SHOW SETUP REPLAY");
-      answer(request.id, {});
+      answer(request.id, catalog());
       break;
+    case "session/set_config_option": {
+      if (existsSync("fixture-reject-model")) {
+        send({ id: request.id, error: { code: -32602, message: "unsupported selection" } });
+        break;
+      }
+      const [, effort] = /fixture-sonnet-(.+)/.exec(request.params.value) ?? [];
+      answer(request.id, {
+        configOptions: [
+          {
+            id: "model",
+            category: "model",
+            type: "select",
+            currentValue: effort ? "fixture-sonnet" : request.params.value,
+          },
+          ...(effort
+            ? [
+                {
+                  id: "thought_level",
+                  type: "select",
+                  currentValue: existsSync("fixture-mismatch-model") ? "wrong-effort" : effort,
+                },
+              ]
+            : []),
+        ],
+      });
+      break;
+    }
     case "session/prompt": {
       promptId = request.id;
       const first = request.params.prompt.at(-1).text;

@@ -1,6 +1,7 @@
 import type { Model } from "@earendil-works/pi-ai";
 import {
   antigravityModel,
+  antigravityModelName,
   antigravitySettingsError,
   supportsAntigravitySettings,
 } from "../../../contracts/model-presets/antigravity-model";
@@ -19,6 +20,10 @@ export const antigravitySessionModel: Model<"cake-antigravity"> = {
   contextWindow: 0,
   maxTokens: 0,
 };
+
+export function sessionModelForAntigravity(modelId: string): typeof antigravitySessionModel {
+  return { ...antigravitySessionModel, id: modelId, name: antigravityModelName(modelId) };
+}
 
 export function assertAntigravitySettings(
   selection: Parameters<typeof supportsAntigravitySettings>[0],

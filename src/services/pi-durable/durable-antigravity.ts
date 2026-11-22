@@ -70,6 +70,7 @@ export function createDurableAntigravity(options: {
   sessionId: string;
   cwd: string;
   cake?: ReturnType<typeof projectChatAntigravityCake>;
+  modelId(): string | undefined;
   budget(): number;
   contextLimit(): number | undefined;
   beforeInput(): Promise<() => void>;
@@ -96,6 +97,7 @@ export function createDurableAntigravity(options: {
   return createAntigravityTurnController({
     cwd,
     sessionId: () => sessionId,
+    modelId: options.modelId,
     scope: options.cake ? "project-chat" : "global-chat",
     onChanged: options.onChanged,
     async admit(request) {

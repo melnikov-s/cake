@@ -1,5 +1,6 @@
 import {
   antigravityModel,
+  antigravityModelName,
   isAntigravityModel,
 } from "../../contracts/model-presets/antigravity-model";
 import type { PresetContext } from "../../contracts/model-presets/preset-context";
@@ -12,6 +13,7 @@ import type {
   ThinkingLevel,
   UtilityModel,
 } from "../../contracts/conversations/session-contract";
+import type { ModelCatalogStore } from "../stores/ModelCatalogStore";
 import { FastModeToggle } from "./fast-mode-toggle";
 import { ChevronDownIcon, SearchIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -49,8 +51,8 @@ export interface ModelPickerProps {
   groups(): readonly ModelGroup[];
   /** Current identity's display name, independent of the full availability catalog. */
   currentModelName?: string;
-  /** This surface can apply the CLI-owned model. */
-  includeAntigravity?: boolean;
+  /** Present only on surfaces that can apply an Antigravity model. */
+  antigravityCatalog?: ModelCatalogStore;
   onOpen?(): void;
   value?: ModelConfigurationValue;
   presets?: readonly ModelPreset[];
@@ -104,28 +106,26 @@ function modelKey(provider: string, modelId: string) {
 }
 
 const emptyGroups: readonly ModelGroup[] = [];
-const antigravityGroup: ModelGroup = {
-  id: antigravityModel.provider,
-  name: "Antigravity",
-  models: [
-    {
-      provider: antigravityModel.provider,
-      providerName: "Antigravity",
-      id: antigravityModel.modelId,
-      name: antigravityModel.name,
-      reasoning: false,
-      availableThinkingLevels: [],
-      input: ["text"],
-      authenticated: false,
-      authTypes: [],
-    },
-  ],
-};
+const antigravityOption = ({ modelId, name }: { modelId: string; name: string }): ModelOption => ({
+  provider: antigravityModel.provider,
+  providerName: "Antigravity",
+  id: modelId,
+  name,
+  reasoning: false,
+  availableThinkingLevels: [],
+  input: ["text"],
+  authenticated: false,
+  authTypes: [],
+});
+const defaultAntigravityOption = antigravityOption(antigravityModel);
 const modelDescription = (
   provider: string,
   modelId: string,
   fallback = modelKey(provider, modelId),
-) => (isAntigravityModel({ provider, modelId }) ? "Model chosen by Antigravity" : fallback);
+) =>
+  provider === antigravityModel.provider && modelId === antigravityModel.modelId
+    ? "Model chosen by Antigravity"
+    : fallback;
 
 export const ModelPicker = observer(function ModelPicker({
   groups,
@@ -135,7 +135,7 @@ export const ModelPicker = observer(function ModelPicker({
   restoreFocus,
   onOpenChange,
   currentModelName,
-  includeAntigravity = false,
+  antigravityCatalog,
   onOpen,
   value,
   presets = [],
@@ -168,10 +168,21 @@ export const ModelPicker = observer(function ModelPicker({
   const configureBackRef = useRef<HTMLButtonElement>(null);
 
   const catalogGroups = open ? groups() : emptyGroups;
+  const antigravityModels = open ? antigravityCatalog?.antigravity?.models : undefined;
   const visibleGroups = useMemo(() => {
-    if (!open || !includeAntigravity) return catalogGroups;
-    return [antigravityGroup, ...catalogGroups.filter((group) => group.id !== antigravityGroup.id)];
-  }, [open, includeAntigravity, catalogGroups]);
+    if (!open || !antigravityCatalog) return catalogGroups;
+    return [
+      {
+        id: antigravityModel.provider,
+        name: "Antigravity",
+        models: [defaultAntigravityOption, ...(antigravityModels?.map(antigravityOption) ?? [])],
+      },
+      ...catalogGroups.filter((group) => group.id !== antigravityModel.provider),
+    ];
+  }, [open, antigravityCatalog, antigravityModels, catalogGroups]);
+  useEffect(() => {
+    if (open && !preview) void antigravityCatalog?.ensureAntigravity();
+  }, [open, preview, antigravityCatalog]);
   const configuration: ModelConfigurationValue | undefined =
     value ??
     (activePreset
@@ -254,7 +265,11 @@ export const ModelPicker = observer(function ModelPicker({
 
   const activeName =
     activePreset?.name ??
-    (isAntigravityModel(configuration) ? antigravityModel.name : undefined) ??
+    (configuration && isAntigravityModel(configuration)
+      ? (antigravityCatalog?.antigravity?.models.find(
+          ({ modelId }) => modelId === configuration.modelId,
+        )?.name ?? antigravityModelName(configuration.modelId))
+      : undefined) ??
     currentModelName ??
     selectedModel?.name ??
     (configuration?.modelId ? configuration.modelId : placeholder);
@@ -536,7 +551,7 @@ export const ModelPicker = observer(function ModelPicker({
                       <NavItem
                         key={entry.key}
                         active={entry.active}
-                        disabled={!includeAntigravity && isAntigravityModel(entry)}
+                        disabled={!antigravityCatalog && isAntigravityModel(entry)}
                         label={
                           <span className="flex items-center gap-1.5 font-semibold">
                             {entry.active && (
@@ -550,8 +565,8 @@ export const ModelPicker = observer(function ModelPicker({
                         }
                         description={
                           isAntigravityModel(entry)
-                            ? includeAntigravity
-                              ? antigravityModel.name
+                            ? antigravityCatalog
+                              ? antigravityModelName(entry.modelId)
                               : "Desktop conversations only"
                             : modelKey(entry.provider, entry.modelId)
                         }
@@ -625,6 +640,11 @@ export const ModelPicker = observer(function ModelPicker({
                   </p>
                 )}
               </div>
+              {antigravityCatalog?.antigravityNotice && (
+                <p className="px-2 py-1 text-xs text-muted-foreground" role="status">
+                  {antigravityCatalog.antigravityNotice}
+                </p>
+              )}
               {openPresetSettings && (
                 <div className="pt-2 border-t border-border">
                   <Button

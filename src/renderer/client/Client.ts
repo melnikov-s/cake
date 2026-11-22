@@ -714,6 +714,7 @@ export interface Client {
   readonly models: {
     readonly list: (options?: ClientCommandOptions) => Promise<ReadonlyArray<ModelOption>>;
     readonly refresh: (options?: ClientCommandOptions) => Promise<void>;
+    readonly catalogAntigravity: CommandGroup<CakeIpcClientService["models"]>["catalogAntigravity"];
     readonly login: (
       input: { readonly provider: string; readonly authType: "api_key" | "oauth" },
       options?: ClientCommandOptions,

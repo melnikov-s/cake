@@ -1,9 +1,14 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { once } from "node:events";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { runAcpTurn, type AcpTurn } from "../../src/services/antigravity/acp";
+import {
+  discoverAntigravityModels,
+  runAcpTurn,
+  type AcpTurn,
+} from "../../src/services/antigravity/acp";
 
 let cwd: string;
 beforeEach(async () => {
@@ -51,6 +56,123 @@ it("negotiates Cake as a text-only client and resumes without uploading history"
   expect(protocol.match(/"text":"hello"/g)).toHaveLength(1);
   expect(protocol.match(/"text":"next"/g)).toHaveLength(1);
   expect(protocol).not.toContain("session/load");
+  expect(protocol).not.toContain("session/set_config_option");
+});
+
+it("discovers in a new empty scratch directory with no prompt or MCP, then removes it", async () => {
+  let scratch: string | undefined;
+  let listing: Promise<string[]> | undefined;
+  let child: ReturnType<typeof launch> | undefined;
+  const catalog = await discoverAntigravityModels(
+    new AbortController().signal,
+    (dir, discovery) => {
+      expect(discovery).toBe(true);
+      scratch = dir;
+      listing = readdir(dir);
+      return (child = spawn(process.execPath, [fixture, "acp"], {
+        cwd: dir,
+        env: { ...process.env, CAKE_FIXTURE_WIRE: join(cwd, "fixture-acp-wire.ndjson") },
+        detached: process.platform !== "win32",
+        stdio: "pipe",
+      }));
+    },
+  );
+  if (!scratch || !listing || !child) throw new Error("Probe did not launch");
+  expect(scratch).not.toBe(cwd);
+  expect(await listing).toEqual([]);
+  await expect(readdir(scratch)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+  expect(catalog).toContainEqual({
+    modelId: "fixture-sonnet-medium",
+    name: "Fixture Sonnet (Medium)",
+  });
+  expect(frames(await wire()).map(({ method }) => method)).toEqual(["initialize", "session/new"]);
+  expect(frames(await wire())[1]?.params).toEqual({ cwd: scratch, mcpServers: [] });
+});
+
+it("aborts a stalled probe and waits for child and scratch cleanup", async () => {
+  const controller = new AbortController();
+  let scratch: string | undefined;
+  let child: ReturnType<typeof launch> | undefined;
+  const probe = discoverAntigravityModels(controller.signal, (dir) => {
+    scratch = dir;
+    child = spawn(process.execPath, [fixture, "acp"], {
+      cwd: dir,
+      env: { ...process.env, CAKE_FIXTURE_HOLD_INITIALIZE: "1" },
+      detached: process.platform !== "win32",
+      stdio: "pipe",
+    });
+    void once(child.stderr, "data").then(() => controller.abort());
+    return child;
+  });
+  await expect(probe).rejects.toThrow("canceled");
+  if (!scratch || !child) throw new Error("Probe did not launch");
+  await expect(readdir(scratch)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+});
+
+const frames = (wire: string) =>
+  wire
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+
+it("applies the exact pin before prompting both a new session and a cold resume", async () => {
+  const modelId = "fixture-sonnet-medium";
+  const fresh = await runAcpTurn(turn({ modelId }), launch);
+  const resumed = turn({ modelId, resumeId: fresh.resumeId });
+  await runAcpTurn(resumed, launch);
+  expect(resumed.status).toHaveBeenLastCalledWith("resumed");
+  const protocol = frames(await wire());
+  expect(protocol.map(({ method }) => method)).toEqual([
+    "initialize",
+    "session/new",
+    "session/set_config_option",
+    "session/prompt",
+    "initialize",
+    "session/resume",
+    "session/set_config_option",
+    "session/prompt",
+  ]);
+  expect(
+    protocol
+      .filter(({ method }) => method === "session/set_config_option")
+      .map(({ params }) => params),
+  ).toEqual([
+    { sessionId: fresh.resumeId, configId: "model", value: modelId },
+    { sessionId: fresh.resumeId, configId: "model", value: modelId },
+  ]);
+});
+
+it.each([
+  {
+    modelId: "removed-model-medium",
+    marker: undefined,
+    setter: false,
+    error: "does not offer that model",
+  },
+  {
+    modelId: "fixture-sonnet-medium",
+    marker: "fixture-reject-model",
+    setter: true,
+    error: "rejected the selection",
+  },
+  {
+    modelId: "fixture-sonnet-medium",
+    marker: "fixture-mismatch-model",
+    setter: true,
+    error: "did not confirm the requested model and effort",
+  },
+])("sends no prompt if a pinned model $error", async ({ modelId, marker, setter, error }) => {
+  if (marker) await writeFile(join(cwd, marker), "");
+  await expect(runAcpTurn(turn({ modelId, resumeId: "previous" }), launch)).rejects.toThrow(
+    new RegExp(`${error}.*No prompt was sent`),
+  );
+  expect(frames(await wire()).map(({ method }) => method)).toEqual([
+    "initialize",
+    "session/resume",
+    ...(setter ? ["session/set_config_option"] : []),
+  ]);
 });
 
 it.each(["allow", "deny"] as const)(

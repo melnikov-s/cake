@@ -9,7 +9,11 @@ import {
   antigravityDesktopOnly,
   isAntigravityModel,
 } from "../../../contracts/model-presets/antigravity-model";
-import { antigravitySessionModel, assertAntigravitySettings } from "./antigravity-model";
+import {
+  antigravitySessionModel,
+  assertAntigravitySettings,
+  sessionModelForAntigravity,
+} from "./antigravity-model";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import { Option, Schema } from "effect";
 import { PresetContext, presetGuidance } from "../../../contracts/model-presets/preset-context";
@@ -242,7 +246,7 @@ export function createCakeSessionRuntimeConfiguration(input: {
         if (!input.supportsAntigravity) throw new Error(antigravityDesktopOnly);
         assertAntigravitySettings(configuration);
         // This selection does not use Pi authentication or stream dispatch.
-        session.agent.state.model = antigravitySessionModel;
+        session.agent.state.model = sessionModelForAntigravity(configuration.modelId);
         session.sessionManager.appendModelChange(configuration.provider, configuration.modelId);
         state.setPreset(configuration.preset);
         updateModel();

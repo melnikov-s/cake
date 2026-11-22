@@ -27,6 +27,7 @@ import { makeSubagentEnvironmentLive } from "../layers/SubagentEnvironmentLive";
 import { WorktreeLandingAgentLive } from "../layers/WorktreeLandingAgentLive";
 import { WorktreeLandingCompletionLive } from "../layers/WorktreeLandingCompletionLive";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
+import { makeAntigravityModelsLayer } from "../services/antigravity/AntigravityModels";
 import { ClientConnectionsLive } from "../services/clients/ClientConnections";
 import { ClientEventsLive } from "../services/clients/ClientEventsLive";
 import { ClientWorkspacesLive } from "../services/clients/ClientWorkspacesLive";
@@ -167,6 +168,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
 
   const PiLive = Layer.mergeAll(
     makePiModelsLive(paths.piAgent),
+    makeAntigravityModelsLayer(),
     makeWidgetPackagesLive({ directory: join(paths.home, "widget-packages") }).pipe(
       Layer.provide(BootstrapLive),
     ),

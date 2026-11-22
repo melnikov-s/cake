@@ -27,7 +27,7 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
   return (
     <ModelPicker
       className={className}
-      includeAntigravity={configuration.antigravityAvailable}
+      antigravityCatalog={configuration.antigravityAvailable ? configuration.catalog : undefined}
       groups={() => configuration.connectedModelsByProvider}
       currentModelName={
         effectiveConfiguration?.provider === selectedModel?.provider &&

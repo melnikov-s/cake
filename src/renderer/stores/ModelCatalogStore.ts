@@ -1,4 +1,5 @@
 import { Store, batch, observable } from "r-state-tree";
+import type { AntigravityCatalog } from "../../contracts/model-presets/antigravity-catalog";
 import type { ModelOption } from "../../contracts/conversations/session-contract";
 import type { PiNonChatModel } from "../../contracts/pi/model-data";
 import { describeError } from "../lib/error-details";
@@ -9,6 +10,10 @@ export class ModelCatalogStore extends Store {
   readonly models: ModelOption[] = observable([]);
   readonly nonChatModels: PiNonChatModel[] = observable([]);
   loading = true;
+  antigravity: AntigravityCatalog | undefined;
+  antigravityLoading = false;
+  antigravityRefreshing = false;
+  private antigravityRequest: AbortController | undefined;
   error: ReturnType<typeof describeError> | undefined;
   private loaded = false;
   private pending: Promise<void> | undefined;
@@ -38,9 +43,50 @@ export class ModelCatalogStore extends Store {
     return this.load(false);
   }
 
-  /** Refresh the authority and its projection as one take-latest operation. */
-  refresh() {
-    return this.load(true);
+  /** The provider shards and Antigravity probe publish independently. */
+  async refresh() {
+    await Promise.all([
+      this.load(true),
+      globalThis.window?.cake ? this.loadAntigravity(true) : undefined,
+    ]);
+  }
+
+  ensureAntigravity() {
+    return this.loadAntigravity(false);
+  }
+
+  get antigravityNotice() {
+    if (this.antigravityLoading) return "Discovering Antigravity models…";
+    if (!this.antigravity?.error) return undefined;
+    return this.antigravity.models.length
+      ? `Showing cached Antigravity models. ${this.antigravity.error}`
+      : this.antigravity.error;
+  }
+
+  private async loadAntigravity(force: boolean) {
+    if (this.signal.aborted || (!force && this.antigravityRequest)) return;
+    this.antigravityRequest?.abort();
+    const request = new AbortController();
+    this.antigravityRequest = request;
+    const signal = AbortSignal.any([this.signal, request.signal]);
+    this.antigravityLoading = force || !this.antigravity;
+    this.antigravityRefreshing = force;
+    try {
+      const result = await this.client.models.catalogAntigravity({ force }, { signal });
+      if (!signal.aborted) this.antigravity = result;
+    } catch (error) {
+      if (!signal.aborted)
+        this.antigravity = {
+          models: this.antigravity?.models ?? [],
+          error: describeError(error).message,
+        };
+    } finally {
+      if (!signal.aborted) {
+        this.antigravityLoading = false;
+        this.antigravityRefreshing = false;
+        this.antigravityRequest = undefined;
+      }
+    }
   }
 
   private load(refresh: boolean): Promise<void> {

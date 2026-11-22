@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
+import { AntigravityCatalog } from "../../contracts/model-presets/antigravity-catalog";
 import {
   DefaultModelPresetNotFoundError,
   DuplicateModelPresetIdError,
@@ -68,6 +69,11 @@ export const ModelRpc = RpcGroup.make(
     error: PiModelCatalogError,
   }),
   Rpc.make("models.refresh", { error: PiModelCatalogError }),
+  Rpc.make("models.catalogAntigravity", {
+    payload: { force: Schema.Boolean },
+    success: AntigravityCatalog,
+    error: PiModelCatalogError,
+  }),
   Rpc.make("modelPresets.list", { success: ModelPresetProjection }),
   Rpc.make("modelPresets.readPrompt", {
     payload: { id: Schema.String.check(Schema.isUUID(4)) },

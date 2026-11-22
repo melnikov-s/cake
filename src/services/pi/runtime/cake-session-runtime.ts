@@ -14,7 +14,11 @@ import {
   antigravityDesktopOnly,
   isAntigravityModel,
 } from "../../../contracts/model-presets/antigravity-model";
-import { antigravitySessionModel, assertAntigravitySettings } from "./antigravity-model";
+import {
+  antigravitySessionModel,
+  assertAntigravitySettings,
+  sessionModelForAntigravity,
+} from "./antigravity-model";
 import { savedSessionModel } from "./saved-session-model";
 import { createCakeSessionRuntimeSubscription } from "./cake-session-runtime-subscription";
 import { shutdownDiagnostics, shutdownResource } from "../../diagnostics/shutdown-diagnostics";
@@ -457,7 +461,7 @@ export async function createCakeSessionRuntime(
     );
   }
   const model = isAntigravityModel(selection)
-    ? antigravitySessionModel
+    ? sessionModelForAntigravity(selection.modelId)
     : requireRegisteredModel(modelRuntime, selection);
   const agentSessionOptions = {
     model,

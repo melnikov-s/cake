@@ -11,6 +11,8 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
   providers: ProviderSettingsStore;
   providerGroups: ProviderSettingsStore["catalog"]["allModelsByProvider"];
 }) {
+  const antigravity = globalThis.window?.cake ? providers.catalog : undefined;
+  const refreshing = providers.catalog.loading || Boolean(antigravity?.antigravityRefreshing);
   const sortedProviderGroups = providerGroups.toSorted(
     (left, right) =>
       Number(right.models.some((model) => model.authenticated)) -
@@ -27,17 +29,37 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
           size="sm"
           type="button"
           className="rounded-sm"
-          disabled={providers.catalog.loading}
+          disabled={refreshing}
           onClick={() => void providers.catalog.refresh()}
         >
-          {providers.catalog.loading ? "Refreshing…" : "Refresh models"}
+          {refreshing ? "Refreshing…" : "Refresh models"}
         </Button>
       </header>
       {providers.catalog.error && (
         <ErrorNotice title="Could not load models" {...providers.catalog.error} />
       )}
       <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
-        {providerGroups.length === 0 ? (
+        {antigravity && (
+          <article className="flex items-center gap-3 px-3.5 py-2.5">
+            <span className="grid size-7 shrink-0 place-items-center rounded-sm border border-border bg-card font-mono text-xs font-bold text-accent">
+              A
+            </span>
+            <div className="min-w-0 text-xs">
+              <strong className="block font-medium text-foreground">Antigravity</strong>
+              <p className="text-muted-foreground">
+                {antigravity.antigravity
+                  ? `${antigravity.antigravity.models.length} variants · Antigravity default`
+                  : "Models and sign-in managed by agy"}
+              </p>
+              {antigravity.antigravityNotice && (
+                <p className="mt-1 text-muted-foreground" role="status">
+                  {antigravity.antigravityNotice}
+                </p>
+              )}
+            </div>
+          </article>
+        )}
+        {providerGroups.length === 0 && (!antigravity || providers.catalog.loading) ? (
           <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
             {providers.catalog.loading ? "Loading providers…" : "No providers are available."}
           </p>

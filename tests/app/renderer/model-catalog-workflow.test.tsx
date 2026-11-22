@@ -110,9 +110,38 @@ async function renderCatalog(client: TestClientOverrides, runtimeModels?: readon
 const picker = (name: string) =>
   within(screen.getByRole("region", { name })).getByRole("button", { name: "Model configuration" });
 const editor = () => within(screen.getByRole("region", { name: "Preset editor" }));
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("Window model catalog workflows", () => {
+  it("publishes other providers while an Antigravity refresh is pending or failed", async () => {
+    vi.stubGlobal("cake", {});
+    const probe = deferred<Awaited<ReturnType<Client["models"]["catalogAntigravity"]>>>();
+    const catalogAntigravity = vi.fn(() => probe.promise);
+    let models = [model];
+    using fixture = await renderCatalog({
+      models: {
+        list: async () => models,
+        catalogAntigravity,
+        refresh: async () => {
+          models = [model, { ...model, id: "second-model" }];
+        },
+      },
+    });
+    expect(catalogAntigravity).not.toHaveBeenCalled();
+    const providers = within(screen.getByRole("region", { name: "Providers" }));
+    await fixture.user.click(providers.getByRole("button", { name: "Refresh models" }));
+    expect(catalogAntigravity).toHaveBeenCalledWith({ force: true }, expect.anything());
+    expect(await providers.findByText("2 models", { exact: true })).toBeDefined();
+    expect(providers.getByText("Discovering Antigravity models…")).toBeDefined();
+    await act(async () => probe.resolve({ models: [], error: "Antigravity sign-in required." }));
+    expect(providers.getByText("Antigravity sign-in required.")).toBeDefined();
+    expect(providers.queryByText("Could not load models")).toBeNull();
+    expect(providers.getByText("2 models", { exact: true })).toBeDefined();
+  });
+
   it("provider login/logout/refresh updates the preset editor and existing/new deferred pickers without restart", async () => {
     let authenticated = false;
     let name = model.name;

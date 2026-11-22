@@ -35,6 +35,14 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     const agy = join(bin, "agy");
     await copyFile(join(repositoryRoot, "tests/fixtures/antigravity-acp.mjs"), agy);
     await chmod(agy, 0o755);
+    await writeFile(join(bin, "fixture-record-discovery"), "");
+    const discoveryLog = join(bin, "discovery.ndjson");
+    const discoveryCalls = async () =>
+      (await readFile(discoveryLog, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+    const pinnedId = "fixture-sonnet-medium";
     const model = {
       provider: "local-fixture",
       modelId: "fixture-model",
@@ -109,11 +117,20 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const presets = page.getByRole("region", { name: "Model Presets" });
     const editor = page.getByRole("dialog", { name: "Preset model" });
+    await expect(readFile(discoveryLog, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     await presets.getByRole("button", { name: "New preset", exact: true }).click();
     await presets.getByRole("textbox", { name: "Name", exact: true }).fill("ACP fixture preset");
     await presets.getByRole("button", { name: "Preset model" }).click();
     await editor.getByRole("textbox", { name: "Search presets and models" }).fill("antigravity");
-    await editor.getByRole("button", { name: /Antigravity default/ }).click();
+    await expect(editor.getByRole("button", { name: /Antigravity default/ })).toBeVisible();
+    const advertised = editor.getByRole("button", { name: /Fixture Sonnet \(Medium\)/ });
+    await expect(advertised).toBeVisible();
+    const firstDiscovery = await discoveryCalls();
+    expect(firstDiscovery.map(({ method }) => method)).toEqual(["initialize", "session/new"]);
+    expect(firstDiscovery[1].params).toMatchObject({ mcpServers: [] });
+    expect(firstDiscovery[1].params.cwd).not.toBe(project);
+    await editor.screenshot({ path: info.outputPath("antigravity-discovered-models.png") });
+    await advertised.click();
     await editor.getByRole("button", { name: "Apply", exact: true }).click();
     await presets.screenshot({
       path: info.outputPath("antigravity-preset-editor.png"),
@@ -121,7 +138,7 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     });
     await presets.getByRole("button", { name: "Save preset", exact: true }).click();
     const preset = presets.locator("article").filter({ hasText: "ACP fixture preset" });
-    await expect(preset.getByText("Antigravity default")).toBeVisible();
+    await expect(preset.getByText(pinnedId)).toBeVisible();
     await preset.getByRole("button", { name: "Edit", exact: true }).click();
     await presets.getByRole("textbox", { name: "Name", exact: true }).fill("ACP preset saved");
     await presets.getByRole("button", { name: "Save preset", exact: true }).click();
@@ -142,16 +159,63 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
       .toMatchObject({
         name: "ACP preset saved",
         provider: "antigravity",
-        modelId: "gemini",
+        modelId: pinnedId,
         thinkingLevel: "off",
         fastMode: false,
       });
+    await presets
+      .locator("article")
+      .filter({ hasText: "ACP preset saved" })
+      .getByRole("button", { name: "Edit", exact: true })
+      .click();
+    await presets.getByRole("button", { name: "Preset model" }).click();
+    await editor.getByRole("button", { name: /Change model/ }).click();
+    await expect(advertised).toBeVisible();
+    expect(await discoveryCalls()).toEqual(firstDiscovery);
+    await editor.getByRole("textbox", { name: "Search presets and models" }).press("Escape");
+    await presets.getByRole("button", { name: "Cancel", exact: true }).click();
+
+    // Keep the Pi catalog network-free; exercise its real refresh separately from ACP.
+    await application.evaluate(() => {
+      const fetch = globalThis.fetch;
+      globalThis.fetch = async (input, init) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        return url.origin === "https://pi.dev" && url.pathname.startsWith("/api/models/providers/")
+          ? new Response(null, { status: 404 })
+          : fetch(input, init);
+      };
+    });
+    await writeFile(join(bin, "fixture-new-discovery-model"), "");
+    await page.getByRole("button", { name: /^Providers\b/ }).click();
+    const providerSettings = page.getByRole("region", { name: "Providers" });
+    const refresh = providerSettings.getByRole("button", { name: "Refresh models", exact: true });
+    await refresh.click();
+    await expect(providerSettings.getByText("3 variants · Antigravity default")).toBeVisible();
+    expect((await discoveryCalls()).map(({ method }) => method)).toEqual([
+      "initialize",
+      "session/new",
+      "initialize",
+      "session/new",
+    ]);
+    await expect(refresh).toBeEnabled();
+    await expect(providerSettings.getByText("Could not load models")).toHaveCount(0);
+    await writeFile(join(bin, "fixture-discovery-auth-required"), "");
+    await refresh.click();
+    await expect(
+      providerSettings.getByText(/Showing cached Antigravity models.*sign-in required/),
+    ).toBeVisible();
+    await expect(providerSettings.getByText("Could not load models")).toHaveCount(0);
+    await expect(refresh).toBeEnabled();
+    await page.screenshot({ path: info.outputPath("antigravity-provider-refresh.png") });
+    await rm(join(bin, "fixture-discovery-auth-required"));
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
 
     const picker = page.getByRole("button", { name: "Model configuration" });
     const pickerDialog = page.getByRole("dialog", { name: "Model configuration" });
     await picker.click();
     await pickerDialog.getByRole("button", { name: /Change model/ }).click();
+    await expect(pickerDialog.getByRole("button", { name: /Fixture Flash/ })).toBeVisible();
+    await expect(pickerDialog.getByText(/Showing cached Antigravity models/)).toBeVisible();
     await pickerDialog.getByRole("button", { name: /ACP preset saved/ }).click();
     await expect(picker).toContainText("ACP preset saved");
     await page.getByLabel("Message Cake Chat").fill("First global fixture turn");
@@ -169,9 +233,18 @@ test("desktop Project Session and Project Chat route through the Antigravity pic
     await expect(
       page.getByText("ACP first chunk · café + final chunk", { exact: true }),
     ).toBeVisible();
-    expect(await readFile(join(project, "fixture-acp-wire.ndjson"), "utf8")).toContain(
-      "First draft fixture turn",
-    );
+    const draftWire = (await readFile(join(project, "fixture-acp-wire.ndjson"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(draftWire.map(({ method }) => method)).toEqual([
+      "initialize",
+      "session/new",
+      "session/set_config_option",
+      "session/prompt",
+    ]);
+    expect(draftWire[2].params).toMatchObject({ configId: "model", value: pinnedId });
+    expect(JSON.stringify(draftWire[3])).toContain("First draft fixture turn");
     await page.screenshot({
       path: info.outputPath("antigravity-first-draft-turn.png"),
       animations: "disabled",

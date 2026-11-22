@@ -1,5 +1,5 @@
 import {
-  antigravityModel,
+  antigravityModelName,
   isAntigravityModel,
 } from "../../contracts/model-presets/antigravity-model";
 import { useEffect, useState, type FormEvent } from "react";
@@ -162,7 +162,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
                   </strong>
                   <small className="block truncate font-mono text-xs text-muted-foreground">
                     {isAntigravityModel(preset)
-                      ? antigravityModel.name
+                      ? antigravityModelName(preset.modelId)
                       : `${preset.provider}/${preset.modelId} · ${reasoningLabel(preset.thinkingLevel)}${preset.fastMode ? " · Fast" : ""}`}
                   </small>
                   {unavailable && (
@@ -232,7 +232,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             <span className="text-xs font-medium text-foreground">Model & thinking</span>
             <ModelPicker
               ariaLabel="Preset model"
-              includeAntigravity
+              antigravityCatalog={globalThis.window?.cake ? settings.catalog : undefined}
               placeholder="Choose model & thinking"
               groups={() => groups}
               currentModelName={
@@ -264,8 +264,8 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
           </div>
           {isAntigravityModel(draft) ? (
             <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
-              Antigravity chooses the model and thinking settings. Preset prompts and Fast mode
-              aren’t supported.
+              Effort is part of the Antigravity model choice. Preset prompts and Fast mode aren’t
+              supported.
             </p>
           ) : (
             <div className="grid gap-1.5 px-3.5 py-2.5">

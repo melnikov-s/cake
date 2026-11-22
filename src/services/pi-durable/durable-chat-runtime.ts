@@ -103,7 +103,7 @@ import { AssistantContextDoc, transitionAssistantContext } from "./durable-assis
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   antigravityDesktopOnly,
-  antigravityModel,
+  antigravityModelName,
   isAntigravityModel,
 } from "../../contracts/model-presets/antigravity-model";
 import { assertAntigravitySettings } from "../pi/runtime/antigravity-model";
@@ -600,6 +600,10 @@ export async function createDurableCakeChatRuntime(
         engine,
         sessionId,
         cwd: antigravityDirectory,
+        modelId: () => {
+          const chosen = selection ?? defaultConfiguration();
+          return chosen && isAntigravityModel(chosen) ? chosen.modelId : undefined;
+        },
         cake: projectChat
           ? projectChatAntigravityCake(operations, {
               sessionId,
@@ -947,7 +951,7 @@ export async function createDurableCakeChatRuntime(
             provider: agent.model.provider,
             id: agent.model.modelId,
             name: isAntigravityModel(agent.model)
-              ? antigravityModel.name
+              ? antigravityModelName(agent.model.modelId)
               : (selected?.name ?? agent.model.modelId),
           },
           models: modelOptions,

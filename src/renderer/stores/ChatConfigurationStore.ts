@@ -124,7 +124,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     if (separator < 1) return;
     const provider = value.slice(0, separator);
     const modelId = value.slice(separator + 1);
-    if (isAntigravityModel({ provider, modelId })) {
+    if (isAntigravityModel({ provider })) {
       await this.selectConfiguration({ provider, modelId, thinkingLevel: "off", fastMode: false });
       return;
     }

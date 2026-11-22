@@ -1,4 +1,7 @@
-import { antigravityPromptError } from "../../../contracts/model-presets/antigravity-model";
+import {
+  antigravityPromptError,
+  isAntigravityModel,
+} from "../../../contracts/model-presets/antigravity-model";
 import type { AgentSession, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { Option, Schema } from "effect";
 import type { UiPart } from "../../../contracts/conversations/session-contract";
@@ -159,6 +162,10 @@ export function createAntigravityTranscript(input: {
   return createAntigravityTurnController({
     ...input,
     sessionId: () => manager.getSessionId(),
+    modelId: () => {
+      const model = session.model;
+      return model && isAntigravityModel(model) ? model.id : undefined;
+    },
     scope: "project-session",
     resume: () => resumeFrom(session, cwd),
     admit(request) {
@@ -182,6 +189,7 @@ export function createAntigravityTranscript(input: {
 
 export function createAntigravityTurnController(input: {
   sessionId(): string;
+  modelId(): string | undefined;
   cwd: string;
   scope: "project-session" | "project-chat" | "global-chat";
   resume?(): string | undefined;
@@ -206,6 +214,7 @@ export function createAntigravityTurnController(input: {
     const invalidPrompt = antigravityPromptError(request.text);
     if (invalidPrompt) throw new Error(invalidPrompt);
     const resumeId = input.resume?.();
+    const modelId = input.modelId();
     const controller = new AbortController();
     const signal = request.cakeBridgeOwnerSignal
       ? AbortSignal.any([request.cakeBridgeOwnerSignal, controller.signal])
@@ -288,6 +297,7 @@ export function createAntigravityTurnController(input: {
             prepared?.instructions ??
             cakePortableInstructions(scope === "global-chat" ? "project-chat" : scope),
           resumeId: prepared?.resumeId ?? resumeId,
+          modelId,
           signal,
           permission: request.permission,
           status(status) {

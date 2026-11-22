@@ -119,110 +119,125 @@ it("prefers an explicit Cake Chat launch and restores it without a configured de
   expect(h.selectedModels).toEqual(["switched"]);
 });
 
-it("resolves an Antigravity default for global Cake Chat and restores the selected preset without exporting Pi context", async () => {
-  const h = await fixture();
-  const bin = join(h.directory, "bin");
-  const sessionDir = join(h.directory, "isolated-global-chat");
-  await mkdir(bin);
-  await writeFile(join(bin, "agy"), antigravityFixture, { mode: 0o755 });
-  vi.stubEnv("PATH", `${bin}:${dirname(process.execPath)}:${process.env.PATH ?? ""}`);
-  const preset = {
-    id: ids.first,
-    name: "Gemini",
-    provider: antigravityModel.provider,
-    modelId: antigravityModel.modelId,
-    thinkingLevel: "off" as const,
-    fastMode: false,
-  };
-  const first = await h.open(undefined, undefined, {
-    sessionDir,
-    modelPresets: () => ({
-      presets: [preset],
-      defaultPresetId: preset.id,
-    }),
-  });
-  expect(first.runtime.antigravitySelected).toBe(true);
-  expect((await first.runtime.snapshot()).preset?.id).toBe(preset.id);
-  await expect(first.runtime.prompt("background content", "prompt", [])).rejects.toThrow(
-    /interactive desktop/,
-  );
-  const current = "Synthetic first global prompt";
-  const id = crypto.randomUUID();
-  await first.runtime.antigravity?.({
-    id,
-    text: current,
-    markdown: false,
-    permission: async () => undefined,
-  });
-  expect(h.requests).toHaveLength(0);
-  const wire = (
-    await readFile(join(sessionDir, "antigravity-scratch", "fixture-acp-wire.ndjson"), "utf8")
-  )
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
-  expect(wire.find((frame) => frame.method === "session/new").params).toMatchObject({
-    mcpServers: [],
-  });
-  expect(wire.find((frame) => frame.method === "session/prompt").params.prompt).toEqual([
-    expect.objectContaining({
-      type: "text",
-      text: expect.stringContaining("no Cake tools or project workspace"),
-    }),
-    { type: "text", text: current },
-  ]);
-  expect(JSON.stringify(wire)).not.toContain("background content");
-  await first.close();
+it.each([antigravityModel.modelId, "fixture-sonnet-medium"])(
+  "restores Antigravity selection %s in global Cake Chat without exporting Pi context",
+  async (modelId) => {
+    const h = await fixture();
+    const bin = join(h.directory, "bin");
+    const sessionDir = join(h.directory, "isolated-global-chat");
+    await mkdir(bin);
+    await writeFile(join(bin, "agy"), antigravityFixture, { mode: 0o755 });
+    vi.stubEnv("PATH", `${bin}:${dirname(process.execPath)}:${process.env.PATH ?? ""}`);
+    const preset = {
+      id: ids.first,
+      name: "Gemini",
+      provider: antigravityModel.provider,
+      modelId,
+      thinkingLevel: "off" as const,
+      fastMode: false,
+    };
+    const first = await h.open(undefined, undefined, {
+      sessionDir,
+      modelPresets: () => ({
+        presets: [preset],
+        defaultPresetId: preset.id,
+      }),
+    });
+    expect(first.runtime.antigravitySelected).toBe(true);
+    expect((await first.runtime.snapshot()).preset?.id).toBe(preset.id);
+    await expect(first.runtime.prompt("background content", "prompt", [])).rejects.toThrow(
+      /interactive desktop/,
+    );
+    const current = "Synthetic first global prompt";
+    const id = crypto.randomUUID();
+    await first.runtime.antigravity?.({
+      id,
+      text: current,
+      markdown: false,
+      permission: async () => undefined,
+    });
+    expect(h.requests).toHaveLength(0);
+    const wire = (
+      await readFile(join(sessionDir, "antigravity-scratch", "fixture-acp-wire.ndjson"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(wire.find((frame) => frame.method === "session/new").params).toMatchObject({
+      mcpServers: [],
+    });
+    expect(wire.find((frame) => frame.method === "session/prompt").params.prompt).toEqual([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("no Cake tools or project workspace"),
+      }),
+      { type: "text", text: current },
+    ]);
+    expect(JSON.stringify(wire)).not.toContain("background content");
+    await first.close();
 
-  const reopened = await h.open(undefined, undefined, {
-    sessionDir,
-    modelPresets: () => ({
-      presets: [preset],
-    }),
-  });
-  expect(reopened.runtime.antigravitySelected).toBe(true);
-  const snapshot = await reopened.runtime.snapshot();
-  expect(snapshot.model).toMatchObject({ provider: preset.provider, id: preset.modelId });
-  expect(snapshot.preset?.id).toBe(preset.id);
-  expect(snapshot.parts).toContainEqual(
-    expect.objectContaining({ text: "ACP first chunk · café + final chunk" }),
-  );
-  const next = "Second global prompt after reopening";
-  await reopened.runtime.antigravity?.({
-    id: crypto.randomUUID(),
-    text: next,
-    markdown: false,
-    permission: async () => undefined,
-  });
-  const resumed = (
-    await readFile(join(sessionDir, "antigravity-scratch", "fixture-acp-wire.ndjson"), "utf8")
-  )
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
-  expect(resumed.find((frame) => frame.method === "session/resume")).toMatchObject({
-    params: { mcpServers: [], sessionId: expect.stringMatching(/^fixture-session-/) },
-  });
-  expect(resumed.findLast((frame) => frame.method === "session/prompt").params.prompt).toEqual([
-    expect.objectContaining({
-      type: "text",
-      text: expect.stringContaining("no Cake tools or project workspace"),
-    }),
-    { type: "text", text: next },
-  ]);
-  expect((await reopened.runtime.snapshot()).parts).not.toContainEqual(
-    expect.objectContaining({ text: "DO NOT SHOW SETUP REPLAY" }),
-  );
-  await reopened.runtime.applyConfiguration({
-    provider: "openai",
-    modelId: "switched",
-    thinkingLevel: "off",
-    fastMode: false,
-  });
-  await reopened.runtime.prompt("Continue with another model", "prompt", []);
-  expect(h.selectedModels).toEqual(["switched"]);
-  expect(JSON.stringify(h.requests[0])).toContain(current);
-});
+    const reopened = await h.open(undefined, undefined, {
+      sessionDir,
+      modelPresets: () => ({
+        presets: [preset],
+      }),
+    });
+    expect(reopened.runtime.antigravitySelected).toBe(true);
+    const snapshot = await reopened.runtime.snapshot();
+    expect(snapshot.model).toMatchObject({ provider: preset.provider, id: preset.modelId });
+    expect(snapshot.preset?.id).toBe(preset.id);
+    expect(snapshot.parts).toContainEqual(
+      expect.objectContaining({ text: "ACP first chunk · café + final chunk" }),
+    );
+    const next = "Second global prompt after reopening";
+    await reopened.runtime.antigravity?.({
+      id: crypto.randomUUID(),
+      text: next,
+      markdown: false,
+      permission: async () => undefined,
+    });
+    const resumed = (
+      await readFile(join(sessionDir, "antigravity-scratch", "fixture-acp-wire.ndjson"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(resumed.map((frame) => frame.method)).toEqual([
+      "initialize",
+      "session/new",
+      ...(modelId === antigravityModel.modelId ? [] : ["session/set_config_option"]),
+      "session/prompt",
+      "initialize",
+      "session/resume",
+      ...(modelId === antigravityModel.modelId ? [] : ["session/set_config_option"]),
+      "session/prompt",
+    ]);
+    for (const setter of resumed.filter((frame) => frame.method === "session/set_config_option"))
+      expect(setter.params).toMatchObject({ configId: "model", value: modelId });
+    expect(resumed.find((frame) => frame.method === "session/resume")).toMatchObject({
+      params: { mcpServers: [], sessionId: expect.stringMatching(/^fixture-session-/) },
+    });
+    expect(resumed.findLast((frame) => frame.method === "session/prompt").params.prompt).toEqual([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("no Cake tools or project workspace"),
+      }),
+      { type: "text", text: next },
+    ]);
+    expect((await reopened.runtime.snapshot()).parts).not.toContainEqual(
+      expect.objectContaining({ text: "DO NOT SHOW SETUP REPLAY" }),
+    );
+    await reopened.runtime.applyConfiguration({
+      provider: "openai",
+      modelId: "switched",
+      thinkingLevel: "off",
+      fastMode: false,
+    });
+    await reopened.runtime.prompt("Continue with another model", "prompt", []);
+    expect(h.selectedModels).toEqual(["switched"]);
+    expect(JSON.stringify(h.requests[0])).toContain(current);
+  },
+);
 
 it("launches the companion with the utility model instead of the Cake default", async () => {
   const h = await fixture();

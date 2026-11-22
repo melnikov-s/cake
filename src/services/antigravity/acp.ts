@@ -1,6 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
-import { delimiter, isAbsolute, join } from "node:path";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { delimiter, isAbsolute, join, relative } from "node:path";
 import { Option, Schema } from "effect";
 import {
   jsonValueSchema,
@@ -8,6 +10,9 @@ import {
   type JsonValue,
 } from "../../contracts/serialization/json-contract";
 
+import type { AntigravityModelOption } from "../../contracts/model-presets/antigravity-catalog";
+import { antigravityModel } from "../../contracts/model-presets/antigravity-model";
+import { advertisedAntigravityModels, confirmsAntigravityModel } from "./acp-models";
 import { openAcpCakeMcp, type AcpCakeCall } from "./turn-mcp";
 
 const rpcId = Schema.Union([Schema.String, Schema.Number]);
@@ -114,6 +119,7 @@ export interface AcpTurn {
   maxPromptBytes?: number;
   cakeCall?: AcpCakeCall;
   resumeId?: string;
+  modelId?: string;
   signal: AbortSignal;
   permission(request: AcpPermission, signal: AbortSignal): Promise<"allow" | "deny" | undefined>;
   status(status: AcpStatus): void;
@@ -143,11 +149,17 @@ class AcpError extends Error {
       | "rpc"
       | "cancelled"
       | "prompt-limit"
-      | "cake-mcp",
+      | "cake-mcp"
+      | "catalog"
+      | "model-selection",
     readonly code?: number,
+    selectionError?: string,
   ) {
     super(
       {
+        catalog:
+          "The Antigravity CLI did not advertise models. Check your installed agy version and account.",
+        "model-selection": selectionError,
         "prompt-limit":
           "The Antigravity prompt could not fit the context limit. Shorten the message.",
         "cake-mcp":
@@ -202,7 +214,7 @@ function cliEnvironment() {
   return { ...env, PATH };
 }
 
-function launchAntigravity(cwd: string) {
+function launchAntigravity(cwd: string, discovery: boolean) {
   const env = cliEnvironment();
   const executable = env.PATH.split(delimiter)
     .map((directory) => join(directory, process.platform === "win32" ? "agy.exe" : "agy"))
@@ -216,7 +228,17 @@ function launchAntigravity(cwd: string) {
       }
     });
   if (!executable) throw new AcpError("missing");
-  return spawn(executable, ["acp"], {
+  // agy resolves this flag relative to ~/.gemini, even for a leading slash.
+  // Keep its session database and logs disposable without changing HOME or sign-in.
+  const args = discovery
+    ? [
+        "acp",
+        "--include-default-customizations=false",
+        "--app-data-dir",
+        relative(join(homedir(), ".gemini"), join(cwd, "..", "cli-state")),
+      ]
+    : ["acp"];
+  return spawn(executable, args, {
     cwd,
     env,
     detached: process.platform !== "win32",
@@ -243,14 +265,43 @@ function permissionDescription(call: AcpTool, prior?: AcpTool) {
   return description.length > 4000 ? undefined : description;
 }
 
-/** A single subprocess per turn gives late events no route to another turn or chat. */
-export async function runAcpTurn(
-  input: AcpTurn,
-  launch = launchAntigravity,
-): Promise<{ resumeId?: string; stop: AcpStop }> {
+type AcpLaunch = typeof launchAntigravity;
+type AcpTurnResult = { resumeId?: string; stop: AcpStop };
+type AcpRun = Pick<AcpTurn, "cwd" | "signal"> & { turn?: AcpTurn };
+
+export async function discoverAntigravityModels(signal: AbortSignal, launch = launchAntigravity) {
+  const scratch = await mkdtemp(join(tmpdir(), "cake-antigravity-models-"));
+  const deadline = AbortSignal.timeout(handshakeTimeout);
+  try {
+    const cwd = join(scratch, "workspace");
+    await mkdir(cwd);
+    return await runAcp({ cwd, signal: AbortSignal.any([signal, deadline]) }, launch);
+  } catch (error) {
+    if (deadline.aborted) throw new AcpError("timeout");
+    throw error;
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
+export function runAcpTurn(turn: AcpTurn, launch = launchAntigravity): Promise<AcpTurnResult> {
+  return runAcp({ cwd: turn.cwd, signal: turn.signal, turn }, launch);
+}
+
+/** A single subprocess per operation gives late events no route to another turn or chat. */
+function runAcp(input: AcpRun & { turn: AcpTurn }, launch: AcpLaunch): Promise<AcpTurnResult>;
+function runAcp(
+  input: AcpRun & { turn?: never },
+  launch: AcpLaunch,
+): Promise<readonly AntigravityModelOption[]>;
+async function runAcp(
+  input: AcpRun,
+  launch: AcpLaunch,
+): Promise<AcpTurnResult | readonly AntigravityModelOption[]> {
   if (input.signal.aborted) throw new AcpError("cancelled");
-  input.status("connecting");
-  const processHandle: ChildProcessWithoutNullStreams = launch(input.cwd);
+  const turn = input.turn;
+  turn?.status("connecting");
+  const processHandle: ChildProcessWithoutNullStreams = launch(input.cwd, !turn);
   let phase: "setup" | "prompt" | "closing" = "setup";
   let sessionId: string | undefined;
   let stdioBytes = 0;
@@ -328,7 +379,7 @@ export async function runAcpTurn(
     cancel();
   }
   function handlePermission(id: RpcId, ask: typeof permissionParams.Type | undefined) {
-    if (phase !== "prompt" || !ask || ask.sessionId !== sessionId || cancelling) {
+    if (!turn || phase !== "prompt" || !ask || ask.sessionId !== sessionId || cancelling) {
       cancelPermission(id);
       if (phase === "prompt" && !ask) requestCancel();
       return;
@@ -354,7 +405,7 @@ export async function runAcpTurn(
     permissionId = id;
     void Promise.resolve()
       .then(() =>
-        input.permission(
+        turn.permission(
           {
             description:
               description ??
@@ -397,14 +448,14 @@ export async function runAcpTurn(
             id: message.id,
             error: { code: -32601, message: "Method not supported by Cake" },
           });
-      } else if (message.method === "session/update" && phase === "prompt" && !cancelling) {
+      } else if (turn && message.method === "session/update" && phase === "prompt" && !cancelling) {
         const event = decodeUpdate(message.params);
         if (!event || event.sessionId !== sessionId) return;
         switch (event.update.sessionUpdate) {
           case "agent_message_chunk": {
             const chunk = Option.getOrUndefined(decodeChunk(event.update));
             if (!chunk) return fail(new AcpError("protocol"));
-            input.chunk(chunk.content.text);
+            turn.chunk(chunk.content.text);
             break;
           }
           case "tool_call":
@@ -416,7 +467,7 @@ export async function runAcpTurn(
             if (!previous && tools.size >= 128) return fail(new AcpError("protocol"));
             const next = { ...previous, ...patch };
             tools.set(next.toolCallId, next);
-            input.tool(next);
+            turn.tool(next);
             break;
           }
         }
@@ -489,7 +540,7 @@ export async function runAcpTurn(
     )
       throw new AcpError("protocol");
     const canResume = negotiated.agentCapabilities?.sessionCapabilities?.resume !== undefined;
-    const cakeCall = input.cakeCall;
+    const cakeCall = turn?.cakeCall;
     if (cakeCall) {
       try {
         bridge = await openAcpCakeMcp(
@@ -514,11 +565,12 @@ export async function runAcpTurn(
     }
     const scope = { cwd: input.cwd, mcpServers: bridge ? [bridge.config] : [] };
     let status: AcpStatus = canResume ? "new" : "no-resume";
-    if (!bridge && canResume && input.resumeId) {
+    let sessionResponse: JsonValue | undefined;
+    if (!bridge && canResume && turn?.resumeId) {
       try {
-        if (!decodeResume(await request("session/resume", { ...scope, sessionId: input.resumeId })))
-          throw new AcpError("protocol");
-        sessionId = input.resumeId;
+        sessionResponse = await request("session/resume", { ...scope, sessionId: turn.resumeId });
+        if (!decodeResume(sessionResponse)) throw new AcpError("protocol");
+        sessionId = turn.resumeId;
         status = "resumed";
       } catch (error) {
         if (!(error instanceof AcpError) || error.kind !== "rpc") throw error;
@@ -526,20 +578,58 @@ export async function runAcpTurn(
       }
     }
     if (!sessionId) {
-      const fresh = decodeSession(await request("session/new", scope));
+      sessionResponse = await request("session/new", scope);
+      const fresh = decodeSession(sessionResponse);
       if (!fresh) throw new AcpError("protocol");
       sessionId = fresh.sessionId;
     }
+    if (!turn) {
+      const models = advertisedAntigravityModels(sessionResponse);
+      if (!models) throw new AcpError("catalog");
+      return models;
+    }
+    const pinned = turn.modelId;
+    if (pinned && pinned !== antigravityModel.modelId) {
+      const escaped = JSON.stringify(pinned);
+      const label = escaped.length > 160 ? `${escaped.slice(0, 159)}…` : escaped;
+      const selectionError = (message: string) =>
+        new AcpError(
+          "model-selection",
+          undefined,
+          `Antigravity model ${label}: ${message} No prompt was sent.`,
+        );
+      const models = advertisedAntigravityModels(sessionResponse);
+      if (!models) throw selectionError("the session did not advertise its available models.");
+      if (!models.some(({ modelId }) => modelId === pinned))
+        throw selectionError(
+          "this session does not offer that model. Choose another model or refresh models in Settings → Providers.",
+        );
+      let applied: JsonValue | undefined;
+      try {
+        applied = await request("session/set_config_option", {
+          sessionId,
+          configId: "model",
+          value: pinned,
+        });
+      } catch (error) {
+        if (error instanceof AcpError && error.kind === "rpc")
+          throw selectionError("the CLI rejected the selection.");
+        if (error instanceof AcpError) throw selectionError(error.message);
+        throw error;
+      }
+      if (!confirmsAntigravityModel(applied, pinned))
+        throw selectionError("the CLI did not confirm the requested model and effort.");
+    }
     if (cancelling || input.signal.aborted) throw new AcpError("cancelled");
-    input.status(status);
-    const params = { sessionId, prompt: acpPrompt(input) };
+    turn.status(status);
+    const params = { sessionId, prompt: acpPrompt(turn) };
     const frame = JSON.stringify({
       jsonrpc: "2.0",
       id: nextId + 1,
       method: "session/prompt",
       params,
     });
-    if (Buffer.byteLength(frame) + 1 > (input.maxPromptBytes ?? maxFrame))
+    if (Buffer.byteLength(frame) + 1 > (turn.maxPromptBytes ?? maxFrame))
       throw new AcpError("prompt-limit");
     if (bridge && !bridge.activate()) throw new AcpError("cake-mcp");
     phase = "prompt";
@@ -553,7 +643,7 @@ export async function runAcpTurn(
         : null),
     };
   } catch (error) {
-    if (cancelling) return { stop: "cancelled" };
+    if (turn && cancelling) return { stop: "cancelled" };
     throw error instanceof AcpError ? error : new AcpError("connection");
   } finally {
     phase = "closing";

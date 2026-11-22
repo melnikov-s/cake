@@ -1,4 +1,8 @@
 import { Effect } from "effect";
+import { PiModelCatalogError } from "../../contracts/pi/model-data";
+import { AntigravityModels } from "../../services/antigravity/AntigravityModels";
+import { ClientConnections } from "../../services/clients/ClientConnections";
+import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import * as modelPresets from "../../domain/model-presets/modelPresets";
 import { refreshModelCatalog } from "../../domain/model-preferences/refresh-model-catalog";
 import { PiModels } from "../../services/pi/PiModels";
@@ -10,6 +14,17 @@ export const modelHandlers = ModelRpc.of({
   "nonChatModels.updatePreference": (input) => updateNonChatModelPreference(input),
   "models.list": () => Effect.flatMap(PiModels, (models) => models.list()),
   "models.refresh": () => refreshModelCatalog(),
+  "models.catalogAntigravity": ({ force }) =>
+    Effect.gen(function* () {
+      const { connectionId } = yield* RendererConnection;
+      const connections = yield* ClientConnections;
+      if (connections.kind(connectionId) !== "desktop")
+        return yield* new PiModelCatalogError({
+          operation: force ? "refresh" : "load",
+          message: "Antigravity model discovery requires a desktop connection.",
+        });
+      return yield* (yield* AntigravityModels).catalog(force);
+    }),
   "modelPresets.list": () => modelPresets.list(),
   "modelPresets.readPrompt": ({ id }) => modelPresets.readPrompt(id),
   "modelPresets.create": (input) => modelPresets.create(input),

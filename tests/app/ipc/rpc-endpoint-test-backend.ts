@@ -5,6 +5,7 @@ import {
   createCoordinatorRuntime,
 } from "../../../src/layers/CakeOperations";
 import { makeCakeChatDurableLive } from "../../../src/services/pi-durable/CakeChatDurable";
+import { AntigravityModels } from "../../../src/services/antigravity/AntigravityModels";
 import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
 import { DesktopHost } from "../../../src/services/electron/DesktopHost";
 import { DesktopSharing } from "../../../src/services/electron/DesktopSharing";
@@ -102,6 +103,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   }),
   Layer.mock(VsCodeViews, { backToAgentForWindow: unexpectedCapability }),
   fakePiModels(),
+  Layer.mock(AntigravityModels, {}),
   Layer.mock(Terminal, {}),
   Layer.mock(ReviewStorage, {
     agentSessionDirectory: unexpectedCapability,

@@ -12,6 +12,7 @@ import { DiscussionSessionEnvironment } from "../../../src/services/discussion-s
 import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import { WorktreeLandingCoordinatorLive } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
+import { AntigravityModels } from "../../../src/services/antigravity/AntigravityModels";
 import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
 import { Context, Deferred, Effect, Layer, Option, Queue, Stream } from "effect";
 import {
@@ -325,6 +326,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       ),
     ),
     AgentAvailability.layer,
+    Layer.mock(AntigravityModels, {}),
     Layer.effectDiscard(
       Effect.addFinalizer(() =>
         Effect.sync(() => {
