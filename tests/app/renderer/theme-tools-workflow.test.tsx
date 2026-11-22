@@ -120,26 +120,26 @@ function fixture(
 afterEach(cleanup);
 
 describe("theme gateway workflows", () => {
-  it("selects the new built-ins live from the gallery and restores both saved slots", async () => {
+  it("selects first-party palettes live from the gallery and restores both saved slots", async () => {
     let saved: StoreSnapshot | undefined;
     {
       using h = fixture();
       const user = userEvent.setup();
-      const additions = [
-        ["Hearth", "#302a27"],
-        ["Moss", "#28322c"],
-        ["Tidal", "#24343e"],
-        ["Mulberry", "#362c3a"],
-        ["Fogbank", "#383d46"],
-        ["Dune", "#37362b"],
-        ["Letterpress", "#eee5d3"],
+      const palettes = [
+        ["Dark", "Hearth", "#302a27"],
+        ["Dark", "Moss", "#28322c"],
+        ["Dark", "Tidal", "#24343e"],
+        ["Dark", "Mulberry", "#362c3a"],
+        ["Dark", "Fogbank", "#383d46"],
+        ["Dark", "Dune", "#37362b"],
+        ["Light", "Letterpress", "#eee5d3"],
+        ["Light", "Blue Porcelain", "#eaf0f8"],
+        ["Light", "Celadon", "#eaf2e9"],
+        ["Light", "Wisteria", "#f1ebf8"],
+        ["Light", "Apricot Glaze", "#fcf0e4"],
       ] as const;
-      for (const [name, background] of additions) {
-        await user.click(
-          screen.getByRole("button", {
-            name: name === "Letterpress" ? "Light" : "Dark",
-          }),
-        );
+      for (const [mode, name, background] of palettes) {
+        await user.click(screen.getByRole("button", { name: mode }));
         const card = screen.getByRole("button", { name: `${name} theme` });
         await user.click(card);
         expect(card.getAttribute("aria-pressed")).toBe("true");
@@ -153,13 +153,16 @@ describe("theme gateway workflows", () => {
         ).toBe(background);
       }
       // Persist through the existing window authority, not a separate theme store.
-      await h.apply("bundled:letterpress", "now");
+      await h.apply("bundled:apricot-glaze", "now");
       saved = h.saved();
     }
     using restored = fixture({ snapshot: saved });
-    expect(restored.root.settingsStore.appearance.lightTheme).toBe("bundled:letterpress");
+    expect(restored.root.settingsStore.appearance.lightTheme).toBe("bundled:apricot-glaze");
     expect(restored.root.settingsStore.appearance.darkTheme).toBe("bundled:dune");
-    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#eee5d3");
+    expect(
+      screen.getByRole("button", { name: "Apricot Glaze theme" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("#fcf0e4");
     await restored.appearance("dark");
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("#37362b");
   });

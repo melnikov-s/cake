@@ -73,7 +73,7 @@ describe("bundled Cake theme collection", () => {
     }
   });
 
-  it("ships seven coordinated palettes with distinct canvases and accents", () => {
+  it("ships coordinated first-party palettes with distinct canvases and accents", () => {
     expect(cakeColorPalettes.map(({ name }) => name)).toEqual([
       "Hearth",
       "Moss",
@@ -82,9 +82,15 @@ describe("bundled Cake theme collection", () => {
       "Fogbank",
       "Dune",
       "Letterpress",
+      "Blue Porcelain",
+      "Celadon",
+      "Wisteria",
+      "Apricot Glaze",
     ]);
     for (const key of ["editor.background", "focusBorder"]) {
-      expect(new Set(cakeColorPalettes.map(({ colors }) => colors[key])).size).toBe(7);
+      expect(new Set(cakeColorPalettes.map(({ colors }) => colors[key])).size).toBe(
+        cakeColorPalettes.length,
+      );
     }
     expect(cakeColorPalettes.filter(({ type }) => type === "dark")).toHaveLength(6);
     for (const theme of cakeColorPalettes) {
@@ -162,6 +168,53 @@ describe("bundled Cake theme collection", () => {
       expect(tokens["--ring"]).toBe(c.focusBorder);
     }
   });
+
+  it.each(cakeColorPalettes.filter(({ type, id }) => type === "light" && id !== "letterpress"))(
+    "keeps $name readable on its resolved surfaces and distinguishes selection from hover",
+    (theme) => {
+      const tokens = cakeThemeTokens(theme);
+      const color = (role: string) => {
+        const value = tokens[`--${role}`];
+        expect(value, role).toMatch(/^#[\da-f]{6}$/i);
+        return value!;
+      };
+      const contrast = (foreground: string, surface: string, minimum: number) =>
+        expect(
+          contrastRatio(color(foreground), color(surface)),
+          `${foreground} on ${surface}`,
+        ).toBeGreaterThanOrEqual(minimum);
+
+      for (const [text, surface] of [
+        ["foreground", "background"],
+        ["sidebar-foreground", "sidebar"],
+        ["sidebar-foreground", "sidebar-hover"],
+        ["sidebar-selection-foreground", "sidebar-active"],
+        ["composer-foreground", "composer"],
+        ["card-foreground", "card"],
+        ["popover-foreground", "popover"],
+        ["foreground", "selection"],
+      ]) {
+        contrast(text!, surface!, 4.5);
+        for (const role of ["muted-foreground", "accent", "success", "warning", "destructive"])
+          contrast(role, surface!, 4.5);
+      }
+      for (const role of ["primary", "accent", "destructive"])
+        contrast(`${role}-foreground`, role, 4.5);
+
+      contrast("sidebar", "background", 1.08);
+      contrast("composer", "background", 1.06);
+      contrast("sidebar-active", "sidebar", 1.12);
+      contrast("sidebar-active", "sidebar-hover", 1.2);
+      contrast("selection", "background", 1.2);
+      for (const rule of theme.tokenColors) {
+        if (rule.settings.foreground)
+          expect(
+            contrastRatio(rule.settings.foreground, color("selection")),
+            `syntax ${rule.scope}`,
+          ).toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
 
   it("flattens Rosé Pine's translucent input over its editor background", () => {
     const theme = bundledColorThemes.find(({ choice }) => choice === "bundled:rose-pine")?.theme;

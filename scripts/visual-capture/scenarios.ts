@@ -24,6 +24,7 @@ import {
   createDeltaPrsGroupsScenario,
   createWidgetComposerAttachScenario,
 } from "./widget-composer-attach";
+import { bundledColorThemes } from "../../src/utils/bundled-color-themes.ts";
 import { cakeColorPalettes } from "../../src/utils/cake-color-palettes.ts";
 import { sessionChangesScenario } from "./session-changes";
 import { createSessionChangesToolbarScenario } from "./session-changes-toolbar";
@@ -374,37 +375,38 @@ const assistantMarkdownCode: VisualCaptureScenario = {
   },
 };
 
+const seedMarkdownCodeWithModel: VisualCaptureScenario["seed"] = async (paths, theme) => {
+  await assistantMarkdownCode.seed(paths, theme);
+  // Resolve the saved session's model without a live provider. These captures never send prompts.
+  await writeFile(
+    join(paths.cakeHome, "pi", "models.json"),
+    JSON.stringify({
+      providers: {
+        anthropic: {
+          baseUrl: "http://127.0.0.1:9",
+          apiKey: "fixture-only",
+          api: "anthropic-messages",
+          models: [
+            {
+              id: "visual-fixture",
+              name: "Visual fixture",
+              input: ["text"],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 4096,
+              maxTokens: 1024,
+            },
+          ],
+        },
+      },
+    }),
+  );
+};
+
 const userMessageMarkdown: VisualCaptureScenario = {
   name: "user-message-markdown",
   description: "Inline Markdown toggle on a user message",
   states: ["inactive", "active", "focus"],
-  async seed(paths, theme) {
-    await assistantMarkdownCode.seed(paths, theme);
-    // The saved session's model must resolve to start its runtime for formatting edits.
-    // The fixture never submits a prompt; this provider points only to loopback.
-    await writeFile(
-      join(paths.cakeHome, "pi", "models.json"),
-      JSON.stringify({
-        providers: {
-          anthropic: {
-            baseUrl: "http://127.0.0.1:9",
-            apiKey: "fixture-only",
-            api: "anthropic-messages",
-            models: [
-              {
-                id: "visual-fixture",
-                name: "Visual fixture",
-                input: ["text"],
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                contextWindow: 4096,
-                maxTokens: 1024,
-              },
-            ],
-          },
-        },
-      }),
-    );
-  },
+  seed: seedMarkdownCodeWithModel,
   async prepare(page, state) {
     await openSeededSession(
       page,
@@ -3202,42 +3204,25 @@ const bundledColorThemeScenario: VisualCaptureScenario = {
     "soft-slate",
     "twilight-steel",
     "warm-titanium",
-    "hearth",
-    "moss",
-    "tidal",
-    "mulberry",
-    "fogbank",
-    "dune",
-    "letterpress",
+    ...cakeColorPalettes.map(({ id }) => id),
   ],
-  seed: assistantMarkdownCode.seed,
+  seed: seedMarkdownCodeWithModel,
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
-    const names: Record<string, string> = {
-      "solarized-light": "Solarized Light",
-      "solarized-dark": "Solarized Dark",
-      "lifted-graphite": "Lifted macOS Graphite",
-      "macos-vibrancy": "macOS Vibrancy",
-      "soft-slate": "Soft Slate",
-      "twilight-steel": "Twilight Steel",
-      "warm-titanium": "Warm Titanium",
-      hearth: "Hearth",
-      moss: "Moss",
-      tidal: "Tidal",
-      mulberry: "Mulberry",
-      fogbank: "Fogbank",
-      dune: "Dune",
-      letterpress: "Letterpress",
-    };
+    const option = bundledColorThemes.find(({ choice }) => choice === `bundled:${state}`);
+    if (!option || typeof option.theme === "string") throw new Error(`Missing palette: ${state}`);
     await page
-      .getByRole("button", {
-        name: state === "solarized-light" || state === "letterpress" ? "Light" : "Dark",
-        exact: true,
-      })
+      .getByRole("button", { name: option.type === "light" ? "Light" : "Dark", exact: true })
       .click();
-    await page.getByRole("button", { name: `${names[state]} theme`, exact: true }).click();
+    const card = page.getByRole("button", { name: `${option.name} theme`, exact: true });
+    await card.click();
+    await expect(card).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("html")).toHaveCSS(
+      "--background",
+      option.theme.colors["editor.background"]!,
+    );
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     const code = page.locator('[data-streamdown="code-block-body"] span[style]');
     await expect(code.first()).toBeVisible();
