@@ -62,13 +62,16 @@ it.each(["send", "reader", "navigation", "none"])(
     });
     const session = fixture.root.cakeChatCollectionStore.registry.load(chat);
     const interaction = session.conversationSessionStore.chatStore.transcriptInteraction;
-    const activation = session.activateAttention(item);
+    const projectedItem = session.todos.attentionItems.find((todo) => todo.id === item.id);
+    if (!projectedItem) throw new Error("Missing projected attention item");
+    const activation = session.activateAttention(projectedItem);
     const revision = interaction.resultReveal?.revision;
     expect(revision).toBeDefined();
     if (superseding === "send") interaction.noteSentMessage();
     if (superseding === "reader") interaction.cancelResultReveal(revision);
     if (superseding === "navigation") interaction.navigateToMessage("other");
-    admit?.({
+    if (!admit) throw new Error("Attention action did not reach the Client");
+    admit({
       todos: emptyProjectTodos(),
       resultPartIds: ["passive-exact-report"],
       responseTurnId: "attention-turn",
@@ -111,7 +114,9 @@ it("no-original attention binds only its causal explanation and retains its rend
   });
   const session = fixture.root.cakeChatCollectionStore.registry.load(chat);
   const interaction = session.conversationSessionStore.chatStore.transcriptInteraction;
-  await session.activateAttention(item);
+  const projectedItem = session.todos.attentionItems.find((todo) => todo.id === item.id);
+  if (!projectedItem) throw new Error("Missing projected attention item");
+  await session.activateAttention(projectedItem);
   const part = (id: string, turn: string): UiPart => ({
     kind: "text",
     id,
