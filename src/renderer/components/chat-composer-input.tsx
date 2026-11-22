@@ -4,6 +4,8 @@ import { StoreProvider, useOptionalStore } from "r-state-tree/react";
 import { CaptureDestinationPicker } from "./capture-destination-picker";
 import { sessionLink } from "../../contracts/conversations/message-reference";
 import { DictationStore } from "../stores/DictationStore";
+import { RootStore } from "../stores/RootStore";
+import { useChatPickerShortcuts } from "../hooks/use-chat-picker-shortcuts";
 import { ModelPicker } from "./model-picker";
 import {
   serializeModelReference,
@@ -51,6 +53,8 @@ export const ChatComposerInput = observer(function ChatComposerInput({
       kind?: "session" | "move";
       model?: ModelReferenceSelection;
       editing?: boolean;
+      preview?: boolean;
+      restoreFocus?(): void;
     }
   >();
   const referenceAnchor = useRef<HTMLElement | null>(null);
@@ -75,6 +79,50 @@ export const ChatComposerInput = observer(function ChatComposerInput({
     setReference({ ...selection, model });
     if (configuration) void configuration.catalog.ensureLoaded();
   };
+  const sessionSearch = useOptionalStore(RootStore)?.sidebarStore.sessionSearchStore;
+  useChatPickerShortcuts(
+    inputRef,
+    focusEnabled && Boolean(sessionSearch),
+    (symbol, input, origin) => {
+      if (referenceInteraction || reference || sessionSearch?.open) return;
+      if (symbol === "$") {
+        if (!sessionSearch) return;
+        sessionSearch.show("preview");
+        return {
+          activate: () => sessionSearch.activatePreview(),
+          dismiss: () => sessionSearch.dismissPreview(),
+        };
+      }
+      if (!configuration) return;
+      referenceAnchor.current = input;
+      setReference({ draft: store.draft, start: 0, end: 0, text: "", preview: true });
+      void configuration.catalog.ensureLoaded();
+      return {
+        activate: (selection) => {
+          restoreWritingFocus.current =
+            !dictation?.enabled || dictation.muted || dictation.capturing;
+          setReferenceInteraction(true);
+          setReference({
+            draft: selection.value,
+            start: selection.start,
+            end: selection.start,
+            text: "",
+            restoreFocus: () => {
+              if (!input.isConnected) return;
+              const target = origin === document.body ? input : origin;
+              if (!target.isConnected) return;
+              target.focus({ preventScroll: true });
+              if (target !== input || input.value !== selection.value) return;
+              if (input instanceof HTMLTextAreaElement)
+                input.setSelectionRange(selection.start, selection.end, selection.direction);
+              else input.setSelectionRange(selection.start, selection.end);
+            },
+          });
+        },
+        dismiss: () => setReference((current) => (current?.preview ? undefined : current)),
+      };
+    },
+  );
   const insertReference = (token: string) => {
     if (!reference || store.draft !== reference.draft) {
       setReference(undefined);
@@ -155,6 +203,8 @@ export const ChatComposerInput = observer(function ChatComposerInput({
         <ModelPicker
           anchorRef={referenceAnchor}
           open
+          preview={reference.preview}
+          restoreFocus={reference.restoreFocus}
           onOpenChange={(open) => {
             if (!open) {
               setReference(undefined);

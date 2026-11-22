@@ -190,6 +190,47 @@ test("shared model and session reference pickers preserve composer input and foc
     await expect(composer).toBeFocused();
     await page.keyboard.type("fixture");
     await expect(composer).toHaveValue("/model fixture");
+    const preview = page.locator('[data-chat-picker-preview][aria-label="Model reference"]');
+    await typeDraft("Keep this draft");
+    await selectInDraft("Keep this draft", 5, 9);
+    await page.keyboard.press("Shift+Digit3");
+    await expect(preview).toBeVisible();
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Keep # draft");
+    await page.keyboard.press("t");
+    await expect(preview).toBeHidden();
+    await page.keyboard.press("a");
+    await page.keyboard.press("g");
+    await expect(composer).toHaveValue("Keep #tag draft");
+    await expect(composer).toBeFocused();
+
+    await typeDraft("Keep # and selection");
+    await selectInDraft("Keep # and selection", 11, 20);
+    await page.keyboard.press("Shift+Digit3");
+    await expect(preview).toBeVisible();
+    await page.keyboard.down("Shift");
+    await page.keyboard.up("Shift");
+    await expect(preview).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath("model-shortcut-preview.png"),
+      animations: "disabled",
+    });
+    await page.keyboard.press("Tab");
+    const shortcutSearch = page.getByRole("textbox", { name: "Search presets and models" });
+    await expect(shortcutSearch).toBeFocused();
+    await expect(composer).toHaveValue("Keep # and selection");
+    await page.keyboard.press("Escape");
+    await expect(shortcutSearch).toBeHidden();
+    await expect(composer).toBeFocused();
+    await expect
+      .poll(() =>
+        composer.evaluate((element: ComposerInputElement) => [
+          element.selectionStart,
+          element.selectionEnd,
+        ]),
+      )
+      .toEqual([11, 20]);
+
     await typeDraft("");
     // Verify a real draft survives every keyboard/mouse model-picker interaction.
     await composer.pressSequentially("Pending first prompt");
@@ -436,11 +477,21 @@ test("shared model and session reference pickers preserve composer input and foc
 
     await richInput.click();
     await richInput.press("End");
-    await chooseFromComposerMenu("Insert model reference");
-    await expect(reference).toBeVisible();
-    await reference
-      .getByRole("button", { name: "Fixture model fixture-model", exact: true })
-      .click();
+    await page.keyboard.press("Shift+Digit3");
+    await expect(preview).toBeVisible();
+    await expect(richInput).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(shortcutSearch).toBeFocused();
+    await page.keyboard.type("fixture-model");
+    await expect(shortcutSearch).toHaveValue("fixture-model");
+    await expect.poll(composerValue).toBe(canonical);
+    await page.keyboard.press("Tab");
+    await expect(reference.getByRole("button", { name: /Fixture preset/ })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(
+      reference.getByRole("button", { name: "Fixture model fixture-model", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("Enter");
     await reference.getByRole("button", { name: "High", exact: true }).click();
     await reference.getByRole("button", { name: "Apply", exact: true }).click();
     await expect(richInput.getByRole("button", { name: /Edit model reference/ })).toHaveCount(2);

@@ -44,6 +44,8 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   stableHeight = false,
   renderChoice,
   initialActiveId,
+  preview = false,
+  restoreFocusOnSelect = true,
   onSelect,
   onClose,
 }: {
@@ -66,7 +68,11 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   ): ReactNode;
   /** Preferred option when the dialog mounts; missing choices fall back to the first. */
   initialActiveId?: string;
-  onSelect(id: string): void;
+  preview?: boolean;
+  /** A choice that navigates can let the destination take focus. */
+  restoreFocusOnSelect?: boolean;
+  /** Return false when the choice was rejected and the dialog remains open. */
+  onSelect(id: string): void | boolean;
   onClose(): void;
 }) {
   const [query, setQuery] = useState("");
@@ -84,8 +90,16 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   const pageEnd = Math.min(pageStart + RESULT_BATCH_SIZE, choices.length);
   const optionId = (index: number) => `${id}-option-${index}`;
 
+  const skipRestore = useRef(false);
+  const select = (choiceId: string) => {
+    skipRestore.current = !restoreFocusOnSelect;
+    if (onSelect(choiceId) === false) skipRestore.current = false;
+  };
+
   useLayoutEffect(() => {
+    if (preview) return;
     const previous = document.activeElement;
+    const content = contentRef.current;
     const containFocus = (event: FocusEvent) => {
       if (event.target instanceof Node && !contentRef.current?.contains(event.target))
         inputRef.current?.focus();
@@ -94,10 +108,15 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
     inputRef.current?.focus();
     return () => {
       document.removeEventListener("focusin", containFocus);
-      if (previous instanceof HTMLElement && previous.isConnected)
+      if (
+        !skipRestore.current &&
+        content?.contains(document.activeElement) &&
+        previous instanceof HTMLElement &&
+        previous.isConnected
+      )
         previous.focus({ preventScroll: true });
     };
-  }, []);
+  }, [preview]);
 
   useLayoutEffect(() => {
     if (active)
@@ -107,6 +126,14 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   return (
     <DialogBackdrop
       aria-labelledby={`${id}-title`}
+      aria-hidden={preview || undefined}
+      inert={preview}
+      data-chat-picker-preview={preview ? "" : undefined}
+      className={
+        preview
+          ? "pointer-events-none bg-transparent backdrop-blur-none dark:bg-transparent"
+          : undefined
+      }
       aria-describedby={description ? `${id}-description` : undefined}
       onClose={onClose}
       onKeyDown={(event) => {
@@ -141,6 +168,7 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
         <div className="flex items-start justify-between gap-3 border-b border-border/65 bg-sidebar/30 px-4 py-3">
           <div className="grid gap-1">
             <DialogTitle id={`${id}-title`}>{title}</DialogTitle>
+            {preview && <p className="text-xs text-muted-foreground">Press Tab to search</p>}
             {description && (
               <DialogDescription id={`${id}-description`}>{description}</DialogDescription>
             )}
@@ -165,7 +193,7 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
               setQuery(value);
             }}
             onConfirm={() => {
-              if (active) onSelect(active.id);
+              if (active) select(active.id);
             }}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing) return;
@@ -201,7 +229,7 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
                       tabIndex: -1,
                       onMouseDown: (event) => event.preventDefault(),
                     },
-                    () => onSelect(choice.id),
+                    () => select(choice.id),
                   )}
                 </div>
               ) : (
@@ -218,7 +246,7 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
                       "border-primary/40 bg-primary/10 hover:bg-primary/15",
                   )}
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => onSelect(choice.id)}
+                  onClick={() => select(choice.id)}
                 >
                   {choice.icon && (
                     <span className="shrink-0 text-muted-foreground">{choice.icon}</span>

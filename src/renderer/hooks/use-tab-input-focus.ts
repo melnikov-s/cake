@@ -1,19 +1,13 @@
 import { useEffect } from "react";
 
-const popupSelector = '[role="dialog"], [role="alertdialog"], [role="menu"]';
+import {
+  isVisibleForKeyboard as visible,
+  keyboardPopupSelector as popupSelector,
+} from "../lib/keyboard-focus";
 const chatSelector = '[data-slot="chat"][data-composer-focus-enabled="true"]';
 const inputSelector =
   'textarea:not(:disabled):not([readonly]), input:not(:disabled):not([readonly]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="image"]), [contenteditable="true"]';
 const nativeTabSelector = "iframe, webview, .xterm, .monaco-editor, .cm-editor";
-
-function visible(element: HTMLElement) {
-  return (
-    element.isConnected &&
-    !element.closest('[inert], [hidden], [aria-hidden="true"]') &&
-    element.getClientRects().length > 0 &&
-    getComputedStyle(element).visibility === "visible"
-  );
-}
 
 // Fullscreen readers use z-45; shared dialogs/popovers use z-50. A later
 // mounted reader must not outrank an existing overlay in the higher band.
@@ -59,9 +53,14 @@ export function useTabInputFocus() {
       const target = event.target;
       if (
         target instanceof Element &&
-        target.closest(`${nativeTabSelector}, [data-slot="hotkey-recorder"]`)
+        target.closest(
+          `${nativeTabSelector}, [data-slot="hotkey-recorder"], [data-slot="model-picker"]`,
+        )
       )
         return;
+
+      // The symbol shortcut gets first refusal of Tab, regardless of listener mount order.
+      if (document.querySelector("[data-chat-picker-preview]")) return;
 
       // Within each overlay band, shared primitives portal in opening order.
       // Ignore hidden/exiting surfaces; prefer the inner surface to its backdrop.

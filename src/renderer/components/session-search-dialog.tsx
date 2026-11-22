@@ -30,6 +30,8 @@ export const SessionSearchDialog = observer(function SessionSearchDialog({
       emptyMessage="No matching sessions."
       choices={store.search}
       stableHeight
+      preview={store.mode === "preview"}
+      restoreFocusOnSelect={false}
       filters={
         <label className="flex items-center gap-2 px-2 pt-3 text-xs text-muted-foreground">
           <Switch
@@ -51,7 +53,9 @@ export const SessionSearchDialog = observer(function SessionSearchDialog({
         />
       )}
       onSelect={(id) => {
-        if (store.select(id)) onOpenSession(id);
+        if (!store.select(id)) return false;
+        onOpenSession(id);
+        return true;
       }}
       onClose={() => store.close()}
     />

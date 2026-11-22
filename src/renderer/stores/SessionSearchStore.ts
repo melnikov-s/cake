@@ -7,8 +7,12 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 export class SessionSearchStore extends Store<{
   catalog: SessionCatalogStore;
 }> {
-  open = false;
+  mode: "closed" | "preview" | "active" = "closed";
   includeResolved = false;
+
+  get open() {
+    return this.mode !== "closed";
+  }
 
   @computed
   get search() {
@@ -24,13 +28,21 @@ export class SessionSearchStore extends Store<{
       }));
   }
 
-  show() {
+  show(mode: "preview" | "active" = "active") {
     this.includeResolved = false;
-    this.open = true;
+    this.mode = mode;
+  }
+
+  activatePreview() {
+    if (this.mode === "preview") this.mode = "active";
+  }
+
+  dismissPreview() {
+    if (this.mode === "preview") this.close();
   }
 
   close() {
-    this.open = false;
+    this.mode = "closed";
   }
 
   setIncludeResolved(includeResolved: boolean) {
@@ -39,7 +51,8 @@ export class SessionSearchStore extends Store<{
 
   select(id: string) {
     const session = this.props.catalog.find(id);
-    if (!this.open || !session || (!this.includeResolved && session.resolved)) return false;
+    if (this.mode !== "active" || !session || (!this.includeResolved && session.resolved))
+      return false;
     this.close();
     return true;
   }

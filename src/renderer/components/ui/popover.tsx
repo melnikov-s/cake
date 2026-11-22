@@ -159,6 +159,10 @@ export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
   motion?: "none" | "bouncy";
   /** Hover previews must not move keyboard focus when they appear. */
   focusOnOpen?: boolean;
+  /** Visible but non-interactive until explicitly activated. */
+  preview?: boolean;
+  /** Override Escape's default return to the anchor. */
+  restoreFocus?(): void;
   /** Preferred focus target within the content, applied once after opening is visible. */
   initialFocusSelector?: string;
   /** Let explicit popup dismissal take precedence over an input consuming Escape. */
@@ -177,6 +181,8 @@ export function PopoverContent({
   motion = "none",
   initialFocusSelector,
   focusOnOpen = true,
+  preview = false,
+  restoreFocus,
   dismissOnEscapeCapture = false,
   style,
   ...props
@@ -305,7 +311,7 @@ export function PopoverContent({
     }
     // The first portal commit is hidden until its position is measured; hidden
     // descendants cannot receive DOM focus. Wait for that visible commit.
-    if (!position.ready || !focusOnOpen) return;
+    if (!position.ready || !focusOnOpen || preview) return;
     if (!prevOpenRef.current) {
       prevOpenRef.current = true;
       const content = contentRef.current;
@@ -320,20 +326,23 @@ export function PopoverContent({
         focusable?.focus();
       }
     }
-  }, [focusOnOpen, initialFocusSelector, open, position.ready]);
+  }, [focusOnOpen, initialFocusSelector, open, position.ready, preview]);
 
   const updatePositionRef = useRef(updatePosition);
   updatePositionRef.current = updatePosition;
   const setOpenRef = useRef(setOpen);
   setOpenRef.current = setOpen;
+  const restoreFocusRef = useRef(restoreFocus);
+  restoreFocusRef.current = restoreFocus;
   const dismissWithFocus = useCallback(() => {
     setOpenRef.current(false);
-    effectiveAnchorRef.current?.focus({ preventScroll: true });
+    if (restoreFocusRef.current) restoreFocusRef.current();
+    else effectiveAnchorRef.current?.focus({ preventScroll: true });
   }, [effectiveAnchorRef]);
   useLayoutEffect(() => {
-    if (open && contentRef.current)
+    if (open && !preview && contentRef.current)
       return registerFullscreenEscapeOverlay(contentRef.current, dismissWithFocus);
-  }, [open, dismissWithFocus]);
+  }, [open, preview, dismissWithFocus]);
 
   useEffect(() => {
     if (!open) return;
@@ -353,8 +362,10 @@ export function PopoverContent({
       dismissWithFocus();
     };
     const reposition = () => updatePositionRef.current();
-    document.addEventListener("pointerdown", dismiss, true);
-    document.addEventListener("keydown", escape, dismissOnEscapeCapture);
+    if (!preview) {
+      document.addEventListener("pointerdown", dismiss, true);
+      document.addEventListener("keydown", escape, dismissOnEscapeCapture);
+    }
     document.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
     const observer =
@@ -381,6 +392,7 @@ export function PopoverContent({
     effectiveAnchorRef,
     inheritedBoundaryRef,
     open,
+    preview,
   ]);
 
   if ((!open && !exiting) || !("document" in globalThis)) return null;
@@ -421,12 +433,13 @@ export function PopoverContent({
           effectiveAnchorRef.current?.focus({ preventScroll: true });
       }}
       role={props.role ?? "dialog"}
-      inert={!open}
-      aria-hidden={!open || undefined}
+      inert={!open || preview}
+      aria-hidden={!open || preview || undefined}
+      data-chat-picker-preview={preview ? "" : undefined}
       data-state={open ? "open" : "closed"}
       className={cn(
         "fixed z-50 max-h-[calc(100vh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-lg border border-border/85 bg-popover/95 p-2.5 text-popover-foreground shadow-xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-xl",
-        !open && "pointer-events-none",
+        (!open || preview) && "pointer-events-none",
         className,
       )}
       style={{

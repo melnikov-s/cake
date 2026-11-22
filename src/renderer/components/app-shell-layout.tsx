@@ -118,6 +118,7 @@ export const AppShellLayout = observer(function AppShellLayout({
         />
         <section
           data-slot="workspace"
+          data-tool-workspace={workspaceMode ? "" : undefined}
           className={cn(
             "relative col-start-2 row-start-2 grid h-full min-h-0 min-w-0 overflow-hidden [contain:inline-size]",
             conversationPaneVisible

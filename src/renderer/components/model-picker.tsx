@@ -42,6 +42,8 @@ export interface ModelPickerProps {
   /** External anchor for inline references; uses the same picker without a toolbar trigger. */
   anchorRef?: RefObject<HTMLElement | null>;
   open?: boolean;
+  preview?: boolean;
+  restoreFocus?(): void;
   onOpenChange?(open: boolean): void;
   /** Reactive catalog source, read only while the picker is open. */
   groups(): readonly ModelGroup[];
@@ -129,6 +131,8 @@ export const ModelPicker = observer(function ModelPicker({
   groups,
   anchorRef,
   open: controlledOpen,
+  preview = false,
+  restoreFocus,
   onOpenChange,
   currentModelName,
   includeAntigravity = false,
@@ -263,7 +267,7 @@ export const ModelPicker = observer(function ModelPicker({
       : undefined;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || preview) return;
     // The portal is initially hidden while PopoverContent positions it. Focus
     // after that layout commits, including keyboard opens directly into search.
     const frame = requestAnimationFrame(() => {
@@ -276,7 +280,7 @@ export const ModelPicker = observer(function ModelPicker({
       if (target && document.activeElement !== target) target.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [open, view]);
+  }, [open, preview, view]);
 
   const reset = () => {
     setView(hasValue ? "current" : "models");
@@ -289,6 +293,7 @@ export const ModelPicker = observer(function ModelPicker({
   const close = () => {
     setOpen(false);
     reset();
+    restoreFocus?.();
   };
 
   const showModels = () => {
@@ -361,10 +366,40 @@ export const ModelPicker = observer(function ModelPicker({
       )}
       <PopoverContent
         anchorRef={anchorRef}
+        preview={preview}
+        restoreFocus={restoreFocus}
         side="top"
         align="start"
         className="w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-2xl"
         aria-label={ariaLabel}
+        data-slot="model-picker"
+        onKeyDown={(event) => {
+          if (
+            event.key !== "Tab" ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey ||
+            event.nativeEvent.isComposing ||
+            event.defaultPrevented
+          )
+            return;
+          const controls = event.currentTarget.querySelectorAll<HTMLElement>(
+            'input:not(:disabled), button:not(:disabled):not([tabindex="-1"])',
+          );
+          const first = controls[0];
+          const last = controls[controls.length - 1];
+          const next = event.shiftKey
+            ? event.target === first
+              ? last
+              : undefined
+            : event.target === last
+              ? first
+              : undefined;
+          if (next) {
+            event.preventDefault();
+            next.focus();
+          }
+        }}
       >
         <div className="p-3.5 space-y-3" key={view}>
           {view === "current" && hasValue && (
@@ -475,6 +510,9 @@ export const ModelPicker = observer(function ModelPicker({
             <>
               <header className="flex items-center justify-between px-0.5">
                 <strong className="text-xs font-semibold text-foreground">Choose model</strong>
+                {preview && (
+                  <span className="text-xs text-muted-foreground">Press Tab to search</span>
+                )}
               </header>
               <div className="relative">
                 <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">

@@ -45,6 +45,10 @@ for (const theme of ["light", "dark"] as const) {
         page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
       ).toBeAttached();
       await expect(filter).toBeFocused();
+      await page.keyboard.press("Shift+Digit4");
+      await expect(filter).toHaveValue("$");
+      await expect(page.locator("[data-chat-picker-preview]")).toHaveCount(0);
+      await filter.fill("");
       await page.keyboard.type("srch dlg");
       await expect(filter).toHaveValue("srch dlg");
       await expect(dialog.getByRole("option")).toHaveCount(1);
@@ -101,6 +105,71 @@ for (const theme of ["light", "dark"] as const) {
       await expect(dialog.locator(".session-item").first().locator("time")).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(dialog).toBeHidden();
+      await expect(trigger).toBeFocused();
+
+      // Navigate to the source again, then use real keyboard input for both $ paths.
+      await trigger.click();
+      await page.keyboard.type("workspace layout");
+      await page.keyboard.press("Enter");
+      await expect(message).toBeFocused();
+      const preview = page.locator("[data-chat-picker-preview]");
+      const sidebarSearch = page.getByPlaceholder("Search sessions…");
+      await sidebarSearch.click();
+      await page.keyboard.press("Shift+Digit4");
+      await expect(sidebarSearch).toHaveValue("$");
+      await expect(preview).toHaveCount(0);
+      await sidebarSearch.fill("");
+      await message.focus();
+      await page.mouse.move(500, 68);
+      await page.keyboard.press("Shift+Digit4");
+      await expect(preview.getByText("Search sessions", { exact: true })).toBeVisible();
+      await expect(message).toBeFocused();
+      await expect(message).toHaveValue("$");
+      await page.keyboard.press("1");
+      await expect(preview).toBeHidden();
+      await page.keyboard.press("0");
+      await page.keyboard.press("0");
+      await expect(message).toHaveValue("$100");
+      await expect(message).toBeFocused();
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await page.keyboard.press("Shift+Digit4");
+      await expect(preview).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(preview).toBeHidden();
+      await expect(message).toBeFocused();
+      await expect(message).toHaveValue("$100$");
+      await page.keyboard.press("Shift+Digit4");
+      await expect(preview).toBeVisible();
+      if (theme === "dark")
+        await page.screenshot({
+          path: test.info().outputPath("session-shortcut-preview.png"),
+          animations: "disabled",
+        });
+      await page.keyboard.press("Tab");
+      await expect(filter).toBeFocused();
+      await expect(message).toHaveValue("$100$");
+      await page.keyboard.press("Escape");
+      await expect(message).toBeFocused();
+
+      // Run the shortcut with focus outside the composer, too.
+      await trigger.focus();
+      await page.keyboard.press("Shift+Digit4");
+      await expect(preview).toBeVisible();
+      await expect(trigger).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(filter).toBeFocused();
+      await page.keyboard.type("website");
+      await expect(dialog.getByRole("option")).toHaveCount(1);
+      await page.keyboard.press("Enter");
+      await expect(dialog).toBeHidden();
+      await expect(page.locator('[data-slot="workspace-header"]')).toContainText("Website search");
+      await expect(message).toBeFocused();
+      await page.keyboard.type("Draft in destination");
+      await expect(message).toHaveValue("Draft in destination");
+      await trigger.click();
+      await page.keyboard.type("workspace layout");
+      await page.keyboard.press("Enter");
+      await expect(message).toHaveValue("$100$");
     } finally {
       await application.close();
       await rm(root, { recursive: true, force: true });

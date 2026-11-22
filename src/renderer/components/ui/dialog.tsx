@@ -15,15 +15,15 @@ export interface DialogBackdropProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
-  function DialogBackdrop({ className, onClose, portalContainer, children, ...props }, ref) {
+  function DialogBackdrop({ className, onClose, portalContainer, children, inert, ...props }, ref) {
     const element = useRef<HTMLDivElement>(null);
     const close = useRef(onClose);
     close.current = onClose;
     useImperativeHandle(ref, () => element.current!, [portalContainer]);
     useLayoutEffect(() => {
-      if (element.current)
+      if (element.current && !inert)
         return registerFullscreenEscapeOverlay(element.current, () => close.current?.());
-    }, [portalContainer]);
+    }, [inert, portalContainer]);
 
     if (!("document" in globalThis)) return null;
 
@@ -31,7 +31,8 @@ export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
       <div
         ref={element}
         role="dialog"
-        aria-modal="true"
+        aria-modal={!inert || undefined}
+        inert={inert}
         onClick={(e) => {
           if (e.target === e.currentTarget) onClose?.();
         }}
