@@ -229,6 +229,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(main).not.toHaveCSS("background-color", selectedBackground);
       await expectStableSelector();
       const strip = page.getByRole("group", { name: "Companion content", exact: true });
+      const companionHeader = strip.locator("..").locator("..");
       const chat = strip.getByRole("button", { name: "Chat", exact: true });
       const todos = strip.getByRole("button", { name: "Todos", exact: true });
       const sessions = strip.getByRole("button", { name: "Sessions", exact: true });
@@ -264,7 +265,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(sessions).toHaveAttribute("aria-pressed", "true");
       await expectSearchGap(
         page.getByRole("searchbox", { name: "Search sessions" }),
-        strip.locator(".."),
+        companionHeader,
       );
       await page.screenshot({ path: testInfo.outputPath(`browser-sessions-${theme}.png`) });
       await chat.click();
@@ -331,7 +332,7 @@ for (const theme of ["dark", "light"] as const) {
               page.getByRole("searchbox", {
                 name: tab === sessions ? "Search sessions" : "Search to-dos",
               }),
-              strip.locator(".."),
+              companionHeader,
             );
           }
           await expect(toggle).toHaveAttribute("aria-expanded", "true");
