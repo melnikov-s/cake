@@ -487,9 +487,10 @@ test("permanent Cake Chat retains its input, history and settings across restart
       })
       .toContain("Stop while waiting for memory");
     expect(requests).toHaveLength(3);
-    await expect(page.getByLabel("Churning in progress")).toBeVisible();
+    const summarizing = page.getByRole("status", { name: /^Summarizing memory.*in progress$/ });
+    await expect(summarizing).toBeVisible();
     await page.getByRole("button", { name: "Stop", exact: true }).click();
-    await expect(page.getByLabel("Churning in progress")).toHaveCount(0);
+    await expect(summarizing).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     expect(requests).toHaveLength(3);
     summaryGate.resolve();
