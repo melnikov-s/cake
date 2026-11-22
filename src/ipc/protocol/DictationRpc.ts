@@ -35,6 +35,10 @@ export const DictationRpc = RpcGroup.make(
   }),
   Rpc.make("dictation.remove", { success: Schema.Void, error: DictationError }),
   Rpc.make("dictation.prepare", { success: Schema.Void, error: DictationError }),
+  Rpc.make("dictation.prepareSpeaker", {
+    success: Schema.Struct({ reused: Schema.Boolean }),
+    error: DictationError,
+  }),
   Rpc.make("dictation.release", { success: Schema.Void, error: DictationError }),
   Rpc.make("dictation.claim", {
     payload: { owner: Schema.String.check(Schema.isMaxLength(64)) },

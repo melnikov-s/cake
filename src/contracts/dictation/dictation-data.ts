@@ -2,6 +2,9 @@ import { Schema } from "effect";
 
 /** Total native preparation budget, including optional vocabulary warmup. */
 export const DICTATION_PREPARATION_TIMEOUT_MS = 180_000;
+export const DICTATION_SPEAKER_PREPARATION_TIMEOUT_MS = 30_000;
+export const speakerPreparationMessage = (timeout: boolean) =>
+  `First-speaker filter ${timeout ? "preparation timed out" : "could not prepare"}. Retry dictation or turn off first-speaker filtering in Voice & Dictation settings.`;
 
 export const TextProcessingMode = Schema.Literals(["raw", "utility"]);
 export type TextProcessingMode = typeof TextProcessingMode.Type;
@@ -83,6 +86,8 @@ export const DictationErrorCode = Schema.Literals([
   "engine-timeout",
   "engine-exit",
   "engine-not-ready",
+  "speaker-preparation-timeout",
+  "speaker-preparation-failed",
   "stopped",
   "unknown",
 ]);
@@ -101,6 +106,8 @@ export const DictationTraceStep = Schema.Literals([
   "model-load-requested",
   "model-load-finished",
   "engine-ready",
+  "speaker-prepare-requested",
+  "speaker-prepare-finished",
   "mic-open-requested",
   "mic-opened",
   "listening",
@@ -119,6 +126,9 @@ export const DictationTrace = Schema.Struct({
   field: Schema.optional(DictationTraceToken),
   utterance: Schema.optional(DictationTraceToken),
   voiceSubmit: Schema.optional(Schema.Boolean),
+  speakerFilter: Schema.optionalKey(Schema.Boolean),
+  speakerRound: Schema.optionalKey(DictationTraceToken),
+  reused: Schema.optionalKey(Schema.Boolean),
   quietMs: Schema.optional(
     Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
   ),

@@ -197,12 +197,18 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       .map((value) => JSON.stringify(value))
       .join("\n") + "\n",
   );
-  const launch = () =>
-    electron.launch({
+  const launch = async (native?: { helper: string; model: string }) => {
+    if (native)
+      await writeFile(
+        join(dictation, "settings.json"),
+        JSON.stringify({ modelPath: native.model }),
+      );
+    return electron.launch({
       args: [
         repositoryRoot,
         "--use-fake-ui-for-media-stream",
         "--use-fake-device-for-media-stream",
+        ...(native ? ["--autoplay-policy=no-user-gesture-required"] : []),
       ],
       cwd: repositoryRoot,
       env: {
@@ -210,12 +216,13 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
         CAKE_ELECTRON_SMOKE: "1",
         // A coding session can inherit the live dev URL; always test this worktree's build.
         ELECTRON_RENDERER_URL: "",
-        CAKE_SMOKE_DICTATION_HELPER: helper,
+        CAKE_SMOKE_DICTATION_HELPER: native?.helper ?? helper,
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: cakeHome,
         PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
         PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
+  };
   return { root, userData, cakeHome, sessionId, dictation, model, configure, launch };
 }

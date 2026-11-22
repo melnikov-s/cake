@@ -46,15 +46,17 @@ async function stream(
   const partials: string[] = [];
   for (let offset = 0; offset < pcm.length; offset += 51_200)
     partials.push(
-      await worker.transcribe(
-        {
-          utteranceId: id,
-          pcm: pcm.subarray(offset, offset + 51_200).toString("base64"),
-          final: false,
-          ...(speakerRoundId && { speakerRoundId }),
-        },
-        vocabulary,
-      ),
+      (
+        await worker.transcribe(
+          {
+            utteranceId: id,
+            pcm: pcm.subarray(offset, offset + 51_200).toString("base64"),
+            final: false,
+            ...(speakerRoundId && { speakerRoundId }),
+          },
+          vocabulary,
+        )
+      ).text,
     );
   return partials;
 }
@@ -76,6 +78,8 @@ async function fixture({ withoutSpeakerModels = false } = {}) {
   return {
     root,
     worker,
+    transcribe: async (...args: Parameters<ParakeetWorker["transcribe"]>) =>
+      (await worker.transcribe(...args)).text,
     async [Symbol.asyncDispose]() {
       worker.close();
       await rm(root, { recursive: true, force: true });
@@ -93,7 +97,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
       await f.worker.ready;
       const pcm = await syntheticSpeech(f.root, "unfiltered", "Please review the new design.");
       await stream(f.worker, "unfiltered", pcm);
-      const text = await f.worker.transcribe({ utteranceId: "unfiltered", pcm: "", final: true });
+      const text = await f.transcribe({ utteranceId: "unfiltered", pcm: "", final: true });
       expect(text).toMatch(/review the new design/i);
     }, 90_000);
 
@@ -103,6 +107,15 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
         if (!librispeech) throw new Error("CAKE_DICTATION_TEST_LIBRISPEECH is required");
         await using f = await fixture();
         await f.worker.ready;
+        expect(await f.worker.prepareSpeaker()).toEqual({ reused: false });
+        expect(
+          await f.worker.transcribe({
+            utteranceId: "warmup-is-not-speech",
+            speakerRoundId: "round-A",
+            pcm: "",
+            final: true,
+          }),
+        ).toEqual({ text: "", speakerPassedSpeech: false });
         const clip = (id: string) => {
           const [speaker, chapter] = id.split("-");
           return convertSpeech(
@@ -118,7 +131,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
         ]);
         const gap = Buffer.alloc(8_000 * 4);
         const finish = (utteranceId: string, speakerRoundId: string) =>
-          f.worker.transcribe({ utteranceId, speakerRoundId, pcm: "", final: true });
+          f.transcribe({ utteranceId, speakerRoundId, pcm: "", final: true });
         // Sequence in one continuous round, without a VAD endpoint between speakers.
         const partials = await stream(
           f.worker,
@@ -134,7 +147,8 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
         for (const interim of [...partials, text])
           expect(interim).not.toMatch(/delawares|tortoise|outstrip|deer/i);
 
-        // Finalizing a text span (quiet command boundary) is not a new speaker round.
+        expect(await f.worker.prepareSpeaker()).toEqual({ reused: true });
+        // Preparing again and finalizing a text span are not new speaker rounds.
         expect((await stream(f.worker, "next-span", b, [], "round-A")).every((t) => t === "")).toBe(
           true,
         );
@@ -142,7 +156,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
 
         // Leave the old span incomplete; cancellation must clear its audio and speaker even
         // when the same opaque ID is reused by this test. A delayed old stop must not erase B.
-        await f.worker.transcribe({
+        await f.transcribe({
           utteranceId: "cancelled",
           speakerRoundId: "round-A",
           pcm: a.subarray(0, 51_200).toString("base64"),
@@ -157,7 +171,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
 
         // Switching to unfiltered and back on the same warm helper never retains B's reference.
         await stream(f.worker, "unfiltered", Buffer.concat([a, gap, b]));
-        const unfiltered = await f.worker.transcribe({
+        const unfiltered = await f.transcribe({
           utteranceId: "unfiltered",
           pcm: "",
           final: true,
@@ -188,7 +202,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
         const vocabulary = [{ id: "review-agent", text: "Binks", aliases: ["Banks", "Vinx"] }];
         const pcm = await syntheticSpeech(f.root, "known-name", "Ask Binks to review the changes.");
         await stream(f.worker, "default", pcm);
-        const baseline = await f.worker.transcribe({
+        const baseline = await f.transcribe({
           utteranceId: "default",
           pcm: "",
           final: true,
@@ -197,10 +211,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
         const partials = await stream(f.worker, "boosted", pcm, vocabulary);
         expect(partials.some((text) => /\bBinks\b/.test(text))).toBe(true);
         // A settings change during this utterance must not discard its captured vocabulary.
-        const final = await f.worker.transcribe(
-          { utteranceId: "boosted", pcm: "", final: true },
-          [],
-        );
+        const final = await f.transcribe({ utteranceId: "boosted", pcm: "", final: true }, []);
         expect(final.match(/\bBinks\b/g)).toHaveLength(1);
         expect(final.match(/review/g)).toHaveLength(1);
         expect(final).not.toBe(baseline);
@@ -210,16 +221,16 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
           "The banks are closed on Sunday. The river banks are covered with flowers.",
         );
         await stream(f.worker, "banks", banks, vocabulary);
-        const ordinary = await f.worker.transcribe(
+        const ordinary = await f.transcribe(
           { utteranceId: "banks", pcm: "", final: true },
           vocabulary,
         );
         expect(ordinary.match(/\bbanks\b/gi)).toHaveLength(2);
         expect(ordinary).not.toMatch(/\bBinks\b/i);
         await stream(f.worker, "empty-again", pcm);
-        expect(
-          await f.worker.transcribe({ utteranceId: "empty-again", pcm: "", final: true }),
-        ).toBe(baseline);
+        expect(await f.transcribe({ utteranceId: "empty-again", pcm: "", final: true })).toBe(
+          baseline,
+        );
       },
       180_000,
     );
@@ -234,19 +245,17 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
       );
       const partials = await stream(f.worker, "first-focus", pcm);
       expect(partials.some((text) => /quick brown fox/i.test(text))).toBe(true);
-      const final = await f.worker.transcribe({ utteranceId: "first-focus", pcm: "", final: true });
+      const final = await f.transcribe({ utteranceId: "first-focus", pcm: "", final: true });
       expect(final).toMatch(/quick brown fox jumps over the lazy dog/i);
       // The real recognizer can hear synthesized "in" as "and". Both retain the final word;
       // this is an endpoint regression, not a claim of zero transcription word error.
       expect(final).toMatch(/local voice input (?:in|and) cake/i);
-      await f.worker.transcribe({
+      await f.transcribe({
         utteranceId: "abandoned",
         pcm: pcm.subarray(0, 51_200).toString("base64"),
         final: false,
       });
-      expect(await f.worker.transcribe({ utteranceId: "new-focus", pcm: "", final: true })).toBe(
-        "",
-      );
+      expect(await f.transcribe({ utteranceId: "new-focus", pcm: "", final: true })).toBe("");
     }, 180_000);
 
     test("silence, hum, steady noise and isolated clicks do not produce words or voice activity", async () => {
@@ -265,7 +274,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
       for (const [index, noise] of noises.entries()) {
         const id = `noise-${index}`;
         expect((await stream(f.worker, id, noise)).every((text) => text === "")).toBe(true);
-        expect(await f.worker.transcribe({ utteranceId: id, pcm: "", final: true })).toBe("");
+        expect(await f.transcribe({ utteranceId: id, pcm: "", final: true })).toBe("");
         const detections: boolean[] = [];
         for (let offset = 0; offset < noise.length; offset += 4096 * 4)
           detections.push(
@@ -299,7 +308,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
       expect(sealed).toMatch(/quick brown fox jumps over the lazy dog/i);
       expect(duringPause.slice(-2)).toEqual([sealed, sealed]);
       await stream(f.worker, "same-field", second);
-      const final = await f.worker.transcribe({ utteranceId: "same-field", pcm: "", final: true });
+      const final = await f.transcribe({ utteranceId: "same-field", pcm: "", final: true });
       expect(final.match(/quick brown fox/gi)).toHaveLength(1);
       expect(final.match(/local voice input in cake/gi)).toHaveLength(1);
     }, 180_000);
@@ -322,7 +331,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
       );
       expect(silence.slice(-2)[0]).toBe(silence.at(-1));
       await stream(f.worker, "thinking-pause", second);
-      const final = await f.worker.transcribe({
+      const final = await f.transcribe({
         utteranceId: "thinking-pause",
         pcm: "",
         final: true,
@@ -345,7 +354,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
       const pcm = await syntheticSpeech(f.root, "long-speech", sentences.join(" "));
       expect(pcm.length / 4 / 16000).toBeGreaterThan(20);
       await stream(f.worker, "long-speech", pcm);
-      const final = await f.worker.transcribe({ utteranceId: "long-speech", pcm: "", final: true });
+      const final = await f.transcribe({ utteranceId: "long-speech", pcm: "", final: true });
       for (const phrase of [
         "quick brown fox",
         "recognition model",
@@ -362,9 +371,9 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
       await f.worker.ready;
       const stop = await syntheticSpeech(f.root, "stop", "Stop!");
       await stream(f.worker, "short-command", stop);
-      expect(
-        await f.worker.transcribe({ utteranceId: "short-command", pcm: "", final: true }),
-      ).toMatch(/\bstop\b/i);
+      expect(await f.transcribe({ utteranceId: "short-command", pcm: "", final: true })).toMatch(
+        /\bstop\b/i,
+      );
     }, 180_000);
 
     test("detects and transcribes quieter speech without changing words or clipping endpoints", async () => {
@@ -386,7 +395,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
         );
       expect(detections.some(Boolean)).toBe(true);
       await stream(f.worker, "quiet", quiet);
-      expect(await f.worker.transcribe({ utteranceId: "quiet", pcm: "", final: true })).toMatch(
+      expect(await f.transcribe({ utteranceId: "quiet", pcm: "", final: true })).toMatch(
         /quick brown fox jumps over the lazy dog/i,
       );
       // A new capture must not inherit speech hysteresis or recurrent state.

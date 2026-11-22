@@ -30,7 +30,12 @@ pages, widgets or OS-wide typing. It requires Apple Silicon and macOS 14+.
 In **Settings → Voice & Dictation → Speech input**, turn on **Filter dictation to the
 first speaker** to keep only the first clear voice heard in each listening round,
 even if that voice is not yours. The switch is off by default, including on upgrade.
-When off, dictation uses ordinary recognition without loading or running the speaker models. There is no setup phrase or saved speaker profile. Cake buffers the opening
+When off, dictation uses ordinary recognition without loading or running the speaker models.
+When on, capture waits until both speaker models have loaded and completed one inference
+on a private non-speech probe. The probe never reaches recognition and cannot select a speaker.
+The same helper reuses its warmed models without reusing the previous round's speaker. If
+preparation fails or times out, dictation stays stopped. Use Retry or turn the filter off
+and retry. There is no setup phrase or saved speaker profile. Cake buffers the opening
 while it checks who is speaking, then recognizes the accepted opening as well as later
 matching speech. Speech without enough evidence (including very short first words on
 their own), detected overlap and uncertain matches can be omitted. The filter is not
@@ -112,6 +117,9 @@ slot, which can process the next window while recognition consumes the previous 
 The existing eight-second capture backlog limit still fails visibly rather than building
 an unbounded queue or passing unchecked audio through. A document crash, reload or
 loss of its window terminates the round's worker if a normal reset cannot run.
+Desktop diagnostics record whether filtering was on, speaker preparation time and outcome,
+and whether the filter passed any speech in a round. These are metadata only, not audio,
+recognized text or speaker embeddings.
 
 ## Native build and distribution
 
@@ -206,6 +214,11 @@ To also test labeled real speech, set `CAKE_DICTATION_TEST_LIBRISPEECH` to the
 (CC BY 4.0, read aloud by LibriVox volunteers). The opt-in test reads clips from speakers
 6930 and 1320; it also mixes two clips to exercise overlap. The test does not download
 fixtures or use a microphone.
+
+With the same environment variables and a current slim build, run
+`pnpm test:electron:run tests/electron/dictation-recorded.smoke.spec.ts` to play
+the same LibriSpeech clips through a virtual microphone stream at normal speed
+in two isolated Cake profiles, once with filtering off and once with it on.
 
 Follow [Electron testing](electron-testing.md) for compiled output and hidden-window
 rules. Recorded fixtures and controlled tests do not validate physical-microphone

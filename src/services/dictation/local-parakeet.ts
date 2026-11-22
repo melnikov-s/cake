@@ -24,6 +24,7 @@ import {
 import vadManifest from "../../../native/dictation/vad-manifest.json";
 import {
   DICTATION_PREPARATION_TIMEOUT_MS,
+  DICTATION_SPEAKER_PREPARATION_TIMEOUT_MS,
   DictationError,
   type DictationAudio,
   type SpeechDetectionAudio,
@@ -59,7 +60,8 @@ export interface InstallProgress {
 const WorkerReply = Schema.Union([
   Schema.Struct({ ready: Schema.Literal(true) }),
   Schema.Struct({ prepared: Schema.Literal(true) }),
-  Schema.Struct({ text: Schema.String }),
+  Schema.Struct({ speakerPrepared: Schema.Literal(true), reused: Schema.Boolean }),
+  Schema.Struct({ text: Schema.String, speakerPassedSpeech: Schema.optionalKey(Schema.Boolean) }),
   Schema.Struct({ speech: Schema.Boolean }),
   Schema.Struct({ roundEnded: Schema.Literal(true) }),
   Schema.Struct({ error: Schema.String }),
@@ -336,6 +338,15 @@ export class ParakeetWorker {
     const reply = await response;
     if (!("prepared" in reply)) throw new Error("Invalid native vocabulary preparation response");
   }
+  async prepareSpeaker() {
+    if (this.failure) throw this.failure;
+    const response = this.response(DICTATION_SPEAKER_PREPARATION_TIMEOUT_MS);
+    this.process.stdin.write(`${JSON.stringify({ operation: "prepareSpeaker" })}\n`);
+    const reply = await response;
+    if (!("speakerPrepared" in reply))
+      throw new Error("Invalid native speaker preparation response");
+    return { reused: reply.reused };
+  }
   async transcribe(audio: DictationAudio, vocabulary: readonly VocabularyEntry[] = []) {
     if (this.failure) throw this.failure;
     const response = this.response(30_000);
@@ -344,7 +355,7 @@ export class ParakeetWorker {
     );
     const reply = await response;
     if (!("text" in reply)) throw new Error("Invalid native transcription response");
-    return reply.text;
+    return reply;
   }
   async endRound(speakerRoundId: string) {
     if (this.failure) throw this.failure;

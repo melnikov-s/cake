@@ -1,4 +1,5 @@
 import { Effect, Option, Stream } from "effect";
+import { DictationError } from "../../contracts/dictation/dictation-data";
 import { Dictation } from "../../services/dictation/Dictation";
 import { DictationRpc } from "../protocol/DictationRpc";
 import { RendererDocumentLifetime } from "../protocol/RendererConnectionMiddleware";
@@ -17,6 +18,22 @@ export const dictationHandlers = DictationRpc.of({
     Effect.flatMap(Dictation, (service) => service.setModelPath(path)),
   "dictation.remove": () => Effect.flatMap(Dictation, (service) => service.remove()),
   "dictation.prepare": () => Effect.flatMap(Dictation, (service) => service.prepare()),
+  "dictation.prepareSpeaker": () =>
+    Effect.gen(function* () {
+      const service = yield* Dictation;
+      const document = Option.getOrUndefined(yield* Effect.serviceOption(RendererDocumentLifetime));
+      if (!document) return yield* service.prepareSpeaker();
+      const stopped = new DictationError({ code: "stopped", message: "Dictation stopped" });
+      if (document.aborted) return yield* stopped;
+      // Navigating or crashing can lose the renderer before it sends an RPC interrupt.
+      const abandoned = Effect.callback<never, DictationError>((resume) => {
+        const abort = () => resume(Effect.fail(stopped));
+        if (document.aborted) abort();
+        else document.addEventListener("abort", abort, { once: true });
+        return Effect.sync(() => document.removeEventListener("abort", abort));
+      });
+      return yield* Effect.raceFirst(service.prepareSpeaker(), abandoned);
+    }),
   "dictation.release": () => Effect.flatMap(Dictation, (service) => service.release()),
   "dictation.claim": ({ owner }) => Effect.flatMap(Dictation, (service) => service.claim(owner)),
   "dictation.setMuted": ({ muted }) =>

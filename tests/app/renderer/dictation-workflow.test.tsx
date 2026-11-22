@@ -10,6 +10,7 @@ import {
 } from "../../../src/contracts/conversations/conversation-data";
 import {
   DICTATION_PREPARATION_TIMEOUT_MS,
+  DICTATION_SPEAKER_PREPARATION_TIMEOUT_MS,
   DictationError,
   type DictationAudio,
   type DictationErrorCode,
@@ -182,6 +183,9 @@ function renderDictation(
       status: "ready",
     });
   });
+  const prepareSpeaker = vi.fn<Client["dictation"]["prepareSpeaker"]>(async () => ({
+    reused: false,
+  }));
   // The main process echoes shared capture ownership and mute to every window.
   const shared = (change: Partial<DictationState>) =>
     fixture.root.dictationStore.applyState({ ...fixture.root.dictationStore.state!, ...change });
@@ -220,6 +224,7 @@ function renderDictation(
       dictation: {
         listVocabulary: async () => ({ revision: 0, entries: [], total: 0, nextOffset: null }),
         prepare,
+        prepareSpeaker,
         release,
         endRound: async () => undefined,
         trace,
@@ -316,6 +321,7 @@ function renderDictation(
     client: fixture.client,
     audio,
     prepare,
+    prepareSpeaker,
     release,
     trace,
     claim,
@@ -3583,6 +3589,97 @@ describe("Dictation writing-field workflow", () => {
       listening();
     },
   );
+
+  it("waits for speaker preparation before opening the mic or admitting frames", async () => {
+    using f = renderDictation();
+    const ready = deferred<{ reused: boolean }>();
+    f.prepareSpeaker.mockReturnValueOnce(ready.promise);
+    f.root.speechInputSettingsStore.setDictationFirstSpeaker(true);
+    await f.user.click(mode());
+    expect(f.prepareSpeaker).not.toHaveBeenCalled(); // Unowned ASR preload doesn't warm speaker models.
+    await f.user.click(message());
+    expect(f.prepareSpeaker).toHaveBeenCalledOnce();
+    expect(f.root.dictationStore.phase).toBe("preparing");
+    expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+    expect(f.requests).toHaveLength(0);
+    await act(async () => ready.resolve({ reused: false }));
+    listening();
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    expect(f.requests[0]?.audio.speakerRoundId).toBeTruthy();
+    expect(f.trace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step: "speaker-prepare-finished",
+        elapsedMs: expect.any(Number),
+        reused: false,
+      }),
+    );
+  });
+
+  it.each(["filter-off", "other-window"] as const)(
+    "%s aborts stalled speaker preparation and its late result cannot open a filtered capture",
+    async (action) => {
+      using f = renderDictation();
+      const ready = deferred<{ reused: boolean }>();
+      f.prepareSpeaker.mockReturnValueOnce(ready.promise);
+      f.root.speechInputSettingsStore.setDictationFirstSpeaker(true);
+      await f.user.click(mode());
+      await f.user.click(message());
+      expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+      const signal = f.prepareSpeaker.mock.calls[0]?.[0]?.signal;
+      expect(signal?.aborted).toBe(false);
+      if (action === "filter-off")
+        await act(async () => f.root.speechInputSettingsStore.setDictationFirstSpeaker(false));
+      else f.otherWindow({ claim: true });
+      expect(signal?.aborted).toBe(true);
+      // The unfiltered capture must not await the canceled preparation.
+      expect(f.audio.getUserMedia).toHaveBeenCalledTimes(action === "filter-off" ? 1 : 0);
+      await act(async () => ready.resolve({ reused: false }));
+      expect(f.prepareSpeaker).toHaveBeenCalledOnce();
+      if (action === "other-window") {
+        expect(f.root.dictationStore.phase).toBe("paused");
+        expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+      } else {
+        listening();
+        await f.audio.push(new Float32Array(12_800).fill(0.1));
+        expect(f.requests).toHaveLength(1);
+        expect(f.requests[0]?.audio).not.toHaveProperty("speakerRoundId");
+        expect(f.trace).toHaveBeenCalledWith(
+          expect.objectContaining({
+            step: "start-requested",
+            speakerFilter: false,
+          }),
+        );
+      }
+    },
+  );
+
+  it("times out a lost speaker preparation RPC without falling back to unfiltered capture", async () => {
+    using f = renderDictation();
+    const stalled = deferred<{ reused: boolean }>();
+    f.prepareSpeaker.mockReturnValueOnce(stalled.promise);
+    f.root.speechInputSettingsStore.setDictationFirstSpeaker(true);
+    await f.user.click(mode());
+    vi.useFakeTimers();
+    await act(async () => message().focus());
+    await advanceRecovery(DICTATION_SPEAKER_PREPARATION_TIMEOUT_MS + 5000);
+    expect(f.prepareSpeaker.mock.calls[0]?.[0]?.signal?.aborted).toBe(true);
+    expect(
+      screen.getByText(/First-speaker filter preparation timed out.*turn off/, {
+        selector: "[role=status]",
+      }),
+    ).toBeDefined();
+    expect(f.trace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step: "failed",
+        stage: "speaker-preparation",
+        code: "speaker-preparation-timeout",
+        elapsedMs: expect.any(Number),
+      }),
+    );
+    await act(async () => stalled.resolve({ reused: false }));
+    expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+    expect(f.requests).toHaveLength(0);
+  });
 
   it("switches from legacy unfiltered dictation to a new speaker round and back without losing the draft", async () => {
     const endRound = vi.fn<Client["dictation"]["endRound"]>(async () => undefined);

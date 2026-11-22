@@ -153,11 +153,14 @@ private final class Recognition {
     await speaker?.reset()
   }
 
-  private func speakerFilter() throws -> FirstSpeakerFilter {
-    if let speaker { return speaker }
+  /// Acknowledge only after both real predictions succeed. Existing warm models and live
+  /// speaker/ASR state are left alone when another capture asks for preparation.
+  func prepareSpeaker() async throws -> Bool {
+    if speaker != nil { return true }
     let filter = try FirstSpeakerFilter(directory: speakerDirectory)
+    try await filter.warmup()
     speaker = filter
-    return filter
+    return false
   }
 
   private func consumePCM(_ samples: [Float]) async throws {
@@ -169,7 +172,14 @@ private final class Recognition {
     }
   }
 
-  func transcribe(_ request: AudioRequest) async throws -> String {
+  func transcribe(_ request: AudioRequest) async throws -> (text: String, speakerPassedSpeech: Bool?) {
+    let filter: FirstSpeakerFilter?
+    if request.speakerRoundId != nil {
+      guard let speaker else { throw ProtocolError.invalidRequest }
+      filter = speaker
+    } else {
+      filter = nil
+    }
     let samples = try request.samples()
     let requestedSettings = request.settings ?? .standard
     if speakerRoundId != request.speakerRoundId {
@@ -187,16 +197,20 @@ private final class Recognition {
     } else if requestedSettings != settings {
       throw ProtocolError.invalidRequest
     }
-    if speakerRoundId != nil {
+    var speakerPassedSpeech: Bool?
+    if let filter {
+      speakerPassedSpeech = false
       try speakerWindows.append(samples)
       var previous: [Float] = []
       while let window = speakerWindows.next(final: request.final) {
         // At most one speaker prediction in flight while recognition consumes the
         // previous approved window. No unverified PCM is passed to the recognizer.
-        let filter = try speakerFilter()
         async let approved = filter.approved(window)
         try await consumePCM(previous)
         previous = try await approved
+        if speakerPassedSpeech == false && previous.contains(where: { $0 != 0 }) {
+          speakerPassedSpeech = true
+        }
       }
       try await consumePCM(previous)
     } else {
@@ -216,7 +230,7 @@ private final class Recognition {
       resetSpan()
     }
     // Every result is a full replacement. The renderer owns and protects the spoken insertion.
-    return text
+    return (text, speakerPassedSpeech)
   }
 }
 
@@ -235,7 +249,7 @@ struct CakeDictation {
       if CommandLine.arguments.dropFirst() == ["--version"] {
         try reply([
           "engine": "FluidAudio/CoreML", "version": "0.17.4", "minimumMacOS": "14.0",
-          "protocolVersion": 4,
+          "protocolVersion": 5,
         ])
         return
       }
@@ -253,8 +267,14 @@ struct CakeDictation {
         case "prepareVocabulary":
           try await recognition.prepareVocabulary()
           try reply(["prepared": true])
+        case "prepareSpeaker":
+          let reused = try await recognition.prepareSpeaker()
+          try reply(["speakerPrepared": true, "reused": reused])
         case "transcribe":
-          try reply(["text": try await recognition.transcribe(AudioRequest.decode(line))])
+          let result = try await recognition.transcribe(AudioRequest.decode(line))
+          var response: [String: Any] = ["text": result.text]
+          if let passed = result.speakerPassedSpeech { response["speakerPassedSpeech"] = passed }
+          try reply(response)
         case "detectSpeech":
           try reply(["speech": try await recognition.detect(line)])
         case "endRound":

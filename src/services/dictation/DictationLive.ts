@@ -10,6 +10,7 @@ import { Clock, Effect, Layer, Queue, Semaphore, Stream, SubscriptionRef } from 
 import {
   DICTATION_PREPARATION_TIMEOUT_MS,
   DictationError,
+  speakerPreparationMessage,
   type DictationAudio,
   type DictationState,
   type SpeechDetectionAudio,
@@ -60,7 +61,12 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
       let worker: ParakeetWorker | undefined;
       let vocabularyPrepared = false;
       let vocabulary: DictationVocabulary | undefined;
-      let round: { id: string; detach: () => void } | undefined;
+      let round: { id: string; detach: () => void; passedSpeech?: boolean } | undefined;
+      const reportSpeakerResult = (id: string, passedSpeech: boolean) =>
+        Effect.logInfo("Dictation speaker filter result", {
+          speakerRound: id.slice(0, 8),
+          passedSpeech,
+        });
       const clearRound = () => {
         round?.detach();
         round = undefined;
@@ -334,6 +340,28 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
             false,
           );
         }),
+        prepareSpeaker: Effect.fn("Dictation.prepareSpeaker")(function* () {
+          return yield* guarded(
+            Effect.gen(function* () {
+              const active = worker;
+              if (!active)
+                return yield* new DictationError({
+                  code: "engine-not-ready",
+                  message: "The speech model is not ready. Retry dictation.",
+                });
+              return yield* native(() => active.prepareSpeaker()).pipe(
+                Effect.mapError((error) => {
+                  const timeout = error.code === "engine-timeout";
+                  return new DictationError({
+                    code: timeout ? "speaker-preparation-timeout" : "speaker-preparation-failed",
+                    message: speakerPreparationMessage(timeout),
+                  });
+                }),
+              );
+            }),
+            false,
+          );
+        }),
         release: Effect.fn("Dictation.release")(function* () {
           // Kill immediately, including a loading/in-flight worker; do not wait behind inference.
           stop();
@@ -364,6 +392,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
               const active = worker;
               if (!active || round?.id !== id) return;
               yield* native(() => active.endRound(id));
+              if (round?.passedSpeech === false) yield* reportSpeakerResult(id, false);
               clearRound();
             }),
           );
@@ -383,6 +412,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
                   message: "The speech model is not ready. Enable dictation again to retry.",
                 });
               if (round?.id !== id) {
+                if (round?.passedSpeech === false) yield* reportSpeakerResult(round.id, false);
                 clearRound();
                 if (id) {
                   // Normal stops reset only this round and keep the worker warm. A lost
@@ -392,14 +422,20 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
                   round = { id, detach: () => document?.removeEventListener("abort", abandon) };
                 }
               }
+              const activeRound = round;
               const installed = (yield* SubscriptionRef.get(state)).vocabularyInstalled;
-              return yield* native((signal) => {
+              const result = yield* native((signal) => {
                 const cancel = () => active.close();
                 signal.addEventListener("abort", cancel, { once: true });
                 return active
                   .transcribe(audio, installed && vocabulary ? vocabulary.entries : [])
                   .finally(() => signal.removeEventListener("abort", cancel));
               });
+              if (activeRound && round === activeRound && activeRound.passedSpeech !== true) {
+                activeRound.passedSpeech = result.speakerPassedSpeech;
+                if (result.speakerPassedSpeech) yield* reportSpeakerResult(activeRound.id, true);
+              }
+              return result.text;
             }),
           );
         }),

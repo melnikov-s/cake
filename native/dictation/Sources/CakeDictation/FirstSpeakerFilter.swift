@@ -3,7 +3,7 @@ import DictationProtocol
 import FluidAudio
 import Foundation
 
-/// Models are loaded on first use; audio and the reference belong only to the active round.
+/// Models are prepared before filtered capture; audio and the reference belong only to the active round.
 /// Core ML inference runs on this actor, separate from capture and the ASR decoder.
 actor FirstSpeakerFilter {
   private let segmentation: MLModel
@@ -19,6 +19,21 @@ actor FirstSpeakerFilter {
     let embeddingURL = directory.appendingPathComponent("wespeaker_v2.mlmodelc")
     segmentation = try MLModel(contentsOf: segmentURL, configuration: config)
     embeddings = EmbeddingExtractor(embeddingModel: try MLModel(contentsOf: embeddingURL, configuration: config))
+  }
+
+  func warmup() throws {
+    // A short, deterministic non-speech probe exercises the same fixed-shape predictions as
+    // a real first window. Explicit activity bypasses the embedding extractor's inactive-mask
+    // shortcut, regardless of the segmentation result. Neither output enters FirstSpeaker.
+    let audio = (0..<24_576).map { sample in
+      Float(0.02) * sin(Float(sample) * 0.1)
+    }
+    let frames = frameIndex(audio.count - 1) + 1
+    _ = try classify(audio + [Float](repeating: 0, count: sampleCount - audio.count), frames: frames)
+    let mask = [Float](repeating: 1, count: frames) + [Float](repeating: 0, count: frameCount - frames)
+    guard let embedding = try embeddings.getEmbeddings(audio: audio, masks: [mask]).first,
+      embedding.allSatisfy({ $0.isFinite }), embedding.contains(where: { $0 != 0 })
+    else { throw ProtocolError.invalidRequest }
   }
 
   func reset() { speaker = FirstSpeaker() }

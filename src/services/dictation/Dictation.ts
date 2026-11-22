@@ -30,6 +30,7 @@ export class Dictation extends Context.Service<
     readonly setModelPath: (path: string) => Effect.Effect<void, DictationError>;
     readonly remove: () => Effect.Effect<void, DictationError>;
     readonly prepare: () => Effect.Effect<void, DictationError>;
+    readonly prepareSpeaker: () => Effect.Effect<{ reused: boolean }, DictationError>;
     readonly release: () => Effect.Effect<void, DictationError>;
     readonly endRound: (id: string) => Effect.Effect<void, DictationError>;
     readonly transcribe: (

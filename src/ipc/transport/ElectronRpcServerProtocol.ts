@@ -114,6 +114,7 @@ export const ElectronRpcServerProtocolLive = Layer.effect(
           message.tag === "projectSessions.start" ||
           message.tag === "cakeChats.start" ||
           message.tag === "savedDrafts.activate" ||
+          message.tag === "dictation.prepareSpeaker" ||
           message.tag === "dictation.transcribe")
           ? { documentLifetime: watched.capture(event) }
           : null),

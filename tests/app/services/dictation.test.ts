@@ -9,6 +9,7 @@ import {
   DictationState,
   DictationTrace,
 } from "../../../src/contracts/dictation/dictation-data";
+import { RendererDocumentLifetime } from "../../../src/ipc/protocol/RendererConnectionMiddleware";
 import { dictationHandlers } from "../../../src/ipc/server/DictationHandlers";
 import { Dictation } from "../../../src/services/dictation/Dictation";
 import { makeDictationLive } from "../../../src/services/dictation/DictationLive";
@@ -21,7 +22,10 @@ const native = vi.hoisted(() => ({
   availableChecks: vi.fn(),
   ready: () => Promise.resolve(),
   prepareVocabulary: vi.fn(async () => {}),
-  transcribe: vi.fn(async () => "hello"),
+  prepareSpeaker: vi.fn(async () => ({ reused: false })),
+  transcribe: vi.fn(async (): Promise<{ text: string; speakerPassedSpeech?: boolean }> => ({
+    text: "hello",
+  })),
   endRound: vi.fn(async () => undefined),
   detectSpeech: vi.fn(async () => true),
   constructed: vi.fn(),
@@ -68,6 +72,7 @@ vi.mock("../../../src/services/dictation/local-parakeet", () => ({
       await this.ready;
     }
     prepareVocabulary = native.prepareVocabulary;
+    prepareSpeaker = native.prepareSpeaker;
     transcribe = native.transcribe;
     endRound = native.endRound;
     detectSpeech = native.detectSpeech;
@@ -120,6 +125,91 @@ it.effect(
       expect(native.transcribe).toHaveBeenCalledTimes(before);
     }).pipe(Effect.provide(live())),
 );
+
+it.effect(
+  "losing the document during stalled speaker warmup releases the worker for unfiltered capture",
+  () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      native.prepareSpeaker.mockImplementationOnce(() => {
+        Effect.runSync(Deferred.succeed(started, undefined));
+        return new Promise<never>(() => {});
+      });
+      const service = yield* Dictation;
+      yield* service.prepare();
+      const document = new AbortController();
+      const filtered = yield* dictationHandlers["dictation.prepareSpeaker"]().pipe(
+        Effect.provideService(RendererDocumentLifetime, document.signal),
+        Effect.flip,
+        Effect.forkChild,
+      );
+      yield* Deferred.await(started);
+      document.abort();
+      expect((yield* Fiber.join(filtered)).code).toBe("stopped");
+      expect(native.close).toHaveBeenCalledOnce();
+      yield* service.prepare();
+      expect(yield* service.transcribe({ utteranceId: "unfiltered", pcm: "", final: false })).toBe(
+        "hello",
+      );
+      expect(native.constructed).toHaveBeenCalledTimes(2);
+      expect(native.prepareSpeaker).toHaveBeenCalledOnce();
+    }).pipe(Effect.provide(live())),
+);
+
+it.effect("reports actionable speaker preparation errors without exposing native details", () =>
+  Effect.gen(function* () {
+    native.prepareSpeaker.mockRejectedValueOnce(
+      new DictationError({ code: "engine-timeout", message: "PRIVATE" }),
+    );
+    const service = yield* Dictation;
+    yield* service.prepare();
+    const error = yield* Effect.flip(service.prepareSpeaker());
+    expect(error.code).toBe("speaker-preparation-timeout");
+    expect(error.message).toMatch(/First-speaker filter preparation timed out.*turn off/);
+    expect(error.message).not.toContain("PRIVATE");
+    expect(native.close).toHaveBeenCalledOnce();
+  }).pipe(Effect.provide(live())),
+);
+
+it.effect("logs only whether each filtered round passed speech, never recognition content", () => {
+  const logs: unknown[] = [];
+  return Effect.gen(function* () {
+    const service = yield* Dictation;
+    yield* service.prepare();
+    yield* service.prepareSpeaker();
+    const audio = { utteranceId: "span", pcm: "AAAAAA==", final: false };
+    const send = (id: string, passed: boolean) => {
+      native.transcribe.mockResolvedValueOnce({ text: "PRIVATE", speakerPassedSpeech: passed });
+      return service.transcribe({ ...audio, speakerRoundId: id });
+    };
+    yield* send("roundA01", false);
+    yield* send("roundA01", true);
+    yield* send("roundA01", true);
+    yield* service.endRound("roundA01");
+    yield* send("roundB01", false);
+    yield* service.endRound("roundB01");
+    expect(logs).toContainEqual([
+      "Dictation speaker filter result",
+      { speakerRound: "roundA01", passedSpeech: true },
+    ]);
+    expect(logs).toContainEqual([
+      "Dictation speaker filter result",
+      { speakerRound: "roundB01", passedSpeech: false },
+    ]);
+    const summary = logs.filter((entry) => JSON.stringify(entry).includes("speaker filter result"));
+    expect(summary).toHaveLength(2);
+    expect(JSON.stringify(logs)).not.toMatch(/PRIVATE|AAAAAA==/);
+  }).pipe(
+    Effect.provide([
+      live(),
+      Logger.layer([
+        Logger.make((entry) => {
+          logs.push(entry.message);
+        }),
+      ]),
+    ]),
+  );
+});
 
 it.effect(
   "vocabulary edits serialize with CAS, project revisions and reach the raw worker only after explicit encoder installation",
@@ -490,7 +580,7 @@ it.effect("speech detection and recognition share the serialized worker", () =>
     });
     native.transcribe.mockImplementationOnce(async () => {
       expect(detecting).toBe(false);
-      return "Quiet speech";
+      return { text: "Quiet speech" };
     });
     const service = yield* Dictation;
     yield* service.prepare();
@@ -638,7 +728,7 @@ it.effect("interrupting inference discards the worker and permits a fresh warmup
     const started = yield* Deferred.make<void>();
     native.transcribe.mockImplementationOnce(() => {
       Effect.runSync(Deferred.succeed(started, undefined));
-      return new Promise<string>(() => {});
+      return new Promise<never>(() => {});
     });
     const service = yield* Dictation;
     yield* service.prepare();

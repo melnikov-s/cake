@@ -129,7 +129,7 @@ test("standalone app launches after relocation and manual replacement preserves 
       ["--version"],
       { cwd: temporaryRoot, encoding: "utf8" },
     );
-    expect(JSON.parse(dictation)).toMatchObject({ protocolVersion: 3, minimumMacOS: "14.0" });
+    expect(JSON.parse(dictation)).toMatchObject({ protocolVersion: 5, minimumMacOS: "14.0" });
     // Missing optional speech models must yield a protocol error, not a loader/permission failure.
     const speech = spawnSync(join(resources, "out/main/native/cake-speech"), [], {
       cwd: temporaryRoot,

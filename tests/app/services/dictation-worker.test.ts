@@ -1,6 +1,7 @@
 import type { EventEmitter } from "node:events";
 import type { PassThrough } from "node:stream";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { DICTATION_SPEAKER_PREPARATION_TIMEOUT_MS } from "../../../src/contracts/dictation/dictation-data";
 import { ParakeetWorker } from "../../../src/services/dictation/local-parakeet";
 
 interface FakeProcess extends EventEmitter {
@@ -69,6 +70,20 @@ it("enforces the existing 30-second inference deadline with a typed timeout and 
   await vi.advanceTimersByTimeAsync(1);
   await result;
   expect(native.processes[0]!.kill).toHaveBeenCalledExactlyOnceWith("SIGKILL");
+});
+
+it("bounds real speaker preparation as a separate helper command", async () => {
+  const active = await readyWorker();
+  const process = native.processes[0]!;
+  const request = vi.fn();
+  process.stdin.on("data", request);
+  const result = expect(active.prepareSpeaker()).rejects.toMatchObject({ code: "engine-timeout" });
+  expect(request.mock.calls[0]?.[0].toString()).toBe('{"operation":"prepareSpeaker"}\n');
+  await vi.advanceTimersByTimeAsync(DICTATION_SPEAKER_PREPARATION_TIMEOUT_MS - 1);
+  expect(process.kill).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  await result;
+  expect(process.kill).toHaveBeenCalledExactlyOnceWith("SIGKILL");
 });
 
 it("keeps startup's 180-second deadline and explicit close distinct from transient failures", async () => {

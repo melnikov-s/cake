@@ -2,6 +2,9 @@ import { child, createStore, snapshot, Store, untracked } from "r-state-tree";
 import { matchesDiscardFilter, utteranceText } from "../../contracts/dictation/discard-filters";
 import {
   DICTATION_PREPARATION_TIMEOUT_MS,
+  DICTATION_SPEAKER_PREPARATION_TIMEOUT_MS,
+  DictationError,
+  speakerPreparationMessage,
   type DictationState,
   type DictationTrace,
   type DictationTraceStep,
@@ -40,6 +43,7 @@ interface Utterance {
   bounded: boolean;
   voiceCommand: boolean;
   id: string;
+  speakerFilter: boolean;
   speakerRoundId?: string;
   roundSent: boolean;
   target: DictationTarget;
@@ -82,7 +86,13 @@ const MICROPHONE_HANDOFF_MS = 500;
 const RECOVERY_DELAYS_MS = [500, 1500, 4000] as const;
 const HEALTHY_LISTENING_MS = 30_000;
 
-type FailureStage = "startup" | "detection" | "transcription" | "microphone" | "observation";
+type FailureStage =
+  | "startup"
+  | "speaker-preparation"
+  | "detection"
+  | "transcription"
+  | "microphone"
+  | "observation";
 const recoveryCode = (error: unknown): string => {
   if (error instanceof SpeechCaptureBacklogError) return "audio-backlog";
   if (error instanceof ClientError) return error.dictationFailure?.code ?? error.kind;
@@ -182,16 +192,17 @@ export class DictationStore extends Store<{
         ? commandText(preferences.dictationSendPhrase) || undefined
         : undefined;
       const filtersEnabled = preferences.dictationDiscardFilters.length > 0;
-      const listening = this.phase === "listening";
+      const phase = this.phase;
       untracked(() => {
         const run = this.utterance;
-        if (!listening || !run || run.finishing) return;
-        if (preferences.dictationFirstSpeaker !== !!run.speakerRoundId) {
+        if (!run || run.finishing || (phase !== "preparing" && phase !== "listening")) return;
+        if (preferences.dictationFirstSpeaker !== run.speakerFilter) {
           // Seal only the visible draft. Do not flush old-policy audio or let a late
           // hypothesis revise the insertion after the new round starts.
           void this.start(run.target, "speaker-filter");
           return;
         }
+        if (phase !== "listening") return;
         const sendPhrase = run.target.submit ? phrase : undefined;
         if (run.sendPhrase === sendPhrase && run.bounded === (!!sendPhrase || filtersEnabled))
           return;
@@ -358,6 +369,7 @@ export class DictationStore extends Store<{
     stage: FailureStage,
     code = recoveryCode(error),
     attempt = this.utterance?.attempt,
+    elapsedMs?: number,
   ) {
     const finishing = this.utterance?.finishing;
     const queuedSeconds =
@@ -366,7 +378,7 @@ export class DictationStore extends Store<{
         : (this.utterance?.samples ?? 0) / 16_000;
     const target = this.target;
     this.reportError(error);
-    this.trace("failed", { attempt, stage, code });
+    this.trace("failed", { attempt, stage, code, elapsedMs });
     const delay = RECOVERY_DELAYS_MS[this.recoveryAttempt];
     const retry =
       !finishing &&
@@ -690,6 +702,32 @@ export class DictationStore extends Store<{
       run.target.begin();
     } else if (this.state?.status === "ready") void this.start(this.target, "edit");
   }
+  private async prepareSpeaker(run: Utterance) {
+    const deadline = new AbortController();
+    const signal = AbortSignal.any([run.controller.signal, deadline.signal]);
+    signal.throwIfAborted();
+    // Main bounds native inference. Also bound queueing and a lost RPC completion.
+    const timer = setTimeout(() => {
+      const failure = new DictationError({
+        code: "speaker-preparation-timeout",
+        message: speakerPreparationMessage(true),
+      });
+      deadline.abort(
+        new ClientError("rejected", "dictation.prepareSpeaker", failure.message, failure.code, {
+          dictationFailure: failure,
+        }),
+      );
+    }, DICTATION_SPEAKER_PREPARATION_TIMEOUT_MS + 5000);
+    const cancelled = Promise.withResolvers<never>();
+    const abort = () => cancelled.reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    try {
+      return await Promise.race([cancelled.promise, this.props.client.prepareSpeaker({ signal })]);
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", abort);
+    }
+  }
   private async start(target: DictationTarget, reason: StartReason, recovering = false) {
     if (this.target !== target || !this.enabled || this.muted || this.busy || this.signal.aborted)
       return;
@@ -714,6 +752,7 @@ export class DictationStore extends Store<{
         ) || this.props.preferences.values.dictationDiscardFilters.length > 0,
       voiceCommand: false,
       id: crypto.randomUUID(),
+      speakerFilter: this.props.preferences.values.dictationFirstSpeaker,
       roundSent: false,
       target,
       controller: new AbortController(),
@@ -738,6 +777,7 @@ export class DictationStore extends Store<{
       field: target.id,
       reason,
       voiceSubmit: !!run.sendPhrase,
+      speakerFilter: run.speakerFilter,
       retry: this.recoveryAttempt || undefined,
     });
     const since = (from: number) => Math.round(performance.now() - from);
@@ -751,9 +791,32 @@ export class DictationStore extends Store<{
       // Logged even when superseded: a finished load with no later step pinpoints the stall.
       this.trace("model-load-finished", { attempt: run.attempt, elapsedMs: since(loading) });
       if (this.utterance !== run) return;
-      if (this.props.preferences.values.dictationFirstSpeaker)
+      if (run.speakerFilter) {
+        this.trace("speaker-prepare-requested");
+        const preparing = performance.now();
+        try {
+          const { reused } = await this.prepareSpeaker(run);
+          if (this.utterance !== run) return;
+          this.trace("speaker-prepare-finished", {
+            elapsedMs: since(preparing),
+            reused,
+          });
+        } catch (error) {
+          if (this.utterance === run)
+            this.captureFailed(
+              error,
+              "speaker-preparation",
+              recoveryCode(error),
+              run.attempt,
+              since(preparing),
+            );
+          return;
+        }
         run.speakerRoundId = crypto.randomUUID();
-      this.trace("mic-open-requested");
+      }
+      this.trace("mic-open-requested", {
+        ...(run.speakerRoundId && { speakerRound: run.speakerRoundId.slice(0, 8) }),
+      });
       const opening = performance.now();
       const capture = await openSpeechCapture(
         this.microphone,
