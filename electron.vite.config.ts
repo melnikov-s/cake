@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -20,25 +20,23 @@ export default defineConfig({
       externalizeDepsPlugin(),
       {
         name: "cake-native-speech",
-        async writeBundle() {
-          await buildNativeAssets(
-            resolve(import.meta.dirname, "out/main/native"),
-            async (script, output) => {
-              console.log(`[cake] Running ${script}`);
-              await new Promise<void>((resolveBuild, reject) => {
-                const child = spawn(
-                  process.execPath,
-                  [resolve(import.meta.dirname, "scripts", script), output],
-                  { stdio: "inherit" },
-                );
-                child.once("error", reject);
-                child.once("close", (code, signal) => {
-                  if (code === 0) resolveBuild();
-                  else reject(new Error(`${script} failed (${signal ?? code})`));
-                });
+        async writeBundle(options) {
+          if (!options.dir) throw new Error("Cake's main bundle requires an output directory");
+          await buildNativeAssets(join(options.dir, "native"), async (script, output) => {
+            console.log(`[cake] Running ${script}`);
+            await new Promise<void>((resolveBuild, reject) => {
+              const child = spawn(
+                process.execPath,
+                [resolve(import.meta.dirname, "scripts", script), output],
+                { stdio: "inherit" },
+              );
+              child.once("error", reject);
+              child.once("close", (code, signal) => {
+                if (code === 0) resolveBuild();
+                else reject(new Error(`${script} failed (${signal ?? code})`));
               });
-            },
-          );
+            });
+          });
         },
       },
     ],

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { mkdtemp, writeFile, access, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, access, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveConfig } from "electron-vite";
@@ -11,22 +12,35 @@ import { _electron } from "../../scripts/queued-electron.mjs";
 test("native RStateTree panel discovers Cake roots and rereads live navigation", async () => {
   test.setTimeout(900_000);
   const directory = await mkdtemp(join(tmpdir(), "cake-rst-devtools-"));
+  // Keep dependencies resolvable without replacing the production build under test.
+  const outDir = await mkdtemp(join(resolve("out"), "rst-devtools-"));
   const holdDirectory = process.env.CAKE_RST_INSPECTION_HOLD_DIR;
+  const productionBuild = async () => ({
+    main: createHash("sha256")
+      .update(await readFile(resolve("out/main/main.js")))
+      .digest("hex"),
+    hasDictationHelper: await access(resolve("out/main/native/cake-dictation")).then(
+      () => true,
+      () => false,
+    ),
+  });
+  const beforeBuild = await productionBuild();
   process.env.CAKE_BUILD_MODE = "slim";
   process.env.NODE_ENV = "development";
   process.env.NODE_ENV_ELECTRON_VITE = "development";
-  const resolved = await resolveConfig({}, "serve", "development");
+  const resolved = await resolveConfig({ build: { outDir } }, "serve", "development");
   const config = resolved.config;
   if (!config?.main || !config.preload || !config.renderer)
     throw new Error("Missing desktop development configuration");
   await build(config.main);
   await build(config.preload);
+  expect(await productionBuild()).toEqual(beforeBuild);
   let server = await createServer(config.renderer);
   await server.listen();
   const origin = server.resolvedUrls?.local[0];
   if (!origin) throw new Error("Missing loopback development origin");
   const application = await _electron.launch({
-    args: [resolve("out/main/main.js")],
+    args: [join(outDir, "main", "main.js")],
     env: {
       ...process.env,
       ELECTRON_RENDERER_URL: origin,
@@ -117,5 +131,7 @@ test("native RStateTree panel discovers Cake roots and rereads live navigation",
   } finally {
     await application.close();
     await server.close();
+    await rm(outDir, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true });
   }
 });
