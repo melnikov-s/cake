@@ -9,7 +9,7 @@ export type Tile = {
   w: number;
   h: number;
 };
-export type ReviewGroup = {
+type ReviewGroup = {
   name: string;
   at: string;
   x: number;

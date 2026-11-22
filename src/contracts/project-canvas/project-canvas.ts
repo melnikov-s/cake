@@ -7,9 +7,7 @@ const title = Schema.NonEmptyString.check(Schema.isTrimmed(), Schema.isMaxLength
 const body = Schema.NonEmptyString.check(Schema.isTrimmed(), Schema.isMaxLength(2000));
 const cardId = Schema.String.check(Schema.isUUID(4));
 const revision = Schema.Int.check(Schema.isGreaterThan(0));
-export const CanvasLink = Schema.String.check(
-  Schema.makeFilter((value) => !!parseCanvasLink(value)),
-);
+const CanvasLink = Schema.String.check(Schema.makeFilter((value) => !!parseCanvasLink(value)));
 export const CanvasProject = Schema.Struct({
   projectChatId: Schema.String.check(Schema.isPattern(/^project-chat:[a-f0-9]{64}$/)),
 });
@@ -28,7 +26,7 @@ export const CanvasPin = Schema.Struct({
   text: body,
   at: Schema.String,
 });
-export const CanvasContent = Schema.Union([
+const CanvasContent = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("decision"), text: body }),
   Schema.Struct({
     kind: Schema.Literal("artifact"),
@@ -37,7 +35,6 @@ export const CanvasContent = Schema.Union([
   }),
   Schema.Struct({ kind: Schema.Literal("screenshot"), attachmentId: TaskInputReference.fields.id }),
 ]);
-export type CanvasContent = typeof CanvasContent.Type;
 export const CanvasPublish = Schema.Struct({
   group: title,
   title,

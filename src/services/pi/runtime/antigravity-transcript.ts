@@ -12,7 +12,7 @@ import { TurnCanceledError } from "./RuntimeTurnCompletion";
 const startedType = "cake.antigravity.start/v1";
 export const antigravityResponseType = "cake.antigravity.reply/v1";
 const responseType = antigravityResponseType;
-export const antigravityReplyLabel =
+const antigravityReplyLabel =
   "[External assistant context: the following text was produced by Google Antigravity, not by Pi and not by the user.]";
 const textLimit = 131_072;
 const toolSegment = Schema.Struct({

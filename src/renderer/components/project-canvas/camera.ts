@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useRef } from "react";
 
 export type Cam = { x: number; y: number; z: number };
-export const MIN_Z = 0.08;
-export const MAX_Z = 2.4;
+const MIN_Z = 0.08;
+const MAX_Z = 2.4;
 const clampZ = (z: number) => Math.min(MAX_Z, Math.max(MIN_Z, z));
 
 // The camera writes straight to the page each frame through `apply`, never through React

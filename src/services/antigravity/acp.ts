@@ -103,7 +103,7 @@ const maxStdout = 16 * maxFrame;
 const handshakeTimeout = 10_000;
 const promptTimeout = 15 * 60_000;
 
-export type AcpStatus = "connecting" | "new" | "resumed" | "no-resume" | "resume-unavailable";
+type AcpStatus = "connecting" | "new" | "resumed" | "no-resume" | "resume-unavailable";
 export type AcpTool = typeof toolCall.Type;
 type AcpStop = typeof promptResponse.Type.stopReason;
 export type AcpPermission = {
