@@ -302,12 +302,19 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       .first()
       .click();
     const canvas = drawing.locator("canvas.interactive");
-    const bounds = await canvas.boundingBox();
-    if (!bounds) throw new Error("Native Excalidraw interactive canvas is unavailable");
-    await page.mouse.move(bounds.x + 380, bounds.y + 250);
-    await page.mouse.down();
-    await page.mouse.move(bounds.x + 470, bounds.y + 320, { steps: 8 });
-    await page.mouse.up();
+    const drawRectangle = async (start: number, end: number) => {
+      await canvas.scrollIntoViewIfNeeded();
+      const bounds = await canvas.boundingBox();
+      if (!bounds) throw new Error("Native Excalidraw interactive canvas is unavailable");
+      // Inline artifacts use the available chat width, not the screenshot's fixed-size canvas.
+      await page.mouse.move(bounds.x + bounds.width * start, bounds.y + bounds.height * start);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width * end, bounds.y + bounds.height * end, {
+        steps: 8,
+      });
+      await page.mouse.up();
+    };
+    await drawRectangle(0.45, 0.6);
     await expect
       .poll(
         async () =>
@@ -324,10 +331,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       .getByTitle(/Rectangle/)
       .first()
       .click();
-    await page.mouse.move(bounds.x + 500, bounds.y + 350);
-    await page.mouse.down();
-    await page.mouse.move(bounds.x + 580, bounds.y + 410, { steps: 8 });
-    await page.mouse.up();
+    await drawRectangle(0.65, 0.8);
     await expect(drawing.getByRole("alert")).toContainText("Fixture autosave failure");
     expect(
       (await invoke<State>("artifacts.state.read", stateScope)).value.elements.filter(
