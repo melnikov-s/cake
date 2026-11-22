@@ -231,20 +231,24 @@ for (const timing of ["next-user", "timer"] as const)
       // Only the global model ran; opening alone neither drains the FYI nor starts the recipient.
       expect(requests).toHaveLength(timing === "next-user" ? 4 : 3);
       await app.close();
-      if (timing === "timer") {
-        // Seed an expired durable deadline while the isolated backend is stopped.
-        // Normal five-minute timing remains covered by TestClock domain tests.
-        const path = join(cakeHome, "state", "session-families.json");
-        const state = JSON.parse(await readFile(path, "utf8"));
-        state.data.updateBatches = [
-          {
-            recipientSessionId: passiveId,
-            openedAt: new Date(Date.now() - 300_000).toISOString(),
-            dueAt: new Date(0).toISOString(),
-          },
-        ];
-        await writeFile(path, JSON.stringify(state));
-      }
+      // Keep the two delivery paths deterministic across a relaunch. Deadline policy
+      // itself is covered by TestClock domain tests; this fixture exercises both paths.
+      const familyFile = join(cakeHome, "state", "session-families.json");
+      const family = JSON.parse(await readFile(familyFile, "utf8"));
+      const notice = family.data.passiveNotices?.find(
+        (item: { recipientSessionId: string }) => item.recipientSessionId === passiveId,
+      );
+      expect(notice).toBeDefined();
+      expect(notice?.delivered).not.toBe(true);
+      const now = Date.now();
+      family.data.updateBatches = [
+        {
+          recipientSessionId: passiveId,
+          openedAt: new Date(timing === "timer" ? now - 300_000 : now).toISOString(),
+          dueAt: new Date(timing === "timer" ? 0 : now + 300_000).toISOString(),
+        },
+      ];
+      await writeFile(familyFile, JSON.stringify(family));
       app = await launch();
       await installLocalModelHttpGuard(app, origin);
       page = await app.firstWindow();
@@ -254,7 +258,7 @@ for (const timing of ["next-user", "timer"] as const)
           .getByRole("button", { name: "Open Project Chat for passive-project", exact: true })
           .click({ timeout: 20_000 });
         await expect(selected()).toHaveAttribute("data-session-id", passiveId, { timeout: 20_000 });
-        await expect(page.locator('[data-slot="session-message"]')).toHaveCount(0);
+        await expect(selected().locator('[data-slot="session-message"]')).toHaveText([]);
         await submit("Message Project Chat", "Read retained handoff");
       } else {
         // The recipient has never been opened; the ordinary scheduler drains the expired batch.

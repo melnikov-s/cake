@@ -216,6 +216,19 @@ test("user-visible performance collection @performance", async ({ browserName },
     page.on("pageerror", (error) => errors.push(error.message));
     await page.setViewportSize(fixture.viewport);
     await page.emulateMedia({ reducedMotion: "no-preference" });
+    const row = (i: number) => `.session-item[data-session-id="${sessionId(i)}"] .session-row`;
+    const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+    // Startup opens global Cake Chat. Start from the seeded source outside the measured interval.
+    await workspace.getByRole("button", { name: /^Sessions / }).click();
+    const expand = workspace.getByRole("button", {
+      name: "Expand Performance project",
+      exact: true,
+    });
+    await expect(
+      workspace.getByRole("button", { name: "Performance project", exact: true }),
+    ).toBeVisible();
+    if (await expand.isVisible()) await expand.click();
+    await workspace.locator(row(0)).click();
     await expect(page.locator(live).getByText(marker(0), { exact: true })).toBeVisible({
       timeout: 60000,
     });
@@ -228,7 +241,6 @@ test("user-visible performance collection @performance", async ({ browserName },
       categories: "devtools.timeline,blink.user_timing",
       transferMode: "ReturnAsStream",
     });
-    const row = (i: number) => `.session-item[data-session-id="${sessionId(i)}"] .session-row`;
     const pane = (i: number) => `[data-slot="session-pane"][data-session-id="${sessionId(i)}"]`;
     const switchTo = async (i: number) => {
       await page.locator(row(i)).click();
@@ -265,8 +277,8 @@ test("user-visible performance collection @performance", async ({ browserName },
         providerCalls: calls - before,
       });
     };
-    const checkComposer = async () => {
-      const composer = page.locator(input);
+    const checkComposer = async (selector = input) => {
+      const composer = page.locator(selector);
       await composer.focus();
       await expect(composer).toBeFocused();
       await composer.press("x");
@@ -319,13 +331,11 @@ test("user-visible performance collection @performance", async ({ browserName },
     await page
       .locator(`.session-item[data-session-id="${sessionId(2)}"] .session-resolve-action`)
       .click();
-    await page.getByRole("button", { name: "Expand Resolved", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Expand Performance project resolved", exact: true })
-      .last()
-      .click();
+    await workspace.getByRole("button", { name: "Resolved sessions", exact: true }).click();
     const resolvedRow = (i: number) =>
       `[aria-label="Resolved sessions"] .session-item[data-session-id="${sessionId(i)}"]`;
+    const projectHome = '[data-slot="session-pane"][data-session-id^="project-chat:"]';
+    const projectHomeInput = `${projectHome} textarea[aria-label="Message Project Chat"]`;
     for (let i = 0; i < n; i++) {
       await switchTo(0);
       await switchTo(1);
@@ -335,12 +345,12 @@ test("user-visible performance collection @performance", async ({ browserName },
         {
           event: "mousedown",
           target: resolve,
-          present: [`${pane(0)} ${live}`, resolvedRow(1), `${pane(0)} ${input}`],
-          text: marker(0),
+          present: [projectHome, projectHomeInput, resolvedRow(1)],
+          absent: [pane(1)],
         },
         () => page.locator(resolve).click(),
       );
-      await checkComposer();
+      await checkComposer(projectHomeInput);
       await page.locator(`${resolvedRow(1)} .session-row`).click();
       await expect(page.getByTestId("resolved-session-notice")).toBeVisible();
       const restore = page.locator(resolvedRow(1)).getByRole("button", { name: /^Restore / });

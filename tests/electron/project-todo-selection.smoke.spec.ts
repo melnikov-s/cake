@@ -157,7 +157,10 @@ test("to-do text selection and copying do not activate rows or their controls", 
     await page.mouse.down();
     await page.mouse.move(descriptionPoints.end.x, descriptionPoints.end.y, { steps: 20 });
     await page.mouse.up();
-    await expect.poll(selectedText).toContain(description);
+    // Chromium serializes collapsed Markdown whitespace as rendered, not as source.
+    await expect
+      .poll(async () => (await selectedText()).replace(/\s+/g, " "))
+      .toContain(description.replace(/\s+/g, " "));
     await unchanged();
     await clearSelection();
 

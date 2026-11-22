@@ -17,21 +17,19 @@ async function expectSearchGap(search: Locator, header: Locator) {
 
 async function expectAlignedTabs(strip: Locator) {
   const geometry = await strip.evaluate((element) => {
-    const header = element.parentElement!;
-    const pane = header.parentElement!;
+    const header = element.closest('[data-slot="workspace-tab-strip"]')!.parentElement!;
     const box = (node: Element) => {
       const { x, y, width, height } = node.getBoundingClientRect();
       return { x, y, width, height };
     };
     return {
       header: box(header),
-      pane: box(pane),
       strip: box(element),
       tabs: [...element.querySelectorAll("button")].map(box),
     };
   });
   // Companion tabs are content-sized pills in a 44px pane header (c7c99e7f), not an
-  // equal-width segmented track: 14px header inset, 4px gaps, vertically centered.
+  // equal-width segmented track: 14px header inset, 6px gaps, vertically centered.
   expect(geometry.header.height).toBe(44);
   expect(geometry.strip.x).toBe(geometry.header.x + 14);
   expect(geometry.tabs).toHaveLength(3);
@@ -43,7 +41,7 @@ async function expectAlignedTabs(strip: Locator) {
     );
     if (index > 0) {
       const previous = geometry.tabs[index - 1]!;
-      expect(tab.x - (previous.x + previous.width)).toBeCloseTo(4, 1);
+      expect(tab.x - (previous.x + previous.width)).toBeCloseTo(6, 1);
     }
   }
   expect(geometry.tabs.at(-1)!.x + geometry.tabs.at(-1)!.width).toBeLessThanOrEqual(
@@ -160,8 +158,8 @@ for (const theme of ["dark", "light"] as const) {
         workspaceHeader,
       );
       const modes = modeSelector.getByRole("button");
-      await expect(modes).toHaveCount(3);
-      for (const name of ["Main", "VS Code", "Browser"]) {
+      await expect(modes).toHaveCount(4);
+      for (const name of ["Main", "VS Code", "Browser", "Project Canvas"]) {
         const button = modeSelector.getByRole("button", { name, exact: true });
         await expect(button).toHaveText("");
         await expect(button).toHaveCSS("border-width", "0px");

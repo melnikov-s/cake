@@ -316,8 +316,12 @@ for (const referenceKind of ["Model", "Session"] as const) {
         await openMenu();
         await finishMenu(false);
         await configuration.focus();
+        await expect(configuration).toBeFocused();
         await expect(indicator).toHaveCount(0);
-        await composer.focus();
+        const editableBounds = (await composer.boundingBox())!;
+        await composer.click({
+          position: { x: editableBounds.width - 16, y: editableBounds.height / 2 },
+        });
         await expect(composer).toBeFocused();
         await expect(indicator).toHaveText("Listening");
       } finally {
@@ -838,7 +842,8 @@ test("Cake dictation shows readiness, types into chat and annotations, and keeps
     // Kill only this fixture's external recognizer: capture recovers without refocus,
     // preserving inserted text and creating exactly one replacement native worker.
     await configure({ ready: true, hold: true });
-    await composer.focus();
+    await composer.click();
+    await expect(composer).toBeFocused();
     await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
     const recoveryStarts = (await readFile(join(model, "starts.jsonl"), "utf8"))
       .trim()

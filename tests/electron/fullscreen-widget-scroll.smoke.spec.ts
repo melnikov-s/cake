@@ -103,8 +103,11 @@ for (const kind of ["widget", "html"] as const) {
         const surface = page.getByRole("dialog", { name: "Inline visualization", exact: true });
         const iframe = surface.locator("iframe");
         await expect(iframe).toBeVisible();
-        const content = (await (await iframe.elementHandle())!.contentFrame())!;
         const frame = iframe.contentFrame();
+        if (kind === "widget")
+          await expect(frame.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
+        else await expect(frame.getByTestId("tall-bottom")).toBeAttached();
+        const content = (await (await iframe.elementHandle())!.contentFrame())!;
 
         if (kind === "widget") {
           await expect(frame.getByRole("button", { name: "Explore detail" })).toBeVisible();
