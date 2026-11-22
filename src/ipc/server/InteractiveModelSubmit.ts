@@ -7,13 +7,13 @@ import {
 import type { CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { ClientConnections } from "../../services/clients/ClientConnections";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
-import { AntigravityRendererDocument } from "../protocol/RendererConnectionMiddleware";
+import { RendererDocumentLifetime } from "../protocol/RendererConnectionMiddleware";
 
 /** Capture the submitting document once, before any asynchronous launch work. */
 export const interactiveModelSubmit = Effect.fn("InteractiveModelSubmit.capture")(function* (
   connectionId: number,
 ) {
-  const document = Option.getOrUndefined(yield* Effect.serviceOption(AntigravityRendererDocument));
+  const document = Option.getOrUndefined(yield* Effect.serviceOption(RendererDocumentLifetime));
   const connections = yield* Effect.serviceOption(ClientConnections);
   const coordinator = yield* Effect.serviceOption(RendererRequestCoordinator);
   return (

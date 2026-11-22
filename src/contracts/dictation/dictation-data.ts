@@ -55,12 +55,15 @@ export interface SpeechRecognitionSettings extends Schema.Schema.Type<
   typeof SpeechRecognitionSettings
 > {}
 
+export const SpeakerRoundId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100));
+
 /** Bounded mono, 16 kHz, little-endian float32 PCM. Never persisted.
  * Both input workflows capture shared recognition settings for the utterance. */
 export const DictationAudio = Schema.Struct({
   utteranceId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
   pcm: Schema.String.check(Schema.isMaxLength(854_000), Schema.isPattern(/^[A-Za-z0-9+/]*={0,2}$/)),
   final: Schema.Boolean,
+  speakerRoundId: Schema.optionalKey(SpeakerRoundId),
   settings: Schema.optionalKey(SpeechRecognitionSettings),
 });
 export interface DictationAudio extends Schema.Schema.Type<typeof DictationAudio> {}

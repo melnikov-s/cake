@@ -5,6 +5,9 @@ import Foundation
 private struct Operation: Decodable {
   let operation: String
 }
+private struct EndRoundRequest: Decodable {
+  let speakerRoundId: String
+}
 private struct DetectionRequest: Decodable {
   let captureId: String
   let pcm: String
@@ -16,6 +19,9 @@ private final class Recognition {
   private let engine: AsrManager
   private let detector: SpeechDetector
   private let boosting: VocabularyBoosting
+  private let speaker: FirstSpeakerFilter
+  private var speakerRoundId: String?
+  private var speakerWindows = SpeakerWindows()
   private var transcript = RollingTranscript()
   private var newSamples = 0
   private var decodeDue = false
@@ -35,13 +41,16 @@ private final class Recognition {
     let models = try AsrModels.loadLocal(from: directory, version: .v2)
     engine = AsrManager(config: ASRConfig(tdtConfig: TdtConfig(blankId: 1024)), models: models)
     detector = try SpeechDetector(modelURL: vadURL)
+    speaker = try FirstSpeakerFilter(directory: vadURL.deletingLastPathComponent().appendingPathComponent("speaker"))
   }
 
   func warmup() async throws {
+    async let speakerWarmup: Void = speaker.warmup()
     var state = TdtDecoderState.make()
     _ = try await engine.transcribe([Float](repeating: 0, count: 12_800), decoderState: &state)
     _ = try await detector.classify(
       [Float](repeating: 0.00001, count: SpeechGate.frameSamples), state: .initial())
+    try await speakerWarmup
   }
 
   func prepareVocabulary() async throws { try await boosting.prepare() }
@@ -125,30 +134,66 @@ private final class Recognition {
     try await consume(gate.append(samples, speech: recognitionSpeech))
   }
 
-  func transcribe(_ request: AudioRequest) async throws -> String {
-    let samples = try request.samples()
-    let requestedSettings = request.settings ?? .standard
-    if utteranceId != request.utteranceId {
-      // Vocabulary revisions take effect on the next utterance, never halfway through
-      // an already committed rolling transcript.
-      try await boosting.configure(request.vocabulary ?? [])
-      utteranceId = request.utteranceId
-      settings = requestedSettings
-      gate = SpeechGate(settings: settings)
-      transcript = RollingTranscript()
-      newSamples = 0
-      decodeDue = false
-      pendingSamples = []
-      recognitionState = .initial()
-      recognitionSpeech = false
-    } else if requestedSettings != settings {
-      throw ProtocolError.invalidRequest
-    }
+  private func resetSpan() {
+    utteranceId = nil
+    transcript = RollingTranscript()
+    gate = SpeechGate(settings: settings)
+    newSamples = 0
+    decodeDue = false
+    pendingSamples = []
+    recognitionState = .initial()
+    recognitionSpeech = false
+    speakerWindows = SpeakerWindows()
+  }
+
+  func endRound(_ id: String) async throws {
+    try AudioRequest.validateID(id)
+    guard speakerRoundId == id else { return }
+    speakerRoundId = nil
+    resetSpan()
+    await speaker.reset()
+  }
+
+  private func consumePCM(_ samples: [Float]) async throws {
     pendingSamples.append(contentsOf: samples)
     while pendingSamples.count >= SpeechGate.frameSamples {
       let frame = Array(pendingSamples.prefix(SpeechGate.frameSamples))
       pendingSamples.removeFirst(SpeechGate.frameSamples)
       try await classifyRecognition(frame)
+    }
+  }
+
+  func transcribe(_ request: AudioRequest) async throws -> String {
+    let samples = try request.samples()
+    let requestedSettings = request.settings ?? .standard
+    if speakerRoundId != request.speakerRoundId {
+      speakerRoundId = request.speakerRoundId
+      resetSpan()
+      await speaker.reset()
+    }
+    if utteranceId != request.utteranceId {
+      // Vocabulary revisions take effect on the next utterance, never halfway through
+      // an already committed rolling transcript.
+      try await boosting.configure(request.vocabulary ?? [])
+      settings = requestedSettings
+      resetSpan()
+      utteranceId = request.utteranceId
+    } else if requestedSettings != settings {
+      throw ProtocolError.invalidRequest
+    }
+    if speakerRoundId != nil {
+      try speakerWindows.append(samples)
+      var previous: [Float] = []
+      while let window = speakerWindows.next(final: request.final) {
+        // At most one speaker prediction in flight while recognition consumes the
+        // previous approved window. No unverified PCM is passed to the recognizer.
+        async let approved = speaker.approved(window)
+        try await consumePCM(previous)
+        previous = try await approved
+      }
+      try await consumePCM(previous)
+    } else {
+      try await consumePCM(samples)
     }
     if request.final {
       if !pendingSamples.isEmpty { try await classifyRecognition(pendingSamples) }
@@ -161,8 +206,7 @@ private final class Recognition {
     let text = transcript.text
     if request.final {
       // Explicit finalization releases capture-local audio, including the retained overlap.
-      transcript = RollingTranscript()
-      utteranceId = nil
+      resetSpan()
     }
     // Every result is a full replacement. The renderer owns and protects the spoken insertion.
     return text
@@ -184,7 +228,7 @@ struct CakeDictation {
       if CommandLine.arguments.dropFirst() == ["--version"] {
         try reply([
           "engine": "FluidAudio/CoreML", "version": "0.17.4", "minimumMacOS": "14.0",
-          "protocolVersion": 3,
+          "protocolVersion": 4,
         ])
         return
       }
@@ -206,6 +250,10 @@ struct CakeDictation {
           try reply(["text": try await recognition.transcribe(AudioRequest.decode(line))])
         case "detectSpeech":
           try reply(["speech": try await recognition.detect(line)])
+        case "endRound":
+          let request = try JSONDecoder().decode(EndRoundRequest.self, from: Data(line.utf8))
+          try await recognition.endRound(request.speakerRoundId)
+          try reply(["roundEnded": true])
         default: throw ProtocolError.invalidRequest
         }
       }

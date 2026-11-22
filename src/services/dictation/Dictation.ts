@@ -31,7 +31,11 @@ export class Dictation extends Context.Service<
     readonly remove: () => Effect.Effect<void, DictationError>;
     readonly prepare: () => Effect.Effect<void, DictationError>;
     readonly release: () => Effect.Effect<void, DictationError>;
-    readonly transcribe: (audio: DictationAudio) => Effect.Effect<string, DictationError>;
+    readonly endRound: (id: string) => Effect.Effect<void, DictationError>;
+    readonly transcribe: (
+      audio: DictationAudio,
+      document?: AbortSignal,
+    ) => Effect.Effect<string, DictationError>;
     readonly detectSpeech: (audio: SpeechDetectionAudio) => Effect.Effect<boolean, DictationError>;
   }
 >()("cake/services/dictation/Dictation") {}

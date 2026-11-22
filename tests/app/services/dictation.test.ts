@@ -22,6 +22,7 @@ const native = vi.hoisted(() => ({
   ready: () => Promise.resolve(),
   prepareVocabulary: vi.fn(async () => {}),
   transcribe: vi.fn(async () => "hello"),
+  endRound: vi.fn(async () => undefined),
   detectSpeech: vi.fn(async () => true),
   constructed: vi.fn(),
   close: vi.fn(),
@@ -68,6 +69,7 @@ vi.mock("../../../src/services/dictation/local-parakeet", () => ({
     }
     prepareVocabulary = native.prepareVocabulary;
     transcribe = native.transcribe;
+    endRound = native.endRound;
     detectSpeech = native.detectSpeech;
     close = native.close;
   },
@@ -92,6 +94,32 @@ const state = (service: Dictation["Service"]) =>
     Stream.runCollect,
     Effect.map((values) => values[0]!),
   );
+
+it.effect(
+  "ending a round only clears its own state; losing the active document drops the worker",
+  () =>
+    Effect.gen(function* () {
+      const service = yield* Dictation;
+      yield* service.prepare();
+      const first = new AbortController();
+      const second = new AbortController();
+      const input = { utteranceId: "utterance", pcm: "", final: false };
+      yield* service.transcribe({ ...input, speakerRoundId: "first" }, first.signal);
+      yield* service.endRound("first");
+      expect(native.endRound).toHaveBeenCalledExactlyOnceWith("first");
+      first.abort();
+      expect(native.close).not.toHaveBeenCalled();
+      yield* service.transcribe({ ...input, speakerRoundId: "second" }, second.signal);
+      yield* service.endRound("first");
+      expect(native.endRound).toHaveBeenCalledTimes(1);
+      second.abort();
+      expect(native.close).toHaveBeenCalledOnce();
+      yield* service.prepare();
+      const before = native.transcribe.mock.calls.length;
+      yield* service.transcribe({ ...input, speakerRoundId: "second" }, second.signal);
+      expect(native.transcribe).toHaveBeenCalledTimes(before);
+    }).pipe(Effect.provide(live())),
+);
 
 it.effect(
   "vocabulary edits serialize with CAS, project revisions and reach the raw worker only after explicit encoder installation",

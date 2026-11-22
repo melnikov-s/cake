@@ -1,6 +1,7 @@
-import { Effect, Stream } from "effect";
+import { Effect, Option, Stream } from "effect";
 import { Dictation } from "../../services/dictation/Dictation";
 import { DictationRpc } from "../protocol/DictationRpc";
+import { RendererDocumentLifetime } from "../protocol/RendererConnectionMiddleware";
 
 export const dictationHandlers = DictationRpc.of({
   "dictation.listVocabulary": (input) =>
@@ -27,6 +28,12 @@ export const dictationHandlers = DictationRpc.of({
       : Effect.logInfo("Dictation step", trace),
   "dictation.detectSpeech": (audio) =>
     Effect.flatMap(Dictation, (service) => service.detectSpeech(audio)),
+  "dictation.endRound": ({ speakerRoundId }) =>
+    Effect.flatMap(Dictation, (service) => service.endRound(speakerRoundId)),
   "dictation.transcribe": (audio) =>
-    Effect.flatMap(Dictation, (service) => service.transcribe(audio)),
+    Effect.gen(function* () {
+      const service = yield* Dictation;
+      const document = yield* Effect.serviceOption(RendererDocumentLifetime);
+      return yield* service.transcribe(audio, Option.getOrUndefined(document));
+    }),
 });

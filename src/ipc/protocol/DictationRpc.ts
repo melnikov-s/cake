@@ -11,6 +11,7 @@ import {
   DictationState,
   DictationTrace,
   SpeechDetectionAudio,
+  SpeakerRoundId,
 } from "../../contracts/dictation/dictation-data";
 
 export const DictationRpc = RpcGroup.make(
@@ -44,6 +45,11 @@ export const DictationRpc = RpcGroup.make(
   Rpc.make("dictation.detectSpeech", {
     payload: SpeechDetectionAudio,
     success: Schema.Boolean,
+    error: DictationError,
+  }),
+  Rpc.make("dictation.endRound", {
+    payload: { speakerRoundId: SpeakerRoundId },
+    success: Schema.Void,
     error: DictationError,
   }),
   Rpc.make("dictation.transcribe", {

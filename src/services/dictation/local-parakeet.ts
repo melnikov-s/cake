@@ -61,6 +61,7 @@ const WorkerReply = Schema.Union([
   Schema.Struct({ prepared: Schema.Literal(true) }),
   Schema.Struct({ text: Schema.String }),
   Schema.Struct({ speech: Schema.Boolean }),
+  Schema.Struct({ roundEnded: Schema.Literal(true) }),
   Schema.Struct({ error: Schema.String }),
 ]);
 const Config = Schema.Struct({ modelPath: Schema.String });
@@ -344,6 +345,13 @@ export class ParakeetWorker {
     const reply = await response;
     if (!("text" in reply)) throw new Error("Invalid native transcription response");
     return reply.text;
+  }
+  async endRound(speakerRoundId: string) {
+    if (this.failure) throw this.failure;
+    const response = this.response(30_000);
+    this.process.stdin.write(`${JSON.stringify({ operation: "endRound", speakerRoundId })}\n`);
+    const reply = await response;
+    if (!("roundEnded" in reply)) throw new Error("Invalid native dictation round response");
   }
   async detectSpeech(audio: SpeechDetectionAudio) {
     if (this.failure) throw this.failure;

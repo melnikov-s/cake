@@ -17,10 +17,10 @@ export class RendererConnection extends Context.Service<
 >()("cake/ipc/RendererConnection") {}
 
 /** Main-process only. Captured at native IPC ingress, never decoded from a client. */
-export class AntigravityRendererDocument extends Context.Service<
-  AntigravityRendererDocument,
+export class RendererDocumentLifetime extends Context.Service<
+  RendererDocumentLifetime,
   AbortSignal
->()("cake/ipc/AntigravityRendererDocument") {}
+>()("cake/ipc/RendererDocumentLifetime") {}
 
 export class RendererConnectionMiddleware extends RpcMiddleware.Service<
   RendererConnectionMiddleware,

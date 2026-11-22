@@ -1,21 +1,26 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { VocabularyEntry } from "../../src/contracts/dictation/vocabulary";
 import { describe, expect, test } from "vitest";
 import { ParakeetWorker, validateModel } from "../../src/services/dictation/local-parakeet";
 
 const model = process.env.CAKE_DICTATION_TEST_MODEL;
+const helper = process.env.CAKE_DICTATION_TEST_HELPER;
 const ctc = process.env.CAKE_DICTATION_TEST_CTC;
+const librispeech = process.env.CAKE_DICTATION_TEST_LIBRISPEECH;
 const run = promisify(execFile);
 
 async function syntheticSpeech(root: string, name: string, text: string) {
   const aiff = join(root, `${name}.aiff`),
     wavPath = join(root, `${name}.wav`);
   await run("/usr/bin/say", ["-v", "Samantha", "-o", aiff, text]);
-  await run("/usr/bin/afconvert", ["-f", "WAVE", "-d", "LEF32@16000", "-c", "1", aiff, wavPath]);
+  return convertSpeech(aiff, wavPath);
+}
+async function convertSpeech(source: string, wavPath: string) {
+  await run("/usr/bin/afconvert", ["-f", "WAVE", "-d", "LEF32@16000", "-c", "1", source, wavPath]);
   const wav = await readFile(wavPath);
   for (let offset = 12; offset + 8 <= wav.length;) {
     const size = wav.readUInt32LE(offset + 4);
@@ -23,7 +28,7 @@ async function syntheticSpeech(root: string, name: string, text: string) {
       return wav.subarray(offset + 8, offset + 8 + size);
     offset += 8 + size + (size % 2);
   }
-  throw new Error("Synthetic WAV is missing PCM audio");
+  throw new Error("Converted WAV is missing PCM audio");
 }
 function generatedPcm(samples: number, sample: (index: number) => number) {
   const pcm = Buffer.alloc(samples * 4);
@@ -35,6 +40,7 @@ async function stream(
   id: string,
   pcm: Buffer,
   vocabulary: readonly VocabularyEntry[] = [],
+  speakerRoundId?: string,
 ) {
   const partials: string[] = [];
   for (let offset = 0; offset < pcm.length; offset += 51_200)
@@ -44,6 +50,7 @@ async function stream(
           utteranceId: id,
           pcm: pcm.subarray(offset, offset + 51_200).toString("base64"),
           final: false,
+          ...(speakerRoundId && { speakerRoundId }),
         },
         vocabulary,
       ),
@@ -52,13 +59,11 @@ async function stream(
 }
 async function fixture() {
   if (!model) throw new Error("CAKE_DICTATION_TEST_MODEL is required");
+  if (!helper)
+    throw new Error("Set CAKE_DICTATION_TEST_HELPER to a native helper staged outside out/.");
   await validateModel(model);
   const root = await mkdtemp(join(tmpdir(), "cake-native-dictation-"));
-  const worker = new ParakeetWorker(
-    process.env.CAKE_DICTATION_TEST_HELPER ?? resolve("out/main/native/cake-dictation"),
-    model,
-    ctc ?? join(root, "ctc"),
-  );
+  const worker = new ParakeetWorker(helper, model, ctc ?? join(root, "ctc"));
   return {
     root,
     worker,
@@ -69,11 +74,81 @@ async function fixture() {
   };
 }
 
-// Real bundled Core ML models, explicit opt-in, synthetic speech only: never a live microphone.
-// pnpm build && CAKE_DICTATION_TEST_MODEL=/path/to/model pnpm test:integration tests/integration/dictation-native.test.ts
+// Real bundled Core ML models, explicit opt-in. Synthetic or labeled recorded speech; no live mic.
+// See docs/development/dictation.md for staging the helper and supplying the model.
 describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)(
   "native speech input",
   () => {
+    test.skipIf(!librispeech)(
+      "keeps the first real voice and its opening, rejects another voice and overlap, and resets on cancel",
+      async () => {
+        if (!librispeech) throw new Error("CAKE_DICTATION_TEST_LIBRISPEECH is required");
+        await using f = await fixture();
+        await f.worker.ready;
+        const clip = (id: string) => {
+          const [speaker, chapter] = id.split("-");
+          return convertSpeech(
+            join(librispeech, speaker!, chapter!, `${id}.flac`),
+            join(f.root, `${id}.wav`),
+          );
+        };
+        // LibriSpeech test-clean, CC BY 4.0. Speaker 6930 is A; 1320 is B.
+        const [a, b, aAgain] = await Promise.all([
+          clip("6930-75918-0000"),
+          clip("1320-122617-0022"),
+          clip("6930-75918-0002"),
+        ]);
+        const gap = Buffer.alloc(8_000 * 4);
+        const finish = (utteranceId: string, speakerRoundId: string) =>
+          f.worker.transcribe({ utteranceId, speakerRoundId, pcm: "", final: true });
+        // Sequence in one continuous round, without a VAD endpoint between speakers.
+        const partials = await stream(
+          f.worker,
+          "first-span",
+          Buffer.concat([a, gap, b, gap, aAgain]),
+          [],
+          "round-A",
+        );
+        expect(partials.some((text) => /concord returned/i.test(text))).toBe(true);
+        const text = await finish("first-span", "round-A");
+        expect(text).toMatch(/^concord returned to its place/i);
+        expect(text).toMatch(/congratulations were poured/i);
+        for (const interim of [...partials, text])
+          expect(interim).not.toMatch(/delawares|tortoise|outstrip|deer/i);
+
+        // Finalizing a text span (quiet command boundary) is not a new speaker round.
+        expect((await stream(f.worker, "next-span", b, [], "round-A")).every((t) => t === "")).toBe(
+          true,
+        );
+        expect(await finish("next-span", "round-A")).toBe("");
+
+        // Leave the old span incomplete; cancellation must clear its audio and speaker even
+        // when the same opaque ID is reused by this test. A delayed old stop must not erase B.
+        await f.worker.transcribe({
+          utteranceId: "cancelled",
+          speakerRoundId: "round-A",
+          pcm: a.subarray(0, 51_200).toString("base64"),
+          final: false,
+        });
+        await f.worker.endRound("round-A");
+        await stream(f.worker, "B-span", b, [], "round-A");
+        await f.worker.endRound("obsolete-round");
+        const bText = await finish("B-span", "round-A");
+        expect(bText).toMatch(/delawares are children/i);
+        expect(bText).not.toMatch(/concord/i);
+
+        const mixture = generatedPcm(
+          Math.min(aAgain.length, b.length) / 4,
+          (i) => (aAgain.readFloatLE(i * 4) + b.readFloatLE(i * 4)) * 0.5,
+        );
+        const mixed = await stream(f.worker, "mixed", mixture, [], "round-overlap");
+        expect([...mixed, await finish("mixed", "round-overlap")].every((t) => t === "")).toBe(
+          true,
+        );
+      },
+      180_000,
+    );
+
     // Both model paths are explicit opt-ins. This test never downloads or changes user data.
     test.skipIf(!ctc)(
       "acoustically corrects a known name while preserving legitimate banks, live revisions and raw finalization",

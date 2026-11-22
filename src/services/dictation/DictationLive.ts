@@ -60,7 +60,13 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
       let worker: ParakeetWorker | undefined;
       let vocabularyPrepared = false;
       let vocabulary: DictationVocabulary | undefined;
+      let round: { id: string; detach: () => void } | undefined;
+      const clearRound = () => {
+        round?.detach();
+        round = undefined;
+      };
       const stop = () => {
+        clearRound();
         worker?.close();
         worker = undefined;
         vocabularyPrepared = false;
@@ -352,15 +358,40 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
             }),
           );
         }),
-        transcribe: Effect.fn("Dictation.transcribe")(function* (audio: DictationAudio) {
+        endRound: Effect.fn("Dictation.endRound")(function* (id: string) {
+          yield* guarded(
+            Effect.gen(function* () {
+              const active = worker;
+              if (!active || round?.id !== id) return;
+              yield* native(() => active.endRound(id));
+              clearRound();
+            }),
+          );
+        }),
+        transcribe: Effect.fn("Dictation.transcribe")(function* (
+          audio: DictationAudio,
+          document?: AbortSignal,
+        ) {
           return yield* guarded(
             Effect.gen(function* () {
+              const id = audio.speakerRoundId;
+              if (id && document?.aborted) return "";
               const active = worker;
               if (!active)
                 return yield* new DictationError({
                   code: "engine-not-ready",
                   message: "The speech model is not ready. Enable dictation again to retry.",
                 });
+              if (round?.id !== id) {
+                clearRound();
+                if (id) {
+                  // Normal stops reset only this round and keep the worker warm. A lost
+                  // renderer cannot send that command; terminate its worker immediately.
+                  const abandon = () => stop();
+                  document?.addEventListener("abort", abandon, { once: true });
+                  round = { id, detach: () => document?.removeEventListener("abort", abandon) };
+                }
+              }
               const installed = (yield* SubscriptionRef.get(state)).vocabularyInstalled;
               return yield* native((signal) => {
                 const cancel = () => active.close();

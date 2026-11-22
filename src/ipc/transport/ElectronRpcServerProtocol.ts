@@ -10,7 +10,7 @@ import { ClientConnections } from "../../services/clients/ClientConnections";
 import { RpcServer, RpcSerialization } from "effect/rpc";
 import type { FromClientEncoded } from "effect/rpc/RpcMessage";
 import {
-  AntigravityRendererDocument,
+  RendererDocumentLifetime,
   correlationIdHeader,
   rendererConnectionHeader,
 } from "../protocol/RendererConnectionMiddleware";
@@ -20,7 +20,7 @@ import { parseRendererRpcMessage } from "./ElectronRpcTransport";
 interface IncomingMessage {
   readonly connectionId: number;
   readonly message: FromClientEncoded;
-  readonly antigravityDocument?: AbortSignal;
+  readonly documentLifetime?: AbortSignal;
 }
 
 function withTrustedMetadata(connectionId: number, message: FromClientEncoded): FromClientEncoded {
@@ -113,8 +113,9 @@ export const ElectronRpcServerProtocolLive = Layer.effect(
         (message.tag === "sessionChats.prompt" ||
           message.tag === "projectSessions.start" ||
           message.tag === "cakeChats.start" ||
-          message.tag === "savedDrafts.activate")
-          ? { antigravityDocument: watched.capture(event) }
+          message.tag === "savedDrafts.activate" ||
+          message.tag === "dictation.transcribe")
+          ? { documentLifetime: watched.capture(event) }
           : null),
       });
     };
@@ -133,12 +134,10 @@ export const ElectronRpcServerProtocolLive = Layer.effect(
       run: (writeRequest) =>
         Effect.forever(
           Queue.take(incoming).pipe(
-            Effect.flatMap(({ connectionId, message, antigravityDocument }) => {
+            Effect.flatMap(({ connectionId, message, documentLifetime }) => {
               const write = writeRequest(connectionId, message);
-              return antigravityDocument
-                ? write.pipe(
-                    Effect.provideService(AntigravityRendererDocument, antigravityDocument),
-                  )
+              return documentLifetime
+                ? write.pipe(Effect.provideService(RendererDocumentLifetime, documentLifetime))
                 : write;
             }),
           ),

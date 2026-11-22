@@ -25,6 +25,11 @@ readline.createInterface({input:process.stdin}).on('line', (line) => {
     process.stdout.write(JSON.stringify({speech: voiced > pcm.length / 8})+'\\n');
     return;
   }
+  if (request.operation === 'endRound') {
+    speech.clear();
+    process.stdout.write(JSON.stringify({roundEnded:true})+'\\n');
+    return;
+  }
   const pcm = Buffer.from(request.pcm || '', 'base64');
   for (let offset = 0; offset < pcm.length; offset += 4) {
     if (Math.abs(pcm.readFloatLE(offset)) >= 0.015) speech.add(request.utteranceId);

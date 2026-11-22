@@ -211,6 +211,49 @@ private func sharedLookbackAndSettingsDecodeAreValidated() throws {
   }
 }
 
+private func firstSpeakerTests() throws {
+  typealias Frame = FirstSpeaker.Frame
+  let a = [Frame](repeating: .single(2), count: 30)
+  let b = [Frame](repeating: .single(0), count: 30)
+  let overlap = [Frame](repeating: .uncertain, count: 30)
+  let vectors: (Int) -> [Float]? = { $0 == 2 ? [1, 0] : [0, 1] }
+  var speaker = FirstSpeaker()
+  try check(speaker.allowedLabels(overlap, from: 0, until: 30, embedding: vectors).isEmpty,
+    "Overlapping or uncertain speech cannot select a speaker")
+  try check(speaker.allowedLabels(Array(a.prefix(10)) + overlap + Array(a.prefix(15)),
+    from: 0, until: 55, embedding: vectors).isEmpty,
+    "An overlap breaks the qualifying first stretch")
+  try check(speaker.allowedLabels(a + b, from: 0, until: 60, embedding: vectors) == [2],
+    "First clear speaker wins even when a model label with a lower ID also speaks")
+  try check(speaker.allowedLabels(b, from: 0, until: 30, embedding: vectors).isEmpty,
+    "Reject the other speaker")
+  try check(speaker.allowedLabels(b, from: 0, until: 30) { _ in [1, 0] } == [0],
+    "Accept the same speaker under a different local model label")
+  try check(speaker.allowedLabels(a + b, from: 0, until: 60) { _ in [1, 0] }.isEmpty,
+    "Do not guess among equally plausible matches")
+  speaker = FirstSpeaker()
+  try check(speaker.allowedLabels(b, from: 0, until: 30, embedding: vectors) == [0],
+    "A new round can pick a different speaker")
+
+  var windows = SpeakerWindows()
+  let size = SpeakerWindows.stride + SpeakerWindows.context
+  let samples = (0..<160_000).map(Float.init)
+  try windows.append(Array(samples.prefix(size - 1)))
+  try check(windows.next(final: false) == nil, "Hold the opening until lookahead is available")
+  try windows.append(Array(samples.dropFirst(size - 1)))
+  try rejects { try windows.append([0]) }
+  var output: [Float] = []
+  while let window = windows.next(final: true) {
+    try check(window.audio.count <= SpeakerWindows.stride + 2 * SpeakerWindows.context,
+      "A catch-up request never grows the model window")
+    output += window.audio[window.output]
+  }
+  try check(output == samples, "Lookahead never duplicates audio, including in the final drain")
+  try windows.append([1])
+  try check(windows.next(final: true)?.audio == [1], "A flushed span retains no old PCM")
+  try rejects { try windows.append([Float](repeating: 0, count: 160_001)) }
+}
+
 @main
 struct ProtocolTests {
   static func main() throws {
@@ -224,6 +267,7 @@ struct ProtocolTests {
     try thresholdHysteresisPreservesDefaultsAndAllowsStricterCapture()
     try sharedGateSettingsPreserveOnsetAndBoundContinuousSegments()
     try sharedLookbackAndSettingsDecodeAreValidated()
-    print("Native dictation: protocol, speech-boundary and rolling-revision tests passed")
+    try firstSpeakerTests()
+    print("Native dictation: protocol, speech-boundary, speaker and rolling-revision tests passed")
   }
 }

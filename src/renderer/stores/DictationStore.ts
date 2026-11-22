@@ -40,6 +40,8 @@ interface Utterance {
   bounded: boolean;
   voiceCommand: boolean;
   id: string;
+  speakerRoundId: string;
+  roundSent: boolean;
   target: DictationTarget;
   controller: AbortController;
   capture?: MicrophoneCapture;
@@ -422,9 +424,17 @@ export class DictationStore extends Store<{
     run?.capture?.stop();
     if (!retainMicrophone) this.microphone.release();
     if (run) {
+      this.endSpeakerRound(run);
       run.chunks = [];
       run.samples = 0;
     }
+  }
+  private endSpeakerRound(run: Utterance) {
+    if (!run.roundSent) return;
+    run.roundSent = false;
+    // Do not use the aborted microphone signal: this discards in-flight native state,
+    // without killing the warm recognizer or awaiting it on the capture path.
+    void this.props.client.endRound({ speakerRoundId: run.speakerRoundId }).catch(() => undefined);
   }
   /** Pause the current field without changing the user's dictation preference. */
   pauseCapture(reason = "paused"): void {
@@ -697,6 +707,8 @@ export class DictationStore extends Store<{
         ) || this.props.preferences.values.dictationDiscardFilters.length > 0,
       voiceCommand: false,
       id: crypto.randomUUID(),
+      speakerRoundId: crypto.randomUUID(),
+      roundSent: false,
       target,
       controller: new AbortController(),
       chunks: [],
@@ -822,8 +834,15 @@ export class DictationStore extends Store<{
     const chunks = run.chunks;
     run.chunks = [];
     run.samples = 0;
+    run.roundSent = true;
     const text = await this.props.client.transcribe(
-      { utteranceId, pcm: encodePcm(chunks), final, settings: run.settings },
+      {
+        utteranceId,
+        speakerRoundId: run.speakerRoundId,
+        pcm: encodePcm(chunks),
+        final,
+        settings: run.settings,
+      },
       { signal: this.signal },
     );
     if (this.utterance === run && run.id === utteranceId) {
@@ -1025,6 +1044,7 @@ export class DictationStore extends Store<{
       if (this.utterance !== run) return false;
       await this.transcribe(run, true);
       if (this.utterance !== run) return false;
+      this.endSpeakerRound(run);
       await run.cleanupPending;
       if (this.utterance !== run) return false;
       await this.clean(run);

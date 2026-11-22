@@ -27,6 +27,20 @@ pages, widgets or OS-wide typing. It requires Apple Silicon and macOS 14+.
    follows live shared mute updates; an already-observed update takes precedence
    over its initial routing snapshot.
 
+Each listening round keeps the **first clear voice** it hears, even if that voice is
+not yours. There is no setup phrase or saved speaker profile. Cake buffers the opening
+while it checks who is speaking, then recognizes the accepted opening as well as later
+matching speech. Speech without enough evidence (including very short first words on
+their own), detected overlap and uncertain matches can be omitted. The filter is not
+speaker authentication or a guarantee against background speech.
+
+A round starts when a dictation field starts listening. Blur, thinking pauses, edits
+that start a new text insertion, and the quiet boundary used by spoken-send and discard
+rules do **not** pick a new speaker. Sending, Escape, muting, switching fields or chats,
+model changes, entering conversation mode, disabling dictation, and capture failure
+end the round. Listening again starts with no speaker selected. Conversation mode
+continues to use its own unfiltered recognition path.
+
 Recognition re-decodes a bounded recent-audio window with fresh decoder state.
 Recent words and punctuation can change as more speech arrives, including across
 thinking pauses. Older words settle after two matching hypotheses and at least six
@@ -76,9 +90,25 @@ Use the checked-in manifests for exact versions, sizes and checksums:
 - [Native package](../../native/dictation/Package.swift) and its checked-in resolution
   pin FluidAudio. Its Apache-2.0 license and third-party notices accompany the helper.
 
-Recognition and detection are offline after installation. Audio/recognition buffers
-remain in memory; Cake does not record audio files or log transcripts. Submitting a
-draft and using optional utility cleanup are separate provider operations.
+- [Bundled speaker manifest](../../native/dictation/speaker-manifest.json):
+  FluidInference Core ML conversions of [pyannote segmentation 3.0](https://huggingface.co/pyannote/segmentation-3.0)
+  (CNRS, MIT) and [WeSpeaker ResNet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM)
+  (CC BY 4.0), about 13.8 MB total. Cake ships the unmodified conversions with
+  FluidInference's `NOTICE.md` and `LICENSE`. The manifest pins and verifies each file.
+
+Recognition, detection and speaker matching are offline after installation. The
+local helper keeps one round's anonymous speaker reference in memory, discarding it
+along with pending audio at the end of the round. Cake does not record, upload or log
+voiceprints or microphone audio. Submitting a draft and using optional utility cleanup
+are separate provider operations; utility cleanup receives accepted text only.
+
+The helper evaluates bounded windows (1.024 seconds of output plus up to 512 ms of
+context on either side). It gates audio **before** recognition; only verified samples
+reach Parakeet. Work runs on the recognition side of capture, in one speaker-inference
+slot, which can process the next window while recognition consumes the previous one.
+The existing eight-second capture backlog limit still fails visibly rather than building
+an unbounded queue or passing unchecked audio through. A document crash, reload or
+loss of its window terminates the round's worker if a normal reset cannot run.
 
 ## Native build and distribution
 
@@ -157,14 +187,23 @@ Run protocol tests without a physical microphone:
 pnpm test:dictation:native
 ```
 
-To exercise the real helper and Core ML model, provide existing compatible assets:
+To exercise the real helper and Core ML model, provide an existing compatible Parakeet
+model. Stage the helper outside `out/`: integration setup replaces `out/` with a slim build.
 
 ```sh
-pnpm build
-CAKE_DICTATION_TEST_MODEL=/absolute/path/to/model pnpm test:integration tests/integration/dictation-native.test.ts
+helper_dir="$(mktemp -d)"
+pnpm validation:run -- node scripts/build-dictation.mjs "$helper_dir"
+CAKE_DICTATION_TEST_HELPER="$helper_dir/cake-dictation" \
+  CAKE_DICTATION_TEST_MODEL=/absolute/path/to/model \
+  pnpm test:integration tests/integration/dictation-native.test.ts
 ```
 
+To also test labeled real speech, set `CAKE_DICTATION_TEST_LIBRISPEECH` to the
+`LibriSpeech/test-clean` directory from the [OpenSLR LibriSpeech release](https://www.openslr.org/12/)
+(CC BY 4.0, read aloud by LibriVox volunteers). The opt-in test reads clips from speakers
+6930 and 1320; it also mixes two clips to exercise overlap. The test does not download
+fixtures or use a microphone.
+
 Follow [Electron testing](electron-testing.md) for compiled output and hidden-window
-rules. Synthetic speech and controlled fixtures verify mechanics, not physical-microphone
-quality or broad recognition accuracy. Keep measured results and model comparisons in
-artifacts rather than appending a verification history here.
+rules. Recorded fixtures and controlled tests do not validate physical-microphone
+quality, false accepts across arbitrary voices, or recognition accuracy in a noisy room.

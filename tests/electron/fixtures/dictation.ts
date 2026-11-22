@@ -92,6 +92,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
   for await (const line of readline.createInterface({ input: process.stdin })) {
     const request = JSON.parse(line);
     if (request.operation === 'prepareVocabulary') { reply({ prepared: true }); continue; }
+    if (request.operation === 'endRound') { reply({ roundEnded: true }); continue; }
     if (request.operation === 'detectSpeech') {
       if (config().holdDetection) fs.writeFileSync(path.join(directory, 'detection.json'), JSON.stringify({ held: true }));
       await wait(value => !value.holdDetection);

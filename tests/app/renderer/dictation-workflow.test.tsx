@@ -221,6 +221,7 @@ function renderDictation(
         listVocabulary: async () => ({ revision: 0, entries: [], total: 0, nextOffset: null }),
         prepare,
         release,
+        endRound: async () => undefined,
         trace,
         claim,
         setMuted,
@@ -3582,6 +3583,34 @@ describe("Dictation writing-field workflow", () => {
       listening();
     },
   );
+
+  it("keeps the speaker across a manual text edit and resets the round on Escape", async () => {
+    const endRound = vi.fn<Client["dictation"]["endRound"]>(async () => undefined);
+    using f = renderDictation({ composerFocusEnabled: true, client: { dictation: { endRound } } });
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    await f.recognize(0, "Spoken opening");
+    const first = f.requests[0]!.audio;
+    expect(first.speakerRoundId).toBeTruthy();
+    await f.user.type(message(), " typed");
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    await waitFor(() => expect(f.requests).toHaveLength(2));
+    expect(f.requests[1]!.audio.utteranceId).not.toBe(first.utteranceId);
+    expect(f.requests[1]!.audio.speakerRoundId).toBe(first.speakerRoundId);
+    expect(endRound).not.toHaveBeenCalled();
+    await f.user.keyboard("{Escape}");
+    expect(endRound).toHaveBeenCalledExactlyOnceWith({ speakerRoundId: first.speakerRoundId });
+    await f.recognize(1, "Stale words");
+    expect(message().value).not.toContain("Stale words");
+    await f.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    await f.user.click(message());
+    await waitFor(listening);
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    await waitFor(() => expect(f.requests).toHaveLength(3));
+    expect(f.requests[2]!.audio.speakerRoundId).toBeTruthy();
+    expect(f.requests[2]!.audio.speakerRoundId).not.toBe(first.speakerRoundId);
+  });
 
   it("leaves inactive Escape and already handled Escape alone", async () => {
     using f = renderDictation();

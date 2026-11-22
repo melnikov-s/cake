@@ -13,13 +13,18 @@ public struct AudioRequest: Decodable, Sendable {
   public let final: Bool
   public let settings: SpeechRecognitionSettings?
   public let vocabulary: [VocabularyEntry]?
+  public let speakerRoundId: String?
+
+  public static func validateID(_ id: String) throws {
+    guard !id.isEmpty, id.utf8.count <= 400 else { throw ProtocolError.invalidRequest }
+  }
 
   public static func decode(_ line: String) throws -> AudioRequest {
     guard line.utf8.count <= 1_100_000 else { throw ProtocolError.invalidRequest }
     let request = try JSONDecoder().decode(AudioRequest.self, from: Data(line.utf8))
-    guard !request.utteranceId.isEmpty, request.utteranceId.utf8.count <= 400,
-      request.pcm.utf8.count <= 854_000
-    else { throw ProtocolError.invalidRequest }
+    try validateID(request.utteranceId)
+    if let roundID = request.speakerRoundId { try validateID(roundID) }
+    guard request.pcm.utf8.count <= 854_000 else { throw ProtocolError.invalidRequest }
     try request.settings?.validate()
     guard (request.vocabulary?.count ?? 0) <= 100 else { throw ProtocolError.invalidRequest }
     for entry in request.vocabulary ?? [] { try entry.validate() }
