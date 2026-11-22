@@ -5,17 +5,21 @@ import { fileURLToPath, URL } from "node:url";
 import process from "node:process";
 const [root, name, mode = "wait"] = process.argv.slice(2);
 if (mode === "detached" || mode === "parallel" || mode === "alongside") {
-  const shim = fileURLToPath(
+  const executable = fileURLToPath(
     new URL("../../scripts/electron-queue-executable.sh", import.meta.url),
+  );
+  const shim = fileURLToPath(
+    new URL("../../scripts/electron-queue-executable.mjs", import.meta.url),
   );
   const launch = (jobName, alongside = false) =>
     new Promise((resolve, reject) => {
-      const child = spawn(shim, [fileURLToPath(import.meta.url), root, jobName], {
+      const child = spawn(executable, [fileURLToPath(import.meta.url), root, jobName], {
         detached: true,
         stdio: "inherit",
         env: {
           ...process.env,
           CAKE_QUEUED_ELECTRON_NODE: process.execPath,
+          CAKE_QUEUED_ELECTRON_SHIM: shim,
           CAKE_QUEUED_ELECTRON_EXECUTABLE: process.execPath,
           CAKE_ELECTRON_QUEUE_ALONGSIDE: alongside ? "1" : "",
         },

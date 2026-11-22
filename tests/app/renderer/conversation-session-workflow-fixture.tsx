@@ -2,7 +2,10 @@ import { StoreProvider } from "r-state-tree/react";
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
-import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import type {
+  ConversationSnapshot,
+  TurnId,
+} from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import {
@@ -30,7 +33,7 @@ export const workingAssistantPart: UiPart = {
   text: "Working on the prompt",
   status: "streaming",
 };
-export function queuedUserPart(text: string): UiPart {
+export function queuedUserPart(text: string, turnId?: TurnId): UiPart {
   return {
     id: "queued-part",
     kind: "text",
@@ -40,6 +43,7 @@ export function queuedUserPart(text: string): UiPart {
     deliveryState: "queued",
     queuedInput: {
       itemId: "20000000-0000-4000-8000-000000000001",
+      ...(turnId !== undefined ? { turnId } : null),
       text,
       attachments: [],
       renderUserMessageAsMarkdown: false,

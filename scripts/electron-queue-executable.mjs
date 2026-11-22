@@ -42,6 +42,7 @@ socket.once("data", () => {
   if (stopping) return;
   const env = { ...process.env };
   delete env.CAKE_QUEUED_ELECTRON_NODE;
+  delete env.CAKE_QUEUED_ELECTRON_SHIM;
   child = spawn(executable, process.argv.slice(2), { stdio: "inherit", env });
   child.once("error", (error) => {
     console.error(`[cake:electron] launch failed: ${error.message}`);

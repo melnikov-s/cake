@@ -538,7 +538,7 @@ describe("Catalog projection resource integration", () => {
       expect(retainedSnapshots).toBe(7_600);
       const orderedSnapshots = (fixture: typeof incremental) =>
         (toSnapshot(fixture.models.sessionCatalog).sessions ?? []).toSorted((left, right) =>
-          left.sessionId.localeCompare(right.sessionId),
+          (left.sessionId ?? "").localeCompare(right.sessionId ?? ""),
         );
       expect(orderedSnapshots(incremental)).toEqual(orderedSnapshots(legacy));
     } finally {
