@@ -11,6 +11,7 @@ import { windowState } from "../fixtures/window-state";
 import { openSettings } from "./fixtures/workspace-navigation";
 
 const source = process.env.CAKE_PACKAGED_APP;
+const installedPath = "/usr/bin:/bin:/usr/sbin:/sbin";
 
 test("standalone app launches after relocation and manual replacement preserves settings and chats", async () => {
   test.skip(!source, "Set CAKE_PACKAGED_APP to a full distribution build of Cake.app.");
@@ -79,7 +80,7 @@ test("standalone app launches after relocation and manual replacement preserves 
       cwd: temporaryRoot,
       env: {
         ...process.env,
-        PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+        PATH: installedPath,
         NODE_PATH: "",
         ELECTRON_RENDERER_URL: "",
         ELECTRON_RUN_AS_NODE: "",
@@ -140,13 +141,16 @@ test("standalone app launches after relocation and manual replacement preserves 
 
     application = await launch();
     const page = await application.firstWindow();
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible({
       timeout: 30_000,
     });
     expect(
       await application.evaluate(({ app, BrowserWindow, Menu }) => ({
         packaged: app.isPackaged,
         path: app.getAppPath(),
+        executableSearchPath: process.env.PATH,
         hidden: BrowserWindow.getAllWindows().every((window) => !window.isVisible()),
         updates: Menu.getApplicationMenu()?.items[0]?.submenu?.items.some(
           (item) => item.label === "Check for Updates…" && item.enabled,
@@ -155,6 +159,7 @@ test("standalone app launches after relocation and manual replacement preserves 
     ).toMatchObject({
       packaged: true,
       path: await realpath(resources),
+      executableSearchPath: installedPath,
       hidden: true,
       updates: true,
     });
@@ -187,6 +192,7 @@ test("standalone app launches after relocation and manual replacement preserves 
     await replaceApp();
     application = await launch();
     const restored = await application.firstWindow();
+    await openSettings(restored);
     await restored.getByRole("button", { name: /^Appearance/ }).click({ timeout: 30_000 });
     await expect(restored.getByLabel("Color theme", { exact: true })).toHaveValue("dark");
     expect(await readFile(transcript, "utf8")).toBe(originalChat);

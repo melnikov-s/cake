@@ -6,7 +6,7 @@ import process from "node:process";
 const [root, name, mode = "wait"] = process.argv.slice(2);
 if (mode === "detached" || mode === "parallel" || mode === "alongside") {
   const shim = fileURLToPath(
-    new URL("../../scripts/electron-queue-executable.mjs", import.meta.url),
+    new URL("../../scripts/electron-queue-executable.sh", import.meta.url),
   );
   const launch = (jobName, alongside = false) =>
     new Promise((resolve, reject) => {
@@ -15,6 +15,7 @@ if (mode === "detached" || mode === "parallel" || mode === "alongside") {
         stdio: "inherit",
         env: {
           ...process.env,
+          CAKE_QUEUED_ELECTRON_NODE: process.execPath,
           CAKE_QUEUED_ELECTRON_EXECUTABLE: process.execPath,
           CAKE_ELECTRON_QUEUE_ALONGSIDE: alongside ? "1" : "",
         },

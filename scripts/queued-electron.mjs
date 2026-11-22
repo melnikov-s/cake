@@ -3,7 +3,7 @@ import electronExecutable from "electron";
 import { fileURLToPath, URL } from "node:url";
 import process from "node:process";
 
-const executablePath = fileURLToPath(new URL("./electron-queue-executable.mjs", import.meta.url));
+const executablePath = fileURLToPath(new URL("./electron-queue-executable.sh", import.meta.url));
 
 // The executable handshake, not app code after startup, registers detached
 // Electron groups with the supervisor before any real application is started.
@@ -25,6 +25,7 @@ export const _electron = {
       env: {
         ...(options.env ?? process.env),
         CAKE_ELECTRON_QUEUE_SOCKET: socketPath,
+        CAKE_QUEUED_ELECTRON_NODE: process.execPath,
         CAKE_QUEUED_ELECTRON_EXECUTABLE: options.executablePath ?? electronExecutable,
         CAKE_ELECTRON_QUEUE_ALONGSIDE: alongsideCurrentApplication ? "1" : "",
       },

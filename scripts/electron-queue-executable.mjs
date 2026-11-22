@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /* global process, console, setTimeout, setInterval, clearInterval */
 import { spawn } from "node:child_process";
 import { connect } from "node:net";
@@ -41,7 +40,9 @@ socket.once("connect", () =>
 );
 socket.once("data", () => {
   if (stopping) return;
-  child = spawn(executable, process.argv.slice(2), { stdio: "inherit", env: process.env });
+  const env = { ...process.env };
+  delete env.CAKE_QUEUED_ELECTRON_NODE;
+  child = spawn(executable, process.argv.slice(2), { stdio: "inherit", env });
   child.once("error", (error) => {
     console.error(`[cake:electron] launch failed: ${error.message}`);
     process.exit(1);
