@@ -3584,9 +3584,64 @@ describe("Dictation writing-field workflow", () => {
     },
   );
 
+  it("switches from legacy unfiltered dictation to a new speaker round and back without losing the draft", async () => {
+    const endRound = vi.fn<Client["dictation"]["endRound"]>(async () => undefined);
+    using f = renderDictation({
+      client: { dictation: { endRound } },
+      snapshot: {
+        children: {
+          speechInputSettingsStore: { state: { preferences: { shortCommands: false } } },
+        },
+      },
+    });
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    const filter = screen.getByRole("switch", { name: "Filter dictation to the first speaker" });
+    expect(filter.getAttribute("aria-checked")).toBe("false");
+    await f.user.click(mode());
+    await f.user.type(message(), "Typed draft");
+    const speak = () => f.audio.push(new Float32Array(12_800).fill(0.1));
+    await speak();
+    expect(f.requests[0]!.audio).not.toHaveProperty("speakerRoundId");
+    await f.recognize(0, "Ordinary speech");
+    await speak();
+
+    await f.user.click(filter);
+    await waitFor(listening);
+    await f.recognize(1, "Late unfiltered speech");
+    expect(endRound).not.toHaveBeenCalled();
+    expect(message().value).toBe("Typed draft Ordinary speech");
+    await speak();
+    const firstRound = f.requests[2]!.audio.speakerRoundId;
+    expect(firstRound).toBeTruthy();
+    await f.recognize(2, "Filtered speech");
+    await speak();
+
+    await f.user.click(filter);
+    await waitFor(listening);
+    await f.recognize(3, "Late filtered speech");
+    expect(endRound).toHaveBeenCalledExactlyOnceWith({ speakerRoundId: firstRound });
+    expect(message().value).toBe("Typed draft Ordinary speech Filtered speech");
+    await speak();
+    expect(f.requests[4]!.audio).not.toHaveProperty("speakerRoundId");
+    await f.recognize(4, "Unfiltered again");
+    expect(message().value).toBe("Typed draft Ordinary speech Filtered speech Unfiltered again");
+
+    await f.user.click(filter);
+    await waitFor(listening);
+    await speak();
+    const secondRound = f.requests[5]!.audio.speakerRoundId;
+    expect(secondRound).toBeTruthy();
+    expect(secondRound).not.toBe(firstRound);
+    await f.recognize(5, "New speaker");
+    expect(message().value).toBe(
+      "Typed draft Ordinary speech Filtered speech Unfiltered again New speaker",
+    );
+  });
+
   it("keeps the speaker across a manual text edit and resets the round on Escape", async () => {
     const endRound = vi.fn<Client["dictation"]["endRound"]>(async () => undefined);
     using f = renderDictation({ composerFocusEnabled: true, client: { dictation: { endRound } } });
+    f.root.speechInputSettingsStore.setDictationFirstSpeaker(true);
     await f.user.click(mode());
     await f.user.click(message());
     await f.audio.push(new Float32Array(12_800).fill(0.1));

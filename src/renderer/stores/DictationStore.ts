@@ -40,7 +40,7 @@ interface Utterance {
   bounded: boolean;
   voiceCommand: boolean;
   id: string;
-  speakerRoundId: string;
+  speakerRoundId?: string;
   roundSent: boolean;
   target: DictationTarget;
   controller: AbortController;
@@ -72,7 +72,8 @@ type StartReason =
   | "recovery"
   | "edit"
   | "resume"
-  | "device";
+  | "device"
+  | "speaker-filter";
 const attemptId = () => crypto.randomUUID().slice(0, 8);
 const CLEANUP_SILENCE_SAMPLES = 3 * 16_000;
 // Match SpeechGate's quiet endpoint, not utility cleanup's longer thinking pause.
@@ -185,6 +186,12 @@ export class DictationStore extends Store<{
       untracked(() => {
         const run = this.utterance;
         if (!listening || !run || run.finishing) return;
+        if (preferences.dictationFirstSpeaker !== !!run.speakerRoundId) {
+          // Seal only the visible draft. Do not flush old-policy audio or let a late
+          // hypothesis revise the insertion after the new round starts.
+          void this.start(run.target, "speaker-filter");
+          return;
+        }
         const sendPhrase = run.target.submit ? phrase : undefined;
         if (run.sendPhrase === sendPhrase && run.bounded === (!!sendPhrase || filtersEnabled))
           return;
@@ -430,7 +437,7 @@ export class DictationStore extends Store<{
     }
   }
   private endSpeakerRound(run: Utterance) {
-    if (!run.roundSent) return;
+    if (!run.roundSent || !run.speakerRoundId) return;
     run.roundSent = false;
     // Do not use the aborted microphone signal: this discards in-flight native state,
     // without killing the warm recognizer or awaiting it on the capture path.
@@ -707,7 +714,6 @@ export class DictationStore extends Store<{
         ) || this.props.preferences.values.dictationDiscardFilters.length > 0,
       voiceCommand: false,
       id: crypto.randomUUID(),
-      speakerRoundId: crypto.randomUUID(),
       roundSent: false,
       target,
       controller: new AbortController(),
@@ -745,6 +751,8 @@ export class DictationStore extends Store<{
       // Logged even when superseded: a finished load with no later step pinpoints the stall.
       this.trace("model-load-finished", { attempt: run.attempt, elapsedMs: since(loading) });
       if (this.utterance !== run) return;
+      if (this.props.preferences.values.dictationFirstSpeaker)
+        run.speakerRoundId = crypto.randomUUID();
       this.trace("mic-open-requested");
       const opening = performance.now();
       const capture = await openSpeechCapture(
@@ -834,11 +842,11 @@ export class DictationStore extends Store<{
     const chunks = run.chunks;
     run.chunks = [];
     run.samples = 0;
-    run.roundSent = true;
+    if (run.speakerRoundId) run.roundSent = true;
     const text = await this.props.client.transcribe(
       {
         utteranceId,
-        speakerRoundId: run.speakerRoundId,
+        ...(run.speakerRoundId && { speakerRoundId: run.speakerRoundId }),
         pcm: encodePcm(chunks),
         final,
         settings: run.settings,

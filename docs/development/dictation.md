@@ -27,8 +27,10 @@ pages, widgets or OS-wide typing. It requires Apple Silicon and macOS 14+.
    follows live shared mute updates; an already-observed update takes precedence
    over its initial routing snapshot.
 
-Each listening round keeps the **first clear voice** it hears, even if that voice is
-not yours. There is no setup phrase or saved speaker profile. Cake buffers the opening
+In **Settings → Voice & Dictation → Speech input**, turn on **Filter dictation to the
+first speaker** to keep only the first clear voice heard in each listening round,
+even if that voice is not yours. The switch is off by default, including on upgrade.
+When off, dictation uses ordinary recognition without loading or running the speaker models. There is no setup phrase or saved speaker profile. Cake buffers the opening
 while it checks who is speaking, then recognizes the accepted opening as well as later
 matching speech. Speech without enough evidence (including very short first words on
 their own), detected overlap and uncertain matches can be omitted. The filter is not
@@ -38,7 +40,9 @@ A round starts when a dictation field starts listening. Blur, thinking pauses, e
 that start a new text insertion, and the quiet boundary used by spoken-send and discard
 rules do **not** pick a new speaker. Sending, Escape, muting, switching fields or chats,
 model changes, entering conversation mode, disabling dictation, and capture failure
-end the round. Listening again starts with no speaker selected. Conversation mode
+end the round. Changing the filter during capture also starts a new round: visible
+draft text stays, and pending audio from the previous round is dropped. Listening
+again starts with no speaker selected. Conversation mode
 continues to use its own unfiltered recognition path.
 
 Recognition re-decodes a bounded recent-audio window with fresh decoder state.
@@ -89,7 +93,6 @@ Use the checked-in manifests for exact versions, sizes and checksums:
   with the helper; users do not install it separately.
 - [Native package](../../native/dictation/Package.swift) and its checked-in resolution
   pin FluidAudio. Its Apache-2.0 license and third-party notices accompany the helper.
-
 - [Bundled speaker manifest](../../native/dictation/speaker-manifest.json):
   FluidInference Core ML conversions of [pyannote segmentation 3.0](https://huggingface.co/pyannote/segmentation-3.0)
   (CNRS, MIT) and [WeSpeaker ResNet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM)
@@ -102,7 +105,7 @@ along with pending audio at the end of the round. Cake does not record, upload o
 voiceprints or microphone audio. Submitting a draft and using optional utility cleanup
 are separate provider operations; utility cleanup receives accepted text only.
 
-The helper evaluates bounded windows (1.024 seconds of output plus up to 512 ms of
+When the filter is on, the helper evaluates bounded windows (1.024 seconds of output plus up to 512 ms of
 context on either side). It gates audio **before** recognition; only verified samples
 reach Parakeet. Work runs on the recognition side of capture, in one speaker-inference
 slot, which can process the next window while recognition consumes the previous one.

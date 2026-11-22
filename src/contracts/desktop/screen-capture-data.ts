@@ -77,6 +77,7 @@ export const CapturePreferences = Schema.Struct({
     deviceId: Schema.String,
     textProcessingMode: TextProcessingMode,
     recognition: SpeechRecognitionSettings,
+    firstSpeaker: Schema.optionalKey(Schema.Boolean),
   }),
   defaultDestination: Schema.optionalKey(CaptureDestination),
 });

@@ -44,6 +44,12 @@ for (const theme of ["dark", "light"] as const) {
       await expect(disclosure).toHaveAttribute("aria-controls", "advanced-voice-settings");
       await expect(advanced).toHaveCount(0);
       await expect(sensitivity).toBeVisible();
+      const speakerFilter = section.getByRole("switch", {
+        name: "Filter dictation to the first speaker",
+      });
+      await expect(speakerFilter).not.toBeChecked();
+      await speakerFilter.press("Space");
+      await expect(speakerFilter).toBeChecked();
       await disclosure.focus();
       await disclosure.press("Enter");
       await expect(disclosure).toHaveAttribute("aria-expanded", "true");
@@ -144,6 +150,7 @@ for (const theme of ["dark", "light"] as const) {
       };
       await expect.poll(preferences).toEqual({
         ...defaultSpeechInputPreferences,
+        dictationFirstSpeaker: true,
         speechStartThreshold: 0.65,
         speechContinueThreshold: 0.05,
         shortCommands: false,
@@ -155,6 +162,7 @@ for (const theme of ["dark", "light"] as const) {
         );
       }
       await expect(shortCommands).toBeChecked();
+      await expect(speakerFilter).not.toBeChecked();
       await expect.poll(preferences).toEqual(defaultSpeechInputPreferences);
       expect(
         await application.evaluate(({ BrowserWindow }) =>

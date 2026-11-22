@@ -84,6 +84,8 @@ export class ScreenCaptureAttachmentStore extends Store<{
     const sidebar = this.props.sidebar();
     const settings = this.props.settings();
     const customTheme = settings.activeCustomTheme;
+    const dictation = this.props.dictation();
+    const speech = dictation.props.preferences.values;
     return {
       annotationColor: this.annotationColor,
       appearance: {
@@ -94,11 +96,12 @@ export class ScreenCaptureAttachmentStore extends Store<{
         sidebarCharactersEnabled: settings.sidebarCharactersEnabled,
       },
       dictation: {
-        enabled: this.props.dictation().enabled,
-        muted: this.props.dictation().muted,
-        deviceId: this.props.dictation().deviceId,
-        textProcessingMode: this.props.dictation().textProcessingMode,
-        recognition: speechRecognitionSettings(this.props.dictation().props.preferences.values),
+        enabled: dictation.enabled,
+        muted: dictation.muted,
+        deviceId: dictation.deviceId,
+        textProcessingMode: dictation.textProcessingMode,
+        recognition: speechRecognitionSettings(speech),
+        firstSpeaker: speech.dictationFirstSpeaker,
       },
       projects: this.props.projects.orderedProjectPaths.map((path) => {
         // Preserve sidebar ordering, including collapsed descendants. Unsent pane

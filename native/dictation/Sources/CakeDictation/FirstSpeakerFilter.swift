@@ -3,7 +3,7 @@ import DictationProtocol
 import FluidAudio
 import Foundation
 
-/// The models are warm, but audio and the reference belong only to the active dictation round.
+/// Models are loaded on first use; audio and the reference belong only to the active round.
 /// Core ML inference runs on this actor, separate from capture and the ASR decoder.
 actor FirstSpeakerFilter {
   private let segmentation: MLModel
@@ -19,12 +19,6 @@ actor FirstSpeakerFilter {
     let embeddingURL = directory.appendingPathComponent("wespeaker_v2.mlmodelc")
     segmentation = try MLModel(contentsOf: segmentURL, configuration: config)
     embeddings = EmbeddingExtractor(embeddingModel: try MLModel(contentsOf: embeddingURL, configuration: config))
-  }
-
-  func warmup() throws {
-    let silence = [Float](repeating: 0, count: sampleCount)
-    _ = try classify(silence, frames: 1)
-    _ = try embeddings.getEmbeddings(audio: silence, masks: [[Float](repeating: 1, count: frameCount)])
   }
 
   func reset() { speaker = FirstSpeaker() }

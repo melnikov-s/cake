@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Effect, Exit, Predicate, Queue, Schema, Stream } from "effect";
 import { Rpc } from "effect/rpc";
+import type { Client } from "../../../src/renderer/client/Client";
 import { ElectronRpc } from "../../../src/ipc/protocol/ElectronRpc";
 import {
   CapturePreferences,
@@ -51,8 +52,12 @@ function captureDictation(
     finish: async () => {},
     discardPending: async () => {},
   }));
+  const transcribe = vi.fn<Client["dictation"]["transcribe"]>(async () => "Annotation");
   const client = createTestClient({
     dictation: {
+      transcribe,
+      detectSpeech: async () => true,
+      endRound: async () => {},
       prepare: async () => {},
       claim: async () => ({ claim: 1 }),
       trace: async () => {},
@@ -84,6 +89,7 @@ function captureDictation(
     finishScreenCapture,
     open,
     stop,
+    transcribe,
     async emit(muted: boolean) {
       await act(async () => {
         Queue.offerUnsafe(updates, { ...installedDictationState, status: "ready", muted });
@@ -115,7 +121,7 @@ function captureDictation(
 
 describe("Capture dictation mute", () => {
   it("decodes an older main's capture response produced from the real originating capture command", async () => {
-    // The pre-mute main build decodes/encodes these fields, stripping a newer origin's mute.
+    // The older main only echoes the fields it knows, stripping the newer options.
     const fields = CapturePreferences.fields.dictation.fields;
     const legacyPreferences = Schema.Struct({
       ...CapturePreferences.fields,
@@ -135,6 +141,7 @@ describe("Capture dictation mute", () => {
         electron: {
           startScreenCapture: async (preferences) => {
             expect(preferences.dictation.muted).toBe(true);
+            expect(preferences.dictation.firstSpeaker).toBe(true);
             const wireRouting = Schema.encodeSync(Schema.toCodecJson(CapturePreferences))(
               preferences,
             );
@@ -156,15 +163,18 @@ describe("Capture dictation mute", () => {
     });
     origin.root.dictationStore.enabled = true;
     origin.root.dictationStore.muted = true;
+    origin.root.speechInputSettingsStore.setDictationFirstSpeaker(true);
     await origin.root.screenCaptureStore.capture();
     const decoded = Schema.decodeUnknownSync(Schema.toCodecJson(Rpc.exitSchema(rpc)))(response);
     expect(decoded._tag).toBe("Success");
     if (!Exit.isSuccess(decoded)) throw new Error("Capture response failed");
     expect(decoded.value.routing.dictation.muted).toBeUndefined();
+    expect(decoded.value.routing.dictation.firstSpeaker).toBeUndefined();
     await using overlay = captureDictation(decoded.value);
     await overlay.initialize();
     await overlay.annotate();
     expect(overlay.store.dictationStore.muted).toBe(true);
+    expect(overlay.store.speechPreferences.values.dictationFirstSpeaker).toBe(false);
     expect(overlay.store.awaitingMuteState).toBe(true);
     expect(screen.getByText(/Dictation mute state is unavailable/)).toBeDefined();
     expect(overlay.open).not.toHaveBeenCalled();
@@ -209,6 +219,37 @@ describe("Capture dictation mute", () => {
       expect(overlay.store.awaitingMuteState).toBe(false);
       if (enabled && !muted) await waitFor(() => expect(overlay.open).toHaveBeenCalledOnce());
       else expect(overlay.open).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([true, false])(
+    "uses the originating window's first-speaker setting (%s) for annotation dictation",
+    async (firstSpeaker) => {
+      let snapshot = captureSnapshot(false);
+      using origin = createRendererStoreFixture({
+        client: {
+          electron: {
+            startScreenCapture: async (preferences) => {
+              snapshot = {
+                ...snapshot,
+                routing: Schema.decodeUnknownSync(CapturePreferences)(preferences),
+              };
+              return { annotationColor: preferences.annotationColor };
+            },
+          },
+        },
+      });
+      origin.root.dictationStore.enabled = true;
+      origin.root.speechInputSettingsStore.setDictationFirstSpeaker(firstSpeaker);
+      await origin.root.screenCaptureStore.capture();
+      await using overlay = captureDictation(snapshot);
+      await overlay.initialize();
+      await overlay.annotate();
+      await act(async () => overlay.open.mock.lastCall?.[0](new Float32Array(12_800).fill(0.1)));
+      expect(overlay.transcribe).toHaveBeenCalledOnce();
+      const audio = overlay.transcribe.mock.lastCall?.[0];
+      if (firstSpeaker) expect(audio?.speakerRoundId).toBeTruthy();
+      else expect(audio).not.toHaveProperty("speakerRoundId");
     },
   );
 

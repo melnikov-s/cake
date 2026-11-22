@@ -103,6 +103,7 @@ export class ScreenCaptureOverlayStore extends Store<{
           minimumSpeechMs: recognition.minimumSpeechMs,
           prerollMs: recognition.prerollMs,
           maximumUtteranceSeconds: recognition.maximumUtteranceSeconds,
+          dictationFirstSpeaker: voice.firstSpeaker === true,
         };
         // Seed mute before annotation focus can start capture. The live shared observation
         // may have arrived during snapshot loading; never overwrite it with older routing.

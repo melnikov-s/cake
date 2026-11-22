@@ -1183,6 +1183,11 @@ describe("Agent Settings through the real application-control/Client/domain boun
       });
       origin.root.dictationStore.busy = true;
       origin.root.dictationStore.error = "Native model unavailable";
+      await call("settings.dictation.update", { action: "first-speaker", enabled: true });
+      expect(await call("settings.dictation.get")).toMatchObject({
+        value: { speechInput: { dictationFirstSpeaker: true } },
+      });
+      expect(otherWindow.root.speechInputSettingsStore.values.dictationFirstSpeaker).toBe(false);
       await call("settings.dictation.update", {
         action: "voice-submit",
         enabled: true,

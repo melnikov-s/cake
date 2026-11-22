@@ -129,6 +129,7 @@ export const speechInputControls = [
 export type SpeechInputNumericSetting = (typeof speechInputControls)[number]["key"];
 export type SpeechInputPreferences = Record<SpeechInputNumericSetting, number> & {
   shortCommands: boolean;
+  dictationFirstSpeaker: boolean;
   dictationVoiceSend: boolean;
   dictationSendPhrase: string;
   dictationDiscardFilters: ReadonlyArray<DictationDiscardFilter>;
@@ -144,6 +145,7 @@ export const defaultSpeechInputPreferences: SpeechInputPreferences = {
   interruptionWords: 4,
   interruptionWindowMs: 3000,
   shortCommands: true,
+  dictationFirstSpeaker: false,
   dictationVoiceSend: false,
   dictationSendPhrase: "send it",
   dictationDiscardFilters: [],
@@ -164,6 +166,7 @@ export function normalizeSpeechInputPreferences(
     readBoolean(input?.shortCommands),
     () => result.shortCommands,
   );
+  result.dictationFirstSpeaker = input?.dictationFirstSpeaker === true;
   result.dictationVoiceSend = input?.dictationVoiceSend === true;
   result.dictationSendPhrase = Option.getOrElse(
     readString(input?.dictationSendPhrase),

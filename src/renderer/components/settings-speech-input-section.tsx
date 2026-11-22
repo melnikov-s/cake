@@ -40,6 +40,28 @@ export const SettingsSpeechInputSection = observer(function SettingsSpeechInputS
           maxLabel="Reject more noise"
           onValueChange={(value) => store.setNumber(sensitivity.key, value)}
         />
+        <div
+          id="setting-dictation-first-speaker"
+          className="flex items-center justify-between gap-6 px-3.5 py-3"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <label
+              htmlFor="dictation-first-speaker"
+              className="text-xs font-medium text-foreground"
+            >
+              Filter dictation to the first speaker
+            </label>
+            <p id="dictation-first-speaker-description" className="text-xs text-muted-foreground">
+              Keep the first clear voice in each listening round. Does not affect conversation mode.
+            </p>
+          </div>
+          <Switch
+            id="dictation-first-speaker"
+            aria-describedby="dictation-first-speaker-description"
+            checked={values.dictationFirstSpeaker}
+            onCheckedChange={(enabled) => store.setDictationFirstSpeaker(enabled)}
+          />
+        </div>
         <div id="setting-dictation-voice-submit" className="grid gap-3 px-3.5 py-3">
           <div className="flex items-center justify-between gap-6">
             <label htmlFor="dictation-voice-send" className="text-xs font-medium text-foreground">

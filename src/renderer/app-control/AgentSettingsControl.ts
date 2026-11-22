@@ -191,6 +191,9 @@ async function executeAgentSettings(
       const input = invocation.arguments;
       // These window preferences remain editable in UI during native installation/error.
       switch (input.action) {
+        case "first-speaker":
+          settings.speechInput.setDictationFirstSpeaker(input.enabled);
+          return dictationView();
         case "voice-submit":
           if (input.phrase !== undefined) settings.speechInput.setDictationSendPhrase(input.phrase);
           settings.speechInput.setDictationVoiceSend(input.enabled);

@@ -1595,8 +1595,10 @@ describe("Project Session conversation mode", () => {
       screen.queryByText("Listening", { selector: '[data-slot="dictation-indicator"]' }),
     ).toBeNull();
     const opens = vi.mocked(f.microphone.open).mock.calls.length;
+    act(() => f.root.speechInputSettingsStore.setDictationFirstSpeaker(true));
     await f.frames(0.1, 8);
     expect((input as HTMLTextAreaElement).value).toBe("Recognized speech");
+    expect(f.transcribe.mock.lastCall?.[0]).not.toHaveProperty("speakerRoundId");
     expect(f.microphone.open).toHaveBeenCalledTimes(opens);
     await f.user.click(screen.getByRole("button", { name: "Exit conversation mode" }));
     await f.user.click(input);

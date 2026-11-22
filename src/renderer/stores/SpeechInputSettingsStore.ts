@@ -8,7 +8,7 @@ import {
 
 /** Window-owned shared speech-input and voice-only policy preferences.
  * Persisted through the Store snapshot; last local edit wins. Recognition tuning freezes
- * on capture entry; DictationStore seals and restarts capture for voice-submission edits. */
+ * on capture entry; DictationStore handles live changes to dictation-only policies. */
 export class SpeechInputSettingsStore extends Store {
   @snapshot preferences = normalizeSpeechInputPreferences();
   get values() {
@@ -19,6 +19,9 @@ export class SpeechInputSettingsStore extends Store {
   }
   setShortCommands(enabled: boolean): void {
     this.preferences = { ...this.values, shortCommands: enabled };
+  }
+  setDictationFirstSpeaker(enabled: boolean): void {
+    this.preferences = { ...this.values, dictationFirstSpeaker: enabled };
   }
   setDictationVoiceSend(enabled: boolean): void {
     this.preferences = { ...this.values, dictationVoiceSend: enabled };

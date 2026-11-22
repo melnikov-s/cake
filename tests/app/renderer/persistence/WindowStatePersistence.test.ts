@@ -369,6 +369,8 @@ describe("WindowStatePersistence", () => {
     preferences.setNumber("maximumUtteranceSeconds", 40);
     preferences.setNumber("interruptionWords", 6);
     preferences.setNumber("interruptionWindowMs", 4000);
+    expect(preferences.values.dictationFirstSpeaker).toBe(false);
+    preferences.setDictationFirstSpeaker(true);
     preferences.setShortCommands(false);
     settings.modelPresets.recordUsage({
       provider: "fixture",

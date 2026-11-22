@@ -230,6 +230,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             keywords: "voice microphone speech Parakeet download model recognition local",
           },
           {
+            label: "Filter dictation to the first speaker",
+            targetId: "setting-dictation-first-speaker",
+            keywords: "speech voice background noise overlap speaker filter",
+          },
+          {
             label: "Submit message by voice",
             targetId: "setting-dictation-voice-submit",
             keywords: "dictation send submit phrase command hands-free",

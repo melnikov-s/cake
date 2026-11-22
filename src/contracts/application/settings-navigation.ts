@@ -29,6 +29,7 @@ export const settingsDestinations = {
     page: "voice",
     targetId: "setting-cleanup-minimum-characters",
   },
+  "dictation.firstSpeaker": { page: "voice", targetId: "setting-dictation-first-speaker" },
   "dictation.voiceSubmit": { page: "voice", targetId: "setting-dictation-voice-submit" },
   "dictation.submitPhrase": { page: "voice", targetId: "setting-dictation-voice-submit" },
   "dictation.discardFilters": { page: "voice", targetId: "setting-dictation-discard-filters" },

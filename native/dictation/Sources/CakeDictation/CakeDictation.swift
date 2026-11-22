@@ -19,7 +19,8 @@ private final class Recognition {
   private let engine: AsrManager
   private let detector: SpeechDetector
   private let boosting: VocabularyBoosting
-  private let speaker: FirstSpeakerFilter
+  private var speaker: FirstSpeakerFilter?
+  private let speakerDirectory: URL
   private var speakerRoundId: String?
   private var speakerWindows = SpeakerWindows()
   private var transcript = RollingTranscript()
@@ -41,16 +42,14 @@ private final class Recognition {
     let models = try AsrModels.loadLocal(from: directory, version: .v2)
     engine = AsrManager(config: ASRConfig(tdtConfig: TdtConfig(blankId: 1024)), models: models)
     detector = try SpeechDetector(modelURL: vadURL)
-    speaker = try FirstSpeakerFilter(directory: vadURL.deletingLastPathComponent().appendingPathComponent("speaker"))
+    speakerDirectory = vadURL.deletingLastPathComponent().appendingPathComponent("speaker")
   }
 
   func warmup() async throws {
-    async let speakerWarmup: Void = speaker.warmup()
     var state = TdtDecoderState.make()
     _ = try await engine.transcribe([Float](repeating: 0, count: 12_800), decoderState: &state)
     _ = try await detector.classify(
       [Float](repeating: 0.00001, count: SpeechGate.frameSamples), state: .initial())
-    try await speakerWarmup
   }
 
   func prepareVocabulary() async throws { try await boosting.prepare() }
@@ -151,7 +150,14 @@ private final class Recognition {
     guard speakerRoundId == id else { return }
     speakerRoundId = nil
     resetSpan()
-    await speaker.reset()
+    await speaker?.reset()
+  }
+
+  private func speakerFilter() throws -> FirstSpeakerFilter {
+    if let speaker { return speaker }
+    let filter = try FirstSpeakerFilter(directory: speakerDirectory)
+    speaker = filter
+    return filter
   }
 
   private func consumePCM(_ samples: [Float]) async throws {
@@ -169,7 +175,7 @@ private final class Recognition {
     if speakerRoundId != request.speakerRoundId {
       speakerRoundId = request.speakerRoundId
       resetSpan()
-      await speaker.reset()
+      await speaker?.reset()
     }
     if utteranceId != request.utteranceId {
       // Vocabulary revisions take effect on the next utterance, never halfway through
@@ -187,7 +193,8 @@ private final class Recognition {
       while let window = speakerWindows.next(final: request.final) {
         // At most one speaker prediction in flight while recognition consumes the
         // previous approved window. No unverified PCM is passed to the recognizer.
-        async let approved = speaker.approved(window)
+        let filter = try speakerFilter()
+        async let approved = filter.approved(window)
         try await consumePCM(previous)
         previous = try await approved
       }

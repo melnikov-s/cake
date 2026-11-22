@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
+import vadManifest from "../../native/dictation/vad-manifest.json";
 import type { VocabularyEntry } from "../../src/contracts/dictation/vocabulary";
 import { describe, expect, test } from "vitest";
 import { ParakeetWorker, validateModel } from "../../src/services/dictation/local-parakeet";
@@ -57,13 +58,21 @@ async function stream(
     );
   return partials;
 }
-async function fixture() {
+async function fixture({ withoutSpeakerModels = false } = {}) {
   if (!model) throw new Error("CAKE_DICTATION_TEST_MODEL is required");
   if (!helper)
     throw new Error("Set CAKE_DICTATION_TEST_HELPER to a native helper staged outside out/.");
   await validateModel(model);
   const root = await mkdtemp(join(tmpdir(), "cake-native-dictation-"));
-  const worker = new ParakeetWorker(helper, model, ctc ?? join(root, "ctc"));
+  let executable = helper;
+  if (withoutSpeakerModels) {
+    executable = join(root, basename(helper));
+    await cp(helper, executable);
+    await cp(join(dirname(helper), vadManifest.model), join(root, vadManifest.model), {
+      recursive: true,
+    });
+  }
+  const worker = new ParakeetWorker(executable, model, ctc ?? join(root, "ctc"));
   return {
     root,
     worker,
@@ -79,6 +88,15 @@ async function fixture() {
 describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)(
   "native speech input",
   () => {
+    test("prepares and transcribes without any bundled speaker models", async () => {
+      await using f = await fixture({ withoutSpeakerModels: true });
+      await f.worker.ready;
+      const pcm = await syntheticSpeech(f.root, "unfiltered", "Please review the new design.");
+      await stream(f.worker, "unfiltered", pcm);
+      const text = await f.worker.transcribe({ utteranceId: "unfiltered", pcm: "", final: true });
+      expect(text).toMatch(/review the new design/i);
+    }, 90_000);
+
     test.skipIf(!librispeech)(
       "keeps the first real voice and its opening, rejects another voice and overlap, and resets on cancel",
       async () => {
@@ -136,6 +154,18 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
         const bText = await finish("B-span", "round-A");
         expect(bText).toMatch(/delawares are children/i);
         expect(bText).not.toMatch(/concord/i);
+
+        // Switching to unfiltered and back on the same warm helper never retains B's reference.
+        await stream(f.worker, "unfiltered", Buffer.concat([a, gap, b]));
+        const unfiltered = await f.worker.transcribe({
+          utteranceId: "unfiltered",
+          pcm: "",
+          final: true,
+        });
+        expect(unfiltered).toMatch(/concord returned/i);
+        expect(unfiltered).toMatch(/delawares are children/i);
+        await stream(f.worker, "back-on", a, [], "round-A");
+        expect(await finish("back-on", "round-A")).toMatch(/concord returned/i);
 
         const mixture = generatedPcm(
           Math.min(aAgain.length, b.length) / 4,
