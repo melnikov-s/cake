@@ -309,13 +309,20 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
       await expect(transcript).toHaveAttribute("data-reading-settled", "true");
       const readingAnchor = () =>
         transcript.evaluate((element) => {
-          const top = element.getBoundingClientRect().top;
-          const row = [
-            ...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]"),
-          ].find((row) => row.getBoundingClientRect().bottom > top + 1)!;
+          const viewport = element.getBoundingClientRect();
+          // Recycled virtual rows need not be in DOM order. Pick the first painted row.
+          const anchor = [...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")]
+            .map((row) => ({
+              id: row.dataset.transcriptAnchorId,
+              bounds: row.getBoundingClientRect(),
+            }))
+            .filter(
+              ({ bounds }) => bounds.bottom > viewport.top + 1 && bounds.top < viewport.bottom,
+            )
+            .sort((left, right) => left.bounds.top - right.bounds.top)[0]!;
           return {
-            id: row.dataset.transcriptAnchorId,
-            offset: row.getBoundingClientRect().top - top,
+            id: anchor.id,
+            offset: anchor.bounds.top - viewport.top,
             scrollTop: element.scrollTop,
           };
         });

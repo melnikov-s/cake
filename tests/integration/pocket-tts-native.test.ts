@@ -1,4 +1,4 @@
-import { resolve, join } from "node:path";
+import { join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { expect, test } from "vitest";
@@ -6,15 +6,17 @@ import { PocketTtsWorker } from "../../src/services/speech/pocket-tts-worker";
 import type { SpeechOutputAudio } from "../../src/contracts/speech/speech-output-data";
 
 const model = process.env.CAKE_SPEECH_TEST_MODEL;
+const helper = process.env.CAKE_SPEECH_TEST_HELPER;
 
-// Explicit opt-in: pinned fp16 Core ML assets and compiled helper, no microphone/network.
-// pnpm build:speech && CAKE_SPEECH_TEST_MODEL=/path/to/model pnpm test:integration tests/integration/pocket-tts-native.test.ts
+// Explicit opt-in: stage the native helper outside integration's slim output directory.
+// See docs/development/local-speech-output.md.
 test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)(
   "bundled FluidAudio Pocket TTS loads offline, streams non-silent PCM, and supports cancellation/reload",
   async () => {
     if (!model) throw new Error("Set CAKE_SPEECH_TEST_MODEL to a local model directory");
-    const executable = resolve("out/main/native/cake-speech");
-    const worker = new PocketTtsWorker(executable, model);
+    if (!helper)
+      throw new Error("Set CAKE_SPEECH_TEST_HELPER to a native helper staged outside out/.");
+    const worker = new PocketTtsWorker(helper, model);
     const frames: SpeechOutputAudio[] = [];
     try {
       await worker.ready;
@@ -45,7 +47,7 @@ test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)
     } finally {
       worker.close();
     }
-    const fresh = new PocketTtsWorker(executable, model);
+    const fresh = new PocketTtsWorker(helper, model);
     try {
       await fresh.ready;
       let samples = 0;
@@ -72,8 +74,10 @@ test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)
 test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)(
   "an incomplete Core ML installation fails before entering FluidAudio download paths",
   async () => {
+    if (!helper)
+      throw new Error("Set CAKE_SPEECH_TEST_HELPER to a native helper staged outside out/.");
     const empty = await mkdtemp(join(tmpdir(), "cake-pocket-incomplete-"));
-    const worker = new PocketTtsWorker(resolve("out/main/native/cake-speech"), empty);
+    const worker = new PocketTtsWorker(helper, empty);
     try {
       await expect(worker.ready).rejects.toThrow("local speech engine stopped");
     } finally {

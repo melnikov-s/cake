@@ -1,14 +1,19 @@
 import { expect, type Locator } from "@playwright/test";
 
 /** Exercise the inset disclosure in real conversation workflows, not a synthetic mount. */
-export async function verifyInlineActivity(activity: Locator, composer: Locator) {
+export async function verifyInlineActivity(
+  activity: Locator,
+  composer: Locator,
+  scope: "project" | "global",
+) {
   const dock = activity.locator('xpath=ancestor::*[@data-slot="composer-dock"]');
   const details = dock.getByRole("region", { name: "Conversation activity" });
   const form = dock.locator("form");
   const collapsedInput = (await form.boundingBox())!;
   await expect(activity).toHaveAttribute("aria-expanded", "false");
   const autoMerge = dock.getByRole("switch", { name: /^Auto-merge:/ });
-  await expect(autoMerge).toBeVisible();
+  if (scope === "project") await expect(autoMerge).toBeVisible();
+  else await expect(autoMerge).toHaveCount(0);
   await activity.click();
   await expect(activity).toHaveAttribute("aria-expanded", "true");
   await expect(details).toHaveAttribute("id", (await activity.getAttribute("aria-controls"))!);
@@ -21,15 +26,17 @@ export async function verifyInlineActivity(activity: Locator, composer: Locator)
   expect(expanded.height).toBeLessThanOrEqual(168);
   expect(expanded.y).toBeGreaterThan(0);
 
-  await expect(autoMerge).toHaveCount(1);
+  await expect(autoMerge).toHaveCount(scope === "project" ? 1 : 0);
   await expect(details.getByRole("switch")).toHaveCount(0);
   const firstItem = details
     .getByRole("button", { name: /^(Open session|Inspect subagent):/ })
     .first();
   await firstItem.focus();
   await firstItem.press("Shift+Tab");
-  await expect(autoMerge).toBeFocused();
-  await autoMerge.press("Shift+Tab");
+  if (scope === "project") {
+    await expect(autoMerge).toBeFocused();
+    await autoMerge.press("Shift+Tab");
+  }
   await expect(activity).toBeFocused();
   await composer.click();
   await expect(composer).toBeFocused();

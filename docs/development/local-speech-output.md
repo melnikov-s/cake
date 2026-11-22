@@ -40,11 +40,15 @@ No Python or developer toolchain is required on the installed user's machine.
 ## Native verification
 
 ```sh
-swift run --package-path native/speech SpeechTempoTests
-pnpm build:speech
-CAKE_SPEECH_TEST_MODEL=/path/to/managed/cache/root pnpm test:integration tests/integration/pocket-tts-native.test.ts
+pnpm validation:run -- swift run --package-path native/speech SpeechTempoTests
+helper_dir="$(mktemp -d)"
+pnpm build:speech "$helper_dir"
+CAKE_SPEECH_TEST_HELPER="$helper_dir/cake-speech" \
+  CAKE_SPEECH_TEST_MODEL=/path/to/pocket-tts/model \
+  pnpm test:integration tests/integration/pocket-tts-native.test.ts
 ```
 
+Integration setup replaces `out/` with a slim build, so stage the helper outside `out/`.
 Native inference is opt-in with explicitly supplied pinned assets. It downloads
 nothing and uses no microphone or billed provider. Numerical checks and ASR do not
 prove naturalness: pronunciation, punctuation prosody and faster-speed quality need

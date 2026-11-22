@@ -4,9 +4,10 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test, type Page } from "@playwright/test";
 import { widgetSpeechScenario } from "../../scripts/visual-capture/scenarios";
+import { openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-/** Opt-in real audio: an installed Pocket TTS directory (model + settings.json), copied, never shared. */
+/** Opt-in real audio: copy only the installed model, not anyone's speech preferences. */
 const pocketTts = process.env.CAKE_TEST_POCKET_TTS_DIR;
 
 async function launch(seedSpeech?: string) {
@@ -18,8 +19,9 @@ async function launch(seedSpeech?: string) {
   };
   await widgetSpeechScenario.seed(paths, "light");
   if (seedSpeech) {
-    await mkdir(join(paths.userData, "speech-output"), { recursive: true });
-    await cp(seedSpeech, join(paths.userData, "speech-output", "pocket-tts"), { recursive: true });
+    const installation = join(paths.userData, "speech-output", "pocket-tts");
+    await mkdir(installation, { recursive: true });
+    await cp(join(seedSpeech, "model"), join(installation, "model"), { recursive: true });
   }
   const app = await electron.launch({
     args: [repositoryRoot],
@@ -39,6 +41,15 @@ async function launch(seedSpeech?: string) {
   });
   const page = await app.firstWindow();
   await widgetSpeechScenario.prepare?.(page, "default", app);
+  if (seedSpeech) {
+    await openSettings(page);
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    const provider = page.getByLabel("Speech provider");
+    await provider.selectOption("pocket-tts");
+    await expect(provider).toHaveValue("pocket-tts");
+    await expect(page.getByText("Pocket TTS is installed and ready for voice mode.")).toBeVisible();
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+  }
   return {
     page,
     async [Symbol.asyncDispose]() {

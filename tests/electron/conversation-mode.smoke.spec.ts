@@ -502,6 +502,7 @@ test("speech input sliders support keyboard input, scope labels, persistence and
         dictationSendPhrase: "send it",
         // Whole-utterance discard filters persist with speech input (6b950882).
         dictationDiscardFilters: [],
+        dictationFirstSpeaker: false,
         maximumUtteranceSeconds: 5,
         interruptionWords: 10,
         interruptionWindowMs: 500,
@@ -538,7 +539,7 @@ test("speech input sliders support keyboard input, scope labels, persistence and
   }
 });
 
-test("shared sensitivity rejects ambiguous noise in both workflows and lowering it restores dictation", async () => {
+test("shared sensitivity rejects ambiguous noise in both workflows and lowering it restores dictation on restart", async () => {
   const f = await launch({
     detectionProbability: 0.7,
     recognitionTexts: ["Recognized speech", "Recognized speech"],
@@ -609,9 +610,8 @@ test("shared sensitivity rejects ambiguous noise in both workflows and lowering 
           .every((request) => request.settings.thresholds.start === 0.85),
       )
       .toBe(true);
-    // A shared setting change applies to the running dictation capture, without
-    // changing voice-only send policy or submitting a dictated draft. Composer dictation keeps
-    // its one capture while Settings covers the chat (d7d5ccbe, 15de23dc).
+    // Composer dictation keeps its current capture while Settings covers the chat.
+    // A new capture adopts the changed threshold without submitting the draft.
     await openSettings(f.page);
     await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await sensitivity.focus();
@@ -633,6 +633,18 @@ test("shared sensitivity rejects ambiguous noise in both workflows and lowering 
         ),
       )
       .toBe(2);
+    const indicator = f.page.locator('[data-slot="dictation-indicator"]');
+    await expect(indicator).toHaveText("Listening");
+    await openSettings(f.page);
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    const dictation = f.page.getByRole("switch", { name: "Dictation mode" });
+    await dictation.click();
+    await expect(dictation).not.toBeChecked();
+    await dictation.click();
+    await expect(dictation).toBeChecked();
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await composer.click();
+    await expect(indicator).toHaveText("Listening");
     await f.frames([[0.1, 20]]);
     await expect(composer).toHaveValue("Typed prefix: Recognized speech");
     await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();

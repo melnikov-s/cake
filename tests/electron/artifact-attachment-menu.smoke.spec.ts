@@ -43,6 +43,12 @@ for (const theme of ["light", "dark"] as const)
         .contentFrame()
         .getByRole("button", { name: "Save count" })
         .click();
+      await expect(
+        page
+          .locator('[data-widget-attachment="dashboard-right"] iframe')
+          .contentFrame()
+          .getByText("Shared count: 1", { exact: true }),
+      ).toBeVisible();
       await page.getByRole("button", { name: "1 artifacts", exact: true }).click();
       await page
         .getByRole("navigation", { name: "Artifact list" })

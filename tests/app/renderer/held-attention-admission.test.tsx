@@ -14,6 +14,7 @@ import { protectedResponseNotice } from "../../../src/contracts/conversations/re
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { CakeChatComposerHeader } from "../../../src/renderer/components/cake-chat-composer-header";
 import { Chat } from "../../../src/renderer/components/chat";
+import { ToastHost } from "../../../src/renderer/components/toast-host";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { appendMessageReferences } from "../../../src/contracts/conversations/message-reference-forwarding";
 import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
@@ -125,6 +126,7 @@ it.each([
         render(
           <StoreProvider store={fixture.root}>
             <CakeChatComposerHeader session={session} />
+            <ToastHost store={fixture.root.toastStore} />
           </StoreProvider>,
         ),
       );
@@ -133,7 +135,9 @@ it.each([
       backend.state.reject = !held;
       backend.state.sourceAvailable = !held;
       await act(async () => fireEvent.click(open()));
-      expect(await screen.findByRole("alert")).toBeTruthy();
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        "Could not open attention item",
+      );
       expect(open()).not.toHaveProperty("disabled", true);
       expect(backend.submissions).toHaveLength(0);
       expect((await backend.runtime.runPromise(todos.read(scope, item.id))).needsAttention).toBe(

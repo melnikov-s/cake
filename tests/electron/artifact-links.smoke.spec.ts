@@ -133,6 +133,7 @@ export default function Links() {
             (globalThis as typeof globalThis & { cakeTestExternalUrls: string[] })
               .cakeTestExternalUrls,
         );
+      await expect(frame.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
       await frame.getByRole("link", { name: "External link" }).click();
       await expect.poll(opened).toEqual(["https://example.com/artifact"]);
       await frame.getByRole("button", { name: "Add link" }).click();

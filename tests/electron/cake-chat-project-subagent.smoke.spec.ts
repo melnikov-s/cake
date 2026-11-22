@@ -250,7 +250,7 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
         )
         .toBe(true);
     }
-    const activityMenu = await verifyInlineActivity(activity, composer);
+    const activityMenu = await verifyInlineActivity(activity, composer, "global");
     await expect(
       activityMenu.getByRole("img", { name: "Temporary subagent", exact: true }),
     ).toBeVisible();

@@ -377,29 +377,7 @@ const assistantMarkdownCode: VisualCaptureScenario = {
 
 const seedMarkdownCodeWithModel: VisualCaptureScenario["seed"] = async (paths, theme) => {
   await assistantMarkdownCode.seed(paths, theme);
-  // Resolve the saved session's model without a live provider. These captures never send prompts.
-  await writeFile(
-    join(paths.cakeHome, "pi", "models.json"),
-    JSON.stringify({
-      providers: {
-        anthropic: {
-          baseUrl: "http://127.0.0.1:9",
-          apiKey: "fixture-only",
-          api: "anthropic-messages",
-          models: [
-            {
-              id: "visual-fixture",
-              name: "Visual fixture",
-              input: ["text"],
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: 4096,
-              maxTokens: 1024,
-            },
-          ],
-        },
-      },
-    }),
-  );
+  await seedVisualFixtureModel(paths);
 };
 
 const userMessageMarkdown: VisualCaptureScenario = {
@@ -1872,6 +1850,35 @@ async function openArtifactScenarioSession(page: Page) {
   await openSeededSession(page, "Cake architecture", artifactScenarioSessionTitle);
 }
 
+// A seeded transcript's saved model must resolve when the session runtime starts.
+// These fixtures never submit prompts, and the fixture provider points only to loopback.
+async function seedVisualFixtureModel(paths: ScenarioFixturePaths) {
+  const piDirectory = join(paths.cakeHome, "pi");
+  await mkdir(piDirectory, { recursive: true });
+  await writeFile(
+    join(piDirectory, "models.json"),
+    JSON.stringify({
+      providers: {
+        anthropic: {
+          baseUrl: "http://127.0.0.1:9",
+          apiKey: "fixture-only",
+          api: "anthropic-messages",
+          models: [
+            {
+              id: "visual-fixture",
+              name: "Visual fixture",
+              input: ["text"],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 4096,
+              maxTokens: 1024,
+            },
+          ],
+        },
+      },
+    }),
+  );
+}
+
 export async function seedArtifactScenario(
   paths: ScenarioFixturePaths,
   theme: "light" | "dark",
@@ -1967,6 +1974,7 @@ export async function seedArtifactScenario(
       .map((entry) => JSON.stringify(entry))
       .join("\n")}\n`,
   );
+  await seedVisualFixtureModel(paths);
   await seedArtifact(paths, artifact, timestamp);
   if (inline) {
     const file = join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`);

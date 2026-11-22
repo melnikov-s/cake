@@ -179,10 +179,12 @@ async function verifyNavigation(activityOrdering: boolean) {
     );
     await openSession("alpha-worker");
     if (activityOrdering) {
+      const workspace = page.getByRole("complementary", { name: "Workspace", exact: true });
+      await expect(row("beta-worker")).toBeVisible();
+      await expect(row("idle-session")).toBeVisible();
       const alphaOrder = () =>
-        page
-          .getByRole("complementary", { name: "Workspace", exact: true })
-          .locator(".session-item")
+        workspace
+          .locator('.session-item[data-session-id^="alpha-"]')
           .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-id")));
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
       await expect.poll(alphaOrder).toEqual(["alpha-idle", "alpha-worker"]);
@@ -249,7 +251,7 @@ async function verifyNavigation(activityOrdering: boolean) {
       await expect(row(id).locator('[aria-label="Running"]')).toBeVisible();
     }
     await expect.poll(() => streams.length).toBe(2);
-    // The list follows the selected Project; Search remains cross-project on demand.
+    // Search remains cross-project while the selected project leads the Sessions list.
     await openSession("alpha-idle");
     await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
     await openSession("idle-session");

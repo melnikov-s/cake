@@ -29,6 +29,8 @@ test("prompt defaults remain placeholders while custom overrides persist, clear,
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: cakeHome,
+        PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
   const savedPrompts = async () => JSON.parse(await readFile(document, "utf8")).data.cakePrompts;

@@ -101,6 +101,7 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
     };
     const chatControlBounds = await workspaceControlBounds();
     expect(chatControlBounds.every(Boolean)).toBe(true);
+    await expect(page.getByRole("button", { name: "Project Canvas", exact: true })).toBeVisible();
     const workspace = page.locator('[data-slot="workspace"]');
     const before = (await workspace.boundingBox())!;
     const projects = rail.locator('[data-slot="project-rail-scroll"]');
@@ -189,7 +190,18 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
       .click();
     await scenario.prepare(page, "browser", application);
     await expectTitlebarAlignment(application, page);
-    expect(await workspaceControlBounds()).toEqual(chatControlBounds);
+    await expect(page.getByRole("button", { name: "Project Canvas", exact: true })).toHaveCount(0);
+    const browserControlBounds = await workspaceControlBounds();
+    // Project Chat adds Canvas to the centered switcher. The outer group and terminal
+    // retain their anchors; compare the individual mode buttons within the same Session.
+    expect(browserControlBounds[0]).toEqual(chatControlBounds[0]);
+    expect(browserControlBounds.at(-1)).toEqual(chatControlBounds.at(-1));
+    const mainMode = page.getByRole("button", { name: "Main", exact: true });
+    await mainMode.click();
+    await expect(mainMode).toHaveAttribute("aria-pressed", "true");
+    expect(await workspaceControlBounds()).toEqual(browserControlBounds);
+    await page.getByRole("button", { name: "Browser", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Browser workspace" })).toBeVisible();
     const splitter = (await page
       .getByRole("separator", { name: "Resize current session sidebar", exact: true })
       .boundingBox())!;
@@ -270,7 +282,7 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
     await cdp.detach();
     await scenario.prepare(page, "vscode", application);
     await expectTitlebarAlignment(application, page);
-    expect(await workspaceControlBounds()).toEqual(chatControlBounds);
+    expect(await workspaceControlBounds()).toEqual(browserControlBounds);
     const windows = await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().map((native) => ({
         visible: native.isVisible(),

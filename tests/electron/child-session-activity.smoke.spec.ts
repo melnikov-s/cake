@@ -235,7 +235,7 @@ test("background family children show running activity and only offer Mark as Un
         )
         .toBe(true);
     }
-    const activityMenu = await verifyInlineActivity(activity, composer);
+    const activityMenu = await verifyInlineActivity(activity, composer, "project");
     await expect(
       activityMenu.getByRole("button", { name: "Open session: Background worker" }),
     ).toBeVisible();
