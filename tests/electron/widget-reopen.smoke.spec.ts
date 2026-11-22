@@ -99,10 +99,11 @@ test("a failed reopened widget document is reported and retry loads the same sav
     });
     const output = join(repositoryRoot, ".visual-captures");
     await mkdir(output, { recursive: true });
-    await expect(inline.getByRole("alert")).toBeInViewport();
-    await capture("widget-reopen-failed.png");
     const retry = inline.getByRole("button", { name: "Retry" });
     await retry.focus();
+    await expect(retry).toBeFocused();
+    await expect(inline.getByRole("alert")).toBeInViewport();
+    await capture("widget-reopen-failed.png");
     await retry.press("Enter");
     await expect(heading).toBeVisible();
     await expect(inline.locator('[data-widget-view-ready="true"]')).toHaveCount(1);

@@ -121,9 +121,11 @@ for (const { mode, chatSidebarVisible, width } of [
           Reflect.apply(item.click, item, [item, undefined, { triggeredByAccelerator: true }]);
         });
       // Drive the native accelerator handler without claiming system keys or OS focus.
-      const openingQuickChat = app.waitForEvent("window");
       await summonQuickChat();
-      const quickChat = await openingQuickChat;
+      const isQuickChat = (candidate: typeof page) =>
+        /[?&]cakeChatOverlay(?:[=&]|$)/.test(candidate.url());
+      await expect.poll(() => app!.windows().some(isQuickChat)).toBe(true);
+      const quickChat = app.windows().find(isQuickChat)!;
       const projectQuickInput = quickChat.getByRole("combobox", { name: "Message Project Chat" });
       await expect(projectQuickInput).toBeFocused();
       await projectQuickInput.pressSequentially("Quick project idea");

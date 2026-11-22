@@ -90,9 +90,10 @@ test("Delete removes a saved draft, while historical resolved drafts stay stored
     await expect(
       page.getByRole("button", { name: "Resolve Planned work", exact: true }),
     ).toHaveCount(0);
-    // The historical resolved draft stays out of history, so there is no Resolved sessions
-    // group to open (the group only shows with resolved sessions, 3ba22bde).
-    await expect(page.getByRole("button", { name: /^Resolved sessions/ })).toHaveCount(0);
+    // Open the archive if it is offered while the overall count is still unknown.
+    // Check the actual historical draft, not whether the archive header is rendered.
+    const archive = page.getByRole("button", { name: /^(?:Expand )?Resolved sessions/i });
+    if (await archive.isVisible()) await archive.click();
     await expect(page.getByText(historical.title, { exact: true })).toHaveCount(0);
     await remove.hover();
     await expect(page.getByRole("tooltip", { name: "Delete", exact: true })).toBeVisible();

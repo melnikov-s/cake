@@ -271,9 +271,9 @@ test("remote Electron uses the full shell and only the server owns agent state",
       await panel.locator(".xterm-screen:visible").click();
       await page.keyboard.type("pwd; printf REMOTE_PTY > remote-pty-proof.txt");
       await page.keyboard.press("Enter");
-      await expect
-        .poll(() => readFile(join(project, "remote-pty-proof.txt"), "utf8"))
-        .toBe("REMOTE_PTY");
+      await expect(async () => {
+        expect(await readFile(join(project, "remote-pty-proof.txt"), "utf8")).toBe("REMOTE_PTY");
+      }).toPass({ timeout: 5_000 });
       await toggleTerminal();
       // Drop only the accepted prompt receipt. The server keeps the turn; the client never replays it.
       await page.evaluate(() => Reflect.set(window, "dropNextPromptReceipt", true));

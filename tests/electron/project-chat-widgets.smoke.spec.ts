@@ -241,6 +241,7 @@ test("Project Chat generates a unified widget paginator with durable pages, expl
       .getByRole("button", { name: /^Open Project Chat for / })
       .first()
       .click();
+    await expect(frame().locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
     await expect(frame().getByText("Page 2 / 3")).toBeVisible();
     const saved = await call(sessionId, "artifacts.state.read", { lineageId: "open-todos" });
     expect(saved).toMatchObject({ value: { page: 1 } });

@@ -211,7 +211,8 @@ test("restores, edits, and activates a project draft session", async () => {
 
     await page.getByRole("button", { name: "Current checkout" }).click();
     await page.getByRole("button", { name: "Activate draft" }).click();
-    await expect(page.getByText("Draft", { exact: true })).toHaveCount(0);
+    await expect(draftSidebarItem.getByText("Draft", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Activate draft" })).toHaveCount(0);
     await expect
       .poll(async () => JSON.parse(await readFile(savedDraftFile, "utf8")).records[0]?.status)
       .toBe("activated");

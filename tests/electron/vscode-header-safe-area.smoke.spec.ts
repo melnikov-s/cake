@@ -101,9 +101,6 @@ test("VS Code header clears native controls through mode, rail and narrow-window
     await page.mouse.move(600, 220);
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     await expect
-      .poll(() => page.evaluate(() => document.documentElement.dataset.titleBar))
-      .toBe("vscode");
-    await expect
       .poll(
         () =>
           application.evaluate(async ({ webContents }) => {
@@ -121,6 +118,9 @@ test("VS Code header clears native controls through mode, rail and narrow-window
         { timeout: 30_000 },
       )
       .toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.dataset.titleBar))
+      .toBe("vscode");
     const rail = page.locator('[data-slot="project-rail"]');
     await expect(rail).toHaveAttribute("data-auto-hide", "true");
     const nativeMac = process.platform === "darwin";

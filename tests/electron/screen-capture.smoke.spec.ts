@@ -680,7 +680,13 @@ test("captures and annotates through the hidden native overlay into the existing
     });
     await Promise.all([
       overlay.waitForEvent("close"),
-      overlay.getByRole("button", { name: "Cancel", exact: true }).click(),
+      overlay
+        .getByRole("button", { name: "Cancel", exact: true })
+        .click()
+        .catch((error: unknown) => {
+          // The native overlay can close before Playwright receives the click result.
+          if (!overlay.isClosed()) throw error;
+        }),
     ]);
     // Feed the formats captured at Copy time through Cake's native DOM paste handler;
     // the system clipboard need not stay unchanged through the intervening workflow.

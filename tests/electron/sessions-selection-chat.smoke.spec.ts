@@ -94,6 +94,7 @@ test("Sessions selections reveal and focus the selected Chat without leaving its
       await tabs.getByRole("button", { name: "Sessions", exact: true }).click();
       await expect(page.getByRole("region", { name: "Sessions", exact: true })).toBeVisible();
     };
+    const moveToDraftEnd = process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End";
     const expectChat = async (id: string, mode: "Main" | "Browser" | "VS Code", draft: string) => {
       await expect(modes.getByRole("button", { name: mode, exact: true })).toHaveAttribute(
         "aria-pressed",
@@ -113,7 +114,7 @@ test("Sessions selections reveal and focus the selected Chat without leaving its
       ).toBeVisible();
       await expect(input).toBeFocused();
       await expect(input).toHaveValue(draft);
-      await input.press("End");
+      await input.press(moveToDraftEnd);
       await input.pressSequentially(" typed");
       await expect(input).toHaveValue(`${draft} typed`);
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
@@ -172,7 +173,7 @@ test("Sessions selections reveal and focus the selected Chat without leaving its
         "true",
       );
       await expect(homeInput).toHaveValue(`${mode} home draft`);
-      await homeInput.press("End");
+      await homeInput.press(moveToDraftEnd);
       await homeInput.pressSequentially(" typed");
       await expect(homeInput).toHaveValue(`${mode} home draft typed`);
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();

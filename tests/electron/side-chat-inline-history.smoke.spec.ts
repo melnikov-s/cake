@@ -35,6 +35,7 @@ for (const localCount of [1, 230]) {
       { models: createModels(), registry: createRegistry() },
       BACKGROUND_CONTEXT,
     );
+    let sideChatId: string;
     try {
       const root = await harness.root(BACKGROUND_CONTEXT);
       let at: EntryId | undefined;
@@ -51,6 +52,7 @@ for (const localCount of [1, 230]) {
       }
       if (at === undefined) throw new Error("Missing fork point");
       const fork = await root.fork(at, { ownership: { kind: "ownerless" } }, BACKGROUND_CONTEXT);
+      sideChatId = cakeChatSideChatSessionId(fork.id);
       await root.commit(
         (tx) =>
           tx.appendEntry(root.id, {
@@ -86,7 +88,7 @@ for (const localCount of [1, 230]) {
             contextAfter: "",
             diff: "",
           },
-          agentSessionId: cakeChatSideChatSessionId(fork.id),
+          agentSessionId: sideChatId,
           pendingComments: [],
           status: "open",
           createdAt: new Date(0).toISOString(),
@@ -109,6 +111,19 @@ for (const localCount of [1, 230]) {
         PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
+    await app.evaluate(({ ipcMain }, sessionId) => {
+      const counter = { requests: 0 };
+      Object.assign(globalThis, { cakeSideChatHistoryCounter: counter });
+      ipcMain.on("cake:rpc:request", (_event, message) => {
+        if (
+          message?._tag === "Request" &&
+          message.tag === "sessionChats.history" &&
+          message.payload?.sessionId === sessionId
+        ) {
+          counter.requests += 1;
+        }
+      });
+    }, sideChatId);
     let output = "";
     app.process().stdout?.on("data", (chunk) => {
       output += String(chunk);
@@ -187,7 +202,10 @@ for (const localCount of [1, 230]) {
         }
       }
       expect(reachedEnd).toBe(true);
-      expect(pages).toBeGreaterThanOrEqual(localCount === 1 ? 3 : 4);
+      const requests = await app.evaluate(
+        () => Reflect.get(globalThis, "cakeSideChatHistoryCounter").requests,
+      );
+      expect(requests).toBeGreaterThanOrEqual(localCount === 1 ? 3 : 4);
       await expect(panel.getByText("Parent original 0", { exact: true })).toBeVisible();
       await expect(panel.getByText("Earlier messages", { exact: true })).toHaveCount(0);
       await expect(panel.getByText("LATER PARENT MUST NOT LEAK", { exact: true })).toHaveCount(0);
