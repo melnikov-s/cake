@@ -186,7 +186,12 @@ test("standalone app launches after relocation and manual replacement preserves 
     expect(runtime.terminal).toBe("packaged-pty");
     await openSettings(page);
     await page.getByRole("button", { name: /^Appearance/ }).click();
-    await page.getByLabel("Color theme", { exact: true }).selectOption("dark");
+    const darkMode = (view: typeof page) =>
+      view
+        .getByRole("group", { name: "Appearance mode", exact: true })
+        .getByRole("button", { name: "Dark", exact: true });
+    await darkMode(page).click();
+    await expect(darkMode(page)).toHaveAttribute("aria-pressed", "true");
     await application.close();
     application = undefined;
     await replaceApp();
@@ -194,7 +199,7 @@ test("standalone app launches after relocation and manual replacement preserves 
     const restored = await application.firstWindow();
     await openSettings(restored);
     await restored.getByRole("button", { name: /^Appearance/ }).click({ timeout: 30_000 });
-    await expect(restored.getByLabel("Color theme", { exact: true })).toHaveValue("dark");
+    await expect(darkMode(restored)).toHaveAttribute("aria-pressed", "true");
     expect(await readFile(transcript, "utf8")).toBe(originalChat);
     expect(JSON.parse(await readFile(join(agent, "settings.json"), "utf8"))).toMatchObject({
       defaultThinkingLevel: "medium",
