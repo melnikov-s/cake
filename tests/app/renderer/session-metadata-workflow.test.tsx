@@ -83,7 +83,7 @@ async function renderMetadata(options: { pendingWorktree?: boolean; avatars?: bo
     conversation.labelIds = [globalLabel.id, deletedLabelId];
   }
   const { root } = fixture;
-  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
+  root.sidebarStore.sessionListStore.setArchiveExpanded(projectPath, true);
   const view = render(
     <StoreProvider store={root}>
       <ConversationNavigator projectPath={projectPath} />
@@ -191,7 +191,7 @@ describe("Session metadata projection workflows", () => {
 
   it("suppresses stale workflow labels for resolved sessions and projects them again when restored", async () => {
     using fixture = await renderMetadata({ avatars: false });
-    const active = within(screen.getByRole("region", { name: "Active sessions" }));
+    const active = within(screen.getByRole("region", { name: "My sessions" }));
     const resolved = within(screen.getByRole("region", { name: "Resolved sessions" }));
     expect(active.getByRole("img", { name: "Labels: Project" })).toBeDefined();
     // Session-catalog authority can resolve before the independent workflow assignment snapshot changes.

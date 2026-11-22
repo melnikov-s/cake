@@ -144,7 +144,7 @@ describe("Workspace Sessions navigation workflow", () => {
       ),
     );
     expect(setSessionUnread).toHaveBeenCalledTimes(1);
-    await fixture.showSessions(true);
+    await fixture.showSessions("/cake");
     await context(rowButton("archive"));
     await waitFor(() =>
       expect(deleteSession).toHaveBeenCalledWith(

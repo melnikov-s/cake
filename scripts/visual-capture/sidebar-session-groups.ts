@@ -64,6 +64,23 @@ function createScenario(
         ? userSessions
         : [...userSessions, ...delegatedSessions];
   const selected = active.find((session) => session.kind === "user" && !session.unread);
+  const peerProjects = (project: string) =>
+    variant === "mixed"
+      ? [
+          {
+            path: `${project}-workers`,
+            name: "Build tools",
+            sessions: [{ ...delegatedSessions[0]!, id: id(200), title: "Review build output" }],
+          },
+          {
+            path: `${project}-history`,
+            name: "Release archive",
+            sessions: [
+              { ...resolvedSessions[0]!, id: id(201), title: "Publish the previous release" },
+            ],
+          },
+        ]
+      : [];
   return {
     name: `sidebar-session-groups-${variant}`,
     description:
@@ -73,21 +90,22 @@ function createScenario(
     states,
     async seed(paths, theme) {
       const state = join(paths.cakeHome, "state");
-      const activeDirectory = sessionDirectory(
-        join(paths.cakeHome, "pi", "sessions"),
-        paths.project,
-      );
-      // Legacy resolved namespace: the archive migrates it on first observation.
-      const resolvedDirectory = sessionDirectory(
-        join(paths.cakeHome, "pi", "resolved-sessions"),
-        paths.project,
-      );
+      const projects = [
+        {
+          path: paths.project,
+          name: "visual-capture-project",
+          sessions: [...active, ...resolvedSessions],
+        },
+        ...peerProjects(paths.project),
+      ];
       await Promise.all(
-        [paths.userData, paths.project, state, activeDirectory, resolvedDirectory].map(
-          (directory) => mkdir(directory, { recursive: true }),
+        [paths.userData, state, ...projects.map(({ path }) => path)].map((directory) =>
+          mkdir(directory, { recursive: true }),
         ),
       );
-      const all = [...active, ...resolvedSessions];
+      const all = projects.flatMap(({ path, sessions }) =>
+        sessions.map((session) => ({ ...session, path })),
+      );
       await Promise.all([
         writeFile(
           join(paths.userData, "window-state.json"),
@@ -99,14 +117,12 @@ function createScenario(
             version: 7,
             data: {
               ...defaultApplicationState(),
-              projects: [
-                {
-                  path: paths.project,
-                  name: "visual-capture-project",
-                  addedAt: new Date(0).toISOString(),
-                  lastOpenedAt: new Date(0).toISOString(),
-                },
-              ],
+              projects: projects.map(({ path, name }) => ({
+                path,
+                name,
+                addedAt: new Date(0).toISOString(),
+                lastOpenedAt: new Date(0).toISOString(),
+              })),
               unreadSessionIds: all.filter((session) => session.unread).map(({ id }) => id),
             },
           }),
@@ -121,7 +137,7 @@ function createScenario(
               spawnedSessions: [],
               sessionPurposes: all.map((session) => ({
                 sessionId: session.id,
-                projectPath: paths.project,
+                projectPath: session.path,
                 purpose: session.kind,
                 createdPurpose: session.kind,
               })),
@@ -131,7 +147,7 @@ function createScenario(
         ...all.map(async (session) => {
           const timestamp = `${session.date}T00:00:00.000Z`;
           const entries = [
-            { type: "session", version: 3, id: session.id, timestamp, cwd: paths.project },
+            { type: "session", version: 3, id: session.id, timestamp, cwd: session.path },
             { type: "session_info", id: "title", parentId: null, timestamp, name: session.title },
             {
               type: "message",
@@ -141,10 +157,13 @@ function createScenario(
               message: { role: "user", content: "What changed?", timestamp: 0 },
             },
           ];
-          const file = join(
-            session.resolved ? resolvedDirectory : activeDirectory,
-            `${session.date}T00-00-00-000Z_${session.id}.jsonl`,
+          // Legacy resolved namespace: the archive migrates it on first observation.
+          const directory = sessionDirectory(
+            join(paths.cakeHome, "pi", session.resolved ? "resolved-sessions" : "sessions"),
+            session.path,
           );
+          await mkdir(directory, { recursive: true });
+          const file = join(directory, `${session.date}T00-00-00-000Z_${session.id}.jsonl`);
           await writeFile(file, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
           if (session.resolved) {
             const date = new Date(timestamp);
@@ -162,17 +181,22 @@ function createScenario(
       await expect(
         list.locator('[data-slot="conversation-navigator-row"][data-session-id]'),
       ).not.toHaveCount(0);
-      const resolved = list.getByRole("button", { name: "Resolved sessions", exact: true });
-      const group = list.getByRole("region", { name: "Delegated", exact: true });
+      const project = list.getByRole("region", { name: "visual-capture-project", exact: true });
+      const resolved = project.getByRole("button", { name: "Resolved sessions", exact: true });
+      const group = project.getByRole("region", { name: "Delegated", exact: true });
       const disclosure = group.getByRole("button", { name: "Delegated", exact: true });
       await expect(group.getByRole("switch")).toBeVisible();
       await expect(disclosure).toHaveText(`${variant === "user" ? 0 : 3} delegated · 0 running`);
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-      const mine = list.getByRole("region", { name: "My sessions", exact: true });
-      if (variant === "mixed") {
+      const mine = project.getByRole("region", { name: "My sessions", exact: true });
+      if (variant !== "delegated") {
         await expect(mine).toBeVisible();
         await expect(mine.getByRole("switch")).toHaveCount(0);
       } else await expect(mine).toHaveCount(0);
+      if (variant === "mixed") {
+        await expect(list.getByRole("button", { name: "Expand Build tools" })).toBeVisible();
+        await expect(list.getByRole("button", { name: "Expand Release archive" })).toBeVisible();
+      }
       if (state === "expanded") {
         await disclosure.click();
         await expect(group.getByText("Review catalog paging", { exact: true })).toBeVisible();
@@ -180,7 +204,7 @@ function createScenario(
       if (state === "resolved-expanded") {
         await resolved.click();
         await expect(resolved.locator('[data-slot="group-count"]')).toHaveText("3");
-        const history = page.getByRole("region", { name: "Resolved sessions" });
+        const history = project.getByRole("region", { name: "Resolved sessions" });
         const rows = history.locator('[data-slot="conversation-navigator-row"]');
         await expect(rows).toHaveCount(3);
         await expect(rows.nth(0)).toContainText("Sketch onboarding");
@@ -188,6 +212,10 @@ function createScenario(
         await expect(rows.nth(2)).toContainText("Tidy release notes");
         await expect(history.getByRole("heading")).toHaveCount(0);
         await expect(history.getByRole("region")).toHaveCount(0);
+        const peer = list.getByRole("region", { name: "Release archive", exact: true });
+        await peer.getByRole("button", { name: "Expand Release archive" }).click();
+        await peer.getByRole("button", { name: "Resolved sessions" }).click();
+        await expect(peer.getByText("Publish the previous release", { exact: true })).toBeVisible();
       }
       await page.mouse.move(1, 1);
     },

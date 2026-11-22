@@ -20,21 +20,23 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
   depth,
   projectPath,
   containingProjectPath,
-  hasGroupedContent = false,
 }: {
   node: ConversationNavigationNode;
   depth: number;
   projectPath: string | undefined;
   /** Project identity already supplied by a containing Project Chat heading. */
   containingProjectPath?: string;
-  hasGroupedContent?: boolean;
 }) {
   const root = useStore(RootStore);
   const store = root.conversationNavigatorStore;
   const selected = store.selectedKey === node.key;
   const expanded = store.isExpanded(projectPath, node.key);
   const avatarsEnabled = root.settingsStore.appearance.sessionAvatarsEnabled;
-  const headingIndent = containingProjectPath !== undefined && depth > 0;
+  const session =
+    node.target.kind === "project-session"
+      ? root.sessionCatalogStore.find(node.target.sessionId)
+      : undefined;
+  const headingIndent = containingProjectPath !== undefined && !session?.resolved && depth > 0;
   const railCount = depth - Number(headingIndent);
   const gutterStyle: CSSProperties & { "--ancestor-count": number } = {
     "--ancestor-count": railCount,
@@ -49,10 +51,6 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
       : node.relationship === "family-child"
         ? "Session Family child"
         : node.label;
-  const session =
-    node.target.kind === "project-session"
-      ? root.sessionCatalogStore.find(node.target.sessionId)
-      : undefined;
   const rowProjectPath =
     session?.projectPath ??
     (node.target.kind === "cake-chat"
@@ -115,7 +113,7 @@ export const ConversationNavigatorRow = observer(function ConversationNavigatorR
         </span>
       )}
       <span className="flex w-5 shrink-0 items-center justify-center">
-        {(node.children.length > 0 || hasGroupedContent) &&
+        {(node.children.length > 0 || node.relationship === "home") &&
           !store.isPinnedOpen(projectPath, node.key) && (
             <IconButton
               iconSize="inline"

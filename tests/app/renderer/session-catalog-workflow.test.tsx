@@ -56,7 +56,7 @@ async function renderCatalog(
     },
   });
   const { root } = fixture;
-  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
+  root.sidebarStore.sessionListStore.setArchiveExpanded(projectPath, true);
   await root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   const staged = root.sessionRegistry.pendingSessions.prepareStaged(projectPath, sessionId);
   root.navigationStore.selectProjectSession(sessionId);
@@ -391,17 +391,17 @@ describe("Session catalog lifecycle workflows", () => {
 
   it("keeps one resolved row when independently observed lanes overlap and ignores late active events", async () => {
     using fixture = await renderCatalog();
-    const active = within(screen.getByRole("region", { name: "Active sessions" }));
+    const active = () => screen.queryByRole("region", { name: "My sessions" });
     const resolved = within(screen.getByRole("region", { name: "Resolved sessions" }));
     const moving = summary("moving", { title: "Moving conversation" });
     await fixture.publishLane(false, { _tag: "Snapshot", revision: 1, sessions: [moving] });
-    expect(active.getByRole("button", { name: /^Moving conversation / })).toBeDefined();
+    expect(within(active()!).getByRole("button", { name: /^Moving conversation / })).toBeDefined();
     await fixture.publishLane(true, {
       _tag: "Snapshot",
       revision: 1,
       sessions: [{ ...moving, resolved: true, workingDirectory: "/resolved/project" }],
     });
-    expect(active.queryByRole("button", { name: /^Moving conversation / })).toBeNull();
+    expect(active()).toBeNull();
     expect(resolved.getAllByRole("button", { name: /^Moving conversation / })).toHaveLength(1);
     for (const event of [
       { _tag: "StatusChanged", sessionId: "moving", resolved: false, unread: false },
@@ -412,7 +412,7 @@ describe("Session catalog lifecycle workflows", () => {
       await fixture.publishLane(false, { _tag: "Event", revision: 2, event });
     }
     expect(resolved.getAllByRole("button", { name: /^Moving conversation / })).toHaveLength(1);
-    expect(active.queryByRole("button", { name: /^Moving conversation / })).toBeNull();
+    expect(active()).toBeNull();
     await fixture.publishLane(true, {
       _tag: "Event",
       revision: 3,

@@ -888,7 +888,6 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
       root.sidebarStore.sessionListStore.projectSessionCatalogQueries,
     onProjectSessionTitleChanged: (sessionId, title) =>
       root.sessionRegistry.pendingSessions.applyLiveTitle(sessionId, title),
-    cakeChatCatalogQueries: () => root.sidebarStore.sessionListStore.cakeChatCatalogQueries,
     loadedProjectSessions: () =>
       root.sessionRegistry.targets.map(({ sessionId, workspacePath }) => ({
         sessionId,

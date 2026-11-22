@@ -186,7 +186,10 @@ test("My session descendants stay together and mixed to-do session links retain 
     await expect(conversations.getByRole("heading", { name: "My sessions" })).toBeVisible();
     await expect(conversations.getByRole("heading", { name: "Delegated" })).toBeVisible();
     const rows = conversations.locator('[data-slot="conversation-navigator-row"][data-session-id]');
-    await expect(rows).toHaveCount(5); // two home chats and the three rows in My sessions
+    await expect(rows).toHaveCount(4); // Project Chat and three rows in My sessions
+    await expect(conversations.getByRole("button", { name: "Cake Chat", exact: true })).toHaveCount(
+      0,
+    );
     const myGroup = conversations.getByRole("region", { name: "My sessions", exact: true });
     const delegatedGroup = conversations.getByRole("region", { name: "Delegated", exact: true });
     await expect(

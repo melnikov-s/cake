@@ -143,13 +143,18 @@ export function renderAppShellNavigation(
         expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(sessionId),
       );
     },
-    async showSessions(resolved = false) {
+    async showSessions(archiveProject?: string) {
       const reopen = screen.queryByRole("button", { name: "Open Workspace" });
       if (reopen) await user.click(reopen);
       const workspace = within(screen.getByRole("complementary", { name: "Workspace" }));
       await user.click(workspace.getByRole("button", { name: /^Sessions/ }));
-      if (resolved) {
-        const toggle = workspace.getByRole("button", { name: "Resolved sessions" });
+      if (archiveProject) {
+        const project = within(
+          workspace.getByRole("region", {
+            name: fixture.root.projectCatalogStore.nameForPath(archiveProject),
+          }),
+        );
+        const toggle = project.getByRole("button", { name: "Resolved sessions" });
         if (toggle.getAttribute("aria-expanded") !== "true") await user.click(toggle);
       }
     },

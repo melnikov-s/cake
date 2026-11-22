@@ -74,7 +74,7 @@ async function renderManagement(
       },
     ],
   });
-  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
+  root.sidebarStore.sessionListStore.setArchiveExpanded(projectPath, true);
   await root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   const pending = options.pendingSessionId
     ? root.sessionRegistry.pendingSessions.prepare(projectPath, options.pendingSessionId)
@@ -136,9 +136,7 @@ async function renderManagement(
   };
 }
 function region(resolved = false) {
-  return within(
-    screen.getByRole("region", { name: resolved ? "Resolved sessions" : "Active sessions" }),
-  );
+  return within(screen.getByRole("region", { name: resolved ? "Resolved sessions" : "Projects" }));
 }
 afterEach(cleanup);
 
@@ -548,7 +546,9 @@ describe("Session management workflow", () => {
     );
     await fixture.publishSessions(family.map((session) => ({ ...session, resolved: true })));
     await act(async () => pending.resolve());
-    expect(region().queryByText("Family parent")).toBeNull();
+    expect(region().getAllByText("Family parent")).toEqual([
+      region(true).getByText("Family parent"),
+    ]);
     expect(region(true).getByText("Family child")).toBeDefined();
     expect(region(true).queryByRole("button", { name: "Restore Family child" })).toBeNull();
     await fixture.user.click(region(true).getByRole("button", { name: "Restore Family parent" }));

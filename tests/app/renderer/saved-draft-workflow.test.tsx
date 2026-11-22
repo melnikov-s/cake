@@ -109,7 +109,7 @@ async function renderDrafts(
   fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   const { root } = fixture;
-  root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
+  root.sidebarStore.sessionListStore.setArchiveExpanded(projectPath, true);
   root.sessionRegistry
     .findSession(sessionId)!
     .conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
@@ -480,7 +480,7 @@ describe("Saved Draft workflows", () => {
   });
 
   it.each([fixtureTimestamp, "2026-02-02T00:00:00.000Z"])(
-    "keeps selection when activation unpins an older draft, paging it by its message timestamp (%s)",
+    "keeps the selected draft visible when activation restores message-date ordering (%s)",
     async (modifiedAt) => {
       const drafts = fakeSavedDrafts();
       const title = "Duplicate title";
@@ -515,9 +515,12 @@ describe("Saved Draft workflows", () => {
       expect(rowIds().sort()).toEqual([sessionId, otherId]);
       expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
 
-      // Activation removes draft pinning; its last update sets pagination.
+      // Activation restores normal date order without hiding the selected row outside the page.
       fixture.publishCatalog(title, modifiedAt);
-      expect(rowIds()).toEqual(modifiedAt === fixtureTimestamp ? [otherId] : [otherId, sessionId]);
+      expect(rowIds()).toEqual([otherId, sessionId]);
+      expect(
+        rows()[1]?.closest("[data-navigation-active]")?.getAttribute("data-navigation-active"),
+      ).toBe("true");
       expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
       await fixture.user.click(sidebar().getByRole("button", { name: "Show more" }));
       expect(rowIds().sort()).toEqual([sessionId, otherId]);

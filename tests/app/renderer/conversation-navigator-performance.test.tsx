@@ -47,7 +47,7 @@ it("echoes Sessions search input before recursive filtering and only publishes t
   const input = screen.getByRole<HTMLInputElement>("searchbox", { name: "Search sessions" });
   const initialRows = store
     .rowGroups("/project", () => true)
-    .flatMap((group) => group.rows.map(({ node }) => node.key));
+    .flatMap(({ active }) => active.flatMap(({ rows }) => rows.map(({ node }) => node.key)));
   rows.mockClear();
 
   act(() => {
@@ -78,7 +78,7 @@ it("echoes Sessions search input before recursive filtering and only publishes t
   expect(
     store
       .rowGroups("/project", () => true)
-      .flatMap((group) => group.rows.map(({ node }) => node.key)),
+      .flatMap(({ active }) => active.flatMap(({ rows }) => rows.map(({ node }) => node.key))),
   ).toEqual(initialRows);
 });
 
@@ -366,7 +366,7 @@ it("pages a long Project Chat list and propagates one Session's work without res
       </StoreProvider>,
     ),
   );
-  const active = within(screen.getByRole("region", { name: "Active sessions" }));
+  const active = within(screen.getByRole("region", { name: "Projects" }));
   const rows = () => document.querySelectorAll('[data-relationship="grouped"]');
   const heading = () =>
     document.querySelector<HTMLElement>('[data-conversation-key="session:project-chat"]')!;

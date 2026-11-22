@@ -20,19 +20,18 @@ describe("Sidebar catalog demand", () => {
       navigator.show("sessions");
       const list = fixture.root.sidebarStore.sessionListStore;
       expect(list.projectSessionCatalogQueries).toEqual(active);
-      expect(list.cakeChatCatalogQueries).toEqual([{ resolved: false }]);
-      list.toggleResolvedGroupExpanded();
+      list.setArchiveExpanded("/cake", true);
+      expect(list.projectSessionCatalogQueries).toEqual([active[0], archive("/cake"), active[1]]);
+      list.setArchiveExpanded("/pi", true);
+      list.showMoreSessions("/cake", true);
       expect(list.projectSessionCatalogQueries).toEqual([
         active[0],
-        archive("/cake"),
+        archive("/cake", 20),
         active[1],
         archive("/pi"),
       ]);
-      list.showMoreSessions("/cake", true);
-      expect(list.projectSessionCatalogQueries).toContainEqual(archive("/cake", 20));
-      list.toggleResolvedGroupExpanded();
-      expect(list.projectSessionCatalogQueries).toEqual(active);
-      expect(list.cakeChatCatalogQueries).toContainEqual({ resolved: true, limit: 10 });
+      list.setArchiveExpanded("/cake", false);
+      expect(list.projectSessionCatalogQueries).toEqual([active[0], active[1], archive("/pi")]);
     },
   );
 
@@ -43,14 +42,9 @@ describe("Sidebar catalog demand", () => {
     const navigator = fixture.root.workspaceNavigatorStore;
     navigator.show("sessions");
     const list = fixture.root.sidebarStore.sessionListStore;
-    list.toggleResolvedGroupExpanded();
+    list.setArchiveExpanded("/cake", true);
     fixture.root.sidebarStore.sessionSearchStore.show();
-    expect(list.projectSessionCatalogQueries).toEqual([
-      active[0],
-      archive("/cake"),
-      active[1],
-      archive("/pi"),
-    ]);
+    expect(list.projectSessionCatalogQueries).toEqual([active[0], archive("/cake"), active[1]]);
     navigator.close();
     expect(list.projectSessionCatalogQueries).toEqual(active);
   });

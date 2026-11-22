@@ -110,14 +110,15 @@ function renderGroups(sessions: SessionSummaryFixture[], resolvedTotal?: number,
       </StoreProvider>,
     );
   let view = mount();
-  const active = () => within(screen.getByRole("region", { name: "Active sessions" }));
+  const active = () => within(screen.getByRole("region", { name: "project" }));
   return {
     fixture,
     user: userEvent.setup(),
     active,
-    header: (name: string) => screen.getByRole("button", { name }),
+    header: (name: string) => active().getByRole("button", { name }),
     count: (name: string) =>
-      screen.getByRole("button", { name }).querySelector('[data-slot="group-count"]')?.textContent,
+      active().getByRole("button", { name }).querySelector('[data-slot="group-count"]')
+        ?.textContent,
     sessionIds: () =>
       [
         ...view.container.querySelectorAll(
@@ -224,7 +225,7 @@ describe("Conversation navigator session groups", () => {
     expect(view.sessionIds()).toEqual([]);
     view.publish({ ...delegatedFamily[1]!, purpose: "user" });
     expect(view.sessionIds()).toEqual(["lead", "helper"]);
-    expect(view.active().queryByRole("heading", { name: "My sessions" })).toBeNull();
+    expect(view.count("My sessions")).toBe("2");
     expect(view.count("Delegated")).toBe("0 delegated · 0 running");
   });
 
@@ -347,11 +348,11 @@ describe("Conversation navigator session groups", () => {
     ]);
     expect(view.sessionIds()).toHaveLength(10);
     expect(view.count("Delegated")).toBe("1 delegated · 0 running");
-    expect(view.active().getByRole("button", { name: "Show more" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Show more" })).toBeDefined();
     await view.user.click(view.header("Delegated"));
     await view.user.click(view.header("My sessions"));
     expect(view.sessionIds()).toEqual(["work-a"]);
-    expect(view.active().queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
   it("brings labels back when the second kind appears, keeping the selection visible", async () => {

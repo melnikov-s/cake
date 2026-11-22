@@ -6,7 +6,6 @@ import {
   snapshot,
   type ReadonlySignal,
 } from "r-state-tree";
-import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
 import {
   compareResolvedSessionSummaries,
@@ -52,8 +51,7 @@ export class SidebarSessionListStore extends Store<{
   @snapshot private readonly expandedActiveGroups: Record<string, boolean> = observable({
     "cake-chat": true,
   });
-  resolvedGroupExpanded = false;
-  private resolvedArchiveRequested = false;
+  private readonly expandedArchives: Record<string, boolean> = observable({});
   /** Per-project disclosure, shared across Sessions entry points. */
   private readonly expandedSessionKindGroups: Record<string, boolean> = observable({});
   private readonly activeSessionKinds = observable(
@@ -142,10 +140,13 @@ export class SidebarSessionListStore extends Store<{
 
   visibleProjectSessions(projectPath: string, resolved = false) {
     const { byId } = this.sortedProjectSessionRoots(projectPath, resolved);
-    const visibleRoots = this.pagedProjectSessionRoots(projectPath, resolved).slice(
-      0,
-      this.sessionLimit(projectPath, resolved),
-    );
+    const roots = this.pagedProjectSessionRoots(projectPath, resolved);
+    const limit = this.sessionLimit(projectPath, resolved);
+    // External navigation can select a loaded family outside the visible page.
+    const selectedRoot = this.selectedRootId(projectPath, resolved);
+    const visibleRoots = selectedRoot
+      ? roots.filter((root, index) => index < limit || root.sessionId === selectedRoot)
+      : roots.slice(0, limit);
     return this.flattenProjectSessionRoots(byId, visibleRoots);
   }
 
@@ -207,9 +208,7 @@ export class SidebarSessionListStore extends Store<{
 
   isSessionKindGroupExpanded(projectPath: string, kind: SessionKind) {
     const expanded = this.expandedSessionKindGroups[this.sessionKindGroupKey(projectPath, kind)];
-    return kind === "delegated"
-      ? expanded === true
-      : expanded !== false || this.activeSessionKindCounts(projectPath).delegated === 0;
+    return expanded ?? kind === "user";
   }
 
   setSessionKindGroupExpanded(projectPath: string, kind: SessionKind, expanded: boolean) {
@@ -309,18 +308,25 @@ export class SidebarSessionListStore extends Store<{
       session?.projectPath,
       session?.resolved,
       this.sessionKindForDisplay(selected.sessionId),
-      // A returning My sessions header must not hide the selected row.
-      session && Boolean(this.activeSessionKindCounts(session.projectPath).delegated),
       ...this.sidebarAncestorIds(selected.sessionId),
     ].join("\n");
   }
 
   /** The active-lane root whose position decides where the selected row appears. */
   private selectedActiveRootId() {
+    return this.selectedRootId(undefined, false);
+  }
+
+  private selectedRootId(projectPath: string | undefined, resolved: boolean) {
     const selected = this.props.selectedConversation?.();
     if (selected?.kind !== "project-session") return undefined;
     const session = this.props.catalog.find(selected.sessionId);
-    if (!session || session.resolved) return undefined;
+    if (
+      !session ||
+      session.resolved !== resolved ||
+      (projectPath !== undefined && session.projectPath !== projectPath)
+    )
+      return undefined;
     return this.sidebarAncestorIds(selected.sessionId).at(-1) ?? selected.sessionId;
   }
 
@@ -462,9 +468,12 @@ export class SidebarSessionListStore extends Store<{
     this.expandedActiveGroups[groupKey] = !this.isActiveGroupExpanded(groupKey);
   }
 
-  toggleResolvedGroupExpanded() {
-    this.resolvedGroupExpanded = !this.resolvedGroupExpanded;
-    if (this.resolvedGroupExpanded) this.resolvedArchiveRequested = true;
+  isArchiveExpanded(projectPath: string) {
+    return this.expandedArchives[projectPath] === true;
+  }
+
+  setArchiveExpanded(projectPath: string, expanded: boolean) {
+    this.expandedArchives[projectPath] = expanded;
   }
 
   toggleResolvedLane() {
@@ -481,22 +490,10 @@ export class SidebarSessionListStore extends Store<{
     // Sessions always lists every active project. Keep archives lazy in every context.
     return this.projects.orderedProjectPaths.flatMap((projectPath) => [
       { projectPath, resolved: false },
-      ...(showsSessions && this.resolvedGroupExpanded
+      ...(showsSessions && this.isArchiveExpanded(projectPath)
         ? [{ projectPath, resolved: true, limit: this.sessionLimit(projectPath, true) }]
         : []),
     ]);
-  }
-
-  get cakeChatCatalogQueries(): ReadonlyArray<CakeChatCatalogQuery> {
-    const navigator = WorkspaceNavigatorContext.consume(this);
-    const visible =
-      !navigator ||
-      (navigator.visible && !navigator.showingWidget && navigator.mode === "sessions");
-    // Active permanent-chat summaries also serve Project Chat/to-do ownership and rail attention.
-    // Only their archive lane is a list-only observation.
-    return visible && this.resolvedArchiveRequested
-      ? [{ resolved: false }, { resolved: true, limit: this.sessionLimit("cake-chat", true) }]
-      : [{ resolved: false }];
   }
 
   private flattenProjectSessionRoots(

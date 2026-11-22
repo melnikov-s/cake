@@ -55,7 +55,7 @@ export interface ConversationNavigationTree {
   readonly unread: number;
 }
 export interface ConversationNavigationInput {
-  readonly projectPath: string | undefined;
+  readonly projectPath: string;
   readonly projectName?: string;
   readonly resolved?: boolean;
   readonly sessions: readonly Pick<
@@ -111,23 +111,17 @@ export function buildConversationNavigationTree(
     const conversation = conversations.get(sessionId);
     return Boolean(conversation?.streaming || conversation?.activeTurnIds.length);
   };
-  const home =
-    input.projectPath === undefined
-      ? input.cakeChats.find((chat) => chat.sessionId === CAKE_CHAT_SESSION_ID)
-      : input.cakeChats.find((chat) => chat.projectPath === input.projectPath);
-  const homeId = input.resolved
-    ? undefined
-    : (home?.sessionId ?? (input.projectPath === undefined ? CAKE_CHAT_SESSION_ID : undefined));
+  const home = input.cakeChats.find(
+    (chat) => chat.sessionId !== CAKE_CHAT_SESSION_ID && chat.projectPath === input.projectPath,
+  );
+  const homeId = input.resolved ? undefined : home?.sessionId;
   const homeKey = homeId ? conversationNavigationKey(homeId) : undefined;
   if (homeId) {
     const running = ownRunning(homeId) || Boolean(home?.running);
     byKey.set(homeKey!, {
       key: homeKey!,
-      title:
-        input.projectPath === undefined
-          ? "Cake Chat"
-          : (input.projectName ?? home?.title ?? input.projectPath),
-      label: input.projectPath === undefined ? "Cake Chat" : "Project Chat",
+      title: input.projectName ?? home?.title ?? input.projectPath,
+      label: "Project Chat",
       relationship: "home",
       target: { kind: "cake-chat", sessionId: homeId },
       parentKey: undefined,
@@ -139,11 +133,7 @@ export function buildConversationNavigationTree(
     });
   }
   for (const [catalogOrder, session] of input.sessions.entries()) {
-    if (
-      input.projectPath === undefined ||
-      session.projectPath !== input.projectPath ||
-      session.resolved !== (input.resolved ?? false)
-    )
+    if (session.projectPath !== input.projectPath || session.resolved !== (input.resolved ?? false))
       continue;
     const running = ownRunning(session.sessionId) || session.running;
     const parentId = session.familyParentSessionId;

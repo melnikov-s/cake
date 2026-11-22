@@ -112,9 +112,9 @@ describe("Workspace Sessions running count", () => {
     const tree = fixture.root.conversationNavigatorStore.tree(navigatorProjectPath);
     expect(fixture.root.conversationNavigatorStore.effectiveWorking(tree.roots[0]!)).toBe(true);
     expect(sessionsTab().getAttribute("aria-pressed")).toBe("false");
-    expect(sessionsTab().getAttribute("title")).toContain("7 total in all projects");
+    expect(sessionsTab().getAttribute("title")).toContain("6 total in all projects");
     await fixture.user.click(sessionsTab());
-    expect(screen.queryByText("7 total")).toBeNull();
+    expect(screen.queryByText("6 total")).toBeNull();
     expect(screen.queryByRole("button", { name: "Collapse cake" })).toBeNull();
     await fixture.user.type(screen.getByRole("searchbox", { name: "Search sessions" }), "no match");
     expect(screen.getByText("No matching conversations")).toBeTruthy();
@@ -187,14 +187,15 @@ describe("Workspace Sessions running count", () => {
   it("aggregates registered projects in Global Cake Chat", () => {
     using fixture = renderWorkspace({ global: true });
     expectCount(1);
-    const tree = fixture.root.conversationNavigatorStore.tree(undefined);
-    expect(fixture.root.conversationNavigatorStore.effectiveWorking(tree.roots[0]!)).toBe(true);
-    expect(sessionsTab().getAttribute("title")).toContain("7 total in all projects");
+    const navigator = fixture.root.conversationNavigatorStore;
+    const tree = navigator.tree(undefined);
+    expect(tree.roots.some((node) => navigator.effectiveWorking(node))).toBe(true);
+    expect(sessionsTab().getAttribute("title")).toContain("6 total in all projects");
   });
 
   it("caps large visible counts without losing the exact tooltip or accessible count", () => {
     using fixture = renderWorkspace({ large: true });
     expectCount(100, "99+");
-    expect(sessionsTab().getAttribute("title")).toContain("107 total in all projects");
+    expect(sessionsTab().getAttribute("title")).toContain("106 total in all projects");
   });
 });

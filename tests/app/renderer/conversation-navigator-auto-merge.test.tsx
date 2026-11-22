@@ -112,8 +112,10 @@ it.each([false, true])(
       .find((element) => element !== toggle && element !== peer)!;
     expect(navigator.getAllByRole("switch")).toHaveLength(2);
     expect(
-      within(navigator.getByRole("region", { name: "My sessions" })).queryByRole("switch"),
-    ).toBeNull();
+      navigator
+        .getAllByRole("region", { name: "My sessions" })
+        .every((mine) => within(mine).queryByRole("switch") === null),
+    ).toBe(true);
     expect(navigator.getByText("0 delegated · 0 running")).toBeTruthy();
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     expect(peer.getAttribute("aria-checked")).toBe("false");

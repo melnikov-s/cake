@@ -418,14 +418,14 @@ describe("Project Session composition observer", () => {
     try {
       await vi.waitFor(() => expect(catalogs).toHaveBeenCalledTimes(1));
       expect(catalogs.mock.calls[0]?.[0].resolved).toBe(false);
-      list.toggleResolvedGroupExpanded();
+      list.setArchiveExpanded("/project", true);
       await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(10));
       expect(list.hasMoreResolvedProjectSessions("/project")).toBe(true);
       list.showMoreSessions("/project", true);
       await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(12));
       expect(list.hasMoreResolvedProjectSessions("/project")).toBe(false);
       expect(ended).toContainEqual({ projectPath: "/project", resolved: true, limit: 10 });
-      list.toggleResolvedGroupExpanded();
+      list.setArchiveExpanded("/project", false);
       await vi.waitFor(() => expect(fixture.models.sessionCatalog.sessions).toHaveLength(0));
       expect(ended).toContainEqual({ projectPath: "/project", resolved: true, limit: 20 });
       expect(catalogs.mock.calls.filter(([query]) => !query.resolved)).toHaveLength(1);

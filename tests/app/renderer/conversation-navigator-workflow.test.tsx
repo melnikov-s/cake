@@ -194,7 +194,11 @@ describe("Sessions navigator workflow", () => {
         act(() => {
           fixture.models.sessionCatalog.find("layout")!.resolved = true;
         });
-        await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
+        await fixture.user.click(
+          within(screen.getByRole("region", { name: "cake" })).getByRole("button", {
+            name: "Resolved sessions",
+          }),
+        );
       } else {
         await fixture.user.type(
           screen.getByRole("searchbox", { name: "Search sessions" }),
@@ -310,7 +314,11 @@ describe("Sessions navigator workflow", () => {
       for (const id of ["layout", "keyboard", "deep-child"])
         fixture.models.sessionCatalog.find(id)!.resolved = true;
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
+    await fixture.user.click(
+      within(screen.getByRole("region", { name: "cake" })).getByRole("button", {
+        name: "Resolved sessions",
+      }),
+    );
     expect(rowFor("UI Layout Refactor").dataset.depth).toBe("0");
     for (const [name, depth] of [
       ["Keyboard Editing & Navigation", 1],

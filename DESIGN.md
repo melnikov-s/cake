@@ -76,9 +76,13 @@ generous room for explanations and diffs and a stable, clearly framed composer.
 The left project rail exposes project artwork and global utilities below the native titlebar. It ranks three levels: content rows (Cake Chat and projects) in full-strength regular text, with medium weight only when selected; quieter grey actions (New session, Search sessions) at the top; and compact grey utilities at the bottom, where Browser sharing is a status dot. A small grey Projects heading with a folder-plus glyph separates the list; the whole heading invokes Add project in either rail width; project artwork retains its historical thumbnail size. Appearance → Left toolbar offers Full (persistent names), Slim (icons only), or the default Dynamic (compact, expanding on hover or keyboard focus). Auto-hide releases the layout track and reveals Full or Slim at the left edge; an explicit reveal button supports keyboard and touch (the native editor also accepts a left-edge tap). Dynamic requires Auto-hide off. Enabling Auto-hide remembers the prior layout, using Full for Dynamic; disabling it restores that prior layout, even if the auto-hidden form was changed. Reveals overlay the conversation without shifting it; focus, active interactions and owned popovers retain the rail until safe dismissal. These preferences are shared application data, not hover state or OS fullscreen. Center the Projects heading and rows in the space between the top actions and bottom utilities. If the group is too tall, start it at the top of that space and let it scroll independently of the actions and utilities. A small activity dot remains visible on project artwork in either rail width and aggregates lightweight running summaries across its conversations and descendants. Settings and Automations are dedicated full-window application views with the same Back navigation, not side panes or OS fullscreen.
 The right Workspace accessory shows To-dos, the recursive Sessions source list,
 or one selected applicable tab widget, never alongside one another. Sessions
-lists all projects; the focused project stays first and open. Delegated groups
-start collapsed with total and running counts. Eligible projects show Auto-merge
-in that group’s header and in the owning conversation’s Activity. When applicable tab
+lists all projects, not the permanent global Cake Chat. The focused project stays
+first and open; other projects open by default when they have active My sessions
+or contain the selection. Each project groups My sessions, Delegated, and
+Resolved in that order. Delegated groups start collapsed with total and running
+counts. Resolved disclosure, count, and paging belong to each project's archive.
+Eligible projects show Auto-merge in Delegated and in the owning conversation’s
+Activity. When applicable tab
 widgets exist, a widget tab at the right of the To-dos/Sessions strip shows one
 full-pane widget. Its chevron picks which widget the tab holds, or Clear; the pick
 survives tab switches and relaunch, and falls back to Widgets if that widget is

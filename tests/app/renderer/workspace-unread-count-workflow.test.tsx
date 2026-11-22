@@ -130,9 +130,9 @@ describe("Workspace Sessions running count", () => {
         models.sessionCatalog.find("elsewhere")!.running = false;
         publishSignals();
       });
-      expectCounts(0, 2);
+      expectCounts(0, 1);
       expect(within(tab()).getByRole("img", { name: "0 running" }).textContent).toBe("0");
-      expect(tab().getAttribute("title")).toBe("0 running · 2 unread · 8 total in all projects");
+      expect(tab().getAttribute("title")).toBe("0 running · 1 unread · 7 total in all projects");
       await userEvent.setup().click(tab());
       const homeRow = () =>
         document.querySelector<HTMLElement>(
@@ -149,31 +149,31 @@ describe("Workspace Sessions running count", () => {
         models.projectConversation("layout", navigatorProjectPath).streaming = true;
         publishSignals();
       });
-      expectCounts(1, 3);
+      expectCounts(1, 2);
       act(() => {
         setHomeRunning(false);
         home.unread = true;
       });
-      expectCounts(1, 4);
+      expectCounts(1, 3);
       expect(homeRow().dataset.working).toBe("true");
       expect(within(homeRow()).getByRole("img", { name: "Ready, unread" })).toBeTruthy();
       act(() => {
         for (const id of ["keyboard", "deep-child"]) models.sessionCatalog.find(id)!.running = true;
         publishSignals();
       });
-      expectCounts(3, 4);
+      expectCounts(3, 3);
 
       act(() => {
         setHomeRunning(true);
         root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
       });
-      expectCounts(3, 4);
-      expect(tab().getAttribute("title")).toBe("3 running · 4 unread · 8 total in all projects");
+      expectCounts(3, 3);
+      expect(tab().getAttribute("title")).toBe("3 running · 3 unread · 7 total in all projects");
       act(() => {
         models.sessionCatalog.find("elsewhere")!.running = true;
         publishSignals();
       });
-      expectCounts(4, 4);
+      expectCounts(4, 3);
       // Ordinary work-session badges still show their own status.
       const workRow = document.querySelector<HTMLElement>(
         '[data-slot="conversation-navigator-row"][data-session-id="layout"]',
@@ -198,7 +198,7 @@ describe("Workspace Sessions unread count", () => {
     });
     expectCounts(Number(running), Number(unread));
     expect(tab().getAttribute("aria-pressed")).toBe("false");
-    expect(tab().getAttribute("title")).toContain("7 total in all projects");
+    expect(tab().getAttribute("title")).toContain("6 total in all projects");
   });
 
   it("reacts to catalog read/new-message events without transcript reads or new session materialization", () => {
@@ -245,21 +245,21 @@ describe("Workspace Sessions unread count", () => {
       navigator.collapseAll(navigatorProjectPath);
     });
     expect(navigator.rowGroups(navigatorProjectPath, () => true)).toHaveLength(0);
-    expectCounts(101, 102);
+    expectCounts(101, 101);
     expect(fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread).toBe(false);
     expect(fixture.models.sessionCatalog.find("layout")!.unread).toBe(false);
     act(() => {
       fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread = true;
     });
-    expectCounts(101, 103);
+    expectCounts(101, 102);
     act(() => {
       fixture.models.cakeChatCatalog.find(navigatorHomeId)!.unread = false;
       fixture.root.sidebarStore.sessionListStore.showMoreSessions(navigatorProjectPath);
     });
-    expectCounts(101, 102);
+    expectCounts(101, 101);
     act(() => fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID));
-    expectCounts(101, 102);
-    expect(tab().getAttribute("title")).toContain("107 total in all projects");
+    expectCounts(101, 101);
+    expect(tab().getAttribute("title")).toContain("106 total in all projects");
   });
 
   it("ignores child-only unread, including collapsed descendants, without losing inherited running status", () => {
@@ -291,7 +291,7 @@ describe("Workspace Sessions unread count", () => {
     act(() => {
       fixture.models.sessionCatalog.find("layout")!.unread = false;
       fixture.models.sessionCatalog.find("icons")!.resolved = true;
-      fixture.root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
+      fixture.root.sidebarStore.sessionListStore.setArchiveExpanded(navigatorProjectPath, true);
     });
     expectCounts(0, 1);
   });

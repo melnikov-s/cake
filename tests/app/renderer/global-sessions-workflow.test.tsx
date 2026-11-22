@@ -8,6 +8,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import { WorkspaceNavigator } from "../../../src/renderer/components/workspace-navigator";
 import { conversationNavigationKey } from "../../../src/renderer/lib/conversation-navigation-tree";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { applySessionSignalsUpdate } from "../../../src/renderer/reducers/SessionSignalsReducer";
 import { CakeChatSummary } from "../../../src/renderer/models/CakeChatSummary";
 import { Project } from "../../../src/renderer/models/Project";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -17,13 +18,23 @@ const alpha = "/alpha";
 const beta = "/beta";
 const alphaChat = `project-chat:${"a".repeat(64)}`;
 const betaChat = `project-chat:${"b".repeat(64)}`;
+const delegatedPath = "/delegated";
+const archivePath = "/history";
+const delegatedChat = `project-chat:${"d".repeat(64)}`;
+const archiveChat = `project-chat:${"c".repeat(64)}`;
 
-function renderSessions(projectPath?: string, many = false) {
+function renderSessions(projectPath?: string, many = false, mixed = false) {
   const open = vi.fn(async () => undefined);
   const fixture = createRendererStoreFixture({
     projects: [
       projectRecord({ path: alpha, name: "Alpha" }),
       projectRecord({ path: beta, name: "Beta" }),
+      ...(mixed
+        ? [
+            projectRecord({ path: delegatedPath, name: "Delegated project" }),
+            projectRecord({ path: archivePath, name: "History only" }),
+          ]
+        : []),
     ],
     client: { projectSessions: { open } },
     sessions: [
@@ -63,6 +74,32 @@ function renderSessions(projectPath?: string, many = false) {
         title: "Unregistered project",
         projectPath: "/removed",
       }),
+      ...(mixed
+        ? [
+            sessionSummary({
+              sessionId: "delegated-lead",
+              title: "Worker lead",
+              projectPath: delegatedPath,
+              purpose: "delegated",
+              familyChildSessionIds: ["delegated-child"],
+              cakeChatLaunch: { requesterSessionId: CAKE_CHAT_SESSION_ID },
+            }),
+            sessionSummary({
+              sessionId: "delegated-child",
+              title: "Worker child",
+              projectPath: delegatedPath,
+              purpose: "delegated",
+              familyParentSessionId: "delegated-lead",
+            }),
+            ...Array.from({ length: 14 }, (_, index) =>
+              sessionSummary({
+                sessionId: `history-${String(index).padStart(2, "0")}`,
+                projectPath: archivePath,
+                resolved: true,
+              }),
+            ),
+          ]
+        : []),
       ...(many
         ? Array.from({ length: 21 }, (_, index) =>
             sessionSummary({ sessionId: `extra-${index}`, projectPath: beta }),
@@ -80,6 +117,21 @@ function renderSessions(projectPath?: string, many = false) {
       messageCount: 1,
     }),
   );
+  if (mixed) {
+    fixture.models.cakeChatCatalog.sessions.push(
+      CakeChatSummary.create({ sessionId: betaChat, projectPath: beta, title: "Beta" }),
+      CakeChatSummary.create({
+        sessionId: delegatedChat,
+        projectPath: delegatedPath,
+        title: "Delegated project",
+      }),
+      CakeChatSummary.create({
+        sessionId: archiveChat,
+        projectPath: archivePath,
+        title: "History only",
+      }),
+    );
+  }
   fixture.root.navigationStore.selectCakeChat(
     projectPath === alpha ? alphaChat : CAKE_CHAT_SESSION_ID,
   );
@@ -116,7 +168,7 @@ afterEach(cleanup);
 describe("All-project Sessions scope", () => {
   it("shows project identity once under headings, retaining badges for ungrouped projects and aggregate counts", () => {
     using fixture = renderSessions();
-    expect(screen.getByText("Cake Chat")).toBeTruthy();
+    expect(screen.queryByText("Cake Chat", { exact: true })).toBeNull();
     expect(within(fixture.row(alphaChat)).getByRole("button", { name: "Alpha" })).toBeTruthy();
     expect(screen.getAllByText("Alpha", { exact: true })).toHaveLength(1);
     expect(fixture.row(alphaChat).querySelector('[data-slot="avatar"]')).not.toBeNull();
@@ -136,8 +188,125 @@ describe("All-project Sessions scope", () => {
     expect(screen.queryByText("Unregistered project")).toBeNull();
     expect(screen.queryByText("Archived Alpha")).toBeNull();
     expect(screen.getByRole("button", { name: "Sessions · 1 running · 1 unread" }).title).toContain(
-      "5 total in all projects",
+      "4 total in all projects",
     );
+  });
+
+  it.each([undefined, alpha])(
+    "excludes the permanent Cake Chat from search with focus %s",
+    (projectPath) => {
+      using fixture = renderSessions(projectPath, false, true);
+      expect(fixture.ids(`[data-session-id="${CAKE_CHAT_SESSION_ID}"]`)).toEqual([]);
+      act(() => fixture.navigator.setQuery(projectPath, "Cake Chat"));
+      expect(screen.getByText("No matching conversations")).toBeTruthy();
+      act(() => fixture.navigator.setQuery(projectPath, "Worker child"));
+      expect(fixture.row("delegated-child")).toBeTruthy();
+      expect(fixture.row("delegated-lead")).toBeTruthy();
+      act(() => fixture.navigator.setQuery(projectPath, ""));
+      expect(screen.queryByText("Worker child")).toBeNull();
+    },
+  );
+
+  it("uses background user ownership even if the user-owned row is not loaded", () => {
+    using fixture = renderSessions(undefined, false, true);
+    const region = within(screen.getByRole("region", { name: "Delegated project" }));
+    expect(region.getByRole("button", { name: "Expand Delegated project" })).toBeTruthy();
+    const signal = {
+      sessionId: "cold-mine",
+      purpose: "user" as const,
+      projectPath: delegatedPath,
+      workingDirectory: delegatedPath,
+      running: false,
+      unread: false,
+    };
+    act(() =>
+      applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+        _tag: "Snapshot",
+        sessions: [signal],
+      }),
+    );
+    expect(region.getByRole("button", { name: "Collapse Delegated project" })).toBeTruthy();
+    expect(region.getByRole("button", { name: "Delegated" }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    act(() =>
+      applySessionSignalsUpdate(fixture.models.sessionCatalog, {
+        _tag: "Resolved",
+        sessionId: signal.sessionId,
+      }),
+    );
+    expect(region.getByRole("button", { name: "Expand Delegated project" })).toBeTruthy();
+  });
+
+  it("keeps project and kind disclosures independent and reveals a selected delegated descendant", async () => {
+    using fixture = renderSessions(alpha, false, true);
+    const project = within(screen.getByRole("region", { name: "Delegated project" }));
+    const betaRegion = within(screen.getByRole("region", { name: "Beta" }));
+    expect(betaRegion.getByRole("button", { name: "Collapse Beta" })).toBeTruthy();
+    expect(project.queryByRole("button", { name: "Delegated" })).toBeNull();
+    await fixture.user.click(project.getByRole("button", { name: "Expand Delegated project" }));
+    const delegated = project.getByRole("button", { name: "Delegated" });
+    expect(delegated.getAttribute("aria-expanded")).toBe("false");
+    await fixture.user.click(delegated);
+    await fixture.user.click(project.getByRole("button", { name: "Collapse Worker lead" }));
+    await fixture.user.click(project.getByRole("button", { name: "Collapse Delegated project" }));
+    expect(screen.queryByText("Worker lead")).toBeNull();
+    act(() => fixture.root.navigationStore.selectProjectSession("delegated-child"));
+    expect(fixture.row("delegated-child").dataset.navigationActive).toBe("true");
+    expect(fixture.root.workspaceNavigatorStore.projectPath).toBe(delegatedPath);
+    act(() => fixture.root.navigationStore.selectCakeChat(alphaChat));
+    expect(project.getByRole("button", { name: "Expand Delegated project" })).toBeTruthy();
+    await fixture.user.click(project.getByRole("button", { name: "Expand Delegated project" }));
+    expect(project.getByRole("button", { name: "Delegated" }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+  });
+
+  it("nests and pages archives independently, including an archive-only project", async () => {
+    using fixture = renderSessions(alpha, false, true);
+    const alphaRegion = within(screen.getByRole("region", { name: "Alpha" }));
+    const history = within(screen.getByRole("region", { name: "History only" }));
+    const archiveButton = (project: ReturnType<typeof within>) =>
+      project.getByRole("button", { name: "Resolved sessions" });
+    expect(history.queryByRole("button", { name: "Resolved sessions" })).toBeNull();
+    act(() => {
+      fixture.models.sessionCatalog.resolvedTotalByProject[archivePath] = 14;
+      fixture.models.sessionCatalog.resolvedTotalByProject[alpha] = 1;
+    });
+    // Selecting an archive-only project's paged-out row reveals that project and archive.
+    act(() => fixture.root.navigationStore.selectProjectSession("history-13"));
+    expect(fixture.row("history-13").dataset.navigationActive).toBe("true");
+    expect(
+      alphaRegion.getAllByRole("heading").map((heading) => heading.getAttribute("aria-label")),
+    ).toEqual(["My sessions", "Delegated", "Resolved sessions"]);
+    expect(archiveButton(alphaRegion).getAttribute("aria-expanded")).toBe("false");
+    expect(archiveButton(alphaRegion).querySelector('[data-slot="group-count"]')?.textContent).toBe(
+      "1",
+    );
+    expect(archiveButton(history).getAttribute("aria-expanded")).toBe("true");
+    expect(archiveButton(history).querySelector('[data-slot="group-count"]')?.textContent).toBe(
+      "14",
+    );
+    expect(history.queryByRole("heading", { name: "My sessions" })).toBeNull();
+    expect(history.queryByText("history-12")).toBeNull();
+    await fixture.user.click(archiveButton(alphaRegion));
+    await fixture.user.click(history.getByRole("button", { name: "Show more" }));
+    expect(history.getByText("history-12")).toBeTruthy();
+    const list = fixture.root.sidebarStore.sessionListStore;
+    expect(list.projectSessionCatalogQueries.filter(({ resolved }) => resolved)).toEqual(
+      expect.arrayContaining([
+        { projectPath: archivePath, resolved: true, limit: 20 },
+        { projectPath: alpha, resolved: true, limit: 10 },
+      ]),
+    );
+    expect(list.projectSessionCatalogQueries.filter(({ resolved }) => resolved)).toHaveLength(2);
+    act(() => fixture.navigator.setQuery(archivePath, "history-12"));
+    expect(history.getByText("history-12")).toBeTruthy();
+    expect(screen.queryByText("Archived Alpha")).toBeNull();
+    act(() => fixture.navigator.setQuery(archivePath, ""));
+    await fixture.user.click(archiveButton(history));
+    expect(archiveButton(alphaRegion).getAttribute("aria-expanded")).toBe("true");
+    expect(history.queryByText("history-13")).toBeNull();
   });
 
   it("updates row identity when a containing project heading appears or disappears", () => {
@@ -191,7 +360,7 @@ describe("All-project Sessions scope", () => {
       });
     });
     const homes = () => fixture.ids('[data-relationship="home"]');
-    expect(homes()).toEqual([alphaChat, CAKE_CHAT_SESSION_ID, betaChat]);
+    expect(homes()).toEqual([alphaChat, betaChat]);
     expect(screen.queryByRole("button", { name: "Collapse Alpha" })).toBeNull();
     act(() => fixture.navigator.toggleExpanded(alpha, conversationNavigationKey(alphaChat)));
     expect(fixture.row("alpha-session").querySelector('[data-slot="session-source"]')).toBeNull();
@@ -203,7 +372,7 @@ describe("All-project Sessions scope", () => {
     act(() => root.workspaceNavigatorStore.show("sessions"));
     expect(fixture.navigator.isExpanded(beta, conversationNavigationKey(betaChat))).toBe(true);
     act(() => root.navigationStore.selectCakeChat(betaChat));
-    expect(homes()).toEqual([betaChat, CAKE_CHAT_SESSION_ID, alphaChat]);
+    expect(homes()).toEqual([betaChat, alphaChat]);
     expect(screen.queryByRole("button", { name: "Collapse Beta" })).toBeNull();
     expect(fixture.row("beta-session")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Collapse Alpha" })).toBeTruthy();
@@ -231,22 +400,33 @@ describe("All-project Sessions scope", () => {
     expect(fixture.ids('[data-session-id="beta-session"]')).toEqual([]);
     act(() => fixture.navigator.setQuery(undefined, ""));
     expect(screen.queryByText("Nested task")).toBeNull();
-    act(() => fixture.root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded());
-    const resolved = within(screen.getByRole("region", { name: "Resolved sessions" }));
-    expect(resolved.getByText("Archived Alpha")).toBeTruthy();
-    expect(resolved.getByText("Archived Beta")).toBeTruthy();
-    for (const [id, name] of [
-      ["alpha-resolved", "Alpha"],
-      ["beta-resolved", "Beta"],
-    ] as const) {
-      expect(
-        within(fixture.row(id)).getByTitle(name).querySelector('[data-slot="avatar"]'),
-      ).not.toBeNull();
-    }
+    const list = fixture.root.sidebarStore.sessionListStore;
+    act(() => {
+      fixture.navigator.toggleExpanded(undefined, homeKey);
+      list.setArchiveExpanded(alpha, true);
+      list.setArchiveExpanded(beta, true);
+    });
+    expect(
+      within(screen.getByRole("region", { name: "Alpha" })).getByText("Archived Alpha"),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole("region", { name: "Beta" })).getByText("Archived Beta"),
+    ).toBeTruthy();
     act(() => fixture.navigator.setQuery(undefined, "Archived Beta"));
-    expect(resolved.queryByText("Archived Alpha")).toBeNull();
-    expect(resolved.getByText("Archived Beta")).toBeTruthy();
+    expect(screen.queryByText("Archived Alpha")).toBeNull();
+    expect(screen.getByRole("region", { name: "Resolved sessions" }).textContent).toContain(
+      "Archived Beta",
+    );
     expect(fixture.navigator.query(alpha)).toBe("");
+  });
+
+  it("reveals an externally selected active root outside the current page without advancing it", () => {
+    using fixture = renderSessions(undefined, true);
+    const id = fixture.navigator.tree(beta).roots.at(-1)!.target.sessionId;
+    expect(fixture.ids(`[data-session-id="${id}"]`)).toEqual([]);
+    act(() => fixture.root.navigationStore.selectProjectSession(id));
+    expect(fixture.row(id).dataset.navigationActive).toBe("true");
+    expect(fixture.root.sidebarStore.sessionListStore.sessionLimit(beta)).toBe(10);
   });
 
   it("paginates global project roots and resolved history independently and bypasses pagination for search", () => {
@@ -266,16 +446,17 @@ describe("All-project Sessions scope", () => {
     expect(betaRows()).toHaveLength(22);
     expect(fixture.navigator.hasMoreSessions(undefined)).toBe(false);
     expect(fixture.root.sidebarStore.sessionListStore.sessionLimit(beta, true)).toBe(10);
+    const list = fixture.root.sidebarStore.sessionListStore;
     act(() => {
-      fixture.root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded();
+      list.setArchiveExpanded(beta, true);
       fixture.models.sessionCatalog.resolvedHasMoreByProject[beta] = true;
     });
-    expect(fixture.navigator.hasMoreSessions(undefined, true)).toBe(true);
-    act(() => fixture.navigator.showMoreSessions(true));
-    expect(fixture.root.sidebarStore.sessionListStore.sessionLimit(beta, true)).toBe(20);
+    act(() => list.showMoreSessions(beta, true));
+    expect(list.sessionLimit(beta, true)).toBe(20);
+    expect(list.sessionLimit(alpha, true)).toBe(10);
   });
 
-  it("demands all-project metadata and reveals all archives from a project without loading transcripts", () => {
+  it("demands all-project active metadata and only the expanded project's archive without loading transcripts", () => {
     using fixture = renderSessions(alpha);
     const load = vi.spyOn(fixture.root.sessionRegistry, "load");
     const ids = () => fixture.navigator.metadataTargets().map((target) => target.sessionId);
@@ -289,17 +470,20 @@ describe("All-project Sessions scope", () => {
       ]),
     );
     expect(ids()).not.toContain("beta-resolved");
-    act(() => fixture.root.sidebarStore.sessionListStore.toggleResolvedGroupExpanded());
-    expect(ids()).toEqual(expect.arrayContaining(["alpha-resolved", "beta-resolved"]));
+    act(() => fixture.root.sidebarStore.sessionListStore.setArchiveExpanded(alpha, true));
+    expect(ids()).toContain("alpha-resolved");
+    expect(ids()).not.toContain("beta-resolved");
     expect(fixture.row("alpha-resolved")).toBeTruthy();
-    expect(fixture.row("beta-resolved")).toBeTruthy();
+    expect(fixture.ids('[data-session-id="beta-resolved"]')).toEqual([]);
     expect(load).not.toHaveBeenCalled();
     expect(fixture.models.projectConversations).toHaveLength(0);
   });
 
   it("lets the user close the archive after all projects return an empty history", async () => {
     using fixture = renderSessions(alpha);
-    const archive = screen.getByRole("button", { name: "Resolved sessions" });
+    const archive = within(screen.getByRole("region", { name: "Alpha" })).getByRole("button", {
+      name: "Resolved sessions",
+    });
     await fixture.user.click(archive);
     act(() => {
       for (const path of [alpha, beta])

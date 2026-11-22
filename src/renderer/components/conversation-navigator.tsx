@@ -22,10 +22,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
     canShowAutoMerge(root.projectCatalogStore.find(path)),
   );
   const scope = projectPath ?? "cake-chat";
-  const resolvedExpanded = list.resolvedGroupExpanded;
-  const activeHasMore = store.hasMoreSessions(projectPath);
-  const resolvedHasMore = store.hasMoreSessions(projectPath, true);
-  const resolvedCount = store.resolvedCount();
+  const activeHasMore = !query.trim() && store.hasMoreSessions(projectPath);
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Sessions">
       <div className="flex min-w-0 items-center gap-1.5 px-3.5 pt-3 pb-2">
@@ -46,40 +43,85 @@ export const ConversationNavigator = observer(function ConversationNavigator({
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pb-3"
         aria-label="Session conversations"
       >
-        <section aria-label="Active sessions">
-          {groups.map(({ key, containingProjectPath, showEmptyDelegatedGroup, header, rows }) => (
-            <section key={key} aria-label={header?.label} data-project-path={header?.projectPath}>
-              {header && (
+        <section aria-label="Projects">
+          {groups.map(({ path, name, home, headingKey, expanded, active, archive }) => (
+            <section key={path} aria-label={name} data-project-path={path}>
+              {home ? (
+                <ConversationNavigatorRow node={home.node} depth={0} projectPath={projectPath} />
+              ) : store.isPinnedOpen(projectPath, headingKey) ? (
+                <h3 className="px-2 py-2 text-sm font-medium">{name}</h3>
+              ) : (
                 <ConversationNavigatorGroupHeader
-                  label={header.label}
-                  count={header.count}
-                  expanded={header.expanded}
-                  collapsedSummary={
-                    header.running === undefined
-                      ? undefined
-                      : `${header.count} delegated · ${header.running} running`
-                  }
-                  hiddenActivity={
-                    header.kind === "user" && !header.expanded
-                      ? list.sessionKindGroupActivity(header.projectPath, header.kind)
-                      : undefined
-                  }
-                  actions={header.autoMerge && <AutoMergeToggle projectPath={header.projectPath} />}
-                  onToggle={() =>
-                    store.toggleKind(projectPath, header.projectPath, header.kind, header.expanded)
-                  }
+                  label={name}
+                  expanded={expanded}
+                  onToggle={() => store.toggleExpanded(projectPath, headingKey)}
                 />
               )}
-              {rows.map(({ node, depth }) => (
-                <ConversationNavigatorRow
-                  key={node.key}
-                  node={node}
-                  depth={depth}
-                  containingProjectPath={containingProjectPath}
-                  hasGroupedContent={showEmptyDelegatedGroup}
-                  projectPath={projectPath}
-                />
-              ))}
+              <div>
+                {active.map(({ kind, label, count, expanded, running, autoMerge, rows }) => (
+                  <section key={kind} aria-label={label} data-project-path={path}>
+                    <ConversationNavigatorGroupHeader
+                      label={label}
+                      count={count}
+                      expanded={expanded}
+                      collapsedSummary={
+                        running === undefined
+                          ? undefined
+                          : `${count} delegated · ${running} running`
+                      }
+                      hiddenActivity={
+                        kind === "user" && !expanded
+                          ? list.sessionKindGroupActivity(path, kind)
+                          : undefined
+                      }
+                      actions={autoMerge && <AutoMergeToggle projectPath={path} />}
+                      onToggle={() => store.toggleKind(projectPath, path, kind, expanded)}
+                    />
+                    {rows.map(({ node, depth }) => (
+                      <ConversationNavigatorRow
+                        key={node.key}
+                        node={node}
+                        depth={depth}
+                        containingProjectPath={home ? path : undefined}
+                        projectPath={projectPath}
+                      />
+                    ))}
+                  </section>
+                ))}
+                {archive && (
+                  <>
+                    <ConversationNavigatorGroupHeader
+                      label="Resolved sessions"
+                      count={archive.count}
+                      expanded={archive.expanded}
+                      onToggle={() => list.setArchiveExpanded(path, !archive.expanded)}
+                    />
+                    {archive.expanded && (
+                      <section aria-label="Resolved sessions">
+                        {archive.rows.map(({ node, depth }) => (
+                          <ConversationNavigatorRow
+                            key={node.key}
+                            node={node}
+                            depth={depth}
+                            containingProjectPath={home ? path : undefined}
+                            projectPath={projectPath}
+                          />
+                        ))}
+                        {archive.hasMore && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full text-muted-foreground"
+                            onClick={() => list.showMoreSessions(path, true)}
+                          >
+                            Show more
+                          </Button>
+                        )}
+                      </section>
+                    )}
+                  </>
+                )}
+              </div>
             </section>
           ))}
           {groups.length === 0 && (
@@ -87,7 +129,7 @@ export const ConversationNavigator = observer(function ConversationNavigator({
               {query.trim() ? "No matching conversations" : "No sessions"}
             </p>
           )}
-          {activeHasMore && !query.trim() && (
+          {activeHasMore && (
             <Button
               variant="ghost"
               size="sm"
@@ -98,36 +140,6 @@ export const ConversationNavigator = observer(function ConversationNavigator({
             </Button>
           )}
         </section>
-        {(resolvedExpanded || resolvedCount !== 0) && (
-          <ConversationNavigatorGroupHeader
-            label="Resolved sessions"
-            count={resolvedCount}
-            expanded={resolvedExpanded}
-            onToggle={() => list.toggleResolvedGroupExpanded()}
-          />
-        )}
-        {resolvedExpanded && resolvedCount !== 0 && (
-          <section aria-label="Resolved sessions">
-            {store.resolvedRows(projectPath).map(({ node, depth }) => (
-              <ConversationNavigatorRow
-                key={node.key}
-                node={node}
-                depth={depth}
-                projectPath={projectPath}
-              />
-            ))}
-            {resolvedHasMore && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-muted-foreground"
-                onClick={() => store.showMoreSessions(true)}
-              >
-                Show more
-              </Button>
-            )}
-          </section>
-        )}
         {store.error && (
           <p role="alert" className="px-2 py-2 text-xs text-destructive">
             {store.error}

@@ -697,7 +697,7 @@ describe("App shell navigation workflow", () => {
     await expectProjectChat("beta");
     expect(fixture.root.appShellStore.canGoBack).toBe(false);
     expect(fixture.root.appShellStore.canGoForward).toBe(false);
-    await fixture.showSessions(true);
+    await fixture.showSessions("/beta");
     await fixture.user.click(screen.getByRole("button", { name: "Restore beta conversation" }));
     expect(restore).toHaveBeenCalledWith(
       { sessionId: "beta", workingDirectory: "/beta", userInitiated: true },
@@ -732,7 +732,7 @@ describe("App shell navigation workflow", () => {
     await expectProjectChat("alpha");
     await fixture.selectSession("beta");
     await expectProjectChat("beta");
-    await fixture.showSessions(true);
+    await fixture.showSessions("/beta");
     await fixture.user.pointer({ target: sessionButton("beta"), keys: "[MouseRight]" });
     await waitFor(() =>
       expect(deleteSession).toHaveBeenCalledWith(

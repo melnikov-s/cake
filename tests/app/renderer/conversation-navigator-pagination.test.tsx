@@ -53,7 +53,7 @@ afterEach(cleanup);
 describe("Conversation navigator pagination", () => {
   it("hides active Show more after collapsing Project Chat and restores pagination when expanded", async () => {
     using fixture = renderNavigator();
-    const active = within(screen.getByRole("region", { name: "Active sessions" }));
+    const active = within(screen.getByRole("region", { name: "Projects" }));
     expect(fixture.rows()).toHaveLength(10);
     await fixture.user.click(active.getByRole("button", { name: "Show more" }));
     expect(fixture.rows()).toHaveLength(20);
@@ -63,15 +63,15 @@ describe("Conversation navigator pagination", () => {
     expect(active.getByRole("button", { name: "project" })).toBeTruthy();
     expect(active.queryByRole("button", { name: "Show more" })).toBeNull();
 
-    // Resolved pagination has its own disclosure, independent of Project Chat.
-    await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
-    const resolved = within(screen.getByRole("region", { name: "Resolved sessions" }));
-    expect(resolved.getByRole("button", { name: "Show more" })).toBeTruthy();
-
+    expect(screen.queryByRole("button", { name: "Resolved sessions" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Expand project" }));
     expect(fixture.rows()).toHaveLength(20);
     await fixture.user.click(active.getByRole("button", { name: "Show more" }));
     expect(fixture.rows()).toHaveLength(21);
     expect(active.queryByRole("button", { name: "Show more" })).toBeNull();
+
+    await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
+    const resolved = within(screen.getByRole("region", { name: "Resolved sessions" }));
+    expect(resolved.getByRole("button", { name: "Show more" })).toBeTruthy();
   });
 });

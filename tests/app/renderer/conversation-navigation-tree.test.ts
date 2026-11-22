@@ -18,7 +18,7 @@ import {
   populateConversationNavigationFixture,
 } from "./fixtures/conversation-navigation-fixtures";
 
-function treeFixture(projectPath: string | undefined) {
+function treeFixture(projectPath: string) {
   const models = RootProjection.create();
   applySnapshot(models.sessionCatalog, { sessions: navigatorSessions });
   populateConversationNavigationFixture(models);
@@ -193,9 +193,7 @@ describe("conversation navigation projection", () => {
     expect(project.running).toBe(0);
     expect(project.roots[0]).toMatchObject({ running: true, activity: "running" });
     expect(project.byKey.has(conversationNavigationKey(navigatorHomeId))).toBe(true);
-    const global = buildConversationNavigationTree({ ...input, projectPath: undefined });
-    expect(global.unread).toBe(1);
-    expect(global.total).toBe(1);
+    expect(project.byKey.has(conversationNavigationKey(CAKE_CHAT_SESSION_ID))).toBe(false);
   });
 
   it("keeps actual Project Sessions and family/context-fork children in Sessions, with private conversations in their owner's menu", () => {
@@ -265,9 +263,8 @@ describe("conversation navigation projection", () => {
   });
 
   it("scopes global and Project Chat menus to direct owners, not siblings or descendants", () => {
-    using fixture = treeFixture(undefined);
-    expect(fixture.tree.total).toBe(1);
-    expect(fixture.tree.roots[0]!.title).toBe("Cake Chat");
+    using fixture = treeFixture(navigatorProjectPath);
+    expect(fixture.tree.byKey.has(conversationNavigationKey(CAKE_CHAT_SESSION_ID))).toBe(false);
     expect(fixture.owned(CAKE_CHAT_SESSION_ID).map((node) => node.title)).toEqual([
       "Weekly planning",
     ]);

@@ -448,11 +448,12 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatId])(
   },
 );
 
-it.each(
-  [CAKE_CHAT_SESSION_ID, projectChatId].flatMap((parent) =>
-    (["link", "sessions"] as const).map((entry) => ({ parent, entry })),
-  ),
-)(
+it.each([
+  { parent: CAKE_CHAT_SESSION_ID, entry: "link" },
+  { parent: CAKE_CHAT_SESSION_ID, entry: "rail" },
+  { parent: projectChatId, entry: "link" },
+  { parent: projectChatId, entry: "sessions" },
+])(
   "$parent explicit parent $entry still closes a legacy identityless worker",
   async ({ parent, entry }) => {
     using fixture = await inspectionFixture(parent);
@@ -463,14 +464,12 @@ it.each(
     });
     if (entry === "link")
       await act(async () => fixture.root.navigationStore.openSessionLink(parent));
+    else if (entry === "rail")
+      await fixture.user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
     else {
       await fixture.showSessions();
       const workspace = within(screen.getByRole("complementary", { name: "Workspace" }));
-      await fixture.user.click(
-        workspace.getByRole("button", {
-          name: parent === CAKE_CHAT_SESSION_ID ? /^Cake Chat/ : /^alpha$/,
-        }),
-      );
+      await fixture.user.click(workspace.getByRole("button", { name: "alpha" }));
     }
     await waitFor(() => expectParent(fixture, parent));
   },
