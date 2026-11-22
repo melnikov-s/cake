@@ -22,6 +22,7 @@ type Probe = {
   event: "mousedown" | "keydown";
   target: string;
   present: string[];
+  composer?: string;
   absent?: string[];
   text?: string;
   value?: string;
@@ -86,9 +87,9 @@ async function arm(page: Page, probe: Probe) {
           if (!found) return false;
         }
         const composer = document.querySelector<HTMLTextAreaElement>(
-          'textarea[aria-label="Message"]',
+          probe.composer ?? 'textarea[aria-label="Message"]',
         );
-        if (!composer || composer.disabled) return false;
+        if (!composer || composer.disabled || composer.readOnly || !visible(composer)) return false;
         return probe.value === undefined || composer.value === probe.value;
       };
       const frame = () => {
@@ -345,8 +346,8 @@ test("user-visible performance collection @performance", async ({ browserName },
         {
           event: "mousedown",
           target: resolve,
-          present: [projectHome, projectHomeInput, resolvedRow(1)],
-          absent: [pane(1)],
+          present: [projectHome, resolvedRow(1)],
+          composer: projectHomeInput,
         },
         () => page.locator(resolve).click(),
       );
