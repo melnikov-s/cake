@@ -63,10 +63,11 @@ for (const theme of ["light", "dark"] as const) {
         y: compactIcon.y + compactIcon.height / 2,
       };
       const captures = resolve(repositoryRoot, ".visual-captures");
+      const clip = { x: 0, y: 0, width: 300, height: await page.evaluate(() => innerHeight) };
       await mkdir(captures, { recursive: true });
       await page.screenshot({
         path: join(captures, `projects-header-compact-${theme}.png`),
-        clip: { x: 0, y: 0, width: 300, height: 260 },
+        clip,
       });
 
       await page.mouse.move(originalPoint.x, originalPoint.y);
@@ -84,7 +85,7 @@ for (const theme of ["light", "dark"] as const) {
       ];
       await page.screenshot({
         path: join(captures, `projects-header-expanded-${theme}.png`),
-        clip: { x: 0, y: 0, width: 300, height: 260 },
+        clip,
       });
       let calls = 0;
       const expectOneCall = async () => {

@@ -36,7 +36,7 @@ export function NavigationRail({
   retained?: boolean;
   onRevealChange?(revealed: boolean): void;
   header: ReactNode;
-  /** Section label above the scrolling list; stays put while the list scrolls. */
+  /** Section label moves with the list; only header and footer stay fixed. */
   listHeading?: ReactNode;
   footer: ReactNode;
   children: ReactNode;
@@ -246,14 +246,22 @@ export function NavigationRail({
             )}
             {header}
           </div>
-          {listHeading}
           <div
-            role="region"
-            aria-label="Projects"
-            tabIndex={0}
-            className="min-h-9 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pl-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            data-slot="project-rail-scroll"
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            <div className="flex min-w-0 flex-col gap-1 pr-1">{children}</div>
+            {/* Auto margins split spare height without pushing overflowing content above the scroll origin. */}
+            <div className="my-auto flex min-w-0 shrink-0 flex-col gap-1">
+              {listHeading}
+              <div
+                role="region"
+                aria-label="Projects"
+                tabIndex={0}
+                className="flex min-w-0 flex-col gap-1 px-1"
+              >
+                {children}
+              </div>
+            </div>
           </div>
           <div className="max-h-[45%] shrink-0 overflow-y-auto overflow-x-hidden border-t border-hairline-subtle px-1 pt-1 pb-2">
             {footer}

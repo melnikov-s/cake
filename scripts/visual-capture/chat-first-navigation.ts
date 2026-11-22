@@ -638,7 +638,7 @@ export function createChatFirstNavigationScenario(
         if (state === "rail-list-end")
           // The end of a long project list, where list-trailing rail actions live.
           await rail
-            .getByRole("region", { name: "Projects", exact: true })
+            .locator('[data-slot="project-rail-scroll"]')
             .evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
         else {
           await page.mouse.move(500, 200);

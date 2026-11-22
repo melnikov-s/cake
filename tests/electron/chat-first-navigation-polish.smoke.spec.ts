@@ -103,7 +103,7 @@ test("narrow navigation overlays labels, keeps overflowing projects reachable an
     expect(chatControlBounds.every(Boolean)).toBe(true);
     const workspace = page.locator('[data-slot="workspace"]');
     const before = (await workspace.boundingBox())!;
-    const projects = rail.getByRole("region", { name: "Projects", exact: true });
+    const projects = rail.locator('[data-slot="project-rail-scroll"]');
     expect(await projects.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
       true,
     );
