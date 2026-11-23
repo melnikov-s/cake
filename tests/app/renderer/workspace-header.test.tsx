@@ -63,7 +63,7 @@ it("keeps the compact drop-down title and actions inline without a mode slot", (
   ).toEqual(["Destination", "Close"]);
 });
 
-it("centers the shell header's mode group over the main canvas pane", () => {
+it("centers the shell header's mode group on the window so switching modes never shifts it", () => {
   const target = document.createElement("div");
   document.body.append(target);
   try {
@@ -75,10 +75,10 @@ it("centers the shell header's mode group over the main canvas pane", () => {
       </ShellHeaderContext>,
     );
     const header = target.querySelector('[data-slot="workspace-header"]')!;
-    // The first track ends at the center of the main workspace pane (excluding left rail and
-    // right accessory widths) so the mode switcher anchors cleanly over the conversation.
+    // The first track ends at 50vw independently of accessory/navigator widths so the mode
+    // switcher stays locked in place across Chat, VS Code, Browser, Canvas, and sidebar toggles.
     expect(header.className).toContain(
-      "grid-cols-[minmax(0,max(6rem,calc((100vw-var(--project-rail-width,0px)-var(--navigator-width,0px)-var(--command-width,0px))/2-var(--workspace-header-start))))_0px_minmax(0,1fr)]",
+      "grid-cols-[minmax(0,calc(50vw-var(--project-rail-width,0px)-var(--workspace-header-start)))_0px_minmax(0,1fr)]",
     );
     expect(header.querySelector('[data-slot="workspace-mode"]')!.className).toContain(
       "justify-center",

@@ -13,8 +13,9 @@ export function WorkspaceModeSlot({ children }: { children: ReactNode }) {
 
 /**
  * One traffic-light-aligned row for the conversation and its Browser/VS Code surfaces.
- * In the shell, the mode group is centered over the main workspace pane (excluding the
- * left rail and right accessory widths) so it visually anchors to the active canvas.
+ * In the shell, the mode group is centered on the window (`50vw`), independently of
+ * rail and accessory widths, so it never shifts horizontally when switching modes or
+ * toggling side panes.
  */
 export function WorkspaceHeader({
   title,
@@ -29,7 +30,7 @@ export function WorkspaceHeader({
 }) {
   const shellHeader = useContext(ShellHeaderContext);
   const [modeTarget, setModeTarget] = useState<HTMLDivElement | null>(null);
-  const canvasCentered = !compact && shellHeader !== undefined;
+  const windowCentered = !compact && shellHeader !== undefined;
   const header = (
     <WorkspaceModeContext value={compact ? undefined : modeTarget}>
       <header
@@ -40,8 +41,8 @@ export function WorkspaceHeader({
             ? "flex gap-3 overflow-hidden border-hairline-subtle px-5"
             : "grid border-transparent pr-14 pl-(--workspace-header-start) [--workspace-header-start:max(46px,calc(var(--window-controls-width,0px)-var(--project-rail-width,0px)))] [--workspace-mode-clearance:9.5rem] max-[960px]:[--workspace-mode-clearance:4.5rem]",
           !compact &&
-            (canvasCentered
-              ? "grid-cols-[minmax(0,max(6rem,calc((100vw-var(--project-rail-width,0px)-var(--navigator-width,0px)-var(--command-width,0px))/2-var(--workspace-header-start))))_0px_minmax(0,1fr)]"
+            (windowCentered
+              ? "grid-cols-[minmax(0,calc(50vw-var(--project-rail-width,0px)-var(--workspace-header-start)))_0px_minmax(0,1fr)]"
               : "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-3"),
         )}
       >
@@ -50,7 +51,7 @@ export function WorkspaceHeader({
           data-slot="workspace-title"
           className={cn(
             "flex h-full min-w-0 flex-1 items-center",
-            canvasCentered && "pr-(--workspace-mode-clearance)",
+            windowCentered && "pr-(--workspace-mode-clearance)",
           )}
         >
           {!compact && titleLeading}
@@ -71,7 +72,7 @@ export function WorkspaceHeader({
               ? "max-w-[70%] shrink-0"
               : cn(
                   "w-max justify-self-end",
-                  canvasCentered
+                  windowCentered
                     ? "max-w-[calc(100%-var(--workspace-mode-clearance))]"
                     : "max-w-full",
                 ),
