@@ -9342,11 +9342,12 @@ export default function Monitor() {
       .getByRole("combobox", { name: /^Message/ })
       .first()
       .waitFor();
-    if (application)
-      await emitRendererEvent(application, {
-        type: "session-open-requested",
-        sessionId: "visual-widget-tabs",
-      });
+    if (application) {
+      await openSeededSession(page, "Widget workspace", artifactScenarioSessionTitle);
+      await expect(
+        page.locator('[data-slot="session-pane"][data-session-id="visual-widget-tabs"]'),
+      ).toBeVisible();
+    }
     await page.getByRole("button", { name: "Widget tabs", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "Activity monitor", exact: true }).click();
     await expect(
