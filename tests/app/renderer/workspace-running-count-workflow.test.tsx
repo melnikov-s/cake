@@ -73,9 +73,10 @@ const sessionsTab = () =>
 function expectCount(count: number, visible = String(count)) {
   const tab = sessionsTab();
   expect(tab.getAttribute("aria-label")).toBe(`Sessions · ${count} running · 0 unread`);
-  expect(tab.textContent).toBe(`Sessions ${visible}`);
+  expect(tab.textContent).toBe(count > 0 ? `Sessions ${visible}` : "Sessions");
   expect(tab.getAttribute("title")).toContain(`${count} running ·`);
-  expect(within(tab).getByRole("img", { name: `${count} running` })).toBeTruthy();
+  if (count > 0) expect(within(tab).getByRole("img", { name: `${count} running` })).toBeTruthy();
+  else expect(within(tab).queryByRole("img", { name: "0 running" })).toBeNull();
 }
 
 describe("Workspace Sessions running count", () => {
@@ -173,7 +174,7 @@ describe("Workspace Sessions running count", () => {
     });
     expectCount(0);
     expect(fixture.root.conversationNavigatorStore.effectiveWorking(node)).toBe(false);
-    expect(within(sessionsTab()).getByRole("img").className).toContain("text-muted-foreground");
+    expect(within(sessionsTab()).queryByRole("img")).toBeNull();
     act(() => {
       applyConversationUpdate(parent, {
         _tag: "Event",

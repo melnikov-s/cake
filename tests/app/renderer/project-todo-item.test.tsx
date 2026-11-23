@@ -245,9 +245,8 @@ it("shows one latest update and preserves attention, activity and independent li
   const toggle = () =>
     screen.getByRole("button", { name: /^(Show|Hide) 4 links for Fix concrete/ });
   expect(toggle().getAttribute("aria-expanded")).toBe("false");
-  // 3 sessions + 1 web source deduplicate to 2 distinct kind tokens with +2 overflow.
-  expect(toggle().querySelectorAll('[data-slot="todo-link-tokens"] > span')).toHaveLength(2);
-  expect(toggle().textContent).toBe("+2");
+  // 3 sessions + 1 web source show a single compact link count button.
+  expect(toggle().textContent).toBe("4");
   await user.click(toggle());
   expect(toggle().getAttribute("aria-expanded")).toBe("true");
   expect(screen.getByRole("link", { name: "Deep consultant review" })).toBeDefined();

@@ -104,7 +104,7 @@ export function ProjectTodoStatusIndicator({
   }
   return (
     <span role="img" aria-label="Open" title="Open" className={baseClassName}>
-      <StatusDot status="stopped" className="opacity-65" />
+      <StatusDot status="stopped" className="border-[1.5px] border-muted-foreground/75" />
     </span>
   );
 }

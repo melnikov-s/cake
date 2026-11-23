@@ -49,11 +49,12 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
     >
       <PopoverNumberedIconTrigger
         count={items.length}
+        countPlacement="inline"
         tooltip={`${items.length} artifacts${ownerLabel ? ` for ${ownerLabel}` : ""}`}
         wrapTooltip={Boolean(ownerLabel)}
         data-cake-hint-key="a"
       >
-        <ArtifactIcon size={18} />
+        <ArtifactIcon size={16} />
       </PopoverNumberedIconTrigger>
       <PopoverContent align="end" className="w-80 p-0" aria-label={title}>
         {ownerLabel && (

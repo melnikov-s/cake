@@ -292,7 +292,8 @@ it.each(["project", "cake-chat"] as const)(
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
 
-    expect(within(trigger).getAllByText("1")).toHaveLength(2);
+    expect(within(trigger).getAllByText("1")).toHaveLength(1);
+    expect(within(trigger).getByText("running")).toBeTruthy();
     expect(trigger.getAttribute("aria-description")).toBe(
       "0 Project Sessions and 1 Temporary subagents",
     );

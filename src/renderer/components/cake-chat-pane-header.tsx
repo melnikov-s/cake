@@ -7,9 +7,9 @@ import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { SessionToolsGroup } from "./session-tools-group";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { SideChatsMenu } from "./side-chats-menu";
+import { SessionMoreMenu } from "./session-more-menu";
 import { ConversationActivity } from "./conversation-activity";
 import { WorkspaceModeControls } from "./workspace-mode-controls";
-import { WorkLogControls } from "./work-log-controls";
 
 export interface CakeChatOverlayChrome {
   /** Puts the drop-down overlay away. */
@@ -55,7 +55,6 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       ) : (
         <SessionToolsGroup>
           <SessionArtifactMenu session={paneSession} />
-          <SideChatsMenu store={paneSession} />
           <WorkspaceModeControls
             mode="normal"
             terminalAvailable={terminal.available}
@@ -76,7 +75,10 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
             }
             onToggleTerminal={() => void terminal.toggle()}
           />
-          <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
+          <SessionMoreMenu
+            session={paneSession}
+            chatStore={paneSession.conversationSessionStore.chatStore}
+          />
         </SessionToolsGroup>
       )}
     </>

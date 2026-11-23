@@ -439,10 +439,14 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         contextUsage: true,
         history: this.history,
         commands: () => this.model.commands,
-        placeholder: () =>
-          this.sessionId.startsWith("project-chat:")
+        placeholder: () => {
+          const focused = this.todos.focusedItems;
+          if (focused.length === 1) return "Reply about this to-do…";
+          if (focused.length > 1) return "Talk about focused to-dos…";
+          return this.sessionId.startsWith("project-chat:")
             ? "Talk about this project…"
-            : "Ask Cake to find or control a task…",
+            : "Ask Cake to find or control a task…";
+        },
         inputLabel: () =>
           this.sessionId.startsWith("project-chat:") ? "Message Project Chat" : "Message Cake Chat",
         conversationMode: this.conversationMode,

@@ -3,11 +3,10 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { WorkspaceModeControls } from "./workspace-mode-controls";
-import { SideChatsMenu } from "./side-chats-menu";
+import { SessionMoreMenu } from "./session-more-menu";
 import { SessionToolsGroup } from "./session-tools-group";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { ConversationActivity } from "./conversation-activity";
-import { WorkLogControls } from "./work-log-controls";
 
 export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceControls({
   session,
@@ -33,7 +32,6 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
       )}
       <SessionToolsGroup>
         <SessionArtifactMenu session={session} />
-        <SideChatsMenu store={session} onOpen={() => root.workspaceNavigatorStore.showChat()} />
         <WorkspaceModeControls
           mode={mode}
           terminalAvailable={terminal.available}
@@ -53,7 +51,11 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
           }
           onToggleTerminal={() => void terminal.toggle()}
         />
-        <WorkLogControls store={session.conversationSessionStore.chatStore} />
+        <SessionMoreMenu
+          session={session}
+          chatStore={session.conversationSessionStore.chatStore}
+          onOpenSideChat={() => root.workspaceNavigatorStore.showChat()}
+        />
       </SessionToolsGroup>
     </>
   );

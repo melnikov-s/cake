@@ -216,10 +216,10 @@ export const ProjectRail = observer(function ProjectRail({
                   label={projects.nameForPath(path)}
                   ariaLabel={`Open Project Chat for ${projects.nameForPath(path)}`}
                   className={cn(
-                    "relative",
+                    "group/rail-project relative",
                     railRow.content,
                     activeProject === path &&
-                      "bg-[color-mix(in_oklab,var(--sidebar-active),var(--foreground)_8%)] text-foreground hover:bg-[color-mix(in_oklab,var(--sidebar-active),var(--foreground)_8%)] before:pointer-events-none before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
+                      "bg-[color-mix(in_oklab,var(--sidebar-active),var(--foreground)_8%)] text-foreground hover:bg-[color-mix(in_oklab,var(--sidebar-active),var(--foreground)_8%)] before:pointer-events-none before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-full before:bg-accent",
                   )}
                   aria-current={activeProject === path ? "page" : undefined}
                   aria-keyshortcuts="Shift+F10"
@@ -244,11 +244,15 @@ export const ProjectRail = observer(function ProjectRail({
                     }
                   }}
                 >
-                  <span className="relative -my-0.5 grid size-9 place-items-center">
+                  <span className="relative grid size-8 place-items-center">
                     <Avatar
                       kind="project"
-                      // Keep the historical artwork/wrapper; negative margins center it in 32px rows.
-                      className="size-[32.5px]"
+                      className={cn(
+                        "size-7 overflow-hidden rounded-[6px] transition-[opacity,filter] duration-150",
+                        activeProject === path
+                          ? "opacity-100 saturate-100"
+                          : "opacity-75 saturate-[0.75] group-hover/rail-project:opacity-100 group-hover/rail-project:saturate-100",
+                      )}
                       seed={projects.nameForPath(path)}
                       customIcon={projects.find(path)?.settings?.icon}
                       title={projects.nameForPath(path)}

@@ -11,6 +11,8 @@ export interface InsetDisclosureSection {
   summary: ReactNode;
   /** Independent controls that remain available when the disclosure is collapsed. */
   actions?: ReactNode;
+  /** Secondary controls shown inside the expanded panel header rather than the resting strip. */
+  panelActions?: ReactNode;
   accessibleLabel: string;
   accessibleDescription?: string;
   regionLabel: string;
@@ -114,6 +116,11 @@ export function InsetDisclosures({ sections }: { sections: readonly InsetDisclos
                 !open && "hidden",
               )}
             >
+              {section.panelActions && (
+                <div className="mb-1 flex items-center justify-end border-b border-hairline-subtle/75 pb-1">
+                  {section.panelActions}
+                </div>
+              )}
               {section.renderContent(() => setOpenId(null))}
             </div>
           </section>

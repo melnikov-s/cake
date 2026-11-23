@@ -60,7 +60,7 @@ it.each([
   ["cake", "vscode"],
 ] as const)("exposes both work-log controls after Terminal in %s / %s", async (kind, mode) => {
   using fixture = renderToolbar(kind, mode);
-  const trigger = screen.getByRole("button", { name: "Work log display options" });
+  const trigger = screen.getByRole("button", { name: "Conversation options" });
   const buttons = screen.getAllByRole("button");
   expect(buttons[buttons.indexOf(trigger) - 1]).toBe(
     screen.getByRole("button", { name: "Terminal" }),
@@ -85,7 +85,7 @@ it("preserves defaults and restores toolbar choices from the existing window sna
   let saved: StoreSnapshot;
   {
     using fixture = renderToolbar();
-    await fixture.user.click(screen.getByRole("button", { name: "Work log display options" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Conversation options" }));
     for (const name of ["Auto view mode", "Collapsed work logs"]) {
       expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
     }
@@ -94,7 +94,7 @@ it("preserves defaults and restores toolbar choices from the existing window sna
     saved = fixture.savedSnapshot();
   }
   using restored = renderToolbar("cake", "browser", saved);
-  await restored.user.click(screen.getByRole("button", { name: "Work log display options" }));
+  await restored.user.click(screen.getByRole("button", { name: "Conversation options" }));
   for (const name of ["Diff view mode", "Compact work logs"]) {
     expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
   }

@@ -233,7 +233,7 @@ export const ChatTextMessage = forwardRef<
       className={cn(
         assistant || report || part.crossSession || agentSource
           ? "mr-auto w-full"
-          : "ml-auto w-[min(88%,42rem)]",
+          : "ml-auto w-fit max-w-[min(85%,40rem)]",
       )}
     >
       {!assistant &&
@@ -241,12 +241,12 @@ export const ChatTextMessage = forwardRef<
         !part.crossSession &&
         !agentSource &&
         (scheduled ? (
-          <MessageLabel className="flex items-center gap-1" title={scheduled.detail}>
+          <MessageLabel className="flex items-center justify-end gap-1" title={scheduled.detail}>
             <ClockIcon />
             <span>{userLabel}</span>
           </MessageLabel>
         ) : (
-          <MessageLabel>{userLabel}</MessageLabel>
+          <MessageLabel className="text-right">{userLabel}</MessageLabel>
         ))}
       {beforeContent}
       {part.crossSession || report || agentSource ? (

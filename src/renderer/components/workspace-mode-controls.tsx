@@ -1,11 +1,15 @@
 import { observer } from "r-state-tree/react";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
+import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
 import { BrowserIcon, CanvasIcon, ChatIcon, TerminalIcon, VsCodeIcon } from "./ui/icons";
 import { WorkspaceModeSlot } from "./ui/workspace-header";
+import { cn } from "@/lib/utils";
 
 const modeButtonClassName =
-  "h-6 w-8 rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-[inset_0_1px_0_var(--surface-rim),0_1px_2px_rgb(0_0_0/0.14)] aria-pressed:hover:bg-card focus-visible:outline-foreground/60 focus-visible:-outline-offset-2";
+  "h-6 gap-1.5 rounded-[6px] px-2 text-xs font-medium text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-[inset_0_1px_0_var(--surface-rim),0_1px_2px_rgb(0_0_0/0.12)] aria-pressed:hover:bg-card focus-visible:outline-foreground/60 focus-visible:-outline-offset-2 max-[960px]:w-8 max-[960px]:px-0";
+
+const modeLabelClassName = "max-[960px]:hidden";
 
 export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   mode,
@@ -36,53 +40,65 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
         <div
           role="group"
           aria-label="Conversation workspace"
-          className="inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-foreground/[0.05] px-0.5 py-px select-none"
+          className="inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-foreground/[0.05] p-0.5 select-none"
         >
-          <IconButton
-            tooltip="Main"
-            iconSize="navigation"
+          <Button
+            variant="ghost"
+            size="sm"
+            iconSize="inline"
+            title="Main"
+            aria-label="Main"
             className={modeButtonClassName}
-            pressedAppearance="subtle"
             aria-pressed={mode === "normal"}
             onClick={onBackToAgent}
           >
             <ChatIcon />
-          </IconButton>
+            <span className={modeLabelClassName}>Chat</span>
+          </Button>
           {ideAvailable && (
-            <IconButton
-              tooltip="VS Code"
-              iconSize="navigation"
-              pressedAppearance="subtle"
+            <Button
+              variant="ghost"
+              size="sm"
+              iconSize="inline"
+              title="VS Code"
+              aria-label="VS Code"
               aria-pressed={mode === "vscode"}
-              className={`${modeButtonClassName} phone:hidden`}
+              className={cn(modeButtonClassName, "phone:hidden")}
               onClick={onOpenIde}
             >
               <VsCodeIcon />
-            </IconButton>
+              <span className={modeLabelClassName}>Code</span>
+            </Button>
           )}
           {!browserHost && (
-            <IconButton
-              tooltip="Browser"
-              iconSize="navigation"
+            <Button
+              variant="ghost"
+              size="sm"
+              iconSize="inline"
+              title="Browser"
+              aria-label="Browser"
               className={modeButtonClassName}
-              pressedAppearance="subtle"
               aria-pressed={mode === "browser"}
               onClick={onOpenBrowser}
             >
               <BrowserIcon />
-            </IconButton>
+              <span className={modeLabelClassName}>Browser</span>
+            </Button>
           )}
           {onOpenCanvas && (
-            <IconButton
-              tooltip="Project Canvas"
-              iconSize="navigation"
-              pressedAppearance="subtle"
+            <Button
+              variant="ghost"
+              size="sm"
+              iconSize="inline"
+              title="Project Canvas"
+              aria-label="Project Canvas"
               aria-pressed={mode === "canvas"}
               className={modeButtonClassName}
               onClick={onOpenCanvas}
             >
               <CanvasIcon />
-            </IconButton>
+              <span className={modeLabelClassName}>Canvas</span>
+            </Button>
           )}
         </div>
       </WorkspaceModeSlot>

@@ -139,7 +139,9 @@ it.each(["alpha", CAKE_CHAT_SESSION_ID, `project-chat:${"1".repeat(64)}`])(
         .session("selected-sidecar")!
         .chatStore.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" }),
     );
-    await fixture.user.click(await screen.findByRole("button", { name: "Side chats, 1 open" }));
+    await fixture.user.click(
+      await screen.findByRole("button", { name: "Conversation options (1 side chat)" }),
+    );
     await fixture.user.click(
       await screen.findByRole("button", { name: "Selected side conversation" }),
     );

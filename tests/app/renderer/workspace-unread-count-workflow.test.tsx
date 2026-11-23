@@ -71,7 +71,9 @@ const tab = () => screen.getByRole("button", { name: /^Sessions ·/ });
 function expectCounts(running: number, unread: number) {
   expect(tab().getAttribute("aria-label")).toBe(`Sessions · ${running} running · ${unread} unread`);
   expect(tab().getAttribute("title")).toContain(`${running} running · ${unread} unread ·`);
-  expect(within(tab()).getByRole("img", { name: `${running} running` })).toBeTruthy();
+  const runningBadge = within(tab()).queryByRole("img", { name: `${running} running` });
+  if (running) expect(runningBadge).toBeTruthy();
+  else expect(runningBadge).toBeNull();
   const unreadBadge = within(tab()).queryByRole("img", { name: `${unread} unread` });
   if (unread) {
     expect(unreadBadge?.getAttribute("title")).toBe(`${unread} unread`);
@@ -131,7 +133,6 @@ describe("Workspace Sessions running count", () => {
         publishSignals();
       });
       expectCounts(0, 1);
-      expect(within(tab()).getByRole("img", { name: "0 running" }).textContent).toBe("0");
       expect(tab().getAttribute("title")).toBe("0 running · 1 unread · 7 total in all projects");
       await userEvent.setup().click(tab());
       const homeRow = () =>

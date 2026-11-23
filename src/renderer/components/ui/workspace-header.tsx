@@ -13,9 +13,8 @@ export function WorkspaceModeSlot({ children }: { children: ReactNode }) {
 
 /**
  * One traffic-light-aligned row for the conversation and its Browser/VS Code surfaces.
- * In the shell, the mode group is centered on the window (under the notch), not on the
- * space between the title and actions: the first track runs from the content start to
- * the window's center line, and a zero-width track there lets the group overflow evenly.
+ * In the shell, the mode group is centered over the main workspace pane (excluding the
+ * left rail and right accessory widths) so it visually anchors to the active canvas.
  */
 export function WorkspaceHeader({
   title,
@@ -30,7 +29,7 @@ export function WorkspaceHeader({
 }) {
   const shellHeader = useContext(ShellHeaderContext);
   const [modeTarget, setModeTarget] = useState<HTMLDivElement | null>(null);
-  const windowCentered = !compact && shellHeader !== undefined;
+  const canvasCentered = !compact && shellHeader !== undefined;
   const header = (
     <WorkspaceModeContext value={compact ? undefined : modeTarget}>
       <header
@@ -39,10 +38,10 @@ export function WorkspaceHeader({
           "relative box-content h-title-bar min-w-0 shrink-0 items-center border-b [app-region:drag]",
           compact
             ? "flex gap-3 overflow-hidden border-hairline-subtle px-5"
-            : "grid border-transparent pr-14 pl-(--workspace-header-start) [--workspace-header-start:max(46px,calc(var(--window-controls-width,0px)-var(--project-rail-width,0px)))] [--workspace-mode-clearance:3.75rem]",
+            : "grid border-transparent pr-14 pl-(--workspace-header-start) [--workspace-header-start:max(46px,calc(var(--window-controls-width,0px)-var(--project-rail-width,0px)))] [--workspace-mode-clearance:9.5rem] max-[960px]:[--workspace-mode-clearance:4.5rem]",
           !compact &&
-            (windowCentered
-              ? "grid-cols-[minmax(0,calc(50vw-var(--project-rail-width,0px)-var(--workspace-header-start)))_0px_minmax(0,1fr)]"
+            (canvasCentered
+              ? "grid-cols-[minmax(0,max(6rem,calc((100vw-var(--project-rail-width,0px)-var(--navigator-width,0px)-var(--command-width,0px))/2-var(--workspace-header-start))))_0px_minmax(0,1fr)]"
               : "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-3"),
         )}
       >
@@ -51,7 +50,7 @@ export function WorkspaceHeader({
           data-slot="workspace-title"
           className={cn(
             "flex h-full min-w-0 flex-1 items-center",
-            windowCentered && "pr-(--workspace-mode-clearance)",
+            canvasCentered && "pr-(--workspace-mode-clearance)",
           )}
         >
           {!compact && titleLeading}
@@ -72,7 +71,7 @@ export function WorkspaceHeader({
               ? "max-w-[70%] shrink-0"
               : cn(
                   "w-max justify-self-end",
-                  windowCentered
+                  canvasCentered
                     ? "max-w-[calc(100%-var(--workspace-mode-clearance))]"
                     : "max-w-full",
                 ),

@@ -25,7 +25,7 @@ export const WorkspaceNavigatorContent = observer(function WorkspaceNavigatorCon
         />
       </div>
       <ProjectTodoFilterBar store={todos} />
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <ProjectTodosPanel store={todos} />
       </div>
     </>

@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 import { Button } from "./button";
-import { ChevronIcon, ChatIcon, ForkIcon } from "./icons";
+import { ChevronIcon } from "./icons";
 import { StatusDot, type StatusDotProps } from "./status-dot";
 import { InsetDisclosures, type InsetDisclosureSection } from "./inset-disclosures";
 import { cn } from "@/lib/utils";
@@ -80,7 +80,11 @@ export function ActivityDisclosure({
       </Button>
     ));
 
-  if (presentation === "inset")
+  if (presentation === "inset") {
+    const breakdown =
+      sessionCount > 0 && subagentCount > 0
+        ? `${sessionCount} ${sessionCount === 1 ? "session" : "sessions"} · ${subagentCount} ${subagentCount === 1 ? "subagent" : "subagents"}`
+        : "running";
     return (
       <InsetDisclosures
         sections={[
@@ -90,30 +94,13 @@ export function ActivityDisclosure({
                   id: "activity",
                   label: "Activity",
                   count: items.length,
-                  icon: <ForkIcon />,
+                  icon: <StatusDot status={status} size="sm" />,
                   accessibleLabel: `Activity · ${summary}`,
                   accessibleDescription: `${sessionCount} Project Sessions and ${subagentCount} Temporary subagents`,
                   regionLabel: "Conversation activity",
-                  summary: (
-                    <>
-                      <span
-                        className="flex items-center gap-1"
-                        title={`${sessionCount} Project Sessions`}
-                      >
-                        <ForkIcon />
-                        {sessionCount}
-                      </span>
-                      <span
-                        className="flex items-center gap-1"
-                        title={`${subagentCount} Temporary subagents`}
-                      >
-                        <ChatIcon />
-                        {subagentCount}
-                      </span>
-                    </>
-                  ),
+                  summary: <span>{breakdown}</span>,
                   onOpen,
-                  actions,
+                  panelActions: actions,
                   renderContent: renderItems,
                 },
               ]
@@ -122,6 +109,7 @@ export function ActivityDisclosure({
         ]}
       />
     );
+  }
 
   return (
     <div

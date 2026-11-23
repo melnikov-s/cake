@@ -592,3 +592,11 @@ export const SearchIcon = ({ size = 14, className }: { size?: number; className?
     <path d="m21 21-4.3-4.3" />
   </Icon>
 );
+
+export const MoreIcon = ({ size = 16, className }: { size?: number; className?: string }) => (
+  <Icon size={size} className={className}>
+    <circle cx="6" cy="12" r="1.25" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none" />
+    <circle cx="18" cy="12" r="1.25" fill="currentColor" stroke="none" />
+  </Icon>
+);

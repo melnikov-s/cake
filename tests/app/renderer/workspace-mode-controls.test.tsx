@@ -303,8 +303,12 @@ describe("Workspace mode navigation", () => {
           .getAllByRole("button")
           .map((button) => button.getAttribute("aria-label")),
       ).toEqual(["Main", "VS Code", "Browser"]);
+      expect(
+        within(modes)
+          .getAllByRole("button")
+          .map((button) => button.textContent),
+      ).toEqual(["Chat", "Code", "Browser"]);
       for (const button of within(modes).getAllByRole("button")) {
-        expect(button.textContent).toBe("");
         expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
       }
       expect(tools.classList.contains("border")).toBe(false);
@@ -325,9 +329,8 @@ describe("Workspace mode navigation", () => {
       expect(utilities.map((button) => button.getAttribute("aria-label"))).toEqual([
         "Review changes",
         "0 artifacts",
-        "Side chats",
         "Terminal",
-        "Work log display options",
+        "Conversation options",
       ]);
       const terminal = within(tools).getByRole("button", { name: "Terminal" });
       expect(modes.contains(terminal)).toBe(false);
@@ -337,7 +340,7 @@ describe("Workspace mode navigation", () => {
         within(sessionTools)
           .getAllByRole("button")
           .map((button) => button.getAttribute("aria-label")),
-      ).toEqual(["0 artifacts", "Side chats", "Terminal", "Work log display options"]);
+      ).toEqual(["0 artifacts", "Terminal", "Conversation options"]);
       expect(sessionTools.contains(modes)).toBe(false);
       const globalPanel = screen.getByRole("button", { name: /^(Open|Close) Workspace$/ });
       expect(sessionTools.contains(globalPanel)).toBe(false);

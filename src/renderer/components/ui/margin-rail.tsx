@@ -43,9 +43,7 @@ export function MarginRail({
       {start && (
         <div
           data-slot="task-section-label"
-          // Keep a modest outdent from the message column, bounded by the
-          // transcript inset when the pane is narrow.
-          className="group/task-heading col-start-1 row-start-1 mb-3 ml-[clamp(-6rem,calc((100%_-_100cqw)/2_+_1.5rem),-0.75rem)] flex min-w-0 items-start"
+          className="group/task-heading col-start-1 row-start-1 mb-3 flex min-w-0 items-center gap-1.5 border-b border-hairline-subtle/75 pb-2"
         >
           {label}
           <Button
@@ -57,7 +55,7 @@ export function MarginRail({
             }}
             title={`Show in To-do: ${title}`}
             aria-label={`Show in To-do: ${title}`}
-            className="h-auto min-w-0 justify-start whitespace-normal px-0 py-1 text-left leading-snug hover:bg-transparent hover:underline"
+            className="h-auto min-w-0 justify-start whitespace-normal px-0 py-0.5 text-left text-xs font-medium leading-snug text-muted-foreground hover:bg-transparent hover:text-foreground hover:underline"
           >
             <span className="min-w-0 wrap-anywhere">{title}</span>
           </Button>
@@ -66,9 +64,11 @@ export function MarginRail({
             tooltip={`Focus to-do: ${title}`}
             aria-pressed={false}
             onClick={onFocus}
+            className="size-6 opacity-50 transition-opacity hover:opacity-100 group-hover/task-heading:opacity-100 group-has-[:focus-visible]/task-heading:opacity-100"
           >
             <ExpandIcon />
           </IconButton>
+          {completion}
           {onToggle && (
             <IconButton
               iconSize="inline"
@@ -77,12 +77,11 @@ export function MarginRail({
               ariaLabel={title}
               aria-expanded={expanded}
               onClick={onToggle}
-              className="ml-auto"
+              className="ml-auto size-6 text-muted-foreground/75 hover:text-foreground"
             >
               <ChevronIcon className={cn(!expanded && "-rotate-90")} />
             </IconButton>
           )}
-          {completion}
         </div>
       )}
     </>

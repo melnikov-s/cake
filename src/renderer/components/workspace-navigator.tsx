@@ -64,12 +64,13 @@ export const WorkspaceNavigator = observer(function WorkspaceNavigator() {
                 onSelect: () => navigator.show("sessions"),
                 ariaLabel: `Sessions · ${sessions.running} running · ${sessions.unread} unread`,
                 title: `${sessions.running} running · ${sessions.unread} unread · ${sessions.total} total in all projects`,
-                counts: (
-                  <span className="inline-flex items-center gap-1">
-                    <ActivityCount count={sessions.running} />
-                    <ActivityCount kind="unread" count={sessions.unread} />
-                  </span>
-                ),
+                counts:
+                  sessions.running > 0 || sessions.unread > 0 ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <ActivityCount count={sessions.running} />
+                      <ActivityCount kind="unread" count={sessions.unread} />
+                    </span>
+                  ) : undefined,
                 badges: (
                   <>
                     <ActivityCount compact count={sessions.running} />

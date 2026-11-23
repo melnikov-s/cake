@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils";
-import { ActivityIcon } from "./icons";
 import { StatusDot } from "./status-dot";
 import { CountBadge } from "./count-badge";
 
@@ -14,7 +13,7 @@ export function ActivityCount({
   /** A colored badge beside an icon-only tab; zero counts are left to the tab's label. */
   compact?: boolean;
 }) {
-  if ((kind === "unread" || compact) && count === 0) return null;
+  if (count === 0) return null;
   const label = `${count} ${kind}`;
   if (compact)
     return (
@@ -32,11 +31,11 @@ export function ActivityCount({
       aria-label={label}
       title={label}
       className={cn(
-        "inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums",
-        kind === "unread" ? "text-success" : count > 0 ? "text-accent" : "text-muted-foreground",
+        "inline-flex shrink-0 items-center gap-1 text-xs tabular-nums",
+        kind === "unread" ? "text-success" : "text-accent",
       )}
     >
-      {kind === "unread" ? <StatusDot status="success" size="sm" /> : <ActivityIcon />}
+      <StatusDot status={kind === "unread" ? "success" : "running"} size="sm" />
       <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
     </span>
   );

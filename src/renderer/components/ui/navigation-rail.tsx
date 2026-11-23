@@ -248,16 +248,15 @@ export function NavigationRail({
           </div>
           <div
             data-slot="project-rail-scroll"
-            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain border-t border-hairline-subtle pt-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            {/* Auto margins split spare height without pushing overflowing content above the scroll origin. */}
-            <div className="my-auto flex min-w-0 shrink-0 flex-col gap-1">
+            <div className="flex min-w-0 shrink-0 flex-col gap-1">
               {listHeading}
               <div
                 role="region"
                 aria-label="Projects"
                 tabIndex={0}
-                className="flex min-w-0 flex-col gap-1 px-1"
+                className="flex min-w-0 flex-col gap-1 px-1 pb-2"
               >
                 {children}
               </div>

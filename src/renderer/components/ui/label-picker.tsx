@@ -41,7 +41,11 @@ export function LabelPicker({
   const name = inherited
     ? `${inheritedNames} (from linked sessions)`
     : (selected?.name ?? "Unlabelled");
-  const displayName = selected?.name ?? (inherited ? inheritedNames : "Label");
+  const compactInheritedName =
+    inheritedLabels.length > 1
+      ? `${inheritedLabels[0]!.name} +${inheritedLabels.length - 1}`
+      : inheritedNames;
+  const displayName = selected?.name ?? (inherited ? compactInheritedName : "Label");
   const labelNoun = inherited && inheritedLabels.length > 1 ? "labels" : "label";
   const tooltip = useTooltip(showName && !open);
   const choose = async (id: string | null) => {

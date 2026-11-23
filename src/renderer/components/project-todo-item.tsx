@@ -14,8 +14,7 @@ import { ProjectTodoAttentionEditor } from "./project-todo-attention-editor";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "./ai-elements/markdown";
 import { IconButton } from "@/components/ui/icon-button";
-import { ChatIcon, PaperclipIcon, CloseIcon, ExpandIcon } from "@/components/ui/icons";
-import { projectTodoAssociationDestination } from "../lib/project-todo-association";
+import { PaperclipIcon, CloseIcon, ExpandIcon, LinkIcon } from "@/components/ui/icons";
 import { ProjectTodoStateAction } from "./project-todo-state-action";
 import { ProjectTodoLabelPicker } from "./project-todo-label-picker";
 import { ProjectTodoStatusIndicator } from "./project-todo-status-indicator";
@@ -84,14 +83,6 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
       ]
     : associations;
   const totalLinks = workLinks.length + otherResponses.length;
-  const linkKindIcons: Array<ReturnType<typeof projectTodoAssociationDestination>["Icon"]> = [];
-  for (const association of workLinks) {
-    const { Icon } = projectTodoAssociationDestination(association);
-    if (!linkKindIcons.includes(Icon)) linkKindIcons.push(Icon);
-  }
-  if (otherResponses.length > 0 && !linkKindIcons.includes(ChatIcon)) linkKindIcons.push(ChatIcon);
-  const shownLinkIcons = linkKindIcons.slice(0, 4);
-  const extraLinkCount = totalLinks - shownLinkIcons.length;
   const statusParts: ReactNode[] = [];
   if (item.state === "open" && !item.snoozedUntil) {
     if (summary.mergeFailed) {
@@ -217,8 +208,8 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
       }}
       onClick={() => store.toggleItemExpanded(item.id)}
       className={cn(
-        "-mx-2 grid w-[calc(100%+1rem)] items-start gap-x-2.5 gap-y-0 rounded-lg px-2 py-2 text-sm leading-5 [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [@media(pointer:coarse)]:[&>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
-        "grid-cols-[auto_minmax(0,1fr)_auto]",
+        "relative -mx-2 grid w-[calc(100%+1rem)] items-start gap-x-2.5 gap-y-0 rounded-lg px-2 py-2 text-sm leading-5 [&>button:first-child]:col-start-2 [&>button:first-child]:row-start-1 [&>button:first-child]:items-start [@media(pointer:coarse)]:[&>button:first-child]:pt-3 [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden",
+        "grid-cols-[auto_minmax(0,1fr)] [@media(pointer:coarse)]:grid-cols-[auto_minmax(0,1fr)_auto]",
       )}
       label={
         <span
@@ -240,10 +231,9 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         />
       }
     >
-      {/* Reserve the widest pill (four actions) so revealing Unfocus/Dismiss attention never
-          narrows the title column and rewraps it; the visible pill hugs the right edge. The 30px pill
-          sits 5px above the row so its icons center on the title's first 20px line. */}
-      <div className="col-start-3 row-start-1 -mt-[5px] flex min-w-[6.75rem] justify-end [@media(pointer:coarse)]:min-w-[11.75rem]">
+      {/* Float the hover/focus action pill over the top-right corner so titles use full width
+          without wrapping at rest or reflowing on hover; touch devices keep a dedicated column. */}
+      <div className="pointer-events-none absolute top-1 right-1 z-10 flex justify-end group-hover/nav-item:pointer-events-auto group-has-[:focus-visible]/nav-item:pointer-events-auto [@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:static [@media(pointer:coarse)]:col-start-3 [@media(pointer:coarse)]:row-start-1 [@media(pointer:coarse)]:-mt-[5px]">
         <div
           data-slot="todo-actions"
           className={cn(
@@ -297,14 +287,17 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           )}
         </div>
       </div>
-      <div id={detailsId} className="@container/todo-update col-start-2 col-span-2 min-w-0">
+      <div
+        id={detailsId}
+        className="@container/todo-update col-start-2 min-w-0 [@media(pointer:coarse)]:col-span-2"
+      >
         {latestUpdate && (
           <div
             id={updateId}
             data-slot="todo-description"
             className={cn(
               "mt-1 min-w-0 text-xs leading-4 text-muted-foreground",
-              !expanded && "line-clamp-4 @max-[192px]/todo-update:line-clamp-5",
+              !expanded && "line-clamp-2",
             )}
             onClick={(event) => {
               // A description link navigates; it never also toggles the card.
@@ -328,7 +321,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
               item={item}
               store={store}
               showName
-              className="max-w-36"
+              className="max-w-44"
               unlabelledClassName={hoverActionClassName}
             />
             {statusParts.length > 0 && (
@@ -350,11 +343,12 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
             <Button
               variant="ghost"
               size="sm"
+              iconSize="inline"
               aria-expanded={linksExpanded}
               aria-label={`${linksExpanded ? "Hide" : "Show"} ${totalLinks} ${totalLinks === 1 ? "link" : "links"} for ${item.title}`}
               title={`${totalLinks} linked ${totalLinks === 1 ? "item" : "items"}`}
               className={cn(
-                "h-6 shrink-0 gap-1.5 rounded-full px-1 text-xs font-normal tabular-nums",
+                "h-5 shrink-0 gap-1 rounded-full px-1.5 text-xs font-normal tabular-nums text-muted-foreground",
                 linksExpanded && "bg-accent/15 text-accent hover:bg-accent/20 hover:text-accent",
               )}
               onClick={(event) => {
@@ -362,29 +356,8 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
                 store.toggleLinksExpanded(item.id);
               }}
             >
-              <span className="flex items-center -space-x-1.5" data-slot="todo-link-tokens">
-                {shownLinkIcons.map((Icon, index) => (
-                  <span
-                    key={index}
-                    className={cn(
-                      "inline-flex size-5 items-center justify-center rounded-full border border-hairline bg-card text-muted-foreground shadow-2xs [&>svg]:size-2.5",
-                      linksExpanded && "border-accent/40 text-accent",
-                    )}
-                  >
-                    <Icon />
-                  </span>
-                ))}
-              </span>
-              {extraLinkCount > 0 && (
-                <span
-                  className={cn(
-                    "pr-1 text-xs tabular-nums text-muted-foreground",
-                    linksExpanded && "text-accent",
-                  )}
-                >
-                  +{extraLinkCount}
-                </span>
-              )}
+              <LinkIcon className="size-3" />
+              <span>{totalLinks}</span>
             </Button>
           )}
         </div>

@@ -435,9 +435,9 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
   it("keeps one work-log trigger after Terminal in the session tools in every mode and preserves its behavior", async () => {
     using f = renderWorkspace(kind, "vscode", false, true);
     const shellControls = document.querySelector('[data-slot="shell-workspace-controls"]')!;
-    const trigger = () => screen.getByRole("button", { name: "Work log display options" });
+    const trigger = () => screen.getByRole("button", { name: "Conversation options" });
     const expectToolbarPlacement = () => {
-      expect(screen.getAllByRole("button", { name: "Work log display options" })).toHaveLength(1);
+      expect(screen.getAllByRole("button", { name: "Conversation options" })).toHaveLength(1);
       const buttons = screen.getAllByRole("button");
       expect(buttons[buttons.indexOf(trigger()) - 1]).toBe(
         screen.getByRole("button", { name: "Terminal" }),
