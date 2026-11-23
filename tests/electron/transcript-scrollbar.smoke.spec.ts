@@ -323,6 +323,13 @@ test("native transcript thumb fades only for transcript scrolling or a scrollbar
     expect(await revealCount()).toBe(beforeResize);
 
     await page.emulateMedia({ reducedMotion: "reduce" });
+    // Reproduce Chromium delivering the layout scroll's end after the new input
+    // reaches the scrollport, but before the native PageUp has moved it.
+    await transcript.evaluate((node) => {
+      node.addEventListener("keydown", () => node.dispatchEvent(new Event("scrollend")), {
+        once: true,
+      });
+    });
     await page.keyboard.press("PageUp");
     await expect(revealed).toHaveCount(1);
     expect(await transcript.evaluate((node) => node.getAnimations().length)).toBe(0);

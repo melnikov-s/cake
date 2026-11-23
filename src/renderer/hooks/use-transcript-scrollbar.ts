@@ -29,6 +29,7 @@ export function useTranscriptScrollbar(scroller: HTMLElement | null) {
           height: number;
           width: number;
           extent: number;
+          moved: boolean;
         }
       | undefined;
 
@@ -57,6 +58,7 @@ export function useTranscriptScrollbar(scroller: HTMLElement | null) {
         height: scroller.clientHeight,
         width: scroller.clientWidth,
         extent: scroller.scrollHeight,
+        moved: false,
       };
     };
     const onScroll = (event: Event) => {
@@ -82,6 +84,7 @@ export function useTranscriptScrollbar(scroller: HTMLElement | null) {
           // Smooth native key/wheel scrolling and touch momentum can outlast
           // the original input. Keep qualifying those frames until scrollend.
           intent.time = now;
+          intent.moved = true;
           reveal();
         } else {
           intent = undefined;
@@ -128,7 +131,15 @@ export function useTranscriptScrollbar(scroller: HTMLElement | null) {
       inputOptions,
     );
     scroller.addEventListener("scroll", onScroll, options);
-    scroller.addEventListener("scrollend", () => (intent = undefined), options);
+    scroller.addEventListener(
+      "scrollend",
+      () => {
+        // Chromium may deliver the previous layout scroll's end after a new keydown.
+        // Don't clear the new intent until it has produced matching movement.
+        if (intent?.moved) intent = undefined;
+      },
+      options,
+    );
 
     scroller.addEventListener(
       "mousedown",
