@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { _electron as electron } from "../../scripts/queued-electron.mjs";
 import { expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
-import { openSettings } from "./fixtures/workspace-navigation";
+import { createSessionInProject, openSettings } from "./fixtures/workspace-navigation";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -53,6 +53,7 @@ test("@foreground screenshot capture preserves macOS foreground process mode", a
   });
   try {
     const page = await application.firstWindow();
+    await createSessionInProject(page, /^Capture regression(?:\s|$)/);
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await application.evaluate(
