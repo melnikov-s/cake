@@ -39,7 +39,7 @@ function Surface({ root }: { root: RootStore }) {
   );
 }
 function coordinator() {
-  return within(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+  return within(screen.getByRole("button", { name: "Open Cake Chat" }));
 }
 afterEach(cleanup);
 
@@ -141,7 +141,7 @@ it.each(["complete", "failed", "aborted"] as const)(
     const view = render(<Surface root={fixture.root} />);
     try {
       const user = userEvent.setup();
-      await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+      await user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
       const model = fixture.models.cakeChatConversation(CAKE_CHAT_SESSION_ID);
       const turnId = TurnId.make("00000000-0000-4000-8000-000000000001");
       act(() =>
@@ -180,7 +180,7 @@ it.each(["complete", "failed", "aborted"] as const)(
           expect(coordinator().queryByRole("img", { name: "Ready, unread" })).toBeNull();
         else expect(screen.getByRole("img", { name: "Error" })).toBeTruthy();
       };
-      await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+      await user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
       assertAcknowledged();
       await user.click(screen.getByRole("button", { name: "Elsewhere" }));
       assertAcknowledged();
@@ -214,7 +214,7 @@ it("acknowledges completion seen while open rather than making it unread on depa
   const view = render(<Surface root={fixture.root} />);
   try {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
     const model = fixture.models.cakeChatConversation(CAKE_CHAT_SESSION_ID);
     act(() => {
       applyConversationUpdate(model, {
@@ -268,7 +268,7 @@ it("uses the permanent menu target, restores manual unread and clears it on open
   try {
     const user = userEvent.setup();
     expect(screen.getByRole("img", { name: "Ready, unread" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
     await waitFor(() =>
       expect(coordinator().queryByRole("img", { name: "Ready, unread" })).toBeNull(),
     );
@@ -277,7 +277,7 @@ it("uses the permanent menu target, restores manual unread and clears it on open
       expect.anything(),
     );
     action = "mark-unread";
-    screen.getByRole("button", { name: "Open Cake Chat", exact: true }).focus();
+    screen.getByRole("button", { name: "Open Cake Chat" }).focus();
     await user.keyboard("{Shift>}{F10}{/Shift}");
     await waitFor(() =>
       expect(setUnread).toHaveBeenCalledWith(
@@ -291,7 +291,7 @@ it("uses the permanent menu target, restores manual unread and clears it on open
     );
     expect(screen.getByRole("img", { name: "Ready, unread" })).toBeTruthy();
     action = "mark-read";
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Open Cake Chat" }));
     await waitFor(() =>
       expect(coordinator().queryByRole("img", { name: "Ready, unread" })).toBeNull(),
     );
@@ -305,7 +305,7 @@ it("uses the permanent menu target, restores manual unread and clears it on open
     });
     setUnread.mockClear();
     action = "mark-unread"; // Even a stale/native menu result cannot mark a running coordinator unread.
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Open Cake Chat" }));
     await waitFor(() =>
       expect(menu).toHaveBeenLastCalledWith(
         expect.objectContaining({ unread: undefined }),

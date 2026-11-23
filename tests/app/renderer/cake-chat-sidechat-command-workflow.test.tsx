@@ -373,9 +373,7 @@ describe.each([
 
   it("starts the same session-level draft from the always-present title-bar Conversation options menu", async () => {
     using fixture = renderChat(sessionId);
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Conversation options", exact: true }),
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Conversation options" }));
     const menu = within(screen.getByRole("dialog", { name: "Conversation options" }));
     const sideChats = within(menu.getByRole("region", { name: "Side chats" }));
     const create = sideChats.getByRole("button", { name: "New side chat" });
@@ -390,9 +388,7 @@ describe.each([
 
   it("explains in the menu why a side chat cannot start yet", async () => {
     using fixture = renderChat(sessionId, { empty: true });
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Conversation options", exact: true }),
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Conversation options" }));
     const menu = within(screen.getByRole("dialog", { name: "Conversation options" }));
     await fixture.user.click(menu.getByRole("button", { name: "New side chat" }));
     expect((await menu.findByRole("alert")).textContent).toBe(

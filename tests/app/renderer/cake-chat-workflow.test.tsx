@@ -360,12 +360,12 @@ it("reopening the permanent assistant retains its conversation and unsent messag
   const view = render(<Surface root={fixture.root} />);
   try {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
     await user.type(
       screen.getByRole("combobox", { name: "Message Cake Chat" }),
       "Discuss my projects",
     );
-    await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
     expect(screen.getByRole("combobox", { name: "Message Cake Chat" })).toHaveProperty(
       "value",
       "Discuss my projects",
@@ -445,7 +445,7 @@ it("opens Cake Chat project investigators in the existing subagent interface and
   );
   try {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Open Cake Chat" }));
     const summary = (await screen.findByText("Work log")).closest("summary");
     if (!summary) throw new Error("Missing work log");
     await user.click(summary);
