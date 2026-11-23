@@ -149,8 +149,16 @@ export function applyConversationSnapshot(
     }
     model.reconcileIncomingOrder(parsed.parts);
     applyConversationCatalog(model, parsed, historyOnly);
-    applySnapshot(model, {
-      ...authoritative,
+    const { modelOptions, ...projection } = authoritative;
+    const currentOptions = model.modelOptions;
+    // r-state-tree replaces the child array wrapper during snapshot hydration,
+    // even when member identities and order are unchanged. Update those children
+    // directly so capability and label updates don't look like membership changes.
+    const retainOptions =
+      modelOptions?.length === currentOptions.length &&
+      modelOptions.every((option, index) => option.id === currentOptions[index]?.id);
+    const snapshot: Snapshot<Conversation> = {
+      ...projection,
       // A history preview can lack configuration, unlike a complete live snapshot.
       model:
         historyOnly && !parsed.model && model.model ? { id: model.model.id } : authoritative.model,
@@ -159,7 +167,15 @@ export function applyConversationSnapshot(
         ...authoritative.extensionUi,
         compatibilityDiagnostics,
       },
-    });
+    };
+    if (!retainOptions) snapshot.modelOptions = modelOptions;
+    applySnapshot(model, snapshot);
+    // A matching projection ID also fixes the LLM identity. Rewriting that
+    // reference would notify provider readers even with the same target.
+    if (retainOptions)
+      modelOptions.forEach(({ llmModel: _llmModel, ...option }, index) =>
+        applySnapshot(currentOptions[index]!, option),
+      );
   });
 }
 

@@ -7,6 +7,7 @@ import type {
   ThinkingLevel,
 } from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
+import { ModelOption as RuntimeModelOption } from "../models/ModelOption";
 import { describeError } from "../lib/error-details";
 import { ModelCatalogContext } from "./context/ModelCatalogContext";
 import { UtilityModelContext } from "./context/UtilityModelContext";
@@ -78,26 +79,36 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     return this.groupModels(true);
   }
 
+  @computed
+  private get runtimeModelOptions() {
+    return this.session?.modelOptions;
+  }
+
   private groupModels(connectedOnly: boolean) {
-    // Runtime availability and capabilities belong to this Conversation, not
-    // the shared LLM identities. Derive lazily and cache until these facts change.
-    const options = this.session?.modelOptions;
-    const groups = new Map<string, { name: string; models: ModelOption[] }>();
-    const add = (model: ModelOption) => {
-      const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
+    const options = this.runtimeModelOptions;
+    const models = options?.length ? options : this.catalog.models;
+    const groups = new Map<
+      string,
+      { name: string; models: (ModelOption | RuntimeModelOption)[] }
+    >();
+    // Keep runtime references: search and configuration read labels and capabilities
+    // separately, without making them dependencies of provider grouping.
+    for (const model of models) {
+      const runtime = model instanceof RuntimeModelOption;
+      const provider = runtime
+        ? connectedOnly
+          ? model.connectedProvider
+          : model.provider
+        : connectedOnly && !model.authenticated
+          ? undefined
+          : model.provider;
+      if (provider === undefined) continue;
+      const group = groups.get(provider) ?? {
+        name: runtime ? model.providerHeading : model.providerName,
+        models: [],
+      };
       group.models.push(model);
-      groups.set(model.provider, group);
-    };
-    if (options?.length) {
-      for (const option of options) {
-        // Do not copy capabilities or subscribe to irrelevant model fields for
-        // disconnected providers when deriving the connected picker list.
-        if (!connectedOnly || option.authenticated) add(option.value);
-      }
-    } else {
-      for (const model of this.catalog.models) {
-        if (!connectedOnly || model.authenticated) add(model);
-      }
+      groups.set(provider, group);
     }
     return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
   }

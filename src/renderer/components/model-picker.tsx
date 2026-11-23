@@ -13,6 +13,7 @@ import type {
   ThinkingLevel,
   UtilityModel,
 } from "../../contracts/conversations/session-contract";
+import type { ModelOption as RuntimeModelOption } from "../models/ModelOption";
 import type { ModelCatalogStore } from "../stores/ModelCatalogStore";
 import { FastModeToggle } from "./fast-mode-toggle";
 import { ChevronDownIcon, SearchIcon } from "./ui/icons";
@@ -26,16 +27,25 @@ import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
 import { SegmentedControlGroup, SegmentedControlButton } from "./ui/segmented-control";
 
+type PickerCatalogModel = Pick<
+  ModelOption,
+  "id" | "provider" | "name" | "availableThinkingLevels" | "fastMode"
+>;
+type PickerModel = PickerCatalogModel | RuntimeModelOption;
+
 interface ModelGroup {
   id: string;
   name: string;
-  models: readonly ModelOption[];
+  models: readonly PickerModel[];
 }
 
-interface ModelConfigurationValue {
-  preset?: PresetContext;
+interface ModelIdentity {
   provider: string;
   modelId: string;
+}
+
+interface ModelConfigurationValue extends ModelIdentity {
+  preset?: PresetContext;
   thinkingLevel?: ThinkingLevel;
   fastMode?: boolean;
 }
@@ -105,17 +115,29 @@ function modelKey(provider: string, modelId: string) {
   return `${provider}/${modelId}`;
 }
 
+function pickerModelId(model: PickerModel) {
+  return "modelId" in model ? model.modelId : model.id;
+}
+
+function findPickerModel(groups: readonly ModelGroup[], identity?: ModelIdentity) {
+  if (!identity?.provider || !identity.modelId) return undefined;
+  return groups
+    .find((group) => group.id === identity.provider)
+    ?.models.find((model) => pickerModelId(model) === identity.modelId);
+}
+
 const emptyGroups: readonly ModelGroup[] = [];
-const antigravityOption = ({ modelId, name }: { modelId: string; name: string }): ModelOption => ({
+const antigravityOption = ({
+  modelId,
+  name,
+}: {
+  modelId: string;
+  name: string;
+}): PickerCatalogModel => ({
   provider: antigravityModel.provider,
-  providerName: "Antigravity",
   id: modelId,
   name,
-  reasoning: false,
   availableThinkingLevels: [],
-  input: ["text"],
-  authenticated: false,
-  authTypes: [],
 });
 const defaultAntigravityOption = antigravityOption(antigravityModel);
 const modelDescription = (
@@ -159,9 +181,9 @@ export const ModelPicker = observer(function ModelPicker({
     setInternalOpen(next);
     onOpenChange?.(next);
   };
-  const [view, setView] = useState<ConfigurationView>(value ? "current" : "models");
+  const [requestedView, setView] = useState<ConfigurationView>(value ? "current" : "models");
   const [query, setQuery] = useState("");
-  const [draftModel, setDraftModel] = useState<ModelOption>();
+  const [draftIdentity, setDraftIdentity] = useState<ModelIdentity>();
   const [draftThinkingLevel, setDraftThinkingLevel] = useState<ThinkingLevel>();
   const [draftFastMode, setDraftFastMode] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -193,15 +215,18 @@ export const ModelPicker = observer(function ModelPicker({
           fastMode: activePreset.fastMode,
         }
       : undefined);
-  const selectedModel = useMemo(
-    () =>
-      configuration?.provider && configuration.modelId
-        ? visibleGroups
-            .find((group) => group.id === configuration.provider)
-            ?.models.find((model) => model.id === configuration.modelId)
-        : undefined,
-    [visibleGroups, configuration?.provider, configuration?.modelId],
-  );
+  const selectedModel = findPickerModel(visibleGroups, configuration);
+  // Resolve against the live list instead of holding a model that could be removed.
+  const draftModel =
+    requestedView === "configure" ? findPickerModel(visibleGroups, draftIdentity) : undefined;
+  const view = requestedView === "configure" && !draftModel ? "models" : requestedView;
+  const draftLevels = draftModel?.availableThinkingLevels;
+  const draftLevel =
+    draftThinkingLevel &&
+    (draftThinkingLevel === "off" || draftLevels?.includes(draftThinkingLevel))
+      ? draftThinkingLevel
+      : undefined;
+  const draftNeedsThinkingLevel = Boolean(draftLevels?.length && !draftLevel);
 
   // Utility matches by settings because applying it leaves the chat without a preset identity.
   const utilityActive = Boolean(
@@ -244,24 +269,23 @@ export const ModelPicker = observer(function ModelPicker({
     );
   }, [open, view, presets, activePreset?.id, utilityModel, utilityActive, normalizedQuery]);
 
-  const filteredGroups = useMemo(
-    () =>
-      !open || view !== "models"
-        ? emptyGroups
-        : !normalizedQuery
-          ? visibleGroups
-          : visibleGroups
-              .map((group) => ({
-                ...group,
-                models: group.models.filter((model) =>
-                  `${model.name} ${model.id} ${group.name}`
-                    .toLocaleLowerCase()
-                    .includes(normalizedQuery),
-                ),
-              }))
-              .filter((group) => group.models.length > 0),
-    [open, view, visibleGroups, normalizedQuery],
-  );
+  // Runtime labels and IDs can change without changing the group reference.
+  // Read them in the observer on each search render, not behind a React memo.
+  const filteredGroups =
+    !open || view !== "models"
+      ? emptyGroups
+      : !normalizedQuery
+        ? visibleGroups
+        : visibleGroups
+            .map((group) => ({
+              ...group,
+              models: group.models.filter((model) =>
+                `${model.name} ${pickerModelId(model)} ${group.name}`
+                  .toLocaleLowerCase()
+                  .includes(normalizedQuery),
+              ),
+            }))
+            .filter((group) => group.models.length > 0);
 
   const activeName =
     activePreset?.name ??
@@ -300,7 +324,7 @@ export const ModelPicker = observer(function ModelPicker({
   const reset = () => {
     setView(hasValue ? "current" : "models");
     setQuery("");
-    setDraftModel(undefined);
+    setDraftIdentity(undefined);
     setDraftThinkingLevel(undefined);
     setDraftFastMode(false);
   };
@@ -316,22 +340,17 @@ export const ModelPicker = observer(function ModelPicker({
     setQuery("");
   };
 
-  const configureModel = (model: ModelOption) => {
-    const isCurrent =
-      configuration?.provider === model.provider && configuration.modelId === model.id;
+  const configureModel = (model: PickerModel) => {
+    const { provider } = model;
+    const modelId = pickerModelId(model);
+    const isCurrent = configuration?.provider === provider && configuration.modelId === modelId;
+    const levels = model.availableThinkingLevels;
     const supportedCurrentLevel =
-      isCurrent &&
-      configuration?.thinkingLevel &&
-      model.availableThinkingLevels?.includes(configuration.thinkingLevel)
+      isCurrent && configuration?.thinkingLevel && levels?.includes(configuration.thinkingLevel)
         ? configuration.thinkingLevel
         : undefined;
-    setDraftModel(model);
-    setDraftThinkingLevel(
-      supportedCurrentLevel ??
-        ((model.availableThinkingLevels?.length ?? 0) === 1
-          ? model.availableThinkingLevels![0]
-          : "off"),
-    );
+    setDraftIdentity({ provider, modelId });
+    setDraftThinkingLevel(supportedCurrentLevel ?? (levels?.length === 1 ? levels[0] : "off"));
     setDraftFastMode(Boolean(isCurrent && model.fastMode && configuration?.fastMode));
     setView("configure");
   };
@@ -619,19 +638,22 @@ export const ModelPicker = observer(function ModelPicker({
                     <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">
                       {group.name}
                     </h3>
-                    {group.models.map((model) => (
-                      <NavItem
-                        key={modelKey(model.provider, model.id)}
-                        label={model.name}
-                        description={modelDescription(model.provider, model.id, model.id)}
-                        onClick={() => configureModel(model)}
-                        trailing={
-                          <span aria-hidden="true" className="text-muted-foreground">
-                            ›
-                          </span>
-                        }
-                      />
-                    ))}
+                    {group.models.map((model) => {
+                      const modelId = pickerModelId(model);
+                      return (
+                        <NavItem
+                          key={modelId}
+                          label={model.name}
+                          description={modelDescription(group.id, modelId, modelId)}
+                          onClick={() => configureModel(model)}
+                          trailing={
+                            <span aria-hidden="true" className="text-muted-foreground">
+                              ›
+                            </span>
+                          }
+                        />
+                      );
+                    })}
                   </section>
                 ))}
                 {filteredPresets.length === 0 && filteredGroups.length === 0 && (
@@ -679,7 +701,7 @@ export const ModelPicker = observer(function ModelPicker({
             </>
           )}
 
-          {view === "configure" && draftModel && (
+          {view === "configure" && draftModel && draftIdentity && (
             <>
               <header className="mb-2.5 flex items-center gap-2">
                 <IconButton
@@ -695,11 +717,15 @@ export const ModelPicker = observer(function ModelPicker({
                     {draftModel.name}
                   </strong>
                   <small className="block truncate font-mono text-xs text-muted-foreground">
-                    {modelDescription(draftModel.provider, draftModel.id, draftModel.id)}
+                    {modelDescription(
+                      draftIdentity.provider,
+                      draftIdentity.modelId,
+                      draftIdentity.modelId,
+                    )}
                   </small>
                 </span>
               </header>
-              {(draftModel.availableThinkingLevels?.length ?? 0) > 0 && (
+              {!!draftLevels?.length && (
                 <section className="mt-3 grid gap-1.5" aria-label="Reasoning level">
                   <span>
                     <strong className="block text-xs font-medium text-foreground">Reasoning</strong>
@@ -708,12 +734,12 @@ export const ModelPicker = observer(function ModelPicker({
                     </small>
                   </span>
                   <SegmentedControlGroup size="sm" className="w-full flex">
-                    {draftModel.availableThinkingLevels?.map((level) => (
+                    {draftLevels.map((level) => (
                       <SegmentedControlButton
                         type="button"
                         size="sm"
                         className="flex-1"
-                        active={draftThinkingLevel === level}
+                        active={draftLevel === level}
                         key={level}
                         onClick={() => setDraftThinkingLevel(level)}
                       >
@@ -737,7 +763,7 @@ export const ModelPicker = observer(function ModelPicker({
                   <FastModeToggle enabled={draftFastMode} onToggle={setDraftFastMode} />
                 </section>
               )}
-              {!draftThinkingLevel && (draftModel.availableThinkingLevels?.length ?? 0) > 0 && (
+              {draftNeedsThinkingLevel && (
                 <Callout variant="warning" className="mt-2 p-2">
                   Choose a reasoning level to continue.
                 </Callout>
@@ -748,16 +774,12 @@ export const ModelPicker = observer(function ModelPicker({
                 </Button>
                 <Button
                   size="sm"
-                  disabled={
-                    (draftModel.availableThinkingLevels?.length ?? 0) > 0 && !draftThinkingLevel
-                  }
+                  disabled={draftNeedsThinkingLevel}
                   onClick={() => {
-                    const level = draftThinkingLevel ?? "off";
                     close();
                     onSelect({
-                      provider: draftModel.provider,
-                      modelId: draftModel.id,
-                      thinkingLevel: level,
+                      ...draftIdentity,
+                      thinkingLevel: draftLevel ?? "off",
                       fastMode: draftModel.fastMode ? draftFastMode : false,
                     });
                   }}
