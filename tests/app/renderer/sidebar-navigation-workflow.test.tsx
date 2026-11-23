@@ -436,13 +436,15 @@ describe("Workspace Sessions navigation workflow", () => {
     expect(fixture.root.sessionRegistry.pendingSessions.savedRecord("current")?.text).toBe("Later");
     await fixture.showSessions();
     await fixture.user.click(screen.getByRole("button", { name: "Delete Current plan" }));
-    await waitFor(() =>
+    await waitFor(() => {
       expect(fixture.root.appShellStore.activeConversation).toEqual({
         kind: "cake-chat",
         sessionId: `project-chat:${"c".repeat(64)}`,
-      }),
-    );
-    expect(drafts.records.has("current")).toBe(false);
+      });
+      // The fallback selection commits before the asynchronous draft deletion.
+      expect(drafts.records.has("current")).toBe(false);
+      expect(screen.queryByRole("button", { name: /^Current plan / })).toBeNull();
+    });
     expect(open).not.toHaveBeenCalled();
   });
   it("renders live waiting/running/failure facts and worktree lifecycle metadata without truncating titles", async () => {
