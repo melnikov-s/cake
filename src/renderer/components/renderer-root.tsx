@@ -15,6 +15,10 @@ import { ArtifactMenuSurface } from "./artifact-menu-surface";
 import { ConversationMarkdownResourceContext } from "./conversation-markdown-resource-context";
 import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 import { formatArtifactRef, parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
+import {
+  cakeChatSideChatParentId,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 
 interface RendererRootProps {
   rootStore: RootStore;
@@ -58,7 +62,7 @@ export const RendererRoot = observer(function RendererRoot({
         ...rootStore.automationSessionsStore.identities.map((item) => item.sessionId),
       ],
       sessionPurpose: (sessionId) => rootStore.sessionCatalogStore.sessionPurpose(sessionId),
-      // Passive summaries only: rendering a reference must never load a conversation.
+      // Passive summaries for links and the common case for source cards.
       sessionTitle: (sessionId) =>
         rootStore.sessionCatalogStore.find(sessionId)?.title ??
         rootStore.cakeChatCollectionStore.summaries.find(
@@ -72,6 +76,10 @@ export const RendererRoot = observer(function RendererRoot({
               (session) => session.sessionId === sessionId,
             )?.displayTitle
           : undefined),
+      lookupSessionSource: (sessionId, signal) =>
+        isCakeChatSessionId(sessionId) || cakeChatSideChatParentId(sessionId)
+          ? Promise.resolve(undefined)
+          : rootStore.client.projectSessions.lookup({ sessionId }, { signal }),
       renderArtifactReference: (reference, label) => (
         <ArtifactReferencePreview
           reference={formatArtifactRef(parseArtifactRef(reference))}

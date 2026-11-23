@@ -85,7 +85,7 @@ function applyFamilySummary(projected: ProjectSessionSummary, family?: SessionFa
 
 export const archivedSummary = (
   entry: ProjectSessionArchiveMetadata,
-  title: string,
+  title: string | undefined,
   unreadIds: ReadonlySet<string>,
   family?: SessionFamily,
   purpose: SessionPurpose = "user",
@@ -93,7 +93,11 @@ export const archivedSummary = (
   const projected: ProjectSessionSummary = {
     sessionId: entry.sessionId,
     purpose,
-    title: title.slice(0, SESSION_TITLE_MAX_LENGTH),
+    // The archive index retains the last name even when the Pi file is missing.
+    title: ((title && title !== entry.sessionId ? title : entry.title) || entry.sessionId).slice(
+      0,
+      SESSION_TITLE_MAX_LENGTH,
+    ),
     createdAt: entry.createdAt,
     modifiedAt: entry.modifiedAt,
     messageCount: 0,

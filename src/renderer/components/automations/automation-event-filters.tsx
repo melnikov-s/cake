@@ -6,6 +6,7 @@ import { Chip } from "../ui/chip";
 import { Select } from "../ui/select";
 import { Input } from "../ui/input";
 import { DisclosureTrigger } from "../ui/disclosure-trigger";
+import { meaningfulSessionTitle, SESSION_NAME_UNAVAILABLE } from "../../lib/session-source-label";
 
 const sessionKinds: { value: AutomationEventSessionKind; label: string }[] = [
   { value: "cake-chat", label: "Cake Chat" },
@@ -56,7 +57,7 @@ export const AutomationEventFilters = observer(function AutomationEventFilters()
       )
       .map((session) => ({
         sessionId: session.sessionId,
-        title: session.title || "Untitled session",
+        title: meaningfulSessionTitle(session.title, session.sessionId) ?? SESSION_NAME_UNAVAILABLE,
       })),
   ];
   return (

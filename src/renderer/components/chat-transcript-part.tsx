@@ -96,6 +96,17 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         onReply={behavior.onReplyToMessage}
         onOpenSourceLocation={behavior.openSourceLocation}
         sources={behavior.store.messageSources.filter((source) => source.props.partId === part.id)}
+        todo={
+          behavior.hideTodoAssociations || worker
+            ? undefined
+            : {
+                origin: resultTodoOrigin(
+                  part,
+                  behavior.messageReferenceSessionId ?? behavior.store.id,
+                ),
+                todos: behavior.todos,
+              }
+        }
         workerTask={
           worker && worker.parentSessionId === behavior.subagents?.parentSessionId
             ? behavior.subagents.run(worker.handleId)?.task

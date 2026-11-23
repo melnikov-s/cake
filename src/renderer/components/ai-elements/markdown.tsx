@@ -92,6 +92,11 @@ type MarkdownLinkActions = {
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
   openSubagent?(parentSessionId: string, handleId: string, messageId?: string): void;
   sessionTitle?(sessionId: string): string | undefined;
+  /** Exact source metadata, requested by structured cards only, not prose links. */
+  lookupSessionSource?(
+    sessionId: string,
+    signal: AbortSignal,
+  ): Promise<{ readonly title: string } | undefined>;
   sessionPurpose?(sessionId: string): SessionPurpose | undefined;
   sessionIds?(): readonly string[];
   loadWorkspaceImage?(

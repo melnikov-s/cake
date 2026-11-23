@@ -249,13 +249,7 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
                 .resolvedEntry(sessionId, archivedStorageLocation(entry))
                 .pipe(asError("catalog")))?.title;
           return {
-            ...archivedSummary(
-              entry,
-              title ?? sessionId,
-              unread,
-              family,
-              sessionPurpose(metadata, sessionId),
-            ),
+            ...archivedSummary(entry, title, unread, family, sessionPurpose(metadata, sessionId)),
             resolved,
           };
         }
@@ -415,7 +409,7 @@ const resolvedCatalogPage = Effect.fn("ProjectSessions.resolvedCatalogPage")(fun
           sessions.push(
             archivedSummary(
               entry,
-              titles.get(id) ?? id,
+              titles.get(id),
               unread,
               root.family,
               sessionPurpose(metadata, id),
@@ -561,7 +555,7 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
     return {
       ...archivedSummary(
         entry,
-        item?.title ?? sessionId,
+        item?.title,
         new Set(state.unreadSessionIds),
         family,
         sessionPurpose(metadata, sessionId),
@@ -733,7 +727,7 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
       let item = byId.get(sessionId);
       if (duplicates.has(sessionId)) continue;
       if (entry && !item) {
-        // A missing archived file keeps its ID title; a corrupt/unreadable file must
+        // A missing archived file keeps its index metadata; a corrupt/unreadable file must
         // still fail exact lookup rather than being silently revived by the bulk stream.
         const exact = yield* Effect.result(
           Effect.gen(function* () {
@@ -760,7 +754,7 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
         sessions.push({
           ...archivedSummary(
             entry,
-            item?.title ?? sessionId,
+            item?.title,
             unread,
             family,
             sessionPurpose(discovery.familyState, sessionId),

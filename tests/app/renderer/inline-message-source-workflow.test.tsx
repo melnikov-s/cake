@@ -1,6 +1,9 @@
 /** @vitest-environment jsdom */
+import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { emptyProjectTodos, type ProjectTodo } from "../../../src/contracts/projects/project-todos";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -52,6 +55,120 @@ const usage = {
 };
 
 describe("exact response presentation", () => {
+  it.each([
+    {
+      archiveTitle: "Fix report source labels and collapsed card spacing",
+      linked: true,
+      label: "Fix report source labels and collapsed card spacing",
+    },
+    {
+      archiveTitle: "Task session",
+      linked: true,
+      label: "Hold the next queued message while it is being edited",
+    },
+    { archiveTitle: "Task session", linked: false, label: "Session name unavailable" },
+    { archiveTitle: undefined, linked: false, label: "Source session unavailable" },
+  ])(
+    "labels an assistant-linked historical report: $label",
+    async ({ archiveTitle, linked, label }) => {
+      const sourceId = "59b989fa-bc53-422b-b6a4-16eb938a37cd";
+      const reference = `cake://session/${sourceId}?message=old-report`;
+      const taskTitle = "Hold the next queued message while it is being edited";
+      const item: ProjectTodo = {
+        id: "linked-todo",
+        title: taskTitle,
+        description: "",
+        state: "done",
+        status: "Completed",
+        revision: 1,
+        associations: [{ kind: "source", ref: reference, title: "Historical report" }],
+      };
+      const parent = SessionManager.inMemory("/project");
+      parent.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: `Here is the [historical report](${reference}).` }],
+        api: "openai-responses",
+        provider: "openai",
+        model: "fixture",
+        timestamp: 1,
+        usage,
+        stopReason: "stop",
+      });
+      const inspect = vi.fn<Client["sessionChats"]["inspect"]>();
+      const projectChat = projectChatSessionId("/project");
+      using fixture = createRendererStoreFixture({
+        projects: [
+          {
+            ...projectRecord({ path: "/project" }),
+            todos: { ...emptyProjectTodos(), items: linked ? [item] : [] },
+          },
+        ],
+        client: { sessionChats: { inspect } },
+      });
+      applySnapshot(fixture.models.cakeChatCatalog, {
+        loaded: true,
+        sessions: [{ sessionId: projectChat, projectPath: "/project", title: "Project Chat" }],
+      });
+      const session = fixture.root.cakeChatCollectionStore.registry.load(projectChat);
+      applyConversationUpdate(session.model, {
+        _tag: "Snapshot",
+        revision: 1,
+        snapshot: {
+          sessionId: projectChat,
+          sessionFile: "/parent.jsonl",
+          parts: projectSessionEntries(parent.getEntries()),
+          models: [],
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off"],
+          streaming: false,
+          diagnostics: [],
+          commands: [],
+          compatibility: { resources: [], diagnostics: [] },
+          extensionUi: { statuses: [] },
+          tree: [],
+        },
+      });
+      const chat = session.conversationSessionStore.chatStore;
+      chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
+      const pending = Promise.withResolvers<{ title: string }>();
+      const lookupSessionSource = vi.fn(() => pending.promise);
+      const view = render(
+        <MarkdownLinkProvider
+          actions={{ openExternalUrl: vi.fn(), openSession: vi.fn(), lookupSessionSource }}
+        >
+          <Chat
+            store={chat}
+            compact
+            composerFocusEnabled={false}
+            transcriptBehavior={{ todos: session.todos }}
+          />
+        </MarkdownLinkProvider>,
+      );
+      try {
+        const card = screen.getByRole("region", { name: "Message from another session" });
+        expect(
+          within(card).getByRole("button", {
+            name: linked ? taskTitle : "Loading source session…",
+          }),
+        ).toBeTruthy();
+        expect(lookupSessionSource).toHaveBeenCalledWith(sourceId, expect.any(AbortSignal));
+        await act(async () => {
+          if (archiveTitle === undefined) pending.reject(new Error("Missing session"));
+          else pending.resolve({ title: archiveTitle });
+        });
+        expect(
+          within(card).getByRole("button", { name: label }).getAttribute("aria-expanded"),
+        ).toBe("false");
+        expect(within(card).getByRole("link", { name: "Open source" }).getAttribute("href")).toBe(
+          reference,
+        );
+        expect(inspect).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+      }
+    },
+  );
+
   it("names a public worker source by its assignment, not its parent conversation", () => {
     const reference = subagentLink(parentSessionId, handleId, "worker-result");
     using fixture = renderSubagentActivity({
@@ -74,7 +191,6 @@ describe("exact response presentation", () => {
     expect(within(card).getByRole("link", { name: "Open source" }).getAttribute("href")).toBe(
       reference,
     );
-    expect(within(card).queryByRole("button", { name: "Untitled session" })).toBeNull();
     expect(card.querySelector('[data-slot="message-action-clearance"]')).toBeNull();
   });
 
@@ -792,7 +908,7 @@ describe("exact response presentation", () => {
         '[data-slot="session-message"] [data-slot="response-disclosure"]',
       )!;
       expect(toggle.getAttribute("aria-label")).toBe(
-        delivery === "assistant" ? "Untitled session" : "Producer session",
+        delivery === "assistant" ? "Source session unavailable" : "Producer session",
       );
       // A reply keeps its own text open; its exact original sits behind a nested disclosure.
       expect(toggle.getAttribute("aria-expanded")).toBe(String(delivery === "reply"));

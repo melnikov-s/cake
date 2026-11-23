@@ -6134,6 +6134,133 @@ const projectChatSourceCards: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript").last(),
 };
 
+const historicalReportSources: VisualCaptureScenario = {
+  name: "historical-report-sources",
+  description:
+    "Assistant-linked historical reports with a resolved name, linked to-do or missing source",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const archivedId = "59b989fa-bc53-422b-b6a4-16eb938a37cd";
+    const taskId = "00000000-0000-4000-8000-000000000021";
+    const missingId = "00000000-0000-4000-8000-000000000022";
+    const timestamp = new Date(0).toISOString();
+    const projectName = "visual-capture-project";
+    const title = "Fix report source labels and collapsed card spacing";
+    const task = "Hold the next queued message while it is being edited";
+    const workingDirectory = join(paths.project, "retired-checkout");
+    const activeRoot = join(paths.cakeHome, "pi", "sessions");
+    const resolvedRoot = join(paths.cakeHome, "pi", "resolved-sessions");
+    const archiveRoot = join(paths.cakeHome, "state", "resolved-project-metadata");
+    const projectHash = sha256(paths.project);
+    const sessionHash = sha256(archivedId);
+    const projectIndex = join(archiveRoot, "projects", projectHash);
+    const sessionIndex = join(archiveRoot, "sessions", sessionHash.slice(0, 2));
+    await Promise.all([
+      mkdir(projectIndex, { recursive: true }),
+      mkdir(sessionIndex, { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(
+        join(archiveRoot, "resolution.json"),
+        JSON.stringify({
+          version: 1,
+          directories: { [workspaceSessionDirectory(workingDirectory, activeRoot)]: [archivedId] },
+        }),
+      ),
+      writeFile(
+        join(sessionIndex, `${sessionHash}.json`),
+        JSON.stringify({
+          version: 1,
+          projectPath: paths.project,
+        }),
+      ),
+      writeFile(
+        join(projectIndex, `${sessionHash}.json`),
+        JSON.stringify({
+          version: 2,
+          sessionId: archivedId,
+          projectPath: paths.project,
+          projectName,
+          workingDirectory,
+          activeRoot,
+          resolvedRoot,
+          createdAt: timestamp,
+          modifiedAt: timestamp,
+          title,
+        }),
+      ),
+      writeFile(
+        join(paths.cakeHome, "state", "application.json"),
+        JSON.stringify({
+          version: 11,
+          data: {
+            ...defaultApplicationState(),
+            projects: [
+              {
+                path: paths.project,
+                name: projectName,
+                addedAt: timestamp,
+                lastOpenedAt: timestamp,
+                todos: {
+                  ...emptyProjectTodos(),
+                  items: [
+                    {
+                      id: "00000000-0000-4000-8000-000000000023",
+                      title: task,
+                      description: "",
+                      status: "",
+                      state: "done",
+                      revision: 0,
+                      createdAt: timestamp,
+                      associations: [
+                        {
+                          kind: "source",
+                          ref: sessionLink(taskId, "old-report"),
+                          title: "Queue-edit report",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        }),
+      ),
+    ]);
+    await seedDurableChat(join(paths.cakeHome, "pi", "project-chats", projectHash), [
+      "Which historical reports should I review?",
+      `Here are the [resolved review](${sessionLink(archivedId, "old-review")}), the [queue-edit report](${sessionLink(taskId, "old-report")}), and an [older reference](${sessionLink(missingId, "old-reference")}).`,
+    ]);
+  },
+  async prepare(page) {
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    const transcript = page.locator(".transcript").last();
+    for (const label of [
+      "Fix report source labels and collapsed card spacing",
+      "Hold the next queued message while it is being edited",
+      "Source session unavailable",
+    ]) {
+      const disclosure = transcript.getByRole("button", { name: label, exact: true });
+      await expect(disclosure).toBeVisible();
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    }
+    await expect(transcript.locator('[data-slot="message-source"]')).toHaveCount(0);
+    const viewport = (await transcript.boundingBox())!;
+    await page.mouse.move(viewport.x + viewport.width / 2, viewport.y + 24);
+    await expect(page.locator('[data-slot="project-rail"]')).toHaveAttribute(
+      "data-expanded",
+      "false",
+    );
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region: (page) => page.locator(".transcript").last(),
+};
+
 const compactReportSourcesScenario: VisualCaptureScenario = {
   name: "compact-report-sources",
   description:
@@ -6222,7 +6349,7 @@ const compactReportSourcesScenario: VisualCaptureScenario = {
         .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
     ).toContain("Add and globally install manual post-mortem skill");
     await expect(
-      batch.getByRole("button", { name: "Untitled session", exact: true }),
+      batch.getByRole("button", { name: "Source session unavailable", exact: true }),
     ).toBeVisible();
     await expect(batch.locator('[data-slot="message-action-clearance"]')).toHaveCount(0);
     for (const card of await cards.all()) {
@@ -10479,6 +10606,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   reportHeadersScenario,
   resultTodoActionsScenario,
   compactReportSourcesScenario,
+  historicalReportSources,
   projectChatSourceCards,
   relativeChatImagesScenario,
   incomingTaskSectionsScenario,

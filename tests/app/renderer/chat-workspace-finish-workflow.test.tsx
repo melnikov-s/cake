@@ -178,6 +178,8 @@ it("opens a report's recorded source, follows catalog renames and falls back hon
     expect(within(report).getByRole("button", { name: "Renamed API review" })).toBeDefined();
   await fixture.publishSource(null);
   expect(firstReport().getByRole("button", { name: "API review" })).toBeDefined();
-  expect(within(reports()[1]!).getByRole("button", { name: "Untitled session" })).toBeDefined();
+  expect(
+    await within(reports()[1]!).findByRole("button", { name: "Source session unavailable" }),
+  ).toBeDefined();
   expect(reports()[0]!.textContent).not.toContain("cake-session-message");
 });

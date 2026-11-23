@@ -9,6 +9,7 @@ import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import { referenceTodoOrigin } from "../lib/result-todo-origin";
 import { ReportMessageBody } from "./report-message-body";
 import { SessionMessage } from "./session-message";
+import { useSessionSourceLabel } from "../hooks/use-session-source-label";
 
 export const SessionUpdateEntry = observer(function SessionUpdateEntry({
   store,
@@ -21,13 +22,6 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
 }) {
   const { entry } = store.props;
   const source = store.source;
-  const title =
-    entry.sessionId &&
-    (entry.title === entry.sessionId || entry.title === `Session ${entry.sessionId}`)
-      ? "Untitled session"
-      : entry.systemDetail && !entry.sessionId && entry.title !== "Interrupted report"
-        ? "Session update"
-        : entry.title;
   const todo = {
     origin: entry.reference
       ? referenceTodoOrigin(entry.reference)
@@ -36,7 +30,19 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
         : undefined,
     todos,
   };
-  if (!source && (entry.autoMergeOutcome || entry.systemDetail)) {
+  const systemUpdate = !source && Boolean(entry.autoMergeOutcome || entry.systemDetail);
+  const linkedTodos = systemUpdate && todo.origin ? (todos?.itemsForResult(todo.origin) ?? []) : [];
+  const title = useSessionSourceLabel({
+    sessionId: systemUpdate ? entry.sessionId : undefined,
+    recordedTitle: entry.title,
+    explicitTitle: entry.sessionId
+      ? undefined
+      : entry.systemDetail && entry.title !== "Interrupted report"
+        ? "Session update"
+        : entry.title,
+    taskTitle: linkedTodos.length === 1 ? linkedTodos[0]?.title : undefined,
+  });
+  if (systemUpdate) {
     const outcome = entry.autoMergeOutcome;
     const needsReview = outcome
       ? !outcome.merged || !outcome.resolutionSucceeded
@@ -48,7 +54,7 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
         : needsReview
           ? "Auto-merge needs review"
           : undefined;
-    const item = todo.origin ? todos?.itemsForResult(todo.origin)[0] : undefined;
+    const item = linkedTodos[0];
     const sessionHref = entry.sessionId
       ? `cake://session/${encodeURIComponent(entry.sessionId)}`
       : undefined;

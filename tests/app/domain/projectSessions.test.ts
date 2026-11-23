@@ -7039,6 +7039,29 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer())),
   );
 
+  it.effect("looks up a resolved title retained in the archive index without a Pi file", () =>
+    Effect.gen(function* () {
+      const archive = yield* SessionArchiveStorage;
+      const target = { sessionId: "session-1" };
+      const entry = yield* archive.resolvedProjectEntry(target.sessionId);
+      if (!entry) return assert.fail("The fixture must have a resolved archive entry");
+      const title = "Archived source report";
+      const session = yield* projectSessionMetadata.lookup(target).pipe(
+        Effect.provideService(SessionArchiveStorage, {
+          ...archive,
+          resolvedProjectEntry: (id) =>
+            id === target.sessionId
+              ? Effect.succeed({ ...entry, title })
+              : archive.resolvedProjectEntry(id),
+          resolvedEntry: () => Effect.succeed(undefined),
+        }),
+      );
+      assert.equal(session.sessionId, target.sessionId);
+      assert.equal(session.title, title);
+      assert.equal(session.resolved, true);
+    }).pipe(Effect.provide(makeLayer(undefined, { resolvedOnDisk: true }))),
+  );
+
   it.effect("refreshes archived title metadata on rename without restoring the session", () => {
     const titles: string[] = [];
     const refreshed: string[] = [];

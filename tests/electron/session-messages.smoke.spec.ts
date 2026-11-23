@@ -206,7 +206,7 @@ for (const state of ["default", "project", "reference"]) {
           "last",
         );
         await expect(
-          fallback.getByRole("button", { name: "Untitled session", exact: true }),
+          fallback.getByRole("button", { name: "Source session unavailable", exact: true }),
         ).toBeVisible();
         await expect(fallback).toContainText("Historical report from a now-unavailable session.");
         // Message actions, including Open session, are hidden while their message is offscreen.

@@ -1,6 +1,7 @@
 import { Store, computed } from "r-state-tree";
 import { createSessionSearchIndex, searchSessions } from "../lib/session-search";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
+import { meaningfulSessionTitle, SESSION_NAME_UNAVAILABLE } from "../lib/session-source-label";
 
 /** Sidebar-owned, ephemeral session picker. Searches the shared catalog rather
  * than visible rows, so collapsed families remain findable. */
@@ -23,7 +24,7 @@ export class SessionSearchStore extends Store<{
     return (query: string) =>
       searchSessions(index, query).map((session) => ({
         id: session.sessionId,
-        label: session.title || "Untitled session",
+        label: meaningfulSessionTitle(session.title, session.sessionId) ?? SESSION_NAME_UNAVAILABLE,
         session,
       }));
   }

@@ -11,6 +11,8 @@ import { canFullscreenText } from "../lib/text-fullscreen";
 import { cn } from "../lib/utils";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
 import { MessageSourceBody, MessageSourceCopy, OriginalResponse } from "./message-source-body";
+import { parseSessionLink } from "../../contracts/conversations/message-reference";
+import { useSessionSourceLabel } from "../hooks/use-session-source-label";
 import { ResultTodoDone, type ResultTodoLink } from "./result-todo-done";
 import { badgeVariants } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -61,17 +63,15 @@ export const SessionMessage = observer(function SessionMessage({
   const contentId = useId();
   const [localOpen, setLocalOpen] = useState(defaultOpen);
   const [fullscreen, setFullscreen] = useState(false);
-  const id = source?.sessionId?.trim();
-  // Catalog identity can recover a title omitted by an older report and follows renames.
-  // The send-time title remains useful when the source is no longer in the catalog.
-  const recordedTitle =
-    (id ? actions?.sessionTitle?.(id) : undefined)?.trim() || source?.title?.trim();
-  const sourceTitle =
-    recordedTitle && recordedTitle !== id && recordedTitle !== `Session ${id}`
-      ? recordedTitle
-      : undefined;
-  const title =
-    explicitTitle ?? sourceTitle ?? (id ? "Untitled session" : "Source session unavailable");
+  const linkedSession = source?.href ? parseSessionLink(source.href) : undefined;
+  const id = source?.sessionId?.trim() || linkedSession?.sessionId;
+  const linkedTodos = todo?.origin ? (todo.todos?.itemsForResult(todo.origin) ?? []) : [];
+  const title = useSessionSourceLabel({
+    sessionId: id,
+    recordedTitle: source?.title,
+    explicitTitle,
+    taskTitle: linkedTodos.length === 1 ? linkedTodos[0]?.title : undefined,
+  });
   const open = sources.length
     ? sources.some((store) => store.expanded)
     : (controlledOpen ?? localOpen);
@@ -99,7 +99,6 @@ export const SessionMessage = observer(function SessionMessage({
     ? opening.slice(title.length).replace(/^[\s:·—–-]+/, "")
     : opening;
   const reference = (sources[0] ?? originals[0])?.props.reference;
-  const linkedTodos = todo?.origin ? (todo.todos?.itemsForResult(todo.origin) ?? []) : [];
   const href = reference ?? source?.href ?? (id ? `cake://session/${encodeURIComponent(id)}` : "");
   const sourceLabel = reference || source?.href ? "Open source" : "Open session";
   const messageToolbar = (
@@ -170,7 +169,12 @@ export const SessionMessage = observer(function SessionMessage({
               />
             </Button>
             <div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-2 pr-2 pl-8">
-              <span className={cn("min-w-0 shrink text-sm font-medium", !open && "max-w-[45%]")}>
+              <span
+                className={cn(
+                  "min-w-0 shrink text-sm font-medium",
+                  !open && summary && "max-w-[45%]",
+                )}
+              >
                 <span className="block truncate">{title}</span>
               </span>
               {!open && summary && (

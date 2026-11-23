@@ -129,7 +129,7 @@ it("does not promote historical fallback IDs or unlinked telemetry into a title"
   );
   using fixture = show(text);
   const batch = screen.getByRole("status", { name: "Session results" });
-  expect(within(batch).getByText("Untitled session")).toBeTruthy();
+  expect(within(batch).getByText("Source session unavailable")).toBeTruthy();
   expect(batch.textContent).not.toContain("Session producer");
 });
 
@@ -153,7 +153,9 @@ it.each(["Named source review", "cake / Project Chat", undefined])(
         <SessionUpdateEntry store={store} />
       </MarkdownLinkProvider>,
     );
-    expect(screen.getByRole("button", { name: catalogTitle ?? "Untitled session" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: catalogTitle ?? "Source session unavailable" }),
+    ).toBeTruthy();
     expect(screen.queryByText("Session producer")).toBeNull();
   },
 );

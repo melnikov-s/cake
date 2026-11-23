@@ -117,38 +117,41 @@ describe("cross-session message presentation", () => {
     expect(region.querySelector('[data-slot="response-header"]')?.textContent).toBe("API review");
   });
 
-  it.each(["", "source-session", "Session source-session"])(
+  it.each(["", "source-session", "Session source-session", "Task session"])(
     "uses an honest readable fallback for a missing or ID-only title (%s)",
     (title) => {
       render(
         <SessionMessage source={{ sessionId: "source-session", title }}>Report</SessionMessage>,
       );
-      expect(screen.getByRole("button", { name: "Untitled session" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Source session unavailable" })).toBeTruthy();
     },
   );
 
-  it("uses catalog titles for ID-only reports and keeps recorded titles if the source disappears", () => {
-    const sessionTitle = vi.fn().mockReturnValue("Renamed API review");
-    const actions = { openSession: vi.fn(), openExternalUrl: vi.fn(), sessionTitle };
-    const view = render(
-      <MarkdownLinkProvider actions={actions}>
-        <SessionMessage source={{ sessionId: "source-session", title: "API review" }}>
-          Original content
-        </SessionMessage>
-      </MarkdownLinkProvider>,
-    );
-    expect(screen.getByRole("button", { name: "Renamed API review" })).toBeTruthy();
-    sessionTitle.mockReturnValue(undefined);
-    view.rerender(
-      <MarkdownLinkProvider actions={actions}>
-        <SessionMessage source={{ sessionId: "source-session", title: "API review" }}>
-          Original content
-        </SessionMessage>
-      </MarkdownLinkProvider>,
-    );
-    expect(screen.getByRole("button", { name: "API review" })).toBeTruthy();
-    expect(screen.getByText("Original content")).toBeTruthy();
-  });
+  it.each([undefined, "Task session"])(
+    "keeps the recorded title when the catalog has no genuine name (%s)",
+    (fallback) => {
+      const sessionTitle = vi.fn().mockReturnValue("Renamed API review");
+      const actions = { openSession: vi.fn(), openExternalUrl: vi.fn(), sessionTitle };
+      const view = render(
+        <MarkdownLinkProvider actions={actions}>
+          <SessionMessage source={{ sessionId: "source-session", title: "API review" }}>
+            Original content
+          </SessionMessage>
+        </MarkdownLinkProvider>,
+      );
+      expect(screen.getByRole("button", { name: "Renamed API review" })).toBeTruthy();
+      sessionTitle.mockReturnValue(fallback);
+      view.rerender(
+        <MarkdownLinkProvider actions={actions}>
+          <SessionMessage source={{ sessionId: "source-session", title: "API review" }}>
+            Original content
+          </SessionMessage>
+        </MarkdownLinkProvider>,
+      );
+      expect(screen.getByRole("button", { name: "API review" })).toBeTruthy();
+      expect(screen.getByText("Original content")).toBeTruthy();
+    },
+  );
 
   it.each([
     ["cake://session/source-session", undefined],

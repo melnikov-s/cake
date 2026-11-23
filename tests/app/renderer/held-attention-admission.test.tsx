@@ -205,7 +205,7 @@ it.each([
         );
         backend.state.sourceAvailable = false;
         await act(async () =>
-          fireEvent.click(screen.getByRole("button", { name: "Task session" })),
+          fireEvent.click(screen.getByRole("button", { name: "Source session unavailable" })),
         );
         expect((await screen.findByRole("alert")).textContent).toContain(
           "Source temporarily unavailable",

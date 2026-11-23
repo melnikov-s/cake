@@ -409,7 +409,7 @@ for (const [delivery, theme] of [
         await verifyHeadingAlignment();
         const collapsedEdges = await edges(first);
         const missing = surfaces.filter({
-          has: page.getByRole("button", { name: "Untitled session", exact: true }),
+          has: page.getByRole("button", { name: "Source session unavailable", exact: true }),
         });
         await expect(firstToggle).toHaveAttribute("aria-expanded", "false");
         await firstToggle.click();
@@ -598,7 +598,9 @@ for (const [delivery, theme] of [
         await expect(receiptFullscreen).toHaveCount(0);
         await expect(receiptHeader).toHaveAttribute("aria-expanded", "false");
         await expect(receipt.locator('[data-slot="message-source"]')).toHaveCount(0);
-        await missing.getByRole("button", { name: "Untitled session", exact: true }).click();
+        await missing
+          .getByRole("button", { name: "Source session unavailable", exact: true })
+          .click();
         await expect(missing.getByText("Original response unavailable")).toBeVisible();
         await expect(missing.getByRole("button", { name: "Retry source" })).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
