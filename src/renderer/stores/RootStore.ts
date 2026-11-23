@@ -58,6 +58,7 @@ import { SidebarStore } from "./SidebarStore";
 import { WorkspaceNavigatorStore } from "./WorkspaceNavigatorStore";
 import { ConversationNavigatorStore } from "./ConversationNavigatorStore";
 import { DiscussionNavigationStore } from "./DiscussionNavigationStore";
+import { SubagentTranscriptDemandStore } from "./SubagentTranscriptDemandStore";
 import { WorkspaceNavigatorContext } from "./context/WorkspaceNavigatorContext";
 import { SessionMetadataStore } from "./SessionMetadataStore";
 import { ConversationActivityStore } from "./ConversationActivityStore";
@@ -910,6 +911,11 @@ export class RootStore extends Store<{
   @child
   get projectSettingsStore(): ProjectSettingsStore {
     return createStore(ProjectSettingsStore);
+  }
+
+  @child
+  get subagentTranscriptDemand(): SubagentTranscriptDemandStore {
+    return createStore(SubagentTranscriptDemandStore);
   }
 
   /** Project Session targets currently eligible for Model observation. */

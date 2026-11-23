@@ -14,6 +14,10 @@ import {
   type ConversationUpdate,
 } from "../../../../src/contracts/conversations/conversation-data";
 import type { CakeChatControlUpdate } from "../../../../src/contracts/cake-chats/cake-chat-data";
+import {
+  SubagentHandleId,
+  type SubagentUpdate,
+} from "../../../../src/contracts/subagents/subagent-data";
 import type { ProjectSessionCatalogQuery } from "../../../../src/contracts/project-sessions/project-session-data";
 import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
@@ -662,6 +666,82 @@ describe("Project Session composition observer", () => {
       expect(projection.projectConversation("stale", "/project").sessionFile).toBe("");
     } finally {
       observer.stop();
+      projection[Symbol.dispose]();
+    }
+  });
+
+  it("cancels in-flight worker hydration so a late payload cannot overwrite a reopened catalog", async () => {
+    const parentSessionId = "project-1";
+    const snapshot = (output: string): SubagentUpdate => ({
+      _tag: "Snapshot",
+      revision: 1,
+      parentSessionId,
+      backgroundActive: false,
+      activities: [
+        {
+          parentSessionId,
+          handleId: SubagentHandleId.make("10000000-0000-4000-8000-000000000001"),
+          anchorPartId: "spawn",
+          task: "Inspect README",
+          revision: 1,
+          status: "complete",
+          resolvedModel: {
+            requested: "current",
+            source: "current",
+            provider: "test",
+            modelId: "model",
+            thinkingLevel: "off",
+            fallbacks: [],
+          },
+          fastMode: false,
+          streaming: false,
+          resolved: true,
+          released: true,
+          parts: conversationSnapshot(parentSessionId, output).snapshot.parts,
+        },
+      ],
+    });
+    const late = Promise.withResolvers<SubagentUpdate>();
+    const hydrationStarted = Promise.withResolvers<void>();
+    const canceled = Promise.withResolvers<void>();
+    let attempts = 0;
+    const runtime = runtimeFor(
+      baseClient({
+        subagents: {
+          observe: () =>
+            ++attempts === 1
+              ? Stream.fromEffect(
+                  Effect.promise(() => {
+                    hydrationStarted.resolve();
+                    return late.promise;
+                  }),
+                ).pipe(Stream.ensuring(Effect.sync(() => canceled.resolve())))
+              : Stream.succeed(snapshot("fresh parts")).pipe(Stream.concat(Stream.never)),
+        },
+      }),
+    );
+    const projection = RootProjection.create();
+    const input = baseInput(projection, parentSessionId);
+    const catalog = projection.subagentCatalog(parentSessionId);
+    const observer = createModelObserver(runtime);
+    try {
+      observer.sync(input);
+      await hydrationStarted.promise;
+      observer.sync({ ...input, projectSessions: [] });
+      await canceled.promise;
+      expect(catalog.loaded).toBe(false);
+      expect(catalog.activities).toHaveLength(0);
+
+      observer.sync(input);
+      await vi.waitFor(() => expect(catalog.loaded).toBe(true));
+      late.resolve(snapshot("stale parts"));
+      await late.promise;
+      expect(catalog.activities[0]?.parts).toMatchObject([{ output: "fresh parts" }]);
+      observer.sync({ ...input, projectSessions: [] });
+      expect(catalog.activities[0]?.parts).toEqual([]);
+    } finally {
+      observer.stop();
+      await runtime.dispose();
       projection[Symbol.dispose]();
     }
   });

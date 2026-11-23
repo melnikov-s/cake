@@ -1,7 +1,7 @@
 import { Schema, type Stream } from "effect";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { rendererStartupTiming } from "../lib/startup-timing";
-import { batch, effect as reactiveEffect, reaction, type Model } from "r-state-tree";
+import { batch, effect as reactiveEffect, reaction, untracked, type Model } from "r-state-tree";
 import type {
   CakeChatCatalogQuery,
   CakeChatTarget,
@@ -61,7 +61,7 @@ import {
 } from "../reducers/ConversationReducer";
 import { applyDiscussionCatalogUpdate } from "../reducers/DiscussionReducer";
 import { applyCakeChatControlUpdate } from "../reducers/CakeChatControlReducer";
-import { applySubagentUpdate } from "../reducers/SubagentReducer";
+import { applySubagentUpdate, unloadSubagentProjection } from "../reducers/SubagentReducer";
 import { applyScheduledMessageUpdate } from "../reducers/ScheduledMessageReducer";
 import { applyManagedWorktreeCatalogUpdate } from "../reducers/WorktreeCatalogReducer";
 import { applyWorktreeOperationCatalogUpdate } from "../reducers/WorktreeOperationReducer";
@@ -81,6 +81,7 @@ interface ModelSource {
   readonly focusedDiscussionTargets?: () => readonly ReviewThread[];
   readonly discussionSessionTargets?: () => readonly ReviewThread[];
   readonly selectedConversationId?: () => string | undefined;
+  readonly subagentTranscriptParentIds?: () => readonly string[];
   readonly projection: RootProjection;
   readonly observeSessionSignals?: boolean;
   readonly projectSessionCatalogQueries: () => ReadonlyArray<ProjectSessionCatalogQuery>;
@@ -112,6 +113,7 @@ type ModelObservationOptions = Omit<ModelObservation, "model" | "stop">;
 
 type ModelInput = {
   readonly selectedConversationId?: string;
+  readonly subagentTranscriptCatalogs?: readonly SubagentCatalog[];
   readonly focusedDiscussionCatalogs?: readonly {
     target: ConversationNavigationMetadataTarget;
     discussions: DiscussionCatalog;
@@ -258,6 +260,21 @@ export const createModelObserver = (
           applyDiscussionCatalogUpdate(model, target.sessionId, update);
         },
         {
+          failed: (error) => {
+            model.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
+      );
+
+    const observeSubagents = (sessionId: string, model: SubagentCatalog) =>
+      observe(
+        `subagents:${sessionId}`,
+        model,
+        (client) => client.subagents.observe(sessionId),
+        (update: SubagentUpdate) => applySubagentUpdate(model, sessionId, update),
+        {
+          // Eviction is a consequence of demand, not a dependency of the demand effect.
+          clear: () => untracked(() => unloadSubagentProjection(model)),
           failed: (error) => {
             model.observationError = error instanceof Error ? error.message : String(error);
           },
@@ -452,22 +469,11 @@ export const createModelObserver = (
         (update: ScheduledMessageUpdate) => applyScheduledMessageUpdate(schedules, update),
       );
       observeDiscussionCatalog(target, discussions);
-      observe(
-        `subagents:${target.sessionId}`,
-        subagents,
-        (client) => client.subagents.observe(target.sessionId),
-        (update: SubagentUpdate) => applySubagentUpdate(subagents, target.sessionId, update),
-        {
-          clear: () => {
-            subagents.loaded = false;
-            subagents.observationError = undefined;
-          },
-          failed: (error) => {
-            subagents.observationError = error instanceof Error ? error.message : String(error);
-          },
-        },
-      );
+      observeSubagents(target.sessionId, subagents);
     }
+
+    for (const catalog of input.subagentTranscriptCatalogs ?? [])
+      observeSubagents(catalog.sessionId, catalog);
 
     for (const { target, discussions, subagents } of input.navigationCatalogs ?? []) {
       observe(
@@ -495,6 +501,7 @@ export const createModelObserver = (
       );
       // Full worker channels already provide the parent's worker indicators.
       if (
+        active.has(`subagents:${target.sessionId}`) ||
         [
           ...input.projectSessions,
           ...input.cakeChats,
@@ -523,21 +530,7 @@ export const createModelObserver = (
 
     for (const { target, discussions, subagents } of input.focusedDiscussionCatalogs ?? []) {
       observeDiscussionCatalog(target, discussions);
-      observe(
-        `subagents:${target.sessionId}`,
-        subagents,
-        (client) => client.subagents.observe(target.sessionId),
-        (update: SubagentUpdate) => applySubagentUpdate(subagents, target.sessionId, update),
-        {
-          clear: () => {
-            subagents.loaded = false;
-            subagents.observationError = undefined;
-          },
-          failed: (error) => {
-            subagents.observationError = error instanceof Error ? error.message : String(error);
-          },
-        },
-      );
+      observeSubagents(target.sessionId, subagents);
     }
 
     for (const { target, model } of input.discussionCatalogs ?? [])
@@ -581,21 +574,7 @@ export const createModelObserver = (
         (update: DiscussionCatalogUpdate) =>
           applyDiscussionCatalogUpdate(sideChats, target.sessionId, update),
       );
-      observe(
-        `subagents:${target.sessionId}`,
-        subagents,
-        (client) => client.subagents.observe(target.sessionId),
-        (update: SubagentUpdate) => applySubagentUpdate(subagents, target.sessionId, update),
-        {
-          clear: () => {
-            subagents.loaded = false;
-            subagents.observationError = undefined;
-          },
-          failed: (error) => {
-            subagents.observationError = error instanceof Error ? error.message : String(error);
-          },
-        },
-      );
+      observeSubagents(target.sessionId, subagents);
       observe(
         `scheduled-messages:${target.sessionId}`,
         schedules,
@@ -748,6 +727,9 @@ export const createModelObserver = (
       }
       sync({
         selectedConversationId: source.selectedConversationId?.(),
+        subagentTranscriptCatalogs: source
+          .subagentTranscriptParentIds?.()
+          .map((sessionId) => source.projection.subagentCatalog(sessionId)),
         focusedDiscussionCatalogs: (source.focusedDiscussionOwners?.() ?? []).map((target) => ({
           target,
           discussions: source.projection.discussionCatalog(target.sessionId),
@@ -870,6 +852,7 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
     focusedDiscussionOwners: () => root.discussionNavigationStore.ownerTargets,
     focusedDiscussionTargets: () => root.discussionNavigationStore.discussionTargets,
     selectedConversationId: () => root.appShellStore.activeConversation?.sessionId,
+    subagentTranscriptParentIds: () => root.subagentTranscriptDemand.parentSessionIds,
     discussionSessionTargets: () => {
       const projectSessions = root.sessionRegistry.discussionSessionDemand;
       const cakeChats = root.cakeChatCollectionStore.registry.sessions;

@@ -125,7 +125,10 @@ export class SubagentActivityStore extends Store<{
         },
         fastMode: activity.fastMode,
         streaming: activity.streaming,
-        parts: activity.parts,
+        // Side-panel callbacks can outlive observation. Keep a lookup, not the old payload.
+        get parts() {
+          return activity.parts;
+        },
         usage: activity.usage,
         error: activity.error,
         failurePhase: activity.failurePhase,

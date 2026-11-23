@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import type { ChatTranscriptBehavior } from "./chat-transcript";
 import type { ChatStore } from "../stores/ChatStore";
@@ -22,7 +22,16 @@ export const NestedChat = observer(function NestedChat({
   compact?: boolean;
 }) {
   const root = useStore(RootStore);
-  const behavior = nestedTranscriptBehaviorFor(root, store, parentBehavior);
+  const { workerParentSessionId, ...behavior } = nestedTranscriptBehaviorFor(
+    root,
+    store,
+    parentBehavior,
+  );
+  useEffect(() => {
+    // A mounted reader (including a fullscreen artifact's drawer) can outlive
+    // the owner's selection. A remembered, unmounted side-panel target cannot.
+    if (workerParentSessionId) return root.subagentTranscriptDemand.retain(workerParentSessionId);
+  }, [root, workerParentSessionId]);
   return (
     <Chat
       store={store}

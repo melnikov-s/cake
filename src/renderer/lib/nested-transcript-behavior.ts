@@ -22,7 +22,7 @@ export function nestedTranscriptBehaviorFor(
   root: RootStore,
   chat: ChatStore,
   parent: ChatTranscriptBehavior = {},
-): ChatTranscriptBehavior {
+): ChatTranscriptBehavior & { workerParentSessionId?: string } {
   const discussion = discussionSessionFor(root, (session) => session.chatStore === chat);
   const subagents = [
     ...(parent.subagents ? [parent.subagents] : []),
@@ -32,6 +32,7 @@ export function nestedTranscriptBehaviorFor(
   const workerContext = worker && subagents?.resourceContext(worker.key);
   const workspacePath = discussion?.thread.workingDirectory ?? workerContext?.workspacePath;
   return {
+    workerParentSessionId: worker && subagents?.parentSessionId,
     todos: parent.todos,
     // Selection annotations use this chat's composer. Do not inherit
     // messageComments: secondary chats cannot create nested side chats.

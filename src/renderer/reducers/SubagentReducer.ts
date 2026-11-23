@@ -44,6 +44,15 @@ export function applySubagentUpdate(
   });
 }
 
+/** Drop only transcript payloads once the last full observer stops. Pi backs the next snapshot. */
+export function unloadSubagentProjection(model: SubagentCatalog) {
+  batch(() => {
+    model.loaded = false;
+    model.observationError = undefined;
+    for (const activity of model.activities) activity.parts = [];
+  });
+}
+
 function upsertSubagentActivity(model: SubagentCatalog, activity: SubagentActivityValue) {
   const releasedIndex = model.releasedHandleIds.indexOf(activity.handleId);
   if (activity.released && releasedIndex < 0) model.releasedHandleIds.push(activity.handleId);
