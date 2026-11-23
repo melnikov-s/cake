@@ -64,12 +64,11 @@ it.each(Object.keys(iconSizes) as (keyof typeof iconSizes)[])(
     for (const name of ["Cake", "Fallback"]) {
       const button = screen.getByRole("button", { name: `Open Project Chat for ${name}` });
       const thumbnail = button.querySelector('[data-slot="avatar"]')!;
-      // Historical artwork size stays independent of control glyphs and compact row heights.
-      expect(thumbnail.classList.contains("size-[32.5px]")).toBe(true);
+      // Project artwork stays independent of control glyphs in compact rows.
+      expect(thumbnail.classList.contains("size-7")).toBe(true);
       expect(thumbnail.classList.contains("size-[18px]")).toBe(false);
       expect(thumbnail.querySelector("img")!.classList.contains("size-full")).toBe(true);
-      expect(thumbnail.parentElement!.classList.contains("size-9")).toBe(true);
-      expect(thumbnail.parentElement!.classList.contains("-my-0.5")).toBe(true);
+      expect(thumbnail.parentElement!.classList.contains("size-8")).toBe(true);
       expect(button.classList.contains("h-8")).toBe(true);
     }
     expect(

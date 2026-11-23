@@ -85,14 +85,16 @@ it.each(
       expect(header.queryByRole("button", { name: "To-dos" })).toBeNull();
       expect(header.queryByRole("button", { description: /open to-dos/ })).toBeNull();
       expect(header.getByRole("button", { name: "0 artifacts" })).toBeDefined();
-      expect(header.getByRole("button", { name: /^Side chats/ })).toBeDefined();
+      expect(
+        header.getByRole("button", { name: "Conversation options (1 side chat)" }),
+      ).toBeDefined();
       const modes = header.getByRole("group", { name: "Conversation workspace" });
       const tools = header.getByRole("group", { name: "Session tools" });
       expect(
         within(tools)
           .getAllByRole("button")
           .map((button) => button.getAttribute("aria-label")),
-      ).toEqual(["0 artifacts", "Side chats, 1 open", "Terminal", "Work log display options"]);
+      ).toEqual(["0 artifacts", "Terminal", "Conversation options (1 side chat)"]);
       expect(tools.contains(modes)).toBe(false);
       expect(within(tools).queryByRole("button", { name: /Review changes/ })).toBeNull();
       expect(header.queryByRole("button", { name: /Review changes/ }) !== null).toBe(

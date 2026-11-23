@@ -186,9 +186,13 @@ describe("child-scoped nested interaction routing", () => {
   it("answers a live sidecar interview before its tool projection while preserving the parent's separate request", async () => {
     const respond = vi.fn<Client["interviews"]["respond"]>(async () => undefined);
     using fixture = mountNested({ interviews: { respond } });
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(
-      within(screen.getByRole("dialog", { name: "Open side chats" })).getAllByRole("button")[0]!,
+      screen.getByRole("button", { name: "Conversation options (1 side chat)" }),
+    );
+    await fixture.user.click(
+      within(screen.getByRole("dialog", { name: "Conversation options" })).getAllByRole(
+        "button",
+      )[0]!,
     );
     await fixture.emit({
       type: "interview-requested",

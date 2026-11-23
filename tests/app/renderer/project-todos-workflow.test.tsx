@@ -625,11 +625,12 @@ it("shows Auto-merge only in Activity, not in Ready to Merge", async () => {
     autoMergeRequests: [mergeRequest("ready")],
   });
   const activity = screen.getByRole("button", { name: "Activity · 1 running" });
-  expect(screen.getAllByRole("switch", { name: /Auto-merge/ })).toHaveLength(1);
+  expect(screen.queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
   expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
   await fixture.user.click(activity);
   const details = screen.getByRole("region", { name: "Conversation activity" });
-  expect(within(details).queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
+  expect(within(details).getByRole("switch", { name: /Auto-merge/ })).toBeDefined();
+  expect(screen.getAllByRole("switch", { name: /Auto-merge/ })).toHaveLength(1);
   const panel = screen.getByRole("complementary", { name: "Workspace" });
   expect(within(panel).queryByRole("switch", { name: /Auto-merge/ })).toBeNull();
   expect(fixture.autoMergeChanges).toEqual([]);

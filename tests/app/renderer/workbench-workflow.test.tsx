@@ -278,10 +278,12 @@ describe("Workbench workflow", () => {
     const open = vi.fn<Client["vscode"]["open"]>(async () => undefined);
     const openSourceControl = vi.fn<Client["vscode"]["openSourceControl"]>(async () => undefined);
     using fixture = renderWorkbench({ vscode: { open, openSourceControl } }, true);
-    await showSessions(fixture.user);
-    await fixture.user.click(screen.getByRole("button", { name: "Resolved sessions" }));
+    const sessions = await showSessions(fixture.user);
+    const project = within(sessions.getByRole("region", { name: "Project" }));
+    const archive = project.getByRole("button", { name: "Resolved sessions" });
+    if (archive.getAttribute("aria-expanded") !== "true") await fixture.user.click(archive);
     await fixture.user.click(
-      within(screen.getByRole("region", { name: "Resolved sessions" })).getByRole("button", {
+      within(project.getByRole("region", { name: "Resolved sessions" })).getByRole("button", {
         name: /^two conversation /,
       }),
     );

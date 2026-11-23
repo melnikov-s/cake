@@ -184,9 +184,13 @@ describe("nested rich capabilities across production hosts", () => {
         .chatStore(thread.id)!
         .transcriptInteraction.setTranscriptScrollPosition({ kind: "top" }),
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(
-      within(screen.getByRole("dialog", { name: "Open side chats" })).getAllByRole("button")[0]!,
+      screen.getByRole("button", { name: "Conversation options (1 side chat)" }),
+    );
+    await fixture.user.click(
+      within(screen.getByRole("dialog", { name: "Conversation options" })).getAllByRole(
+        "button",
+      )[0]!,
     );
     const assertRichPanel = async () => {
       const panel = screen;

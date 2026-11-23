@@ -131,6 +131,7 @@ function fixture(
     client: {
       dictation: {
         prepare: options.prepare ?? (async () => {}),
+        prepareSpeaker: async () => ({ reused: false }),
         release,
         transcribe,
         detectSpeech: options.detectSpeech ?? detectFixtureSpeech,

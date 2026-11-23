@@ -29,6 +29,7 @@ import {
 import { StatusDot } from "./ui/status-dot";
 import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog";
 import { SessionSearchDialog } from "./session-search-dialog";
+import { SessionActivityIndicator } from "./session-activity-indicator";
 
 /**
  * Three visual levels: content rows (Cake Chat, projects) at full-strength text, quieter
@@ -39,6 +40,60 @@ const railRow = {
   action: "h-8 shrink-0",
   utility: "h-7 shrink-0",
 } as const;
+
+const CakeChatRailButton = observer(function CakeChatRailButton({
+  onMenuOpenChange,
+}: {
+  onMenuOpenChange(open: boolean): void;
+}) {
+  const root = useStore(RootStore);
+  const chat = root.cakeChatCollectionStore;
+  const activity = chat.activity;
+  const active = !root.workspaceProjectPath && root.appShellStore.surface === "cake-chat";
+  const showMenu = async (x: number, y: number) => {
+    onMenuOpenChange(true);
+    try {
+      await chat.showContextMenu(x, y);
+    } finally {
+      onMenuOpenChange(false);
+    }
+  };
+  return (
+    <IconButton
+      tooltip="Cake Chat"
+      label="Cake Chat"
+      ariaLabel="Open Cake Chat"
+      className={cn(railRow.content, active && "bg-sidebar-active text-foreground")}
+      aria-current={active ? "page" : undefined}
+      aria-keyshortcuts="Shift+F10"
+      onClick={() => {
+        root.appShellStore.recordConversationInteraction({
+          kind: "cake-chat",
+          sessionId: CAKE_CHAT_SESSION_ID,
+        });
+        void root.navigationStore.openGlobalChat();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        void showMenu(event.clientX, event.clientY);
+      }}
+      onKeyDown={(event) => {
+        if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          void showMenu(rect.right, rect.top);
+        }
+      }}
+    >
+      <span className="relative grid size-8 place-items-center">
+        <CakeIcon />
+        <span className="absolute right-0 bottom-0" aria-label={activity ? undefined : "Idle"}>
+          <SessionActivityIndicator activity={activity} />
+        </span>
+      </span>
+    </IconButton>
+  );
+});
 
 /** Persistent project homes and global actions; never a second session list. */
 export const ProjectRail = observer(function ProjectRail({
@@ -111,29 +166,7 @@ export const ProjectRail = observer(function ProjectRail({
         onOverlayRightChange={setOverlayRight}
         header={
           <>
-            <IconButton
-              tooltip="Cake Chat"
-              label="Cake Chat"
-              ariaLabel="Open Cake Chat"
-              className={cn(
-                railRow.content,
-                !activeProject &&
-                  root.appShellStore.surface === "cake-chat" &&
-                  "bg-sidebar-active text-foreground",
-              )}
-              aria-current={
-                !activeProject && root.appShellStore.surface === "cake-chat" ? "page" : undefined
-              }
-              onClick={() => {
-                root.appShellStore.recordConversationInteraction({
-                  kind: "cake-chat",
-                  sessionId: CAKE_CHAT_SESSION_ID,
-                });
-                void root.navigationStore.openGlobalChat();
-              }}
-            >
-              <CakeIcon />
-            </IconButton>
+            <CakeChatRailButton onMenuOpenChange={setNativeMenuOpen} />
             <IconButton
               tooltip="New session"
               label="New session"

@@ -59,6 +59,7 @@ function captureDictation(
       detectSpeech: async () => true,
       endRound: async () => {},
       prepare: async () => {},
+      prepareSpeaker: async () => ({ reused: false }),
       claim: async () => ({ claim: 1 }),
       trace: async () => {},
     },

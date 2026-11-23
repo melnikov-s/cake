@@ -175,7 +175,9 @@ describe("IDE conversation workflows", () => {
         },
       );
       await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Main draft");
-      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));
+      await fixture.user.click(
+        screen.getByRole("button", { name: "Conversation options (2 side chats)" }),
+      );
       await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
       await fixture.user.click(
         screen.getByRole("button", { name: mode === "browser" ? "Browser" : "VS Code" }),
@@ -220,7 +222,9 @@ describe("IDE conversation workflows", () => {
           : screen.getByTitle("VS Code workspace"),
       ).toBe(workspace);
       // Existing origin navigation still returns to the main chat without leaving the tool.
-      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));
+      await fixture.user.click(
+        screen.getByRole("button", { name: "Conversation options (2 side chats)" }),
+      );
       await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
       await fixture.user.click(
         within(screen.getByRole("navigation", { name: "Conversation breadcrumb" })).getByRole(

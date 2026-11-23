@@ -421,7 +421,9 @@ describe("Artifact accessory workflow", () => {
       });
     });
     const openSideChat = async () => {
-      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+      await fixture.user.click(
+        screen.getByRole("button", { name: "Conversation options (1 side chat)" }),
+      );
       await fixture.user.click(screen.getByRole("button", { name: /Review the report/ }));
       return screen.getByRole("combobox", { name: "Reply to side chat" });
     };

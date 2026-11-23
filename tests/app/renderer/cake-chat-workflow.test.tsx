@@ -6,7 +6,7 @@ import { observer, StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { Chat } from "../../../src/renderer/components/chat";
-import { ConversationNavigator } from "../../../src/renderer/components/conversation-navigator";
+import { ProjectRail } from "../../../src/renderer/components/project-rail";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
@@ -24,7 +24,7 @@ const Surface = observer(function Surface({ root }: { root: RootStore }) {
   return (
     <>
       <StoreProvider store={root}>
-        <ConversationNavigator projectPath={undefined} />
+        <ProjectRail />
       </StoreProvider>
       {chat && (
         <SideChatLayout
@@ -360,12 +360,12 @@ it("reopening the permanent assistant retains its conversation and unsent messag
   const view = render(<Surface root={fixture.root} />);
   try {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^Cake Chat$/ }));
+    await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
     await user.type(
       screen.getByRole("combobox", { name: "Message Cake Chat" }),
       "Discuss my projects",
     );
-    await user.click(screen.getByRole("button", { name: /^Cake Chat$/ }));
+    await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
     expect(screen.getByRole("combobox", { name: "Message Cake Chat" })).toHaveProperty(
       "value",
       "Discuss my projects",
@@ -445,7 +445,7 @@ it("opens Cake Chat project investigators in the existing subagent interface and
   );
   try {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^Cake Chat$/ }));
+    await user.click(screen.getByRole("button", { name: "Open Cake Chat", exact: true }));
     const summary = (await screen.findByText("Work log")).closest("summary");
     if (!summary) throw new Error("Missing work log");
     await user.click(summary);

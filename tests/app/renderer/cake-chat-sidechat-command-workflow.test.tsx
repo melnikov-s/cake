@@ -371,14 +371,18 @@ describe.each([
     expect(fixture.start).not.toHaveBeenCalled();
   });
 
-  it("starts the same session-level draft from the always-present title-bar Side chats menu", async () => {
+  it("starts the same session-level draft from the always-present title-bar Conversation options menu", async () => {
     using fixture = renderChat(sessionId);
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats" }));
-    const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
-    expect(menu.getByText("No side chats yet.")).toBeDefined();
-    await fixture.user.click(menu.getByRole("button", { name: "New side chat" }));
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Conversation options", exact: true }),
+    );
+    const menu = within(screen.getByRole("dialog", { name: "Conversation options" }));
+    const sideChats = within(menu.getByRole("region", { name: "Side chats" }));
+    const create = sideChats.getByRole("button", { name: "New side chat" });
+    expect(sideChats.getAllByRole("button")).toEqual([create]);
+    await fixture.user.click(create);
     expect(await screen.findByRole("complementary", { name: "Side chat" })).toBeDefined();
-    expect(screen.queryByRole("dialog", { name: "Open side chats" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Conversation options" })).toBeNull();
     expect(fixture.chat.messageCommentsStore.draftSelection).toBeUndefined();
     expect(fixture.startSideChat).not.toHaveBeenCalled();
     expect(fixture.prompt).not.toHaveBeenCalled();
@@ -386,8 +390,10 @@ describe.each([
 
   it("explains in the menu why a side chat cannot start yet", async () => {
     using fixture = renderChat(sessionId, { empty: true });
-    await fixture.user.click(screen.getByRole("button", { name: "Side chats" }));
-    const menu = within(screen.getByRole("dialog", { name: "Open side chats" }));
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Conversation options", exact: true }),
+    );
+    const menu = within(screen.getByRole("dialog", { name: "Conversation options" }));
     await fixture.user.click(menu.getByRole("button", { name: "New side chat" }));
     expect((await menu.findByRole("alert")).textContent).toBe(
       "Side chats require a completed assistant response",

@@ -107,9 +107,7 @@ it.each([false, true])(
     const toggle = group(project).getByRole("switch");
     const peer = group(other).getByRole("switch");
     const activity = screen.getByRole("button", { name: "Activity · 1 running" });
-    const activitySwitch = screen
-      .getAllByRole("switch")
-      .find((element) => element !== toggle && element !== peer)!;
+    expect(screen.getAllByRole("switch")).toHaveLength(2);
     expect(navigator.getAllByRole("switch")).toHaveLength(2);
     expect(
       navigator
@@ -129,15 +127,20 @@ it.each([false, true])(
     expect(navigator.queryByText("worker")).toBeNull();
     expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(selected);
 
+    expect(activity.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
+    await user.click(activity);
+    const activitySwitch = within(
+      screen.getByRole("region", { name: "Conversation activity" }),
+    ).getByRole("switch");
     activitySwitch.focus();
     await user.keyboard(" ");
     await waitFor(() => expect(peer.getAttribute("aria-checked")).toBe("true"));
     expect(activitySwitch.getAttribute("aria-checked")).toBe("true");
-    expect(activity.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
+    expect(activity.getAttribute("aria-expanded")).toBe("true");
     await user.click(peer);
     await waitFor(() => expect(activitySwitch.getAttribute("aria-checked")).toBe("false"));
-    expect(activity.getAttribute("aria-expanded")).toBe("false");
+    expect(activity.getAttribute("aria-expanded")).toBe("true");
     expect(setAutoMerge.mock.calls).toEqual([
       [project, false],
       [other, true],

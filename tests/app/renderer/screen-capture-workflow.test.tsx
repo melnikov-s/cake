@@ -432,9 +432,11 @@ describe("Screen capture attachment destinations", () => {
         owner.showPresentation(mode);
         fixture.root.workspaceNavigatorStore.showChat();
       });
-      await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
       await fixture.user.click(
-        within(screen.getByRole("dialog", { name: "Open side chats" })).getByRole("button", {
+        screen.getByRole("button", { name: "Conversation options (1 side chat)" }),
+      );
+      await fixture.user.click(
+        within(screen.getByRole("dialog", { name: "Conversation options" })).getByRole("button", {
           name: "Human Side Chat",
         }),
       );
