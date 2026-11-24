@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { ParentContinuation } from "../conversations/parent-continuation";
 import { ThinkingLevel } from "../pi/model-data";
 import { inputRefsSchema } from "../conversations/task-input";
-import { messageRefsSchema } from "../conversations/message-reference";
+import { messageRefsSchema, ReadableMessageReference } from "../conversations/message-reference";
 
 const nonEmptyBoundedString = (maximum: number) =>
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum));
@@ -143,6 +143,8 @@ export const SubagentResult = Schema.Struct({
   usage: Schema.optionalKey(Schema.Json),
   error: Schema.optionalKey(boundedString(16_384)),
   failurePhase: Schema.optionalKey(Schema.Literal("start")),
+  /** Parent-facing projection only: exact `messages.read` ref to the worker's full final answer. */
+  reportRef: Schema.optionalKey(ReadableMessageReference),
 });
 export interface SubagentResult extends Schema.Schema.Type<typeof SubagentResult> {}
 

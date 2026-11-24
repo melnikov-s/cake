@@ -62,12 +62,17 @@ export const MessageReference = Schema.String.check(
   Schema.makeFilter((value) => parseSessionLink(value)?.messageId !== undefined),
 );
 
+/** Names both accepted shapes so a wrong guess (a handle alone, a conversation link) is fixable. */
+const READABLE_MESSAGE_REFERENCE_FORMAT =
+  "Expected an exact message ref: cake://session/<session-id>?message=<entry-id> or cake://subagent/<parent-session-id>/<handle-id>?message=<entry-id>. A subagent's completion report carries its exact ref; a handle or conversation link alone is not a message.";
+
 /** Public worker handles resolve through persisted ownership, never a guessed private session. */
 export const ReadableMessageReference = Schema.String.check(
   Schema.isMaxLength(4_096),
   Schema.makeFilter(
     (value) =>
       Schema.is(MessageReference)(value) || parseSubagentLink(value)?.messageId !== undefined,
+    { message: READABLE_MESSAGE_REFERENCE_FORMAT },
   ),
 );
 

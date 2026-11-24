@@ -12,7 +12,12 @@ import * as PiMessageHistory from "../../../src/services/pi/PiMessageHistory";
 import { makeSubagentParent } from "../../../src/domain/subagents/subagentControl";
 import { jsonValueSchema } from "../../../src/contracts/serialization/json-contract";
 import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
-import { MessageReadInput } from "../../../src/contracts/conversations/message-reference";
+import { subagentCompletionMessage } from "../../../src/contracts/subagents/subagent-report";
+import { completionResult, parentResult } from "../../../src/domain/subagents/subagentCompletion";
+import {
+  MessageReadInput,
+  type MessageReadResult,
+} from "../../../src/contracts/conversations/message-reference";
 import { Schema } from "effect";
 import * as subagentLifetime from "../../../src/domain/subagents/subagentLifetime";
 import * as subagentObservation from "../../../src/domain/subagents/subagentObservation";
@@ -405,7 +410,9 @@ it.effect(
           projectTodoLayer(),
           familyStorageHarness().layer,
         );
-        const page = yield* messageReferences.read(input).pipe(Effect.provide(sourceLayer));
+        const page: MessageReadResult = yield* messageReferences
+          .read(input)
+          .pipe(Effect.provide(sourceLayer));
         expect(page.message.ref).toBe(ref);
         expect(page.message.link).toBe(ref);
         expect(page.text).toBe("Exact selected result");
@@ -430,3 +437,141 @@ it.effect(
       }
     }).pipe(Effect.provide(platform)),
 );
+
+/** Distinct numbered lines, so any page boundary or dropped tail is detectable. */
+const longReport = (characters: number) => {
+  let text = "";
+  for (let line = 0; text.length < characters; line++)
+    text += `Finding ${line}: evidence row ${line} of the worker's final report.\n`;
+  // Reports are trimmed before delivery; end on a visible character so the total is exact.
+  return `${text.slice(0, characters - 1)}.`;
+};
+
+it.effect(
+  "a long worker report reaches the parent as an explicit truncation marker plus an exact ref that messages.read pages in full",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const full = longReport(64_700);
+      const entryId = f.session.appendMessage(assistant([{ type: "text", text: full }]));
+      yield* Effect.flatMap(SubagentStorage, (storage) => storage.history.update(f.record)).pipe(
+        Effect.provide(f.layer()),
+      );
+      const result: subagentData.SubagentResult = {
+        handleId: f.record.handleId,
+        task: "Audit every goal",
+        status: "complete",
+        resolvedModel: f.record.resolvedModel,
+        fastMode: false,
+        streaming: false,
+        parts: [
+          {
+            id: "command-1",
+            kind: "command",
+            command: "inspect",
+            output: "VERBOSE_TOOL_ACTIVITY",
+            excludeFromContext: false,
+            state: "success",
+          },
+          {
+            id: `${entryId}-text-0`,
+            kind: "text",
+            role: "assistant",
+            entryId,
+            status: "complete",
+            text: full,
+          },
+        ],
+      };
+      const ref = subagentLink(f.record.parentSessionId, f.record.handleId, entryId);
+      for (const parentProfile of ["ProjectSession", "CakeChatSession"] as const) {
+        const parent = { parentSessionId: f.record.parentSessionId, recovery: { parentProfile } };
+        const delivered = completionResult(parent, result);
+        expect(delivered.reportRef).toBe(ref);
+        const message = subagentCompletionMessage(
+          Schema.decodeUnknownSync(jsonValueSchema)(delivered),
+        );
+        expect(message.startsWith("Background subagent complete: Audit every goal\n\n")).toBe(true);
+        expect(message).toContain(full.slice(0, 4_000));
+        expect(message).not.toContain(full.slice(4_000, 4_200));
+        expect(message).not.toContain("VERBOSE_TOOL_ACTIVITY");
+        expect(message).toContain(
+          `[Truncated: showing the first 4000 of 64700 characters. Read the full text with messages.read { "ref": "${ref}" }; pass nextOffset as offset for each next page.]`,
+        );
+        expect(message.endsWith(`[Full agent response](${ref})`)).toBe(true);
+        expect(message.length).toBeLessThan(5_000);
+        // wait/run tool results keep a larger opening, still explicitly marked.
+        const toolResult = parentResult(parent, result);
+        expect(toolResult.reportRef).toBe(ref);
+        if (parentProfile === "CakeChatSession") {
+          const [answer] = Schema.decodeUnknownSync(
+            Schema.Array(Schema.Struct({ text: Schema.String, entryId: Schema.String })),
+          )(toolResult.parts);
+          expect(answer?.entryId).toBe(entryId);
+          expect(answer?.text).toContain(full.slice(0, 16_000));
+          expect(answer?.text).toContain(
+            "[Truncated: showing the first 16000 of 64700 characters.",
+          );
+          expect(answer?.text).toContain(ref);
+        }
+      }
+
+      const sourceLayer = Layer.mergeAll(
+        f.layer(),
+        unusedMessageLookupLayer,
+        projectTodoLayer(),
+        familyStorageHarness().layer,
+      );
+      let offset: number | null = 0;
+      let text = "";
+      let pages = 0;
+      while (offset !== null) {
+        const page: MessageReadResult = yield* messageReferences
+          .read({ ref, offset, maxChars: 20_000 })
+          .pipe(Effect.provide(sourceLayer));
+        expect(page.message.ref).toBe(ref);
+        expect(page.totalChars).toBe(64_700);
+        text += page.text;
+        offset = page.nextOffset;
+        pages++;
+      }
+      expect(pages).toBe(4);
+      expect(text).toBe(full);
+    }).pipe(Effect.provide(platform)),
+);
+
+it("a long report without a retrievable original says how much was cut instead of a bare ellipsis", () => {
+  const full = longReport(20_000);
+  const message = subagentCompletionMessage({
+    handleId: "00000000-0000-4000-8000-000000000001",
+    task: "Legacy worker",
+    status: "complete",
+    resolvedModel: subagentHistoryFixture().resolvedModel,
+    fastMode: false,
+    streaming: false,
+    parts: [{ id: "answer", kind: "text", role: "assistant", status: "complete", text: full }],
+  });
+  expect(message).toContain(full.slice(0, 16_000));
+  expect(
+    message.endsWith(
+      "[Truncated: showing the first 16000 of 20000 characters. No retrievable original was recorded for the rest.]",
+    ),
+  ).toBe(true);
+  expect(message).not.toContain("[Full agent response]");
+});
+
+it("messages.read names the supported exact ref formats when given a handle or conversation link", () => {
+  const handleId = "1a5a4fc1-2e01-4144-afe0-c4ee1afe0942";
+  for (const ref of [
+    `subagent:${handleId}:report`,
+    `cake://subagent/project-chat%3Aparent/${handleId}`,
+  ])
+    expect(() => Schema.decodeUnknownSync(MessageReadInput)({ ref })).toThrow(
+      "Expected an exact message ref: cake://session/<session-id>?message=<entry-id> or cake://subagent/<parent-session-id>/<handle-id>?message=<entry-id>.",
+    );
+  expect(
+    Schema.decodeUnknownSync(MessageReadInput)({
+      ref: subagentLink("project-chat:parent", handleId, "65120"),
+    }).ref,
+  ).toBe(`cake://subagent/project-chat%3Aparent/${handleId}?message=65120`);
+});

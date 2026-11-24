@@ -112,7 +112,8 @@ export function createSessionFamilyOperations(
       summary: "Read pending report slice",
       inputSchema: PendingReportRead,
       examples: [{ input: { id: "report-id" } }],
-      result: "One pending handoff text slice with nextOffset; reading never acknowledges it.",
+      result:
+        "One pending handoff text slice with totalChars, nextOffset and the exact original ref (readable in full with messages.read); reading never acknowledges it.",
       execute: invokeAppControl("sessions.reports.read"),
     },
     {

@@ -1,11 +1,13 @@
 import { Cause, Deferred, Effect, Option, Ref, Schema, SubscriptionRef } from "effect";
-import {
-  uiPartSchema,
-  type ConversationSnapshot,
-} from "../../contracts/conversations/session-contract";
+import type { ConversationSnapshot } from "../../contracts/conversations/session-contract";
 import * as projectTodoAttention from "../projects/projectTodoAttention";
 import * as projectTodoUpdates from "../projects/projectTodoUpdates";
-import { subagentFinalAnswerPart } from "../../contracts/subagents/subagent-report";
+import {
+  boundedReportText,
+  SUBAGENT_REPORT_UNREFERENCED_LIMIT,
+  subagentFinalAnswerPart,
+  subagentReportRef,
+} from "../../contracts/subagents/subagent-report";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type { SubagentHandleId } from "../../contracts/subagents/subagent-data";
 import { SubagentError, type SubagentResult } from "../../contracts/subagents/subagent-data";
@@ -46,40 +48,56 @@ const preserveAbortedParts = (
   }
   return merged.slice(-10_000);
 };
-export const boundedError = (message: string) => message.slice(0, 16_384);
 
-/** Only the compact final answer may cross into Cake Chat's durable tool/report history. */
-export const parentResult = (
-  handle: SubagentHandleState,
+/** Failure text fits the persisted schema; a cut is stated explicitly, never a silent tail drop. */
+export const boundedError = (message: string) =>
+  message.length <= 16_384
+    ? message
+    : boundedReportText(message, SUBAGENT_REPORT_UNREFERENCED_LIMIT);
+
+type ParentHandle = Pick<SubagentHandleState, "parentSessionId"> & {
+  readonly recovery: Pick<SubagentHandleState["recovery"], "parentProfile">;
+};
+
+/** Parent-facing projection: Cake Chat keeps only the final answer (never child tool activity),
+ * and every parent receives the exact ref to that answer's full text in the worker's Pi session. */
+const parentProjection = (
+  handle: ParentHandle,
   result: SubagentResult,
+  answerLimit: number | undefined,
 ): SubagentResult => {
-  if (handle.recovery.parentProfile !== "CakeChatSession") return result;
-  if (result.status !== "complete") return { ...result, parts: [] };
-  const answer = result.parts
-    .flatMap((part) => {
-      const parsed = Schema.decodeUnknownOption(uiPartSchema)(part);
-      return Option.isSome(parsed) &&
-        parsed.value.kind === "text" &&
-        parsed.value.role === "assistant"
-        ? [parsed.value]
-        : [];
-    })
-    .findLast((part) => part.text.trim());
+  const reportRef = subagentReportRef(handle.parentSessionId, result);
+  const referenced = reportRef ? { ...result, reportRef } : result;
+  if (handle.recovery.parentProfile !== "CakeChatSession") return referenced;
+  if (result.status !== "complete") return { ...referenced, parts: [] };
+  const answer = subagentFinalAnswerPart(result);
   return {
-    ...result,
+    ...referenced,
     parts: answer
       ? [
           {
             id: answer.id,
+            ...(answer.entryId ? { entryId: answer.entryId } : null),
             kind: "text",
             role: "assistant",
             status: answer.status,
-            text: answer.text.slice(0, 16_000),
+            text:
+              answerLimit === undefined
+                ? answer.text
+                : boundedReportText(answer.text, answerLimit, reportRef),
           },
         ]
       : [],
   };
 };
+
+/** Tool results (wait/run) cross into durable history: long answers are cut with an explicit marker. */
+export const parentResult = (handle: ParentHandle, result: SubagentResult) =>
+  parentProjection(handle, result, SUBAGENT_REPORT_UNREFERENCED_LIMIT);
+
+/** The completion formatter bounds the answer itself, so it needs the untruncated total. */
+export const completionResult = (handle: ParentHandle, result: SubagentResult) =>
+  parentProjection(handle, result, undefined);
 
 export const snapshotResult = (
   handle: SubagentHandleState,
@@ -196,7 +214,7 @@ export const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(functi
     const delivered = handle.parentPiHandle
       ? handle.parentPiHandle
           .notifySubagentCompletion(
-            parentResult(handle, handle.result),
+            completionResult(handle, handle.result),
             handle.recovery.completionId,
           )
           .pipe(asError("completion"))

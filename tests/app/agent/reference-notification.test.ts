@@ -185,6 +185,32 @@ describe("passive reference notifications", () => {
     expect(replay.length).toBeLessThan(4_000);
     expect(replay).toContain("sessions.reports.acknowledge");
   });
+  it("names the shown and total length plus the exact original when a pending report is cut", () => {
+    const worker: PendingReport = {
+      id: "report-long",
+      recipientSessionId: "project-chat:parent",
+      text: "x".repeat(19_177),
+      source: {
+        kind: "subagent",
+        handleId: "1a5a4fc1-2e01-4144-afe0-c4ee1afe0942",
+        sessionId: "private-pi",
+        task: "Investigate",
+        status: "complete",
+        messageId: "answer-1",
+      },
+    };
+    const original = pendingReportRef(worker);
+    expect(addReferenceNotifications("Next", [worker])).toContain(
+      `[Truncated: showing the first 4000 of 19177 characters. sessions.reports.read { "id": "report-long" } pages the full handoff text; messages.read { "ref": "${original}" } reads the full original.]`,
+    );
+    expect(
+      addReferenceNotifications("Next", [
+        { id: "plain", recipientSessionId: "chat", text: "y".repeat(5_000) },
+      ]),
+    ).toContain(
+      '[Truncated: showing the first 4000 of 5000 characters. sessions.reports.read { "id": "plain" } pages the full handoff text.]',
+    );
+  });
   it.each([
     ref,
     `[Result](${ref})`,

@@ -118,7 +118,13 @@ an independent retained copy. These operations address Project Sessions and perm
 Cake Chat originals, not private side-chat transcripts. Subagent navigation uses
 `cake://subagent/<encoded-parent>/<public-handle>?message=<original-entry-or-part>`:
 it opens the retained worker conversation under its parent and marks that exact
-response, never a private Pi session or the recipient's serialized reminder. Deferred
+response, never a private Pi session or the recipient's serialized reminder. `messages.read` accepts the same
+public ref with `?message=<Pi-entry-id>` and pages the worker's original from its retained
+Pi session. Completion notices (`subagentCompletionMessage` in
+`src/contracts/subagents/subagent-report.ts`) inline at most 4,000 characters of the final
+answer, then an explicit marker with shown/total characters and this exact ref, plus a
+"Full agent response" link; without a retrievable original they inline up to 16,000
+characters and say the rest was not recorded. Truncation is never a bare ellipsis. Deferred
 report list/read results expose this canonical `ref`; older reports without an exact
 message identity link only the retained public conversation. Reminder wrappers remain
 inspectable originals, but must not be selected as Full agent response sources.

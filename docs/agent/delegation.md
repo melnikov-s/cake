@@ -29,6 +29,7 @@ Project investigators inherit instructions/skills/extensions/MCP but omit edit/w
 Launch asynchronously/non-blocking with resultDelivery: notification by default, reply for owed answers/dependencies. Use the returned Project Session or context-fork thread for same-task follow-ups; minimize cross-session chatter. Application completion needs no manual message/polling.
 subagents.start is asynchronous. Blocking run/parallel/wait needs explicit user request. Private workers cannot recursively delegate.
 For private investigators explicitly choose continuation: none (notification) by default, resume for owed answers/dependencies; the tool's omitted-field default is resume. Follow-ups inherit. Omit model overrides unless requested.
+Completion reports inline at most the first 4,000 characters of the worker's final answer, then an explicit `[Truncated: showing the first N of M characters…]` marker, and always the exact ref `cake://subagent/<parent-session-id>/<handle-id>?message=<entry-id>` as "Full agent response". messages.read on that ref returns the full answer; page with nextOffset. A handle or conversation link alone is not readable; do not ask the worker to resend.
 Keep same-task worker handles until closed or expired after 30 idle minutes; active turns never expire. Capabilities/history survive backend restart. Safe unfinished work resumes; uncertain tool effects require review, not replay. Context exhaustion/final-response failure yields error, not a finished report.
 
 ## Context within the task

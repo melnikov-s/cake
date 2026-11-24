@@ -69,6 +69,7 @@ export const read = Effect.fn("PendingReports.read")(function* (
     source: item.source,
     ref: pendingReportRef(item),
     text,
+    totalChars: item.text.length,
     offset,
     nextOffset: offset + text.length < item.text.length ? offset + text.length : null,
   };

@@ -356,7 +356,19 @@ const digestSummary = (turn: FamilyTurn, report: SessionCompletionReport | undef
     )
     .find((candidate) => candidate.length > 0);
   if (!line) return "";
-  return line.length > 200 ? `${line.slice(0, 199)}…` : line;
+  // Never a bare ellipsis: name the cut and the full report behind the line's link.
+  return line.length > 200
+    ? `${line.slice(0, 140)}… [summary cut at 140 of ${line.length} characters; the full ${report.text.length}-character report is the linked source]`
+    : line;
+};
+
+/** Reference-only reports are links; a cut list says so instead of silently dropping links. */
+const REFERENCES_LIMIT = 6000;
+const boundedReferences = (text: string) => {
+  const flat = text.replace(/\s+/g, " ");
+  if (flat.length <= REFERENCES_LIMIT) return flat;
+  const shown = REFERENCES_LIMIT - 200;
+  return `${flat.slice(0, shown)} [references truncated: showing ${shown} of ${flat.length} characters; the full list is the linked report]`;
 };
 
 const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(function* (
@@ -381,7 +393,7 @@ const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(fun
         ? { resultText: report.text }
         : null),
     ...(report && isReferenceNotification(report.text)
-      ? { references: report.text.replace(/\s+/g, " ").slice(0, 6000) }
+      ? { references: boundedReferences(report.text) }
       : null),
     reportedAt: DateTime.formatIso(yield* DateTime.now),
     status,
