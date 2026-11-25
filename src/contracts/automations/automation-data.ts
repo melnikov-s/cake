@@ -3,6 +3,7 @@ import { AgentListInput } from "../agent/agent-list-data";
 import { SessionChatConfiguration } from "../conversations/conversation-data";
 import { attachmentSchema } from "../conversations/session-contract";
 import { OptMemoryId } from "../memory/opt-memory-data";
+import { GitHubDeliveryId, GitHubReviewData, GitHubWebhookFilter } from "./github-webhooks";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
@@ -104,6 +105,7 @@ export interface AutomationEventFilter extends Schema.Schema.Type<typeof Automat
 const AutomationTrigger = Schema.TaggedUnion({
   Schedule: { schedule: AutomationSchedule },
   Event: { filter: AutomationEventFilter },
+  Webhook: { filter: GitHubWebhookFilter },
 });
 
 /** Fully explicit saved execution settings; no dependence on the creator's later conversation. */
@@ -136,6 +138,11 @@ export interface Automation extends Schema.Schema.Type<typeof Automation> {}
 /** Durable provenance references, not a second copy of event message bodies. */
 export const AutomationOccurrenceSource = Schema.TaggedUnion({
   Manual: { requestedBySessionId: Schema.optionalKey(boundedId) },
+  Webhook: {
+    deliveryId: GitHubDeliveryId,
+    bodyDigest: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
+    data: GitHubReviewData,
+  },
   Schedule: { scheduledAt: timestamp },
   Event: {
     eventId: boundedId,
@@ -173,6 +180,7 @@ export const AutomationRun = Schema.Struct({
   context: AutomationContext,
   workingDirectory: boundedPath,
   sessionDirectory: boundedPath,
+  reportOnly: Schema.optionalKey(Schema.Literal(true)),
   startedAt: timestamp,
   status: Schema.TaggedUnion({
     running: {},
@@ -191,6 +199,7 @@ const AutomationSessionIdentity = Schema.TaggedStruct("AutomationSession", {
   runId: AutomationRunId,
   context: AutomationContext,
   workingDirectory: boundedPath,
+  reportOnly: AutomationRun.fields.reportOnly,
 });
 export interface AutomationSessionIdentity extends Schema.Schema.Type<
   typeof AutomationSessionIdentity

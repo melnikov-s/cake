@@ -7,6 +7,7 @@ import {
 import { admitTurnAttachments } from "./AttachmentUploadHandlers";
 import * as definitions from "../../domain/automations/automationDefinitions";
 import * as runs from "../../domain/automations/automationRuns";
+import * as webhooks from "../../domain/automations/githubWebhooks";
 import { OptMemory } from "../../services/opt-memory/OptMemory";
 
 const memoryError = (cause: { readonly message: string }) =>
@@ -32,12 +33,18 @@ export const automationHandlers = AutomationRpc.of({
   "automations.observe": () => Stream.unwrap(runs.observe()),
   "automations.list": definitions.list,
   "automations.inspect": (input) => definitions.inspect(input.automationId),
+  "automations.webhookStatus": (input) => webhooks.webhookStatus(input.automationId),
+  "automations.rotateWebhookSecret": (input) => webhooks.rotateWebhookSecret(input.automationId),
+  "automations.previewWebhook": (input) =>
+    webhooks.previewWebhook(input.automationId, input.event, input.body),
   "automations.create": (input) =>
     admitTaskAttachments(input).pipe(Effect.flatMap(definitions.create)),
   "automations.update": (input) =>
     admitTaskAttachments(input).pipe(Effect.flatMap(definitions.update)),
   "automations.activate": (input) =>
-    runs.activate(input.automationId).pipe(Effect.andThen(definitions.lookup(input.automationId))),
+    runs
+      .activate(input.automationId, true)
+      .pipe(Effect.andThen(definitions.lookup(input.automationId))),
   "automations.pause": (input) => definitions.changeState(input.automationId, { _tag: "paused" }),
   "automations.archive": runs.archive,
   "automations.trigger": (input) => runs.trigger(input.automationId),

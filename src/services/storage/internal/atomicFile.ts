@@ -11,6 +11,7 @@ export const atomicWriteFile = Effect.fn("atomicWriteFile")(function* <E>(
   target: string,
   content: string,
   onError: (stage: AtomicFileStage, cause: unknown) => E,
+  options?: { readonly sync: boolean },
 ) {
   const temporary = `${target}.${crypto.randomUUID()}.tmp`;
 
@@ -26,6 +27,13 @@ export const atomicWriteFile = Effect.fn("atomicWriteFile")(function* <E>(
       fileSystem.writeFileString(file, content, { mode: 0o600 }).pipe(
         Effect.mapError((cause) => onError("write", cause)),
         Effect.flatMap(() => fileSystem.chmod(file, 0o600)),
+        Effect.flatMap(() =>
+          options?.sync
+            ? Effect.scoped(
+                Effect.flatMap(fileSystem.open(file, { flag: "r+" }), (handle) => handle.sync),
+              )
+            : Effect.void,
+        ),
         Effect.mapError((cause) => onError("write", cause)),
         Effect.flatMap(() =>
           fileSystem

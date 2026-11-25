@@ -29,6 +29,12 @@ export const AutomationDefinition = observer(function AutomationDefinition() {
           </div>
           <AutomationTriggerFields />
           <AutomationTaskFields />
+          {definition.trigger._tag === "Webhook" &&
+            (definition.context._tag !== "Project" || definition.task.attachments.length > 0) && (
+              <p className="text-xs text-muted-foreground">
+                Choose a project and remove any attachments before saving a webhook.
+              </p>
+            )}
           <div className="grid gap-5 border-t border-border/65 pt-5">
             <RadioGroup
               label="When already running"
@@ -49,7 +55,7 @@ export const AutomationDefinition = observer(function AutomationDefinition() {
               ]}
               onValueChange={(completion) => editor.patch({ completion })}
             />
-            {editor.creating && (
+            {editor.creating && definition.trigger._tag !== "Webhook" && (
               <RadioGroup
                 label="Save as"
                 value={editor.initialState}
@@ -81,6 +87,10 @@ export const AutomationDefinition = observer(function AutomationDefinition() {
             editor.saving ||
             !definition.name.trim() ||
             !definition.task.prompt.trim() ||
+            (definition.trigger._tag === "Webhook" &&
+              (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(definition.trigger.filter.repository) ||
+                definition.context._tag !== "Project" ||
+                definition.task.attachments.length > 0)) ||
             !definition.task.configuration.provider ||
             !definition.task.configuration.modelId
           }

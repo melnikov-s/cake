@@ -158,6 +158,8 @@ export interface CakeSessionRuntimeOptions {
   onInitialTranscriptPersisted?(): void;
   cwd: string;
   tools?: string[];
+  /** External automation: no tools, extensions, MCP, project context or executable providers. */
+  reportOnly?: boolean;
   auxiliary?: boolean;
   operations?: ProjectCakeOperations;
   modelPresets?(): CakeModelPresetCatalog;
@@ -370,10 +372,10 @@ export async function createCakeSessionRuntime(
   if (options.coordinator) throw new Error("Cake Chat is owned by the Durable coordinator service");
   const agentDir = options.agentDir;
   // Check the backend root before acquiring any Pi resources.
-  const mcpExtensions = createCakeMcpExtensions({ runtime: options });
-  const settingsManager = SettingsManager.create(options.cwd, agentDir, {
-    projectTrusted: true,
-  });
+  const mcpExtensions = options.reportOnly ? [] : createCakeMcpExtensions({ runtime: options });
+  const settingsManager = options.reportOnly
+    ? SettingsManager.inMemory()
+    : SettingsManager.create(options.cwd, agentDir, { projectTrusted: true });
   if (options.alwaysAutoCompact) keepAutoCompactionEnabled(settingsManager);
   const modelRuntime = await ModelRuntime.create({
     authPath: `${agentDir}/auth.json`,
@@ -442,8 +444,9 @@ export async function createCakeSessionRuntime(
   // Extension providers must exist before resolving the Cake-selected model.
   // Auxiliary sessions take the agent directory's providers directly because
   // their isolated resource loaders run with `noExtensions`.
-  const providerErrors =
-    options.auxiliary && !options.projectInvestigation
+  const providerErrors = options.reportOnly
+    ? []
+    : options.auxiliary && !options.projectInvestigation
       ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
       : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
   const saved = savedSessionModel(sessionManager.getBranch());
@@ -455,7 +458,10 @@ export async function createCakeSessionRuntime(
   // The SDK falls back to Pi defaults (including auth-dependent restoration)
   // if either option is omitted. Cake supplies both, even for imported sessions.
   const supportsAntigravity =
-    !options.auxiliary && !options.ephemeral && !options.projectInvestigation;
+    !options.auxiliary &&
+    !options.ephemeral &&
+    !options.projectInvestigation &&
+    !options.reportOnly;
   if (isAntigravityModel(selection)) {
     if (!supportsAntigravity) throw new Error(antigravityDesktopOnly);
     assertAntigravitySettings(
@@ -474,11 +480,15 @@ export async function createCakeSessionRuntime(
     resourceLoader: capabilities.resourceLoader,
     settingsManager,
     sessionManager,
-    ...(options.customTools ? { customTools: options.customTools } : null),
+    ...(!options.reportOnly && options.customTools ? { customTools: options.customTools } : null),
     ...(options.projectInvestigation ? { excludeTools: ["edit", "write"] } : null),
   };
   const { session, extensionsResult } = await createAgentSession(
-    options.tools ? { ...agentSessionOptions, tools: options.tools } : agentSessionOptions,
+    options.reportOnly
+      ? { ...agentSessionOptions, noTools: "all" }
+      : options.tools
+        ? { ...agentSessionOptions, tools: options.tools }
+        : agentSessionOptions,
   );
   if (options.messageBoardControl)
     observeMessageBoardRequests(session, options.messageBoardControl);
@@ -523,7 +533,7 @@ export async function createCakeSessionRuntime(
     resourceLoader: capabilities.resourceLoader,
     settingsManager,
     eventBus: capabilities.eventBus,
-    loadCompanions: !options.auxiliary,
+    loadCompanions: !options.auxiliary && !options.reportOnly,
     workingDirectory: options.cwd,
     agentDirectory: agentDir,
     session,

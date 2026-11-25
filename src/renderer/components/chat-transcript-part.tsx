@@ -78,6 +78,16 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   live?: boolean;
   omitToolDiff?: boolean;
 }) {
+  if (behavior.plainText && part.kind === "text")
+    return (
+      <ChatTextMessage
+        part={part}
+        plainText
+        messageActions={
+          part.text.trim() ? <CopyButton getText={async () => part.text} /> : undefined
+        }
+      />
+    );
   const userMessageRendersAsMarkdown =
     part.kind === "text" && part.role === "user" && part.entryId
       ? behavior.store.transcriptInteraction.userMessageRendersAsMarkdown(

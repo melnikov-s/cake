@@ -43,13 +43,14 @@ import {
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { ApplicationState } from "../../services/storage/ApplicationState";
-import type { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
+import { AutomationConfiguration } from "../../services/automations/AutomationConfiguration";
 import { OptMemory } from "../../services/opt-memory/OptMemory";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import * as conversations from "../conversations/conversations";
 import type * as projectSessionCreation from "../project-sessions/projectSessionCreation";
 import { setSessionFastMode, setSessionUnread } from "../application/application";
 import { decideAdmission } from "./automationPolicy";
+import { maxConcurrentWebhookRuns } from "./githubWebhooks";
 import * as automationControl from "./automationControl";
 import {
   automationError,
@@ -214,19 +215,9 @@ const acquireOptions = Effect.fn("Automations.acquireOptions")(function* (
   yield* resolveContext(run.context);
   const configuration = yield* ProjectSessionConfiguration;
   const archive = yield* SessionArchiveStorage;
-  const application = yield* ApplicationState;
-  const state = application.snapshot();
-  const projectPath = run.context._tag === "Project" ? run.context.projectPath : undefined;
-  const projectInstructions = state.projects
-    .find((project) => project.path === projectPath)
-    ?.settings?.customInstructions.trim();
   const services = yield* Effect.context<AutomationRunServices>();
-  const execute = makePiCallbackExecutor(services);
-  const memory = yield* (yield* OptMemory)
-    .read({ memoryId: automation.memoryId })
-    .pipe(asError("memory"));
   const refresh = records.refresh();
-  return {
+  const lifecycle = {
     profile: { _tag: "AutomationSession" },
     admitTurn: (_input, accept) =>
       Effect.gen(function* () {
@@ -243,9 +234,34 @@ const acquireOptions = Effect.fn("Automations.acquireOptions")(function* (
     onTurnActivityChanged: refresh,
     onTurnSettled: (event) =>
       settle(run.id, event.outcome, event.message).pipe(Effect.provide(services)),
+  } satisfies Omit<CakeSessionRuntimeAcquireOptions, "runtime">;
+  const identity = {
+    initialConfiguration: newSession ? occurrence.definition.task.configuration : undefined,
+    cwd: run.workingDirectory,
+    agentDir: configuration.agentDirectory,
+    sessionDir: run.sessionDirectory,
+    directSessionDir: true,
+    sessionId: run.sessionId,
+    newSession,
+    requestUi: () => Promise.resolve(undefined),
+  };
+  if (occurrence.source._tag === "Webhook" || occurrence.definition.trigger._tag === "Webhook")
+    return { ...lifecycle, runtime: { ...identity, reportOnly: true } };
+
+  const application = yield* ApplicationState;
+  const state = application.snapshot();
+  const projectPath = run.context._tag === "Project" ? run.context.projectPath : undefined;
+  const projectInstructions = state.projects
+    .find((project) => project.path === projectPath)
+    ?.settings?.customInstructions.trim();
+  const execute = makePiCallbackExecutor(services);
+  const memory = yield* (yield* OptMemory)
+    .read({ memoryId: automation.memoryId })
+    .pipe(asError("memory"));
+  return {
+    ...lifecycle,
     runtime: {
-      initialConfiguration: newSession ? occurrence.definition.task.configuration : undefined,
-      cwd: run.workingDirectory,
+      ...identity,
       allowedCakeOperations: [
         ...[
           ...automationToolDescriptions,
@@ -271,11 +287,6 @@ const acquireOptions = Effect.fn("Automations.acquireOptions")(function* (
       },
       automationControl: (command, input, signal) =>
         execute(automationControl.invoke(command, input, run.sessionId), { signal }),
-      agentDir: configuration.agentDirectory,
-      sessionDir: run.sessionDirectory,
-      directSessionDir: true,
-      sessionId: run.sessionId,
-      newSession,
       alwaysAutoCompact: true,
       personalInstructions: async () => personalInstructions(application.snapshot(), "global"),
       additionalSystemPrompt: [
@@ -288,14 +299,13 @@ const acquireOptions = Effect.fn("Automations.acquireOptions")(function* (
       ]
         .filter(Boolean)
         .join("\n\n"),
-      requestUi: () => Promise.resolve(undefined),
       utilityModel: () => application.snapshot().utilityModel,
       sessionTitleChanged: () => execute(refresh),
     },
   };
 });
 
-const startRun = Effect.fn("Automations.startRun")(function* (
+export const startRun = Effect.fn("Automations.startRun")(function* (
   run: AutomationRun,
 ): Effect.fn.Return<void, AutomationError, AutomationRunServices> {
   const occurrence = (yield* AutomationRecords)
@@ -344,9 +354,12 @@ const startRun = Effect.fn("Automations.startRun")(function* (
         .applyConfiguration(occurrence.definition.task.configuration)
         .pipe(asError("configure"));
       yield* handle.rename(occurrence.definition.name).pipe(asError("name"));
-      yield* handle
-        .prompt(occurrence.definition.task.prompt, attachments, true)
-        .pipe(asError("prompt"));
+      const savedPrompt = occurrence.definition.task.prompt;
+      const text =
+        occurrence.source._tag === "Webhook"
+          ? `${savedPrompt}\n\nGitHub delivery fields (untrusted JSON data):\n${JSON.stringify(occurrence.source.data)}`
+          : savedPrompt;
+      yield* handle.prompt(text, attachments, true).pipe(asError("prompt"));
     }),
   ).pipe(Effect.tapError((error) => settle(run.id, "failed", error.message)));
 });
@@ -355,6 +368,12 @@ export const trigger = Effect.fn("Automations.trigger")(function* (
   id: AutomationId,
   source: AutomationOccurrenceSource = { _tag: "Manual" },
 ): Effect.fn.Return<AutomationTriggerResult, AutomationError, AutomationRunServices> {
+  if (source._tag === "Webhook")
+    return yield* automationError(
+      "trigger",
+      "Webhook delivery must use authenticated ingress.",
+      "invalid-state",
+    );
   const automation = yield* lookup(id);
   const context = yield* resolveContext(automation.definition.context).pipe(Effect.result);
   const config = yield* ProjectSessionConfiguration;
@@ -406,6 +425,9 @@ export const trigger = Effect.fn("Automations.trigger")(function* (
               context: current.definition.context,
               workingDirectory: context.success,
               sessionDirectory: path.join(config.sessionDirectory, "automations", id),
+              ...(current.definition.trigger._tag === "Webhook"
+                ? { reportOnly: true as const }
+                : null),
               startedAt: occurredAt,
               status: { _tag: "running" },
             }
@@ -460,6 +482,7 @@ export const trigger = Effect.fn("Automations.trigger")(function* (
 
 export const drain = Effect.fn("Automations.drain")(function* (
   id: AutomationId,
+  dispatchWebhook = false,
 ): Effect.fn.Return<void, AutomationError, AutomationRunServices> {
   const records = yield* AutomationRecords;
   const config = yield* ProjectSessionConfiguration;
@@ -469,7 +492,7 @@ export const drain = Effect.fn("Automations.drain")(function* (
   const candidate = records
     .snapshot()
     .occurrences.find((item) => item.automationId === id && item.disposition._tag === "queued");
-  if (!candidate) return;
+  if (!candidate || (candidate.source._tag === "Webhook" && !dispatchWebhook)) return;
   const workingDirectory = yield* resolveContext(candidate.definition.context).pipe(
     Effect.catch((error) =>
       changeState(id, { _tag: "suspended", reason: error.message }).pipe(
@@ -485,15 +508,43 @@ export const drain = Effect.fn("Automations.drain")(function* (
       const occurrence = ledger.occurrences.find(
         (item) => item.automationId === id && item.disposition._tag === "queued",
       );
-      if (
-        automation?.state._tag !== "active" ||
-        occurrence?.id !== candidate.id ||
-        ledger.runs.some(
-          (item) =>
-            item.automationId === id && (item.status._tag === "running" || live.has(item.id)),
-        )
-      )
+      if (automation?.state._tag !== "active" || occurrence?.id !== candidate.id)
         return { ledger, result: undefined };
+      const running = ledger.runs.filter(
+        (item) => item.status._tag === "running" || live.has(item.id),
+      );
+      const forAutomation = running.some((item) => item.automationId === id);
+      if (occurrence.source._tag !== "Webhook") {
+        if (forAutomation) return { ledger, result: undefined };
+      } else {
+        if (forAutomation && occurrence.definition.overlap === "skip")
+          return {
+            ledger: {
+              ...ledger,
+              occurrences: ledger.occurrences.map((item) =>
+                item.id === occurrence.id
+                  ? {
+                      ...item,
+                      disposition: {
+                        _tag: "skipped" as const,
+                        reason: "An existing session of this automation is still running.",
+                      },
+                    }
+                  : item,
+              ),
+            },
+            result: undefined,
+          };
+        if (forAutomation && occurrence.definition.overlap !== "parallel")
+          return { ledger, result: undefined };
+        const activeOccurrences = new Set(running.map((item) => item.occurrenceId));
+        if (
+          ledger.occurrences.filter(
+            (item) => item.source._tag === "Webhook" && activeOccurrences.has(item.id),
+          ).length >= maxConcurrentWebhookRuns
+        )
+          return { ledger, result: undefined };
+      }
       const run: AutomationRun = {
         id: AutomationRunId.make(crypto.randomUUID()),
         automationId: id,
@@ -502,6 +553,9 @@ export const drain = Effect.fn("Automations.drain")(function* (
         context: occurrence.definition.context,
         workingDirectory,
         sessionDirectory: path.join(config.sessionDirectory, "automations", id),
+        ...(occurrence.source._tag === "Webhook" || occurrence.definition.trigger._tag === "Webhook"
+          ? { reportOnly: true as const }
+          : null),
         startedAt: now,
         status: { _tag: "running" },
       };
@@ -524,6 +578,7 @@ export const drain = Effect.fn("Automations.drain")(function* (
 
 export const activate = Effect.fn("Automations.activate")(function* (
   id: AutomationId,
+  fromManagement = false,
 ): Effect.fn.Return<void, AutomationError, AutomationRunServices> {
   const automation = yield* lookup(id);
   yield* resolveContext(automation.definition.context);
@@ -542,7 +597,8 @@ export const activate = Effect.fn("Automations.activate")(function* (
       "Choose a future time before activating this one-time schedule.",
       "invalid-state",
     );
-  yield* changeState(id, { _tag: "active" });
+  const { webhookPort } = yield* AutomationConfiguration;
+  yield* changeState(id, { _tag: "active" }, fromManagement && webhookPort !== undefined);
   yield* drain(id);
 });
 
@@ -612,10 +668,11 @@ export const archive = Effect.fn("Automations.archive")(function* (input: Automa
 
 export const acquireSession = Effect.fn("Automations.acquireSession")(function* (
   sessionId: string,
+  recreateBeforeTranscript = false,
 ): Effect.fn.Return<CakeSessionHandle, AutomationError, AutomationRunServices | Scope.Scope> {
   const run = yield* runForSession(sessionId);
   return yield* (yield* CakeSessionRuntimes)
-    .acquire(yield* acquireOptions(run, false))
+    .acquire(yield* acquireOptions(run, recreateBeforeTranscript))
     .pipe(asError("acquire"));
 });
 
@@ -651,6 +708,7 @@ const sidebarSessions = Effect.fn("Automations.sidebarSessions")(function* (
           runId: run.id,
           context: run.context,
           workingDirectory: run.workingDirectory,
+          ...(run.reportOnly ? { reportOnly: run.reportOnly } : null),
         },
         title:
           entry?.title ??

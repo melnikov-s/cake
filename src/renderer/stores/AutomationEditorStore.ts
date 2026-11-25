@@ -104,6 +104,21 @@ export class AutomationEditorStore extends Store {
     }
   }
 
+  webhookStatus(automationId: AutomationId, signal = this.signal) {
+    return this.client.automations.webhookStatus({ automationId }, { signal });
+  }
+
+  rotateWebhookSecret(automationId: AutomationId) {
+    return this.client.automations.rotateWebhookSecret({ automationId }, { signal: this.signal });
+  }
+
+  previewWebhook(automationId: AutomationId, event: string, body: string) {
+    return this.client.automations.previewWebhook(
+      { automationId, event, body },
+      { signal: this.signal },
+    );
+  }
+
   get eventSessionKinds() {
     return sessionKindsForProject(this.definition?.context ?? { _tag: "Global" });
   }

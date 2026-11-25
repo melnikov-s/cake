@@ -73,7 +73,9 @@ export const AutomationRuns = observer(function AutomationRuns() {
                       ? "Manual trigger"
                       : occurrence.source._tag === "Schedule"
                         ? `Schedule · ${new Date(occurrence.source.scheduledAt).toLocaleString()}`
-                        : occurrence.source.event.replaceAll("-", " ")}
+                        : occurrence.source._tag === "Webhook"
+                          ? `GitHub · ${occurrence.source.data.repository} #${occurrence.source.data.pullRequest}`
+                          : occurrence.source.event.replaceAll("-", " ")}
                     <span className="mt-1 block text-muted-foreground">
                       {occurrence.source._tag === "Event" ? (
                         occurrence.source.sourceMessageId ? (
@@ -88,6 +90,8 @@ export const AutomationRuns = observer(function AutomationRuns() {
                         ) : (
                           <SessionIdLink sessionId={occurrence.source.sourceSessionId} />
                         )
+                      ) : occurrence.source._tag === "Webhook" ? (
+                        occurrence.source.deliveryId
                       ) : occurrence.source._tag === "Manual" &&
                         occurrence.source.requestedBySessionId ? (
                         <SessionIdLink sessionId={occurrence.source.requestedBySessionId} />

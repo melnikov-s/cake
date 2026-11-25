@@ -29,14 +29,16 @@ export const AutomationTaskFields = observer(function AutomationTaskFields() {
           />
         }
         toolbarLeading={
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={editor.choosingAttachments}
-            onClick={() => void editor.addAttachments()}
-          >
-            Attach
-          </Button>
+          editor.definition?.trigger._tag !== "Webhook" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={editor.choosingAttachments}
+              onClick={() => void editor.addAttachments()}
+            >
+              Attach
+            </Button>
+          )
         }
         toolbarActions={
           <ModelPicker

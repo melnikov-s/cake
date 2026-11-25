@@ -4,6 +4,7 @@ import { Select } from "../ui/select";
 import { SegmentedControlGroup, SegmentedControlButton } from "../ui/segmented-control";
 import { AutomationScheduleFields } from "./automation-schedule-fields";
 import { AutomationEventFilters } from "./automation-event-filters";
+import { AutomationWebhookFields } from "./automation-webhook-fields";
 
 const eventKinds = [
   { value: "user-message-received", label: "User message received" },
@@ -58,6 +59,25 @@ export const AutomationTriggerFields = observer(function AutomationTriggerFields
           >
             Schedule
           </SegmentedControlButton>
+          <SegmentedControlButton
+            active={trigger._tag === "Webhook"}
+            onClick={() => {
+              if (trigger._tag !== "Webhook")
+                editor.patch({
+                  trigger: {
+                    _tag: "Webhook",
+                    filter: {
+                      event: "pull_request_review",
+                      repository: "",
+                      action: "submitted",
+                      fields: ["title", "reviewer", "state"],
+                    },
+                  },
+                });
+            }}
+          >
+            GitHub webhook
+          </SegmentedControlButton>
         </SegmentedControlGroup>
       </div>
       {filter ? (
@@ -85,6 +105,8 @@ export const AutomationTriggerFields = observer(function AutomationTriggerFields
           </label>
           <AutomationEventFilters />
         </>
+      ) : trigger._tag === "Webhook" ? (
+        <AutomationWebhookFields filter={trigger.filter} />
       ) : (
         <AutomationScheduleFields />
       )}

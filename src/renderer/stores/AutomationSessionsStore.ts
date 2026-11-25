@@ -113,6 +113,7 @@ export class AutomationSessionsStore extends Store<{
       runId: run.id,
       context: run.context,
       workingDirectory: run.workingDirectory,
+      ...(run.reportOnly ? { reportOnly: run.reportOnly } : null),
     };
     if (!this.identities.some((item) => item.sessionId === run.sessionId))
       this.identities.push(identity);

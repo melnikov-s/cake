@@ -212,6 +212,45 @@ only. Assets resolve under `out/browser/`, beside compiled output, not relative 
 the launch directory. The server reuses installed Node packages: it is not a
 self-contained deployment bundle. Missing assets or invalid configuration fail explicitly.
 
+## Receive GitHub review webhooks
+
+Set `CAKE_GITHUB_WEBHOOK_PORT` to a free TCP port (1–65535) in the environment of
+`pnpm start:server` or the local desktop backend. The webhook listener binds to
+`127.0.0.1` only and does not enable RPC, MCP, or browser sharing. Use one running
+backend per Cake data directory. Keep the receiving backend online; Cake does not
+receive or buffer deliveries while it is offline.
+
+1. In Automations, create a **GitHub webhook** automation. Choose the registered
+   project, save a text-only reporting task and model, and select the repository,
+   PR review action, and optional input fields. Saving a webhook leaves it paused.
+2. Generate a secret in the saved definition and paste it into the repository's
+   webhook settings. Use `application/json`, select **Pull request reviews**, and
+   set GitHub's payload URL to your user-managed HTTPS proxy or tunnel forwarding
+   the exact `/webhooks/github/<automation-id>` path to the displayed loopback URL.
+   Forward original bytes and GitHub headers untouched. Never forward the app RPC
+   or MCP ports to GitHub. For standalone administration, use a trusted desktop
+   connection separate from the public webhook route.
+3. Paste a delivery's JSON and event header into **Preview a test delivery** to
+   check the saved filter and selected fields without admitting a run. Then click
+   **Enable webhook**. After rotating the secret, update GitHub promptly; the old
+   secret stops working immediately. Do not log or share the secret or signed bodies.
+
+Ingress accepts at most 1 MiB of uncompressed JSON and 8 concurrent requests.
+Up to 8 work items can wait per webhook, 32 across the backend, with up to 4
+externally triggered runs starting/running at once. A `202 queued` response means
+Cake wrote the occurrence and deduplication record before replying, not that the
+model completed. If Cake returns `503` (including a full queue), redeliver from
+GitHub once the backend has capacity. The definition displays the most recent
+ignored/duplicate notice; **Runs** shows accepted, skipped, queued, and completed
+work with session links. Pausing defers queued work; archiving or removing the
+trigger cancels it. Already-running work keeps its original saved configuration.
+
+Webhook runs send only the saved task and bounded selected fields to the saved
+model. They run without executable tools, MCP, extensions, project files or shared
+automation memory. Use a Pi model that does not require an extension to register
+its provider. Treat the model's report as untrusted text, not as instructions to
+execute or approval to take action.
+
 ## Connect an Electron desktop
 
 Build desktop and server from the **same source checkout** (`pnpm build:slim` and

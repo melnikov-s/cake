@@ -98,6 +98,14 @@ const validate = Effect.fn("Automations.validateDefinition")(function* (
   if (isAntigravityModel(definition.task.configuration))
     return yield* automationError("validate", antigravityDesktopOnly);
   yield* resolveContext(definition.context);
+  if (
+    definition.trigger._tag === "Webhook" &&
+    (definition.context._tag !== "Project" || definition.task.attachments.length !== 0)
+  )
+    return yield* automationError(
+      "validate",
+      "GitHub webhooks require a registered Project and a text-only report task.",
+    );
   if (definition.trigger._tag === "Event") {
     const filter = definition.trigger.filter;
     if (filter.event === "session-created" && filter.contentContains !== undefined)
@@ -221,7 +229,7 @@ export const create = Effect.fn("Automations.create")(function* (input: Automati
   const automation: Automation = {
     id,
     definition,
-    state: { _tag: input.initialState },
+    state: { _tag: definition.trigger._tag === "Webhook" ? "paused" : input.initialState },
     memoryId: OptMemoryId.make(crypto.randomUUID()),
     createdAt: DateTime.formatIso(now),
     updatedAt: DateTime.formatIso(now),
@@ -257,12 +265,36 @@ export const update = Effect.fn("Automations.update")(function* (input: Automati
       const automation: Automation = {
         ...Struct.omit(current, ["nextScheduledAt"]),
         definition,
+        state:
+          definition.trigger._tag === "Webhook" && current.state._tag !== "archived"
+            ? { _tag: "paused" }
+            : current.state,
         updatedAt: DateTime.formatIso(now),
       };
       if (next !== undefined) Object.assign(automation, { nextScheduledAt: next });
       return {
         ledger: {
           ...ledger,
+          ...(current.definition.trigger._tag === "Webhook" && definition.trigger._tag !== "Webhook"
+            ? {
+                webhookTriggers: (ledger.webhookTriggers ?? []).filter(
+                  (item) => item.automationId !== automation.id,
+                ),
+                occurrences: ledger.occurrences.map((item) =>
+                  item.automationId === automation.id &&
+                  item.source._tag === "Webhook" &&
+                  item.disposition._tag === "queued"
+                    ? {
+                        ...item,
+                        disposition: {
+                          _tag: "canceled" as const,
+                          reason: "GitHub webhook trigger removed.",
+                        },
+                      }
+                    : item,
+                ),
+              }
+            : null),
           automations: ledger.automations.map((item) =>
             item.id === automation.id ? automation : item,
           ),
@@ -277,6 +309,7 @@ export const update = Effect.fn("Automations.update")(function* (input: Automati
 export const changeState = Effect.fn("Automations.changeState")(function* (
   id: AutomationId,
   state: AutomationState,
+  allowWebhook = false,
 ) {
   const now = yield* DateTime.now;
   return yield* (yield* AutomationRecords).transact((ledger) =>
@@ -287,6 +320,16 @@ export const changeState = Effect.fn("Automations.changeState")(function* (
         return yield* automationError(
           "pause",
           "An archived automation must be restored explicitly.",
+          "invalid-state",
+        );
+      if (
+        state._tag === "active" &&
+        current.definition.trigger._tag === "Webhook" &&
+        (!allowWebhook || !ledger.webhookTriggers?.some((item) => item.automationId === id))
+      )
+        return yield* automationError(
+          "activate",
+          "Generate a secret and activate this webhook in Automations.",
           "invalid-state",
         );
       let automation: Automation = { ...current, state, updatedAt: DateTime.formatIso(now) };

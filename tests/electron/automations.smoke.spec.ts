@@ -1,3 +1,6 @@
+import { createHmac, randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { createServer } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -23,14 +26,27 @@ async function openHistoryRun(page: Page, name: string) {
     .first()
     .click();
 }
-async function launchAutomationFixture(theme: "light" | "dark" = "light") {
+async function availableWebhookPort() {
+  const socket = createServer();
+  socket.listen(0, "127.0.0.1");
+  await once(socket, "listening");
+  const address = socket.address();
+  await new Promise<void>((done) => socket.close(() => done()));
+  if (!address || typeof address === "string") throw new Error("No fixture listener port");
+  return address.port;
+}
+
+async function launchAutomationFixture(
+  theme: "light" | "dark" = "light",
+  webhook?: { port: number; report: string },
+) {
   const directory = await mkdtemp(join(tmpdir(), "cake-automation-ui-"));
   const paths = {
     cakeHome: join(directory, "home"),
     project: join(directory, "project"),
     userData: join(directory, "user-data"),
   };
-  const cleanup = await seedAutomationVisualFixture(paths, theme);
+  const cleanup = await seedAutomationVisualFixture(paths, theme, webhook?.report);
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
     application = await electron.launch({
@@ -43,6 +59,7 @@ async function launchAutomationFixture(theme: "light" | "dark" = "light") {
         CAKE_HOME: paths.cakeHome,
         PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
         PI_CODING_AGENT_SESSION_DIR: "",
+        ...(webhook ? { CAKE_GITHUB_WEBHOOK_PORT: String(webhook.port) } : null),
       },
     });
     const page = await application.firstWindow();
@@ -92,6 +109,78 @@ test("chooses the project once and limits event options to that project or Globa
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page.getByRole("table", { name: "Automations", exact: true })).toBeVisible();
     expect(fixture.modelRequests()).toBe(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test("previews a GitHub webhook without running, then opens the signed delivery as inert text", async ({}, testInfo) => {
+  const report = "Review approved. ![Not an active image](http://127.0.0.1:1/never-load.png)";
+  const fixture = await launchAutomationFixture("light", {
+    port: await availableWebhookPort(),
+    report,
+  });
+  const { page } = fixture;
+  try {
+    await page.getByRole("button", { name: "New automation", exact: true }).click();
+    await page.getByRole("textbox", { name: "Automation name" }).fill("Pull request review report");
+    await page
+      .getByRole("combobox", { name: "Project", exact: true })
+      .selectOption(fixture.paths.project);
+    await page.getByRole("button", { name: "GitHub webhook", exact: true }).click();
+    await page.getByRole("textbox", { name: "Repository", exact: true }).fill("example/repo");
+    await page
+      .getByRole("textbox", { name: "Automation task" })
+      .fill("Summarize the review in one sentence.");
+    await page.getByRole("button", { name: "Create automation" }).click();
+    await expect(page.getByRole("button", { name: "Enable webhook" })).toBeVisible();
+    await page.getByRole("button", { name: "Generate secret" }).click();
+    await expect(page.getByRole("button", { name: "Rotate secret" })).toBeVisible();
+    await page.getByRole("button", { name: "Show", exact: true }).click();
+    const secret = await page.getByLabel("New GitHub secret (shown here once)").inputValue();
+    const endpoint = await page
+      .getByRole("textbox", { name: "Local forwarding target" })
+      .inputValue();
+    await page.getByRole("button", { name: "Dismiss", exact: true }).click();
+    await page.getByText("Preview a test delivery", { exact: true }).click();
+    const body = JSON.stringify({
+      action: "submitted",
+      repository: { full_name: "example/repo" },
+      pull_request: { number: 42, title: "Clarify retention policy" },
+      review: { state: "approved", user: { login: "reviewer" }, body: "Approved. Thanks!" },
+    });
+    await page.getByRole("textbox", { name: "Test payload JSON" }).fill(body);
+    await page.getByRole("button", { name: "Preview saved filter" }).click();
+    await expect(page.getByText("Matches saved filter", { exact: false })).toBeVisible();
+    await expect(page.locator("pre").filter({ hasText: '"pullRequest": 42' })).toBeVisible();
+    await page.locator("pre").filter({ hasText: '"pullRequest": 42' }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("github-webhook-preview.png") });
+    await page.getByRole("button", { name: "Runs", exact: true }).click();
+    await expect(page.getByText("No runs yet.", { exact: true })).toBeVisible();
+    expect(fixture.modelRequests()).toBe(0);
+    await page.getByRole("button", { name: "Enable webhook", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Pause webhook", exact: true })).toBeVisible();
+    const response = await fetch(endpoint, {
+      method: "POST",
+      body,
+      headers: {
+        "Content-Type": "application/json",
+        "X-GitHub-Event": "pull_request_review",
+        "X-GitHub-Delivery": randomUUID(),
+        "X-Hub-Signature-256": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+      },
+    });
+    expect(response.status).toBe(202);
+    const openRun = page.getByRole("button", { name: "Open run", exact: true });
+    await expect
+      .poll(async () => {
+        await page.getByRole("button", { name: "Refresh", exact: true }).click();
+        return openRun.count();
+      })
+      .toBe(1);
+    await openRun.click();
+    await expect(page.getByText(report, { exact: true })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Not an active image" })).toHaveCount(0);
   } finally {
     await fixture.close();
   }

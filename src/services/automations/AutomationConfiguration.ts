@@ -5,5 +5,6 @@ export class AutomationConfiguration extends Context.Service<
   AutomationConfiguration,
   {
     readonly homeDirectory: string;
+    readonly webhookPort?: number;
   }
 >()("cake/services/automations/AutomationConfiguration") {}

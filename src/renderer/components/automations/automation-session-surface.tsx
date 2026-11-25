@@ -72,12 +72,16 @@ export const AutomationSessionSurface = observer(function AutomationSessionSurfa
             store={session.conversationSessionStore.chatStore}
             composerFocusEnabled={!session.resolved}
             transcriptTransition={{ ready: Boolean(session.model.sessionFile) }}
-            transcriptBehavior={{
-              workspacePath: session.identity.workingDirectory,
-              messageReferenceSessionId: session.sessionId,
-              inlineWidgets: root.inlineWidgetStore,
-              inlineArtifactPreviews: root.inlineArtifactPreviewStore,
-            }}
+            transcriptBehavior={
+              session.identity.reportOnly
+                ? { plainText: true }
+                : {
+                    workspacePath: session.identity.workingDirectory,
+                    messageReferenceSessionId: session.sessionId,
+                    inlineWidgets: root.inlineWidgetStore,
+                    inlineArtifactPreviews: root.inlineArtifactPreviewStore,
+                  }
+            }
             empty={
               session.model.observedSnapshotRevision === 0 ? (
                 <div className="p-8">

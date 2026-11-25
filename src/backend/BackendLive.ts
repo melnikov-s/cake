@@ -7,7 +7,7 @@ import * as projectTodoSnoozes from "../domain/projects/projectTodoSnoozes";
 import { join } from "node:path";
 import { makeVsCodeServerLive } from "../services/vscode/VsCodeServerLive";
 import { companionAssets } from "../services/vscode/companion-assets";
-import { Effect, Layer, Schedule } from "effect";
+import { Config, Effect, Layer, Schedule, Schema } from "effect";
 import { startupDiagnostics } from "../services/diagnostics/startup-diagnostics";
 import type { CakePaths } from "../config/CakePaths";
 import * as scheduledMessages from "../domain/scheduled-messages/scheduledMessages";
@@ -108,6 +108,7 @@ import { AutomationConfiguration } from "../services/automations/AutomationConfi
 import { AutomationEvents } from "../services/automations/AutomationEvents";
 import { makeAutomationMemoryLive } from "../layers/AutomationMemoryLive";
 import * as automationWorker from "../domain/automations/automationWorker";
+import { openGitHubWebhookListener } from "../services/automations/GitHubWebhookListener";
 
 export interface BackendLiveOptions {
   readonly paths: CakePaths;
@@ -122,7 +123,24 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     BootstrapLive,
     Layer.succeed(CakeChatConfiguration, cakeChatLocations.configuration(options)),
     Layer.succeed(ProjectConfiguration, { agentDirectory: paths.piAgent }),
-    Layer.succeed(AutomationConfiguration, { homeDirectory: options.homeDirectory }),
+    Layer.effect(
+      AutomationConfiguration,
+      Effect.gen(function* () {
+        const webhookPort = yield* Config.option(
+          Config.schema(
+            Schema.NumberFromString.check(
+              Schema.isInt(),
+              Schema.isBetween({ minimum: 1, maximum: 65535 }),
+            ),
+            "CAKE_GITHUB_WEBHOOK_PORT",
+          ),
+        ).pipe(Effect.orDie);
+        return {
+          homeDirectory: options.homeDirectory,
+          ...(webhookPort._tag === "Some" ? { webhookPort: webhookPort.value } : null),
+        };
+      }),
+    ),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: paths.piAgent,
       sessionDirectory: paths.piSessions,
@@ -400,6 +418,13 @@ export const makeBackendLive = <HostServices, HostError>(
           "automation-recover",
           automationWorker.recover().pipe(Effect.orDie),
         );
+        const { webhookPort } = yield* AutomationConfiguration;
+        if (webhookPort !== undefined) {
+          yield* openGitHubWebhookListener(webhookPort).pipe(Effect.orDie);
+          yield* Effect.logInfo(`GitHub webhook ingress listening on 127.0.0.1:${webhookPort}`);
+        }
+        // Previously accepted work remains owned by the backend even if ingress is disabled.
+        yield* automationWorker.runWebhookWorker.pipe(Effect.forkScoped);
         yield* automationWorker
           .runScheduleWorker((schedule) =>
             globalArtifacts.callTool({

@@ -21,6 +21,7 @@ export const AutomationManagementSurface = observer(function AutomationManagemen
   const hub = root.automationsStore;
   const editor = hub.editor;
   const id = hub.selectedId;
+  const webhook = editor.automation?.definition.trigger._tag === "Webhook";
   const state =
     hub.catalog.automations.find((item) => item.id === id)?.state ?? editor.automation?.state;
   const error =
@@ -75,10 +76,14 @@ export const AutomationManagementSurface = observer(function AutomationManagemen
                       }
                     >
                       {state?._tag === "active"
-                        ? "Pause automation"
-                        : state?._tag === "suspended"
-                          ? "Retry activation"
-                          : "Resume automation"}
+                        ? webhook
+                          ? "Pause webhook"
+                          : "Pause automation"
+                        : webhook
+                          ? "Enable webhook"
+                          : state?._tag === "suspended"
+                            ? "Retry activation"
+                            : "Resume automation"}
                     </Button>
                   )}
                   {state?._tag === "archived" ? (

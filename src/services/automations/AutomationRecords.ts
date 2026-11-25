@@ -53,6 +53,7 @@ export class AutomationRecords extends Context.Service<
             Effect.gen(function* () {
               const current = yield* SubscriptionRef.get(projection);
               const next = yield* transition(current);
+              if (next.ledger === current) return next.result;
               yield* storage.save(next.ledger).pipe(
                 Effect.andThen(
                   SubscriptionRef.set(projection, {

@@ -8,7 +8,7 @@ import { AutomationEvents } from "../../services/automations/AutomationEvents";
 import { RuntimeRecoveryStorage } from "../../services/storage/RuntimeRecoveryStorage";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { matchesEvent } from "./automationPolicy";
-import { acquireSession, drain, settle, trigger } from "./automationRuns";
+import { acquireSession, drain, settle, startRun, trigger } from "./automationRuns";
 import type { ArtifactSchedule } from "../../contracts/artifacts/artifact-schedules";
 import { runArtifactSchedulePass } from "./artifactSchedules";
 
@@ -82,6 +82,9 @@ export const recover = Effect.fn("Automations.recover")(function* () {
   for (const run of records.snapshot().runs) {
     const result = yield* Effect.gen(function* () {
       const receipt = yield* recovery.get(run.sessionId);
+      const webhook = records
+        .snapshot()
+        .occurrences.some((item) => item.id === run.occurrenceId && item.source._tag === "Webhook");
       // A historical run may own new accepted work without changing its original outcome.
       // Leave terminal/empty receipts alone so restart does not undo an explicit restore.
       if (
@@ -92,6 +95,12 @@ export const recover = Effect.fn("Automations.recover")(function* () {
       )
         return;
       if (!receipt) {
+        // Pi writes its input receipt before it can start a turn. For a webhook the
+        // occurrence is already durable, so a start interrupted before admission can resume.
+        if (webhook) {
+          yield* startRun(run);
+          return;
+        }
         yield* settle(
           run.id,
           "failed",
@@ -125,7 +134,18 @@ export const recover = Effect.fn("Automations.recover")(function* () {
       }
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const handle = yield* acquireSession(run.sessionId);
+          const recreateBeforeTranscript =
+            webhook &&
+            !receipt.transcriptPersisted &&
+            !(yield* sessions.catalogEntry(
+              {
+                workingDirectory: run.workingDirectory,
+                sessionDirectory: run.sessionDirectory,
+                direct: true,
+              },
+              run.sessionId,
+            ));
+          const handle = yield* acquireSession(run.sessionId, recreateBeforeTranscript);
           yield* handle.recover(receipt.inputs);
           const status = yield* sessions.currentStatus(run);
           if (status?.recoveryIssue) yield* settle(run.id, "failed", status.recoveryIssue);
@@ -141,6 +161,31 @@ export const recover = Effect.fn("Automations.recover")(function* () {
     if (automation.state._tag === "active") yield* drain(automation.id);
   }
 });
+
+export const runWebhookPass = Effect.fn("Automations.runWebhookPass")(function* () {
+  const { automations, occurrences } = (yield* AutomationRecords).snapshot();
+  const active = new Set(
+    automations.filter((item) => item.state._tag === "active").map((item) => item.id),
+  );
+  const pending = new Set(
+    occurrences
+      .filter(
+        (item) =>
+          item.source._tag === "Webhook" &&
+          item.disposition._tag === "queued" &&
+          active.has(item.automationId),
+      )
+      .map((item) => item.automationId),
+  );
+  for (const id of pending) {
+    yield* drain(id, true).pipe(
+      Effect.tapError((error) => Effect.logError("Webhook automation dispatch failed", error)),
+      Effect.ignore,
+    );
+  }
+});
+
+export const runWebhookWorker = runWebhookPass().pipe(Effect.repeat(Schedule.spaced("1 second")));
 
 /** One worker tick: gated artifact schedules first, then prompt automations. */
 export const runSchedulePasses = Effect.fn("Automations.runSchedulePasses")(function* <A, E, R>(

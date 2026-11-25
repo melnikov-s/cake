@@ -98,6 +98,7 @@ export const ChatTextMessage = forwardRef<
     onMouseEnter?: MouseEventHandler<HTMLElement>;
     onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
+    plainText?: boolean;
     omitArtifactEmbeds?: readonly string[];
     /** Exact originals that carry the content of an incoming receipt. */
     sources?: readonly MessageReferencePreviewStore[];
@@ -120,6 +121,7 @@ export const ChatTextMessage = forwardRef<
     onMouseLeave,
     onOpenSourceLocation,
     omitArtifactEmbeds,
+    plainText,
     sources = [],
     reportSource,
     workerTask,
@@ -184,20 +186,23 @@ export const ChatTextMessage = forwardRef<
           : assistant
             ? "rounded-none border-0 bg-transparent px-0.5 py-1 text-foreground shadow-none"
             : "border-hairline bg-user-message text-user-message-foreground shadow-[inset_0_1px_0_var(--surface-rim),var(--card-shadow)]",
-        !assistant &&
-          !report &&
-          !part.crossSession &&
-          !agentSource &&
-          part.renderAs !== "markdown" &&
-          "whitespace-pre-wrap",
+        (plainText ||
+          (!assistant &&
+            !report &&
+            !part.crossSession &&
+            !agentSource &&
+            part.renderAs !== "markdown")) &&
+          "whitespace-pre-wrap break-words",
       )}
     >
-      {!assistant &&
-      !report &&
-      !part.crossSession &&
-      !agentSource &&
-      part.renderAs !== "markdown" &&
-      splitModelReferences(text).some((part) => part.model) ? (
+      {plainText ? (
+        text
+      ) : !assistant &&
+        !report &&
+        !part.crossSession &&
+        !agentSource &&
+        part.renderAs !== "markdown" &&
+        splitModelReferences(text).some((part) => part.model) ? (
         <ModelReferenceText text={text} />
       ) : assistant ||
         report ||
@@ -380,6 +385,8 @@ export function captureTranscriptSelection(
 }
 
 export interface ChatTranscriptBehavior {
+  /** Externally supplied reports do not activate Markdown, remote images or artifact links. */
+  plainText?: boolean;
   /** Addressable session identity used for exact attachment-reference links. */
   messageReferenceSessionId?: string;
   /** Permanent chat surfaces opt in; Chat supplies the draft/focus callback. */

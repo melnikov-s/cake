@@ -1,4 +1,9 @@
 import { Schema } from "effect";
+import {
+  GITHUB_WEBHOOK_MAX_BODY,
+  GitHubWebhookPreview,
+  GitHubWebhookStatus,
+} from "../../contracts/automations/github-webhooks";
 import { Rpc, RpcGroup } from "effect/rpc";
 import {
   OptMemoryView,
@@ -40,6 +45,25 @@ export const AutomationRpc = RpcGroup.make(
   Rpc.make("automations.inspect", {
     payload: AutomationTarget,
     success: AutomationInspection,
+    error: AutomationError,
+  }),
+  Rpc.make("automations.webhookStatus", {
+    payload: AutomationTarget,
+    success: GitHubWebhookStatus,
+    error: AutomationError,
+  }),
+  Rpc.make("automations.rotateWebhookSecret", {
+    payload: AutomationTarget,
+    success: Schema.Struct({ secret: Schema.String }),
+    error: AutomationError,
+  }),
+  Rpc.make("automations.previewWebhook", {
+    payload: Schema.Struct({
+      ...AutomationTarget.fields,
+      event: Schema.String.check(Schema.isPattern(/^[a-z_]{1,64}$/)),
+      body: Schema.String.check(Schema.isMaxLength(GITHUB_WEBHOOK_MAX_BODY)),
+    }),
+    success: GitHubWebhookPreview,
     error: AutomationError,
   }),
   Rpc.make("automations.create", {

@@ -1,12 +1,14 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import {
   Automation,
+  AutomationId,
   AutomationError,
   AutomationOccurrence,
   AutomationRun,
 } from "../../contracts/automations/automation-data";
 import { ArtifactSchedule } from "../../contracts/artifacts/artifact-schedules";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
+import { GitHubWebhookNote } from "../../contracts/automations/github-webhooks";
 import { atomicWriteFile } from "./internal/atomicFile";
 
 /** Workflow metadata only. Session transcripts and resolution retain their existing authorities. */
@@ -20,6 +22,16 @@ export const AutomationLedger = Schema.Struct({
   ...SessionAutomationLedger.fields,
   artifactSchedules: Schema.Array(ArtifactSchedule),
   pausedArtifactIds: Schema.Array(ArtifactLineageId),
+  // Backend-only. Never include this field in RPC or agent projections.
+  webhookTriggers: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        automationId: AutomationId,
+        secret: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
+        lastNote: Schema.optionalKey(GitHubWebhookNote),
+      }),
+    ),
+  ),
 });
 export interface AutomationLedger extends Schema.Schema.Type<typeof AutomationLedger> {}
 
@@ -69,7 +81,7 @@ export const makeAutomationStorageLive = (stateDirectory: string) =>
           .pipe(Effect.mapError((cause) => storageError("load", cause)));
         const stored = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ReadDocument))(
           text,
-        ).pipe(Effect.mapError((cause) => storageError("decode", cause)));
+        ).pipe(Effect.mapError(() => storageError("decode", "Invalid automation ledger.")));
         return stored.version === 1
           ? { ...stored.data, artifactSchedules: [], pausedArtifactIds: [] }
           : stored.data;
@@ -78,13 +90,14 @@ export const makeAutomationStorageLive = (stateDirectory: string) =>
         const encoded = yield* Schema.encodeEffect(StoredDocument)({
           version: 2,
           data: ledger,
-        }).pipe(Effect.mapError((cause) => storageError("encode", cause)));
+        }).pipe(Effect.mapError(() => storageError("encode", "Invalid automation ledger.")));
         yield* atomicWriteFile(
           fs,
           path,
           document,
           `${JSON.stringify(encoded, null, 2)}\n`,
           (stage, cause) => storageError(stage, cause),
+          { sync: true },
         );
       }, lock.withPermits(1));
       return AutomationStorage.of({ load, save });
