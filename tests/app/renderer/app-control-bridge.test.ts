@@ -22,6 +22,49 @@ import { ReviewThread } from "../../../src/renderer/models/ReviewThread";
 import { SubagentActivity } from "../../../src/renderer/models/SubagentActivity";
 
 describe("AppControlRegistry", () => {
+  it("records accepted agent notifications independently of muted toast delivery", async () => {
+    vi.useFakeTimers();
+    try {
+      const recordActivityNotice = vi.fn<Client["application"]["recordActivityNotice"]>(
+        async () => undefined,
+      );
+      const showNotification = vi.fn<Client["electron"]["showNotification"]>(async () => undefined);
+      using fixture = createCommandClientFinishFixture({
+        application: { recordActivityNotice },
+        electron: { showNotification },
+      });
+      const mutedToast = vi
+        .spyOn(fixture.root.toastStore, "show")
+        .mockImplementation(() => undefined);
+      expect(
+        await fixture.invoke("notifications.send", {
+          title: "Checks complete",
+          body: "Review the run",
+          level: "success",
+        }),
+      ).toMatchObject({ ok: true, status: "queued" });
+      expect(recordActivityNotice).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          kind: "notification",
+          title: "Checks complete · Planner",
+          detail: "Review the run",
+          tone: "success",
+          projectPath: "/project",
+          sessionId: "calling",
+        }),
+        expect.anything(),
+      );
+      expect(mutedToast).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(mutedToast).toHaveBeenCalledOnce();
+      expect(showNotification).toHaveBeenCalledOnce();
+      expect(fixture.root.toastStore.toasts).toHaveLength(0);
+      expect(recordActivityNotice).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("opens exact native Side Chat links without requiring a Project Session catalog entry", async () => {
     using fixture = createCommandClientFinishFixture();
     const host = fixture.root.applicationControlStore.props.host;

@@ -11,6 +11,7 @@ import { DesktopHost } from "../../../src/services/electron/DesktopHost";
 import { DesktopSharing } from "../../../src/services/electron/DesktopSharing";
 import { Dictation } from "../../../src/services/dictation/Dictation";
 import { Effect, Layer } from "effect";
+import { ActivityHistory } from "../../../src/services/storage/ActivityHistory";
 import { AgentAvailability } from "../../../src/services/pi/AgentAvailability";
 import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
@@ -70,6 +71,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(DesktopSharing, { keepsProcessAlive: () => false }),
   Layer.mock(Dictation, {}),
   Layer.mock(AgentAvailability, {}),
+  Layer.mock(ActivityHistory, { record: () => {} }),
   fakeRendererRequestCoordinator(),
   Layer.mock(ArtifactStorage, {}),
   Layer.mock(ProjectCanvasStorage, {}),

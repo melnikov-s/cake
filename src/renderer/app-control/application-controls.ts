@@ -46,13 +46,23 @@ export const applicationControls = [
   }),
   defineControl({
     ...windowControlDefinitions["notifications.send"],
-    run: async (input, { host, source }, command): Promise<AppControlResult> => {
+    run: async (input, { host, source, recordNotice }, command): Promise<AppControlResult> => {
+      const notice = {
+        kind: "notification" as const,
+        title: source ? `${input.title} · ${source.title}` : input.title,
+        detail: input.body,
+        tone: input.level,
+      };
+      if (source) Object.assign(notice, { sessionId: source.sessionId });
+      if (source?.projectPath) Object.assign(notice, { projectPath: source.projectPath });
+      const recording = recordNotice?.(notice);
       await host.presentation.showNotification({
         title: input.title,
         body: input.body,
         level: input.level,
         source,
       });
+      await recording;
       return { ok: true, command, status: "queued" };
     },
   }),

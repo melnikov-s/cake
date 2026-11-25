@@ -1,4 +1,5 @@
 import { Effect, Stream } from "effect";
+import { recordActivity } from "../../services/storage/ActivityHistory";
 import { completeLinkedForProject, recordLifecycle } from "../projects/projectTodoResolution";
 import {
   ResolutionRejected,
@@ -134,8 +135,16 @@ const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function*
   // Finish the short authority/publication sequence even if the caller leaves.
   // Checkout cleanup remains interruptible and is not part of this commit.
   yield* Effect.gen(function* () {
-    if (namespace === "active")
+    if (namespace === "active") {
       yield* projectSessionLocations.archive(sessionId, location).pipe(asError(operation));
+      yield* recordActivity({
+        kind: "resolution",
+        title:
+          resolvedSessionIds.length > 1 ? "Session Family resolved" : "Project Session resolved",
+        sessionId,
+        projectPath: location.projectPath,
+      });
+    }
     const families = yield* SessionFamilyStorage;
     if (
       (yield* families.state()).boardDeliveries?.some(

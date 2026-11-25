@@ -101,6 +101,7 @@ import { makeLocalMcpSettingsLive } from "../services/storage/LocalMcpSettings";
 
 import { CakeChatConfiguration } from "../services/pi-durable/CakeChatConfiguration";
 import * as cakeChatLocations from "../domain/cake-chats/cakeChatLocations";
+import { makeActivityHistoryLive } from "../services/storage/ActivityHistory";
 import { makeAutomationStorageLive } from "../services/storage/AutomationStorage";
 import { AutomationRecords } from "../services/automations/AutomationRecords";
 import { AutomationConfiguration } from "../services/automations/AutomationConfiguration";
@@ -134,6 +135,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
   const automationStorage = makeAutomationStorageLive(paths.state);
   const StorageLive = Layer.mergeAll(
     applicationStorage,
+    makeActivityHistoryLive(paths.state),
     makeProjectCanvasStorageLive(paths.state),
     makeModelPresetPromptsLive(paths.prompts),
     makeLocalMcpSettingsLive(paths.state),
@@ -197,7 +199,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
   );
   const ClientStateLive = Layer.mergeAll(
     ClientConnectionsLive,
-    ClientEventsLive,
+    ClientEventsLive.pipe(Layer.provide(StorageLive)),
     ClientWorkspacesLive,
   );
   const WidgetRunGateLive = WidgetRunGate.layer.pipe(Layer.provide(StorageLive));

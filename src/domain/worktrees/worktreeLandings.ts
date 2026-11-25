@@ -4,6 +4,7 @@ import type {
   WorktreeLandRequest,
   WorktreeStatus,
 } from "../../contracts/worktrees/worktree-contract";
+import { recordActivity } from "../../services/storage/ActivityHistory";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { renderCakePrompt } from "../application/cake-prompts";
@@ -377,6 +378,15 @@ const performLanding: (
     )
     .pipe(asError("land"));
   if (outcome.outcome === "landed") {
+    const commit = outcome.commit ?? automatic?.commit;
+    yield* recordActivity({
+      id: `merge:${operation.operationId}`,
+      kind: "merge",
+      title: automatic ? "Session auto-merged" : "Worktree merged",
+      projectPath: statusBeforeLanding.record.projectPath,
+      sessionId: operation.sessionId,
+      detail: `Landed on ${statusBeforeLanding.targetBranch}${commit ? ` · ${commit.slice(0, 12)}` : ""}`,
+    });
     if (automatic) {
       // Retain the confirmed Git outcome even if authorization or resolution now fails.
       yield* update(operation.workspacePath, operation.operationId, (current) => ({

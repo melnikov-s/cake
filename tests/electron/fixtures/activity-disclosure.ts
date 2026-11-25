@@ -12,7 +12,9 @@ export async function verifyInlineActivity(
   const collapsedInput = (await form.boundingBox())!;
   await expect(activity).toHaveAttribute("aria-expanded", "false");
   const autoMerge = dock.getByRole("switch", { name: /^Auto-merge:/ });
+  const history = details.getByRole("button", { name: "History", exact: true });
   await expect(autoMerge).toHaveCount(0);
+  await expect(history).toHaveCount(0);
   await activity.click();
   await expect(activity).toHaveAttribute("aria-expanded", "true");
   await expect(details).toHaveAttribute("id", (await activity.getAttribute("aria-controls"))!);
@@ -27,6 +29,7 @@ export async function verifyInlineActivity(
 
   await expect(autoMerge).toHaveCount(scope === "project" ? 1 : 0);
   await expect(details.getByRole("switch")).toHaveCount(scope === "project" ? 1 : 0);
+  await expect(history).toBeVisible();
   const firstItem = details
     .getByRole("button", { name: /^(Open session|Inspect subagent):/ })
     .first();
@@ -36,6 +39,8 @@ export async function verifyInlineActivity(
     await expect(autoMerge).toBeFocused();
     await autoMerge.press("Shift+Tab");
   }
+  await expect(history).toBeFocused();
+  await history.press("Shift+Tab");
   await expect(activity).toBeFocused();
   await composer.click();
   await expect(composer).toBeFocused();

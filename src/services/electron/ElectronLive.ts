@@ -1,4 +1,4 @@
-import { Effect, Layer, Queue, Stream } from "effect";
+import { Effect, Layer, Option, Queue, Stream } from "effect";
 import { realpath, stat } from "node:fs/promises";
 import {
   BrowserWindow,
@@ -36,6 +36,7 @@ import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from ".
 import { ElectronError } from "../../contracts/desktop/electron-errors";
 import { makeElectronContextMenus } from "./ElectronContextMenus";
 import { ClientConnections } from "../clients/ClientConnections";
+import { ActivityHistory } from "../storage/ActivityHistory";
 import { ClientEvents } from "../clients/ClientEvents";
 import { ClientWorkspaces } from "../clients/ClientWorkspaces";
 
@@ -68,10 +69,18 @@ const makeElectronService = (
   connections: ClientConnections["Service"],
   reportStartup: (phase: string, fields?: Readonly<Record<string, string | number>>) => void,
   reportWindow: (record: WindowDiagnostic) => void,
+  history: ActivityHistory["Service"] | undefined,
 ) => {
   let startupWindowCreated = false;
   const windows = new Map<number, BrowserWindow>();
-  const updates = new AppUpdateChecks(options.application);
+  const updates = new AppUpdateChecks(options.application, (version) =>
+    history?.record({
+      id: `app-update:${version}`,
+      kind: "notification",
+      title: `Cake ${version} is available`,
+      detail: "Choose Check for Updates from the Cake menu to download.",
+    }),
+  );
   let lastFocusedWindow: BrowserWindow | undefined;
   const capture = new ScreenCaptureWindow({
     preloadPath: options.preloadPath,
@@ -153,6 +162,12 @@ const makeElectronService = (
       // Explain a missing permission once per run instead of on every drop-down.
       if (result.kind !== "permission-denied" || accessibilityNoticeShown) return {};
       accessibilityNoticeShown = true;
+      history?.record({
+        kind: "notification",
+        title: "Accessibility permission needed",
+        detail: ACCESSIBILITY_PERMISSION_MESSAGE,
+        tone: "warning",
+      });
       return { notice: ACCESSIBILITY_PERMISSION_MESSAGE };
     },
     reportShortcutError: (message) => {
@@ -160,13 +175,15 @@ const makeElectronService = (
         lastFocusedWindow && !lastFocusedWindow.isDestroyed()
           ? lastFocusedWindow
           : [...windows.values()].at(-1);
+      const title = "Drop-down Cake Chat shortcut unavailable";
       if (target)
         clientEvents.sendTo(connectionForWindow(target), {
           type: "notification",
-          title: "Drop-down Cake Chat shortcut unavailable",
+          title,
           message,
           tone: "error",
         });
+      else history?.record({ kind: "notification", title, detail: message, tone: "error" });
     },
   });
   let accessibilityNoticeShown = false;
@@ -925,6 +942,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) =>
     Electron,
     Effect.gen(function* () {
       const clientEvents = yield* ClientEvents;
+      const history = yield* Effect.serviceOption(ActivityHistory);
       const clientWorkspaces = yield* ClientWorkspaces;
       const connections = yield* ClientConnections;
       const runDiagnostic = Effect.runSyncWith(yield* Effect.context<never>());
@@ -944,6 +962,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) =>
               : Effect.logInfo("Cake renderer lifecycle", fields),
           );
         },
+        Option.getOrUndefined(history),
       );
       return yield* Effect.acquireRelease(Effect.succeed(service), () => service.stop());
     }),

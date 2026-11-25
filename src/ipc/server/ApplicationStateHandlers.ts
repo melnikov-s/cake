@@ -1,4 +1,6 @@
 import { Effect, Stream } from "effect";
+import { listActivity } from "../../domain/application/activityHistory";
+import { recordActivity } from "../../services/storage/ActivityHistory";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { getState, observeState } from "../../domain/application/application";
@@ -18,6 +20,9 @@ const mutationError = Effect.mapError(
 );
 
 export const applicationStateHandlers = ApplicationRpc.of({
+  "application.listActivity": listActivity,
+  "application.recordActivityNotice": (notice) =>
+    recordActivity({ ...notice, id: `window:${notice.id}`.slice(0, 1_024) }),
   "application.respondWindowControl": ({ controlRequestId, result }) =>
     Effect.gen(function* () {
       const { connectionId } = yield* RendererConnection;

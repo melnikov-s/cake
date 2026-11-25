@@ -9,6 +9,7 @@ import { IconButton } from "./ui/icon-button";
 import {
   ArtifactIcon,
   CakeIcon,
+  ClockIcon,
   LightningIcon,
   PlusIcon,
   SearchIcon,
@@ -216,6 +217,14 @@ export const ProjectRail = observer(function ProjectRail({
               onClick={() => root.navigationStore.showAutomations()}
             >
               <LightningIcon size={18} />
+            </IconButton>
+            <IconButton
+              tooltip="Activity history"
+              label="Activity history"
+              className={railRow.utility}
+              onClick={() => root.activityHistoryStore.open()}
+            >
+              <ClockIcon />
             </IconButton>
             <IconButton
               tooltip="Settings"

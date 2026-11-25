@@ -5,6 +5,7 @@ import { CommandPane } from "@/components/command-pane";
 import { QuakeTerminal } from "@/components/quake-terminal";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
+import { ActivityHistoryDialog } from "./activity-history-dialog";
 import { ProjectRail } from "./project-rail";
 import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { WorkspaceNavigator } from "./workspace-navigator";
@@ -111,6 +112,7 @@ export const AppShellLayout = observer(function AppShellLayout({
           )}
         />
         {!applicationView && <ProjectRail autoHide={autoHideRail} />}
+        <ActivityHistoryDialog />
         <div
           ref={setHeaderTarget}
           data-slot="shell-header"

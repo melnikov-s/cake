@@ -39,15 +39,31 @@ export class AppControlBridge {
     return appControlRegistry.has(command);
   }
 
-  async invoke(untrustedInput: unknown, source?: AgentControlSource): Promise<JsonValue> {
+  async invoke(
+    untrustedInput: unknown,
+    source?: AgentControlSource,
+    recordNotice?: ControlContext["recordNotice"],
+  ): Promise<JsonValue> {
     const context: ControlContext = { host: this.host };
+    if (recordNotice) context.recordNotice = recordNotice;
     if (source) context.source = source;
     const execution = await appControlRegistry.invoke(untrustedInput, context);
     if ("value" in execution) return execution.value;
     const { result } = execution;
     if (source && result.ok && result.command !== "notifications.send") {
       const receipt = agentActionReceipt(this.host, result, source);
-      if (receipt) this.host.presentation.showAgentAction({ source, ...receipt });
+      if (receipt) {
+        const notice = {
+          kind: "agent-action" as const,
+          title: `Agent action · ${source.title}`,
+          detail: receipt.message,
+          sessionId: receipt.targetSessionId ?? source.sessionId,
+        };
+        if (source.projectPath) Object.assign(notice, { projectPath: source.projectPath });
+        const recording = recordNotice?.(notice);
+        this.host.presentation.showAgentAction({ source, ...receipt });
+        await recording;
+      }
     }
     return toJsonValue(result);
   }

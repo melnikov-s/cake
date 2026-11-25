@@ -1,4 +1,5 @@
 import { DateTime, Effect, Schema, Struct } from "effect";
+import { recordActivity } from "../../services/storage/ActivityHistory";
 import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import {
   type ArtifactSchedule,
@@ -195,6 +196,16 @@ export const runArtifactSchedulePass = Effect.fn("ArtifactSchedules.runPass")(fu
               : String(outcome.failure)
             ).slice(0, 4_096),
           };
+    yield* recordActivity({
+      id: `widget-schedule:${JSON.stringify([schedule.lineageId, schedule.name, schedule.nextScheduledAt])}`,
+      at: lastRunAt,
+      kind: "automation",
+      title: `Widget schedule · ${schedule.name}`,
+      artifactLineageId: schedule.lineageId,
+      trigger: `Scheduled for ${schedule.nextScheduledAt}`,
+      outcome: outcome._tag === "Success" ? "Completed" : "Failed",
+      detail: `Handler: ${schedule.handler}${"lastError" in receipt ? ` — ${receipt.lastError}` : ""}`,
+    });
     if (outcome._tag === "Failure")
       yield* Effect.logError("Scheduled artifact handler failed", outcome.failure);
     yield* records.transact((ledger) =>

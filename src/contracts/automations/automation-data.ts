@@ -141,6 +141,7 @@ export const AutomationOccurrenceSource = Schema.TaggedUnion({
     eventId: boundedId,
     event: AutomationEventKind,
     sourceSessionId: boundedId,
+    projectPath: Schema.optionalKey(boundedPath),
     sourceMessageId: Schema.optionalKey(boundedId),
   },
 });

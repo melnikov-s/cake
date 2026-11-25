@@ -3,6 +3,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatStore } from "../stores/SideChatStore";
+import { Button } from "./ui/button";
 import { ActivityDisclosure } from "./ui/activity-disclosure";
 import { AutoMergeToggle, canShowAutoMerge } from "./auto-merge-toggle";
 import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
@@ -50,7 +51,18 @@ export const ConversationActivity = observer(function ConversationActivity({
       summary={`${running} running`}
       status="running"
       onOpen={onOpen}
-      actions={showAutoMerge && <AutoMergeToggle projectPath={projectPath} />}
+      actions={
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => root.activityHistoryStore.open(root.projectForSession(sessionId))}
+          >
+            History
+          </Button>
+          {showAutoMerge && <AutoMergeToggle projectPath={projectPath} />}
+        </>
+      }
       items={[
         ...sessions.map((session) => ({
           id: `session:${session.sessionId}`,

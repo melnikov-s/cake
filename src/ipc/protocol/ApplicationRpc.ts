@@ -1,4 +1,10 @@
 import { Schema } from "effect";
+import {
+  ActivityHistoryError,
+  ActivityNotice,
+  ActivityPage,
+  ActivityQuery,
+} from "../../contracts/application/activity-history";
 import { WindowControlResponse } from "../../contracts/application/window-control";
 import { Rpc, RpcGroup } from "effect/rpc";
 import {
@@ -19,6 +25,12 @@ export class ApplicationSettingsMutationError extends Schema.TaggedError<Applica
 ) {}
 
 export const ApplicationRpc = RpcGroup.make(
+  Rpc.make("application.listActivity", {
+    payload: ActivityQuery,
+    success: ActivityPage,
+    error: ActivityHistoryError,
+  }),
+  Rpc.make("application.recordActivityNotice", { payload: ActivityNotice, success: Schema.Void }),
   Rpc.make("application.respondWindowControl", {
     payload: { controlRequestId: Schema.String, result: WindowControlResponse },
     success: Schema.Void,

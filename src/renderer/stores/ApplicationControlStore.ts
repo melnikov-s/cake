@@ -3,6 +3,7 @@ import type {
   WindowControlResponse,
 } from "../../contracts/application/window-control";
 import { SESSION_ASSISTANT_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import type { ActivityNotice } from "../../contracts/application/activity-history";
 import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
 import { observable, Store, child, createStore, untracked } from "r-state-tree";
 import type {
@@ -87,7 +88,24 @@ export class ApplicationControlStore extends Store<{
   invoke(invocation: JsonValue, source?: AgentControlSource): Promise<JsonValue> {
     if (this.signal.aborted)
       return Promise.reject(new Error("Application controls are unavailable"));
-    return this.bridge.invoke(invocation, source);
+    return this.invokeWithActivity(invocation, source, crypto.randomUUID());
+  }
+
+  private invokeWithActivity(
+    invocation: JsonValue,
+    source: AgentControlSource | undefined,
+    id: string,
+  ) {
+    return this.bridge.invoke(invocation, source, async (notice: Omit<ActivityNotice, "id">) => {
+      try {
+        const entry = { ...notice, id, title: notice.title.slice(0, 512) };
+        if (notice.detail !== undefined)
+          Object.assign(entry, { detail: notice.detail.slice(0, 4_096) });
+        await this.props.client.application.recordActivityNotice(entry, { signal: this.signal });
+      } catch (error) {
+        if (!this.signal.aborted) console.warn("[cake] Could not record Activity", error);
+      }
+    });
   }
 
   async handleWindowRequest(request: WindowControlRequest): Promise<void> {
@@ -96,7 +114,11 @@ export class ApplicationControlStore extends Store<{
     const result: WindowControlResponse = this.bridge.supports(request.invocation.name)
       ? {
           handled: true,
-          result: await this.bridge.invoke(request.invocation, request.source).catch((error) => ({
+          result: await this.invokeWithActivity(
+            request.invocation,
+            request.source,
+            request.controlRequestId,
+          ).catch((error) => ({
             ok: false,
             command: request.invocation.name,
             error: errorMessage(error),
@@ -187,11 +209,13 @@ export class ApplicationControlStore extends Store<{
         command: invocation._tag === "CreateSession" ? "sessions.create" : "sessions.create-draft",
         error: "Cake could not find the calling Project Session.",
       };
-    return this.bridge.invoke(appInvocation, context.source).catch((error) => ({
-      ok: false,
-      command: appInvocation.name,
-      error: errorMessage(error),
-    }));
+    return this.invokeWithActivity(appInvocation, context.source, request.controlRequestId).catch(
+      (error) => ({
+        ok: false,
+        command: appInvocation.name,
+        error: errorMessage(error),
+      }),
+    );
   }
 
   private consumeCakeChatRequests() {
@@ -210,26 +234,25 @@ export class ApplicationControlStore extends Store<{
       request.sessionId === SESSION_ASSISTANT_ID && request.invocation.name.startsWith("vscode.")
         ? this.props.assistantSource?.()
         : undefined;
-    const result = await this.bridge
-      .invoke(
-        request.invocation,
-        contextSource ?? {
-          kind: "cake-chat",
-          sessionId: request.sessionId,
-          ...(chat?.projectPath
-            ? { projectPath: chat.projectPath, workingDirectory: chat.projectPath }
-            : null),
-          title:
-            this.props.host.state
-              .cakeChatSessions()
-              .find((session) => session.sessionId === request.sessionId)?.title ?? "Cake Chat",
-        },
-      )
-      .catch((error) => ({
-        ok: false,
-        command: request.invocation.name,
-        error: errorMessage(error),
-      }));
+    const result = await this.invokeWithActivity(
+      request.invocation,
+      contextSource ?? {
+        kind: "cake-chat",
+        sessionId: request.sessionId,
+        ...(chat?.projectPath
+          ? { projectPath: chat.projectPath, workingDirectory: chat.projectPath }
+          : null),
+        title:
+          this.props.host.state
+            .cakeChatSessions()
+            .find((session) => session.sessionId === request.sessionId)?.title ?? "Cake Chat",
+      },
+      request.controlRequestId,
+    ).catch((error) => ({
+      ok: false,
+      command: request.invocation.name,
+      error: errorMessage(error),
+    }));
     if (this.signal.aborted) return;
     try {
       await this.props.client.cakeChats.respondControl(request.controlRequestId, result, {

@@ -51,6 +51,7 @@ import { makeTaskInputStorageLive } from "../../../src/services/storage/TaskInpu
 import { tmpdir } from "node:os";
 import { rm } from "node:fs/promises";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { makeActivityHistoryLive } from "../../../src/services/storage/ActivityHistory";
 import { makeSavedDraftStorageLive } from "../../../src/services/storage/SavedDraftStorage";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -110,6 +111,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       Effect.ignore,
     ),
   );
+  const activity = makeActivityHistoryLive(savedDraftDirectory);
   const savedDraftStorage = makeSavedDraftStorageLive(savedDraftDirectory).pipe(
     Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
   );
@@ -228,7 +230,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
           events.application(id).pipe(Stream.ensuring(Queue.offer(subscriptionClosed, id))),
       }),
     ),
-  ).pipe(Layer.provide(ClientEventsLive));
+  ).pipe(Layer.provide(ClientEventsLive.pipe(Layer.provide(activity))));
   const observedRewording = Layer.effect(
     RewordingRequests,
     Effect.map(RewordingRequests, (service) =>
@@ -312,6 +314,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     WorktreeLandingCoordinatorLive,
     application,
     savedDraftStorage,
+    activity,
     clients,
     coordinator,
     host,

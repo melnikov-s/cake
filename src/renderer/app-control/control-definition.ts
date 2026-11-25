@@ -1,6 +1,7 @@
 import { toDraft07JsonSchema } from "../../contracts/serialization/json-contract";
 import { Schema } from "effect";
 import { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
+import type { ActivityNotice } from "../../contracts/application/activity-history";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type {
   AgentControlSource,
@@ -15,6 +16,7 @@ import { resolveSessionReference } from "../../contracts/project-sessions/sessio
 export interface ControlContext {
   host: AppControlHost;
   source?: AgentControlSource;
+  recordNotice?(notice: Omit<ActivityNotice, "id">): Promise<void>;
 }
 
 export type ControlScope = "global" | "session-assistant" | "internal";

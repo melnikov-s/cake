@@ -1,4 +1,5 @@
 import { it } from "@effect/vitest";
+import { ActivityHistory } from "../../../src/services/storage/ActivityHistory";
 import {
   Deferred,
   type Duration,
@@ -10,7 +11,7 @@ import {
   SubscriptionRef,
 } from "effect";
 import { TestClock } from "effect/testing";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import {
   defaultApplicationState,
   defaultProjectSettings,
@@ -239,7 +240,8 @@ describe("WorktreeMerges.merge", () => {
     },
   );
 
-  it.effect("reports the landed commit through Cake's normal landing flow", () => {
+  it.effect("reports the landed commit and records a merge without resolving", () => {
+    const recordActivity = vi.fn<ActivityHistory["Service"]["record"]>();
     const harness: Harness = {
       status: {},
       prompts: [],
@@ -260,7 +262,22 @@ describe("WorktreeMerges.merge", () => {
       expect(report.nextStep).toContain("Landed on main at abc1234");
       expect(report.nextStep).toContain("not resolved");
       expect(harness.prompts).toEqual([]);
-    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+      expect(recordActivity).toHaveBeenCalledExactlyOnceWith({
+        id: `merge:${report.operationId}`,
+        kind: "merge",
+        title: "Worktree merged",
+        detail: "Landed on main · abc1234",
+        sessionId: "owner",
+        projectPath: "/project",
+      });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(layer(harness)),
+      Effect.provideService(ActivityHistory, {
+        record: recordActivity,
+        list: () => Effect.succeed([]),
+      }),
+    );
   });
 
   it.effect("asks the owning session to commit dirty work before landing", () => {

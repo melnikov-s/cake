@@ -20,7 +20,10 @@ export class AppUpdateChecks {
   private notification: Notification | undefined;
   readonly menuItem: MenuItemConstructorOptions;
 
-  constructor(private readonly application: Pick<App, "isPackaged" | "getVersion">) {
+  constructor(
+    private readonly application: Pick<App, "isPackaged" | "getVersion">,
+    private readonly onUpdate?: (version: string) => void,
+  ) {
     this.menuItem = {
       label: "Check for Updates…",
       enabled: application.isPackaged && process.platform === "darwin" && process.arch === "arm64",
@@ -63,6 +66,7 @@ export class AppUpdateChecks {
           });
         return;
       }
+      this.onUpdate?.(update.version);
       if (silent) {
         this.notification = new Notification({
           title: `Cake ${update.version} is available`,

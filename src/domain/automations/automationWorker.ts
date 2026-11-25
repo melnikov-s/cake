@@ -1,5 +1,8 @@
 import { DateTime, Effect, Schedule, Stream } from "effect";
-import type { AutomationSourceEvent } from "../../contracts/automations/automation-data";
+import type {
+  AutomationOccurrenceSource,
+  AutomationSourceEvent,
+} from "../../contracts/automations/automation-data";
 import { AutomationRecords } from "../../services/automations/AutomationRecords";
 import { AutomationEvents } from "../../services/automations/AutomationEvents";
 import { RuntimeRecoveryStorage } from "../../services/storage/RuntimeRecoveryStorage";
@@ -32,13 +35,16 @@ export const acceptEvent = Effect.fn("Automations.acceptEvent")(function* (
         )
     )
       continue;
-    yield* trigger(automation.id, {
+    const source: AutomationOccurrenceSource = {
       _tag: "Event",
       eventId: event.eventId,
       event: event.event,
       sourceSessionId: event.sourceSessionId,
-      ...(event.sourceMessageId === undefined ? null : { sourceMessageId: event.sourceMessageId }),
-    }).pipe(
+    };
+    if (event.projectPath !== undefined) Object.assign(source, { projectPath: event.projectPath });
+    if (event.sourceMessageId !== undefined)
+      Object.assign(source, { sourceMessageId: event.sourceMessageId });
+    yield* trigger(automation.id, source).pipe(
       Effect.tapError((error) => Effect.logError("Automation event execution failed", error)),
       Effect.ignore,
     );

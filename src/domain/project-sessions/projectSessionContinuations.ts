@@ -1,6 +1,7 @@
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import { ensureAdmittedSession as ensureSessionTodo } from "../projects/projectTodos";
 import { Effect, Schema, Stream } from "effect";
+import { recordActivity } from "../../services/storage/ActivityHistory";
 import type { ArtifactPointer } from "../../contracts/artifacts/artifact-contract";
 import {
   ArtifactLineageId,
@@ -195,9 +196,18 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         }),
         { discard: true },
       );
-      return { sessionId, destination };
+      return { sessionId, destination, forkTitle };
     }),
   );
+  yield* recordActivity({
+    id: `created:${continuation.result.sessionId}`,
+    kind: "session-created",
+    title: continuation.result.forkTitle,
+    detail: "Forked Project Session",
+    projectPath: continuation.result.destination.projectPath,
+    sessionId: continuation.result.sessionId,
+    sourceSessionId: input.target.sessionId,
+  });
   if (input.resolveSource && !continuation.sourceWasResolved) yield* resolve(input.target);
   yield* publishCatalogChange(
     continuation.result.sessionId,

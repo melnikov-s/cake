@@ -1,4 +1,5 @@
 import { Effect, Option, Schedule } from "effect";
+import { ActivityHistory } from "../../services/storage/ActivityHistory";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
@@ -39,6 +40,7 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
   const coordination = yield* SessionCoordination;
   const catalogs = yield* SessionCatalogChanges;
   const configuration = yield* ProjectSessionConfiguration;
+  const history = yield* Effect.serviceOption(ActivityHistory);
   const automationEvents = yield* Effect.serviceOption(AutomationEvents);
   const todoReports = yield* Effect.serviceOption(ProjectTodoReports);
   const publishActivity = catalogs.publish({
@@ -68,19 +70,34 @@ export const makeTurnLifecycle = Effect.fn("ProjectSessions.makeTurnLifecycle")(
   );
   const hooks: TurnLifecycle = {
     onTurnActivityChanged: publishActivity,
-    onSessionCreated: Option.isSome(automationEvents)
-      ? publishProjectAutomationEvent({
-          event: "session-created",
-          eventId: `created:${sessionId}`,
+    onSessionCreated: Effect.sync(() => {
+      if (Option.isSome(history))
+        history.value.record({
+          id: `created:${sessionId}`,
+          kind: "session-created",
+          title: "Project Session created",
           sessionId,
           projectPath: location.projectPath,
-        }).pipe(
-          Effect.provideService(AutomationEvents, automationEvents.value),
-          Effect.provideService(SessionFamilyStorage, families),
-          Effect.tapError((error) => Effect.logWarning("Automation source event failed", error)),
-          Effect.ignore,
-        )
-      : Effect.void,
+        });
+    }).pipe(
+      Effect.andThen(
+        Option.isSome(automationEvents)
+          ? publishProjectAutomationEvent({
+              event: "session-created",
+              eventId: `created:${sessionId}`,
+              sessionId,
+              projectPath: location.projectPath,
+            }).pipe(
+              Effect.provideService(AutomationEvents, automationEvents.value),
+              Effect.provideService(SessionFamilyStorage, families),
+              Effect.tapError((error) =>
+                Effect.logWarning("Automation source event failed", error),
+              ),
+              Effect.ignore,
+            )
+          : Effect.void,
+      ),
+    ),
     admitTurn: (input, accept) => {
       const external = input.runtime === "antigravity";
       const message = external ? undefined : parseCrossSessionMessage(input.text);

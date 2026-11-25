@@ -1,4 +1,5 @@
-import { Effect, Layer, PubSub, Stream } from "effect";
+import { Effect, Layer, Option, PubSub, Stream } from "effect";
+import { ActivityHistory } from "../storage/ActivityHistory";
 import type { CakeEvent } from "../../contracts/application/cake-rpc-contract";
 import { ClientEvents, type FocusedCakeEvent } from "./ClientEvents";
 
@@ -14,10 +15,25 @@ export const ClientEventsLive = Layer.effect(
     const subscribers = new Map<number, Map<CakeEvent["type"], number>>();
     yield* Effect.addFinalizer(() => PubSub.shutdown(hub));
 
-    const sendTo = (connectionId: number, event: CakeEvent): boolean =>
-      (subscribers.get(connectionId)?.has(event.type) ?? false) &&
-      PubSub.publishUnsafe(hub, { connectionId, event });
+    const history = yield* Effect.serviceOption(ActivityHistory);
+    const recordNotice = (event: CakeEvent) => {
+      if (event.type === "notification" && Option.isSome(history))
+        history.value.record({
+          kind: "notification",
+          title: event.title,
+          detail: event.message,
+          tone: event.tone,
+        });
+    };
+    const sendTo = (connectionId: number, event: CakeEvent): boolean => {
+      recordNotice(event);
+      return (
+        (subscribers.get(connectionId)?.has(event.type) ?? false) &&
+        PubSub.publishUnsafe(hub, { connectionId, event })
+      );
+    };
     const broadcast = (event: CakeEvent): void => {
+      recordNotice(event);
       PubSub.publishUnsafe(hub, { event });
     };
     const observe = (

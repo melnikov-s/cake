@@ -24,6 +24,8 @@ import { runSchedulePasses } from "../../../src/domain/automations/automationWor
 import { widgetRunGateFake } from "../helpers/widgetRunGate";
 import { automationFixture } from "../helpers/automationFixture";
 import { AutomationRecords } from "../../../src/services/automations/AutomationRecords";
+import type { ActivityEntry } from "../../../src/contracts/application/activity-history";
+import { ActivityHistory } from "../../../src/services/storage/ActivityHistory";
 import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
 import {
   AutomationStorage,
@@ -215,43 +217,60 @@ describe("deterministic artifact schedules", () => {
       }),
   );
 
-  it.effect("fires one-time schedules once and isolates handler failure from other schedules", () =>
-    Effect.gen(function* () {
-      const f = yield* setup();
-      yield* Effect.gen(function* () {
-        yield* configureArtifactSchedule(
-          input({ schedule: { _tag: "Once", at: "2030-01-01T00:01:00.000Z" } }),
-        );
-        yield* configureArtifactSchedule(input({ lineageId: otherId }));
-        yield* TestClock.adjust("1 minute");
-        const calls = yield* Ref.make<ReadonlyArray<string>>([]);
-        const invoke = (schedule: ArtifactSchedule) =>
-          Ref.update(calls, (all) => [...all, schedule.lineageId]).pipe(
-            Effect.andThen(
-              schedule.lineageId === lineageId ? Effect.fail("handler failed") : Effect.void,
-            ),
+  it.effect(
+    "fires one-time schedules once and isolates handler failure from other schedules",
+    () => {
+      const activity: Pick<ActivityEntry, "outcome" | "detail">[] = [];
+      return Effect.gen(function* () {
+        const f = yield* setup();
+        yield* Effect.gen(function* () {
+          yield* configureArtifactSchedule(
+            input({ schedule: { _tag: "Once", at: "2030-01-01T00:01:00.000Z" } }),
           );
-        yield* runArtifactSchedulePass(invoke);
-        yield* runArtifactSchedulePass(invoke);
-        expect(yield* Ref.get(calls)).toEqual([lineageId, otherId]);
-        expect(f.records.snapshot().artifactSchedules[0]?.nextScheduledAt).toBeUndefined();
-        expect(f.records.snapshot().artifactSchedules[0]?.lastOutcome).toBe("failed");
-        expect(f.records.snapshot().artifactSchedules[0]?.lastError).toBe("handler failed");
-        expect(f.records.snapshot().artifactSchedules[1]?.lastOutcome).toBe("completed");
-        yield* configureArtifactSchedule(input());
-        expect(
-          f.records.snapshot().artifactSchedules.find((item) => item.lineageId === lineageId)
-            ?.lastError,
-        ).toBe("handler failed");
-        yield* TestClock.adjust("1 minute");
-        yield* runArtifactSchedulePass(() => Effect.void);
-        const recovered = f.records
-          .snapshot()
-          .artifactSchedules.find((item) => item.lineageId === lineageId);
-        expect(recovered?.lastOutcome).toBe("completed");
-        expect(recovered?.lastError).toBeUndefined();
-      }).pipe(Effect.provide(f.context));
-    }),
+          yield* configureArtifactSchedule(input({ lineageId: otherId }));
+          yield* TestClock.adjust("1 minute");
+          const calls = yield* Ref.make<ReadonlyArray<string>>([]);
+          const invoke = (schedule: ArtifactSchedule) =>
+            Ref.update(calls, (all) => [...all, schedule.lineageId]).pipe(
+              Effect.andThen(
+                schedule.lineageId === lineageId ? Effect.fail("handler failed") : Effect.void,
+              ),
+            );
+          yield* runArtifactSchedulePass(invoke);
+          yield* runArtifactSchedulePass(invoke);
+          expect(yield* Ref.get(calls)).toEqual([lineageId, otherId]);
+          expect(f.records.snapshot().artifactSchedules[0]?.nextScheduledAt).toBeUndefined();
+          expect(f.records.snapshot().artifactSchedules[0]?.lastOutcome).toBe("failed");
+          expect(f.records.snapshot().artifactSchedules[0]?.lastError).toBe("handler failed");
+          expect(f.records.snapshot().artifactSchedules[1]?.lastOutcome).toBe("completed");
+          yield* configureArtifactSchedule(input());
+          expect(
+            f.records.snapshot().artifactSchedules.find((item) => item.lineageId === lineageId)
+              ?.lastError,
+          ).toBe("handler failed");
+          yield* TestClock.adjust("1 minute");
+          yield* runArtifactSchedulePass(() => Effect.void);
+          const recovered = f.records
+            .snapshot()
+            .artifactSchedules.find((item) => item.lineageId === lineageId);
+          expect(recovered?.lastOutcome).toBe("completed");
+          expect(recovered?.lastError).toBeUndefined();
+          expect(activity).toEqual([
+            { outcome: "Failed", detail: "Handler: refresh — handler failed" },
+            { outcome: "Completed", detail: "Handler: refresh" },
+            { outcome: "Completed", detail: "Handler: refresh" },
+            { outcome: "Completed", detail: "Handler: refresh" },
+          ]);
+        }).pipe(Effect.provide(f.context));
+      }).pipe(
+        Effect.provideService(ActivityHistory, {
+          record: ({ outcome, detail }) => {
+            activity.push(outcome === undefined || detail === undefined ? {} : { outcome, detail });
+          },
+          list: () => Effect.succeed([]),
+        }),
+      );
+    },
   );
 
   it.effect(

@@ -1,7 +1,8 @@
 import { sessionNotificationEntries } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, FiberMap, Layer, Option, Stream, SubscriptionRef } from "effect";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
+import { ActivityHistory } from "../../../src/services/storage/ActivityHistory";
 import { TestClock } from "effect/testing";
 import * as reviews from "../../../src/domain/worktrees/delegatedCompletionReviews";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
@@ -454,6 +455,7 @@ it.effect.each([
   "queues one truthful backend outcome reminder after resolution/partial failure: %j",
   (scenario) => {
     const test = fixture(scenario.options);
+    const record = vi.fn<ActivityHistory["Service"]["record"]>();
     return Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.registerSpawn({
@@ -524,7 +526,27 @@ it.effect.each([
       yield* storage.removeDigest(prepared.digestIds);
       yield* runPass();
       expect((yield* storage.state()).coordinatorDigest).toEqual([]);
-    }).pipe(Effect.provide(test.layer));
+      const events = record.mock.calls.map(([entry]) => entry);
+      expect(events.filter((entry) => entry.kind === "merge")).toHaveLength(
+        scenario.merged ? 1 : 0,
+      );
+      expect(events.filter((entry) => entry.kind === "automation")).toMatchObject([
+        {
+          title: "Auto-merge",
+          trigger: "Validated task readiness",
+          outcome: "Started",
+          sessionId: "owner",
+        },
+        {
+          title: "Auto-merge",
+          outcome: scenario.resolved ? "Completed" : "Failed",
+          detail: expect.any(String),
+        },
+      ]);
+    }).pipe(
+      Effect.provide(test.layer),
+      Effect.provideService(ActivityHistory, { record, list: () => Effect.succeed([]) }),
+    );
   },
 );
 

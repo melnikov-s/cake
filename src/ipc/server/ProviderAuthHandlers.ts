@@ -1,4 +1,5 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
+import { ActivityHistory } from "../../services/storage/ActivityHistory";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
@@ -18,6 +19,7 @@ const login = Effect.fn("ProviderAuth.login")(function* (
   const models = yield* PiModels;
   const requests = yield* RendererRequestCoordinator;
   const clientEvents = yield* ClientEvents;
+  const history = yield* Effect.serviceOption(ActivityHistory);
   const { connectionId } = yield* RendererConnection;
   const adapterContext = yield* Effect.context<RendererRequestCoordinator>();
   const runAdapter = makePiCallbackExecutor(adapterContext);
@@ -41,6 +43,19 @@ const login = Effect.fn("ProviderAuth.login")(function* (
       const message = sessionId
         ? { type: "provider-auth-notice" as const, provider, sessionId, notice }
         : { type: "provider-auth-notice" as const, provider, notice };
+      // Never persist provider codes, login URLs, callback parameters or SDK notices.
+      if (
+        sessionId &&
+        Option.isSome(history) &&
+        (notice.type === "auth_url" || notice.type === "device_code")
+      )
+        history.value.record({
+          id: `provider-auth:${requestScopeId}`,
+          kind: "notification",
+          title: "Provider authentication",
+          detail: "Open Settings → Providers to continue authentication on this device.",
+          sessionId,
+        });
       if (!clientEvents.sendTo(connectionId, message))
         throw new Error("The initiating client disconnected during provider authentication");
       // Pi's callback server stays on the backend. The initiating device displays

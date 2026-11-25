@@ -2,6 +2,7 @@ import { Effect, Option, Schema } from "effect";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
+import { recordActivity } from "../../services/storage/ActivityHistory";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 
 const SettingChange = Schema.Struct({
@@ -32,7 +33,7 @@ const Result = Schema.Struct({
  */
 export const present = Effect.fn("AgentActionNotices.present")(function* (
   value: JsonValue | undefined,
-  source: AgentActionNotice["source"],
+  source: AgentActionNotice["source"] & { readonly toolCallId?: string },
 ) {
   const setting = Schema.decodeUnknownOption(SettingChange)(value);
   const decoded = Schema.decodeUnknownOption(Result)(value);
@@ -99,6 +100,18 @@ export const present = Effect.fn("AgentActionNotices.present")(function* (
       };
   }
   if (!notice) return;
+  const identity = source.toolCallId ?? result.messageId;
+  const projectPath = result.projectPath ?? source.projectPath;
+  const entry = {
+    kind: "agent-action" as const,
+    title: `Agent action · ${source.title}`,
+    detail: notice.message,
+    sessionId: notice.targetSessionId ?? source.sessionId,
+  };
+  if (identity !== undefined)
+    Object.assign(entry, { id: `agent-action:${source.sessionId}:${identity}` });
+  if (projectPath !== undefined) Object.assign(entry, { projectPath });
+  yield* recordActivity(entry);
   const coordinator = yield* Effect.serviceOption(RendererRequestCoordinator);
   if (Option.isSome(coordinator))
     yield* coordinator.value.presentAgentAction({ source, ...notice });

@@ -10,6 +10,8 @@ import {
   makeAutomationStorageLive,
 } from "../../../src/services/storage/AutomationStorage";
 import { it } from "@effect/vitest";
+import { automationActivity } from "../../../src/domain/application/activityHistory";
+import { ActivityHistory } from "../../../src/services/storage/ActivityHistory";
 import {
   Context,
   DateTime,
@@ -326,6 +328,26 @@ describe("automation lifecycle and execution", () => {
           ]);
           expect(older.occurrences[0]?.disposition._tag).toBe("canceled");
           expect(older.runs.map((item) => item.sessionId)).toEqual([firstSession.sessionId]);
+          const activity = automationActivity((yield* AutomationRecords).snapshot());
+          expect(
+            activity.find((entry) => entry.id === `automation:${skipped.occurrenceId}`),
+          ).toMatchObject({
+            title: "Project checks",
+            projectPath: "/projects/cake",
+            automationId: b.id,
+            trigger: "Manual run",
+            outcome: "Skipped",
+            detail: expect.any(String),
+          });
+          expect(
+            activity.find((entry) => entry.id === `automation:${project.occurrenceId}`),
+          ).toMatchObject({
+            outcome: "Running",
+            automationRun: { sessionId: projectSession.sessionId },
+          });
+          expect(
+            activity.find((entry) => entry.id === `automation:${queued.occurrenceId}`),
+          ).toMatchObject({ outcome: "Canceled", detail: expect.stringContaining("archived") });
           expect(
             (yield* definitions.history({ query: "DAILY" })).occurrences.map(
               (item) => item.automationId,
@@ -749,6 +771,15 @@ describe("automation lifecycle and execution", () => {
         yield* waitForSettlement(f, started.sessionId);
         expect((yield* definitions.lookup(a.id)).state._tag).toBe("active");
         expect((yield* runs.runForSession(started.sessionId)).status._tag).toBe("failed");
+        expect(automationActivity((yield* AutomationRecords).snapshot())).toMatchObject([
+          {
+            outcome: "Failed",
+            detail: expect.any(String),
+            automationId: a.id,
+            trigger: "Manual run",
+            automationRun: { sessionId: started.sessionId },
+          },
+        ]);
         expect((yield* Ref.get(f.resolved)).has(started.sessionId)).toBe(false);
       }).pipe(Effect.provide(f.context));
     }),
@@ -1175,6 +1206,22 @@ describe("automation triggers and recovery", () => {
         });
       }),
   );
+  it.effect("records session creation separately from the automation trigger", () => {
+    const created: string[] = [];
+    return Effect.gen(function* () {
+      const f = yield* automationSourceFixture();
+      yield* f.options.onSessionCreated ?? Effect.void;
+      expect(created).toEqual(["created:source"]);
+      expect(f.events).toMatchObject([{ event: "session-created", sourceSessionId: "source" }]);
+    }).pipe(
+      Effect.provideService(ActivityHistory, {
+        record: (entry) => {
+          if (entry.kind === "session-created" && entry.id) created.push(entry.id);
+        },
+        list: () => Effect.succeed([]),
+      }),
+    );
+  });
   it.effect("emits user-message-received only for genuine user input, not internal notices", () =>
     Effect.gen(function* () {
       const f = yield* automationSourceFixture();

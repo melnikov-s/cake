@@ -1,4 +1,5 @@
 import { Effect, Option, SubscriptionRef } from "effect";
+import { recordActivity } from "../../services/storage/ActivityHistory";
 import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { sessionPurpose } from "../../contracts/project-sessions/session-purpose";
@@ -133,7 +134,19 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       request,
       retire ? false : undefined,
     );
-    if (applied)
+    if (applied) {
+      const entry = {
+        id: `auto-merge:${operationIdOf(request)}:${state}`,
+        kind: "automation" as const,
+        title: "Auto-merge",
+        trigger: "Validated task readiness",
+        outcome: state === "landed" ? "Completed" : state === "canceled" ? "Skipped" : "Failed",
+        detail: message,
+        sessionId: request.sessionId,
+      };
+      if (request.projectPath !== undefined)
+        Object.assign(entry, { projectPath: request.projectPath });
+      yield* recordActivity(entry);
       yield* SubscriptionRef.update(coordinator.state, (current) => ({
         ...current,
         autoMergeProjects: current.autoMergeProjects?.map((item) =>
@@ -142,6 +155,7 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
             : item,
         ),
       }));
+    }
   });
   for (const request of requests) {
     const operationId = operationIdOf(request);
@@ -227,6 +241,15 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       // Recovery must never replay Git. Both the landing receipt and the later
       // resolution admission must belong to this attempt.
       const { record, receipt } = yield* readReceipt(request);
+      if (receipt && record)
+        yield* recordActivity({
+          id: `merge:${receipt.operationId}`,
+          kind: "merge",
+          title: "Session auto-merged",
+          projectPath: record.projectPath,
+          sessionId: receipt.sessionId,
+          detail: `Landed on ${record.baseBranch} · ${receipt.commit.slice(0, 12)}`,
+        });
       if (receipt && record?.state === "resolved") {
         yield* finish(request, "landed", "Auto-merged and resolved");
       } else if (
@@ -443,6 +466,15 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
     const admitted = { ...request, state: "landing" as const };
     if (!(yield* storage.updateAutoMerge(request.id, "landing", undefined, undefined, request)))
       continue;
+    yield* recordActivity({
+      id: `auto-merge:${operationId}:started`,
+      kind: "automation",
+      title: "Auto-merge",
+      trigger: "Validated task readiness",
+      outcome: "Started",
+      projectPath: request.projectPath,
+      sessionId: request.sessionId,
+    });
     yield* landings
       .start({
         operationId,

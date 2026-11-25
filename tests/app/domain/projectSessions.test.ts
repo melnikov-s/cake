@@ -17,6 +17,8 @@ import {
   streamWorkspaceSessions,
 } from "../../../src/services/pi/runtime/session-discovery";
 import { it } from "@effect/vitest";
+import { ActivityHistory } from "../../../src/services/storage/ActivityHistory";
+import type { ActivityKind } from "../../../src/contracts/application/activity-history";
 import { seedHistoricalTodo } from "../helpers/projectTodoHarness";
 import { Logger } from "effect";
 import { fullProjectTodos, projectTodoLayer } from "../helpers/projectTodoHarness";
@@ -5325,25 +5327,36 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
   );
 
-  it.effect("resolves a located idle session without constructing a Pi runtime", () => {
-    let runtimeConstructions = 0;
-    let archives = 0;
-    return Effect.gen(function* () {
-      yield* projectSessionLifecycle.resolve({
-        sessionId: "session-1",
-        workingDirectory: "/project",
-      });
-      assert.equal(runtimeConstructions, 0);
-      assert.equal(archives, 1);
-    }).pipe(
-      Effect.provide(
-        makeLayer(defaultApplicationState(), {
-          onCreateRuntime: () => runtimeConstructions++,
-          onArchive: () => archives++,
+  it.effect(
+    "resolves a located idle session and records resolution without a Pi runtime or merge",
+    () => {
+      let runtimeConstructions = 0;
+      let archives = 0;
+      const activity: ActivityKind[] = [];
+      return Effect.gen(function* () {
+        yield* projectSessionLifecycle.resolve({
+          sessionId: "session-1",
+          workingDirectory: "/project",
+        });
+        assert.equal(runtimeConstructions, 0);
+        assert.equal(archives, 1);
+        assert.deepEqual(activity, ["resolution"]);
+      }).pipe(
+        Effect.provideService(ActivityHistory, {
+          record: ({ kind }) => {
+            activity.push(kind);
+          },
+          list: () => Effect.succeed([]),
         }),
-      ),
-    );
-  });
+        Effect.provide(
+          makeLayer(defaultApplicationState(), {
+            onCreateRuntime: () => runtimeConstructions++,
+            onArchive: () => archives++,
+          }),
+        ),
+      );
+    },
+  );
 
   it.effect(
     "resolves multiple standalone sessions from IDs and publishes one coherent transition",

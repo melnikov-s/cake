@@ -1,3 +1,4 @@
+import { ActivityHistoryStore } from "./ActivityHistoryStore";
 import { AutoMergeStore } from "./AutoMergeStore";
 import { DraftMoveStore } from "./DraftMoveStore";
 import { DraftMoveContext } from "./context/DraftMoveContext";
@@ -132,6 +133,11 @@ export class RootStore extends Store<{
     assistant: () => this.sessionAssistantStore,
     dictation: () => this.dictationStore,
   });
+
+  @child
+  get activityHistoryStore(): ActivityHistoryStore {
+    return createStore(ActivityHistoryStore, { client: this.client.application });
+  }
 
   @child
   get navigationStore(): NavigationStore {
