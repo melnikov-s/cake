@@ -5,8 +5,8 @@ export const GitHubRepository = Schema.String.check(
   Schema.isMaxLength(256),
   Schema.isPattern(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/),
 );
-export const GitHubReviewAction = Schema.Literals(["submitted", "edited", "dismissed"]);
-export const GitHubReviewField = Schema.Literals(["title", "reviewer", "state", "body"]);
+const GitHubReviewAction = Schema.Literals(["submitted", "edited", "dismissed"]);
+const GitHubReviewField = Schema.Literals(["title", "reviewer", "state", "body"]);
 export const GitHubDeliveryId = Schema.String.check(Schema.isUUID());
 export const GitHubWebhookFilter = Schema.Struct({
   event: Schema.Literal("pull_request_review"),

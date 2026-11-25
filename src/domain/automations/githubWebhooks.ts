@@ -20,7 +20,7 @@ import { AutomationRecords } from "../../services/automations/AutomationRecords"
 import { automationError } from "./automationDefinitions";
 import { decideAdmission } from "./automationPolicy";
 
-export const githubWebhookPath = (id: AutomationId) => `/webhooks/github/${id}`;
+const githubWebhookPath = (id: AutomationId) => `/webhooks/github/${id}`;
 export const maxConcurrentWebhookRuns = 4;
 const maxPendingWebhooks = 32;
 const maxPendingPerTrigger = 8;

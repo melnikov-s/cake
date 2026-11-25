@@ -162,7 +162,7 @@ export const recover = Effect.fn("Automations.recover")(function* () {
   }
 });
 
-export const runWebhookPass = Effect.fn("Automations.runWebhookPass")(function* () {
+const runWebhookPass = Effect.fn("Automations.runWebhookPass")(function* () {
   const { automations, occurrences } = (yield* AutomationRecords).snapshot();
   const active = new Set(
     automations.filter((item) => item.state._tag === "active").map((item) => item.id),
