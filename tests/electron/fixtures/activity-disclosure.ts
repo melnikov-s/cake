@@ -29,7 +29,12 @@ export async function verifyInlineActivity(
 
   await expect(autoMerge).toHaveCount(scope === "project" ? 1 : 0);
   await expect(details.getByRole("switch")).toHaveCount(scope === "project" ? 1 : 0);
-  await expect(history).toBeVisible();
+  await history.click();
+  const historyDialog = activity.page().getByRole("dialog", { name: "Activity history" });
+  await expect(historyDialog).toBeVisible();
+  await historyDialog.getByRole("button", { name: "Close Activity history" }).click();
+  await expect(historyDialog).toBeHidden();
+  await expect(history).toBeFocused();
   const firstItem = details
     .getByRole("button", { name: /^(Open session|Inspect subagent):/ })
     .first();

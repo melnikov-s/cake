@@ -9,8 +9,6 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { researchMarkdown } from "../fixtures/subagent-report";
 import { verifyInlineActivity } from "./fixtures/activity-disclosure";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
-import { showSessions } from "./fixtures/workspace-navigation";
-import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -208,20 +206,16 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     const log = page.locator('[data-slot="activity-group"]').first();
     await expect(log).toBeVisible({ timeout: 20_000 });
     // The coordinator has finished, but its independently running worker still
-    // owns the existing sidebar activity dot.
+    // owns the existing Cake Chat activity dot.
     await expect(
       page.getByText("The investigator is answering with evidence.", { exact: true }),
     ).toBeVisible();
     const foreground = page.locator(".workbench-composer").filter({ has: composer });
     await expect(foreground.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
-    // Cake Chat's running activity lives on its Sessions row since 582d0fc7.
-    await showSessions(page);
-    const sidebarRunning = page
-      .locator(
-        `[data-slot="conversation-navigator-row"][data-session-id="${CAKE_CHAT_SESSION_ID}"]`,
-      )
+    const cakeChatRunning = page
+      .getByRole("button", { name: "Open Cake Chat", exact: true })
       .getByRole("img", { name: "Running", exact: true });
-    await expect(sidebarRunning).toBeVisible();
+    await expect(cakeChatRunning).toBeVisible();
     const activity = page
       .locator('[data-slot="composer-dock"]')
       .getByRole("button", { name: "Activity · 1 running" });
@@ -284,7 +278,7 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     gate.resolve();
     await expect(panel).toContainText("config.ts:1 sets limit to 7.", { timeout: 20_000 });
     await expect(activity).toHaveCount(0);
-    await expect(sidebarRunning).toHaveCount(0);
+    await expect(cakeChatRunning).toHaveCount(0);
     // A second assistant-authored delivery must retain the same provenance as launch.
     await page.getByRole("button", { name: "Back to source conversation", exact: true }).click();
     await composer.fill("Ask the worker for a formatted follow-up");
@@ -354,7 +348,10 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     // The project worker's report is also in this chat; select the general researcher's.
     const report = page.locator('[data-slot="subagent-report"]').filter({ hasText: "Godot" });
     await expect(report.getByText("Completed", { exact: true })).toBeVisible({ timeout: 20_000 });
-    const disclosure = report.locator('[data-slot="response-disclosure"]');
+    const disclosure = report.getByRole("button", {
+      name: "Compare Godot and Three.js game-development workflows",
+      exact: true,
+    });
     await expect(disclosure).toHaveAttribute("aria-expanded", "false");
     await expect(report.locator('[data-slot="message-content"]')).toHaveCount(0);
     await expect(report.getByRole("link", { name: "Open source", exact: true })).toBeVisible();
