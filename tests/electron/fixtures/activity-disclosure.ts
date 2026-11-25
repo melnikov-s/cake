@@ -12,8 +12,7 @@ export async function verifyInlineActivity(
   const collapsedInput = (await form.boundingBox())!;
   await expect(activity).toHaveAttribute("aria-expanded", "false");
   const autoMerge = dock.getByRole("switch", { name: /^Auto-merge:/ });
-  if (scope === "project") await expect(autoMerge).toBeVisible();
-  else await expect(autoMerge).toHaveCount(0);
+  await expect(autoMerge).toHaveCount(0);
   await activity.click();
   await expect(activity).toHaveAttribute("aria-expanded", "true");
   await expect(details).toHaveAttribute("id", (await activity.getAttribute("aria-controls"))!);
@@ -27,7 +26,7 @@ export async function verifyInlineActivity(
   expect(expanded.y).toBeGreaterThan(0);
 
   await expect(autoMerge).toHaveCount(scope === "project" ? 1 : 0);
-  await expect(details.getByRole("switch")).toHaveCount(0);
+  await expect(details.getByRole("switch")).toHaveCount(scope === "project" ? 1 : 0);
   const firstItem = details
     .getByRole("button", { name: /^(Open session|Inspect subagent):/ })
     .first();

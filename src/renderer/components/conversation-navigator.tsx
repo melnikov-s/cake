@@ -74,7 +74,9 @@ export const ConversationNavigator = observer(function ConversationNavigator({
                           ? list.sessionKindGroupActivity(path, kind)
                           : undefined
                       }
-                      actions={autoMerge && <AutoMergeToggle projectPath={path} />}
+                      actions={
+                        autoMerge && path === projectPath && <AutoMergeToggle projectPath={path} />
+                      }
                       onToggle={() => store.toggleKind(projectPath, path, kind, expanded)}
                     />
                     {rows.map(({ node, depth }) => (

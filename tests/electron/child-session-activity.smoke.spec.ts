@@ -236,6 +236,10 @@ test("background family children show running activity and only offer Mark as Un
         .toBe(true);
     }
     const activityMenu = await verifyInlineActivity(activity, composer, "project");
+    await page.mouse.move(1, 1);
+    await page.locator('[data-slot="composer-dock"]').screenshot({
+      path: test.info().outputPath("running-composer-activity.png"),
+    });
     await expect(
       activityMenu.getByRole("button", { name: "Open session: Background worker" }),
     ).toBeVisible();

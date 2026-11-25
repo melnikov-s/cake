@@ -81,9 +81,10 @@ first and open; other projects open by default when they have active My sessions
 or contain the selection. Each project groups My sessions, Delegated, and
 Resolved in that order. Delegated groups start collapsed with total and running
 counts. Resolved disclosure, count, and paging belong to each project's archive.
-Eligible projects show Auto-merge in Delegated and in the owning conversation’s
-Activity. When applicable tab
-widgets exist, a widget tab at the right of the To-dos/Sessions strip shows one
+Only the selected project shows Auto-merge in Delegated, if eligible. Its
+conversations also show the switch in expanded composer Activity while work is
+running. When applicable tab widgets exist, a widget tab at the right of the
+To-dos/Sessions strip shows one
 full-pane widget. Its chevron picks which widget the tab holds, or Clear; the pick
 survives tab switches and relaunch, and falls back to Widgets if that widget is
 detached. Unselected applicable tab widgets remain active; scoped tabs are undiscoverable and their views release when leaving scope. As the pane

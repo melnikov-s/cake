@@ -87,9 +87,10 @@ Only one section expands; both may collapse without acknowledging work. Arrow ke
 Home and End navigate headers; Escape inside the stack returns focus to its owner,
 never intercepting composer Escape. New counts do not expand sections or move focus.
 Independent header actions remain outside the disclosure trigger. Project Auto-merge
-uses the shared Switch with a visible label and a purple icon only when on, available
-even with Activity collapsed. At narrow widths the decorative session/subagent breakdown
-can hide before controls wrap. Clicking a header toggles its list;
+uses the shared Switch with a visible label and a purple icon only when on. It
+appears in the expanded composer Activity panel only for a conversation with running
+work belonging to the selected eligible project. At narrow widths the decorative
+session/subagent breakdown can hide. Clicking a header toggles its list;
 Enter and Space toggle it, and Escape collapses it and returns focus to the trigger.
 Per-row type icons retain accessible labels and tooltips, separate from status dots.
 Conversation owners supply only currently running work and derive the summary/count

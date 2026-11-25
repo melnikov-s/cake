@@ -36,7 +36,7 @@ const openTodos = async (page: Page) => {
   await expect(switches(page)).toHaveCount(0);
 };
 
-test("All-project Sessions keeps Auto-merge in independent Delegated headers on desktop and browser", async ({}, testInfo) => {
+test("All-project Sessions shows Auto-merge only for the selected project on desktop and browser", async ({}, testInfo) => {
   test.setTimeout(90_000);
   const root = await realpath(await mkdtemp(join(tmpdir(), "cake-sessions-auto-merge-")));
   const home = join(root, "cake-home");
@@ -136,6 +136,9 @@ test("All-project Sessions keeps Auto-merge in independent Delegated headers on 
       await page.getByRole("button", { name: "Open Cake Chat", exact: true }).click();
       await expect(page.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible();
       await openSessions(page);
+      await expect(switches(page)).toHaveCount(0);
+      await page.getByRole("button", { name: "Open Project Chat for cake", exact: true }).click();
+      await openSessions(page);
       const group = delegated(page, cake);
       const toggle = group.getByRole("switch");
       const peer = delegated(page, other).getByRole("switch");
@@ -145,9 +148,9 @@ test("All-project Sessions keeps Auto-merge in independent Delegated headers on 
       await expect(disclosure).toHaveText("1 delegated · 0 running");
       await expect(delegated(page, other)).toContainText("0 delegated · 0 running");
       await expect(group.getByText(workerTitle, { exact: true })).toHaveCount(0);
-      await expect(switches(page)).toHaveCount(2);
+      await expect(switches(page)).toHaveCount(1);
       await expect(toggle).toBeChecked();
-      await expect(peer).not.toBeChecked();
+      await expect(peer).toHaveCount(0);
       const child = sessions(page).locator(
         `[data-slot="conversation-navigator-row"][data-session-id="${id}"]`,
       );
@@ -166,8 +169,8 @@ test("All-project Sessions keeps Auto-merge in independent Delegated headers on 
       await group.getByText("Auto-merge", { exact: true }).click();
       await expect(toggle).not.toBeChecked();
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-      await expect(page.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible();
-      await expect(peer).not.toBeChecked();
+      await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+      await expect(peer).toHaveCount(0);
       await toggle.focus();
       await toggle.press("Shift+Tab");
       await expect(disclosure).toBeFocused();
@@ -185,7 +188,7 @@ test("All-project Sessions keeps Auto-merge in independent Delegated headers on 
       await expect(toggle).toBeChecked();
       await expect(toggle).toBeEnabled();
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-      await expect(peer).not.toBeChecked();
+      await expect(peer).toHaveCount(0);
       await expect(child.getByText(title, { exact: true })).toBeVisible();
       await disclosure.click();
       await expect(group.getByText(workerTitle, { exact: true })).toBeVisible();
@@ -193,9 +196,9 @@ test("All-project Sessions keeps Auto-merge in independent Delegated headers on 
       await expect(group.getByText(workerTitle, { exact: true })).toHaveCount(0);
       await page.mouse.move(1, 1);
       await page.waitForFunction(() => document.fonts.status === "loaded");
-      const screenshot = testInfo.outputPath("global-sessions-delegated-headers.png");
+      const screenshot = testInfo.outputPath("cake-selected-sessions.png");
       await workspace(page).screenshot({ path: screenshot });
-      await testInfo.attach("Global Sessions Delegated headers", {
+      await testInfo.attach("Cake selected in Sessions", {
         path: screenshot,
         contentType: "image/png",
       });
@@ -205,16 +208,19 @@ test("All-project Sessions keeps Auto-merge in independent Delegated headers on 
       await page.getByRole("button", { name: "Open Project Chat for other", exact: true }).click();
       await openSessions(page);
       await expect(peer).toBeVisible();
+      await expect(peer).not.toBeChecked();
+      await expect(switches(page)).toHaveCount(1);
+      await expect(toggle).toHaveCount(0);
       await expect(sessions(page).getByText(otherTitle, { exact: true })).toBeVisible();
       await expect(
         header(page, "other").getByRole("button", { name: "Collapse other" }),
       ).toHaveCount(0);
       const homes = sessions(page).locator('[data-relationship="home"]');
       await expect(homes.first().getByRole("button", { name: "other", exact: true })).toBeVisible();
-      const projectScreenshot = testInfo.outputPath("project-sessions-delegated-headers.png");
+      const projectScreenshot = testInfo.outputPath("other-selected-sessions.png");
       await page.mouse.move(1, 1);
       await workspace(page).screenshot({ path: projectScreenshot });
-      await testInfo.attach("Project Sessions Delegated headers", {
+      await testInfo.attach("Other project selected in Sessions", {
         path: projectScreenshot,
         contentType: "image/png",
       });
@@ -239,18 +245,16 @@ test("All-project Sessions keeps Auto-merge in independent Delegated headers on 
         await remote.goto(url);
         await expect(remote.getByRole("combobox", { name: "Message Cake Chat" })).toBeVisible();
         await openSessions(remote);
-        await expect(switches(remote)).toHaveCount(2);
-        await expect(delegated(remote, cake).getByRole("switch")).toBeChecked();
-        await expect(delegated(remote, other).getByRole("switch")).not.toBeChecked();
+        await expect(switches(remote)).toHaveCount(0);
         await openTodos(remote);
         await remote
           .getByRole("button", { name: "Open Project Chat for cake", exact: true })
           .click();
         await expect(remote.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
         await openSessions(remote);
-        await expect(switches(remote)).toHaveCount(2);
+        await expect(switches(remote)).toHaveCount(1);
         await expect(delegated(remote, cake).getByRole("switch")).toBeChecked();
-        await expect(delegated(remote, other).getByRole("switch")).not.toBeChecked();
+        await expect(delegated(remote, other).getByRole("switch")).toHaveCount(0);
         await openTodos(remote);
         await remote.getByRole("button", { name: "Close Workspace", exact: true }).click();
         await expect(switches(remote)).toHaveCount(0);

@@ -4,7 +4,7 @@ import { RootStore } from "../stores/RootStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { ActivityDisclosure } from "./ui/activity-disclosure";
-import { AutoMergeToggle } from "./auto-merge-toggle";
+import { AutoMergeToggle, canShowAutoMerge } from "./auto-merge-toggle";
 import { SessionPurposeIndicator } from "./ui/session-purpose-indicator";
 import { ComposerCap } from "./ui/composer-cap";
 import { textPreview } from "../lib/text-preview";
@@ -34,6 +34,12 @@ export const ConversationActivity = observer(function ConversationActivity({
   const runs = subagents.activeRuns.filter((run) => run.status === "running");
   const running = sessions.length + runs.length;
   if (running === 0 && composerSections.length === 0) return null;
+  const projectPath =
+    running > 0 && placement !== "header" ? root.projectForSession(sessionId) : undefined;
+  const showAutoMerge =
+    projectPath !== undefined &&
+    projectPath === root.workspaceProjectPath &&
+    canShowAutoMerge(root.projectCatalogStore.find(projectPath));
   const activity = (
     <ActivityDisclosure
       key={sessionId}
@@ -44,7 +50,7 @@ export const ConversationActivity = observer(function ConversationActivity({
       summary={`${running} running`}
       status="running"
       onOpen={onOpen}
-      actions={<AutoMergeToggle projectPath={root.projectForSession(sessionId)} />}
+      actions={showAutoMerge && <AutoMergeToggle projectPath={projectPath} />}
       items={[
         ...sessions.map((session) => ({
           id: `session:${session.sessionId}`,
