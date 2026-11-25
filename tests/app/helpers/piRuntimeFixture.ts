@@ -82,6 +82,7 @@ export function fakeRuntime(
       });
       return snapshot;
     },
+    setQueuePaused: async () => undefined,
     listQueuedMessages: async () => ({ steering: [], followUp: [] }),
     pendingMessages: async () => ({ items: [] }),
     reorderPendingMessage: async () => ({ items: [] }),

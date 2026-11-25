@@ -281,6 +281,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           undefined,
           options?.renderUserMessageAsMarkdown ?? false,
           options?.onSubmitted,
+          options?.resumeQueue,
         ),
       userMessagePresentation: {
         setMarkdown: (entryId, renderAsMarkdown) =>
@@ -338,6 +339,8 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           pending: true,
         })),
       ],
+      queuePaused: () => this.model.queuePaused,
+      setQueuePaused: (paused) => this.setQueuePaused(paused),
       steerQueuedPrompt: (id) => this.editRuntimeQueuedPrompt(id, "steer"),
       stopAndSendQueuedPrompt: (id) => this.stopAndSendQueuedPrompt(id),
       reorderQueuedPrompt: (id, position) => this.reorderQueuedPrompt(id, position),
@@ -419,6 +422,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
           responseMode: input.responseMode ?? "text",
           ...(input.clientId === undefined ? null : { clientId: input.clientId }),
+          ...(input.resumeQueue ? { resumeQueue: true } : null),
           ...(input.artifactPresentation === undefined
             ? null
             : { artifactPresentation: input.artifactPresentation }),
@@ -519,6 +523,17 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       return;
     }
     await this.requestStop();
+  }
+
+  private async setQueuePaused(paused: boolean) {
+    try {
+      await this.client.sessionChats.setQueuePaused(
+        { sessionId: this.sessionId, paused },
+        { signal: this.signal },
+      );
+    } catch (error) {
+      if (!this.signal.aborted) this.composerStore.reportError(error, "Queue control");
+    }
   }
 
   private async requestStop() {

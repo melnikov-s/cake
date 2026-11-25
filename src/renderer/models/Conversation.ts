@@ -52,6 +52,7 @@ export class Conversation extends Model {
   availableThinkingLevels: readonly ThinkingLevel[] = observable([]);
   piSettings: ConversationSnapshot["piSettings"] = undefined;
   streaming = false;
+  queuePaused = false;
   /** Pi-accepted turns bridge command acceptance to the first streaming event. */
   activeTurnIds: string[] = observable([]);
   /** Window-local ordering marker for turn settlements observed after this Model was created. */

@@ -17,7 +17,6 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import {
   AgentDoc,
   AssistantEntry,
-  InboxDoc,
   LiveDoc,
   SystemEntry,
   UsageDoc,
@@ -251,7 +250,11 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
     });
     const {
       inbox,
+      read: queuedState,
       requestId,
+      submit: submitInput,
+      withdraw,
+      observe: observeQueue,
       operations: queueOperations,
     } = createDurableConversationQueue({
       harness,
@@ -328,8 +331,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           turnId,
           BACKGROUND_CONTEXT,
         );
-        if (submission)
-          await harness.abortSubmission(submission.id, BACKGROUND_CONTEXT, conversation.id);
+        if (submission) await withdraw(submission.id);
       },
       recordReviewRun() {
         throw new Error("Project review runs do not belong to Cake Chat side chats");
@@ -376,7 +378,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           // tx.doc values are revocable drafts, even in read-only commits. Detach
           // the preset before the transaction settles and the snapshot reaches RPC.
           const presetSnapshot = preset === undefined ? undefined : { ...preset };
-          const items = (await tx.doc(InboxDoc, conversation.id)).items;
+          const { paused: queuePaused, items } = await queuedState(tx);
           streaming = live?.run !== undefined;
           activeTurnIds = await Promise.all(
             (live?.run?.inputs ?? []).map(
@@ -418,6 +420,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             thinkingLevel,
             availableThinkingLevels: selected ? getSupportedThinkingLevels(selected) : ["off"],
             streaming,
+            queuePaused,
             // Durable shares one request pipeline; fast mode follows Cake Chat.
             preset: presetSnapshot,
             fastMode: host.fastMode() && selected !== undefined && supportsFastMode(selected),
@@ -456,6 +459,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         _automaticTitle,
         _responseMode,
         internal,
+        resumeQueue,
       ) {
         if (disposed) throw new Error("Cake Chat side chat has closed");
         const assertCurrent = await turnStop.beforeInput();
@@ -482,7 +486,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           (await history()).parts.every((part) => part.originalHistory);
         assertCurrent();
         if (turnId && canceledScheduledInputs.has(turnId)) throw new TurnCanceledError();
-        const submission = await conversation.submit(
+        const submission = await submitInput(
           {
             type: "input",
             content: [
@@ -513,10 +517,10 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             requestId: turnId ?? randomUUID(),
             whenBusy: delivery === "steer" ? "steer" : "followUp",
           },
-          BACKGROUND_CONTEXT,
+          resumeQueue,
+          assertCurrent,
         );
-        if (turnId && canceledScheduledInputs.has(turnId))
-          await harness.abortSubmission(submission.id, BACKGROUND_CONTEXT, conversation.id);
+        if (turnId && canceledScheduledInputs.has(turnId)) await withdraw(submission.id);
         const settled = await submission.wait(BACKGROUND_CONTEXT).catch((cause: unknown) => {
           throw new TurnDetachedError(cause instanceof Error ? cause.message : String(cause));
         });
@@ -585,6 +589,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         interviews.delete(conversation.id);
         operations.delete(conversation.id);
         commits.detach();
+        stopObservingQueue();
         await shutdownDiagnostics.promise(
           "durable.sideChat.publication",
           shutdownResource(sessionId),
@@ -661,6 +666,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           publishing = undefined;
         });
     };
+    const stopObservingQueue = observeQueue();
     const commits = harness.observeCommits({
       advance({ changes }) {
         if (changes.some((change) => changeConversation(change) === conversation.id))

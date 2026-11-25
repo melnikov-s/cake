@@ -50,6 +50,10 @@ export const SessionChatRpc = RpcGroup.make(
     success: ConversationHistoryPage,
     error: SessionChatError,
   }),
+  Rpc.make("sessionChats.setQueuePaused", {
+    payload: { ...SessionChatTarget.fields, paused: Schema.Boolean },
+    error: SessionChatError,
+  }),
   Rpc.make("sessionChats.listQueuedMessages", {
     payload: SessionChatTarget,
     success: QueuedConversationMessages,

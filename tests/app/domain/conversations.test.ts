@@ -53,6 +53,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessi
   prompt: () => Effect.sync(() => deliveries.push("prompt")).pipe(Effect.as("prompt-turn")),
   steer: () => Effect.sync(() => deliveries.push("steer")).pipe(Effect.as("steer-turn")),
   followUp: () => Effect.sync(() => deliveries.push("follow-up")).pipe(Effect.as("follow-up-turn")),
+  setQueuePaused: () => Effect.void,
   listQueuedMessages: () => Effect.succeed({ steering: [], followUp: [] }),
   pendingMessages: () => Effect.succeed({ items: [] }),
   reorderPendingMessage: () => Effect.succeed({ items: [] }),

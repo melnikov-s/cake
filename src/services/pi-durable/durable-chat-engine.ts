@@ -728,9 +728,14 @@ export async function openDurableChatEngine(options: {
           visible = true;
         if (
           change.type === "document" &&
-          ["pi.live", "pi.inbox", "pi.agent", "pi.usage", "cake.task-attribution"].includes(
-            change.record.kind,
-          )
+          [
+            "pi.live",
+            "pi.inbox",
+            "pi.agent",
+            "pi.usage",
+            "cake.task-attribution",
+            "cake.held-queue",
+          ].includes(change.record.kind)
         )
           visible = true;
       }

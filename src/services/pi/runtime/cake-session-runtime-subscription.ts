@@ -79,6 +79,7 @@ export function createCakeSessionRuntimeSubscription(input: {
           stop: presentation.stop,
         });
     }
+    if (event.type === "queue_update") turnController.queueChanged();
     projection.projectEvent(event);
     if (event.type === "session_info_changed" && event.name)
       void options.sessionTitleChanged?.(cakeSessionId, event.name).catch(() => undefined);

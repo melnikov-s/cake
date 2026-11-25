@@ -230,7 +230,9 @@ export const Chat = observer(function Chat({
     const parkFocus = composerFocusRef.current?.shouldParkFocus();
     const plainEnter = origin === "composer-enter";
     const continuation =
-      canSend && (plainEnter || parkFocus) ? store.beginEnterContinuation() : undefined;
+      !store.queuePaused && canSend && (plainEnter || parkFocus)
+        ? store.beginEnterContinuation()
+        : undefined;
     await store.submit(value, {
       enterContinuation: continuation,
       composer: plainEnter ? "enter" : "other",

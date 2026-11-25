@@ -272,6 +272,7 @@ function conversationSnapshot(
     availableThinkingLevels: [...parsed.availableThinkingLevels],
     piSettings: parsed.piSettings,
     streaming: parsed.streaming,
+    queuePaused: parsed.queuePaused ?? false,
     activeTurnIds: [],
     diagnostics: [...parsed.diagnostics],
     commands: parsed.commands.map((command) => ({ ...command })),

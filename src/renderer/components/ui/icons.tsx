@@ -446,6 +446,16 @@ export const RepeatIcon = ({ size = 13 }: { size?: number } = {}) => (
     <path d="M21 13v1a4 4 0 0 1-4 4H3" />
   </Icon>
 );
+export const PlayIcon = () => (
+  <Icon>
+    <path d="M8 5.5v13l11-6.5z" fill="currentColor" strokeLinejoin="round" />
+  </Icon>
+);
+export const PauseIcon = () => (
+  <Icon>
+    <path d="M9 6v12m6-12v12" strokeWidth="2.5" />
+  </Icon>
+);
 export const StopIcon = () => (
   <Icon>
     <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />

@@ -127,6 +127,93 @@ async function createFixtureRuntime(
 }
 
 describe("response retry and recovery", () => {
+  it.each([
+    "play",
+    "play while busy",
+    "send while busy",
+    "send while idle",
+    "stop while paused",
+  ] as const)("holds Pi's native follow-ups across Pause, then %s", async (action) => {
+    const directory = await createTemporaryDirectory();
+    const started = Promise.withResolvers<void>();
+    const finishActive = Promise.withResolvers<void>();
+    cleanupReleases.push(finishActive.resolve);
+    const provider = await registerFixtureProvider(directory, (index, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(sseChunk({ role: "assistant", content: `Answer ${index}` }));
+      if (index === 1) started.resolve();
+      void (index === 1 ? finishActive.promise : Promise.resolve()).then(() => {
+        response.write(sseChunk({}, "stop"));
+        response.end("data: [DONE]\n\n");
+      });
+    });
+    const { runtime } = await createFixtureRuntime(directory);
+    const active = runtime
+      .prompt("Active", "prompt", [], false, "active")
+      .catch((error: unknown) => error);
+    await started.promise;
+    const first = runtime.prompt("Old first", "prompt", [], false, "old-first");
+    await vi.waitFor(async () =>
+      expect((await runtime.listQueuedMessages()).followUp).toHaveLength(1),
+    );
+    const second = runtime.prompt("Old second", "prompt", [], false, "old-second");
+    await vi.waitFor(async () =>
+      expect((await runtime.listQueuedMessages()).followUp).toHaveLength(2),
+    );
+    await runtime.setQueuePaused(true);
+    const waiting = (await runtime.snapshot()).parts.filter(
+      (part) => part.kind === "text" && part.deliveryState,
+    );
+    expect(waiting.map((part) => part.kind === "text" && part.queuedInput?.turnId)).toEqual([
+      "old-first",
+      "old-second",
+    ]);
+    expect((await runtime.snapshot()).queuePaused).toBe(true);
+    const send = () =>
+      runtime.prompt(
+        "New first",
+        "prompt",
+        [],
+        false,
+        "priority",
+        undefined,
+        false,
+        undefined,
+        undefined,
+        true,
+      );
+    let priority: Promise<void> | undefined;
+    if (action === "send while busy") {
+      priority = send();
+      await vi.waitFor(async () =>
+        expect((await runtime.listQueuedMessages()).followUp).toHaveLength(3),
+      );
+    }
+    if (action === "play while busy") await runtime.setQueuePaused(false);
+    if (action === "stop while paused") {
+      await runtime.abort({ by: "user" });
+      await runtime.waitForStop?.();
+    }
+    expect(provider.requestCount()).toBe(1);
+    finishActive.resolve();
+    await active;
+    if (action !== "send while busy" && action !== "play while busy") {
+      expect(provider.requestCount()).toBe(1);
+      expect((await runtime.snapshot()).queuePaused).toBe(true);
+      if (action === "send while idle") priority = send();
+      else await runtime.setQueuePaused(false);
+    }
+    await Promise.all([first, second, priority]);
+    const snapshot = await runtime.snapshot();
+    expect(snapshot.queuePaused).toBeFalsy();
+    expect(
+      snapshot.parts.flatMap((part) =>
+        part.kind === "text" && part.role === "user" ? [part.text] : [],
+      ),
+    ).toEqual(["Active", ...(priority ? ["New first"] : []), "Old first", "Old second"]);
+    expect(provider.requestCount()).toBe(priority ? 4 : 3);
+  });
+
   it("acknowledges Stop before a real Pi tool exits, preserves output, and holds the next input", async () => {
     const directory = await createTemporaryDirectory();
     const started = Promise.withResolvers<void>();

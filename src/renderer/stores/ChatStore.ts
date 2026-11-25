@@ -104,6 +104,7 @@ export interface ChatStoreProps {
       renderUserMessageAsMarkdown?: boolean;
       /** The Store consumed and projected this input, before asynchronous delivery. */
       onSubmitted?(): void;
+      resumeQueue?: boolean;
     },
   ): Promise<boolean | void | { turnId: string }>;
   sendQueuedToSideChat?(id: string): Promise<void>;
@@ -132,6 +133,8 @@ export interface ChatStoreProps {
   estimatedContextUsage?: boolean;
   promptCacheModel?(): { provider: string; modelId: string } | undefined;
   queuedPrompts?(): readonly QueuedPrompt[];
+  queuePaused?(): boolean;
+  setQueuePaused?(paused: boolean): Promise<void>;
   steerQueuedPrompt?(id: string): void | boolean | Promise<void | boolean>;
   stopAndSendQueuedPrompt?(id: string): void | Promise<void>;
   reorderQueuedPrompt?(id: string, position: number): void | Promise<void>;
@@ -208,7 +211,11 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
 
   get canContinueSentMessage() {
-    return this.pendingImagePastes === 0 && (this.submittingLocally || this.composerIsEmpty());
+    return (
+      !this.queuePaused &&
+      this.pendingImagePastes === 0 &&
+      (this.submittingLocally || this.composerIsEmpty())
+    );
   }
 
   beginEnterContinuation() {
@@ -496,6 +503,20 @@ export class ChatStore extends Store<ChatStoreProps> {
     return Boolean(this.props.suggestFiles);
   }
   @computed
+  get queuePaused() {
+    return this.props.queuePaused?.() ?? false;
+  }
+
+  get canPauseQueue() {
+    return Boolean(this.props.setQueuePaused) && this.queuedPrompts.some((entry) => !entry.pending);
+  }
+
+  async setQueuePaused(paused: boolean) {
+    this.cancelEnterContinuation();
+    this.lastComposerTurnId = undefined;
+    await this.props.setQueuePaused?.(paused);
+  }
+
   get queuedPrompts(): readonly QueuedPrompt[] {
     const prompts = this.props.queuedPrompts?.() ?? [];
     return [
@@ -504,10 +525,10 @@ export class ChatStore extends Store<ChatStoreProps> {
     ];
   }
   get canSteerQueuedPrompt() {
-    return Boolean(this.props.steerQueuedPrompt);
+    return !this.queuePaused && Boolean(this.props.steerQueuedPrompt);
   }
   get canStopAndSendQueuedPrompt() {
-    return Boolean(this.props.stopAndSendQueuedPrompt);
+    return !this.queuePaused && Boolean(this.props.stopAndSendQueuedPrompt);
   }
   get canReorderQueuedPrompt() {
     return Boolean(this.props.reorderQueuedPrompt);
@@ -769,7 +790,8 @@ export class ChatStore extends Store<ChatStoreProps> {
     const dictation = DictationContext.consume(this)?.();
     const empty = this.composerIsEmpty(value);
     if (empty) {
-      if (options?.composer !== "enter" || !this.lastComposerTurnId) return false;
+      if (this.queuePaused || options?.composer !== "enter" || !this.lastComposerTurnId)
+        return false;
       // After focus has moved, a deliberate empty Enter in the input may resume
       // the exact turn, but cannot choose a different row or wait for a missing one.
       const own = this.composerQueueTarget(this.lastComposerTurnId);
@@ -785,6 +807,8 @@ export class ChatStore extends Store<ChatStoreProps> {
       return true;
     }
     const composerSubmission = options?.composer && !this.editingMessage && !this.submitsAsDraft;
+    const pausedSubmission = composerSubmission && this.queuePaused;
+    if (pausedSubmission) this.cancelEnterContinuation();
     if (composerSubmission) this.lastComposerTurnId = undefined;
     const conversationId = this.id;
     this.submittingLocally = true;
@@ -833,6 +857,7 @@ export class ChatStore extends Store<ChatStoreProps> {
         renderUserMessageAsMarkdown:
           options?.renderUserMessageAsMarkdown ?? shouldRenderMarkdown(value),
         onSubmitted: revealSubmission,
+        ...(composerSubmission ? { resumeQueue: true } : null),
       });
       accepted = submitted !== false;
       if (accepted && this.inputHistoryRevision === inputHistoryRevision)
@@ -842,7 +867,11 @@ export class ChatStore extends Store<ChatStoreProps> {
       if (submitted !== false && this.draft === value && this.draftRevision === submittedRevision)
         this.setDraft("");
       const turnId =
-        composerSubmission && !value.trimStart().startsWith("/") && submitted && submitted !== true
+        composerSubmission &&
+        !pausedSubmission &&
+        !value.trimStart().startsWith("/") &&
+        submitted &&
+        submitted !== true
           ? submitted.turnId
           : undefined;
       if (turnId) this.lastComposerTurnId = turnId;

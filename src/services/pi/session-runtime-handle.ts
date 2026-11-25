@@ -226,6 +226,7 @@ export function createSessionRuntimeHandle(input: {
       CakeAntigravityInput,
       "permission" | "cakeBridgeOwnerSignal" | "automaticTitle"
     >,
+    resumeQueue?: boolean,
   ) {
     if (!antigravity && shared.runtime.antigravitySelected)
       return yield* new PiSessionError({ operation: delivery, message: antigravityDesktopOnly });
@@ -380,6 +381,7 @@ export function createSessionRuntimeHandle(input: {
                 automaticTitle,
                 responseMode,
                 internal,
+                resumeQueue,
               );
       },
       catch: (cause) => cause,
@@ -621,6 +623,7 @@ export function createSessionRuntimeHandle(input: {
     responseMode?: ConversationResponseMode,
     admissionId?: string,
     internal?: RuntimeRecoveryInput["internal"],
+    resumeQueue?: boolean,
   ) {
     const record = yield* recoveryStorage
       .get(shared.runtime.sessionId)
@@ -647,6 +650,8 @@ export function createSessionRuntimeHandle(input: {
       false,
       admissionId,
       internal,
+      undefined,
+      resumeQueue,
     );
   }, shared.queueEdits.withPermit);
 
@@ -858,6 +863,7 @@ export function createSessionRuntimeHandle(input: {
         input.responseMode,
         input.turnId,
         input.internal,
+        input.resumeQueue,
       ),
     recover: (inputs, paused = false) =>
       recoverInputs(inputs, paused).pipe(shared.queueEdits.withPermit),
@@ -1002,6 +1008,10 @@ export function createSessionRuntimeHandle(input: {
     cancelSteering: () => editQueue("cancelSteering", (runtime) => runtime.cancelSteering()),
     updateQueuedMessage: (partId, text) =>
       editQueue("updateQueuedMessage", (runtime) => runtime.updateQueuedMessage(partId, text)),
+    setQueuePaused: (paused) =>
+      call("setQueuePaused", (runtime) => runtime.setQueuePaused(paused)).pipe(
+        shared.queueEdits.withPermit,
+      ),
     removeQueuedMessage: (partId) =>
       editQueue("removeQueuedMessage", (runtime) => runtime.removeQueuedMessage(partId)),
     steerQueuedMessage: (partId) =>

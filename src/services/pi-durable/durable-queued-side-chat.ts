@@ -9,6 +9,7 @@ import {
   type Harness,
   type Storage,
 } from "@earendil-works/pi-durable";
+import { HeldQueueDoc } from "./durable-chat-queue";
 import {
   DURABLE_SIDE_CHAT_NOTE,
   durableQueuedParts,
@@ -29,7 +30,10 @@ export async function transferDurableQueuedToSideChat(options: {
   todoContext?: string;
 }) {
   const { harness, storage, source, target, partId } = options;
-  const items = (await harness.snapshot(InboxDoc, source.id, BACKGROUND_CONTEXT))?.items ?? [];
+  const items = [
+    ...((await harness.snapshot(HeldQueueDoc, source.id, BACKGROUND_CONTEXT))?.items ?? []),
+    ...((await harness.snapshot(InboxDoc, source.id, BACKGROUND_CONTEXT))?.items ?? []),
+  ];
   const candidates = await Promise.all(
     items.map(async (item) => ({
       item,
@@ -43,9 +47,13 @@ export async function transferDurableQueuedToSideChat(options: {
   if (!selected) throw new Error("That queued message no longer exists");
   const requestId = randomUUID();
   await source.commit(async (tx) => {
+    const held = await tx.doc(HeldQueueDoc, source.id);
     const inbox = await tx.doc(InboxDoc, source.id);
-    const index = inbox.items.findIndex((item) => item.id === selected.item.id);
-    const item = inbox.items[index];
+    const items = held.items.some((item) => item.id === selected.item.id)
+      ? held.items
+      : inbox.items;
+    const index = items.findIndex((item) => item.id === selected.item.id);
+    const item = items[index];
     if (!item || item.mode === "write") throw new Error("That message was already consumed");
     const row = durableQueuedParts(item, selected.requestId).find(
       (part) => part.id === `queued-${selected.requestId}`,
@@ -105,7 +113,7 @@ export async function transferDurableQueuedToSideChat(options: {
       reason: "aborted",
       detail: { sentToSideChat: options.targetSessionId },
     });
-    inbox.items.splice(index, 1);
+    items.splice(index, 1);
   }, BACKGROUND_CONTEXT);
   harness.resume();
   return requestId;

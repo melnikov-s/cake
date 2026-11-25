@@ -77,6 +77,7 @@ const projectSnapshot = (snapshot: RuntimeConversationSnapshot): ConversationSna
     thinkingLevel: snapshot.thinkingLevel,
     availableThinkingLevels: [...snapshot.availableThinkingLevels],
     streaming: snapshot.streaming,
+    ...(snapshot.queuePaused ? { queuePaused: true } : null),
     diagnostics: [...snapshot.diagnostics],
     commands: snapshot.commands.map(toJsonValue),
     compatibility: toJsonValue(snapshot.compatibility),

@@ -70,9 +70,9 @@ export function renderChatSurface(
     user: userEvent.setup(),
     chat,
     models: fixture.models,
-    publish(parts: UiPart[], streaming = false) {
+    publish(parts: UiPart[], streaming = false, queuePaused = false) {
       act(() => {
-        snapshot = { ...snapshot, parts, streaming };
+        snapshot = { ...snapshot, parts, streaming, queuePaused };
         applyConversationUpdate(session.model, {
           _tag: "Snapshot",
           revision: ++revision,

@@ -24,6 +24,116 @@ afterEach(cleanup);
 // Real Root/Models/Chat and delivery policy, with typed SessionChats authority
 // snapshots. Pi queue execution/abort/command semantics stay in service tests.
 describe("Prompt queue workflow", () => {
+  it("reveals Pause by holding Stop without stopping, and Play leaves a draft untouched", async () => {
+    const first = queuePart(1, "First waiting");
+    const second = queuePart(2, "Second waiting");
+    const parts = [first, second];
+    const abort = vi.fn<Client["sessionChats"]["abort"]>().mockResolvedValue(undefined);
+    const setQueuePaused = vi.fn<Client["sessionChats"]["setQueuePaused"]>(async ({ paused }) => {
+      fixture.publish(parts, true, paused);
+    });
+    using fixture = renderChatSurface({
+      parts,
+      snapshot: { streaming: true },
+      client: { sessionChats: { abort, setQueuePaused } },
+    });
+    const stop = screen.getByRole("button", { name: "Stop" });
+    vi.useFakeTimers();
+    try {
+      fireEvent(
+        stop,
+        Object.assign(new MouseEvent("pointerdown", { bubbles: true, button: 0 }), {
+          isPrimary: true,
+        }),
+      );
+      act(() => vi.advanceTimersByTime(500));
+      fireEvent.pointerUp(stop);
+      fireEvent.click(stop, { detail: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(abort).not.toHaveBeenCalled();
+    expect(setQueuePaused).not.toHaveBeenCalled();
+    await fixture.user.click(await screen.findByRole("button", { name: "Pause queue" }));
+    expect(setQueuePaused).toHaveBeenCalledWith(
+      { sessionId: queueSessionId, paused: true },
+      commandOptions,
+    );
+    expect(queuedTexts()).toEqual([first.text, second.text]);
+    const input = screen.getByRole("combobox") as HTMLTextAreaElement;
+    await fixture.user.type(input, "Unsent draft");
+    expect(setQueuePaused).toHaveBeenCalledTimes(1);
+    await fixture.user.click(screen.getByRole("button", { name: "Resume queue" }));
+    expect(setQueuePaused).toHaveBeenLastCalledWith(
+      { sessionId: queueSessionId, paused: false },
+      commandOptions,
+    );
+    expect(input.value).toBe("Unsent draft");
+    expect(abort).not.toHaveBeenCalled();
+  });
+
+  it("opens Pause from the keyboard and keeps ordinary Stop available while paused", async () => {
+    const parts = [queuePart(1, "Waiting")];
+    const abort = vi.fn<Client["sessionChats"]["abort"]>(async () =>
+      fixture.publish(parts, false, true),
+    );
+    const setQueuePaused = vi.fn<Client["sessionChats"]["setQueuePaused"]>(async ({ paused }) =>
+      fixture.publish(parts, true, paused),
+    );
+    using fixture = renderChatSurface({
+      parts,
+      snapshot: { streaming: true },
+      client: { sessionChats: { abort, setQueuePaused } },
+    });
+    const stop = screen.getByRole("button", { name: "Stop" });
+    act(() => stop.focus());
+    await fixture.user.keyboard("{ArrowUp}");
+    const pause = await screen.findByRole("button", { name: "Pause queue" });
+    await waitFor(() => expect(document.activeElement).toBe(pause));
+    await fixture.user.keyboard("{Enter}");
+    expect(abort).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Stop" }));
+    expect(abort).toHaveBeenCalledOnce();
+    expect(setQueuePaused).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Resume queue" })).toBeDefined();
+    expect(queuedTexts()).toEqual(["Waiting"]);
+  });
+
+  it.each(["Enter", "Send"] as const)(
+    "submits once through the non-steering composer path via %s while paused",
+    async (via) => {
+      const parts = [queuePart(1, "Waiting")];
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>().mockResolvedValue(turnId);
+      const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>();
+      const sendNow = vi.fn<Client["sessionChats"]["sendQueuedMessageNow"]>();
+      using fixture = renderChatSurface({
+        parts,
+        snapshot: { streaming: via === "Enter", queuePaused: true },
+        client: {
+          sessionChats: { prompt, steerQueuedMessage: steer, sendQueuedMessageNow: sendNow },
+        },
+      });
+      const input = screen.getByRole("combobox") as HTMLTextAreaElement;
+      await fixture.user.type(input, "New priority");
+      expect(prompt).not.toHaveBeenCalled();
+      if (via === "Enter") await fixture.user.keyboard("{Enter}");
+      else await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      expect(prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          sessionId: queueSessionId,
+          text: "New priority",
+          resumeQueue: true,
+        }),
+        commandOptions,
+      );
+      fixture.publish([queuePart(2, "New priority", { turnId }), ...parts], true);
+      await fixture.user.click(input);
+      await fixture.user.keyboard("{Enter}{Enter}");
+      expect(steer).not.toHaveBeenCalled();
+      expect(sendNow).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(["steering", "queued"] as const)(
     "shows typed provenance in the read-only action slot for %s items",
     (lane) => {

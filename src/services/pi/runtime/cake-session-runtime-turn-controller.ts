@@ -35,6 +35,9 @@ interface TurnRecoveryHooks {
 export interface CakeSessionRuntimeTurnController {
   readonly compactionQueuedMessages: () => readonly string[];
   readonly queuedParts: () => UiPart[];
+  readonly queuePaused: () => boolean;
+  readonly setQueuePaused: (paused: boolean) => Promise<void>;
+  readonly queueChanged: () => void;
   readonly handoffActive: () => boolean;
   readonly idleCompactionActive: () => boolean;
   readonly toolPruningActive: () => boolean;
@@ -58,6 +61,7 @@ export interface CakeSessionRuntimeTurnController {
     presentationMode?: ProjectSessionPresentationMode,
     responseMode?: ConversationResponseMode,
     internal?: InternalInput,
+    resumeQueue?: boolean,
   ) => Promise<void>;
   readonly editMessage: (
     entryId: string,
@@ -177,6 +181,13 @@ export function createCakeSessionRuntimeTurnController(input: {
     command?: string;
   }[] = [];
   let flushingHeldQueue = false;
+  let queuePaused = false;
+  // A paused queue drains at response boundaries after Play or a priority Send.
+  let drainBetweenResponses = false;
+  let priorityItemId: string | undefined;
+  const claimedInputs: TrackedQueueItem[] = [];
+  // A Pi input hook can be awaiting when Pause inspects the display queue.
+  const preparingNativeInputs = new Set<TrackedQueueItem>();
   let restoringRun = false;
   let pausedAfterRestart = false;
   let commandRunning = false;
@@ -233,10 +244,11 @@ export function createCakeSessionRuntimeTurnController(input: {
     presentationMode?: ProjectSessionPresentationMode,
     responseMode?: ConversationResponseMode,
     internal?: InternalInput,
+    priority?: boolean,
   ) =>
     turnInputContent({
       session,
-      heldInputs: compactionQueue,
+      heldInputs: priority ? [] : compactionQueue,
       busy: isCompacting() || commandRunning,
       internalInput: (content) => turnCompletions.internalInput(content),
       text,
@@ -263,6 +275,8 @@ export function createCakeSessionRuntimeTurnController(input: {
     if (
       input.isDisposed() ||
       pausedAfterRestart ||
+      queuePaused ||
+      (drainBetweenResponses && session.isStreaming) ||
       abortCleanup !== undefined ||
       (session.isStreaming && compactionQueue.some((item) => item.command)) ||
       isCompacting() ||
@@ -274,12 +288,23 @@ export function createCakeSessionRuntimeTurnController(input: {
     flushingHeldQueue = true;
     const generation = queueGeneration;
     try {
-      while (!input.isDisposed() && generation === queueGeneration) {
+      while (
+        !input.isDisposed() &&
+        generation === queueGeneration &&
+        !queuePaused &&
+        !(drainBetweenResponses && session.isStreaming)
+      ) {
+        const priorityIndex = compactionQueue.findIndex((item) => item.itemId === priorityItemId);
         const steeringIndex = compactionQueue.findIndex((item) => item.delivery === "steer");
-        const [item] = compactionQueue.splice(steeringIndex < 0 ? 0 : steeringIndex, 1);
+        const [item] = compactionQueue.splice(
+          priorityIndex >= 0 ? priorityIndex : Math.max(0, steeringIndex),
+          1,
+        );
+        if (item?.itemId === priorityItemId) priorityItemId = undefined;
         if (!item) break;
         input.syncQueuedParts();
         try {
+          if (drainBetweenResponses) input.onTurnStarted?.();
           if (item.command) {
             if (!input.executeQueuedCommand) throw new Error("Queued commands are unavailable");
             commandRunning = true;
@@ -344,6 +369,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       }
     } finally {
       flushingHeldQueue = false;
+      if (!queuePaused && compactionQueue.length === 0) drainBetweenResponses = false;
       input.emitSnapshotInBackground();
     }
   };
@@ -358,6 +384,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     presentationMode?: ProjectSessionPresentationMode,
     responseMode?: ConversationResponseMode,
     internal?: InternalInput,
+    resumeQueue?: boolean,
   ) => {
     assertActive();
     assertScheduledInput(turnId);
@@ -427,32 +454,43 @@ export function createCakeSessionRuntimeTurnController(input: {
       assertNotAborted(generation);
     }
     assertScheduledInput(turnId);
+    const priority = queuePaused && resumeQueue;
     const content = contentForPresentation(
       text,
       attachments,
-      delivery,
+      priority ? "prompt" : delivery,
       presentationMode,
       responseMode,
       internal,
+      priority,
     );
     const completion = turnId ? turnCompletions.track(turnId, content, true, internal) : undefined;
     try {
       if (
+        queuePaused ||
+        drainBetweenResponses ||
         isCompacting() ||
         commandRunning ||
         ((flushingHeldQueue || compactionQueue.length > 0) && delivery !== "steer")
       ) {
-        compactionQueue.push({
+        const item = {
           itemId: randomUUID(),
           turnId,
           text,
           content,
           attachments,
-          delivery: delivery === "steer" ? "steer" : "follow-up",
+          delivery: !priority && delivery === "steer" ? ("steer" as const) : ("follow-up" as const),
           renderUserMessageAsMarkdown,
           ...(presentationMode === undefined ? null : { presentationMode }),
-        });
-        if (delivery === "steer") notifySteeringQueued();
+        };
+        if (priority) {
+          compactionQueue.unshift(item);
+          priorityItemId = item.itemId;
+          queuePaused = false;
+          pausedAfterRestart = false;
+          input.emitSnapshotInBackground();
+        } else compactionQueue.push(item);
+        if (item.delivery === "steer") notifySteeringQueued();
         input.syncQueuedParts();
         void flushCompactionQueue();
         admitted();
@@ -462,27 +500,36 @@ export function createCakeSessionRuntimeTurnController(input: {
       const images = imageContent(attachments);
       const wasStreaming = session.isStreaming;
       const lane = delivery === "steer" ? "steering" : "follow-up";
-      if (wasStreaming)
-        trackedQueue[lane].push({
-          itemId: randomUUID(),
-          ...(turnId ? { turnId } : null),
-          text,
-          content,
-          attachments: [...attachments],
-          renderUserMessageAsMarkdown,
-        });
-      await input.deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-        input.withResponseRetries(() => {
-          assertScheduledInput(turnId);
-          return session.prompt(content, {
-            images,
-            source: "interactive",
-            ...(delivery === "steer"
-              ? { streamingBehavior: "steer" as const }
-              : { streamingBehavior: "followUp" as const }),
-          });
-        }),
-      );
+      const preparing = wasStreaming
+        ? {
+            itemId: randomUUID(),
+            turnId,
+            text,
+            content,
+            attachments: [...attachments],
+            renderUserMessageAsMarkdown,
+          }
+        : undefined;
+      if (preparing) {
+        trackedQueue[lane].push(preparing);
+        preparingNativeInputs.add(preparing);
+      }
+      try {
+        await input.deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+          input.withResponseRetries(() => {
+            assertScheduledInput(turnId);
+            return session.prompt(content, {
+              images,
+              source: "interactive",
+              ...(delivery === "steer"
+                ? { streamingBehavior: "steer" as const }
+                : { streamingBehavior: "followUp" as const }),
+            });
+          }),
+        );
+      } finally {
+        if (preparing) preparingNativeInputs.delete(preparing);
+      }
       if (wasStreaming) {
         if (lane === "steering") notifySteeringQueued();
         input.syncQueuedParts();
@@ -490,6 +537,8 @@ export function createCakeSessionRuntimeTurnController(input: {
       // Pi extensions may handle input without creating a user message or run.
       if (
         turnId &&
+        !compactionQueue.some((item) => item.turnId === turnId) &&
+        !claimedInputs.some((item) => item.turnId === turnId) &&
         !session.isStreaming &&
         !isCompacting() &&
         session.getSteeringMessages().length === 0 &&
@@ -538,7 +587,13 @@ export function createCakeSessionRuntimeTurnController(input: {
     steering: readonly string[],
     followUp: readonly string[],
   ): TrackedQueue => {
-    const remaining = [...trackedQueue.steering, ...trackedQueue["follow-up"]];
+    const remaining = [
+      ...new Set([
+        ...trackedQueue.steering,
+        ...trackedQueue["follow-up"],
+        ...preparingNativeInputs,
+      ]),
+    ];
     const take = (content: string): TrackedQueueItem => {
       const index = remaining.findIndex((item) => item.content === content);
       if (index >= 0) return remaining.splice(index, 1)[0]!;
@@ -685,7 +740,63 @@ export function createCakeSessionRuntimeTurnController(input: {
     } satisfies TrackedQueue;
   };
 
+  const holdQueues = (queues: TrackedQueue) => {
+    const held = new Map(compactionQueue.map((entry) => [entry.itemId, entry]));
+    compactionQueue = (["steering", "follow-up"] as const).flatMap((lane) =>
+      queues[lane].map((entry) => ({
+        ...held.get(entry.itemId),
+        ...entry,
+        delivery: lane === "steering" ? ("steer" as const) : ("follow-up" as const),
+      })),
+    );
+    trackedQueue = { steering: [], "follow-up": [] };
+    rebuildingQueue = true;
+    try {
+      session.clearQueue();
+    } finally {
+      rebuildingQueue = false;
+    }
+  };
+
+  const holdUndispatched = (late = false) => {
+    const queues = queuedForStop();
+    // Pi's display queue includes inputs already pulled by the loop until it emits
+    // their user message. Only take the actual agent queue, never replay a claim.
+    const agent = session.agent;
+    const steeringMode = agent.steeringMode;
+    const followUpMode = agent.followUpMode;
+    let steeringCount = 0;
+    let followUpCount = 0;
+    try {
+      agent.steeringMode = agent.followUpMode = "all";
+      const next = agent.peekQueuedMessages();
+      agent.clearSteeringQueue();
+      const followUps = agent.peekQueuedMessages();
+      steeringCount = next[0] !== followUps[0] ? next.length : 0;
+      followUpCount = followUps.length;
+    } finally {
+      agent.steeringMode = steeringMode;
+      agent.followUpMode = followUpMode;
+    }
+    for (const [lane, count] of [
+      ["steering", steeringCount],
+      ["follow-up", followUpCount],
+    ] as const) {
+      const visible = trackedQueue[lane].length;
+      const claimed = Math.max(0, visible - count);
+      claimedInputs.push(...queues[lane].splice(0, claimed));
+      // Input hooks still in flight when Pause took effect can append to Pi
+      // later. Keep those arrivals behind the inputs we already held.
+      if (late) queues[lane].push(...queues[lane].splice(0, visible - claimed));
+    }
+    holdQueues(queues);
+  };
+
   const replacePendingQueues = async (queues: TrackedQueue) => {
+    if (queuePaused || drainBetweenResponses) {
+      holdQueues(queues);
+      return;
+    }
     if (
       abortCleanup !== undefined ||
       isCompacting() ||
@@ -844,6 +955,38 @@ export function createCakeSessionRuntimeTurnController(input: {
         turnCompletions.internalInputById(turnId),
       ),
     executingTurnIds: () => turnCompletions.executingIds(),
+    queuePaused: () => queuePaused,
+    async setQueuePaused(paused) {
+      assertActive();
+      if (queuePaused === paused) return;
+      if (paused) {
+        if (
+          !trackedQueue.steering.length &&
+          !trackedQueue["follow-up"].length &&
+          !compactionQueue.length &&
+          !session.pendingMessageCount
+        )
+          return;
+        queuePaused = drainBetweenResponses = true;
+        holdUndispatched();
+      } else {
+        queuePaused = pausedAfterRestart = false;
+        void flushCompactionQueue();
+      }
+      input.syncQueuedParts();
+      await input.emitSnapshot();
+    },
+    queueChanged() {
+      // Pi emits queue_update synchronously, just before inserting into its agent
+      // queue. Recheck after insertion for an admission whose input hook was in flight.
+      if (!rebuildingQueue && (queuePaused || (drainBetweenResponses && session.isStreaming)))
+        queueMicrotask(() => {
+          if ((queuePaused || drainBetweenResponses) && session.pendingMessageCount > 0) {
+            holdUndispatched(true);
+            input.syncQueuedParts();
+          }
+        });
+    },
     async prompt(...args) {
       // Reserve preparation and Pi delivery, not the lifetime of a queued turn.
       // Its completion promise intentionally stays pending across Stop/compaction.
@@ -1239,6 +1382,9 @@ export function createCakeSessionRuntimeTurnController(input: {
       }
     },
     internalInput(content) {
+      const claimed = claimedInputs.find((item) => item.content === content);
+      if (claimed)
+        return claimed.turnId ? turnCompletions.internalInputById(claimed.turnId) : undefined;
       // Pi consumes steering before follow-ups. Bind provenance to that queue item,
       // not the first identical text admitted in another lane.
       for (const lane of ["steering", "follow-up"] as const) {
@@ -1254,6 +1400,9 @@ export function createCakeSessionRuntimeTurnController(input: {
       if (item) await this.removeQueuedMessage(item.partId ?? item.itemId);
     },
     consumeUserMessage(content) {
+      const claimed = claimedInputs.findIndex((item) => item.content === content);
+      if (claimed >= 0)
+        return turnCompletions.consume(content, claimedInputs.splice(claimed, 1)[0]?.turnId);
       let turnId: string | undefined;
       for (const lane of ["steering", "follow-up"] as const) {
         const index = trackedQueue[lane].findIndex((item) => item.content === content);
@@ -1302,7 +1451,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       input.onAbortSignaled?.();
       void stopping
         .then(async () => {
-          if (!input.isDisposed()) {
+          if (!input.isDisposed() && !queuePaused && !drainBetweenResponses) {
             // Read the held queue again: the user may have removed items during cleanup.
             const remaining = queuedForStop();
             compactionQueue = [];
@@ -1316,6 +1465,7 @@ export function createCakeSessionRuntimeTurnController(input: {
             abortCleanup = undefined;
             input.onAbortSettled?.();
             release();
+            if (drainBetweenResponses) void flushCompactionQueue();
             input.syncQueuedParts();
             input.emitSnapshotInBackground();
           },

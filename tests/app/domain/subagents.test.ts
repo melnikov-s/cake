@@ -309,6 +309,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
         activeTools: ["read", "bash", "edit", "write", "cake"],
       }),
       snapshot: async () => snapshot(),
+      setQueuePaused: async () => undefined,
       listQueuedMessages: async () => ({ steering: [], followUp: [] }),
       pendingMessages: async () => ({ items: [] }),
       reorderPendingMessage: async () => ({ items: [] }),

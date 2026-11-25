@@ -50,6 +50,8 @@ export const SessionChatPromptInput = Schema.Struct({
   /** Sender-chosen identity for a person's message: it becomes the Pi turn id, so the
    * composer's optimistic queue row matches its stored item by id, never by text. */
   clientId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  /** An explicit composer submission may resume a paused queue at its head. */
+  resumeQueue: Schema.optionalKey(Schema.Boolean),
 });
 export interface SessionChatPromptInput extends Schema.Schema.Type<typeof SessionChatPromptInput> {}
 
@@ -93,6 +95,7 @@ export const ConversationSnapshot = Schema.Struct({
   availableThinkingLevels: Schema.Array(Schema.String),
   piSettings: Schema.optionalKey(Schema.Json),
   streaming: Schema.Boolean,
+  queuePaused: Schema.optionalKey(Schema.Boolean),
   diagnostics: Schema.Array(Schema.String),
   commands: Schema.Array(Schema.Json),
   usage: Schema.optionalKey(Schema.Json),

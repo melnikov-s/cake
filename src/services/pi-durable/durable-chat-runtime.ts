@@ -12,7 +12,6 @@ import {
   createRegistry,
   defineExtension,
   defineTool,
-  InboxDoc,
   LiveDoc,
   UsageDoc,
   type HarnessSettings,
@@ -626,13 +625,19 @@ export async function createDurableCakeChatRuntime(
     : undefined;
   const {
     inbox,
+    read: queuedState,
+    snapshot: queueSnapshot,
     requestId,
+    submit: submitInput,
+    withdraw,
+    observe: observeQueue,
     operations: queueOperations,
   } = createDurableConversationQueue({
     harness: engine.harness,
     conversation: engine.root,
     storage,
     kind: "root",
+    onReport: (error) => diagnostics.push(String(error)),
     executingTurnIds: () => activeTurnIds,
     beforeSendNow: async () => {
       agy?.requireIdle();
@@ -706,6 +711,7 @@ export async function createDurableCakeChatRuntime(
     responseMode?: ConversationResponseMode,
     internal?: InternalInput,
     presentationMode?: ProjectSessionPresentationMode,
+    resumeQueue?: boolean,
   ) => {
     agy?.requireIdle();
     const assertCurrent = await turnStop.beforeInput();
@@ -725,7 +731,8 @@ export async function createDurableCakeChatRuntime(
       throw new Error("Cake Chat accepts attachment references only");
     // Skill expansion is text-only and never changes the coordinator's tool profile.
     // No `!` shell escape is parsed, so input is never a user shell command.
-    const queued = await inbox();
+    const waiting = await queueSnapshot();
+    const queued = waiting.paused && resumeQueue ? [] : waiting.items;
     const previousArtifactTarget = await previousDurableArtifactTarget(
       engine.root,
       queued,
@@ -776,17 +783,17 @@ export async function createDurableCakeChatRuntime(
     assertCurrent();
     if (id && canceledScheduledInputs.has(id))
       throw new TurnCanceledError("Scheduled input was canceled");
-    const submission = await engine.root.submit(
+    const submission = await submitInput(
       {
         type: "input",
         content,
         requestId: id ?? randomUUID(),
         whenBusy: delivery === "steer" ? "steer" : "followUp",
       },
-      BACKGROUND_CONTEXT,
+      resumeQueue,
+      assertCurrent,
     );
-    if (id && canceledScheduledInputs.has(id))
-      await engine.harness.abortSubmission(submission.id, BACKGROUND_CONTEXT, engine.root.id);
+    if (id && canceledScheduledInputs.has(id)) await withdraw(submission.id);
     return submission;
   };
   const sideChats = createDurableSideChats({
@@ -845,8 +852,7 @@ export async function createDurableCakeChatRuntime(
         turnId,
         BACKGROUND_CONTEXT,
       );
-      if (submission)
-        await engine.harness.abortSubmission(submission.id, BACKGROUND_CONTEXT, engine.root.id);
+      if (submission) await withdraw(submission.id);
     },
     recordReviewRun() {
       throw new Error("Project review runs do not belong to permanent chats");
@@ -899,7 +905,7 @@ export async function createDurableCakeChatRuntime(
         );
         const agent = await tx.doc(AgentDoc, engine.root.id);
         const usage = await tx.doc(UsageDoc, engine.root.id);
-        const items = (await tx.doc(InboxDoc, engine.root.id)).items;
+        const { paused: queuePaused, items } = await queuedState(tx);
         streaming = live?.run !== undefined;
         activeTurnIds = await Promise.all(
           (live?.run?.inputs ?? []).map(
@@ -958,6 +964,7 @@ export async function createDurableCakeChatRuntime(
           thinkingLevel: agent.thinkingLevel ?? thinkingLevel,
           availableThinkingLevels: selected ? getSupportedThinkingLevels(selected) : ["off"],
           streaming,
+          queuePaused,
           fastMode: isAntigravityModel(selection) ? false : fastMode,
           preset: activePreset,
           fastModeAvailable: supportsFastMode(selected),
@@ -1001,6 +1008,7 @@ export async function createDurableCakeChatRuntime(
       _title,
       responseMode,
       internal,
+      resumeQueue,
     ) {
       if (disposed) throw new Error("Coordinator has closed");
       const submission = await admit(
@@ -1013,6 +1021,7 @@ export async function createDurableCakeChatRuntime(
         responseMode,
         internal,
         presentationMode,
+        resumeQueue,
       );
       // The wait rejects only when this engine closes or fails. The submission
       // stays queued or placed in storage, so that is not the request's outcome.
@@ -1203,6 +1212,7 @@ export async function createDurableCakeChatRuntime(
     navigate: unsupported,
     async dispose() {
       disposed = true;
+      stopObservingQueue();
       await agy?.abort();
       const resource = shutdownResource(sessionId);
       await shutdownDiagnostics.promise("durable.drainReloads", resource, () => reloading);
@@ -1238,6 +1248,7 @@ export async function createDurableCakeChatRuntime(
   }
   await configureAgent();
   if (companion) await transitionAssistantContext(engine.root, null);
+  const stopObservingQueue = observeQueue();
   engine.harness.resume();
   Effect.runSync(
     startupDiagnostics.mark("durable-chat-runtime-created", {

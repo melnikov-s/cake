@@ -322,6 +322,7 @@ const makeLayer = (
           : {}),
         streaming: busyChats.has(sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source"),
       }),
+      setQueuePaused: async () => undefined,
       listQueuedMessages: async () => ({ steering: [], followUp: [] }),
       pendingMessages: async () => {
         if (mergeOptions.mergeCheck)

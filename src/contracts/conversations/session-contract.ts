@@ -716,6 +716,7 @@ export const conversationSnapshotSchema = Schema.Struct({
   availableThinkingLevels: ipcProjectionArray(thinkingLevelSchema, 7),
   piSettings: Schema.optional(piSettingsSchema),
   streaming: Schema.Boolean,
+  queuePaused: Schema.optionalKey(Schema.Boolean),
   diagnostics: ipcProjectionArray(ipcProjectionString(4_096), 1_000),
   commands: ipcProjectionArray(slashCommandSchema, 20_000),
   usage: Schema.optional(sessionUsageSchema),

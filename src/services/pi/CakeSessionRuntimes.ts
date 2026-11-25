@@ -183,7 +183,9 @@ export interface CakeSessionHandle {
     paused?: boolean,
   ) => Effect.Effect<void, PiSessionError>;
   /** Admit a new input with its owner's durable ID; unlike recover, this is explicit continuation. */
-  readonly submit: (input: RuntimeRecoveryInput) => Effect.Effect<string, PiSessionError>;
+  readonly submit: (
+    input: RuntimeRecoveryInput & { resumeQueue?: boolean },
+  ) => Effect.Effect<string, PiSessionError>;
   /** Permanent-chat receipt metadata; other profiles do not expose a digest inbox. */
   readonly admittedDigestIds?: () => Effect.Effect<ReadonlyArray<string>, PiSessionError>;
   readonly cancelScheduledInput?: (turnId: string) => Effect.Effect<void, PiSessionError>;
@@ -241,6 +243,7 @@ export interface CakeSessionHandle {
     partId: string,
     text: string,
   ) => Effect.Effect<PiQueuedMessages, PiSessionError>;
+  readonly setQueuePaused: (paused: boolean) => Effect.Effect<void, PiSessionError>;
   readonly removeQueuedMessage: (partId: string) => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly steerQueuedMessage: (partId: string) => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly sendQueuedMessageNow: (

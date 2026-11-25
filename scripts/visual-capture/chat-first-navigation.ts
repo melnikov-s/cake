@@ -90,6 +90,8 @@ export function createChatFirstNavigationScenario(
       "sessions",
       "sessions-unread",
       "session-resolve-hover",
+      "queue-pause-options",
+      "queue-paused",
       "sessions-collapsed",
       "search",
       "deep-worker",
@@ -700,6 +702,8 @@ export function createChatFirstNavigationScenario(
             "browser-todos",
             "browser-sessions",
             "session-resolve-hover",
+            "queue-pause-options",
+            "queue-paused",
           ].includes(state)
         ) {
           if (!application) throw new Error("Controlled running workers require isolated Electron");
@@ -756,6 +760,37 @@ export function createChatFirstNavigationScenario(
         ]) {
           const expand = tree.getByRole("button", { name: `Expand ${title}`, exact: true });
           if (await expand.count()) await expand.click();
+        }
+        if (state === "queue-pause-options" || state === "queue-paused") {
+          await tree
+            .locator(`[data-session-id="${sessions[0][0]}"]`)
+            .getByRole("button", { name: /^UI Layout Refactor(?: |$)/ })
+            .click();
+          const draft = page.getByRole("combobox", { name: "Message", exact: true });
+          const send = page.getByRole("button", { name: "Send", exact: true });
+          await draft.fill(reviewWorkerInstruction);
+          await send.click();
+          await expect(
+            page.getByText("Reviewing the conversation lineage…", { exact: true }),
+          ).toBeVisible();
+          for (const text of ["Summarize the design decisions.", "List the remaining checks."]) {
+            await draft.fill(text);
+            await send.click();
+            await expect(
+              page.getByRole("button", { name: `View queued message: ${text}` }),
+            ).toBeVisible();
+          }
+          const stop = page.getByRole("button", { name: "Stop", exact: true });
+          await stop.click({ delay: 550 });
+          const pause = page.getByRole("button", { name: "Pause queue" });
+          await expect(pause).toBeVisible();
+          if (state === "queue-paused") {
+            await pause.click();
+            await expect(page.getByRole("button", { name: "Resume queue" })).toBeVisible();
+            await expect(stop).toBeVisible();
+          }
+          await settle();
+          return;
         }
         if (state === "session-resolve-hover") {
           // Hold a real Project Session turn open against the local fixture provider.

@@ -188,6 +188,7 @@ const fakeRuntime = (
     sessionId: options.sessionId ?? snapshot.sessionId,
     sessionFile: `/sessions/${options.sessionId ?? snapshot.sessionId}.jsonl`,
   }),
+  setQueuePaused: async () => undefined,
   listQueuedMessages: async () => {
     onOperation?.("list-queue");
     return { steering: [], followUp: [] };

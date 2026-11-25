@@ -126,6 +126,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     deliveryOverride?: "steer",
     renderUserMessageAsMarkdown = false,
     onSubmitted?: () => void,
+    resumeQueue?: boolean,
   ) {
     if (!this.props.canSubmit()) return;
     this.clearError();
@@ -178,6 +179,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
         deliveryOverride ?? "prompt",
         true,
         renderUserMessageAsMarkdown,
+        resumeQueue,
       );
       onSubmitted?.();
       return delivery;

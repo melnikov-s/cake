@@ -317,6 +317,9 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
                 text: passive.length ? `${text}\n\n${passiveNoticeContext(passive)}` : text,
                 attachments,
                 markdown: input.renderUserMessageAsMarkdown,
+                ...(delivery === "prompt" && input.resumeQueue && !message.crossSession
+                  ? { resumeQueue: true }
+                  : null),
                 internal: {
                   _tag: "UserWithReminders",
                   text,
@@ -561,6 +564,14 @@ export const updateQueuedMessage = Effect.fn("SessionChats.updateQueuedMessage")
   return yield* useConversation(acquire(target.sessionId), (handle) =>
     handle.updateQueuedMessage(partId, text),
   ).pipe(Effect.map(projectQueuedMessages), asError("updateQueuedMessage"));
+});
+
+export const setQueuePaused = Effect.fn("SessionChats.setQueuePaused")(function* (
+  target: SessionChatTarget,
+  paused: boolean,
+) {
+  const handle = yield* acquire(target.sessionId);
+  yield* handle.setQueuePaused(paused).pipe(asError("setQueuePaused"));
 });
 
 export const removeQueuedMessage = Effect.fn("SessionChats.removeQueuedMessage")(function* (

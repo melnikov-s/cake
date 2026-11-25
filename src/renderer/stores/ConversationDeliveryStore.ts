@@ -26,6 +26,7 @@ export interface ConversationDeliveryInput {
   signal?: AbortSignal;
   /** The optimistic row's id; the stored queue item carries it as its turn id. */
   clientId?: string;
+  resumeQueue?: boolean;
 }
 
 /** After this long without an answer, the composer offers to cancel the send. */
@@ -86,6 +87,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     delivery: "prompt" | "steer",
     restoreOnError: boolean,
     renderUserMessageAsMarkdown: boolean,
+    resumeQueue?: boolean,
   ): Promise<boolean | { turnId: string }> {
     const sessionId = this.props.sessionId();
     if (!sessionId || (!text && attachments.length === 0)) return false;
@@ -118,6 +120,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
           artifactPresentation: ArtifactPresentationContext.consume(this)?.capture(sessionId),
           signal: controller.signal,
           clientId: operationId,
+          ...(resumeQueue ? { resumeQueue: true } : null),
           ...(presentationMode === undefined ? null : { presentationMode }),
         }),
         controller.signal,

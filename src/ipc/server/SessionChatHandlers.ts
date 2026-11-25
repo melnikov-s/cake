@@ -54,6 +54,8 @@ export const sessionChatHandlers = SessionChatRpc.of({
   "sessionChats.cancelSteering": sessionChats.cancelSteering,
   "sessionChats.updateQueuedMessage": ({ partId, text, ...target }) =>
     sessionChats.updateQueuedMessage(target, partId, text),
+  "sessionChats.setQueuePaused": ({ paused, ...target }) =>
+    sessionChats.setQueuePaused(target, paused),
   "sessionChats.removeQueuedMessage": ({ partId, ...target }) =>
     sessionChats.removeQueuedMessage(target, partId),
   "sessionChats.steerQueuedMessage": ({ partId, ...target }) =>

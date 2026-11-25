@@ -150,6 +150,69 @@ const metadata: CrossSessionMessageMetadata = {
 };
 
 describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
+  it.each([
+    "play",
+    "play while busy",
+    "send while busy",
+    "send while idle",
+    "stop while paused",
+  ] as const)("retains receipts across Pause, then %s", async (action) => {
+    const f = await fixture(kind);
+    const unobserve = f.queue.observe();
+    cleanup.push(async () => unobserve());
+    const oldFirst = await f.submit("Same text", "old-first");
+    const oldSecond = await f.submit("Same text", "old-second");
+    await f.operations.setQueuePaused(true);
+    expect((await f.live())?.run?.inputs).toEqual([f.active.id]);
+    expect(f.activeCall.signal?.aborted).toBe(false);
+    expect(await f.operations.listQueuedMessages()).toEqual({
+      steering: [],
+      followUp: ["Same text", "Same text"],
+    });
+    const other = f.conversation.id === f.root.id ? f.side : f.root;
+    const otherQueue = f.queueFor(other, kind === "root" ? "side-chat" : "root");
+    expect(await otherQueue.operations.listQueuedMessages()).toEqual({
+      steering: [],
+      followUp: [],
+    });
+    const send = () =>
+      f.queue.submit({ type: "input", content: "New first", requestId: "priority" }, true);
+    let priority: Awaited<ReturnType<typeof send>> | undefined;
+    if (action === "send while busy") {
+      priority = await send();
+      expect((await f.live())?.run?.inputs).toEqual([f.active.id]);
+      expect(f.activeCall.signal?.aborted).toBe(false);
+    }
+    if (action === "play while busy") {
+      await f.operations.setQueuePaused(false);
+      expect((await f.live())?.run?.inputs).toEqual([f.active.id]);
+      expect(f.activeCall.signal?.aborted).toBe(false);
+    }
+    if (action === "stop while paused") {
+      await abortDurableActiveTurn(f.harness, f.conversation);
+      expect((await f.active.wait(context)).status).toBe("unanswered");
+      expect(f.activeCall.signal?.aborted).toBe(true);
+    } else {
+      f.activeCall.finish();
+      expect((await f.active.wait(context)).status).toBe("done");
+    }
+    if (action !== "send while busy" && action !== "play while busy") {
+      expect((await f.live())?.run).toBeUndefined();
+      expect((await oldFirst.status(context)).status).toBe("queued");
+      expect((await oldSecond.status(context)).status).toBe("queued");
+      if (action === "send while idle") priority = await send();
+      else await f.operations.setQueuePaused(false);
+    }
+    for (const input of [...(priority ? [priority] : []), oldFirst, oldSecond]) {
+      const call = await f.nextRequest();
+      expect((await f.live())?.run?.inputs).toEqual([input.id]);
+      call.finish();
+      expect((await input.wait(context)).status).toBe("done");
+    }
+    expect(await f.operations.listQueuedMessages()).toEqual({ steering: [], followUp: [] });
+    expect(f.calls).toHaveLength(priority ? 5 : 4); // Seed, active, optional priority, two originals.
+  });
+
   it("atomically hands off the complete payload once and prevents later parent execution", async () => {
     const f = await fixture(kind);
     const target = await f.root.fork(f.forkPoint, { ownership: { kind: "ownerless" } }, context);
@@ -709,10 +772,12 @@ describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
       const f = await fixture(kind);
       const queued = await f.submit("Withdraw before mutation", "withdrawn");
       const commit = f.conversation.commit.bind(f.conversation);
-      vi.spyOn(f.conversation, "commit").mockImplementationOnce(async (body, ctx) => {
-        await f.harness.abortSubmission(queued.id, context, f.conversation.id);
-        return commit(body, ctx);
-      });
+      vi.spyOn(f.conversation, "commit")
+        .mockImplementationOnce(commit) // Coherent queue lookup precedes mutation.
+        .mockImplementationOnce(async (body, ctx) => {
+          await f.harness.abortSubmission(queued.id, context, f.conversation.id);
+          return commit(body, ctx);
+        });
       const mutation =
         operation === "reorder"
           ? f.operations.reorderPendingMessage({ itemId: "withdrawn", position: 1 })

@@ -293,6 +293,7 @@ export interface CakeSessionRuntime {
     automaticTitle?: boolean,
     responseMode?: ConversationResponseMode,
     internal?: RuntimeRecoveryInput["internal"],
+    resumeQueue?: boolean,
   ): Promise<void>;
   listQueuedMessages(): Promise<{ steering: string[]; followUp: string[] }>;
   pendingMessages(): Promise<PiPendingMessages>;
@@ -303,6 +304,7 @@ export interface CakeSessionRuntime {
     partId: string,
     text: string,
   ): Promise<{ steering: string[]; followUp: string[] }>;
+  setQueuePaused(paused: boolean): Promise<void>;
   removeQueuedMessage(partId: string): Promise<{ steering: string[]; followUp: string[] }>;
   steerQueuedMessage(partId: string): Promise<{ steering: string[]; followUp: string[] }>;
   sendQueuedMessageNow(partId?: string): Promise<{
@@ -648,6 +650,7 @@ export async function createCakeSessionRuntime(
       ],
       reloadPending: resources.reloadPending(),
     });
+    if (turnController.queuePaused()) Object.assign(snapshot, { queuePaused: true });
     if (stoppedParts) {
       return {
         ...snapshot,
@@ -1052,6 +1055,7 @@ export async function createCakeSessionRuntime(
       automaticTitle = true,
       responseMode,
       internal,
+      resumeQueue,
     ) {
       requireNativeModel();
       subscription.setAutomaticTitle(automaticTitle);
@@ -1078,8 +1082,10 @@ export async function createCakeSessionRuntime(
         presentationMode,
         responseMode,
         internal,
+        resumeQueue,
       );
     },
+    setQueuePaused: native(turnController.setQueuePaused),
     listQueuedMessages: turnController.listQueuedMessages,
     pendingMessages: turnController.pendingMessages,
     reorderPendingMessage: turnController.reorderPendingMessage,

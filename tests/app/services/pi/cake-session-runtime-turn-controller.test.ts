@@ -80,6 +80,89 @@ function createFixture(
 }
 
 describe("CakeSessionRuntime turn controller", () => {
+  it("holds only undispatched inputs when the agent has already claimed a queue head", async () => {
+    const displayed = ["Already claimed", "Still waiting"];
+    // Pi may pull a message before it publishes message_start/end and removes
+    // that text from the session's display queue.
+    const waiting = { role: "user" as const, content: "Still waiting", timestamp: 0 };
+    const agent = {
+      steeringMode: "one-at-a-time",
+      followUpMode: "one-at-a-time",
+      clearSteeringQueue: () => undefined,
+      peekQueuedMessages: () => [waiting],
+    } as AgentSession["agent"];
+    const { controller, session } = createFixture({
+      isStreaming: true,
+      agent,
+      pendingMessageCount: displayed.length,
+      getFollowUpMessages: () => displayed,
+      clearQueue: () => ({ steering: [], followUp: displayed.splice(0) }),
+    });
+    await controller.setQueuePaused(true);
+    expect(await controller.listQueuedMessages()).toEqual({
+      steering: [],
+      followUp: ["Still waiting"],
+    });
+    expect(session.abort).not.toHaveBeenCalled();
+    Object.assign(session, { isStreaming: false });
+    controller.consumeUserMessage("Already claimed");
+    controller.settleTurn();
+    expect(session.prompt).not.toHaveBeenCalled();
+    await controller.setQueuePaused(false);
+    expect(session.prompt).toHaveBeenCalledOnce();
+    expect(session.prompt).toHaveBeenCalledWith("Still waiting", expect.anything());
+  });
+
+  it("retains an input whose Pi preflight finishes after Pause, with its original identity", async () => {
+    const displayed = ["Already waiting"];
+    const pending = displayed.map((content) => ({ role: "user" as const, content, timestamp: 0 }));
+    const agent = {
+      steeringMode: "one-at-a-time",
+      followUpMode: "one-at-a-time",
+      clearSteeringQueue: () => undefined,
+      peekQueuedMessages: () => [...pending],
+    } as AgentSession["agent"];
+    const preflight = deferred();
+    const release = deferred();
+    const { controller, session } = createFixture({
+      isStreaming: true,
+      agent,
+      getFollowUpMessages: () => displayed,
+      clearQueue: () => {
+        pending.length = 0;
+        return { steering: [], followUp: displayed.splice(0) };
+      },
+      prompt: vi.fn(async (content: string) => {
+        preflight.resolve();
+        await release.promise;
+        displayed.push(content);
+        controller.queueChanged(); // Pi publishes the display update before the actual enqueue.
+        pending.push({ role: "user", content, timestamp: 0 });
+      }),
+    });
+    Object.defineProperty(session, "pendingMessageCount", { get: () => displayed.length });
+    const result = controller
+      .prompt("My pending input", "prompt", [], true, "late-turn")
+      .catch((error: unknown) => error);
+    await preflight.promise;
+    await controller.setQueuePaused(true);
+    release.resolve();
+    await vi.waitFor(async () =>
+      expect((await controller.listQueuedMessages()).followUp).toEqual([
+        "Already waiting",
+        "My pending input",
+      ]),
+    );
+    const late = controller.queuedParts()[1]!;
+    expect(late).toMatchObject({
+      queuedInput: { turnId: "late-turn", renderUserMessageAsMarkdown: true },
+    });
+    expect(pending).toEqual([]);
+    await controller.removeQueuedMessage(late.id);
+    expect(await result).toBeInstanceOf(TurnCanceledError);
+    expect(session.abort).not.toHaveBeenCalled();
+  });
+
   it("withdraws a scheduled input still preparing without aborting the turn or injecting it later", async () => {
     const preparing = deferred();
     const release = deferred();
