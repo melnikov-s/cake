@@ -2274,7 +2274,7 @@ const automationUiScenario: VisualCaptureScenario = {
     "running",
     "completed",
   ],
-  seed: seedAutomationVisualFixture,
+  seed: (paths, theme) => seedAutomationVisualFixture(paths, theme),
   async prepare(page, state) {
     await openAutomations(page);
     await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
