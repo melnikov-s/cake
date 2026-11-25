@@ -139,6 +139,29 @@ describe("automation Cake tools parity", () => {
           });
           expect(JSON.stringify(visible)).not.toMatch(/UNTRUSTED_|bodyDigest/);
           expect(JSON.stringify(visible)).not.toContain(secret);
+          yield* runs.drain(a.id, true);
+          const { sessionId } = yield* Queue.take(f.started);
+          const startedRun = yield* runs.runForSession(sessionId);
+          yield* runs.settle(startedRun.id, "failed", "Provider echoed UNTRUSTED_FAILURE_PROSE");
+          const agentHistory = yield* invoke(registry, "automations.history", {
+            automationId: a.id,
+          });
+          expect(agentHistory.details).toMatchObject({
+            runs: [
+              {
+                id: startedRun.id,
+                status: { _tag: "failed", finishedAt: expect.any(String) },
+              },
+            ],
+          });
+          expect(JSON.stringify(agentHistory)).not.toMatch(/UNTRUSTED_|bodyDigest/);
+          expect(
+            (yield* definitions.history({ automationId: a.id })).runs[0]?.status,
+          ).toMatchObject({
+            _tag: "failed",
+            reason: "Provider echoed UNTRUSTED_FAILURE_PROSE",
+          });
+          yield* f.complete(sessionId);
         }).pipe(Effect.provide(f.context));
       }),
   );

@@ -454,7 +454,13 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   if (part.kind === "review-run")
     return <ReviewRunMessage run={part} onOpen={behavior.onOpenReviewRun} />;
   if (part.kind === "compaction")
-    return <CompactionMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />;
+    return (
+      <CompactionMessage
+        part={part}
+        plainText={behavior.plainText}
+        onOpenSourceLocation={behavior.openSourceLocation}
+      />
+    );
   return <RetryNotice part={part} />;
 });
 

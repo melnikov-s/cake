@@ -587,6 +587,48 @@ describe("automation product workflows", () => {
     );
   });
 
+  it("opens a report-only run with inert links and images in its expanded compaction summary", async () => {
+    const run = automationRun({ reportOnly: true });
+    const summary =
+      "![External image](https://example.com/image.png) [External link](https://example.com)";
+    using fixture = setup({
+      unresolved: false,
+      client: {
+        automations: {
+          history: async () => ({
+            occurrences: [automationOccurrence()],
+            runs: [run],
+            total: 1,
+            nextOffset: null,
+          }),
+        },
+      },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "History" }));
+    await fixture.user.click(await screen.findByRole("button", { name: "Open run" }));
+    const update = conversationUpdate(run.sessionId);
+    if (update._tag !== "Snapshot") throw new Error("Expected a conversation snapshot");
+    act(() =>
+      applyConversationUpdate(fixture.models.automationConversation(run.sessionId), {
+        ...update,
+        snapshot: {
+          ...update.snapshot,
+          parts: [
+            { id: "compact", kind: "compaction", summary, tokensBefore: 5000 },
+            ...update.snapshot.parts,
+          ],
+        },
+      }),
+    );
+    const disclosure = (await screen.findByText("Context compacted")).closest("summary");
+    if (!disclosure) throw new Error("Expected the compaction disclosure");
+    fireEvent.click(disclosure);
+    expect(disclosure.closest("details")?.hasAttribute("open")).toBe(true);
+    expect(screen.getByText(summary)).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "External image" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "External link" })).toBeNull();
+  });
+
   it("pages global provenance then opens and unresolves a real past run without firing or Project lookup", async () => {
     const run = automationRun({
       status: { _tag: "completed", finishedAt: "2030-01-01T09:01:00.000Z" },

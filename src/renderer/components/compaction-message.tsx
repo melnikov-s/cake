@@ -5,9 +5,11 @@ import type { SourceLocation } from "../../contracts/editor/source-location";
 
 export function CompactionMessage({
   part,
+  plainText,
   onOpenSourceLocation,
 }: {
   part: Extract<UiPart, { kind: "compaction" }>;
+  plainText?: boolean;
   onOpenSourceLocation?(location: SourceLocation): void;
 }) {
   return (
@@ -21,7 +23,11 @@ export function CompactionMessage({
           </span>
         </summary>
         <div className="max-h-[28rem] overflow-y-auto border-t border-border/70 p-3.5 pt-0">
-          <Markdown onOpenSourceLocation={onOpenSourceLocation}>{part.summary}</Markdown>
+          {plainText ? (
+            <div className="whitespace-pre-wrap break-words">{part.summary}</div>
+          ) : (
+            <Markdown onOpenSourceLocation={onOpenSourceLocation}>{part.summary}</Markdown>
+          )}
         </div>
       </details>
     </Message>

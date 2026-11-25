@@ -255,6 +255,13 @@ export const invoke = Effect.fn("Automations.agentControl")(
           ok: true,
           command,
           ...page,
+          // Provider diagnostics can echo the external prompt. Keep them on the
+          // management surface, not in history shared with tool-enabled agents.
+          runs: page.runs.map((run) =>
+            run.reportOnly && "reason" in run.status
+              ? { ...run, status: { _tag: run.status._tag, finishedAt: run.status.finishedAt } }
+              : run,
+          ),
           occurrences: page.occurrences.map(({ definition, source, ...occurrence }) => ({
             ...occurrence,
             name: definition.name,
