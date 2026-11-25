@@ -38,7 +38,7 @@ async function availableWebhookPort() {
 
 async function launchAutomationFixture(
   theme: "light" | "dark" = "light",
-  webhook?: { port: number; report: string },
+  webhook?: { port: number; report: string; reasoning: string },
 ) {
   const directory = await mkdtemp(join(tmpdir(), "cake-automation-ui-"));
   const paths = {
@@ -46,7 +46,7 @@ async function launchAutomationFixture(
     project: join(directory, "project"),
     userData: join(directory, "user-data"),
   };
-  const cleanup = await seedAutomationVisualFixture(paths, theme, webhook?.report);
+  const cleanup = await seedAutomationVisualFixture(paths, theme, webhook);
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
     application = await electron.launch({
@@ -116,9 +116,11 @@ test("chooses the project once and limits event options to that project or Globa
 
 test("previews a GitHub webhook without running, then opens the signed delivery as inert text", async ({}, testInfo) => {
   const report = "Review approved. ![Not an active image](http://127.0.0.1:1/never-load.png)";
+  const reasoning = "Reasoning text. ![Not a reasoning image](http://127.0.0.1:1/never-load.png)";
   const fixture = await launchAutomationFixture("light", {
     port: await availableWebhookPort(),
     report,
+    reasoning,
   });
   const { page } = fixture;
   try {
@@ -181,6 +183,11 @@ test("previews a GitHub webhook without running, then opens the signed delivery 
     await openRun.click();
     await expect(page.getByText(report, { exact: true })).toBeVisible();
     await expect(page.getByRole("img", { name: "Not an active image" })).toHaveCount(0);
+    const workLog = page.locator('[data-slot="activity-group"]');
+    await workLog.getByText("Work log", { exact: true }).click();
+    await workLog.getByRole("button", { name: "Reasoning", exact: true }).click();
+    await expect(page.getByText(reasoning, { exact: true })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Not a reasoning image" })).toHaveCount(0);
   } finally {
     await fixture.close();
   }

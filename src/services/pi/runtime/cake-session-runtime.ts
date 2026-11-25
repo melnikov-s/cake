@@ -650,7 +650,7 @@ export async function createCakeSessionRuntime(
       fastMode: configurationState.enabledFastMode(),
       preset: configurationState.preset(),
       commands: options.auxiliary ? [] : resources.commandCatalog(),
-      slashCommands: options.slashCommands,
+      slashCommands: options.reportOnly ? [] : options.slashCommands,
       usage: projection.currentUsage(),
       compatibility: resources.compatibility,
       extensionUi: resources.extensionUi,
@@ -703,7 +703,7 @@ export async function createCakeSessionRuntime(
   const turnController = createCakeSessionRuntimeTurnController({
     session,
     isDisposed: () => disposed,
-    allowUserBash: true,
+    allowInputCommands: !options.reportOnly,
     onTurnStarted: () => {
       stoppedParts = undefined;
       projection.resume();
@@ -1024,7 +1024,10 @@ export async function createCakeSessionRuntime(
         return Schema.decodeUnknownSync(jsonValueSchema)(await turnController.pendingMessages());
       if (query.kind === "commands")
         return Schema.decodeUnknownSync(jsonValueSchema)({
-          commands: [...builtinSlashCommands, ...resources.commandCatalog()].map((command) => ({
+          commands: (options.reportOnly
+            ? []
+            : [...builtinSlashCommands, ...resources.commandCatalog()]
+          ).map((command) => ({
             name: command.name,
             description: command.description,
             source: command.source,

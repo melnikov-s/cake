@@ -6,11 +6,13 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createHmac, randomUUID } from "node:crypto";
 import { automationDefinition, automationFixture } from "../helpers/automationFixture";
 import { automationHandlers } from "../../../src/ipc/server/AutomationHandlers";
 import * as definitions from "../../../src/domain/automations/automationDefinitions";
 import * as runs from "../../../src/domain/automations/automationRuns";
 import * as controls from "../../../src/domain/automations/automationControl";
+import { acceptWebhook, rotateWebhookSecret } from "../../../src/domain/automations/githubWebhooks";
 import { createAutomationOperations } from "../../../src/domain/automations/cake-automation-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { projectCakeOperations } from "../../../src/layers/CakeOperations";
@@ -73,6 +75,73 @@ const finish = (f: Effect.Success<ReturnType<typeof automationFixture>>, session
   );
 
 describe("automation Cake tools parity", () => {
+  it.effect(
+    "projects webhook delivery metadata without exposing external review input to agent tools",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* automationFixture();
+        const registry = registryFor(f);
+        yield* Effect.gen(function* () {
+          const a = yield* definitions.create({
+            initialState: "paused",
+            definition: {
+              ...automationDefinition(),
+              context: { _tag: "Project", projectPath: "/projects/cake" },
+              trigger: {
+                _tag: "Webhook",
+                filter: {
+                  event: "pull_request_review",
+                  repository: "example/repo",
+                  action: "submitted",
+                  fields: ["body", "title", "reviewer", "state"],
+                },
+              },
+            },
+          });
+          const id = randomUUID();
+          const { secret } = yield* rotateWebhookSecret(a.id);
+          yield* definitions.changeState(a.id, { _tag: "active" }, true);
+          const raw = Buffer.from(
+            JSON.stringify({
+              action: "submitted",
+              repository: { full_name: "example/repo" },
+              pull_request: { number: 42, title: "UNTRUSTED_TITLE" },
+              review: {
+                body: "UNTRUSTED_PROSE",
+                user: { login: "UNTRUSTED_REVIEWER" },
+                state: "UNTRUSTED_STATE",
+              },
+            }),
+          );
+          expect(
+            yield* acceptWebhook(a.id, {
+              id,
+              event: "pull_request_review",
+              raw,
+              signature: `sha256=${createHmac("sha256", secret).update(raw).digest("hex")}`,
+            }),
+          ).toBe("queued");
+          const visible = yield* invoke(registry, "automations.history", { automationId: a.id });
+          expect(visible.details).toMatchObject({
+            occurrences: [
+              {
+                source: {
+                  _tag: "Webhook",
+                  deliveryId: id,
+                  event: "pull_request_review",
+                  action: "submitted",
+                  repository: "example/repo",
+                  pullRequest: 42,
+                },
+                disposition: { _tag: "queued" },
+              },
+            ],
+          });
+          expect(JSON.stringify(visible)).not.toMatch(/UNTRUSTED_|bodyDigest/);
+          expect(JSON.stringify(visible)).not.toContain(secret);
+        }).pipe(Effect.provide(f.context));
+      }),
+  );
   it.effect("forwards only caller-owned task input references into a saved automation", () =>
     Effect.gen(function* () {
       const f = yield* automationFixture();

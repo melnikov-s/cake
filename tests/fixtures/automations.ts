@@ -37,7 +37,7 @@ export async function openAutomations(page: Page) {
 export async function seedAutomationVisualFixture(
   paths: { cakeHome: string; project: string; userData: string },
   theme: "light" | "dark",
-  report = "Reviewing the latest project changes and shared automation memory.",
+  output?: { readonly report: string; readonly reasoning: string },
 ) {
   const responses = new Set<ServerResponse>();
   let modelRequests = 0;
@@ -45,9 +45,15 @@ export async function seedAutomationVisualFixture(
     modelRequests += 1;
     request.resume();
     response.writeHead(200, { "content-type": "text/event-stream" });
-    response.write(
-      `data: ${JSON.stringify({ id: "automation-fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content: report }, finish_reason: null }] })}\n\n`,
-    );
+    const send = (delta: { reasoning_content: string } | { content: string }) =>
+      response.write(
+        `data: ${JSON.stringify({ id: "automation-fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", ...delta }, finish_reason: null }] })}\n\n`,
+      );
+    if (output) send({ reasoning_content: output.reasoning });
+    send({
+      content:
+        output?.report ?? "Reviewing the latest project changes and shared automation memory.",
+    });
     responses.add(response);
     response.on("close", () => responses.delete(response));
   });

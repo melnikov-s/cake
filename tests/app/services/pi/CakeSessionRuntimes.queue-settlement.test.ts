@@ -177,7 +177,7 @@ const fixture = Effect.fn("QueueSettlement.fixture")(function* (
   const controller = createCakeSessionRuntimeTurnController({
     session,
     isDisposed: () => false,
-    allowUserBash: false,
+    allowInputCommands: false,
     beforeIdleTurn: async () => undefined,
     withResponseRetries: (operation) => operation(),
     cancelResponseRetries: () => undefined,

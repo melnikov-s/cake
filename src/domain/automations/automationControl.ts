@@ -255,9 +255,21 @@ export const invoke = Effect.fn("Automations.agentControl")(
           ok: true,
           command,
           ...page,
-          occurrences: page.occurrences.map(({ definition, ...occurrence }) => ({
+          occurrences: page.occurrences.map(({ definition, source, ...occurrence }) => ({
             ...occurrence,
             name: definition.name,
+            // Ordinary agent tools receive delivery metadata, not external prompt content.
+            source:
+              source._tag === "Webhook"
+                ? {
+                    _tag: source._tag,
+                    deliveryId: source.deliveryId,
+                    event: source.data.event,
+                    action: source.data.action,
+                    repository: source.data.repository,
+                    pullRequest: source.data.pullRequest,
+                  }
+                : source,
           })),
         });
       }

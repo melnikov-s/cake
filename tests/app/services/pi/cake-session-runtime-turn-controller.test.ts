@@ -64,7 +64,7 @@ function createFixture(
   const controller = createCakeSessionRuntimeTurnController({
     session,
     isDisposed: () => false,
-    allowUserBash: true,
+    allowInputCommands: true,
     beforeIdleTurn,
     withResponseRetries: (operation) => operation(),
     cancelResponseRetries: vi.fn(),
@@ -954,7 +954,7 @@ describe("CakeSessionRuntime turn controller", () => {
     const preparedController = createCakeSessionRuntimeTurnController({
       session,
       isDisposed: () => false,
-      allowUserBash: true,
+      allowInputCommands: true,
       beforeIdleTurn: () => preparation.promise,
       withResponseRetries: (operation) => operation(),
       cancelResponseRetries: vi.fn(),

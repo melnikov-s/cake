@@ -101,7 +101,9 @@ it("accepts a signed PR review on standalone ingress, survives a crash, and runs
     thinkingLevel: "off",
     fastMode: false,
   } as const;
-  const savedPrompt = "Summarize this pull request review in one sentence.";
+  // A saved prompt starting with a shell prefix is still literal in a report-only run.
+  const savedPrompt =
+    "!touch webhook-shell-ran\nSummarize this pull request review in one sentence.";
   const payload = (number: number, action = "submitted", repository = "Example/Repo") =>
     JSON.stringify({
       action,
@@ -350,7 +352,7 @@ it("accepts a signed PR review on standalone ingress, survives a crash, and runs
               yield* client["automations.cancelQueued"]({ occurrenceId: item.id });
           }
           expect(JSON.stringify(queued)).not.toContain(secret);
-          return { endpoint, secret, target };
+          return { endpoint, secret, target, firstRunId: history.runs[0]?.id };
         }),
       ),
     );
@@ -371,6 +373,9 @@ it("accepts a signed PR review on standalone ingress, survives a crash, and runs
             (value) =>
               value.runs.length === 2 && value.runs.every((run) => run.status._tag !== "running"),
           );
+          expect(page.runs.find((item) => item.id === setup.firstRunId)?.status._tag).toBe(
+            "completed",
+          );
           const occurrence = page.occurrences.find(
             (item) => item.source._tag === "Webhook" && item.source.deliveryId === secondId,
           );
@@ -390,14 +395,13 @@ it("accepts a signed PR review on standalone ingress, survives a crash, and runs
       const sent = JSON.parse(raw);
       expect(sent.model).toBe("fixture");
       expect(sent.tools ?? []).toEqual([]);
-      expect(raw).toContain(savedPrompt);
+      expect(raw).toContain(JSON.stringify(savedPrompt).slice(1, -1));
       expect(raw).not.toMatch(
         /PROJECT_INSTRUCTIONS_MUST_NOT_LOAD|UNSELECTED_SENTINEL|untrusted-model|untrusted-project/,
       );
     }
-    await expect(stat(join(project, "extension-executed"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+    for (const marker of ["extension-executed", "webhook-shell-ran"])
+      await expect(stat(join(project, marker))).rejects.toMatchObject({ code: "ENOENT" });
     expect(logs).not.toContain(setup.secret);
   } finally {
     await stop();

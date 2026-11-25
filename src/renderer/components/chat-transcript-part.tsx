@@ -272,13 +272,17 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         hasContent={Boolean(part.text.trim())}
         timer={<WorkLogRunTimer store={behavior.store} partId={part.id} />}
       >
-        <Markdown
-          streaming={part.status === "streaming"}
-          normalizeLatexDelimiters={part.status !== "streaming"}
-          onOpenSourceLocation={behavior.openSourceLocation}
-        >
-          {part.text}
-        </Markdown>
+        {behavior.plainText ? (
+          <div className="whitespace-pre-wrap break-words">{part.text}</div>
+        ) : (
+          <Markdown
+            streaming={part.status === "streaming"}
+            normalizeLatexDelimiters={part.status !== "streaming"}
+            onOpenSourceLocation={behavior.openSourceLocation}
+          >
+            {part.text}
+          </Markdown>
+        )}
       </Reasoning>
     );
   if (part.kind === "command") return <ShellCommand part={part} />;

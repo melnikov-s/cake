@@ -119,7 +119,8 @@ export interface CakeSessionRuntimeTurnController {
 export function createCakeSessionRuntimeTurnController(input: {
   readonly session: AgentSession;
   readonly isDisposed: () => boolean;
-  readonly allowUserBash: boolean;
+  /** False for external automation: every input is literal text, including command prefixes. */
+  readonly allowInputCommands: boolean;
   readonly beforeIdleTurn: (signal: AbortSignal) => Promise<void>;
   readonly withResponseRetries: <T>(operation: () => Promise<T>) => Promise<T>;
   readonly cancelResponseRetries: () => void;
@@ -259,13 +260,17 @@ export function createCakeSessionRuntimeTurnController(input: {
       internal,
     });
 
+  const promptOptions = {
+    source: "interactive",
+    expandPromptTemplates: input.allowInputCommands,
+  } as const;
   const deliverPrompt = (
     content: string,
     images: ReturnType<typeof imageContent>,
     renderUserMessageAsMarkdown: boolean,
   ) =>
     input.deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-      input.withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
+      input.withResponseRetries(() => session.prompt(content, { ...promptOptions, images })),
     );
 
   // Delivers messages that were submitted while compaction held the session.
@@ -335,7 +340,7 @@ export function createCakeSessionRuntimeTurnController(input: {
               assertScheduledInput(item.turnId);
               return session.prompt(content, {
                 images,
-                source: "interactive",
+                ...promptOptions,
                 streamingBehavior: delivery === "steer" ? "steer" : "followUp",
               });
             }),
@@ -403,14 +408,14 @@ export function createCakeSessionRuntimeTurnController(input: {
       !isAutomaticInput(internal)
     )
       pausedAfterRestart = false;
-    const builtin = parseBuiltinCommand(text);
+    const builtin = input.allowInputCommands ? parseBuiltinCommand(text) : undefined;
     if (builtin?.name === "compact") {
       await runCompact(builtin.args || undefined, generation);
       return;
     }
     const shellPrefix = text.startsWith("!!") ? "!!" : text.startsWith("!") ? "!" : undefined;
     const shellCommand = shellPrefix ? text.slice(shellPrefix.length).trim() : "";
-    if (input.allowUserBash && shellPrefix && attachments.length === 0) {
+    if (input.allowInputCommands && shellPrefix && attachments.length === 0) {
       if (!shellCommand) return;
       const partId = `bash-${randomUUID()}`;
       const excludeFromContext = shellPrefix === "!!";
@@ -520,7 +525,7 @@ export function createCakeSessionRuntimeTurnController(input: {
             assertScheduledInput(turnId);
             return session.prompt(content, {
               images,
-              source: "interactive",
+              ...promptOptions,
               ...(delivery === "steer"
                 ? { streamingBehavior: "steer" as const }
                 : { streamingBehavior: "followUp" as const }),
@@ -1027,6 +1032,8 @@ export function createCakeSessionRuntimeTurnController(input: {
         return { status: "compacted" };
       }),
     async queueCommand(command, onSettled) {
+      if (!input.allowInputCommands)
+        throw new Error("Commands are unavailable in report-only sessions");
       assertActive();
       const itemId = randomUUID();
       if (onSettled) void commandCompletions.track(itemId, itemId).then(onSettled, onSettled);
@@ -1259,7 +1266,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           input.withResponseRetries(() =>
             session.prompt(selected.content, {
               images: imageContent(selected.attachments),
-              source: "interactive",
+              ...promptOptions,
             }),
           ),
       );

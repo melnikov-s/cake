@@ -44,7 +44,7 @@ function fixture(
   const controller = createCakeSessionRuntimeTurnController({
     session,
     isDisposed: () => false,
-    allowUserBash: true,
+    allowInputCommands: true,
     beforeIdleTurn: async () => undefined,
     withResponseRetries: (operation) => operation(),
     cancelResponseRetries: vi.fn(),
