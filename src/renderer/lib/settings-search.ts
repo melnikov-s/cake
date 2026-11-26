@@ -83,6 +83,16 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             keywords: "permission open conversation pane window disable",
           },
           { label: "Auto-compact", targetId: "setting-auto-compact", keywords: "context" },
+          {
+            label: "Compaction reserve",
+            targetId: "setting-compaction-reserve-tokens",
+            keywords: "auto-compact context tokens threshold",
+          },
+          {
+            label: "Compaction keep recent",
+            targetId: "setting-compaction-keep-recent-tokens",
+            keywords: "auto-compact context tokens summary",
+          },
           { label: "Automatic retry", targetId: "setting-automatic-retry", keywords: "failures" },
           {
             label: "Hide thinking",

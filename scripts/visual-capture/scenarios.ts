@@ -1300,6 +1300,37 @@ const agentNavigationSettingsScenario: VisualCaptureScenario = {
   region: (page) => page.locator('section[aria-labelledby="agent-navigation-title"]'),
 };
 
+const compactionSettingsScenario: VisualCaptureScenario = {
+  name: "compaction-settings",
+  description: "Pi auto-compaction toggle and token settings, read from Pi's settings file",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    // Mirrors a user who turned auto-compaction off in Pi; token values stay Pi's defaults.
+    await mkdir(join(paths.cakeHome, "pi"), { recursive: true });
+    await writeFile(
+      join(paths.cakeHome, "pi", "settings.json"),
+      JSON.stringify({ compaction: { enabled: false } }),
+    );
+  },
+  async prepare(page, _state, application) {
+    await assistantMarkdownCode.prepare(page, "default", application);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: /^Agent Behavior and content$/ }).click();
+    const behavior = page.getByRole("region", { name: "Agent behavior" });
+    await expect(behavior.getByRole("switch", { name: "Auto-compact" })).not.toBeChecked();
+    await expect(behavior.getByRole("textbox", { name: /^Compaction reserve/ })).toHaveValue(
+      "16384",
+    );
+    await expect(behavior.getByRole("textbox", { name: /^Compaction keep recent/ })).toHaveValue(
+      "20000",
+    );
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('section[aria-labelledby="behavior-title"]'),
+};
+
 const screenCaptureSettingsScenario: VisualCaptureScenario = {
   name: "screen-capture-settings",
   description: "Screen capture shortcut, image resizing, and crop/annotation instructions",
@@ -10561,6 +10592,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   speechInputSettingsScenario,
   screenCaptureSettingsScenario,
   agentNavigationSettingsScenario,
+  compactionSettingsScenario,
   screenCaptureOverlayScenario,
   inlineLinks,
   assistantWebUrls,

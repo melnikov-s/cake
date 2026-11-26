@@ -82,6 +82,17 @@ const piMetadata = {
     label: "Auto-compact",
     description: "Compact Project Session context automatically near the model window.",
   },
+  compactionReserveTokens: {
+    category: "Agent",
+    label: "Compaction reserve",
+    description:
+      "Auto-compaction starts when fewer than this many context tokens remain free. Per-model overrides stay in Pi's settings file.",
+  },
+  compactionKeepRecentTokens: {
+    category: "Agent",
+    label: "Compaction keep recent",
+    description: "Recent tokens a compaction keeps unsummarized.",
+  },
   retryEnabled: {
     category: "Agent",
     label: "Automatic retry",

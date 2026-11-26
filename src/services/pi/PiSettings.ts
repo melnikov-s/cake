@@ -5,7 +5,12 @@ import {
   type PiSettingUpdate,
   type PiSettings as PiSettingsValue,
 } from "../../contracts/conversations/session-contract";
-import { applyPiSetting, projectPiSettings } from "./runtime/settings-translation";
+import {
+  applyPiSetting,
+  isPiDocumentSetting,
+  projectPiSettings,
+  type PiDocumentSettingUpdate,
+} from "./runtime/settings-translation";
 import {
   PiExtensionSetting,
   type PiExtensionToggle,
@@ -32,16 +37,9 @@ const messageOf = (cause: unknown): string =>
 const settingsError = (operation: string, cause: unknown) =>
   new PiSettingsError({ operation, message: messageOf(cause) });
 
-export type PiExecutionSettingUpdate = Extract<
-  PiSettingUpdate,
-  { key: "defaultTools" | "codemodeInlineBudget" }
->;
-
 export const makePiSettingsLayer = (
   settingsManager: SettingsManager,
-  writeExecutionSetting?: (
-    update: PiExecutionSettingUpdate,
-  ) => Effect.Effect<void, PiSettingsError>,
+  writeDocumentSetting?: (update: PiDocumentSettingUpdate) => Effect.Effect<void, PiSettingsError>,
   extensionSettings?: {
     readonly list: () => Effect.Effect<ReadonlyArray<PiExtensionSetting>, PiSettingsError>;
     readonly toggle: (toggle: PiExtensionToggle) => Effect.Effect<void, PiSettingsError>;
@@ -84,12 +82,12 @@ export const makePiSettingsLayer = (
             // Reload before mutation: Pi skips saving after a failed load until reload
             // succeeds. It also keeps read/modify/write setters current with file edits.
             yield* reload("update");
-            if (setting.key === "defaultTools" || setting.key === "codemodeInlineBudget") {
-              if (!writeExecutionSetting)
-                return yield* settingsError("update", "Execution settings storage is unavailable");
+            if (isPiDocumentSetting(setting)) {
+              if (!writeDocumentSetting)
+                return yield* settingsError("update", "Pi settings file storage is unavailable");
               // Pi exposes these settings but has no public setters. Persist only the native
               // fields through the backend adapter, then reload Pi's authoritative manager.
-              yield* writeExecutionSetting(setting);
+              yield* writeDocumentSetting(setting);
               yield* reload("update");
             } else {
               yield* Effect.try({

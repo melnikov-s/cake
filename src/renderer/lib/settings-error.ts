@@ -12,6 +12,8 @@ export const piSettingSections = {
   defaultModel: "models",
   defaultThinkingLevel: "models",
   autoCompact: "agent",
+  compactionReserveTokens: "agent",
+  compactionKeepRecentTokens: "agent",
   autoResizeImages: "agent",
   blockImages: "agent",
   enableSkillCommands: "agent",

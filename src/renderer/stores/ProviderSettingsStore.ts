@@ -111,6 +111,18 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     return this.setPiSetting({ key: "codemodeInlineBudget", value: budget });
   }
 
+  setCompactionTokens(
+    key: "compactionReserveTokens" | "compactionKeepRecentTokens",
+    value: string,
+  ) {
+    const tokens = Number(value);
+    if (value.trim() === "" || !Number.isSafeInteger(tokens) || tokens < 0) {
+      this.reportError(new Error("Compaction tokens must be a whole number, 0 or more."), "agent");
+      return Promise.resolve();
+    }
+    return this.setPiSetting({ key, value: tokens });
+  }
+
   async reloadPi() {
     await this.run(async () => {
       this.piSettings = await this.client.piSettings.reload({ signal: this.signal });

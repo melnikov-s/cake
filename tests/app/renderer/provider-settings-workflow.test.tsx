@@ -34,6 +34,8 @@ const model = (overrides: Partial<ModelOption> = {}): ModelOption => ({
 
 const piSettings: PiSettings = {
   autoCompact: true,
+  compactionReserveTokens: 16384,
+  compactionKeepRecentTokens: 20000,
   autoResizeImages: true,
   blockImages: false,
   enableSkillCommands: true,
@@ -452,6 +454,45 @@ describe("Provider settings workflow without an active chat", () => {
     expect(providerCard("Anthropic").getByText("Connected · environment")).toBeDefined();
     expect(providerCard("Anthropic").getByText("Remove externally, then restart")).toBeDefined();
     expect(providerCard("Anthropic").queryByRole("button", { name: "Disconnect" })).toBeNull();
+  });
+
+  it("shows Pi's compaction settings on the Agent page and saves an edited token value", async () => {
+    const update = vi.fn<Client["piSettings"]["update"]>(async () => ({
+      ...piSettings,
+      autoCompact: false,
+      compactionReserveTokens: 32000,
+    }));
+    using fixture = await renderProviderSettings({
+      piSettings: { get: async () => ({ ...piSettings, autoCompact: false }), update },
+    });
+
+    await fixture.user.click(screen.getByRole("button", { name: /^Agent/ }));
+    const behavior = within(screen.getByRole("region", { name: "Agent behavior" }));
+    expect(
+      behavior.getByRole("switch", { name: "Auto-compact" }).getAttribute("aria-checked"),
+    ).toBe("false");
+    const reserve = behavior.getByRole("textbox", { name: /^Compaction reserve/ });
+    const keepRecent = behavior.getByRole("textbox", { name: /^Compaction keep recent/ });
+    expect(reserve).toHaveProperty("value", "16384");
+    expect(keepRecent).toHaveProperty("value", "20000");
+
+    // Not a whole number: reported on the page, never sent to Pi.
+    await fixture.user.clear(reserve);
+    await fixture.user.type(reserve, "lots");
+    await fixture.user.click(keepRecent);
+    expect(await screen.findByText("Compaction tokens must be a whole number, 0 or more."));
+    expect(update).not.toHaveBeenCalled();
+
+    await fixture.user.clear(reserve);
+    await fixture.user.type(reserve, "32000");
+    await fixture.user.click(keepRecent);
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        { key: "compactionReserveTokens", value: 32000 },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(reserve).toHaveProperty("value", "32000");
   });
 
   it("saves shell configuration from the runtime page and retains the service result when revisiting", async () => {

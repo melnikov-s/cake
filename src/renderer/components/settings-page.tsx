@@ -430,6 +430,24 @@ export const SettingsPage = observer(function SettingsPage({
                         void providers.setPiSetting({ key: "autoCompact", value })
                       }
                     />
+                    <SettingsTextField
+                      id="setting-compaction-reserve-tokens"
+                      label="Compaction reserve"
+                      description="Auto-compact when fewer than this many context tokens remain free."
+                      value={String(pi.compactionReserveTokens)}
+                      onApply={(value) =>
+                        void providers.setCompactionTokens("compactionReserveTokens", value)
+                      }
+                    />
+                    <SettingsTextField
+                      id="setting-compaction-keep-recent-tokens"
+                      label="Compaction keep recent"
+                      description="Recent tokens a compaction keeps unsummarized."
+                      value={String(pi.compactionKeepRecentTokens)}
+                      onApply={(value) =>
+                        void providers.setCompactionTokens("compactionKeepRecentTokens", value)
+                      }
+                    />
                     <SettingsToggle
                       id="setting-automatic-retry"
                       label="Automatic retry"

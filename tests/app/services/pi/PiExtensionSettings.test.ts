@@ -41,6 +41,24 @@ afterEach(async () => {
 });
 
 describe("Pi extension settings", () => {
+  it("writes compaction token settings to Pi's settings file, where a new session reads them", async () => {
+    const { root, run } = await fixture({ compaction: { enabled: false } });
+    const updated = await run(
+      Effect.flatMap(PiSettings, (service) =>
+        service.update({ key: "compactionReserveTokens", value: 24_000 }),
+      ),
+    );
+    expect(updated).toMatchObject({ autoCompact: false, compactionReserveTokens: 24_000 });
+    expect(JSON.parse(await readFile(join(root, "settings.json"), "utf8"))).toEqual({
+      defaultTools: ["+codemode"],
+      compaction: { enabled: false, reserveTokens: 24_000 },
+      unrelated: { retained: true },
+    });
+    expect(
+      SettingsManager.create(root, root, { projectTrusted: false }).getCompactionSettings(),
+    ).toMatchObject({ enabled: false, reserveTokens: 24_000 });
+  });
+
   it("seeds missing native startup tools, restores Cake defaults, and retains unrelated settings", async () => {
     const { root, run } = await fixture({ defaultTools: undefined });
     const loaded = await run(Effect.flatMap(PiSettings, (service) => service.load()));

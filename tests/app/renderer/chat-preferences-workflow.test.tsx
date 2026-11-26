@@ -21,6 +21,8 @@ import { readFile } from "./work-log-presentation-workflow-fixture";
 
 const initialSettings: PiSettings = {
   autoCompact: true,
+  compactionReserveTokens: 16384,
+  compactionKeepRecentTokens: 20000,
   autoResizeImages: true,
   blockImages: false,
   enableSkillCommands: true,

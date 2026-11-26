@@ -23,7 +23,7 @@ import { SettingsDictationSection } from "../../../src/renderer/components/setti
 import { SettingsCakeChatSection } from "../../../src/renderer/components/settings-cake-chat-section";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { makePiSettingsLayer } from "../../../src/services/pi/PiSettings";
-import { mergePiExecutionSetting } from "../../../src/services/pi/live/PiSettingsLive";
+import { mergePiDocumentSetting } from "../../../src/services/pi/live/PiSettingsLive";
 import { McpSettings } from "../../../src/services/pi/McpSettings";
 import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -76,7 +76,7 @@ async function fixture() {
       ),
       makePiSettingsLayer(manager, (update) =>
         Effect.sync(() => {
-          document = JSON.stringify(mergePiExecutionSetting(JSON.parse(document), update));
+          document = JSON.stringify(mergePiDocumentSetting(JSON.parse(document), update));
         }),
       ),
       fakeClientEvents({ sendTo: () => false, broadcast: (event) => onEvent(event) }),
@@ -395,6 +395,30 @@ describe("settings catalog through the cake tool", () => {
 
     await h.call("settings.update", { key: "pi.codemodeInlineBudget", value: 500 });
     expect(h.document()).toMatchObject({ codemode: { inlineBudget: 500 } });
+
+    // Compaction token values: read Pi's default, write next to the stored toggle.
+    expect(await h.call("settings.get", { key: "pi.compactionReserveTokens" })).toMatchObject({
+      category: "Agent",
+      value: 16_384,
+      default: 16_384,
+    });
+    expect(
+      await h.call("settings.update", { key: "pi.compactionReserveTokens", value: 30_000 }),
+    ).toMatchObject({ previous: 16_384, value: 30_000 });
+    await h.call("settings.update", { key: "pi.compactionKeepRecentTokens", value: 8_000 });
+    expect(h.document()).toMatchObject({
+      compaction: { enabled: false, reserveTokens: 30_000, keepRecentTokens: 8_000 },
+    });
+    expect(h.manager.getCompactionSettings()).toEqual({
+      enabled: false,
+      reserveTokens: 30_000,
+      keepRecentTokens: 8_000,
+    });
+    expect(h.settings.providers.piSettings).toMatchObject({
+      autoCompact: false,
+      compactionReserveTokens: 30_000,
+      compactionKeepRecentTokens: 8_000,
+    });
     await expect(h.call("settings.get", { key: "pi.defaultModel" })).rejects.toThrow(
       /Unknown setting/,
     );
@@ -434,6 +458,8 @@ describe("settings catalog through the cake tool", () => {
       { key: "cakeChat.contextLimitTokens", value: 400_000 },
       { key: "cakeChat.contextLimitTokens", value: "500000" },
       { key: "pi.codemodeInlineBudget", value: -1 },
+      { key: "pi.compactionReserveTokens", value: -1 },
+      { key: "pi.compactionKeepRecentTokens", value: 1.5 },
       { key: "dictation.cleanupMinimumCharacters", value: -1 },
       { key: "dictation.cleanupMinimumCharacters", value: 1.5 },
       { key: "dictation.cleanupMinimumCharacters", value: "280" },

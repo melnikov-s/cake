@@ -1,8 +1,30 @@
-import type { AgentSession, SettingsManager } from "@earendil-works/pi-coding-agent";
+import {
+  DEFAULT_COMPACTION_SETTINGS,
+  type AgentSession,
+  type SettingsManager,
+} from "@earendil-works/pi-coding-agent";
 import type {
   PiSettingUpdate,
   PiSettings,
 } from "../../../contracts/conversations/session-contract";
+
+/**
+ * The value Pi has in effect: project over global over Pi's default. Per-model
+ * overrides stay file-only. Pi does not validate settings files and throws on an
+ * invalid token value; Settings then shows Pi's default so the user can repair it.
+ */
+function compactionTokens(
+  settingsManager: SettingsManager,
+  field: "reserveTokens" | "keepRecentTokens",
+) {
+  try {
+    return field === "reserveTokens"
+      ? settingsManager.getCompactionReserveTokens()
+      : settingsManager.getCompactionKeepRecentTokens();
+  } catch {
+    return DEFAULT_COMPACTION_SETTINGS[field];
+  }
+}
 
 export function projectPiSettings(
   settingsManager: SettingsManager,
@@ -14,6 +36,8 @@ export function projectPiSettings(
     defaultModel: settingsManager.getDefaultModel(),
     defaultThinkingLevel: settingsManager.getDefaultThinkingLevel(),
     autoCompact: overrides.autoCompact ?? settingsManager.getCompactionEnabled(),
+    compactionReserveTokens: compactionTokens(settingsManager, "reserveTokens"),
+    compactionKeepRecentTokens: compactionTokens(settingsManager, "keepRecentTokens"),
     autoResizeImages: settingsManager.getImageAutoResize(),
     blockImages: settingsManager.getBlockImages(),
     enableSkillCommands: settingsManager.getEnableSkillCommands(),
@@ -55,13 +79,36 @@ export function keepAutoCompactionEnabled(settingsManager: SettingsManager) {
   settingsManager.getCompactionEnabled = () => true;
 }
 
+/** Settings Pi reads but offers no public setter for; Cake writes them to the settings file. */
+export type PiDocumentSettingUpdate = Extract<
+  PiSettingUpdate,
+  {
+    key:
+      | "defaultTools"
+      | "codemodeInlineBudget"
+      | "compactionReserveTokens"
+      | "compactionKeepRecentTokens";
+  }
+>;
+
+export function isPiDocumentSetting(update: PiSettingUpdate): update is PiDocumentSettingUpdate {
+  return (
+    update.key === "defaultTools" ||
+    update.key === "codemodeInlineBudget" ||
+    update.key === "compactionReserveTokens" ||
+    update.key === "compactionKeepRecentTokens"
+  );
+}
+
 export function applyPiSetting(settingsManager: SettingsManager, update: PiSettingUpdate) {
   if (update.key === "defaultModel")
     settingsManager.setDefaultModelAndProvider(update.provider, update.modelId);
   else if (update.key === "defaultThinkingLevel")
     settingsManager.setDefaultThinkingLevel(update.value);
-  else if (update.key === "defaultTools" || update.key === "codemodeInlineBudget")
-    throw new Error("Execution settings must be persisted through the backend Pi settings service");
+  else if (isPiDocumentSetting(update))
+    throw new Error(
+      `Pi has no setter for ${update.key}; persist it through the backend Pi settings service`,
+    );
   else if (update.key === "autoCompact") settingsManager.setCompactionEnabled(update.value);
   else if (update.key === "autoResizeImages") settingsManager.setImageAutoResize(update.value);
   else if (update.key === "blockImages") settingsManager.setBlockImages(update.value);

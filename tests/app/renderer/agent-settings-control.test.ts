@@ -39,7 +39,7 @@ import { modelPresetPromptsTestLayer } from "../helpers/modelPresetPrompts";
 import type { ModelPresetPrompts } from "../../../src/services/storage/ModelPresetPrompts";
 import { makeMcpSettingsLayer } from "../../../src/services/pi/McpSettings";
 import { PiSettings, makePiSettingsLayer } from "../../../src/services/pi/PiSettings";
-import { mergePiExecutionSetting } from "../../../src/services/pi/live/PiSettingsLive";
+import { mergePiDocumentSetting } from "../../../src/services/pi/live/PiSettingsLive";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createCakeSettingsOperations } from "../../../src/domain/application/cake-settings-operations";
 import { createCakeWidgetPackageOperations } from "../../../src/domain/application/cake-widget-package-operations";
@@ -123,7 +123,7 @@ async function fixture(
       ),
       makePiSettingsLayer(manager, (update) =>
         Effect.sync(() => {
-          document = JSON.stringify(mergePiExecutionSetting(JSON.parse(document), update));
+          document = JSON.stringify(mergePiDocumentSetting(JSON.parse(document), update));
         }),
       ),
       makeMcpSettingsLayer("/backend/agent", {

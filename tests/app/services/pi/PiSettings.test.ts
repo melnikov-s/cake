@@ -1,9 +1,10 @@
-import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_COMPACTION_SETTINGS, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
 import type { PiSettingUpdate } from "../../../../src/contracts/conversations/session-contract";
 import { describe, expect, it } from "@effect/vitest";
 import { makePiSettingsLayer, PiSettings } from "../../../../src/services/pi/PiSettings";
-import { mergePiExecutionSetting } from "../../../../src/services/pi/live/PiSettingsLive";
+import { mergePiDocumentSetting } from "../../../../src/services/pi/live/PiSettingsLive";
+import { projectPiSettings } from "../../../../src/services/pi/runtime/settings-translation";
 import {
   nativeToolSelected,
   updateNativeToolSelection,
@@ -16,6 +17,8 @@ const persistenceUpdates = {
   defaultModel: { key: "defaultModel", provider: "example", modelId: "example-model" },
   defaultThinkingLevel: { key: "defaultThinkingLevel", value: "high" },
   autoCompact: { key: "autoCompact", value: false },
+  compactionReserveTokens: { key: "compactionReserveTokens", value: 0 },
+  compactionKeepRecentTokens: { key: "compactionKeepRecentTokens", value: 0 },
   autoResizeImages: { key: "autoResizeImages", value: false },
   blockImages: { key: "blockImages", value: true },
   enableSkillCommands: { key: "enableSkillCommands", value: false },
@@ -99,7 +102,7 @@ describe("PiSettings", () => {
           makePiSettingsLayer(stored.manager(), (update) =>
             Effect.sync(() => {
               stored.state.document = JSON.stringify(
-                mergePiExecutionSetting(JSON.parse(stored.state.document), update),
+                mergePiDocumentSetting(JSON.parse(stored.state.document), update),
               );
             }),
           ),
@@ -248,7 +251,123 @@ describe("PiSettings", () => {
         Effect.provide(
           makePiSettingsLayer(manager, (update) =>
             Effect.sync(() => {
-              document = JSON.stringify(mergePiExecutionSetting(JSON.parse(document), update));
+              document = JSON.stringify(mergePiDocumentSetting(JSON.parse(document), update));
+            }),
+          ),
+        ),
+      );
+    },
+  );
+
+  it.effect(
+    "shows the compaction settings Pi has in effect and writes each one without dropping other settings",
+    () => {
+      const modelOverrides = { "example/model": { reserveTokens: 4_000 } };
+      let document = JSON.stringify({
+        theme: "dark",
+        compaction: { enabled: false, modelOverrides },
+        unknownExtensionField: { enabled: true },
+      });
+      const storage: Parameters<typeof SettingsManager.fromStorage>[0] = {
+        withLock(scope, update) {
+          if (scope === "global") {
+            const next = update(document);
+            if (next !== undefined) document = next;
+          } else update(undefined);
+        },
+      };
+      const manager = SettingsManager.fromStorage(storage, { projectTrusted: false });
+      return Effect.gen(function* () {
+        const settings = yield* PiSettings;
+        // Stored: only "enabled". The token values are Pi's own defaults, not Cake's.
+        expect(yield* settings.load()).toMatchObject({
+          autoCompact: false,
+          compactionReserveTokens: DEFAULT_COMPACTION_SETTINGS.reserveTokens,
+          compactionKeepRecentTokens: DEFAULT_COMPACTION_SETTINGS.keepRecentTokens,
+        });
+
+        const reserved = yield* settings.update({ key: "compactionReserveTokens", value: 32_000 });
+        expect(reserved).toMatchObject({ autoCompact: false, compactionReserveTokens: 32_000 });
+        expect(JSON.parse(document)).toEqual({
+          theme: "dark",
+          compaction: { enabled: false, reserveTokens: 32_000, modelOverrides },
+          unknownExtensionField: { enabled: true },
+        });
+
+        yield* settings.update({ key: "compactionKeepRecentTokens", value: 0 });
+        const enabled = yield* settings.update({ key: "autoCompact", value: true });
+        expect(enabled).toMatchObject({
+          autoCompact: true,
+          compactionReserveTokens: 32_000,
+          compactionKeepRecentTokens: 0,
+        });
+        expect(JSON.parse(document)).toEqual({
+          theme: "dark",
+          compaction: { enabled: true, reserveTokens: 32_000, keepRecentTokens: 0, modelOverrides },
+          unknownExtensionField: { enabled: true },
+        });
+        // A session started now reads the same file through its own Pi manager.
+        expect(
+          SettingsManager.fromStorage(storage, { projectTrusted: false }).getCompactionSettings(),
+        ).toEqual({ enabled: true, reserveTokens: 32_000, keepRecentTokens: 0 });
+      }).pipe(
+        Effect.provide(
+          makePiSettingsLayer(manager, (update) =>
+            Effect.sync(() => {
+              document = JSON.stringify(mergePiDocumentSetting(JSON.parse(document), update));
+            }),
+          ),
+        ),
+      );
+    },
+  );
+
+  it("projects a session's compaction settings with Pi's project-over-global precedence", () => {
+    const documents = {
+      global: JSON.stringify({ compaction: { enabled: false, keepRecentTokens: 9_000 } }),
+      project: JSON.stringify({ compaction: { enabled: true, reserveTokens: 5_000 } }),
+    };
+    const storage: Parameters<typeof SettingsManager.fromStorage>[0] = {
+      withLock(scope, update) {
+        update(documents[scope]);
+      },
+    };
+    expect(
+      projectPiSettings(SettingsManager.fromStorage(storage, { projectTrusted: true })),
+    ).toMatchObject({
+      autoCompact: true,
+      compactionReserveTokens: 5_000,
+      compactionKeepRecentTokens: 9_000,
+    });
+    // An untrusted project's file is ignored, exactly as Pi ignores it.
+    expect(
+      projectPiSettings(SettingsManager.fromStorage(storage, { projectTrusted: false })),
+    ).toMatchObject({
+      autoCompact: false,
+      compactionReserveTokens: DEFAULT_COMPACTION_SETTINGS.reserveTokens,
+      compactionKeepRecentTokens: 9_000,
+    });
+  });
+
+  it.effect(
+    "shows Pi's default for a hand-edited invalid compaction value so Settings can repair it",
+    () => {
+      const stored = makeStoredSettings();
+      stored.state.document = JSON.stringify({ compaction: { reserveTokens: -1 } });
+      return Effect.gen(function* () {
+        const settings = yield* PiSettings;
+        expect((yield* settings.load()).compactionReserveTokens).toBe(
+          DEFAULT_COMPACTION_SETTINGS.reserveTokens,
+        );
+        yield* settings.update({ key: "compactionReserveTokens", value: 12_000 });
+        expect(stored.manager().getCompactionReserveTokens()).toBe(12_000);
+      }).pipe(
+        Effect.provide(
+          makePiSettingsLayer(stored.manager(), (update) =>
+            Effect.sync(() => {
+              stored.state.document = JSON.stringify(
+                mergePiDocumentSetting(JSON.parse(stored.state.document), update),
+              );
             }),
           ),
         ),

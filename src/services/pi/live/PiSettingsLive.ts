@@ -1,6 +1,7 @@
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Effect, FileSystem, Layer, Path, Schema } from "effect";
-import { makePiSettingsLayer, type PiExecutionSettingUpdate } from "../PiSettings";
+import { makePiSettingsLayer } from "../PiSettings";
+import type { PiDocumentSettingUpdate } from "../runtime/settings-translation";
 import { PiSettingsError } from "../../../contracts/pi/pi-settings-errors";
 import { cakeDefaultTools } from "../../../contracts/pi/native-tool-defaults";
 import { atomicWriteFile } from "../../storage/internal/atomicFile";
@@ -9,20 +10,25 @@ import { listPiExtensionSettings, togglePiExtensionSetting } from "./PiExtension
 const settingsObject = Schema.Record(Schema.String, Schema.Unknown);
 interface PiGlobalSettingsDocument extends Schema.Schema.Type<typeof settingsObject> {}
 
-/** Pure native-field merge. Preserve all unrelated settings, including codemode.mode. */
-export function mergePiExecutionSetting(
+const nestedSettings = (document: PiGlobalSettingsDocument, key: "codemode" | "compaction") =>
+  document[key] === undefined ? {} : Schema.decodeUnknownSync(settingsObject)(document[key]);
+
+/**
+ * Pure native-field merge. Preserve all unrelated settings, including codemode.mode and
+ * compaction.enabled/modelOverrides.
+ */
+export function mergePiDocumentSetting(
   current: PiGlobalSettingsDocument,
-  update: PiExecutionSettingUpdate,
+  update: PiDocumentSettingUpdate,
 ): PiGlobalSettingsDocument {
   const next = { ...current };
   if (update.key === "defaultTools") {
     next.defaultTools = [...(update.value ?? cakeDefaultTools)];
+  } else if (update.key === "codemodeInlineBudget") {
+    next.codemode = { ...nestedSettings(current, "codemode"), inlineBudget: update.value };
   } else {
-    const codemode =
-      current.codemode === undefined
-        ? {}
-        : Schema.decodeUnknownSync(settingsObject)(current.codemode);
-    next.codemode = { ...codemode, inlineBudget: update.value };
+    const field = update.key === "compactionReserveTokens" ? "reserveTokens" : "keepRecentTokens";
+    next.compaction = { ...nestedSettings(current, "compaction"), [field]: update.value };
   }
   return next;
 }
@@ -63,13 +69,13 @@ export const makePiSettingsLive = (agentDirectory: string) =>
           (_stage, cause) => error(cause),
         );
       });
-      const writeExecutionSetting = Effect.fn("PiSettingsLive.writeExecutionSetting")(function* (
-        update: PiExecutionSettingUpdate,
+      const writeDocumentSetting = Effect.fn("PiSettingsLive.writeDocumentSetting")(function* (
+        update: PiDocumentSettingUpdate,
       ) {
         // Serialized by PiSettings. Merge native fields without dropping extension settings.
         const current = yield* readDocument();
         const next = yield* Effect.try({
-          try: () => mergePiExecutionSetting(current, update),
+          try: () => mergePiDocumentSetting(current, update),
           catch: error,
         });
         yield* writeDocument(next);
@@ -82,7 +88,7 @@ export const makePiSettingsLive = (agentDirectory: string) =>
       const manager = yield* Effect.sync(() =>
         SettingsManager.create(agentDirectory, agentDirectory, { projectTrusted: false }),
       );
-      return makePiSettingsLayer(manager, writeExecutionSetting, {
+      return makePiSettingsLayer(manager, writeDocumentSetting, {
         list: Effect.fn("PiSettingsLive.extensions")(() =>
           Effect.tryPromise({
             try: () => listPiExtensionSettings(agentDirectory, manager),

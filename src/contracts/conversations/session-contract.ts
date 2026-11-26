@@ -63,6 +63,10 @@ export const piSettingsSchema = Schema.Struct({
   defaultModel: Schema.optional(stringMax(512)),
   defaultThinkingLevel: Schema.optional(thinkingLevelSchema),
   autoCompact: Schema.Boolean,
+  /** Pi's `compaction.reserveTokens`: free context tokens below which auto-compaction starts. */
+  compactionReserveTokens: nonNegativeInt,
+  /** Pi's `compaction.keepRecentTokens`: recent tokens a compaction leaves unsummarized. */
+  compactionKeepRecentTokens: nonNegativeInt,
   autoResizeImages: Schema.Boolean,
   blockImages: Schema.Boolean,
   enableSkillCommands: Schema.Boolean,
@@ -100,6 +104,8 @@ export const piSettingUpdateSchema = Schema.Union([
   }),
   Schema.Struct({ key: Schema.Literal("defaultThinkingLevel"), value: thinkingLevelSchema }),
   Schema.Struct({ key: Schema.Literal("autoCompact"), value: Schema.Boolean }),
+  Schema.Struct({ key: Schema.Literal("compactionReserveTokens"), value: nonNegativeInt }),
+  Schema.Struct({ key: Schema.Literal("compactionKeepRecentTokens"), value: nonNegativeInt }),
   Schema.Struct({ key: Schema.Literal("autoResizeImages"), value: Schema.Boolean }),
   Schema.Struct({ key: Schema.Literal("blockImages"), value: Schema.Boolean }),
   Schema.Struct({ key: Schema.Literal("enableSkillCommands"), value: Schema.Boolean }),
