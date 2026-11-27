@@ -1,7 +1,9 @@
+import { zstdDecompressSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import { Option } from "effect";
 import { createModels, createProvider, normalizeContext, type Model } from "@earendil-works/pi-ai";
 import { stream, streamSimple } from "@earendil-works/pi-ai/api/anthropic-messages";
+import * as codexResponses from "@earendil-works/pi-ai/api/openai-codex-responses";
 import {
   ANTHROPIC_FAST_MODE_BETA,
   OPENAI_FAST_MODE_SERVICE_TIER,
@@ -26,11 +28,12 @@ describe.each(["openai", "openai-codex", "openai-1m"])("%s Fast mode", (provider
     "gpt-6-luna",
     "gpt-6-sol",
     "gpt-6.1-sol",
+    "gpt-6.2-sol",
   ])("exposes Fast for %s", (id) => {
     expect(supportsFastMode({ provider, id })).toBe(true);
   });
 
-  it.each(["gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-6.2-sol"])(
+  it.each(["gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-6.2-luna"])(
     "does not infer Fast support for %s",
     (id) => {
       expect(supportsFastMode({ provider, id })).toBe(false);
@@ -101,6 +104,7 @@ describe.each(["anthropic", "anthropic-1m", "anthropic-250k-prefer-using-this-on
 
 it.each([
   { provider: "openrouter", id: "gpt-6.1-sol" },
+  { provider: "openrouter", id: "gpt-6.2-sol" },
   { provider: "github-copilot", id: "gpt-6-luna" },
   { provider: "openai-flex", id: "gpt-5.5" },
   { provider: "anthropic-flex", id: "claude-opus-5-5" },
@@ -257,6 +261,63 @@ describe("Anthropic Fast mode through Pi's Messages adapter", () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("served at standard speed"));
     warn.mockRestore();
   });
+});
+
+it.each([false, true])("sends the Codex Sol request with Fast mode set to %s", async (fast) => {
+  const sol: Model<"openai-codex-responses"> = {
+    provider: "openai-codex",
+    api: "openai-codex-responses",
+    id: "gpt-6.2-sol",
+    name: "GPT-6.2 Sol",
+    baseUrl: "https://codex.example.invalid",
+    reasoning: true,
+    input: ["text"],
+    contextWindow: 200_000,
+    maxTokens: 8192,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  };
+  const claims = btoa(
+    JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "fixture" } }),
+  );
+  const runtime = createModels();
+  runtime.setProvider(
+    createProvider({
+      id: sol.provider,
+      auth: {
+        apiKey: {
+          name: "Fixture",
+          resolve: async () => ({ auth: { apiKey: `fixture.${claims}.fixture` } }),
+        },
+      },
+      models: [sol],
+      api: { stream: codexResponses.stream, streamSimple: codexResponses.streamSimple },
+    }),
+  );
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+    const event = {
+      type: "response.completed",
+      response: { status: "completed", service_tier: fast ? "priority" : "default" },
+    };
+    return new Response(`data: ${JSON.stringify(event)}\n\n`, {
+      headers: { "content-type": "text/event-stream" },
+    });
+  });
+  const result = await durableModels(runtime, () => fast).completeSimple(
+    sol,
+    normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
+    { fetch, transport: "sse", maxRetries: 0 },
+  );
+  expect(result.stopReason, result.errorMessage).toBe("stop");
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const request = new Request(...fetch.mock.calls[0]!);
+  const body = JSON.parse(
+    request.headers.get("content-encoding") === "zstd"
+      ? zstdDecompressSync(await request.bytes()).toString()
+      : await request.text(),
+  );
+  expect(body).toMatchObject({ model: "gpt-6.2-sol", stream: true });
+  if (fast) expect(body).toHaveProperty("service_tier", "priority");
+  else expect(body).not.toHaveProperty("service_tier");
 });
 
 describe("session runtime Fast mode extension", () => {

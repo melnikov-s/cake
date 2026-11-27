@@ -28,6 +28,7 @@ const OPENAI_FAST_MODE_MODEL_IDS = [
   "gpt-6-luna",
   "gpt-6-sol",
   "gpt-6.1-sol",
+  "gpt-6.2-sol",
 ] as const;
 
 // Verified against live responses: these report `usage.speed: "fast"`. Opus 4.6

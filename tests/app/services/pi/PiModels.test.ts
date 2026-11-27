@@ -376,7 +376,14 @@ describe("PiModels", () => {
   vitestIt.each(["openai", "openai-codex"])(
     "projects Fast support for current Sol and Astra models from %s",
     async (provider) => {
-      const ids = ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.3-codex-spark"];
+      const ids = [
+        "gpt-6.1-sol",
+        "gpt-6.2-sol",
+        "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
+        "gpt-5.3-codex-spark",
+      ];
       const projected = await projectModelCatalog(
         {
           getProviders: () => [
