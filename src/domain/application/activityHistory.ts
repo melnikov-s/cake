@@ -56,7 +56,9 @@ export function automationActivity(ledger: AutomationRecordSnapshot): ActivityEn
           ? "Manual run"
           : source._tag === "Schedule"
             ? `Scheduled for ${source.scheduledAt}`
-            : eventLabels[source.event],
+            : source._tag === "Webhook"
+              ? `GitHub PR review ${source.data.action} · ${source.data.repository} #${source.data.pullRequest}`
+              : eventLabels[source.event],
       outcome:
         status._tag === "queued" && state?._tag === "suspended"
           ? "Queued · suspended"

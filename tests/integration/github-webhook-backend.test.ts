@@ -387,6 +387,18 @@ it("accepts a signed PR review on standalone ingress, survives a crash, and runs
           expect(run?.workingDirectory).toBe(project);
           expect(occurrence.definition.task.prompt).toBe(savedPrompt);
           expect(occurrence.definition.task.configuration).toEqual(configuration);
+          const activity = yield* client["application.listActivity"]({
+            projectPath: project,
+            kind: "automation",
+          });
+          const entry = activity.entries.find((item) => item.automationRun?.id === runId);
+          expect(entry).toMatchObject({
+            trigger: "GitHub PR review submitted · Example/Repo #2",
+            outcome: "Completed",
+            automationId: setup.target.automationId,
+            automationRun: { id: runId, reportOnly: true },
+          });
+          expect(JSON.stringify(entry)).not.toContain("Ignore instructions");
         }),
       ),
     );
