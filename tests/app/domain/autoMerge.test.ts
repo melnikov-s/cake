@@ -63,6 +63,7 @@ import {
   WorktreeLandingCoordinatorLive,
 } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
 import { DOCUMENT_VERSION } from "../../../src/services/storage/sessionFamilyDocumentCodec";
+import { NOTICE_DELIVERY_MAX_FAILURES } from "../../../src/contracts/session-families/session-family-document";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { retainNotification } from "../../../src/domain/session-families/sessionFamilyCompletion";
@@ -844,36 +845,85 @@ it.effect(
   },
 );
 
-it.effect(
-  "eligible auto-merge stays quiet during handoff and landing, then confirms resolution",
-  () => {
-    const test = fixture();
+it.effect.each([false, true])(
+  "lands once without a recipient or result delivery, even with resolution blocked: %s",
+  (resolveFailure) => {
+    const test = fixture({ requester: null, noRecipient: true, resolveFailure });
     return Effect.gen(function* () {
       yield* trackOwner;
       const storage = yield* SessionFamilyStorage;
+      const spawn = {
+        sessionId: "owner",
+        projectPath: "/project",
+        workingDirectory: "/tree",
+        requester: {
+          sessionId: launchTurn.senderSessionId,
+          kind: "cake-chat" as const,
+          title: "Project Chat",
+        },
+        resultDelivery: "reply" as const,
+        reportDelivered: false,
+        handoffSettled: false,
+      };
+      const olderReport = {
+        outcome: "completed" as const,
+        text: "Completed the initial fix.",
+        resultMessageRef: "cake://session/owner?message=initial-result",
+      };
+      yield* storage.registerSpawn(spawn);
+      yield* storage.recordTurn({ ...launchTurn, turnId: "initial", resultDelivery: "reply" });
+      yield* storage.settleTurn("initial", "complete", olderReport);
+
       yield* setEnabled("/project", true);
-      yield* storage.recordTurn(launchTurn);
-      yield* report(target, readiness);
-      yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
+      yield* storage.recordTurn({ ...launchTurn, requestMessageId: "follow-up" });
+      expect(yield* report(target, readiness)).toEqual({ eligible: true });
       yield* runPass();
-      yield* reviews.reconcile();
-      expect((yield* tracked).needsAttention).toBe(false);
+      expect((yield* requests)[0]?.state).toBe("pending");
       expect(test.events).toEqual([]);
-      const settled = (yield* storage.state()).turns[0]!;
-      yield* retainNotification(settled);
+      yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
+      expect((yield* requests)[0]).toMatchObject({ state: "ready", commit });
+      const before = yield* storage.state();
+      expect(before.turns).toMatchObject([
+        { turnId: "initial", outcome: "complete", reported: false, report: olderReport },
+        {
+          turnId: "turn",
+          outcome: "complete",
+          reported: false,
+          report: {
+            text: taskAnswer.result.text,
+            resultMessageRef: "cake://session/owner?message=final",
+          },
+        },
+      ]);
+
       yield* runPass();
+      expect((yield* requests)[0]?.state).toBe("landing");
       yield* reviews.reconcile();
       expect((yield* tracked).needsAttention).toBe(false);
       yield* terminal;
       yield* runPass();
       yield* reviews.reconcile();
-      expect((yield* requests)[0]?.outcome).toMatchObject({
-        merged: true,
-        resolutionSucceeded: true,
-        landedCommit: commit,
+      expect((yield* requests)[0]).toMatchObject({
+        state: resolveFailure ? "failed" : "landed",
+        outcome: { merged: true, resolutionSucceeded: !resolveFailure, landedCommit: commit },
       });
-      expect((yield* tracked).completionReviews).toBeUndefined();
-      expect(test.events).toEqual(["land", "intent:true", "resolve", "intent:false"]);
+      if (resolveFailure) {
+        expect((yield* tracked).attentionReason).toContain("the work was already merged");
+        yield* setEnabled("/project", false);
+        yield* setEnabled("/project", true);
+      } else expect((yield* tracked).completionReviews).toBeUndefined();
+      yield* runPass();
+      expect(test.events).toEqual(
+        resolveFailure
+          ? ["land", "intent:true", "resolve"]
+          : ["land", "intent:true", "resolve", "intent:false"],
+      );
+      expect(test.notices).toEqual([]);
+      const after = yield* storage.state();
+      expect(after.turns).toEqual(before.turns);
+      expect(after.spawnedSessions).toEqual([spawn]);
+      expect(after.handledReports ?? []).toEqual([]);
+      expect(after.completionInbox ?? []).toEqual([]);
     }).pipe(Effect.provide(test.layer));
   },
 );
@@ -908,27 +958,30 @@ it.effect.each([
   },
 );
 
-it.effect(
-  "flags a stalled handoff after the grace period, not during ordinary reply scheduling",
-  () => {
-    const test = fixture();
-    return Effect.gen(function* () {
-      yield* trackOwner;
-      yield* setEnabled("/project", true);
-      yield* (yield* SessionFamilyStorage).recordTurn({ ...launchTurn, resultDelivery: "reply" });
-      yield* report(target, readiness);
-      yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
-      yield* runPass();
-      yield* TestClock.adjust("59 seconds");
-      yield* reviews.reconcile();
-      expect((yield* tracked).needsAttention).toBe(false);
-      yield* TestClock.adjust("1 second");
-      yield* reviews.reconcile();
-      expect((yield* tracked).attentionReason).toContain("waiting for result handoff");
-      expect(test.events).toEqual([]);
-    }).pipe(Effect.provide(test.layer));
-  },
-);
+it.effect("flags a prolonged source-idle wait, not exhausted result delivery", () => {
+  const test = fixture();
+  return Effect.gen(function* () {
+    yield* trackOwner;
+    yield* setEnabled("/project", true);
+    const storage = yield* SessionFamilyStorage;
+    yield* storage.recordTurn({ ...launchTurn, resultDelivery: "reply" });
+    yield* report(target, readiness);
+    yield* (yield* ownerTurnHooks()).onTurnSettled(taskAnswer);
+    for (let i = 0; i < NOTICE_DELIVERY_MAX_FAILURES; i++)
+      yield* storage.markNoticeFailure(launchTurn.turnId, "No requester available");
+    test.setActive(["/tree"]);
+    yield* runPass();
+    yield* TestClock.adjust("59 seconds");
+    yield* reviews.reconcile();
+    expect((yield* tracked).needsAttention).toBe(false);
+    yield* TestClock.adjust("1 second");
+    yield* reviews.reconcile();
+    expect((yield* tracked).attentionReason).toContain(
+      "waiting for the worktree to become available",
+    );
+    expect(test.events).toEqual([]);
+  }).pipe(Effect.provide(test.layer));
+});
 
 it.effect(
   "a successful non-mergeable assignment remains reviewable after its quiet report is consumed",
@@ -2732,7 +2785,8 @@ it.effect(
       };
       yield* storage.settleTurn("turn", "complete", reportBody);
       yield* runPass();
-      expect((yield* requests)[0]?.message).toBe("Waiting for result handoff");
+      expect((yield* requests)[0]?.message).toBe("Auto-merge is off; ready for manual landing");
+      expect(test.events).toEqual([]);
       const settled = (yield* storage.state()).turns[0];
       expect(settled).toBeDefined();
       if (!settled) return;

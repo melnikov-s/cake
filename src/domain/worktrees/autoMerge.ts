@@ -352,33 +352,19 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
       (item) => item.projectPath === request.projectPath,
     );
     const document = yield* storage.state();
-    const pendingHandoffs = document.turns.filter(
-      (turn) => turn.sessionId === request.sessionId && !turn.reported,
-    );
-    const handoffError = pendingHandoffs.find((turn) => turn.deliveryError)?.deliveryError;
-    const waiting =
-      pendingHandoffs.length > 0 ||
-      document.spawnedSessions.some(
-        (spawn) => spawn.sessionId === request.sessionId && !spawn.handoffSettled,
-      );
+    // The task's own settlement authorizes readiness; delivery to the requester is independent.
     const reason =
       request.state === "pending"
         ? "Waiting for task completion"
-        : waiting
-          ? `Waiting for result handoff${handoffError ? `: ${handoffError}` : ""}`
-          : sessionPurpose(document, request.sessionId) !== "delegated"
-            ? "Manual landing only: User Sessions (My sessions) never auto-merge"
-            : !isDirectProjectChatDelegation(
-                  document,
-                  request,
-                  projectChatSessionId(request.projectPath),
-                )
-              ? "Manual landing only: not directly delegated by this project’s Project Chat"
-              : !project?.enabled
-                ? "Auto-merge is off; ready for manual landing"
-                : (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)
-                  ? "Waiting for session to become idle"
-                  : undefined;
+        : sessionPurpose(document, request.sessionId) !== "delegated"
+          ? "Manual landing only: User Sessions (My sessions) never auto-merge"
+          : !isDirectProjectChatDelegation(document, request, owningProjectChatSessionId)
+            ? "Manual landing only: not directly delegated by this project’s Project Chat"
+            : !project?.enabled
+              ? "Auto-merge is off; ready for manual landing"
+              : (yield* sessions.activeWorkingDirectories()).includes(request.workspacePath)
+                ? "Waiting for session to become idle"
+                : undefined;
     if (reason) {
       yield* storage.updateAutoMerge(request.id, request.state, reason, undefined, request);
       continue;
@@ -435,10 +421,6 @@ export const runPass = Effect.fn("AutoMerge.runPass")(function* () {
           authorization.operations.get(request.workspacePath)?.operationId !== operationId ||
           authorization.operations.get(request.workspacePath)?.cancellationRequested === true ||
           latest.commit !== request.commit ||
-          document.turns.some((turn) => turn.sessionId === request.sessionId && !turn.reported) ||
-          document.spawnedSessions.some(
-            (spawn) => spawn.sessionId === request.sessionId && !spawn.handoffSettled,
-          ) ||
           busy
         )
           return yield* new WorktreeLandingError({

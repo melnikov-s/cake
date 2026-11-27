@@ -590,8 +590,9 @@ is a refactoring signal, not precedent.
   a terminal landing failure (including merge without resolution), or the settled final result of
   a launch or adopted assignment with no readiness. It does not infer completion from ordinary
   replies, progress updates, idle turns or Workboard messages. Work that did not retain an assignment
-  handoff (e.g. `resultDelivery: ignore`) needs structured readiness to qualify. Eligible landing
-  and ordinary handoff do not flag attention; exhausted handoff retries or a 60-second wait do.
+  handoff (e.g. `resultDelivery: ignore`) needs structured readiness to qualify. Report delivery
+  and acknowledgment do not gate automatic landing or flag merge attention. A 60-second wait for
+  the worktree to become available can flag attention.
   Existing human attention, snooze and completion take precedence. Projection doesn't wake chat or
   consume any report, and a stable decision ID survives restart and dismissal. Legacy repair is
   conservative: only unambiguous outstanding readiness is backfilled, not older prose or outcomes

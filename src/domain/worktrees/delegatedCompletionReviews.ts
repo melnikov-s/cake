@@ -1,9 +1,8 @@
 import { Clock, Effect, SubscriptionRef } from "effect";
 import type { ApplicationState as ApplicationStateValue } from "../../contracts/application/application-data";
-import {
-  NOTICE_DELIVERY_MAX_FAILURES,
-  type SessionFamilyDocument,
-  type SessionRelationship,
+import type {
+  SessionFamilyDocument,
+  SessionRelationship,
 } from "../../contracts/session-families/session-family-document";
 import type { AutoMergeRequest } from "../../contracts/worktrees/auto-merge";
 import { isDirectProjectChatDelegation } from "../../contracts/worktrees/auto-merge-delegation";
@@ -18,9 +17,8 @@ import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import { reviewDelegatedResult } from "../projects/projectTodos";
 
-// Give ordinary delivery, composer presence and landing admission room to settle. Exhausted
-// delivery retries, unlike a brief handoff, are already actionable without a clock threshold.
-const HANDOFF_GRACE_MS = 60_000;
+// Give the source session and landing admission room to settle before flagging a delay.
+const LANDING_GRACE_MS = 60_000;
 
 const landingState = Effect.fn("DelegatedCompletionReviews.landingState")(function* () {
   return yield* SubscriptionRef.get((yield* WorktreeLandingCoordinator).state);
@@ -127,25 +125,14 @@ function decision(
     reason = "Auto-merge is off. Review the changes and merge manually if appropriate.";
   else if (request.epoch !== preference.epoch)
     reason = "Review the worktree. Auto-merge authorization changed; fresh readiness is required.";
-  else {
-    const pending = document.turns.filter((turn) => turn.sessionId === sessionId && !turn.reported);
-    const incomplete = document.spawnedSessions.some(
-      (spawn) => spawn.sessionId === sessionId && !spawn.handoffSettled,
-    );
-    const exhausted = pending.find(
-      (turn) => (turn.deliveryFailureCount ?? 0) >= NOTICE_DELIVERY_MAX_FAILURES,
-    );
-    const overdue = settledAt !== null && now - Date.parse(settledAt) >= HANDOFF_GRACE_MS;
-    if (exhausted || (overdue && (pending.length || incomplete)))
-      reason = `Review the completed work; auto-merge is waiting for result handoff${exhausted ? " (delivery retries exhausted)" : ""}. ${exhausted?.deliveryError ?? "Check the outstanding session delivery."}`;
-    else if (
-      overdue &&
-      (request.message === "Waiting for session to become idle" ||
-        (operation && !["failed", "landed", "complete"].includes(operation.phase)))
-    )
-      reason =
-        "Review the completed work; auto-merge is still waiting for the worktree to become available.";
-  }
+  else if (
+    settledAt !== null &&
+    now - Date.parse(settledAt) >= LANDING_GRACE_MS &&
+    (request.message === "Waiting for session to become idle" ||
+      (operation && !["failed", "landed", "complete"].includes(operation.phase)))
+  )
+    reason =
+      "Review the completed work; auto-merge is still waiting for the worktree to become available.";
   return reason
     ? {
         id: `delegated-completion:${root.id}`,

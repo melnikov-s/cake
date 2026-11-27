@@ -937,7 +937,7 @@ it("preserves flags, snooze and focus without duplicate rows and shows every rea
   expect(fixture.mutations.map((mutation) => mutation._tag)).toEqual(["SetAttention"]);
 });
 
-it("counts accepted declarations while completion/handoff is pending, independently of unread state", async () => {
+it("counts accepted declarations while waiting for completion or idle, independently of unread state", async () => {
   const sessions = ["first", "second"].map((sessionId) =>
     sessionSummary({ sessionId, projectPath: "/cake", unread: true }),
   );
@@ -949,14 +949,14 @@ it("counts accepted declarations while completion/handoff is pending, independen
     sessions,
     autoMergeRequests: [
       mergeRequest("first", { state: "pending", message: "Waiting for task completion" }),
-      mergeRequest("second", { message: "Waiting for result handoff" }),
+      mergeRequest("second", { message: "Waiting for session to become idle" }),
     ],
   });
   expect(screen.getByRole("button", { name: "Ready to Merge (2)" })).toBeDefined();
   await fixture.user.click(screen.getByRole("button", { name: "Show 1 link for Task 249" }));
   await fixture.user.click(screen.getByRole("button", { name: "Show 1 link for Task 250" }));
   expect(screen.getByLabelText("Merge status for second").textContent).toContain(
-    "Waiting for result handoff",
+    "Waiting for session to become idle",
   );
   await fixture.updateSessions(sessions.map((session) => ({ ...session, unread: false })));
   expect(screen.getByRole("button", { name: "Ready to Merge (2)" })).toBeDefined();
