@@ -43,6 +43,7 @@ for (const timing of ["next-user", "timer"] as const)
       ),
     );
     const finishWorker = Promise.withResolvers<void>();
+    const finishLastReply = Promise.withResolvers<void>();
     const progress = "## Investigation progress\n\n**Source located**\n\n- Checking transport.";
     const report =
       "## Investigation findings\n\n**Typed provenance fixes attribution.**\n\n```ts\nconst authoredBy = 'worker';\n```";
@@ -89,7 +90,10 @@ for (const timing of ["next-user", "timer"] as const)
             },
           },
         });
-      } else reply(response, "Update processed.");
+      } else {
+        if (body.includes("Another genuine user message")) await finishLastReply.promise;
+        reply(response, "Update processed.");
+      }
     });
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
     const address = server.address();
@@ -255,6 +259,8 @@ for (const timing of ["next-user", "timer"] as const)
         .locator('[data-pending-incoming="true"]')
         .filter({ has: card("Investigation findings") });
       await expect(pendingReport).toHaveCSS("opacity", "0.5");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
       const pendingRequests = requests.length;
       await page.waitForTimeout(250);
       expect(requests).toHaveLength(pendingRequests);
@@ -342,6 +348,12 @@ for (const timing of ["next-user", "timer"] as const)
       await openChat();
       await verifyReport();
       await submit("Another genuine user message");
+      await expect
+        .poll(() => requests.some((request) => request.includes("Another genuine user message")))
+        .toBe(true);
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeEnabled();
+      finishLastReply.resolve();
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
       await expect(
         page
           .locator('[data-slot="message"]')
@@ -356,6 +368,7 @@ for (const timing of ["next-user", "timer"] as const)
       ).toBe(true);
     } finally {
       finishWorker.resolve();
+      finishLastReply.resolve();
       await app.close();
       await new Promise<void>((done) => server.close(() => done()));
       await rm(root, { recursive: true, force: true });

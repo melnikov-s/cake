@@ -3,6 +3,7 @@ import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type {
+  ConversationEvent,
   ConversationSnapshot,
   TurnId,
 } from "../../../src/contracts/conversations/conversation-data";
@@ -122,6 +123,9 @@ export function renderConversationSession(
       </>
     </StoreProvider>,
   );
+  const event = (event: ConversationEvent) => {
+    act(() => applyConversationUpdate(model, { _tag: "Event", revision: ++revision, event }));
+  };
   return {
     sessionId,
     composer: session.conversationSessionStore.composerStore,
@@ -135,14 +139,9 @@ export function renderConversationSession(
     publish(changes: Partial<ConversationSnapshot>) {
       act(() => publish(changes));
     },
+    event,
     incoming(parts: UiPart[]) {
-      act(() =>
-        applyConversationUpdate(model, {
-          _tag: "Event",
-          revision: ++revision,
-          event: { _tag: "IncomingUpdated", sessionId, parts },
-        }),
-      );
+      event({ _tag: "IncomingUpdated", sessionId, parts });
     },
     failObservation(message: string) {
       act(() => {

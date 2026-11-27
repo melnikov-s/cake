@@ -18,6 +18,7 @@ import type { CakeSessionRuntimeSetup } from "../../src/services/pi/CakeSessionR
 import { cakePortableInstructions } from "../../src/services/pi/runtime/cake-instructions";
 import antigravityFixture from "../fixtures/antigravity-acp.mjs?raw";
 import { ContextInspection } from "../../src/contracts/conversations/context-inspection";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -76,6 +77,7 @@ import { toJsonValue } from "../../src/utils/to-json-value";
 import { passiveNoticeContext } from "../../src/contracts/conversations/passive-notice";
 import type { InternalInput } from "../../src/contracts/conversations/internal-input";
 import { fakeCakeSessionRuntimes } from "../helpers/fakes/cakeSessionRuntimes";
+import * as durableChatEngine from "../../src/services/pi-durable/durable-chat-engine";
 
 it("keeps a zero-preset Cake Chat usable for setup without sending to the available catalog model", async () => {
   const h = await fixture();
@@ -985,6 +987,61 @@ async function fixture() {
     },
   };
 }
+
+it("does not return a pre-settlement Project Chat snapshot after slow advisory accounting", async () => {
+  const delayedRead = new AsyncLocalStorage<boolean>();
+  const accountingStarted = Promise.withResolvers<void>();
+  const releaseAccounting = Promise.withResolvers<void>();
+  const openEngine = durableChatEngine.openDurableChatEngine;
+  vi.spyOn(durableChatEngine, "openDurableChatEngine").mockImplementation(async (options) => {
+    const engine = await openEngine(options);
+    return {
+      ...engine,
+      async contextStatus(model) {
+        if (delayedRead.getStore()) {
+          accountingStarted.resolve();
+          await releaseAccounting.promise;
+        }
+        return engine.contextStatus(model);
+      },
+    };
+  });
+  const f = await fixture();
+  const { runtime } = await f.open(undefined, undefined, {
+    sessionId: projectChatSessionId(f.directory),
+  });
+  f.hold(true);
+  const reply = runtime.prompt("A completion report needs a reply", "prompt", [], false, ids.first);
+  await Effect.runPromise(Deferred.await(f.started));
+  const running = await runtime.snapshot();
+  expect(running.streaming).toBe(true);
+
+  const pending = delayedRead.run(true, () => runtime.snapshot());
+  try {
+    await accountingStarted.promise;
+    const finish = f.finishes[0];
+    if (!finish) throw new Error("Expected the held Project Chat reply");
+    finish();
+    await reply;
+    const settled = await runtime.snapshot();
+    expect(settled.streaming).toBe(false);
+    expect(settled.parts).toContainEqual(
+      expect.objectContaining({
+        kind: "text",
+        role: "assistant",
+        text: "Done",
+        status: "complete",
+      }),
+    );
+  } finally {
+    releaseAccounting.resolve();
+  }
+  const late = await pending;
+  expect(late.streaming).toBe(false);
+  expect(late.parts).toContainEqual(
+    expect.objectContaining({ kind: "text", role: "assistant", text: "Done", status: "complete" }),
+  );
+});
 
 it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/formatting-project")])(
   "persists display-only message formatting in permanent chat and its native forks (%s)",

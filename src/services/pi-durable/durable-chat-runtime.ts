@@ -883,6 +883,12 @@ export async function createDurableCakeChatRuntime(
     async snapshot() {
       const measureInitial = initialProjection;
       initialProjection = false;
+      // Advisory context accounting acquires the Session line separately. Do it before
+      // capturing live state so a delayed read cannot publish a running snapshot after
+      // a later snapshot has already seen the reply settle.
+      const accountingStartedAt = performance.now();
+      const selected = selectedModel(selection);
+      const cakeChatContext = selected && (await engine.contextStatus(selected));
       const startedAt = performance.now();
       // One Session-line read prevents a completed original and its stale live
       // preview from appearing together, or model/inbox facts from different commits.
@@ -980,16 +986,11 @@ export async function createDurableCakeChatRuntime(
           tree: [],
         } satisfies ConversationSnapshot;
       }, BACKGROUND_CONTEXT);
-      // Context reads acquire the Session line themselves: never nest one in
-      // the transcript transaction. This accounting is an advisory projection.
-      const accountingStartedAt = performance.now();
-      const selected = selectedModel(selection);
-      const cakeChatContext = selected && (await engine.contextStatus(selected));
       if (measureInitial)
         Effect.runSync(
           startupDiagnostics.mark("durable-chat-initial-projection", {
-            snapshotMs: accountingStartedAt - startedAt,
-            advisoryAccountingMs: performance.now() - accountingStartedAt,
+            snapshotMs: performance.now() - startedAt,
+            advisoryAccountingMs: startedAt - accountingStartedAt,
           }),
         );
       const projected = turnStop.project({
