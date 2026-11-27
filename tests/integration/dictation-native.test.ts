@@ -31,6 +31,10 @@ async function convertSpeech(source: string, wavPath: string) {
   }
   throw new Error("Converted WAV is missing PCM audio");
 }
+function recordedSpeech(root: string, source: string, id: string) {
+  const [speaker, chapter] = id.split("-");
+  return convertSpeech(join(source, speaker!, chapter!, `${id}.flac`), join(root, `${id}.wav`));
+}
 function generatedPcm(samples: number, sample: (index: number) => number) {
   const pcm = Buffer.alloc(samples * 4);
   for (let i = 0; i < samples; i++) pcm.writeFloatLE(sample(i), i * 4);
@@ -116,18 +120,11 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
             final: true,
           }),
         ).toEqual({ text: "", speakerPassedSpeech: false });
-        const clip = (id: string) => {
-          const [speaker, chapter] = id.split("-");
-          return convertSpeech(
-            join(librispeech, speaker!, chapter!, `${id}.flac`),
-            join(f.root, `${id}.wav`),
-          );
-        };
         // LibriSpeech test-clean, CC BY 4.0. Speaker 6930 is A; 1320 is B.
         const [a, b, aAgain] = await Promise.all([
-          clip("6930-75918-0000"),
-          clip("1320-122617-0022"),
-          clip("6930-75918-0002"),
+          recordedSpeech(f.root, librispeech, "6930-75918-0000"),
+          recordedSpeech(f.root, librispeech, "1320-122617-0022"),
+          recordedSpeech(f.root, librispeech, "6930-75918-0002"),
         ]);
         const gap = Buffer.alloc(8_000 * 4);
         const finish = (utteranceId: string, speakerRoundId: string) =>
@@ -191,6 +188,82 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
         );
       },
       180_000,
+    );
+
+    test.skipIf(!librispeech)(
+      "retains a short word after a pause without carrying a different voice through it",
+      async () => {
+        if (!librispeech) throw new Error("CAKE_DICTATION_TEST_LIBRISPEECH is required");
+        await using f = await fixture();
+        await f.worker.ready;
+        const [a, aAgain, b] = await Promise.all([
+          recordedSpeech(f.root, librispeech, "6930-75918-0000"),
+          recordedSpeech(f.root, librispeech, "6930-75918-0002"),
+          recordedSpeech(f.root, librispeech, "1320-122617-0022"),
+        ]);
+        // 'place' from A and 'children' from B. Use the same PCM and timing with
+        // the filter off and on; no speech synthesis or edits to the model inputs.
+        const place = a.subarray(32_000 * 4, 36_800 * 4);
+        const children = b.subarray(15_760 * 4, 20_800 * 4);
+        const pause = Buffer.alloc(24_000 * 4);
+        const tail = Buffer.alloc(12_800 * 4);
+        const word = (samples: Buffer) => Buffer.concat([samples, tail]).toString("base64");
+
+        const unfilteredWord = await f.transcribe({
+          utteranceId: "other-word-control",
+          pcm: Buffer.concat([pause, children, tail]).toString("base64"),
+          final: true,
+        });
+        expect(unfilteredWord).toMatch(/\bchildren\b/i);
+
+        await f.worker.prepareSpeaker();
+        for (const [position, prefix, expected] of [
+          ["opening", pause, /^place\b/i],
+          ["after-lock", Buffer.concat([aAgain, pause]), /journey[. ]+place\b/i],
+        ] as const) {
+          for (const filtered of [false, true]) {
+            const utteranceId = `${position}-${filtered ? "filtered" : "unfiltered"}`;
+            const speakerRoundId = filtered ? utteranceId : undefined;
+            await stream(f.worker, utteranceId, prefix, [], speakerRoundId);
+            const result = await f.worker.transcribe({
+              utteranceId,
+              ...(speakerRoundId && { speakerRoundId }),
+              pcm: word(place),
+              final: true,
+            });
+            expect(result.text, utteranceId).toMatch(expected);
+            if (filtered) expect(result.speakerPassedSpeech).toBe(true);
+          }
+        }
+
+        // A's same lead-in must not admit B's short word. At this point the native
+        // gate has already emitted A, so a false result means no new PCM reached ASR.
+        await stream(f.worker, "short-other", Buffer.concat([aAgain, pause]), [], "competing");
+        const other = await f.worker.transcribe({
+          utteranceId: "short-other",
+          speakerRoundId: "competing",
+          pcm: word(children),
+          final: true,
+        });
+        expect(other).toEqual({
+          text: expect.stringMatching(/congratulations were poured.*journey/i),
+          speakerPassedSpeech: false,
+        });
+        expect(other.text).not.toMatch(/children/i);
+
+        // This neighboring slice is not a clean word. Parakeet can return no
+        // tokens at the endpoint even though the earlier phrase was recognized.
+        await stream(f.worker, "empty-decode", Buffer.concat([aAgain, pause]), [], "endpoint");
+        const endpoint = await f.worker.transcribe({
+          utteranceId: "empty-decode",
+          speakerRoundId: "endpoint",
+          pcm: word(a.subarray(33_600 * 4, 38_720 * 4)),
+          final: true,
+        });
+        expect(endpoint.speakerPassedSpeech).toBe(true);
+        expect(endpoint.text).toMatch(/congratulations were poured.*journey/i);
+      },
+      90_000,
     );
 
     // Both model paths are explicit opt-ins. This test never downloads or changes user data.

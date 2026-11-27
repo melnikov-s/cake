@@ -2,7 +2,7 @@
 /// they are never treated as stable IDs. Only one immutable reference matches across windows.
 public struct FirstSpeaker: Sendable {
   public enum Frame: Equatable, Sendable {
-    case silence, uncertain, single(Int)
+    case silence, uncertain, overlap, single(Int)
   }
 
   public static let frameStep = 270
@@ -12,6 +12,35 @@ public struct FirstSpeaker: Sendable {
   private var reference: [Float]?
 
   public init() {}
+
+  public var isLocked: Bool { reference != nil }
+
+  /// Only retry an isolated short burst, not the start or end of a longer turn.
+  public static func isolatedLabel(_ frames: [Frame], within output: Range<Int>) -> Int? {
+    let quiet = 8
+    guard frames.count >= minimumMatch + 2 * quiet,
+      frames.prefix(quiet).allSatisfy({ $0 == .silence }),
+      frames.suffix(quiet).allSatisfy({ $0 == .silence })
+    else { return nil }
+    var label: Int?
+    var first: Int?
+    var end = 0
+    var count = 0
+    for (index, frame) in frames.enumerated() {
+      switch frame {
+      case .overlap: return nil
+      case .single(let next):
+        guard output.contains(index), label == nil || label == next else { return nil }
+        label = next
+        if first == nil { first = index }
+        end = index + 1
+        count += 1
+      default: break
+      }
+    }
+    guard let first, count >= minimumMatch, end - first <= 30 else { return nil }
+    return label
+  }
 
   public mutating func allowedLabels(
     _ frames: [Frame], from firstFrame: Int, until outputEnd: Int,
@@ -42,7 +71,7 @@ public struct FirstSpeaker: Sendable {
         case .silence:
           quiet += 1
           if quiet > 8 { label = nil }
-        case .uncertain:
+        case .uncertain, .overlap:
           label = nil
         }
         if newlySelected != nil { break }

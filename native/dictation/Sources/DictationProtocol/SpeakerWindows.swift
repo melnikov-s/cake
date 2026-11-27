@@ -7,7 +7,8 @@ public struct SpeakerWindows: Sendable {
   }
 
   public static let stride = 16_384  // 1.024 s at 16 kHz
-  public static let context = 8_192  // 512 ms on each side
+  public static let context = 8_192  // 512 ms of normal context on each side
+  public static let recoveryHistory = 3 * stride  // 3.072 s of past audio, no added lookahead
   private var history: [Float] = []
   private var pending: [Float] = []
 
@@ -29,7 +30,7 @@ public struct SpeakerWindows: Sendable {
     let window = Window(
       audio: history + pending.prefix(count + Self.context),
       output: history.count..<(history.count + count))
-    history = Array(pending.prefix(count).suffix(Self.context))
+    history = Array((history + pending.prefix(count)).suffix(Self.recoveryHistory))
     pending.removeFirst(count)
     if final && pending.isEmpty { history = [] }
     return window

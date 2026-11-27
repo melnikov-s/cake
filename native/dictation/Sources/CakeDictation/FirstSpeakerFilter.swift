@@ -9,6 +9,8 @@ actor FirstSpeakerFilter {
   private let segmentation: MLModel
   private let embeddings: EmbeddingExtractor
   private var speaker = FirstSpeaker()
+  /// One flag per retained sample, aligned with SpeakerWindows' left history.
+  private var approvedHistory: [Bool] = []
   private let sampleCount = 160_000
   private let frameCount = 589
 
@@ -36,18 +38,32 @@ actor FirstSpeakerFilter {
     else { throw ProtocolError.invalidRequest }
   }
 
-  func reset() { speaker = FirstSpeaker() }
+  func reset() {
+    speaker = FirstSpeaker()
+    approvedHistory = []
+  }
 
   func approved(_ window: SpeakerWindows.Window) throws -> [Float] {
-    let audio = window.audio
     let range = window.output
+    if range.lowerBound == 0 { approvedHistory = [] }
+    let (audio, verified) = try filter(window)
+    approvedHistory = Array((approvedHistory + verified).suffix(SpeakerWindows.recoveryHistory))
+    return audio
+  }
+
+  private func filter(_ window: SpeakerWindows.Window) throws -> ([Float], [Bool]) {
+    let range = window.output
+    let shortStart = max(0, range.lowerBound - SpeakerWindows.context)
+    let audio = Array(window.audio.dropFirst(shortStart))
     // Digital silence does not warrant two model calls; ambient audio is still assessed.
-    if audio.allSatisfy({ $0 == 0 }) { return [Float](repeating: 0, count: range.count) }
-    let padded = audio + [Float](repeating: 0, count: sampleCount - audio.count)
-    let frames = try classify(padded, frames: frameIndex(audio.count - 1) + 1)
-    let first = frameIndex(range.lowerBound)
-    let end = frameIndex(range.upperBound - 1) + 1
+    if audio.allSatisfy({ $0 == 0 }) {
+      return (Array(repeating: 0, count: range.count), Array(repeating: false, count: range.count))
+    }
+    let frames = try classifyWindow(audio)
+    let first = frameIndex(range.lowerBound - shortStart)
+    let end = frameIndex(range.upperBound - 1 - shortStart) + 1
     var policy = speaker
+    let wasLocked = policy.isLocked
     let matched = try policy.allowedLabels(frames, from: first, until: end) { label in
       var mask = [Float](repeating: 0, count: frameCount)
       var count = 0
@@ -61,12 +77,75 @@ actor FirstSpeakerFilter {
       return try embeddings.getEmbeddings(audio: audio, masks: [mask]).first
     }
     speaker = policy
-    return range.map { index in
-      guard case .single(let label) = frames[frameIndex(index)], matched.contains(label) else {
-        return 0
-      }
-      return audio[index]
+    var recovery: (frames: [FirstSpeaker.Frame], label: Int)?
+    if wasLocked, matched.isEmpty, shortStart > 0,
+      let label = FirstSpeaker.isolatedLabel(frames, within: first..<end)
+    {
+      recovery = try recover(window, shortStart: shortStart, shortFrames: frames, label: label)
     }
+    var verified = [Bool](repeating: false, count: range.count)
+    let output = range.map { index -> Float in
+      guard case .single(let label) = frames[frameIndex(index - shortStart)] else { return 0 }
+      if matched.contains(label) {
+        verified[index - range.lowerBound] = true
+        return window.audio[index]
+      }
+      if let recovery, recovery.frames[frameIndex(index)] == .single(recovery.label) {
+        return window.audio[index]
+      }
+      return 0
+    }
+    // A recovered burst must never become evidence for recovering another burst.
+    return (output, verified)
+  }
+
+  private func recover(
+    _ window: SpeakerWindows.Window, shortStart: Int, shortFrames: [FirstSpeaker.Frame], label: Int
+  ) throws -> (frames: [FirstSpeaker.Frame], label: Int)? {
+    let range = window.output
+    guard approvedHistory.count == range.lowerBound else { return nil }
+    let audio = window.audio
+    let frames = try classifyWindow(audio)
+    let first = frameIndex(range.lowerBound)
+    let end = frameIndex(range.upperBound - 1) + 1
+    // Segmentation labels are local to each inference. The short analysis must see
+    // this burst alone and the longer analysis must see one track, with no overlap.
+    let tracks = Set(frames.compactMap { frame -> Int? in
+      if case .single(let track) = frame { return track }
+      return nil
+    })
+    guard !frames.contains(.overlap), tracks.count == 1, let track = tracks.first
+    else { return nil }
+    var support = 0
+    var burst = 0
+    var speech: [Float] = []
+    for i in frames.indices where frames[i] == .single(track) {
+      let lo = 495 + i * FirstSpeaker.frameStep - FirstSpeaker.frameStep / 2
+      let hi = min(lo + FirstSpeaker.frameStep, audio.count)
+      guard lo < hi else { continue }
+      let center = (lo + hi) / 2
+      if hi <= range.lowerBound, approvedHistory[center] {
+        support += 1
+      } else if lo >= range.lowerBound,
+        shortFrames[frameIndex(center - shortStart)] == .single(label)
+      {
+        burst += 1
+      } else { continue }
+      speech.append(contentsOf: audio[lo..<hi])
+    }
+    guard support >= 48, burst >= FirstSpeaker.minimumMatch else { return nil }  // ~810 ms of verified context
+    // Remove the pause from the embedding input, not from the emitted waveform. A
+    // sparse mask pools speech but cannot remove silence from WeSpeaker's normalization.
+    var policy = speaker
+    let matched = try policy.allowedLabels(frames, from: first, until: end) { _ in
+      try embeddings.getEmbeddings(audio: speech, masks: [[Float](repeating: 1, count: frameCount)]).first
+    }
+    return matched.contains(track) ? (frames, track) : nil
+  }
+
+  private func classifyWindow(_ audio: [Float]) throws -> [FirstSpeaker.Frame] {
+    try classify(audio + [Float](repeating: 0, count: sampleCount - audio.count),
+      frames: frameIndex(audio.count - 1) + 1)
   }
 
   /// Map waveform samples to the nearest frame center (991-sample receptive field,
@@ -88,9 +167,9 @@ actor FirstSpeakerFilter {
     return (0..<frames).map { frame in
       // pyannote's powerset log probabilities: silence, three singles, three pairs.
       let probabilities = (0..<7).map { exp(scores[[0, NSNumber(value: frame), NSNumber(value: $0)]].floatValue) }
+      if probabilities[4...6].reduce(0, +) >= 0.25 { return .overlap }
       guard let best = probabilities.indices.max(by: { probabilities[$0] < probabilities[$1] }),
-        probabilities[best] >= 0.55,
-        probabilities[4...6].reduce(0, +) < 0.25
+        probabilities[best] >= 0.55
       else { return .uncertain }
       switch best {
       case 0: return .silence

@@ -48,7 +48,12 @@ public struct RollingTranscript: Sendable {
   /// Timings are absolute on this window's speech-audio timeline, not wall-clock time.
   /// Budget pressure commits old words even if they disagree; it never commits the recent
   /// tail. Normal updates require two matching hypotheses, including case/punctuation.
-  public mutating func update(_ words: [RecognizedWord], atCapacity: Bool = false) {
+  public mutating func update(
+    _ words: [RecognizedWord], atCapacity: Bool = false, endpoint: Bool = false
+  ) {
+    // An empty endpoint decode of the same audio plus a short tail can fail to
+    // recognize the whole passage. Keep the last hypothesis instead of erasing it.
+    if endpoint && !atCapacity && words.isEmpty { return }
     var current = words
     if let anchor {
       // Retained left context must not be emitted twice. Match the last committed word

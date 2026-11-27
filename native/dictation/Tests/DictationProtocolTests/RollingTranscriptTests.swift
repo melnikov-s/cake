@@ -29,6 +29,10 @@ func rollingTranscriptTests() throws {
     "Resumed speech can remove an earlier question mark")
   passage.update([word("Is", 0, 0.4), word("this", 0.4, 0.8), word("correct", 0.8, 1.5)])
   try check(passage.text == "Is this correct", "Hypotheses can also retract provisional words")
+  passage.update([], endpoint: true)
+  try check(passage.text == "Is this correct", "An empty endpoint decode does not erase a passage")
+  passage.update([word("Is", 0, 0.4), word("this", 0.4, 0.8), word("correct?", 0.8, 1.5)], endpoint: true)
+  try check(passage.text == "Is this correct?", "A nonempty endpoint can still revise the passage")
 
   // Confidence/agreement in the words alone does not settle punctuation. Future context matters.
   var agreement = RollingTranscript()

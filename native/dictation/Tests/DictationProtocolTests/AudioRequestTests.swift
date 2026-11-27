@@ -235,6 +235,21 @@ private func firstSpeakerTests() throws {
   try check(speaker.allowedLabels(b, from: 0, until: 30, embedding: vectors) == [0],
     "A new round can pick a different speaker")
 
+  let silence = [Frame](repeating: .silence, count: 12)
+  let short = Array(a.prefix(25))
+  let isolated = silence + short + silence
+  let outputFrames = 8..<(isolated.count - 8)
+  try check(FirstSpeaker.isolatedLabel(isolated, within: outputFrames) == 2,
+    "A single short burst surrounded by quiet can use verified history")
+  try check(FirstSpeaker.isolatedLabel(isolated, within: 13..<isolated.count) == nil,
+    "Never recover just one side of a word that straddles an output boundary")
+  try check(FirstSpeaker.isolatedLabel(silence + short + [.single(0)] + silence,
+      within: 0..<(isolated.count + 1)) == nil,
+    "Two tracks cannot use recovery")
+  try check(FirstSpeaker.isolatedLabel(silence + [.overlap] + short + silence,
+      within: 0..<(isolated.count + 1)) == nil,
+    "Detected overlap cannot use recovery")
+
   var windows = SpeakerWindows()
   let size = SpeakerWindows.stride + SpeakerWindows.context
   let samples = (0..<160_000).map(Float.init)
@@ -244,8 +259,9 @@ private func firstSpeakerTests() throws {
   try rejects { try windows.append([0]) }
   var output: [Float] = []
   while let window = windows.next(final: true) {
-    try check(window.audio.count <= SpeakerWindows.stride + 2 * SpeakerWindows.context,
-      "A catch-up request never grows the model window")
+    try check(window.output.lowerBound <= SpeakerWindows.recoveryHistory
+      && window.audio.count - window.output.upperBound <= SpeakerWindows.context,
+      "Recovery history stays bounded without adding lookahead")
     output += window.audio[window.output]
   }
   try check(output == samples, "Lookahead never duplicates audio, including in the final drain")

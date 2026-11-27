@@ -56,7 +56,8 @@ thinking pauses. Older words settle after two matching hypotheses and at least s
 seconds of following audio. A fourteen-second audio budget forces old text to settle
 if agreement never arrives, retaining two seconds of left context and a revisable
 recent tail. Pauses stop feeding room noise but do not seal the recognition text;
-Enter explicitly finalizes it. Audio stays in memory and is released on finalization
+Enter explicitly finalizes it. An empty endpoint decode does not erase the last
+recognized text. Audio stays in memory and is released on finalization
 or when a new insertion starts.
 
 Focusing a field chooses the destination. Dictation then stays with that field until
@@ -111,8 +112,14 @@ voiceprints or microphone audio. Submitting a draft and using optional utility c
 are separate provider operations; utility cleanup receives accepted text only.
 
 When the filter is on, the helper evaluates bounded windows (1.024 seconds of output plus up to 512 ms of
-context on either side). It gates audio **before** recognition; only verified samples
-reach Parakeet. Work runs on the recognition side of capture, in one speaker-inference
+context on either side). After selecting a speaker, it can recheck an isolated short burst
+using up to three seconds of earlier audio in the same text span. Recovery requires one
+speaker track, previously verified speech on that track, and a match to the same round
+reference. It does not pass detected overlap or add lookahead. If there is not enough
+speaker evidence, a short word can still be omitted.
+
+The filter gates audio **before** recognition; only verified samples reach Parakeet.
+Work runs on the recognition side of capture, in one speaker-inference
 slot, which can process the next window while recognition consumes the previous one.
 The existing eight-second capture backlog limit still fails visibly rather than building
 an unbounded queue or passing unchecked audio through. A document crash, reload or
@@ -211,9 +218,9 @@ CAKE_DICTATION_TEST_HELPER="$helper_dir/cake-dictation" \
 
 To also test labeled real speech, set `CAKE_DICTATION_TEST_LIBRISPEECH` to the
 `LibriSpeech/test-clean` directory from the [OpenSLR LibriSpeech release](https://www.openslr.org/12/)
-(CC BY 4.0, read aloud by LibriVox volunteers). The opt-in test reads clips from speakers
-6930 and 1320; it also mixes two clips to exercise overlap. The test does not download
-fixtures or use a microphone.
+(CC BY 4.0, read aloud by LibriVox volunteers). The opt-in tests read clips from speakers
+6930 and 1320, mix two clips to exercise overlap, and compare the same isolated word after
+a pause with the filter off and on. The tests do not download fixtures or use a microphone.
 
 With the same environment variables and a current slim build, run
 `pnpm test:electron:run tests/electron/dictation-recorded.smoke.spec.ts` to play

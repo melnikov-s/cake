@@ -97,7 +97,8 @@ private final class Recognition {
     }
     let corrections = try await boosting.corrections(
       text: result.text, timings: timings, audio: audio, words: words)
-    transcript.update(applyingVocabularyCorrections(corrections, to: words), atCapacity: atCapacity)
+    transcript.update(
+      applyingVocabularyCorrections(corrections, to: words), atCapacity: atCapacity, endpoint: endpoint)
     newSamples = 0
     decodeDue = false
   }
