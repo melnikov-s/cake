@@ -14,7 +14,7 @@ export class ConversationHistoryStore extends Store<{
   private loaded = false;
   private cursor: string | undefined;
   private generation = 0;
-  private request: AbortController | undefined;
+  private request: { controller: AbortController; done: Promise<boolean> } | undefined;
   private readers = 0;
   private readonly completedCursors = observable(new Set<string>());
 
@@ -53,22 +53,31 @@ export class ConversationHistoryStore extends Store<{
 
   private cancel() {
     this.generation += 1;
-    this.request?.abort();
+    this.request?.controller.abort();
     this.request = undefined;
     this.loading = false;
     this.error = undefined;
   }
 
-  async load() {
+  /** True when a page advanced. Explicit navigation can join a reader-initiated load. */
+  load(): Promise<boolean> {
+    if (this.request) return this.request.done;
     const cursor = this.loaded ? this.cursor : this.props.model.historyCursor;
-    if (this.loading || cursor === undefined || this.signal.aborted) return;
+    if (cursor === undefined || this.signal.aborted) return Promise.resolve(false);
+    const controller = new AbortController();
+    const generation = this.generation;
+    const done = Promise.withResolvers<boolean>();
+    this.request = { controller, done: done.promise };
     this.loading = true;
     this.error = undefined;
+    void this.loadPage(cursor, controller, generation).then(done.resolve, done.reject);
+    return done.promise;
+  }
+
+  private async loadPage(cursor: string, controller: AbortController, generation: number) {
+    const signal = AbortSignal.any([this.signal, controller.signal]);
+    if (signal.aborted) return false;
     const model = this.props.model;
-    const generation = this.generation;
-    const request = new AbortController();
-    this.request = request;
-    const signal = AbortSignal.any([this.signal, request.signal]);
     let releaseTranscript: (() => void) | undefined;
     let released = false;
     const release = () => {
@@ -83,7 +92,8 @@ export class ConversationHistoryStore extends Store<{
         { sessionId: model.sessionId, cursor },
         { signal },
       );
-      if (signal.aborted || model !== this.props.model || generation !== this.generation) return;
+      if (signal.aborted || model !== this.props.model || generation !== this.generation)
+        return false;
       if (page.cursor === cursor || (page.cursor && this.completedCursors.has(page.cursor)))
         throw new Error("Earlier history did not advance. Retry loading earlier messages.");
       const known = new Set(model.uiParts.map((part) => part.id));
@@ -98,9 +108,11 @@ export class ConversationHistoryStore extends Store<{
         this.cursor = page.cursor;
         this.loaded = true;
       });
+      return true;
     } catch (error) {
       if (!signal.aborted && generation === this.generation)
         this.error = describeError(error).message;
+      return false;
     } finally {
       if (!signal.aborted && generation === this.generation) {
         this.loading = false;

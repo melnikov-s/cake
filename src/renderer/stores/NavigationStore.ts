@@ -306,9 +306,12 @@ export class NavigationStore extends Store<{
     this.props.shell.recordCurrentConversationVisit();
   }
 
+  private sessionLinkRevision = 0;
+
   /** Opens either kind of Cake Session addressed by a Markdown session link.
    * Short references resolve against the same roster as agent session targeting. */
   async openSessionLink(reference: string, messageId?: string, attachmentId?: string) {
+    const revision = ++this.sessionLinkRevision;
     const resolved = resolveSessionLinkReference(reference, [
       ...this.props.catalog.sessions.map((session) => session.sessionId),
       ...this.props.cakeChat().summaries.map((session) => session.sessionId),
@@ -368,7 +371,25 @@ export class NavigationStore extends Store<{
     if (conversation?.sideChatStore.target) conversation.sideChatStore.close();
     if (!messageId) return;
     const chat = conversation?.chatStore;
-    const target = chat && linkedMessageTarget(chat.parts, messageId);
+    if (!chat) throw new Error("The linked message is unavailable in the current conversation");
+    let target = linkedMessageTarget(chat.parts, messageId);
+    // Durable Project Chat projects a recent window, not the full original history.
+    // Bring the original into the same transcript instead of opening the standalone reader.
+    const history = isProjectChatSessionId(sessionId) ? chat.history : undefined;
+    const stillOpeningLink = () =>
+      !this.signal.aborted &&
+      this.sessionLinkRevision === revision &&
+      this.props.shell.activeConversation?.sessionId === sessionId;
+    while (!target && history?.hasMore) {
+      if (!stillOpeningLink()) return;
+      const advanced = await history.load();
+      if (!stillOpeningLink()) return;
+      if (!advanced) {
+        if (history.error) throw new Error(history.error);
+        return; // The transcript or its projection was reset while loading.
+      }
+      target = linkedMessageTarget(chat.parts, messageId);
+    }
     if (!target) throw new Error("The linked message is unavailable in the current conversation");
     chat.transcriptInteraction.navigateToMessage(target.id);
   }

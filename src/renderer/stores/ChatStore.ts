@@ -77,7 +77,7 @@ export interface ChatStoreProps {
     readonly hasMore: boolean;
     readonly loading: boolean;
     readonly error?: string;
-    load(): Promise<void>;
+    load(): Promise<boolean>;
     retain?(): () => void;
   };
   id(): string;

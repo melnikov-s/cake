@@ -552,19 +552,16 @@ describe("Agent session navigation workflow", () => {
           { kind: "top" },
         );
       });
+      const openSession = vi.fn((id: string, messageId?: string) =>
+        fixture.root.navigationStore.openSessionLink(id, messageId),
+      );
       render(
-        <MarkdownLinkProvider
-          actions={{
-            openExternalUrl: vi.fn(),
-            openSession: (id, messageId) => {
-              void fixture.root.navigationStore.openSessionLink(id, messageId);
-            },
-          }}
-        >
+        <MarkdownLinkProvider actions={{ openExternalUrl: vi.fn(), openSession }}>
           <Markdown>{`[Exact answer](${messageReference(sessionId, entryId)}) · [Dedicated fix](cake://session/${sessionId})`}</Markdown>
         </MarkdownLinkProvider>,
       );
       await fixture.user.click(screen.getByRole("link", { name: "Exact answer" }));
+      await act(async () => await openSession.mock.results[0]!.value);
       await screen.findByText("Exact linked answer");
       expect(session.presentationMode).toBe("normal");
       expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(sessionId);
@@ -580,6 +577,8 @@ describe("Agent session navigation workflow", () => {
 
       act(() => session.showPresentation("browser"));
       await fixture.user.click(screen.getByRole("link", { name: "Dedicated fix" }));
+      // Normal chat can render before the async link action finishes.
+      await act(async () => await openSession.mock.results[1]!.value);
       await waitFor(() => expect(session.presentationMode).toBe("normal"));
       await screen.findByText("Exact linked answer");
       expect(fixture.root.appShellStore.activeConversation?.sessionId).toBe(sessionId);

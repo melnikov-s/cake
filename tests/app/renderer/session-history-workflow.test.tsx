@@ -67,14 +67,15 @@ it("ordinary sessions admit one page, serialize reads, preserve live rollover an
     );
     expect(screen.getByRole("status").textContent).toBe("Loading earlier messages…");
     scrollTranscriptEarlier(screen.getByText("Loading earlier messages…"));
-    await act(async () => {
-      await store.history!.load();
-    });
+    const joined = vi.fn();
+    void store.history!.load().then(joined);
     expect(history).toHaveBeenCalledOnce();
     act(() => publish(2, [part("recent"), part("streamed")]));
-    await act(async () =>
-      pending.resolve({ parts: [part("older"), part("recent")], cursor: "older-2" }),
-    );
+    await act(async () => {
+      expect(joined).not.toHaveBeenCalled();
+      pending.resolve({ parts: [part("older"), part("recent")], cursor: "older-2" });
+    });
+    expect(joined).toHaveBeenCalledExactlyOnceWith(true);
     expect(session.model.uiParts.map((p) => p.id)).toEqual(["older", "recent", "streamed"]);
     expect(history).toHaveBeenCalledOnce();
     scrollTranscriptEarlier(screen.getByText("Earlier messages"));
@@ -109,7 +110,7 @@ it("switching/disposal cannot prepend a stale page to another conversation", asy
       snapshot: snapshot(session.sessionId, [part(session.sessionId)]),
     });
   const view = render(<ChatTranscript store={first.conversationSessionStore.chatStore} />);
-  let read: Promise<void>;
+  let read: Promise<boolean>;
   act(() => {
     read = first.history.load();
   });
