@@ -1,4 +1,5 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
+import type { Conversation } from "../models/Conversation";
 import { subagentTitle } from "../lib/subagent-title";
 import { ToastContext } from "./context/ToastContext";
 import { describeError } from "../lib/error-details";
@@ -354,6 +355,13 @@ export class NavigationStore extends Store<{
     retained?.showPresentation("normal");
     if (!(await this.openSession(sessionId)))
       throw new Error("Cake could not open the linked session");
+    if (this.signal.aborted) return;
+    const projectMessageLink = Boolean(messageId && isProjectChatSessionId(sessionId));
+    const stillOpeningLink = () =>
+      !this.signal.aborted &&
+      this.sessionLinkRevision === revision &&
+      this.props.shell.activeConversation?.sessionId === sessionId;
+    if (projectMessageLink && !stillOpeningLink()) return;
     const discussion = this.props.discussionNavigation().session(sessionId);
     if (discussion) {
       if (!messageId) return;
@@ -372,14 +380,19 @@ export class NavigationStore extends Store<{
     if (!messageId) return;
     const chat = conversation?.chatStore;
     if (!chat) throw new Error("The linked message is unavailable in the current conversation");
+    if (projectMessageLink && session) {
+      const signal = AbortSignal.any([this.signal, session.signal]);
+      const ready = await this.waitForProjectChatTranscript(
+        session.model,
+        signal,
+        stillOpeningLink,
+      );
+      if (!ready || signal.aborted || !stillOpeningLink()) return;
+    }
     let target = linkedMessageTarget(chat.parts, messageId);
     // Durable Project Chat projects a recent window, not the full original history.
     // Bring the original into the same transcript instead of opening the standalone reader.
-    const history = isProjectChatSessionId(sessionId) ? chat.history : undefined;
-    const stillOpeningLink = () =>
-      !this.signal.aborted &&
-      this.sessionLinkRevision === revision &&
-      this.props.shell.activeConversation?.sessionId === sessionId;
+    const history = projectMessageLink ? chat.history : undefined;
     while (!target && history?.hasMore) {
       if (!stillOpeningLink()) return;
       const advanced = await history.load();
@@ -392,6 +405,39 @@ export class NavigationStore extends Store<{
     }
     if (!target) throw new Error("The linked message is unavailable in the current conversation");
     chat.transcriptInteraction.navigateToMessage(target.id);
+  }
+
+  /** A history preview is enough to address originals; don't wait for model/runtime startup. */
+  private waitForProjectChatTranscript(
+    model: Conversation,
+    signal: AbortSignal,
+    isCurrent: () => boolean,
+  ): Promise<boolean> {
+    const hasTranscript = () => model.historyOnly || model.observedSnapshotRevision > 0;
+    if (signal.aborted || !isCurrent()) return Promise.resolve(false);
+    if (hasTranscript()) return Promise.resolve(true);
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (ready: boolean, error?: string) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", abort);
+        dispose();
+        if (signal.aborted || !isCurrent()) resolve(false);
+        else if (error !== undefined) reject(new Error(error));
+        else resolve(ready);
+      };
+      const abort = () => finish(false);
+      signal.addEventListener("abort", abort, { once: true });
+      const dispose = reactiveEffect(() => {
+        if (!isCurrent()) queueMicrotask(() => finish(false));
+        else if (hasTranscript()) queueMicrotask(() => finish(true));
+        else if (model.observationError !== undefined) {
+          const error = model.observationError;
+          queueMicrotask(() => finish(false, error));
+        }
+      });
+    });
   }
 
   /** Inspect the public worker in its parent; never navigate to its private Pi session. */

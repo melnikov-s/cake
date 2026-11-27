@@ -10,6 +10,7 @@ import { applyConversationUpdate } from "../../../src/renderer/reducers/Conversa
 import { snapshot } from "../helpers/piRuntimeFixture";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture, unmountOnDispose } from "./renderer-store-fixture";
+import type { TestClientOverrides } from "./test-client";
 
 const sessionId = "project-chat:950768651fd1a98238949f08e0ca061cfa896af7729c1267e685a8dab3305abb";
 const reference =
@@ -24,6 +25,18 @@ const answer = (entryId: string, text: string): UiPart => ({
   text,
 });
 
+function projectChatFixture(client?: TestClientOverrides) {
+  const fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/learn-anything" })],
+    client,
+  });
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [{ sessionId, title: "Learn Anything", projectPath: "/learn-anything" }],
+  });
+  return fixture;
+}
+
 it("jumps from Markdown in Project Chat to its exact assistant entry on an earlier page", async () => {
   const original = answer("2507", "Original answer");
   const history = vi
@@ -32,15 +45,8 @@ it("jumps from Markdown in Project Chat to its exact assistant entry on an earli
     .mockResolvedValueOnce({ parts: [original], cursor: "older-3" });
   const inspect = vi.fn<Client["sessionChats"]["inspect"]>();
   const openExternalUrl = vi.fn();
-  using fixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: "/learn-anything" })],
-    client: { sessionChats: { history, inspect } },
-  });
-  const { root, models } = fixture;
-  applySnapshot(models.cakeChatCatalog, {
-    loaded: true,
-    sessions: [{ sessionId, title: "Learn Anything", projectPath: "/learn-anything" }],
-  });
+  using fixture = projectChatFixture({ sessionChats: { history, inspect } });
+  const { root } = fixture;
   const chat = root.cakeChatCollectionStore.registry.load(sessionId);
   applyConversationUpdate(chat.model, {
     _tag: "Snapshot",
@@ -96,3 +102,76 @@ it("jumps from Markdown in Project Chat to its exact assistant entry on an earli
   expect(inspect).not.toHaveBeenCalled();
   expect(openExternalUrl).not.toHaveBeenCalled();
 });
+
+// Drain the open's scheduled frame before initial observation is allowed to publish.
+const afterOpenFrame = () =>
+  act(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+
+it("keeps a cold exact link pending until the first history preview publishes its cursor", async () => {
+  const original = answer("2507", "Cold original answer");
+  const history = vi
+    .fn<Client["sessionChats"]["history"]>()
+    .mockResolvedValue({ parts: [original] });
+  using fixture = projectChatFixture({ sessionChats: { history } });
+  const { root } = fixture;
+  const settled = vi.fn();
+  const opening = root.navigationStore.openSessionLink(sessionId, "2507").then(
+    () => settled("opened"),
+    (error: unknown) => settled(error),
+  );
+  await afterOpenFrame();
+  expect(root.appShellStore.activeConversation?.sessionId).toBe(sessionId);
+  expect(settled).not.toHaveBeenCalled();
+  expect(history).not.toHaveBeenCalled();
+  const chat = root.cakeChatCollectionStore.registry.find(sessionId)!;
+  applyConversationUpdate(chat.model, {
+    _tag: "Preview",
+    revision: 0,
+    snapshot: { ...snapshot, sessionId, historyCursor: "older-1" },
+  });
+  await opening;
+  expect(settled).toHaveBeenCalledExactlyOnceWith("opened");
+  expect(history).toHaveBeenCalledExactlyOnceWith(
+    { sessionId, cursor: "older-1" },
+    { signal: expect.any(AbortSignal) },
+  );
+  expect(chat.conversationSessionStore.chatStore.transcriptInteraction.selectedMessageId).toBe(
+    original.id,
+  );
+});
+
+it.each(["switch", "newer link", "observation error"] as const)(
+  "ends a cold exact-link wait on %s without selecting a late answer",
+  async (exit) => {
+    using fixture = projectChatFixture();
+    const { root } = fixture;
+    // Normal activation must finish without a transcript snapshot.
+    await root.navigationStore.openSessionLink(sessionId);
+    const chat = root.cakeChatCollectionStore.registry.find(sessionId)!;
+    expect(chat.model.observedSnapshotRevision).toBe(0);
+    const settled = vi.fn();
+    const opening = root.navigationStore.openSessionLink(sessionId, "2507").then(
+      () => settled("ended"),
+      (error: unknown) => settled(error),
+    );
+    await afterOpenFrame();
+    expect(settled).not.toHaveBeenCalled();
+    if (exit === "switch") root.navigationStore.showEmptyWorkbench();
+    else if (exit === "newer link") await root.navigationStore.openSessionLink(sessionId);
+    else chat.model.observationError = "Could not observe Project Chat";
+    await opening;
+    expect(settled).toHaveBeenCalledExactlyOnceWith(
+      exit === "observation error" ? new Error("Could not observe Project Chat") : "ended",
+    );
+    applyConversationUpdate(chat.model, {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: { ...snapshot, sessionId, parts: [answer("2507", "Late answer")] },
+    });
+    expect(
+      chat.conversationSessionStore.chatStore.transcriptInteraction.selectedMessageId,
+    ).toBeUndefined();
+  },
+);
